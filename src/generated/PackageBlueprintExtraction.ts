@@ -1,3 +1,4 @@
+import {isPromise} from "util/types";
 import type {ValidationIssueSeverity} from "../validation/ValidationIssueSeverity.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
 import {loadPokieGameRuntime} from "../gamepackage/loadPokieGame.js";
@@ -155,8 +156,10 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                     const modes = detachPackageModelData(game.getBetModes());
                     if (!Array.isArray(modes) || modes.some(mode => !mode || typeof mode !== "object" || typeof mode.id !== "string" ||
                         (mode.label !== undefined && typeof mode.label !== "string") ||
-                        [mode.costMultiplier, mode.targetRtp].some(value => value !== undefined && (typeof value !== "number" || !Number.isFinite(value))))) throw new Error("getBetModes: malformed public mode declarations");
+                        (mode.isDefault !== undefined && typeof mode.isDefault !== "boolean") ||
+                        [mode.costMultiplier, mode.targetRtp].some(value => value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value <= 0)))) throw new Error("getBetModes: malformed public mode declarations");
                     result.model.betModes = modes as GameBlueprint["betModes"];
+                    this.recordBetModeOmissions(result.model.betModes, result.fields);
                     this.recordFields(
                         result.model.betModes,
                         "betModes",
@@ -190,7 +193,11 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                 });
                 return result;
             }
-            const descriptor = detachPackageModelData(await game.getModelDescriptor()) as Record<string, unknown>;
+            // Only native Promises belong to the asynchronous descriptor contract.
+            // Detach synchronous data before any await can read its `then` property.
+            let descriptorData: unknown = game.getModelDescriptor();
+            if (isPromise(descriptorData)) descriptorData = await descriptorData;
+            const descriptor = detachPackageModelData(descriptorData) as Record<string, unknown>;
             if (cancelled()) return result;
             for (const key of Object.keys(descriptor)) if (
                 !["descriptorVersion", "blueprintSchemaVersion", "sourceKind", "model", "unsupported"].includes(key)
@@ -234,11 +241,13 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                 (model.rows ?? 0) > 10000 ||
                 (model.reels ?? 0) * (model.rows ?? 0) > 1000000
             ) throw new Error("Model geometry exceeds extraction limits");
-            if (
-                model.manifest &&
-                computeGameBlueprintHash({manifest: model.manifest} as GameBlueprint) !==
-                    computeGameBlueprintHash({manifest} as GameBlueprint)
-            ) throw new Error("manifest: descriptor differs from getManifest identity/data");
+            if (hasOwn(model, "manifest")) {
+                const manifestErrors = new GameBlueprintValidator().validate({manifest: model.manifest})
+                    .filter(issue => issue.severity === "error" && issue.code.startsWith("blueprint-manifest"));
+                if (manifestErrors.length > 0) throw new Error(`manifest: ${manifestErrors.map(issue => issue.message).join("; ")}`);
+                if (computeGameBlueprintHash({manifest: model.manifest} as GameBlueprint) !==
+                    computeGameBlueprintHash({manifest} as GameBlueprint)) throw new Error("manifest: descriptor differs from getManifest identity/data");
+            }
             model.manifest = manifest;
             result.model = model;
             this.recordFields(model, "", "public model descriptor", result.fields);
@@ -328,11 +337,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                 "evaluated.rows",
                 "paylineSpace",
             ]) omitted(`screenGeometry.${field}`, "VideoSlotConfig default geometry");
-            model.betModes?.forEach((mode, index) => {
-                if (mode.label === undefined) omitted(`betModes.${index}.label`, "BetModeDefinition: mode ID");
-                if (mode.costMultiplier === undefined) omitted(`betModes.${index}.costMultiplier`, "base/metadata mode: 1");
-                if (mode.runtimeType === undefined) omitted(`betModes.${index}.runtimeType`, "declarative metadata only; no executable mode wiring");
-            });
+            this.recordBetModeOmissions(model.betModes, result.fields);
             if (model.winModel?.type === "clusters" && model.winModel.minimumClusterSize === undefined) result.fields.push({
                 path: "winModel.minimumClusterSize",
                 status: "defaulted",
@@ -433,6 +438,24 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                 });
             }
         }
+    }
+
+    private recordBetModeOmissions(modes: GameBlueprint["betModes"], fields: PackageExtractionField[]): void {
+        const optionalFields = {
+            label: "BetModeDefinition: mode ID",
+            costMultiplier: "base/metadata mode: 1",
+            runtimeType: "no declared runtime wiring; custom executable semantics are not established",
+            isDefault: "no preferred/default mode declaration; runtime marker defaults to false",
+            targetRtp: "no declared RTP target",
+            forcedFreeGames: "no forced free-game grant declaration",
+        };
+        if (Array.isArray(modes)) modes.forEach((mode, index) => {
+            for (const [field, authority] of Object.entries(optionalFields)) if (mode && !hasOwn(mode, field)) fields.push({
+                path: `betModes.${index}.${field}`,
+                status: "defaulted",
+                authority,
+            });
+        });
     }
 
     private recordFields(value: unknown, field: string, authority: string, fields: PackageExtractionField[]): void {

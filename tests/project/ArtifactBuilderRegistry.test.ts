@@ -4,6 +4,8 @@ import os from "os";
 import path from "path";
 import type {ArtifactBuilder} from "../../src/project/ArtifactBuilder.js";
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
+import {PackageBlueprintExtraction} from "../../src/generated/PackageBlueprintExtraction.js";
+import {ParSheetImporter} from "../../src/parsheet/ParSheetImporter.js";
 import {BlueprintArtifactBuilder} from "../../src/project/BlueprintArtifactBuilder.js";
 import {computeArtifactInputBindingHash, type ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
 import {ManagedOutcomeProjectService} from "../../src/project/ManagedOutcomeProjectService.js";
@@ -40,6 +42,138 @@ describe("ArtifactBuilderRegistry", () => {
         } finally {
             fs.rmSync(root, {recursive: true, force: true});
         }
+    });
+
+    it.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)(
+        "rejects final descriptor drift before exposing either model output for %s",
+        async target => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-model-binding-"));
+            try {
+                const control = path.join(root, "payout.txt");
+                fs.writeFileSync(control, "1");
+                const source = writeDescriptorPackage(root, {descriptorBody:
+                    `model.paytable.A[3] = Number(require("fs").readFileSync(${JSON.stringify(control)}, "utf8"));
+                    return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model};`,});
+                const input = fs.readFileSync(path.join(source, "index.js"));
+                const project: PokieProject = {type: "tsPackage", rootPath: source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
+                const destination = path.join(root, target === "blueprint" ? "model.json" : target);
+                const plan = await registry.preparePlan(project, target, {destinationPath: destination});
+                expect(plan.status).toBe("planned");
+                expect(plan.packageExtraction?.blueprint?.paytable.A[3]).toBe(1);
+                const link = jest.spyOn(fs.promises, "link");
+                try {
+                    await expect(registry.executePlan(plan, project, destination, {onProgress: progress => {
+                        if (progress.message === "Extracting public package model into Blueprint") fs.writeFileSync(control, "99");
+                    }})).rejects.toThrow(/Package model changed after preview/);
+                    expect(link).not.toHaveBeenCalled();
+                } finally {
+                    link.mockRestore();
+                }
+                expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(input);
+                expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "payout.txt"]);
+            } finally {
+                fs.rmSync(root, {recursive: true, force: true});
+            }
+        },
+    );
+
+    describe.each(["tsPackage", "parWorkbook"] as const)("exclusive %s Blueprint publication", sourceType => {
+        let root: string;
+        let project: PokieProject;
+        let destination: string;
+        beforeEach(() => {
+            root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exclusive-publication-"));
+            let source: string;
+            if (sourceType === "tsPackage") source = writeDescriptorPackage(root);
+            else {
+                source = path.join(root, "source.xlsx");
+                fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), source);
+            }
+            project = {type: sourceType, rootPath: source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES[sourceType]};
+            destination = path.join(root, "model.json");
+        });
+        afterEach(() => {
+            jest.restoreAllMocks();
+            fs.rmSync(root, {recursive: true, force: true});
+        });
+        const memberPath = (member: string): string => member === "blueprint" ? destination : `${destination}.conversion-evidence.json`;
+        const assertOnlyCompetitor = (competitor: string, bytes: Buffer): void => {
+            expect(fs.readFileSync(competitor)).toEqual(bytes);
+            const other = competitor === destination ? memberPath("evidence") : destination;
+            expect(fs.existsSync(other)).toBe(false);
+            expect(fs.readdirSync(root).filter(name => name.startsWith(".") || name === "model.json" || name === "model.json.conversion-evidence.json")).toEqual([path.basename(competitor)]);
+        };
+
+        it.each(["blueprint", "evidence"])("preserves competing %s bytes introduced during the model read", async member => {
+            const competitor = memberPath(member);
+            const bytes = Buffer.from([0, 255, 13, 10, 42]);
+            if (sourceType === "tsPackage") {
+                const extract = PackageBlueprintExtraction.prototype.extract;
+                jest.spyOn(PackageBlueprintExtraction.prototype, "extract").mockImplementation(async (input, options) => {
+                    const result = await Reflect.apply(extract, new PackageBlueprintExtraction(), [input, options]);
+                    fs.writeFileSync(competitor, bytes);
+                    return result;
+                });
+            } else {
+                const read = ParSheetImporter.prototype.importFromFile;
+                jest.spyOn(ParSheetImporter.prototype, "importFromFile").mockImplementation(async filePath => {
+                    const result = await Reflect.apply(read, new ParSheetImporter(), [filePath]);
+                    fs.writeFileSync(competitor, bytes);
+                    return result;
+                });
+            }
+            await expect(new BlueprintArtifactBuilder().build(project, destination)).rejects.toThrow(/already exists/);
+            assertOnlyCompetitor(competitor, bytes);
+        });
+
+        it.each(["blueprint", "evidence"])("does not replace %s introduced after the availability check", async member => {
+            const competitor = memberPath(member);
+            const bytes = Buffer.from("concurrent writer\n");
+            const link = fs.promises.link.bind(fs.promises);
+            jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+                if (String(to) === competitor) fs.writeFileSync(competitor, bytes);
+                await link(from, to);
+            });
+            await expect(new BlueprintArtifactBuilder().build(project, destination)).rejects.toThrow(/already exists/);
+            assertOnlyCompetitor(competitor, bytes);
+        });
+
+        it.each(["blueprint", "evidence"])("preserves a replaced %s during cancellation rollback", async member => {
+            const competitor = memberPath(member);
+            const bytes = Buffer.from("replacement from another writer");
+            const controller = new AbortController();
+            const link = fs.promises.link.bind(fs.promises);
+            jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+                await link(from, to);
+                if (String(to) === competitor) {
+                    fs.unlinkSync(competitor);
+                    fs.writeFileSync(competitor, bytes);
+                    controller.abort();
+                }
+            });
+            await expect(new BlueprintArtifactBuilder().build(project, destination, {signal: controller.signal})).rejects.toThrow(/cancelled/);
+            assertOnlyCompetitor(competitor, bytes);
+        });
+
+        it.each(["blueprint", "evidence"])("cleans only its allocations when %s publication fails", async member => {
+            const link = fs.promises.link.bind(fs.promises);
+            jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+                if (String(to) === memberPath(member)) throw new Error("injected publication failure");
+                await link(from, to);
+            });
+            await expect(new BlueprintArtifactBuilder().build(project, destination)).rejects.toThrow(/injected publication failure/);
+            expect(fs.readdirSync(root)).toEqual([path.basename(project.rootPath)]);
+        });
+
+        it("removes its first staging file when companion staging fails", async () => {
+            const open = fs.promises.open.bind(fs.promises);
+            jest.spyOn(fs.promises, "open").mockImplementation((filePath, flags, mode) => {
+                if (String(filePath).includes("conversion-evidence.json.") && flags === "wx") return Promise.reject(new Error("injected staging failure"));
+                return open(filePath, flags, mode);
+            });
+            await expect(new BlueprintArtifactBuilder().build(project, destination)).rejects.toThrow(/injected staging failure/);
+            expect(fs.readdirSync(root)).toEqual([path.basename(project.rootPath)]);
+        });
     });
 
     it("lists only matrix-advertised build targets", () => {

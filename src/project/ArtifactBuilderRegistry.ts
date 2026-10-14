@@ -568,6 +568,13 @@ export class ArtifactBuilderRegistry {
         const target = plan.target.kind as ArtifactTargetType;
         const destination = this.checkDestination(target, destinationPath, source.rootPath);
         if (!destination.available) throw new ArtifactBuildConflictError(destination.message ?? "The destination is unavailable.");
+        let modelOptions = options;
+        if (plan.packageExtraction) {
+            const inputBindingHash = plan.source.configurationProvenance?.inputBindingHash;
+            const blueprintHash = plan.packageExtraction.blueprintHash;
+            if (!inputBindingHash || !blueprintHash) throw new Error("Prepared package extraction is missing its source/model binding.");
+            modelOptions = {...options, preparedPackageModel: {inputBindingHash, blueprintHash}};
+        }
         const extractionKind = source.type === "tsPackage" ? "package-extraction" : "par-import";
         const wasmEvidenceRoot = target === "wasm" || target === "parWorkbook" ? `${destinationPath}.pokie` : undefined;
         if (wasmEvidenceRoot !== undefined) {
@@ -586,7 +593,7 @@ export class ArtifactBuilderRegistry {
         if (target === "blueprint" || (target === "parWorkbook" && source.type === "parWorkbook")) {
             const builder = this.builders.get(target);
             if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
-            return builder.build(source, destinationPath, options);
+            return builder.build(source, destinationPath, modelOptions);
         }
         const intermediateDirectory = await fs.promises.mkdtemp(path.join(path.dirname(destinationPath), `.pokie-${extractionKind}-`));
         // An empty caller-supplied directory is an allowed destination.  It
@@ -601,7 +608,7 @@ export class ArtifactBuilderRegistry {
             assertArtifactBuildNotCancelled(options);
             const blueprintBuilder = this.builders.get("blueprint");
             if (blueprintBuilder === undefined) throw new Error(this.unavailableTargetMessage("blueprint"));
-            const modelResult = await blueprintBuilder.build(source, intermediatePath, options);
+            const modelResult = await blueprintBuilder.build(source, intermediatePath, modelOptions);
             if (plan.packageExtraction && modelResult.packageExtraction?.blueprintHash !== plan.packageExtraction.blueprintHash) throw new Error("Package model changed after preview; prepare a new extraction.");
             await this.assertPlanSourceMatches(plan, source, options);
             imported = {

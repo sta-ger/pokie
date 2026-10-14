@@ -262,6 +262,123 @@ describe("PackageBlueprintExtraction", () => {
         expect(JSON.stringify(model)).toBe(before);
         expect(extracted.blueprint).not.toBe(model);
     });
+    it.each([null, false, "manifest", [], {}, {id: "math-probe"}])(
+        "rejects a malformed present descriptor manifest %p without replacing it",
+        async manifest => {
+            const model = {...base(), manifest};
+            const before = JSON.stringify(model);
+            const result = await extractor.extract(custom(model));
+            expect(result.status).toBe("malformed");
+            expect(result.blueprint).toBeUndefined();
+            expect(result.diagnostics).toEqual(expect.arrayContaining([
+                expect.objectContaining({message: expect.stringContaining("manifest")}),
+            ]));
+            expect(JSON.stringify(model)).toBe(before);
+        },
+    );
+
+    it("uses getManifest only when the descriptor manifest is absent", async () => {
+        const model: Partial<GameBlueprint> = base();
+        Reflect.deleteProperty(model, "manifest");
+        const result = await extractor.extract(custom(model));
+        expect(result.status).toBe("complete");
+        expect(result.blueprint?.manifest).toEqual(base().manifest);
+        expect(model.manifest).toBeUndefined();
+    });
+
+    it.each(["yes", 1, null, {}, []])("rejects metadata-only isDefault %p in descriptors and legacy getters", async isDefault => {
+        const betModes = [{id: "metadata", isDefault}];
+        const result = await extractor.extract(custom({...base(), betModes}));
+        expect(result.status).toBe("malformed");
+        expect(result.blueprint).toBeUndefined();
+        expect(result.diagnostics).toContainEqual(expect.objectContaining({
+            code: "blueprint-betmode-invalid-isdefault", path: "betModes[0].isDefault",
+        }));
+        const legacy = custom(base(), {getModelDescriptor: undefined, getBetModes: () => betModes as never});
+        expect((await extractor.extract(legacy)).status).toBe("malformed");
+    });
+
+    it("validates synchronous descriptor data before touching then and accepts native asynchronous descriptors", async () => {
+        const descriptor = {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: base()};
+        const then = jest.fn(() => undefined);
+        const unsafe = {...descriptor};
+        Reflect.defineProperty(unsafe, "then", {enumerable: true, get: then});
+        const result = await extractor.extract(custom(base(), {getModelDescriptor: () => unsafe as PackageModelDescriptor}));
+        expect(result.status).toBe("malformed");
+        expect(result.diagnostics[0].message).toContain("$.then: accessor");
+        expect(then).not.toHaveBeenCalled();
+        const callableThen = jest.fn(() => undefined);
+        expect((await extractor.extract(custom(base(), {
+            getModelDescriptor: () => ({...descriptor, then: callableThen}) as PackageModelDescriptor,
+        }))).status).toBe("malformed");
+        expect(callableThen).not.toHaveBeenCalled();
+        for (const asynchronous of [false, true]) {
+            const game = custom(base(), {getModelDescriptor: () => asynchronous
+                ? Promise.resolve(descriptor as PackageModelDescriptor)
+                : descriptor as PackageModelDescriptor});
+            const valid = await extractor.extract(game);
+            expect(valid.status).toBe("complete");
+            expect(valid.blueprint).toEqual(base());
+        }
+    });
+
+    it("rejects a real package's synchronous then accessor without calling it and releases the snapshot", async () => {
+        const marker = path.join(directory, "then-called.txt");
+        const source = writeDescriptorPackage(directory, {descriptorBody:
+            `const descriptor = {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model};
+            Object.defineProperty(descriptor, "then", {enumerable: true, get() {
+                require("fs").writeFileSync(${JSON.stringify(marker)}, "called");
+                return undefined;
+            }});
+            return descriptor;`,});
+        const input = fs.readFileSync(path.join(source, "index.js"));
+        const destination = path.join(directory, "unsafe.json");
+        const snapshots = (): string[] => fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-")).sort();
+        const before = snapshots();
+        const result = await extractor.extract(source);
+        expect(result.status).toBe("malformed");
+        expect(result.diagnostics[0].message).toContain("$.then: accessor");
+        await expect(new BlueprintArtifactBuilder().build(packageProject(source), destination)).rejects.toThrow(/then: accessor/);
+        expect(fs.existsSync(marker)).toBe(false);
+        expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(input);
+        expect(fs.readdirSync(directory)).toEqual(["descriptor-package"]);
+        expect(snapshots()).toEqual(before);
+    });
+
+    it("extracts and publishes a real asynchronous package descriptor", async () => {
+        const source = writeDescriptorPackage(directory, {descriptorBody:
+            'return Promise.resolve({descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model});',});
+        const result = await extractor.extract(source);
+        expect(result.status).toBe("complete");
+        const destination = path.join(directory, "async.json");
+        const published = await new BlueprintArtifactBuilder().build(packageProject(source), destination);
+        expect(JSON.parse(fs.readFileSync(destination, "utf8"))).toEqual(result.blueprint);
+        expect(JSON.parse(fs.readFileSync(published.conversionEvidencePath!, "utf8")).extractedBlueprintHash).toBe(result.blueprintHash);
+    });
+
+    it("records every omitted bet-mode field without inserting declarations, including legacy metadata", async () => {
+        const betModes = [{id: "metadata"}];
+        const model = {...base(), betModes};
+        const before = JSON.stringify(model);
+        for (const game of [custom(model), custom(model, {getModelDescriptor: undefined, getBetModes: () => betModes})]) {
+            const result = await extractor.extract(game);
+            const omitted = result.fields.filter(field => field.path.startsWith("betModes.0.") && field.status === "defaulted");
+            expect(omitted.map(field => field.path).sort()).toEqual([
+                "label", "costMultiplier", "runtimeType", "isDefault", "forcedFreeGames", "targetRtp",
+            ].map(field => `betModes.0.${field}`).sort());
+            expect(omitted.every(field => field.authority.length > 0)).toBe(true);
+            expect(result.model?.betModes).toEqual(betModes);
+        }
+        expect(JSON.stringify(model)).toBe(before);
+        const explicit = {...base(), betModes: [{id: "metadata", isDefault: false, targetRtp: 96}]};
+        const result = await extractor.extract(custom(explicit));
+        expect(result.fields).toEqual(expect.arrayContaining([
+            expect.objectContaining({path: "betModes.0.isDefault", status: "exact"}),
+            expect.objectContaining({path: "betModes.0.targetRtp", status: "exact"}),
+        ]));
+        expect(result.fields.some(field => ["betModes.0.isDefault", "betModes.0.targetRtp"].includes(field.path) && field.status === "defaulted")).toBe(false);
+    });
+
     it("makes mixed custom mechanics and non-linear payout declarations explicit boundaries", async () => {
         const model = {...base(), mechanics: {customFeature: true}, payoutsByBet: {"0.05": 1, "7.5": 99}};
         const extracted = await extractor.extract(custom(model));
@@ -474,14 +591,15 @@ module.exports = {getManifest() { return manifest; }, createSession() { throw ne
         expect(fs.lstatSync(`${destination}.conversion-evidence.json`).isSymbolicLink()).toBe(true);
     });
 
-    it("rolls back Blueprint/evidence and staging on publication cancellation", async () => {
+    it.each(["blueprint", "evidence"])("rolls back Blueprint/evidence and staging on cancellation after %s publication", async member => {
         const source = new GamePackageGenerator("1.3.0").generate(base(), directory).projectRoot;
         const destination = path.join(directory, "cancel.json");
         const controller = new AbortController();
-        const rename = fs.promises.rename.bind(fs.promises);
-        const spy = jest.spyOn(fs.promises, "rename").mockImplementation(async (from, to) => {
-            await rename(from, to);
-            if (String(to) === destination) controller.abort();
+        const link = fs.promises.link.bind(fs.promises);
+        const boundary = member === "blueprint" ? destination : `${destination}.conversion-evidence.json`;
+        const spy = jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+            await link(from, to);
+            if (String(to) === boundary) controller.abort();
         });
         try {
             await expect(

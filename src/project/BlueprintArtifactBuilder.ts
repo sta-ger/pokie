@@ -4,15 +4,16 @@ import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
 import {computeBlueprintHash} from "../parsheet/computeBlueprintHash.js";
 import type {ParSheetImporting} from "../parsheet/ParSheetImporting.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
+import {ArtifactBuildConflictError} from "./ArtifactBuildConflictError.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
-import {assertArtifactBuildNotCancelled, captureArtifactDestinationState, cleanupIncompleteArtifactOutput, ensureArtifactDestinationParent, reportArtifactBuildProgress, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
+import {assertArtifactBuildNotCancelled, ensureArtifactDestinationParent, reportArtifactBuildProgress, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import {PackageBlueprintExtraction, type PackageBlueprintExtractionResult} from "../generated/PackageBlueprintExtraction.js";
 import {computeProjectInputBindingHash} from "./ArtifactConversionPlanner.js";
 import type {PokieProject} from "./PokieProject.js";
 
-/** Materializes PAR's canonical game-model import as a resolver-recognizable Blueprint file. */
+/** Materializes a canonical PAR import or complete package model as a Blueprint with evidence. */
 export class BlueprintArtifactBuilder implements ArtifactBuilder {
     public readonly target = "blueprint" as const;
     public readonly destinationKind = "file" as const;
@@ -40,8 +41,8 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
         const inputBinding = computeProjectInputBindingHash(source);
+        if (options?.preparedPackageModel && options.preparedPackageModel.inputBindingHash !== inputBinding) throw new Error("Package source changed after preview; prepare a new extraction.");
         await ensureArtifactDestinationParent(destinationPath);
-        const state = captureArtifactDestinationState(destinationPath, this.destinationKind);
         const evidencePath = `${destinationPath}.conversion-evidence.json`;
         // Evidence is part of the Blueprint publication contract, not a
         // disposable log.  Do the same occupied-output check for it before
@@ -49,14 +50,47 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
         // overwritten (or removed by the rollback below).
         assertArtifactDestinationIsSafe(source.rootPath, evidencePath);
         assertArtifactDestinationAvailable(evidencePath, this.destinationKind);
-        const evidenceState = captureArtifactDestinationState(evidencePath, this.destinationKind);
+        const ownedFiles = new Map<string, fs.Stats>();
         let blueprintTemp: string | undefined;
         let evidenceTemp: string | undefined;
+        const stage = async (filePath: string, contents: string): Promise<void> => {
+            const file = await fs.promises.open(filePath, "wx");
+            try {
+                ownedFiles.set(filePath, await file.stat());
+                await file.writeFile(contents, "utf8");
+            } finally {
+                await file.close();
+            }
+        };
+        const publish = async (temporaryPath: string, outputPath: string): Promise<void> => {
+            try {
+                // Same-directory links expose the complete staged bytes atomically and
+                // fail on occupied paths; rename would replace a concurrent writer.
+                await fs.promises.link(temporaryPath, outputPath);
+                ownedFiles.set(outputPath, ownedFiles.get(temporaryPath)!);
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new ArtifactBuildConflictError(`"${outputPath}" already exists. Choose a different --out path.`);
+                throw error;
+            }
+        };
+        const removeOwned = async (filePath: string): Promise<void> => {
+            const identity = ownedFiles.get(filePath);
+            if (!identity) return;
+            try {
+                const current = await fs.promises.lstat(filePath);
+                if (current.dev === identity.dev && current.ino === identity.ino) await fs.promises.unlink(filePath);
+            } catch {
+                // Keep the original error and preserve paths now owned by another writer.
+            }
+        };
         try {
             reportArtifactBuildProgress(options, {status: "running", message: source.type === "tsPackage" ? "Extracting public package model into Blueprint" : "Importing PAR workbook into Blueprint"});
             assertArtifactBuildNotCancelled(options);
             const extraction = source.type === "tsPackage" ? await new PackageBlueprintExtraction().extract(source.rootPath, {signal: options?.signal}) : undefined;
-            if (extraction) this.assertComplete(extraction);
+            if (extraction) {
+                this.assertComplete(extraction);
+                if (options?.preparedPackageModel && extraction.blueprintHash !== options.preparedPackageModel.blueprintHash) throw new Error("Package model changed after preview; prepare a new extraction.");
+            }
             const imported = extraction ? {blueprint: extraction.blueprint!, issues: [], provenance: undefined, conversionEvidence: undefined} : await this.importer.importFromFile(source.rootPath);
             const errors = imported.issues.filter((issue) => issue.severity === "error");
             if (errors.length > 0) throw new Error(`Could not import PAR workbook "${source.rootPath}": ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")}`);
@@ -64,14 +98,14 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
             reportArtifactBuildProgress(options, {status: "running", message: "Publishing Blueprint and conversion evidence"});
             assertArtifactBuildNotCancelled(options);
             // Stage both members of the publication before exposing either
-            // one.  A Blueprint without its evidence is not a successful PAR
-            // import, and a cancellation between the two renames must take
+            // one. A Blueprint without its evidence is not a successful
+            // conversion, and a cancellation between the two links must take
             // the same rollback path as an importer or sidecar failure.
             const publicationId = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
             blueprintTemp = path.join(path.dirname(destinationPath), `.${path.basename(destinationPath)}.${publicationId}.tmp`);
             evidenceTemp = path.join(path.dirname(evidencePath), `.${path.basename(evidencePath)}.${publicationId}.tmp`);
-            await fs.promises.writeFile(blueprintTemp, `${JSON.stringify(imported.blueprint, null, 4)}\n`, "utf8");
-            await fs.promises.writeFile(evidenceTemp, `${JSON.stringify(extraction ? {schemaVersion: 1, kind: "package-extraction", sourceBindingHash: inputBinding, extractedBlueprintHash: extraction.blueprintHash, extraction} : {
+            await stage(blueprintTemp, `${JSON.stringify(imported.blueprint, null, 4)}\n`);
+            await stage(evidenceTemp, `${JSON.stringify(extraction ? {schemaVersion: 1, kind: "package-extraction", sourceBindingHash: inputBinding, extractedBlueprintHash: extraction.blueprintHash, extraction} : {
                 schemaVersion: 1,
                 sourceWorkbook: path.resolve(source.rootPath),
                 provenance: imported.provenance,
@@ -86,25 +120,33 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
                 // managed-save publication boundary.
                 importedBlueprintHash: computeBlueprintHash(imported.blueprint),
                 provenanceHashMatches: imported.conversionEvidence?.provenanceHashMatches ?? false,
-            }, null, 4)}\n`, "utf8");
+            }, null, 4)}\n`);
             assertArtifactBuildNotCancelled(options);
             if (inputBinding !== computeProjectInputBindingHash(source)) throw new Error("Package/PAR source changed during extraction; prepare a new conversion.");
             assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
             assertArtifactDestinationAvailable(evidencePath, this.destinationKind);
-            await fs.promises.rename(blueprintTemp, destinationPath);
+            await publish(blueprintTemp, destinationPath);
             assertArtifactBuildNotCancelled(options);
-            await fs.promises.rename(evidenceTemp, evidencePath);
+            await publish(evidenceTemp, evidencePath);
             assertArtifactBuildNotCancelled(options);
             reportArtifactBuildProgress(options, {status: "completed"});
-            return {outputPath: destinationPath, conversionEvidencePath: evidencePath, ...(extraction ? {packageExtraction: extraction} : {})};
+            return {
+                outputPath: destinationPath,
+                conversionEvidencePath: evidencePath,
+                publishedFileOwnership: [destinationPath, evidencePath].map(filePath => {
+                    const identity = ownedFiles.get(filePath)!;
+                    return {path: filePath, dev: identity.dev, ino: identity.ino};
+                }),
+                ...(extraction ? {packageExtraction: extraction} : {}),
+            };
         } catch (error) {
-            await Promise.all([
-                ...(blueprintTemp === undefined ? [] : [fs.promises.rm(blueprintTemp, {force: true})]),
-                ...(evidenceTemp === undefined ? [] : [fs.promises.rm(evidenceTemp, {force: true})]),
-            ]);
-            await cleanupIncompleteArtifactOutput(destinationPath, state);
-            await cleanupIncompleteArtifactOutput(evidencePath, evidenceState);
+            await Promise.all([removeOwned(destinationPath), removeOwned(evidencePath)]);
             throw error;
+        } finally {
+            await Promise.all([
+                ...(blueprintTemp === undefined ? [] : [removeOwned(blueprintTemp)]),
+                ...(evidenceTemp === undefined ? [] : [removeOwned(evidenceTemp)]),
+            ]);
         }
     }
 

@@ -52,6 +52,88 @@ describe("StudioArtifactBuildService", () => {
         expect(fs.existsSync(path.join(workDir, "legacy.json"))).toBe(false);
     });
 
+    it.each(["blueprint", "evidence"])("keeps concurrent %s publication intact and does not register", async member => {
+        const source = writeDescriptorPackage(workDir);
+        const destination = path.join(workDir, "extracted.json");
+        const competitor = member === "blueprint" ? destination : `${destination}.conversion-evidence.json`;
+        const bytes = Buffer.from([0, 255, 13, 10, 42]);
+        const register = jest.fn(() => Promise.resolve());
+        const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, register);
+        const link = fs.promises.link.bind(fs.promises);
+        const spy = jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+            if (String(to) === competitor) fs.writeFileSync(competitor, bytes);
+            await link(from, to);
+        });
+        try {
+            const result = await packageService.build(source, "blueprint", destination);
+            expect(result.status).toBe("conflict");
+            expect(result.message).toMatch(/already exists/);
+            expect(register).not.toHaveBeenCalled();
+            expect(fs.readFileSync(competitor)).toEqual(bytes);
+            expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", path.basename(competitor)].sort());
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    it.each(["blueprint", "evidence"])("preserves a competing %s replacement on registration failure", async member => {
+        const source = writeDescriptorPackage(workDir);
+        const destination = path.join(workDir, "extracted.json");
+        const competitor = member === "blueprint" ? destination : `${destination}.conversion-evidence.json`;
+        const bytes = Buffer.from("another writer's replacement");
+        const unregister = jest.fn(() => Promise.resolve());
+        const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, () => {
+            const replacement = path.join(workDir, "replacement.tmp");
+            fs.writeFileSync(replacement, bytes);
+            fs.renameSync(replacement, competitor);
+            throw new Error("registration failed");
+        }, undefined, undefined, unregister);
+        const result = await packageService.build(source, "blueprint", destination);
+        expect(result.status).toBe("error");
+        expect(result.message).toContain("registration failed");
+        expect(unregister).toHaveBeenCalledWith(destination);
+        expect(fs.readFileSync(competitor)).toEqual(bytes);
+        expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", path.basename(competitor)].sort());
+    });
+
+    it("rejects final model drift through Studio without output or registration", async () => {
+        const control = path.join(workDir, "payout.txt");
+        fs.writeFileSync(control, "1");
+        const source = writeDescriptorPackage(workDir, {descriptorBody:
+            `model.paytable.A[3] = Number(require("fs").readFileSync(${JSON.stringify(control)}, "utf8"));
+            return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model};`,});
+        const destination = path.join(workDir, "extracted.json");
+        const register = jest.fn(() => Promise.resolve());
+        const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, register);
+        const result = await packageService.build(source, "blueprint", destination, {onProgress: progress => {
+            if (progress.message === "Extracting public package model into Blueprint") fs.writeFileSync(control, "99");
+        }});
+        expect(result.status).toBe("error");
+        expect(result.message).toContain("Package model changed after preview");
+        expect(register).not.toHaveBeenCalled();
+        expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", "payout.txt"]);
+    });
+
+    it.each([
+        ['manifest: null', /manifest/],
+        ['betModes: [{id: "metadata", isDefault: "yes"}]', /betModes\[0\].isDefault.*boolean/],
+    ] as const)("exposes malformed %s in preview/build and cannot publish", async (declaration, diagnostic) => {
+        const source = writeDescriptorPackage(workDir, {descriptorBody:
+            `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: {...model, ${declaration}}};`,});
+        const input = fs.readFileSync(path.join(source, "index.js"));
+        const destination = path.join(workDir, "extracted.json");
+        const register = jest.fn(() => Promise.resolve());
+        const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, register);
+        for (const result of [await packageService.preview(source, "blueprint", destination), await packageService.build(source, "blueprint", destination)]) {
+            expect(result.status).toBe("unsupported");
+            expect(result.plan.packageExtraction?.status).toBe("malformed");
+            expect(result.message).toMatch(diagnostic);
+        }
+        expect(register).not.toHaveBeenCalled();
+        expect(fs.readdirSync(workDir)).toEqual(["descriptor-package"]);
+        expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(input);
+    });
+
     it("rolls back package extraction files and registrations when registration fails or cancels", async () => {
         const source = writeDescriptorPackage(workDir);
         for (const cancelled of [false, true]) {

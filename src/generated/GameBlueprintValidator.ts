@@ -369,6 +369,15 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                 });
             }
 
+            if (e.isDefault !== undefined && typeof e.isDefault !== "boolean") {
+                issues.push({
+                    code: "blueprint-betmode-invalid-isdefault",
+                    severity: "error",
+                    message: `"${path}.isDefault", if present, must be a boolean.`,
+                    path: `${path}.isDefault`,
+                });
+            }
+
             if (e.targetRtp !== undefined && !(typeof e.targetRtp === "number" && Number.isFinite(e.targetRtp) && e.targetRtp > 0)) {
                 issues.push({
                     code: "blueprint-betmode-invalid-targetrtp",
@@ -445,17 +454,8 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                 return;
             }
 
-            if (e.isDefault !== undefined && typeof e.isDefault !== "boolean") {
-                issues.push({
-                    code: "blueprint-betmode-invalid-isdefault",
-                    severity: "error",
-                    message: `"${path}.isDefault", if present, must be a boolean.`,
-                    path: `${path}.isDefault`,
-                });
-                validSoFar = false;
-            } else if (e.isDefault === true) {
-                defaults.push({entry: e, index});
-            }
+            if (e.isDefault !== undefined && typeof e.isDefault !== "boolean") validSoFar = false;
+            else if (e.isDefault === true) defaults.push({entry: e, index});
 
             if (e.forcedFreeGames !== undefined && !(typeof e.forcedFreeGames === "number" && Number.isInteger(e.forcedFreeGames) && e.forcedFreeGames > 0)) {
                 issues.push({
