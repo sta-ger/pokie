@@ -137,7 +137,8 @@ describe("buildGameModelProjection", () => {
 
 
 it("keeps mixed supported package sections inspectable without masking unsupported mechanics", async () => {
-    const model = {...BASE_BLUEPRINT, wilds: [], reelStrips: [["A", "B", "S"], ["A", "B", "S"], ["A", "B", "S"]], mechanics: {custom: true}};
+    const blueprint: GameBlueprint = {...BASE_BLUEPRINT, wilds: [], reelStrips: [["A", "B", "S"], ["A", "B", "S"], ["A", "B", "S"]]};
+    const model = {...blueprint, mechanics: {custom: true}};
     const extraction = await new PackageBlueprintExtraction().extract({getManifest: () => model.manifest, createSession: () => {
         throw new Error("no session");
     }, getModelDescriptor: () => ({descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: model as unknown as GameBlueprint})});
@@ -146,7 +147,7 @@ it("keeps mixed supported package sections inspectable without masking unsupport
     expect(projection.packageExtraction).toBe(extraction);
     expect(extraction.blueprint).toBeUndefined();
     expect(extraction.blueprintHash).toBeUndefined();
-    expect(projection.paytable).toEqual(buildGameModelProjection(model).paytable);
+    expect(projection.paytable).toEqual(buildGameModelProjection(blueprint).paytable);
     expect(projection.layout.status).toBe("available");
     expect(projection.symbols.status).toBe("available");
     expect(projection.reels.status).toBe("available");
