@@ -440,6 +440,7 @@ describe("Generated / visible / evaluated screen contracts", () => {
             if (session instanceof VideoSlotWithBetModesSession) session.setBetMode("ante");
             const screen = session.getSymbolsCombination().toMatrix();
             const credits = session.getCreditsAmount();
+            const settledWin = session.getWinAmount();
             config.setScreenGeometry(undefined);
             rng.getRandomInt.mockClear();
             expect(session.getConfiguredScreenGeometry?.()).toBeUndefined();
@@ -454,7 +455,7 @@ describe("Generated / visible / evaluated screen contracts", () => {
                 expect(session.getCreditsAmount()).toBe(credits);
                 expect(session.getScreenGeometry?.()).toEqual(overscanGeometry);
                 expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
-                expect(session.getWinAmount()).toBe(3);
+                expect(session.getWinAmount()).toBe(settledWin);
                 continue;
             }
             expect(() => session.validateScreenCoordinates?.()).not.toThrow();
