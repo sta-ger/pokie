@@ -232,3 +232,13 @@ describe("describeSimulationReport", () => {
         ]);
     });
 });
+
+it("retains per-mode jackpot data, targets and report statistics through historical interpretation", () => {
+    const jackpot = {awardCount: 1, totalAwarded: 10, totalContributed: 0.015, contribution: 10 / 0.15, pools: {mini: {awardCount: 1, totalAwarded: 10, totalContributed: 0.015, contribution: 10 / 0.15}}};
+    const report = createReport({betMode: "ante", jackpot, totalBet: 0.15, targetRtp: 0.95, rtpDeviation: 0.01, volatility: 12, payoutHistogram: {zero: 1}});
+    const view = describeSimulationReport(report);
+    expect(view).toMatchObject({betMode: "ante", jackpot, totalBet: 0.15, targetRtp: 0.95, rtpDeviation: 0.01, volatility: 12, payoutHistogram: {zero: 1}});
+    const all = describeSimulationReport({game: report.game, requestedRounds: 1000, seed: report.seed, modes: {ante: report}});
+    expect(all).toMatchObject({modes: {ante: {betMode: "ante", jackpot}}});
+    expect(all).not.toHaveProperty("rtp");
+});

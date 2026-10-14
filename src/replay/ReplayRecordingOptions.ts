@@ -9,6 +9,8 @@ export type ReplayRecordingOptions = {
     round: number;
     unit?: "step" | "logical-round";
     entryCommands?: readonly SessionCommand[];
+    /** Simulation policy: select this mode before every step when available. */
+    betModeId?: string;
 };
 
 // The canonical recorder input for an outcome-library round that was selected and settled by the

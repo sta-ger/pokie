@@ -1,7 +1,8 @@
+import {describeSimulationReport, type SimulationReportView} from "../../../../../../cli/studio-client/src/domain/interpret/Simulation";
+import type {SimulationReport} from "../../../../../../cli/studio-client/src/api/types";
 import {MantineProvider} from "@mantine/core";
 import {render, within} from "@testing-library/react";
 import {SimulationReportDisplay} from "../../../../../../cli/studio-client/src/components/common/SimulationReportDisplay";
-import type {SimulationReportView} from "../../../../../../cli/studio-client/src/domain/interpret/Simulation";
 
 it("renders weighted configuration, actual counts and distinct uncovered/zero-weight states", () => {
     const view: SimulationReportView = {
@@ -30,4 +31,18 @@ it("renders zero denominators and the exact ratio of a positive underflowed prob
     expect(result.getByText("1/12345678901234567890")).toBeInTheDocument();
     expect(result.getByText("uncovered")).toBeInTheDocument();
     expect(result.container.textContent).not.toContain("NaN");
+});
+
+it("renders each mode's actual stake and jackpot pool observations without blended metrics", () => {
+    const report: SimulationReport = {game: {id: "jackpot", name: "Jackpot", version: "1"}, rounds: 2, requestedRounds: 2, seed: "ante", totalBet: 0.15, totalWin: 10, rtp: 10 / 0.15, hitFrequency: 0.5, maxWin: 10, durationMs: 1, spinsPerSecond: 2000, betMode: "ante", targetRtp: 0.95, rtpDeviation: 10 / 0.15 - 0.95, jackpot: {awardCount: 1, totalAwarded: 10, totalContributed: 0.015, contribution: 10 / 0.15, pools: {mini: {awardCount: 1, totalAwarded: 10, totalContributed: 0.015, contribution: 10 / 0.15}}}, reproducibility: {game: {id: "jackpot", name: "Jackpot", version: "1"}, seed: "ante", requestedRounds: 2, actualRounds: 2, command: "pokie sim jackpot --mode ante --seed ante"}};
+    const view = describeSimulationReport({game: report.game, requestedRounds: 2, seed: "ante", modes: {ante: report, base: {...report, betMode: "base", totalBet: 0.1}}});
+    const result = render(<MantineProvider><SimulationReportDisplay view={view} /></MantineProvider>);
+    expect(result.getByText("All modes — independent results per mode")).toBeInTheDocument();
+    expect(result.getByText("Mode: ante")).toBeInTheDocument();
+    expect(result.getByText("Mode: base")).toBeInTheDocument();
+    expect(result.getAllByText("mini")).toHaveLength(2);
+    expect(result.getAllByText("0.015")).toHaveLength(2);
+    expect(result.getByText(/actual stake 0.15/)).toBeInTheDocument();
+    expect(result.getByText(/Bet mode: ante/)).toBeInTheDocument();
+    expect(result.getAllByText("pokie sim jackpot --mode ante --seed ante")).toHaveLength(2);
 });

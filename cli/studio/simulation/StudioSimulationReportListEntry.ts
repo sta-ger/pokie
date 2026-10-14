@@ -7,17 +7,17 @@ export type StudioSimulationReportListEntry = {
     status: "completed";
     game: {id: string; version: string};
     requestedRounds: number;
-    actualRounds: number;
+    actualRounds?: number;
     seed?: string;
     workers: number;
-    rtp: number;
-    hitFrequency: number;
-    maxWin: number;
+    rtp?: number;
+    hitFrequency?: number;
+    maxWin?: number;
     startedAt: string;
     completedAt: string;
     durationMs: number;
     hasWarnings: boolean;
-    // The real outcome-library mode this run sampled -- see StudioSimulationJobRecord's own doc comment.
-    // Undefined for an ordinary "tsPackage"/"blueprint" simulation.
+    // Package selected mode/all policy, or the concrete native outcome-library mode.
     modeName?: string;
+    modes?: Record<string, {rounds: number; betMode?: string}>;
 };

@@ -15,6 +15,7 @@ import {MAX_STUDIO_SIMULATION_ROUNDS} from "../../../../../../cli/studio/simulat
 import {jobFocusLayout} from "../../testUtils/jobFocusLayout";
 
 const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unknown}> = {
+    "/api/project/gameModel": () => ({ok: true, status: 200, body: {betsAndModes: {status: "available", data: {availableBets: [0.05], betModes: []}}}}),
     "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
     "/api/project/context": () => ({
         ok: true,
@@ -1510,4 +1511,50 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await waitFor(() => expect(runCalls).toHaveLength(2));
         expect(screen.queryByText(/already running/)).not.toBeInTheDocument();
     }, 60000);
+});
+
+it("discovers authored executable modes and submits selected and explicit all-mode requests", async () => {
+    const user = userEvent.setup();
+    const requests: Record<string, unknown>[] = [];
+    const fake = createRoutedFakeFetch({
+        ...BASE_ROUTES,
+        "/api/project/gameModel": () => ({ok: true, status: 200, body: {betsAndModes: {status: "available", data: {availableBets: [0.05], betModes: [{id: "legacy"}, {id: "base", runtimeType: "base", isDefault: true}, {id: "ante", runtimeType: "ante", costMultiplier: 1.5}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 10}]}}}}),
+        "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+        "/api/project/simulations": call => {
+            requests.push(JSON.parse(String(call.init?.body)));
+            return {ok: true, status: 202, body: jobFor(`mode-${requests.length}`, {status: "failed", error: "Test terminal"})};
+        },
+        "/api/project/simulations/mode-1": () => ({ok: true, status: 200, body: jobFor("mode-1", {status: "failed", error: "Test terminal"})}),
+        "/api/project/simulations/mode-2": () => ({ok: true, status: 200, body: jobFor("mode-2", {status: "failed", error: "Test terminal"})}),
+    });
+    renderRoutedApp({fetchImpl: fake.fetchImpl, initialEntries: ["/project/overview"]});
+    await goToSimulationTab(user);
+    const select = await screen.findByRole("textbox", {name: "Bet mode"});
+    await user.click(select);
+    expect(screen.queryByRole("option", {name: "legacy"})).not.toBeInTheDocument();
+    await user.click(screen.getByRole("option", {name: "ante"}));
+    await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+    await waitFor(() => expect(requests[0]?.modeName).toBe("ante"));
+    await user.click(screen.getByRole("button", {name: stepperStep("Configure", "Set rounds")}));
+    await user.click(screen.getByRole("textbox", {name: "Bet mode"}));
+    await user.click(screen.getByRole("option", {name: "All modes"}));
+    await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+    await waitFor(() => expect(requests[1]?.modeName).toBe("all"));
+});
+
+it.each(["ante", "all"])("explicit history rerun preserves %s mode policy", async modeName => {
+    const user = userEvent.setup();
+    const requests: Record<string, unknown>[] = [];
+    const fake = createRoutedFakeFetch({
+        ...BASE_ROUTES,
+        "/api/project/reports": () => ({ok: true, status: 200, body: [{id: "retained-mode", status: "completed", game: {id: "a", version: "1"}, requestedRounds: 2, actualRounds: modeName === "all" ? undefined : 2, modeName, seed: "retained-seed", workers: 1, durationMs: 1, startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), hasWarnings: false, rtp: modeName === "all" ? undefined : 0}]}),
+        "/api/project/simulations": call => {
+            requests.push(JSON.parse(call.init?.body ?? "{}"));
+            return {ok: true, status: 202, body: jobFor("rerun-mode", {status: "failed", error: "Test terminal"})};
+        },
+    });
+    renderRoutedApp({fetchImpl: fake.fetchImpl, initialEntries: ["/project/overview"]});
+    await goToSimulationTab(user);
+    await user.click(await screen.findByRole("button", {name: "Run again"}));
+    await waitFor(() => expect(requests[0]).toMatchObject({rounds: 2, seed: "retained-seed", workers: 1, modeName}));
 });

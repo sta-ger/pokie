@@ -44,9 +44,11 @@ export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
     }
 
     const {report} = outcome;
+    if ("modes" in report) return <div><Text>All modes — independent results per mode</Text>{Object.entries(report.modes).map(([id, mode]) => <div key={id}><Text fw={600}>Mode: {id}</Text><SimulationSummaryCard outcome={{kind: "completed", report: mode}} /></div>)}</div>;
     const mainRecommendation = report.recommendations[0];
     return (
         <div>
+            {report.betMode !== undefined && <Text>Bet mode: {report.betMode}</Text>}
             <Table withRowBorders={false}>
                 <Table.Tbody>
                     <Table.Tr>

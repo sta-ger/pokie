@@ -1,3 +1,6 @@
+import {StudioSimulationService} from "../../cli/studio/simulation/StudioSimulationService.js";
+import {buildSimulationReportDownload} from "../../cli/studio/simulation/buildSimulationReportDownload.js";
+import {describeSimulationReport} from "../../cli/studio-client/src/domain/interpret/Simulation.js";
 import ExcelJS from "exceljs";
 import {mergeJackpotStatisticsSnapshots} from "../../src/simulation/JackpotStatisticsMerging.js";
 import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";
@@ -34,6 +37,43 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         expect(catalogue).toHaveLength(22);
         expect(new Set(catalogue.map(row => row.progression))).toEqual(new Set(["base", "freeGames", "holdAndWin"]));
         for (const row of catalogue) expect(errors(existingMechanicsBlueprint(row))).toEqual([]);
+    });
+
+    it.each(catalogue)("$id: actual Studio runner retains selected/all-mode report presentation and downloads", async row => {
+        const game = generatedMechanicsGame(existingMechanicsBlueprint(row));
+        const service = new StudioSimulationService(undefined, () => Promise.resolve(game), undefined, 3);
+        const selection = row.modes ? "all" : undefined;
+        const started = service.start(directory, {rounds: 12, seed: "31", modeName: selection});
+        if (started.status !== "created") throw new Error("Simulation not created");
+        for (let attempt = 0; attempt < 1000; attempt++) {
+            const status = service.getStatus(started.job.id)!.status;
+            if (status !== "queued" && status !== "running") break;
+            await new Promise<void>(resolve => {
+                setImmediate(resolve);
+            });
+        }
+        const job = service.getStatus(started.job.id)!;
+        expect(job.status).toBe("completed");
+        const result = service.getReport(directory, started.job.id);
+        if (result.status !== "ok") throw new Error("Simulation has no report");
+        const reports = api.isSimulationReportSet(result.report) ? result.report.modes : {default: result.report};
+        expect(Object.keys(reports)).toEqual(row.modes ? game.getBetModes!().map(mode => mode.id) : ["default"]);
+        const view = describeSimulationReport(result.report);
+        for (const [id, report] of Object.entries(reports)) {
+            const presented = "modes" in view ? view.modes[id] : view;
+            expect(presented.betMode).toBe(row.modes ? id : undefined);
+            expect(presented.totalBet).toBe(report.totalBet);
+            expect(presented.jackpot).toEqual(report.jackpot);
+            if (row.jackpot) expect(report.jackpot?.pools.mini).toBeDefined();
+            if (row.modes) expect(report.reproducibility?.command).toContain(`--mode ${id}`);
+        }
+        for (const format of ["json", "markdown", "html"] as const) {
+            const download = buildSimulationReportDownload(result.report, started.job.id, format);
+            if (row.jackpot) expect(download.body).toMatch(/jackpot/i);
+            if (row.modes) for (const id of Object.keys(reports)) expect(download.body).toContain(id);
+        }
+        expect(service.listReports(directory)[0].modeName).toBe(selection);
+        await service.cancelAll();
     });
 
     it.each(catalogue)("$id: validation/build/extraction/real XLSX/seeded continuation/replay/simulation/report", async row => {

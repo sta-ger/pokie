@@ -1,4 +1,4 @@
-import {HtmlSimulationReportRenderer, MarkdownSimulationReportRenderer, SimulationReport, SimulationReportRendering} from "@fromstan/pokie";
+import {HtmlSimulationReportRenderer, MarkdownSimulationReportRenderer, SimulationReport, SimulationReportSet, isSimulationReportSet, SimulationReportRendering} from "@fromstan/pokie";
 
 export type ReportDownloadFormat = "json" | "markdown" | "html";
 
@@ -29,11 +29,14 @@ export function isReportDownloadFormat(value: unknown): value is ReportDownloadF
 }
 
 export function buildSimulationReportDownload(
-    report: SimulationReport,
+    report: SimulationReport | SimulationReportSet,
     simulationId: string,
     format: ReportDownloadFormat,
 ): SimulationReportDownload {
-    const body = format === "json" ? JSON.stringify(report, null, 4) : RENDERERS[format].render(report);
+    let body: string;
+    if (format === "json") body = JSON.stringify(report, null, 4);
+    else if (isSimulationReportSet(report)) body = RENDERERS[format].renderSet!(report);
+    else body = RENDERERS[format].render(report);
     return {
         contentType: CONTENT_TYPES[format],
         filename: buildReportFilename(report.game.id, report.game.version, simulationId, EXTENSIONS[format]),

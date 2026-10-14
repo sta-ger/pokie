@@ -7,6 +7,7 @@ import {
     buildReportDownloadUrl,
     closeProject,
     getReplay,
+    getGameModel,
     getReport,
     inspectProject,
     inspectReplayArtifact,
@@ -602,6 +603,27 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // notion of an outcome-library mode at all.
     const outcomeLibraryModes = header.status === "outcome-source" ? header.report.modes.map((mode) => mode.modeName) : undefined;
 
+    const [packageSimulationModes, setPackageSimulationModes] = useState<{projectRoot: string; modes: string[]}>();
+    const [simulationModesError, setSimulationModesError] = useState<string>();
+    const simulationProjectRoot = header.status === "loaded" ? header.projectRoot : undefined;
+    useEffect(() => {
+        if (activeTab !== "simulation" || simulationProjectRoot === undefined) return undefined;
+        let stale = false;
+        setSimulationModesError(undefined);
+        getGameModel(fetchImpl).then(model => {
+            if (stale) return;
+            const section = model.betsAndModes;
+            const modes = section.status === "available" ? section.data.betModes.filter(mode => mode.runtimeType !== undefined).map(mode => mode.id) : [];
+            setPackageSimulationModes({projectRoot: simulationProjectRoot, modes});
+        }).catch((error: unknown) => {
+            if (!stale) setSimulationModesError(errorMessage(error));
+        });
+        return () => {
+            stale = true;
+        };
+    }, [activeTab, simulationProjectRoot, fetchImpl]);
+    const simulationModes = outcomeLibraryModes ?? (packageSimulationModes?.projectRoot === simulationProjectRoot ? packageSimulationModes?.modes : undefined);
+
     // Replacing the whole state on every attempt (not just a summary + a separate loading bool) is what
     // makes a failed re-validation correctly clear a stale successful result instead of silently leaving
     // it displayed with no error shown -- see ProjectValidationView's own doc comment.
@@ -848,7 +870,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         status: "loaded",
                         round: job.descriptor.round,
                         seed: job.descriptor.seed ?? undefined,
-                        modeName: job.descriptor.outcomeSource?.modeName,
+                        modeName: job.descriptor.outcomeSource?.modeName ?? job.descriptor.modePolicy?.betModeId,
                         outcomeSource: job.descriptor.outcomeSource,
                         recording: job.descriptor.audit ? job.descriptor : undefined,
                         artifact: resolveReplayArtifact(job.descriptor),
@@ -1427,7 +1449,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                             }
                                             : undefined
                                     }
-                                    availableModes={outcomeLibraryModes}
+                                    availableModes={simulationModes}
+                                    packageModes={header.status === "loaded"}
+                                    modeDiscoveryError={simulationModesError}
                                 />
                             )}
                             {activeTab === "replay" && (

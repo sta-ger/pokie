@@ -1,5 +1,10 @@
+import {existingMechanicsBlueprint, generatedMechanicsGame} from "../../../v2/fixtures/ExistingMechanicsGame.js";
+import {buildSimulationReportDownload} from "../../../../cli/studio/simulation/buildSimulationReportDownload.js";
+import {validateSimulationRequest} from "../../../../cli/studio/simulation/validateSimulationRequest.js";
 import {createOverscanGame} from "../../../v2/fixtures/OverscanGame.js";
 import {
+    AUTHORED_MECHANIC_CATALOG,
+    isSimulationReportSet,
     GameSessionHandling,
     loadPokieGame,
     OutcomeLibraryBundleWriter,
@@ -1192,5 +1197,123 @@ describe("Overscan Studio simulation lifecycle", () => {
             await service.cancelAll();
 
         }
+    });
+});
+
+describe("V2C-12 authored Studio simulation mode/report policy", () => {
+    function deterministicGame(id: string, symbol = "A") {
+        const blueprint = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
+        blueprint.reelStrips = [[symbol], [symbol], [symbol]];
+        return generatedMechanicsGame(blueprint);
+    }
+
+    it("executes two fractional ante entries and retains actual stake and jackpot contributions", async () => {
+        const game = deterministicGame("accumulating-base-modes");
+        const service = new StudioSimulationService(undefined, () => Promise.resolve(game), undefined, 1);
+        const request = validateSimulationRequest({rounds: 2, seed: "ante", modeName: "ante"});
+        const start = service.start("/authored", request);
+        if (start.status !== "created") throw new Error("Not created");
+        const job = await waitForTerminal(service, start.job.id);
+        expect(job).toMatchObject({status: "completed", modeName: "ante", report: {betMode: "ante", totalBet: expect.closeTo(0.15), jackpot: {totalContributed: expect.closeTo(0.015), pools: {mini: {totalContributed: expect.closeTo(0.015)}}}}});
+        const report = job.report!;
+        if (isSimulationReportSet(report)) throw new Error("Unexpected set");
+        expect(report.reproducibility?.command).toContain("--mode ante");
+        for (const format of ["json", "markdown", "html"] as const) {
+            expect(buildSimulationReportDownload(report, job.id, format).body).toContain("ante");
+            expect(buildSimulationReportDownload(report, job.id, format).body).toMatch(/jackpot/i);
+        }
+        const repeat = service.start("/authored", request);
+        if (repeat.status !== "created") throw new Error("Not created");
+        expect((await waitForTerminal(service, repeat.job.id)).report).toMatchObject({totalBet: expect.closeTo(0.15), jackpot: {totalContributed: expect.closeTo(0.015)}});
+        await service.cancelAll();
+    });
+
+    it.each(["fixed-base-modes", "accumulating-base-modes"])("%s: uses actual stake for awards and pool RTP denominators", async id => {
+        const game = deterministicGame(id, "J");
+        const service = new StudioSimulationService(undefined, () => Promise.resolve(game));
+        const start = service.start("/awards", {rounds: 2, seed: "awards", modeName: "ante"});
+        if (start.status !== "created") throw new Error("Not created");
+        const job = await waitForTerminal(service, start.job.id);
+        if (!job.report || isSimulationReportSet(job.report)) throw new Error("No single report");
+        const report = job.report;
+        expect(report.jackpot?.awardCount).toBe(2);
+        expect(report.jackpot?.totalAwarded).toBeCloseTo(id.startsWith("fixed") ? 20 : 20.015);
+        expect(report.jackpot?.totalContributed).toBeCloseTo(0.015);
+        expect(report.jackpot?.contribution).toBeCloseTo(report.jackpot!.totalAwarded / report.totalBet);
+        expect(report.jackpot?.pools.mini.contribution).toBeCloseTo(report.jackpot!.contribution);
+        await service.cancelAll();
+    });
+
+    it("retains repeated purchases and zero-stake continuations through independent all-mode runs", async () => {
+        const game = deterministicGame("modes");
+        const service = new StudioSimulationService(undefined, () => Promise.resolve(game), undefined, 1);
+        const started = service.start("/purchases", {rounds: 6, seed: "purchase", modeName: "all"});
+        if (started.status !== "created") throw new Error("Not created");
+        const job = await waitForTerminal(service, started.job.id);
+        expect(job.status).toBe("completed");
+        if (!isSimulationReportSet(job.report)) throw new Error("No set");
+        expect(Object.keys(job.report.modes)).toEqual(["base", "ante", "buy", "buy-more"]);
+        expect(job.report.modes.base.totalBet).toBeCloseTo(0.3);
+        expect(job.report.modes.ante.totalBet).toBeCloseTo(0.45);
+        expect(job.report.modes.buy.totalBet).toBeCloseTo(1);
+        expect(job.report.modes["buy-more"].totalBet).toBeCloseTo(2.5);
+        expect(job.roundsCompleted).toBe(24);
+        expect(job.report).not.toHaveProperty("rtp");
+        expect(service.listReports("/purchases")[0]).toMatchObject({modeName: "all", modes: {buy: {rounds: 6, betMode: "buy"}}});
+        await service.cancelAll();
+    });
+
+    it("retains all-mode history and recovery parameters after restart", async () => {
+        const directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c12-modes-"));
+        try {
+            const game = deterministicGame("accumulating-base-modes");
+            const jobs = new StudioJobService(new FileStudioJobRepository(directory));
+            const service = new StudioSimulationService(undefined, () => Promise.resolve(game));
+            service.attachJobService(jobs);
+            const started = service.start(directory, {rounds: 2, seed: "saved", modeName: "all"});
+            if (started.status !== "created") throw new Error("Not created");
+            const completed = await waitForTerminal(service, started.job.id);
+            expect(jobs.get(directory, started.job.id)?.request.modeName).toBe("all");
+            const restarted = new StudioSimulationService(undefined, () => Promise.resolve(game));
+            restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(directory)));
+            expect(restarted.getReport(directory, started.job.id)).toMatchObject({status: "ok", report: completed.report});
+            expect(restarted.listReports(directory)).toMatchObject([{modeName: "all", modes: {ante: {rounds: 2, betMode: "ante"}}}]);
+            expect(restarted.getStatusForProject(directory, started.job.id)?.modeName).toBe("all");
+            const rerun = restarted.start(directory, {rounds: 2, seed: "saved", modeName: "all"});
+            if (rerun.status !== "created") throw new Error("Not created");
+            expect((await waitForTerminal(restarted, rerun.job.id)).report).toMatchObject({modes: {ante: {totalBet: expect.closeTo(0.15)}}});
+            await service.cancelAll();
+            await restarted.cancelAll();
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it("withholds partially completed all-mode reports when a job is cancelled", async () => {
+        const game = deterministicGame("accumulating-base-modes");
+        const service = new StudioSimulationService(undefined, () => Promise.resolve(game), undefined, 1, Date.now, () => {
+            service.cancel(jobId);
+            return Promise.resolve();
+        });
+        const started = service.start("/cancel-modes", {rounds: 2, modeName: "all"});
+        if (started.status !== "created") throw new Error("Not created");
+        const jobId = started.job.id;
+        const completed = await waitForTerminal(service, jobId);
+        expect(completed.status).toBe("cancelled");
+        expect(completed.report).toBeUndefined();
+        expect(service.listReports("/cancel-modes")).toEqual([]);
+        await service.cancelAll();
+    });
+
+    it("rejects unknown and blank selections without publishing a base report", async () => {
+        expect(() => validateSimulationRequest({rounds: 2, modeName: " "})).toThrow('"modeName"');
+        const game = deterministicGame("accumulating-base-modes");
+        const service = new StudioSimulationService(undefined, () => Promise.resolve(game));
+        const start = service.start("/unknown", {rounds: 2, modeName: "missing"});
+        if (start.status !== "created") throw new Error("Not created");
+        expect(await waitForTerminal(service, start.job.id)).toMatchObject({status: "failed", error: 'Unknown bet mode "missing".'});
+        expect(service.listReports("/unknown")).toEqual([]);
+        expect(service.getReport("/unknown", start.job.id)).toEqual({status: "not-ready", jobStatus: "failed"});
+        await service.cancelAll();
     });
 });

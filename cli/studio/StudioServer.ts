@@ -3536,6 +3536,24 @@ export class StudioServer implements StudioServerHandling {
             }
         }
 
+        if (validated.simulationId !== undefined && !isNativeOutcomeLibrary) {
+            const source = this.simulationService.getReport(this.currentContext.projectRoot, validated.simulationId);
+            if (source.status !== "ok") return;
+            const report = source.report;
+            if ("modes" in report) {
+                if (validated.modeName === undefined || !Reflect.apply(Object.prototype.hasOwnProperty, report.modes, [validated.modeName])) {
+                    this.sendJson(res, 400, {error: "Select a concrete mode from the all-mode simulation to replay."});
+                    return;
+                }
+            }
+            const selected = "modes" in report ? report.modes[validated.modeName!] : report;
+            if ((selected.workers ?? 1) !== 1 || selected.seed === null || validated.seed !== selected.seed || validated.round > selected.rounds || validated.unit === "logical-round" || validated.entryCommands !== undefined || (validated.modeName !== undefined && validated.modeName !== selected.betMode)) {
+                this.sendJson(res, 400, {error: "Simulation replay requires the retained seed, selected mode and step range from a single-worker run."});
+                return;
+            }
+            validated = {...validated, modeName: selected.betMode, expectedConfigHash: selected.reproducibility?.configHash};
+        }
+
         const result = this.replayService.start(this.canonicalPathIdentity(this.currentContext.projectRoot), validated, outcomeSourceProject);
         if (result.status === "conflict") {
             this.sendJson(res, 409, {
@@ -3583,7 +3601,9 @@ export class StudioServer implements StudioServerHandling {
         let validated;
         try {
             const outcomeSource = record.outcomeSource;
-            const modeName = typeof outcomeSource === "object" && outcomeSource !== null ? (outcomeSource as {modeName?: unknown}).modeName : undefined;
+            const policy = record.modePolicy;
+            if (policy !== undefined && (typeof policy !== "object" || policy === null || (policy as {selection?: unknown}).selection !== "repeat-when-available" || typeof (policy as {betModeId?: unknown}).betModeId !== "string")) throw new Error("Invalid simulation replay mode policy.");
+            const modeName = typeof outcomeSource === "object" && outcomeSource !== null ? (outcomeSource as {modeName?: unknown}).modeName : (policy as {betModeId?: string} | undefined)?.betModeId;
             // Portable ReplayDescriptor exports use null for an unseeded run.
             // Inspection must accept those bytes as an absent seed; live run
             // requests and exact outcome-library provenance remain strict.
@@ -3650,7 +3670,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        this.sendJson(res, 200, {round: validated.round, seed: validated.seed, artifactWarnings});
+        this.sendJson(res, 200, {round: validated.round, seed: validated.seed, ...(validated.modeName === undefined ? {} : {modeName: validated.modeName}), artifactWarnings});
     }
 
     private handleListReplays(res: ServerResponse): void {

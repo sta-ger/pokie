@@ -1,3 +1,4 @@
+import {FixedBetModeForNextSimulationRoundSetting} from "../simulation/FixedBetModeForNextSimulationRoundSetting.js";
 import {AuditRoundReplay, buildAuditRoundRecording, captureAuditBoundary, captureAuditDelivery, validateAuditRoundRecording} from "./AuditRoundReplay.js";
 import type {AuditDelivery, AuditDisposition, AuditRoundRecording} from "./AuditRoundRecording.js";
 import {deepFreeze} from "../internal/deepFreeze.js";
@@ -194,6 +195,9 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         // enough that reaching `round` is never cut short by running out of credits mid-replay.
         if (!existingSession) session.setCreditsAmount(options.unit === "logical-round" ? session.getBet() : Number.MAX_SAFE_INTEGER);
 
+        if (options.betModeId !== undefined && (options.entryCommands !== undefined || options.unit === "logical-round")) throw new Error("Simulation mode policy requires step replay without overriding entry commands.");
+        const selector = options.betModeId === undefined ? undefined : new FixedBetModeForNextSimulationRoundSetting(options.betModeId);
+        const executedCommands: SessionCommand[] = [];
         const startedAt = Date.now();
         let logicalRound: LogicalRound | undefined;
         let totalBet = 0;
@@ -202,9 +206,14 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
             if (options.unit !== "logical-round" && !session.canPlayNextGame()) {
                 throw new Error(`Replay target round ${round} is unreachable: session stopped after ${played} round(s).`);
             }
+            selector?.setBetModeForNextRound(session);
+            // Record paid entries and zero-stake continuations separately. A consumed purchase is
+            // not re-armed during its continuation; the shared simulation selector owns that policy.
+            const selected = session as GameSessionHandling & {getStakeAmount?(): number; getBetModeId?(): string};
             const command = options.unit === "logical-round"
                 ? {...options.entryCommands?.[played], kind: "spin" as const, delivery: "composite" as const, roundId: `replay:${played + 1}`}
-                : options.entryCommands?.[played];
+                : options.entryCommands?.[played] ?? (selector ? {kind: "spin" as const, ...(selected.getStakeAmount?.() === 0 ? {} : {mode: selected.getBetModeId?.()})} : undefined);
+            if (selector && command) executedCommands.push(command);
             const result = options.unit === "logical-round" ? executeLogicalReplayCommand(session, command!, signal) : executeSessionCommand(session, command, signal);
             logicalRound = result.logicalRound;
             if ((logicalRound && logicalRound.status !== "completed") || (session as Partial<CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded === true) throw new Error("Replay logical round exceeded the delivery bound; result is incomplete or exhausted.");
@@ -222,9 +231,11 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
 
         if (logicalRound && slot.getWinEvaluationResult) artifact = new PokieJsonRoundArtifactProjector().project(buildLogicalRoundArtifact(logicalRound,
             buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}})));
+        const unit = selector ? "step" : options.unit;
+        const commands = selector ? executedCommands : options.entryCommands;
         return {
             auditStatus: "legacy-best-effort",
-            ...(options.unit ? {unit: options.unit} : {}), ...(options.entryCommands ? {commands: options.entryCommands} : {}), ...(logicalRound ? {logicalRound} : {}),
+            ...(unit ? {unit} : {}), ...(commands ? {commands} : {}), ...(selector ? {modePolicy: {betModeId: options.betModeId!, selection: "repeat-when-available" as const}} : {}), ...(logicalRound ? {logicalRound} : {}),
             sessionId: crypto.randomUUID(),
             game: {id: manifest.id, name: manifest.name, version: manifest.version},
             seed: seed ?? null,

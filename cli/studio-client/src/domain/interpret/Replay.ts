@@ -127,6 +127,8 @@ export type ReplayResultView = {
     // The real outcome-library mode this reproduction replayed against -- see StudioReplayJobView's own
     // doc comment. Undefined for an ordinary "tsPackage"/"blueprint" replay.
     modeName?: string;
+    modePolicy?: ReplayDescriptor["modePolicy"];
+    commands?: ReplayDescriptor["commands"];
 };
 
 // Only meaningful for a completed job (job.descriptor is defined) — callers only call this once
@@ -154,7 +156,9 @@ export function describeReplayResult(job: StudioReplayJobView): ReplayResultView
         artifact: descriptor.artifact ? describeRoundArtifact(descriptor.artifact) : undefined,
         stateBefore: descriptor.stateBefore,
         stateAfter: descriptor.stateAfter,
-        modeName: job.modeName,
+        modeName: descriptor.modePolicy?.betModeId ?? job.modeName,
+        modePolicy: descriptor.modePolicy,
+        commands: descriptor.commands,
     };
 }
 

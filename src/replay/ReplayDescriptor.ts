@@ -20,6 +20,7 @@ export type ReplayDescriptor = {
     round: number;
     unit?: "step" | "logical-round";
     commands?: readonly SessionCommand[];
+    modePolicy?: {betModeId: string; selection: "repeat-when-available"};
     logicalRound?: LogicalRound;
     totalBet: number;
     totalWin: number;

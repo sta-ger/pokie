@@ -28,6 +28,8 @@ export type ReplayRequestInput = {
 };
 
 export type ValidatedReplayRequest = {
+    /** Bound by the server to the selected retained simulation, never a browser assertion. */
+    expectedConfigHash?: string;
     recording?: ReplayDescriptor & {audit: NonNullable<ReplayDescriptor["audit"]>};
     round: number;
     unit?: "step" | "logical-round";

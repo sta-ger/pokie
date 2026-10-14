@@ -1,6 +1,8 @@
+import {existingMechanicsBlueprint, generatedMechanicsGame} from "../../../v2/fixtures/ExistingMechanicsGame.js";
 import {transactionalRoundGame} from "../../../v2/fixtures/TransactionalRoundGame.js";
 import {createOverscanGame} from "../../../v2/fixtures/OverscanGame.js";
 import {
+    AUTHORED_MECHANIC_CATALOG,
     CascadeResult,
     computeAuditRoundHash,
     ConvertableToSessionState,
@@ -1955,4 +1957,42 @@ it.each(["compatibility", "durable"] as const)("terminal %s save failure never p
         fs.rmSync(directory, {recursive: true, force: true});
         recorder.releaseAuditSession(session);
     }
+});
+
+describe("V2C-12 package simulation replay mode policy", () => {
+    function authoredGame(id: string) {
+        const blueprint = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
+        blueprint.reelStrips = [["A"], ["A"], ["A"]];
+        return generatedMechanicsGame(blueprint);
+    }
+
+    it.each(["ante", "buy", "buy-more"])("replays %s with the shared repeat selector and retains executed commands", async modeName => {
+        const game = authoredGame("modes");
+        const service = new StudioReplayExecutionService(undefined, () => Promise.resolve(game), 1);
+        const started = service.start("/simulation-modes", {round: 6, seed: "sample", simulationId: "retained-run", modeName});
+        if (started.status !== "created") throw new Error("Not created");
+        const job = await waitForTerminal(service, "/simulation-modes", started.job.id);
+        expect(job.status).toBe("completed");
+        expect(job.descriptor).toMatchObject({totalBet: expect.closeTo(({ante: 0.45, buy: 1, "buy-more": 2.5}[modeName]!)), modePolicy: {betModeId: modeName, selection: "repeat-when-available"}});
+        expect(job.descriptor?.commands).toHaveLength(6);
+        expect(job.descriptor?.commands?.filter(command => command.mode === modeName)).toHaveLength(modeName === "ante" ? 6 : 2);
+        expect(job.descriptor?.commands?.filter(command => command.mode === undefined)).toHaveLength(modeName === "ante" ? 0 : 4);
+        const repeated = new ReplayRecorder().record({game, seed: "sample", round: 6, betModeId: modeName});
+        expect(repeated.totalBet).toBe(job.descriptor!.totalBet);
+        expect(repeated.commands).toEqual(job.descriptor!.commands);
+        await service.cancelAll();
+    });
+
+    it("rejects unknown modes and changed simulation models without retained descriptors", async () => {
+        const game = authoredGame("accumulating-base-modes");
+        const service = new StudioReplayExecutionService(undefined, () => Promise.resolve(game));
+        for (const request of [{round: 2, modeName: "missing"}, {round: 2, modeName: "ante", expectedConfigHash: "changed"}]) {
+            const started = service.start("/invalid-mode", request);
+            if (started.status !== "created") throw new Error("Not created");
+            const job = await waitForTerminal(service, "/invalid-mode", started.job.id);
+            expect(job.status).toBe("failed");
+            expect(job.descriptor).toBeUndefined();
+        }
+        await service.cancelAll();
+    });
 });

@@ -8,7 +8,7 @@ export function toStudioSimulationJobView(record: StudioSimulationJobRecord): St
     return {
         id: record.id,
         status: record.status,
-        rounds: record.rounds,
+        rounds: record.rounds * (record.modeCount ?? 1),
         seed: record.seed,
         workers: record.workers,
         startedAt: new Date(record.startedAt).toISOString(),

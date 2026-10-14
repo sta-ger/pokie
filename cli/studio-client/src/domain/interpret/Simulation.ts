@@ -1,5 +1,5 @@
 import type {ReelSequenceStatistics} from "../../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js";
-import type {SimulationReport, SimulationReportBreakdownComponent, StudioSimulationJobView} from "../../api/types";
+import type {SimulationReport, SimulationReportSet, SimulationReportBreakdownComponent, StudioSimulationJobView} from "../../api/types.js";
 
 // Pure view-model transforms for the Simulation tab — same role as interpretProjectDashboard.ts:
 // main.ts/dom.ts consume these instead of branching on the raw job/report shapes themselves, and
@@ -54,7 +54,11 @@ export function describeBreakdown(report: SimulationReport): BreakdownRowView[] 
     return Object.entries(report.breakdown.components).map(([category, component]) => ({category, ...component}));
 }
 
-export type SimulationReportView = {
+export type SingleSimulationReportView = {
+    betMode?: string;
+    targetRtp?: number;
+    rtpDeviation?: number;
+    jackpot?: SimulationReport["jackpot"];
     reelSequences?: ReelSequenceStatistics[];
     game: {id: string; name: string; version: string};
     rounds: number;
@@ -94,15 +98,28 @@ export type SimulationReportView = {
     pokieVersion?: string;
 };
 
+export type SimulationReportSetView = {
+    game: SimulationReport["game"];
+    modes: Record<string, SingleSimulationReportView>;
+};
+export type SimulationReportView = SingleSimulationReportView | SimulationReportSetView;
+
 // Bundles a completed job's SimulationReport with the extra statistics Studio surfaces alongside it
 // (see StudioSimulationStatisticsView) into the one shape dom.ts renders — old reports/games without
 // a breakdown (or without `statistics`, e.g. a job view reconstructed from an older format) simply
 // leave those fields undefined rather than failing.
+export function describeSimulationReport(report: SimulationReport, statistics?: StudioSimulationJobView["statistics"]): SingleSimulationReportView;
+export function describeSimulationReport(report: SimulationReport | SimulationReportSet, statistics?: StudioSimulationJobView["statistics"]): SimulationReportView;
 export function describeSimulationReport(
-    report: SimulationReport,
+    report: SimulationReport | SimulationReportSet,
     statistics?: StudioSimulationJobView["statistics"],
 ): SimulationReportView {
+    if ("modes" in report) return {game: report.game, modes: Object.fromEntries(Object.entries(report.modes).map(([id, mode]) => [id, describeSimulationReport(mode)]))};
     return {
+        betMode: report.betMode,
+        targetRtp: report.targetRtp,
+        rtpDeviation: report.rtpDeviation,
+        jackpot: report.jackpot,
         game: report.game,
         reelSequences: report.reelSequences,
         rounds: report.rounds,
@@ -121,14 +138,14 @@ export function describeSimulationReport(
         durationMs: report.durationMs,
         spinsPerSecond: report.spinsPerSecond,
         workers: report.workers ?? 1,
-        volatility: statistics?.volatility,
+        volatility: statistics?.volatility ?? report.volatility,
         payoutStandardDeviation: statistics?.payoutStandardDeviation,
         rtpConfidenceInterval95: statistics?.rtpConfidenceInterval95 ?? report.rtpConfidenceInterval95,
         averagePayoutConfidenceInterval95: statistics?.averagePayoutConfidenceInterval95 ?? report.averagePayoutConfidenceInterval95,
         breakdown: describeBreakdown(report),
         warnings: report.warnings ?? [],
         recommendations: report.recommendations ?? [],
-        payoutHistogram: statistics?.payoutHistogram,
+        payoutHistogram: statistics?.payoutHistogram ?? report.payoutHistogram,
         reproducibilityCommand: report.reproducibility?.command,
         configHash: report.reproducibility?.configHash,
         pokieVersion: report.reproducibility?.pokieVersion,

@@ -1,4 +1,4 @@
-import type {PokieProject, PreGeneratedRoundReplayDescriptor, SimulationReport} from "@fromstan/pokie";
+import type {PokieProject, PreGeneratedRoundReplayDescriptor, SimulationReport, SimulationReportSet} from "@fromstan/pokie";
 import type {StudioSimulationStatisticsView} from "./StudioSimulationJobView.js";
 import type {StudioSimulationStatus} from "./StudioSimulationStatus.js";
 
@@ -12,6 +12,7 @@ export type StudioSimulationJobRecord = {
     projectRoot: string;
     status: StudioSimulationStatus;
     rounds: number;
+    modeCount?: number;
     seed?: string;
     workers: number;
     startedAt: number;
@@ -22,7 +23,7 @@ export type StudioSimulationJobRecord = {
     completedAt?: number;
     roundsCompleted: number;
     durationMs: number;
-    report?: SimulationReport;
+    report?: SimulationReport | SimulationReportSet;
     statistics?: StudioSimulationStatisticsView;
     error?: string;
     abortController: AbortController;
@@ -30,11 +31,7 @@ export type StudioSimulationJobRecord = {
     // given one -- see StudioSimulationService.start()'s own doc comment. Undefined for an ordinary
     // "tsPackage"/"blueprint" simulation, which run() drives through ParallelSimulationRunner instead.
     outcomeSourceProject?: PokieProject;
-    // The real outcome-library mode this job samples/sampled -- undefined at start() time when the
-    // caller didn't request one explicitly, then overwritten with the actual resolved value (via
-    // resolveOutcomeLibraryModeName) once runOutcomeSourceSampling reads the manifest, so this always
-    // ends up holding the concrete mode a completed/failed/cancelled outcome-source job actually ran
-    // against. Always undefined for an ordinary "tsPackage"/"blueprint" simulation.
+    // Package selected mode/all policy, or the concrete native outcome-library mode.
     modeName?: string;
     // The final real seeded draw, retained as portable provenance for Recent Rounds/replay.
     lastReplay?: PreGeneratedRoundReplayDescriptor;

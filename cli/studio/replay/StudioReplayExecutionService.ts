@@ -207,7 +207,7 @@ export class StudioReplayExecutionService {
         const common = this.jobService?.start({
             projectId: projectRoot,
             operation: "replay",
-            request: {round: request.round, ...(request.recording ? {recording: request.recording} : {}), ...(request.unit ? {unit: request.unit} : {}), ...(request.entryCommands ? {entryCommands: request.entryCommands} : {}), ...(request.seed === undefined ? {} : {seed: request.seed}), ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
+            request: {round: request.round, ...(request.expectedConfigHash === undefined ? {} : {expectedConfigHash: request.expectedConfigHash}), ...(request.recording ? {recording: request.recording} : {}), ...(request.unit ? {unit: request.unit} : {}), ...(request.entryCommands ? {entryCommands: request.entryCommands} : {}), ...(request.seed === undefined ? {} : {seed: request.seed}), ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
             conflictKey: `replay:${projectRoot}`,
             recoveryOnRestart: {action: "retry", reason: "A replay cannot safely resume after Studio restarts. Run it again with these captured parameters."},
         });
@@ -231,6 +231,7 @@ export class StudioReplayExecutionService {
             unit: request.unit, entryCommands: request.entryCommands,
             seed: request.seed,
             simulationId: request.simulationId,
+            expectedConfigHash: request.expectedConfigHash,
             startedAt: this.now(),
             completedRounds: 0,
             durationMs: 0,
@@ -434,6 +435,7 @@ export class StudioReplayExecutionService {
                 return;
             }
 
+            if (record.expectedConfigHash !== undefined && game.getConfigHash?.() !== record.expectedConfigHash) throw new Error("The project model changed since this simulation; run a new simulation before sampling it.");
             const context: PokieGameContext | undefined = record.seed === undefined ? undefined : {seed: record.seed};
             // Minted here, at the exact moment the brand-new session is created -- never reused from
             // `record.id` (the job id, minted in start() before this session exists at all). Two runs of
@@ -456,7 +458,7 @@ export class StudioReplayExecutionService {
                 return;
             }
 
-            const execution = new ReplayRecorder().execute({game, seed: record.seed, round: record.round, unit: record.unit, entryCommands: record.entryCommands}, record.abortController.signal, session);
+            const execution = new ReplayRecorder().execute({game, seed: record.seed, round: record.round, unit: record.unit, entryCommands: record.entryCommands, betModeId: record.modeName}, record.abortController.signal, session);
             const serializer = resolveGameSessionSerializer(game);
             // Best-effort: a throwing custom game/serializer must never fail the whole replay over a state
             // snapshot — see captureStateSafely()'s own doc comment. Captured once, right after the session
@@ -574,6 +576,10 @@ export class StudioReplayExecutionService {
         let runtime;
         try {
             runtime = await this.loadWasmRuntime(record.projectRoot, new SeededPokieWasmHost(record.seed));
+            if (record.modeName !== undefined) {
+                this.fail(record, new Error("WASM does not support package bet-mode selection."));
+                return;
+            }
             if (record.abortController.signal.aborted) {
                 this.cancelRecord(record);
                 return;
