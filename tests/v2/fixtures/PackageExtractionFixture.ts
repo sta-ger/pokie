@@ -34,13 +34,18 @@ module.exports = {
     return root;
 }
 
-/** A real package descriptor read, held only after final-build progress arms it. */
-export function writePausedDescriptorPackage(parent: string, descriptorExpression = '{descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model}') {
+/** A real descriptor read, paused at an explicit read number or when a lifecycle phase arms it. */
+export function writePausedDescriptorPackage(
+    parent: string,
+    descriptorExpression = '{descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model}',
+    options: {pauseAtRead?: number} = {},
+) {
     const control = path.join(parent, "descriptor-read.txt");
     fs.writeFileSync(control, "existing descriptor input");
     const source = writeDescriptorPackage(parent, {descriptorBody:
-        `return require("fs").promises.readFile(${JSON.stringify(control)}, "utf8").then(() => (${descriptorExpression}));`,});
+        `return require("fs").promises.readFile(${JSON.stringify(control)}, "utf8").then(descriptorInput => (${descriptorExpression}));`,});
     let armed = false;
+    let readCount = 0;
     let started!: () => void;
     let settle!: () => void;
     const readStarted = new Promise<void>(resolve => {
@@ -52,12 +57,16 @@ export function writePausedDescriptorPackage(parent: string, descriptorExpressio
     const readFile = fs.promises.readFile.bind(fs.promises);
     const spy = jest.spyOn(fs.promises, "readFile").mockImplementation((...args) => {
         const read = readFile(...args);
-        if (String(args[0]) !== control || !armed) return read;
+        if (String(args[0]) !== control) return read;
+        readCount++;
+        if (!armed && readCount !== options.pauseAtRead) return read;
         armed = false;
         started();
         return gate.then(() => read);
     });
-    return {source, control, readStarted, settle, arm: () => {
+    return {source, control, readStarted, settle, get readCount() {
+        return readCount;
+    }, arm: () => {
         armed = true;
     }, restore: () => {
         settle();

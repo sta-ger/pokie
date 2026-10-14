@@ -190,28 +190,31 @@ export class BuildCommand implements CliCommandHandling {
         }
 
         const out = options.out ?? this.resolveDestination(project.rootPath, options.target);
-        const conversionPlan = await this.runWithArtifactLifecycle(lifecycle => options.target === "stakeAdapter"
-            ? this.stakeProjection.prepare(project, out, {...lifecycle, outcomeLibraryGeneration: generation})
-            : this.registry.preparePlan(project, options.target!, {destinationPath: out, outcomeLibraryGeneration: generation, signal: lifecycle.signal}));
-        if (conversionPlan.status === "unavailable") {
-            if (conversionPlan.packageExtraction) this.printExtraction(conversionPlan.packageExtraction);
-            const compatibility = describeArtifactConversionPlanDiagnostic(conversionPlan);
-            throw new Error(`${conversionPlan.diagnostic!.message} Next: ${conversionPlan.diagnostic!.recovery}${compatibility === undefined ? "" : `\n${compatibility}`}`);
-        }
-        if (conversionPlan.status === "conflict") {
-            throw new Error(describeDestinationConflict(options.target, conversionPlan.diagnostic!.message));
-        }
-
-        if (options.dryRun) {
-            // Blueprint -> tsPackage retains its richer command-owned preview below, which validates the
-            // injected Blueprint reader/validator and renders the complete generated-package summary.
-            // Every other supported cell must validate its own registry source/artifact contract before
-            // the generic dry-run branch can claim success.
-            if (!(options.target === "tsPackage" && project.type === "blueprint")) {
-                if (options.target === "stakeAdapter") await this.stakeProjection.validate(project, conversionPlan);
-                else await this.registry.validate(options.target, project, conversionPlan);
+        const conversionPlan = await this.runWithArtifactLifecycle(async lifecycle => {
+            const conversionPlan = options.target === "stakeAdapter"
+                ? await this.stakeProjection.prepare(project, out, {...lifecycle, outcomeLibraryGeneration: generation})
+                : await this.registry.preparePlan(project, options.target!, {destinationPath: out, outcomeLibraryGeneration: generation, signal: lifecycle.signal});
+            if (conversionPlan.status === "unavailable") {
+                if (conversionPlan.packageExtraction) this.printExtraction(conversionPlan.packageExtraction);
+                const compatibility = describeArtifactConversionPlanDiagnostic(conversionPlan);
+                throw new Error(`${conversionPlan.diagnostic!.message} Next: ${conversionPlan.diagnostic!.recovery}${compatibility === undefined ? "" : `\n${compatibility}`}`);
             }
-        }
+            if (conversionPlan.status === "conflict") {
+                throw new Error(describeDestinationConflict(options.target, conversionPlan.diagnostic!.message));
+            }
+
+            if (options.dryRun) {
+                // Blueprint -> tsPackage retains its richer command-owned preview below, which validates the
+                // injected Blueprint reader/validator and renders the complete generated-package summary.
+                // Every other supported cell must validate its own registry source/artifact contract before
+                // the generic dry-run branch can claim success.
+                if (!(options.target === "tsPackage" && project.type === "blueprint")) {
+                    if (options.target === "stakeAdapter") await this.stakeProjection.validate(project, conversionPlan);
+                    else await this.registry.validate(options.target, project, conversionPlan, lifecycle);
+                }
+            }
+            return conversionPlan;
+        });
 
         if (options.target === "tsPackage" && project.type === "blueprint") {
             return this.buildTsPackageFromBlueprint(project, out, options.dryRun ?? false, conversionPlan);

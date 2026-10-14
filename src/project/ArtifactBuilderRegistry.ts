@@ -434,11 +434,13 @@ export class ArtifactBuilderRegistry {
     // Validates the same source/artifact contract a real build consumes, without allocating a destination
     // or invoking any writer. This is intentionally separate from checkDestination(): a usable output also
     // requires readable source data, so callers must not report dry-run success after checking only a path.
-    public async validate(target: ArtifactTargetType, source: PokieProject, plan?: ArtifactConversionPlan): Promise<void> {
-        const preparedPlan = plan ?? await this.preparePlan(source, target);
+    public async validate(target: ArtifactTargetType, source: PokieProject, plan?: ArtifactConversionPlan, options?: ArtifactBuildOptions): Promise<void> {
+        assertArtifactBuildNotCancelled(options);
+        const preparedPlan = plan ?? await this.preparePlan(source, target, options);
         this.assertExecutablePlan(preparedPlan);
         this.assertPlanTargetMatches(preparedPlan, target);
-        await this.assertPlanSourceMatches(preparedPlan, source);
+        await this.assertPlanSourceMatches(preparedPlan, source, options);
+        assertArtifactBuildNotCancelled(options);
         this.assertTargetAvailable(target);
 
         if (source.type === "parWorkbook") {
@@ -451,6 +453,7 @@ export class ArtifactBuilderRegistry {
                 if (errors.length > 0) throw new Error(`Could not import PAR workbook "${source.rootPath}": ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")}`);
                 resolveCanonicalWasmGameModel(imported.blueprint);
             }
+            assertArtifactBuildNotCancelled(options);
             return;
         }
 
@@ -464,22 +467,26 @@ export class ArtifactBuilderRegistry {
                 const wasmBuilder = this.builders.get("wasm");
                 if (wasmBuilder === undefined) throw new Error(this.unavailableTargetMessage("wasm"));
                 await wasmBuilder.validate?.(source);
+                assertArtifactBuildNotCancelled(options);
                 return;
             }
             const resolution = resolveReelStripGeneration(blueprint as GameBlueprint);
             if (!resolution.success) throw new Error(`Blueprint "${source.rootPath}" could not generate its reel strips.`);
+            assertArtifactBuildNotCancelled(options);
             return;
         }
 
         if (source.type === "tsPackage") {
             const game = await loadPokieGame(source.rootPath);
             await releasePokieGame(game);
+            assertArtifactBuildNotCancelled(options);
             return;
         }
 
         const builder = this.builders.get(target);
         if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
         await builder.validate?.(source);
+        assertArtifactBuildNotCancelled(options);
     }
 
     // Executes a real build: re-validates `source` against `target`'s own required capability (the exact

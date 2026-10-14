@@ -129,6 +129,76 @@ describe("BuildCommand", () => {
         }
     });
 
+    describe.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)("package %s dry-run validation", target => {
+        it.each([true, false])("settles the second descriptor read with cancellation=%s before any preview", async cancel => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cli-dry-run-extraction-"));
+            const fixture = writePausedDescriptorPackage(root, undefined, {pauseAtRead: 2});
+            const snapshots = runtimeSnapshotNames();
+            const listeners = process.rawListeners("SIGINT");
+            const inputs = ["index.js", "package.json"].map(name => fs.readFileSync(path.join(fixture.source, name)));
+            const registry = new ArtifactBuilderRegistry("1.3.0");
+            const validate = jest.spyOn(registry, "validate");
+            const command = new BuildCommand("1.3.0", undefined, undefined, undefined, registry);
+            try {
+                const running = command.run([fixture.source, "--target", target, "--out", path.join(root, "output"), "--dry-run"]);
+                const checked = cancel ? expect(running).rejects.toBeInstanceOf(ArtifactBuildCancelledError) : expect(running).resolves.toBe(0);
+                await fixture.readStarted;
+                expect(fixture.readCount).toBe(2);
+                expect(validate).toHaveBeenCalledTimes(1);
+                expect(validate.mock.calls[0][2]?.packageExtraction?.status).toBe("complete");
+                expect(validate.mock.calls[0][3]?.signal?.aborted).toBe(false);
+                expect(runtimeSnapshotNames().length).toBe(snapshots.length + 1);
+                expect(process.listenerCount("SIGINT")).toBe(listeners.length + 1);
+                expect(logSpy.mock.calls.flat().join("\n")).not.toContain("Dry run -- would build");
+                if (cancel) expect(process.emit("SIGINT")).toBe(true);
+                fixture.settle();
+                await checked;
+                const output = logSpy.mock.calls.flat().join("\n");
+                if (cancel) {
+                    expect(output).toContain("Artifact build cancelled.");
+                    expect(output).not.toContain("Dry run -- would build");
+                    expect(output).not.toContain("Conversion plan:");
+                } else {
+                    expect(output).toContain(`Dry run -- would build "${target}"`);
+                    expect(output).toContain("extractPackageModel");
+                }
+                expect(output).not.toContain("Build summary:");
+                expect(process.rawListeners("SIGINT")).toEqual(listeners);
+                expect(runtimeSnapshotNames()).toEqual(snapshots);
+                expect(["index.js", "package.json"].map(name => fs.readFileSync(path.join(fixture.source, name)))).toEqual(inputs);
+                expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
+                expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
+            } finally {
+                fixture.restore();
+                validate.mockRestore();
+                fs.rmSync(root, {recursive: true, force: true});
+            }
+        });
+
+        it("retains genuine asynchronous malformed-model diagnostics without a successful preview", async () => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cli-malformed-dry-run-"));
+            const fixture = writePausedDescriptorPackage(root, '{descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: {...model, manifest: null}}', {pauseAtRead: 1});
+            const snapshots = runtimeSnapshotNames();
+            const listeners = process.rawListeners("SIGINT");
+            const input = fs.readFileSync(path.join(fixture.source, "index.js"));
+            try {
+                const checked = expect(new BuildCommand("1.3.0").run([fixture.source, "--target", target, "--out", path.join(root, "output"), "--dry-run"]))
+                    .rejects.toThrow(/Package extraction malformed:.*manifest/);
+                await fixture.readStarted;
+                fixture.settle();
+                await checked;
+                expect(logSpy.mock.calls.flat().join("\n")).not.toContain("Dry run -- would build");
+                expect(process.rawListeners("SIGINT")).toEqual(listeners);
+                expect(runtimeSnapshotNames()).toEqual(snapshots);
+                expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
+                expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
+            } finally {
+                fixture.restore();
+                fs.rmSync(root, {recursive: true, force: true});
+            }
+        });
+    });
+
     it("previews and builds public package models through the shared diagnosis/evidence workflow", async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cli-extraction-"));
         try {
