@@ -732,6 +732,7 @@ function TargetCard({
                                 {card.artifactTarget === "blueprint" && artifactPreview.result.plan?.packageExtraction && (
                                     <Text size="sm">Conversion evidence: {artifactPreview.result.destination}.conversion-evidence.json. Preview publishes no files; Save Blueprint explicitly creates a separate editable project.</Text>
                                 )}
+                                {artifactPreview.result.plan?.packageExtraction && artifactPreview.result.plan.source.configurationProvenance?.inputBindingHash && <Text size="sm">Source binding: {artifactPreview.result.plan.source.configurationProvenance.inputBindingHash}</Text>}
                                 <PackageExtractionDiagnostics extraction={artifactPreview.result.plan?.packageExtraction} />
                                 {artifactPreview.result.plan?.preflight.losses.map((loss, index) => <Text key={index} size="sm" c="orange">Data boundary: {loss}</Text>)}
                                 {artifactPreview.result.plan?.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []).map((loss, index) => <Text key={index} size="sm" c="orange">PAR import boundary: {loss}</Text>)}
@@ -1646,11 +1647,14 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     if (target === "outcomeLibrary") refreshArtifactPreviews();
                 } else {
                     const result = job.result;
+                    let message = "Artifact build ended without a result.";
+                    if (result !== undefined) message = result.status === "ok"
+                        ? "Artifact job failed without confirming a successful publication." : describeArtifactBuildResultError(result);
                     setArtifactBuildRuns((runs) => ({
                         ...runs,
                         [target]: {
                             status: "error",
-                            message: result !== undefined ? describeArtifactBuildResultError(result) : "Artifact build ended without a result.",
+                            message,
                             ...(result !== undefined ? {plan: result.plan} : {}),
                         },
                     }));

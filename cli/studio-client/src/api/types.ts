@@ -1450,7 +1450,7 @@ export type StudioArtifactTargetType = "blueprint" | "tsPackage" | "outcomeLibra
 export type StudioArtifactConversionPlan = {
     packageExtraction?: PackageBlueprintExtractionResult;
     status: "planned" | "unavailable" | "conflict";
-    source: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]; configurationProvenance?: {configurationHash?: string; pokieVersion?: string; generationSemantics?: "exact" | "boundedSample"; gameId?: string; gameVersion?: string; manifestIdentity?: string; sampleCount?: string; sampleSeed?: string}};
+    source: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]; configurationProvenance?: {inputBindingHash?: string; configurationHash?: string; pokieVersion?: string; generationSemantics?: "exact" | "boundedSample"; gameId?: string; gameVersion?: string; manifestIdentity?: string; sampleCount?: string; sampleSeed?: string}};
     target: {kind: string; canonicalLocation?: string; capabilities: string[]; configurationProvenance?: {generationSemantics?: "exact" | "boundedSample"; sampleCount?: string; sampleSeed?: string}};
     steps: {kind: "extractPackageModel" | "importParWorkbook" | "publish" | "materializeRuntime" | "generateOutcomeLibrary" | "reuseManagedOutcomeLibrary"; choice: "materialize" | "reuse" | "publish"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; output: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]}; losses?: string[]}[];
     preflight: {destinationKind: "file" | "directory"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses: string[]; oneWay: boolean};
@@ -1549,4 +1549,7 @@ export type PackageBlueprintExtractionResult = {
     fields: {path: string; status: "exact" | "inferred" | "defaulted" | "unsupported"; authority: string}[];
     diagnostics: {path: string; code: string; message: string; severity?: "warning" | "error" | "info" | "suggestion"}[];
     comparisonLimits: string[];
+    model?: unknown;
+    blueprint?: unknown;
+    blueprintHash?: string;
 };

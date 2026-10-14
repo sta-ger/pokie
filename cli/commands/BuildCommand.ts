@@ -545,6 +545,7 @@ export class BuildCommand implements CliCommandHandling {
         }
         if (plan.packageExtraction) {
             this.printExtraction(plan.packageExtraction);
+            if (plan.source.configurationProvenance?.inputBindingHash) console.log(`  source binding ${plan.source.configurationProvenance.inputBindingHash}`);
             if (plan.target.kind === "blueprint") console.log(`  conversion evidence ${plan.target.canonicalLocation}.conversion-evidence.json`);
         }
         const parImportLosses = plan.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []);
