@@ -774,7 +774,7 @@ describe("GameBlueprintValidator", () => {
         });
 
         it("flags an invalid match-count key and a negative award", () => {
-            const blueprint = withFreeGames({awardsByCount: {1: 5, 3: -1}});
+            const blueprint = withFreeGames({awardsByCount: {0: 5, 3: -1}});
 
             expect(codesOf(validator.validate(blueprint))).toEqual(
                 expect.arrayContaining(["blueprint-mechanics-freegames-invalid-count", "blueprint-mechanics-freegames-invalid-award"]),

@@ -17,7 +17,14 @@ export class SymbolSetHoldAndWinCollector<T extends string | number | symbol = s
     private readonly symbolEffects: Partial<Record<T, HoldAndWinSymbolEffect>>;
 
     constructor(symbolEffects: Partial<Record<T, HoldAndWinSymbolEffect>>) {
+        for (const effect of Object.values(symbolEffects) as HoldAndWinSymbolEffect[]) {
+            if (!effect || ((effect.kind !== "value" && effect.kind !== "multiplier") || (effect.kind === "value" && (!Number.isFinite(effect.amount) || effect.amount < 0)) || (effect.kind === "multiplier" && (!Number.isFinite(effect.factor) || effect.factor < 0)))) throw new Error("HoldAndWin effects require finite nonnegative values or multipliers.");
+        }
         this.symbolEffects = symbolEffects;
+    }
+
+    public getRestorationEffects(): Partial<Record<T, HoldAndWinSymbolEffect>> | undefined {
+        return this.constructor === SymbolSetHoldAndWinCollector ? this.symbolEffects : undefined;
     }
 
     public collect(symbols: readonly (readonly T[])[], alreadyLocked: readonly LockedHoldAndWinSymbol<T>[]): readonly LockedHoldAndWinSymbol<T>[] {

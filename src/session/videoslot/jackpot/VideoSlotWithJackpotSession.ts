@@ -1,3 +1,8 @@
+import {captureWinEvaluation, restoreWinEvaluation, type WinEvaluationSnapshot} from "../winevaluation/WinEvaluationSnapshot.js";
+import {isSessionStateRestorable, resolveSessionStateSchema, type SessionStateRestoring, type SessionStateSchema} from "../../SessionStateRestoring.js";
+import {validateExecutableState} from "../../../runtime/validateExecutableState.js";
+import {FixedJackpotPool} from "./FixedJackpotPool.js";
+import {AccumulatingJackpotPool} from "./AccumulatingJackpotPool.js";
 import {rejectScreenGeometry} from "../coordinates/projectSymbolsCombination.js";
 import type {BuildableFromSessionState} from "../../BuildableFromSessionState.js";
 import type {ConvertableToSessionState} from "../../ConvertableToSessionState.js";
@@ -53,7 +58,7 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
         BuildableFromSessionState<VideoSlotWithJackpotSessionState>,
         StakeAmountDetermining,
         SimulationCategoryDetermining,
-        JackpotStatisticsProviding {
+        JackpotStatisticsProviding, SessionStateRestoring {
     private readonly pools: readonly JackpotPoolRepresenting[];
     private readonly roundHandler: JackpotRoundHandling<T>;
     private lastRoundOutcome: JackpotRoundOutcome<T> = {kind: "ordinary"};
@@ -70,6 +75,7 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
         super(baseSession);
         VideoSlotWithJackpotSession.validatePools(pools);
         this.pools = pools;
+        for (const pool of pools) if (pool instanceof AccumulatingJackpotPool) pool.claimSessionOwnership(this);
         this.roundHandler = roundHandler;
     }
 
@@ -85,6 +91,23 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
             }
             seenIds.add(id);
         }
+    }
+
+    public getSessionStateSchema(): SessionStateSchema {
+        const pools = this.pools.map(pool => pool instanceof FixedJackpotPool || pool instanceof AccumulatingJackpotPool ? pool.getRestorationDescriptor() : undefined);
+        return pools.every(pool => pool !== undefined) ? {kind: "jackpot", pools: pools as NonNullable<typeof pools[number]>[], base: resolveSessionStateSchema(this.baseSession)} : {kind: "custom"};
+    }
+
+    public isSessionStateRestorable(): boolean {
+        return this.constructor === VideoSlotWithJackpotSession && this.getSessionStateSchema().kind === "jackpot" && isSessionStateRestorable(this.baseSession) &&
+            this.roundHandler instanceof JackpotRoundHandler && this.roundHandler.isStatelessForSessionRestoration();
+    }
+
+    public validateSessionState(value: unknown): void {
+        const schema = this.getSessionStateSchema();
+        if (schema.kind === "custom") throw new Error("Custom or shared jackpot pools require their own complete codec.");
+        validateExecutableState(value, schema, undefined, !isSessionStateRestorable(this.baseSession));
+        (this.baseSession as VideoSlotSessionHandling<T> & SessionStateRestoring).validateSessionState?.((value as {base: unknown}).base);
     }
 
     public getJackpotPools(): readonly JackpotPoolRepresenting[] {
@@ -134,7 +157,9 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
     }
 
     public toSessionState(): VideoSlotWithJackpotSessionState {
-        const state: VideoSlotWithJackpotSessionState = {poolStatistics: this.poolStatistics};
+        const outcome = this.lastRoundOutcome;
+        const state: VideoSlotWithJackpotSessionState = {poolStatistics: this.poolStatistics, lastOutcome: outcome.kind === "awarded"
+            ? {kind: "awarded", poolId: outcome.poolId, amount: outcome.amount, ...(outcome.symbolId !== undefined ? {symbolId: outcome.symbolId} : {}), baseWinAmount: outcome.baseWinAmount, baseEvaluation: captureWinEvaluation(outcome.baseWinEvaluationResult)} : {kind: "ordinary"}};
         const poolStates: Record<string, unknown> = {};
         let anyPoolCapturable = false;
         for (const pool of this.pools) {
@@ -153,7 +178,12 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
     }
 
     public fromSessionState(value: VideoSlotWithJackpotSessionState): this {
-        this.poolStatistics = this.resolvePoolStatistics(value);
+        if (this.isSessionStateRestorable()) this.validateSessionState(value);
+        const statistics = this.resolvePoolStatistics(value);
+        if (value.base !== undefined && this.supportsSessionStateRestore(this.baseSession)) this.baseSession.fromSessionState(value.base);
+        this.poolStatistics = statistics;
+        const outcome = value.lastOutcome;
+        this.lastRoundOutcome = outcome?.kind === "awarded" ? {kind: "awarded", poolId: outcome.poolId, amount: outcome.amount, symbolId: outcome.symbolId as T | undefined, baseWinAmount: outcome.baseWinAmount, baseWinEvaluationResult: restoreWinEvaluation(outcome.baseEvaluation as WinEvaluationSnapshot<T>)} : {kind: "ordinary"};
         if (value.pools !== undefined) {
             for (const pool of this.pools) {
                 const poolState = value.pools[pool.getId()];
@@ -161,9 +191,6 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
                     pool.fromSessionState(poolState);
                 }
             }
-        }
-        if (value.base !== undefined && this.supportsSessionStateRestore(this.baseSession)) {
-            this.baseSession.fromSessionState(value.base);
         }
         return this;
     }

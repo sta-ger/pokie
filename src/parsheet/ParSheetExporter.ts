@@ -241,8 +241,8 @@ export class ParSheetExporter implements ParSheetExporting {
         if (typedBlueprint.winModel) {
             addSheet(workbook, this.winModelMapper.sheetName, this.winModelMapper.toRows(typedBlueprint.winModel));
         }
-        if (typedBlueprint.mechanics?.freeGames) {
-            addSheet(workbook, this.mechanicsMapper.sheetName, this.mechanicsMapper.toRows(typedBlueprint.mechanics.freeGames));
+        if (typedBlueprint.mechanics && Object.keys(typedBlueprint.mechanics).length) {
+            addSheet(workbook, this.mechanicsMapper.sheetName, this.mechanicsMapper.toRows(typedBlueprint.mechanics.freeGames, typedBlueprint.mechanics));
         }
         if (typedBlueprint.betModes) {
             addSheet(workbook, this.betModesMapper.sheetName, this.betModesMapper.toRows(typedBlueprint.betModes));

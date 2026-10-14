@@ -14,6 +14,10 @@ export class PercentageOfBetJackpotContributor implements JackpotContributing {
         this.percentage = percentage;
     }
 
+    public isStatelessForSessionRestoration(): boolean {
+        return this.constructor === PercentageOfBetJackpotContributor;
+    }
+
     public computeContribution(poolId: string, stake: number): number {
         return stake * this.percentage;
     }

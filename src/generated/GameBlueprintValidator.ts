@@ -1,3 +1,4 @@
+import {validateAuthoredMechanics} from "./validateAuthoredMechanics.js";
 import {validateBlueprintReelSequences} from "./validateBlueprintReelSequences.js";
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
@@ -171,6 +172,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         }
 
         this.validateWinModel(b.winModel, b.paylines !== undefined, issues);
+        issues.push(...validateAuthoredMechanics(b));
         this.validateMechanics(b.mechanics, scatters, issues);
         this.validateBetModes(b.betModes, b.mechanics, issues);
 
@@ -291,11 +293,11 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
 
         for (const [count, awarded] of Object.entries(awardsByCount as Record<string, unknown>)) {
             const countNumber = Number(count);
-            if (!(Number.isInteger(countNumber) && countNumber >= 2)) {
+            if (!(Number.isInteger(countNumber) && countNumber >= 1)) {
                 issues.push({
                     code: "blueprint-mechanics-freegames-invalid-count",
                     severity: "error",
-                    message: `"mechanics.freeGames.awardsByCount" has an invalid match-count key "${count}" (expected an integer >= 2).`,
+                    message: `"mechanics.freeGames.awardsByCount" has an invalid match-count key "${count}" (expected an integer >= 1).`,
                 });
             }
             if (!(typeof awarded === "number" && Number.isInteger(awarded) && awarded >= 0)) {

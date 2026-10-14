@@ -272,7 +272,7 @@ export type GameModelBetsAndModes = {availableBets: number[]; betModes: GameMode
 
 export type GameModelFreeGames = {scatterSymbol: string; awardsByCount: Record<string, number>};
 
-export type GameModelMechanics = {freeGames?: GameModelFreeGames};
+export type GameModelMechanics = import("../../../../src/generated/GameBlueprint").GameBlueprintMechanics;
 
 export type GameModelLimits = {minBet?: number; maxBet?: number};
 
@@ -786,7 +786,7 @@ export type RoundArtifactMultiplierBreakdown = {
 export type RoundArtifactWin = {
     readonly type: string;
     readonly id: string;
-    readonly symbolId: string | number;
+    readonly symbolId: string | number | null;
     readonly winAmount: number;
     readonly winningPositions: readonly (readonly number[])[];
     readonly multiplierBreakdown: readonly RoundArtifactMultiplierBreakdown[];

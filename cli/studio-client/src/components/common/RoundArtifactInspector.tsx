@@ -99,7 +99,7 @@ export function RoundArtifactInspector({
 
     const step = artifact.steps[stepIndex] ?? artifact.steps[0];
     const hasMultipleSteps = artifact.steps.length > 1;
-    const presentation = describeRoundPresentation(stateBefore, stateAfter, artifact.betMode);
+    const presentation = describeRoundPresentation(stateBefore, stateAfter, artifact.betMode, artifact.steps[artifact.steps.length - 1]?.featureEvents);
 
     return (
         <div>

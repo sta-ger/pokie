@@ -94,7 +94,7 @@ export function PlayTab({
         if (currentBetMode !== undefined) {
             setSelectedBetMode(currentBetMode);
         }
-    }, [currentBetMode, activeSession?.sessionId]);
+    }, [currentBetMode, activeSession]);
 
     // "no-active-project"/"not-found" are already plain, specific messages -- shown as-is. "error"/
     // "blocked" carry the underlying server's own raw text (a caught exception's message, or a game's
@@ -200,7 +200,7 @@ export function PlayTab({
                 currentBet={currentBet}
                 onSelectBet={(bet) => setSelectedBet(String(bet))}
                 availableModeIds={availableBetModes}
-                currentModeId={currentBetMode}
+                currentModeId={selectedBetMode ?? currentBetMode}
                 onSelectMode={setSelectedBetMode}
             />
         );

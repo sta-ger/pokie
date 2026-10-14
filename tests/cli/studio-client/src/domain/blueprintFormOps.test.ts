@@ -743,3 +743,12 @@ describe("blueprintFormOps", () => {
         });
     });
 });
+
+it("renames and protects Hold&Win effect and jackpot trigger symbol references", () => {
+    const blueprint: Record<string, unknown> = {symbols: ["C", "J"], mechanics: {holdAndWin: {symbolEffects: {C: {kind: "value", amount: 2}}}, jackpot: {trigger: {symbolId: "J"}}}};
+    expect(getSymbolDeletionBlockers(blueprint, "C")).toContain("mechanics.holdAndWin.symbolEffects");
+    expect(getSymbolDeletionBlockers(blueprint, "J")).toContain("mechanics.jackpot.trigger.symbolId");
+    expect(renameSymbol(blueprint, "C", "coin")).toBeUndefined();
+    expect(renameSymbol(blueprint, "J", "prize")).toBeUndefined();
+    expect(blueprint.mechanics).toEqual({holdAndWin: {symbolEffects: {coin: {kind: "value", amount: 2}}}, jackpot: {trigger: {symbolId: "prize"}}});
+});

@@ -1,4 +1,6 @@
+import {existingMechanicsBlueprint, generatedMechanicsGame, mechanicsSession} from "../../../v2/fixtures/ExistingMechanicsGame.js";
 import {
+    AUTHORED_MECHANIC_CATALOG, observeVideoSlotFeatures,
     BetModeDefinition,
     BetModesConfig,
     ForcedFeatureEntryHandling,
@@ -341,5 +343,45 @@ describe("VideoSlotWithBetModesSession", () => {
             // be buy-20's own 20, never buy-10's 10.
             expect(innerSession.getFreeGamesSum() - sumBeforeBuy20).toBe(20);
         });
+    });
+});
+
+describe("V2C-12 generated purchase intent", () => {
+    it.each([0.05, 7.5, 1e-7])("charges once at %s, retains original purchase and requires another action after restart", bet => {
+        const b = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === "accumulating-freeGames-modes")!);
+        b.reelStrips = [["A"], ["A"], ["A"]];
+        const game = generatedMechanicsGame(b),
+            session = mechanicsSession(game);
+        session.setBet(bet);
+session.setBetMode!("buy-more");
+const before = session.getCreditsAmount();
+session.play();
+expect(session.getCreditsAmount()).toBeCloseTo(before - 25 * bet, 8);
+expect(session.getBetModeId!()).toBe("base");
+expect(observeVideoSlotFeatures(session).chargedBetModeId).toBe("buy-more");
+const saved = JSON.parse(JSON.stringify(session.toSessionState()));
+const restored = mechanicsSession(game);
+restored.setBet(bet);
+restored.setCreditsAmount(session.getCreditsAmount());
+restored.fromSessionState(saved);
+expect(() => restored.setBetMode!("buy")).toThrow();
+expect(() => restored.setBetMode!("unknown")).toThrow();
+expect(restored.toSessionState()).toEqual(saved);
+while (restored.hasPendingLogicalRound()) {
+    expect(restored.getStakeAmount()).toBe(0);
+    restored.play();
+}
+expect(restored.getStakeAmount()).toBe(bet);
+const contribution = observeVideoSlotFeatures(restored).jackpot!.statistics.mini.totalContributed;
+expect(contribution).toBeCloseTo(25 * bet * 0.1, 12);
+restored.play();
+expect(restored.hasPendingLogicalRound()).toBe(false);
+expect(restored.getBetModeId!()).toBe("base");
+expect(observeVideoSlotFeatures(restored).chargedBetModeId).toBe("base");
+        restored.setBetMode!("buy");
+        restored.setCreditsAmount(0);
+        const unfunded = JSON.parse(JSON.stringify(restored.toSessionState()));
+        restored.play();
+        expect(restored.toSessionState()).toEqual(unfunded);
     });
 });

@@ -45,7 +45,7 @@ function captureSnapshotPolicy(session: GameSessionHandling, snapshot: unknown):
         ...(supportsBetModeSelecting(session) ? {modes: [...session.getAvailableBetModeIds()]} : {}),
         // The built-in decorators own this protected composition field. Inspect only a trusted
         // constructed object, never a snapshot's base or a repository-provided collaborator.
-        ...((schema.kind === "free-games" || schema.kind === "bet-modes") ?
+        ...(("base" in schema) ?
             {base: captureSnapshotPolicy(trustedBaseSession(session), (snapshot as {base?: unknown} | undefined)?.base)} : {}),
     };
 }

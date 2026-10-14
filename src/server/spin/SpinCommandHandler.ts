@@ -1,3 +1,4 @@
+import {determineChargedBetMode} from "../../session/determineChargedBetMode.js";
 import {updateAuditDisposition} from "../../replay/updateAuditDisposition.js";
 import {auditBoundaryFromState, buildAuditRoundRecording, captureAuditDelivery, validateAuditRoundRecording} from "../../replay/AuditRoundReplay.js";
 import {AuditReplayError} from "../../replay/AuditReplayError.js";
@@ -27,7 +28,6 @@ import type {IdempotencyRepository} from "../idempotency/IdempotencyRepository.j
 import {captureRoundPokieSessionState, type RoundArtifactCaptureRequest} from "../session/captureRoundPokieSessionState.js";
 import {determineStakeAmount} from "../session/determineStakeAmount.js";
 import {isVersionedSessionRepository} from "../session/isVersionedSessionRepository.js";
-import {supportsBetModeSelecting} from "../../session/videoslot/betmode/supportsBetModeSelecting.js";
 import type {PokieSessionState} from "../session/PokieSessionState.js";
 import {resolveGameSessionSerializer} from "../session/resolveGameSessionSerializer.js";
 import {restoreFeatureState} from "../session/restoreFeatureState.js";
@@ -864,7 +864,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             if (!Number.isFinite(stakeAmount) || stakeAmount < 0) throw new Error("Domain stake must be finite and non-negative.");
             // Capture the selected mode before play(): a forcing one-shot mode resets itself during its
             // successful play, but this completed round must retain the mode that determined its stake.
-            const betMode = supportsBetModeSelecting(session) ? session.getBetModeId() : undefined;
+            const betMode = determineChargedBetMode(session, stakeAmount);
             const startedAt = new Date().toISOString();
 
             // Every checkpoint() call below is a no-op unless requestId is defined — SpinOperationLog is

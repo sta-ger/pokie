@@ -10,7 +10,12 @@ export class MinimumCountHoldAndWinTrigger<T extends string | number | symbol = 
     private readonly minimumCount: number;
 
     constructor(minimumCount: number) {
+        if (!Number.isSafeInteger(minimumCount) || minimumCount <= 0) throw new Error("minimumCount must be a positive safe integer.");
         this.minimumCount = minimumCount;
+    }
+
+    public isStatelessForSessionRestoration(): boolean {
+        return this.constructor === MinimumCountHoldAndWinTrigger;
     }
 
     public isTriggered(candidates: readonly LockedHoldAndWinSymbol<T>[]): boolean {

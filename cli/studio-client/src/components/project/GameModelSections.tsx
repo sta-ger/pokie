@@ -1,3 +1,4 @@
+import {ExistingMechanicsFieldset} from "../blueprintEditor/ExistingMechanicsFieldset";
 import {PackageExtractionDiagnostics} from "./PackageExtractionDiagnostics";
 import {Badge, Button, Group, NumberInput, Table, Tabs, Text} from "@mantine/core";
 import {getReelGenerationMode} from "../../domain/blueprintFormOps";
@@ -647,7 +648,7 @@ function MechanicsSection({section}: {section: GameModelSection<GameModelMechani
     if (section.status === "unavailable") {
         return <UnavailableSection reason={section.reason} />;
     }
-    if (section.data.freeGames === undefined) {
+    if (section.data.freeGames === undefined && !section.data.holdAndWin && !section.data.jackpot) {
         return (
             <Text size="sm" c="dimmed">
                 No mechanics/features configured.
@@ -657,15 +658,17 @@ function MechanicsSection({section}: {section: GameModelSection<GameModelMechani
     const {freeGames} = section.data;
     return (
         <div>
-            <Text size="sm">Scatter-triggered free games — scatter symbol: {freeGames.scatterSymbol || "(none)"}</Text>
-            <Text size="sm">
+            {freeGames && <><Text size="sm">Scatter-triggered free games — scatter symbol: {freeGames.scatterSymbol || "(none)"}</Text>
+                <Text size="sm">
                 Awards:{" "}
-                {Object.entries(freeGames.awardsByCount).length > 0
-                    ? Object.entries(freeGames.awardsByCount)
-                        .map(([count, awarded]) => `${count}x → ${awarded} free games`)
-                        .join(", ")
-                    : "(none)"}
-            </Text>
+                    {Object.entries(freeGames.awardsByCount).length > 0
+                        ? Object.entries(freeGames.awardsByCount)
+                            .map(([count, awarded]) => `${count}x → ${awarded} free games`)
+                            .join(", ")
+                        : "(none)"}
+                </Text></>}
+            {section.data.holdAndWin && <Text>Hold & Win: {section.data.holdAndWin.minimumCount} locks, {section.data.holdAndWin.initialRespins} respins; reset-on-new-lock.</Text>}
+            {section.data.jackpot && <Text>Jackpot: {section.data.jackpot.pool.id} ({section.data.jackpot.pool.type}), contribution {section.data.jackpot.contribution.percentage}; single-tier.</Text>}
         </div>
     );
 }
@@ -864,6 +867,7 @@ export function GameModelSections({
                 {editingMechanics && edit ? (
                     <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <FreeGamesFieldset blueprint={edit.blueprint} mutate={edit.mutate} issues={mechanicsIssues(edit)} />
+                        <ExistingMechanicsFieldset blueprint={edit.blueprint} mutate={edit.mutate} />
                     </fieldset>
                 ) : (
                     <MechanicsSection section={projection.mechanics} />

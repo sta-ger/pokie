@@ -74,18 +74,19 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
         const last = state.logicalRound.subrounds[state.logicalRound.cursor - 1];
         if (last.win !== state.win || last.credits !== state.credits || ((last.finalScreen ?? last.screen) !== undefined && JSON.stringify(last.finalScreen ?? last.screen) !== JSON.stringify(state.screen))) return {status: "corrupt-state", reason: "Retained logical output differs from executable capture."};
         let schema = state.stateSchema;
-        let feature = state.featureState as {base?: unknown; freeGamesNum?: number; freeGamesSum?: number} | undefined;
+        let feature = state.featureState as {base?: unknown; freeGamesNum?: number; freeGamesSum?: number; active?: boolean} | undefined;
         let pending = false;
         let known = schema?.kind !== "custom";
-        while (schema && (schema.kind === "free-games" || schema.kind === "bet-modes")) {
+        while (schema && "base" in schema) {
             if (schema.kind === "free-games") pending ||= (feature?.freeGamesNum ?? 0) < (feature?.freeGamesSum ?? 0);
+            if (schema.kind === "hold-and-win") pending ||= feature?.active === true;
             feature = feature?.base as typeof feature;
             schema = schema.base;
             if (schema.kind === "custom") known = false;
         }
         const selections = (feature as {sequenceState?: {context?: string; selections?: ReelSequenceSelection[]}} | undefined)?.sequenceState;
         if (selections && (selections.context !== `logical:${state.logicalRound.id}` || !sequenceSelectionsEqual(selections.selections, last.artifacts?.[last.artifacts.length - 1]?.sequenceSelections))) return {status: "corrupt-state", reason: "Weighted selections differ from retained logical round."};
-        if (known && (state.logicalRound.mathematicalStatus === "pending") !== pending) return {status: "corrupt-state", reason: "Logical progress differs from executable feature progress."};
+        if (known && state.logicalRound.mathematicalStatus !== "exhausted" && (state.logicalRound.mathematicalStatus === "pending") !== pending) return {status: "corrupt-state", reason: "Logical progress differs from executable feature progress."};
         if (state.logicalRound.bet !== state.bet) return {status: "corrupt-state", reason: "Logical entry bet differs from executable selection."};
     }
     if (state.logicalRoundIds !== undefined && (!Array.isArray(state.logicalRoundIds) || new Set(state.logicalRoundIds).size !== state.logicalRoundIds.length || state.logicalRoundIds.some(id => typeof id !== "string" || !id.trim() || id.includes("\0")) || (state.logicalRound !== undefined && !state.logicalRoundIds.includes(state.logicalRound.id)))) return {status: "corrupt-state", reason: "Invalid retained logical entry identities."};
@@ -179,8 +180,8 @@ function supportsSelections<T extends string | number>(expected: readonly T[] | 
 // Declared authority applies throughout its codec and its observable-only retry fallback.
 // Trusted live compositions validate each node against its own captured construction policy.
 function validateSelectedModes(value: unknown, schema: SessionStateSchema | undefined, modes: readonly string[] | undefined, restrictions?: readonly string[], live?: LiveSnapshotPolicy): void {
-    if ((schema !== undefined && schema.kind !== "free-games" && schema.kind !== "bet-modes") || value === undefined) return;
+    if ((schema !== undefined && !("base" in schema)) || value === undefined) return;
     const state = value as {betModeId?: string; base?: unknown};
     if ((schema?.kind === "bet-modes" || (schema === undefined && state.betModeId !== undefined)) && (!(live?.modes ?? modes)?.includes(state.betModeId as string) || (restrictions !== undefined && !restrictions.includes(state.betModeId as string)))) throw new Error("Persisted bet mode is not supported by the resolved model.");
-    validateSelectedModes(state.base, schema?.base, modes, restrictions, live?.base);
+    validateSelectedModes(state.base, schema && "base" in schema ? schema.base : undefined, modes, restrictions, live?.base);
 }

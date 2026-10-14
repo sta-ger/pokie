@@ -186,7 +186,8 @@ export class ParSheetImporter implements ParSheetImporting {
         if (sheetsByName.has("Mechanics")) {
             const mechanicsResult = this.mechanicsMapper.fromRows(gridFor("Mechanics"));
             issues.push(...mechanicsResult.issues);
-            if (mechanicsResult.value !== undefined) {
+            if (mechanicsResult.mechanics !== undefined) blueprint.mechanics = mechanicsResult.mechanics;
+            else if (mechanicsResult.value !== undefined) {
                 blueprint.mechanics = {freeGames: mechanicsResult.value};
             }
         }

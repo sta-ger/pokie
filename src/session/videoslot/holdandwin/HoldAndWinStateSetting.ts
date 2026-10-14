@@ -13,6 +13,8 @@ export interface HoldAndWinStateSetting<T extends string | number | symbol = str
 
     setHoldAndWinPayout(value: number): void;
 
+    setHoldAndWinEntryBet?(bet: number): void;
+
     // Only ever set by HoldAndWinRoundHandler.afterRoundPlayed(), exactly once per round, to exactly one of
     // the three HoldAndWinRoundOutcome variants — never by fromSessionState() (see
     // HoldAndWinStateDetermining's own doc comment on why this is transient, not restored).

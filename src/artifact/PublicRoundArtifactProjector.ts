@@ -36,7 +36,7 @@ export function projectPublicRoundStep<T extends string | number>(step: RoundSte
     const projection = step.geometry ? new ScreenProjection(step.geometry) : undefined;
     const wins = step.wins.map(win => {
         const metadata = Object.fromEntries(Object.entries(win.metadata).filter(([key]) => ["definition", "symbolsPositions", "wildSymbolsPositions", "lineId", "count", "pattern", "poolId", "stakeEngineImportSynthetic"].includes(key)));
-        const publicWin = {type: win.type, id: win.id, symbolId: (win.symbolId ?? null) as T, winAmount: win.winAmount, winningPositions: win.winningPositions,
+        const publicWin = {type: win.type, id: win.id, symbolId: win.symbolId ?? null, winAmount: win.winAmount, winningPositions: win.winningPositions,
             multiplierBreakdown: win.multiplierBreakdown.map(item => ({source: item.source, positions: item.positions, values: item.values, combinedMultiplier: item.combinedMultiplier})), metadata};
         if (!projection) return publicWin;
         if (win.type === "line" && Array.isArray(metadata.definition)) {

@@ -59,6 +59,7 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     private readonly betModesConfig: BetModesConfigRepresenting;
     private readonly forcedFeatureEntryHandler: ForcedFeatureEntryHandling<T>;
     private currentBetModeId: string;
+    private chargedBetModeId?: string;
 
     constructor(
         baseSession: VideoSlotSessionHandling<T>,
@@ -69,6 +70,10 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
         this.betModesConfig = betModesConfig;
         this.forcedFeatureEntryHandler = forcedFeatureEntryHandler;
         this.currentBetModeId = betModesConfig.getDefaultBetModeId();
+    }
+
+    public getChargedBetModeId(): string | undefined {
+        return this.chargedBetModeId;
     }
 
     public getBetModeId(): string {
@@ -131,6 +136,9 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
         // granting extra free spins on top.
         const totalIntendedCharge = this.getStakeAmount();
 
+        this.validateEntryAction();
+        if (totalIntendedCharge > 0) this.chargedBetModeId = mode.getId();
+
         if (mode.forcesFeatureEntry() && totalIntendedCharge > 0) {
             if (!this.canForceFeatureEntry(mode)) {
                 throw new ForcedFeatureEntryUnsupportedError(mode.getId());
@@ -171,7 +179,7 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     }
 
     public toSessionState(): BetModeSessionState {
-        const state: BetModeSessionState = {betModeId: this.currentBetModeId};
+        const state: BetModeSessionState = {betModeId: this.currentBetModeId, ...(this.chargedBetModeId ? {chargedBetModeId: this.chargedBetModeId} : {})};
         if (this.supportsSessionStateCapture(this.baseSession)) {
             state.base = this.baseSession.toSessionState();
         }
@@ -186,12 +194,20 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
         }
         const base = this.baseSession as VideoSlotSessionHandling<T> & {validateSessionState?: (state: unknown) => void};
         base.validateSessionState?.(value.base);
+        if (value.chargedBetModeId !== undefined && !this.getAvailableBetModeIds().includes(value.chargedBetModeId)) throw new Error("Unknown charged bet mode.");
+        const pending = (state: unknown): boolean => {
+            if (!state || typeof state !== "object") return false;
+            const node = state as {active?: boolean; freeGamesSum?: number; freeGamesNum?: number; base?: unknown};
+            return node.active === true || (node.freeGamesSum ?? 0) > (node.freeGamesNum ?? 0) || pending(node.base);
+        };
+        if (this.betModesConfig.getBetMode(value.betModeId)?.forcesFeatureEntry() && pending(value.base)) throw new Error("Cannot restore a forcing purchase selection during an active feature.");
     }
 
     public fromSessionState(value: BetModeSessionState): this {
         this.validateSessionState(value);
         if (this.supportsSessionStateRestore(this.baseSession)) this.baseSession.fromSessionState(value.base);
         this.currentBetModeId = value.betModeId;
+        this.chargedBetModeId = value.chargedBetModeId;
         return this;
     }
 

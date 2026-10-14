@@ -15,6 +15,10 @@ export class FixedJackpotPool implements JackpotPoolRepresenting {
         this.amount = amount;
     }
 
+    public getRestorationDescriptor(): {id: string; type: "fixed"; amount: number} | undefined {
+        return this.constructor === FixedJackpotPool ? {id: this.id, type: "fixed", amount: this.amount} : undefined;
+    }
+
     public getId(): string {
         return this.id;
     }

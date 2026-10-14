@@ -544,3 +544,5 @@ restores its executable/RNG state and credits. A composite failure retains earli
 accepted units and their results. Live-only direct sessions require their own
 transaction boundary; the portable runtime does not invent an inverse for custom
 mutable collaborators.
+
+Hold&Win owns pending logical progress while locks/respins are active. Supported decorator assembly puts jackpot outside Hold&Win and executable modes, so it sees the charged stake and its awards survive feature suppression. Built-in decorators forward mode selection, observation, pending progress, category and jackpot-statistics capabilities. Purchased entries retain their charged mode separately from the current default selection; continuations do not re-arm purchases. See [the authored contracts](game-packages.md#authored-holdwin-jackpot-and-bet-modes).

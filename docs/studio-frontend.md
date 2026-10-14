@@ -393,3 +393,5 @@ fresh preview. Destination/project changes invalidate old client responses. Poll
 **Open as Project** uses existing navigation and dirty-state controls to open the saved file as a
 separate editable authoring project. Its evidence companion remains historical extraction provenance
 after ordinary edits. The original package stays unchanged.
+
+Home Design's Bets section includes free games, executable bet modes, Hold&Win and jackpot configuration. Project Game Model uses the same mechanic fieldsets under Mechanics. Edits remain drafts until the existing explicit Apply JSON / Save / Create action; validation locations, dirty drafts and stale-response protection remain shared. Symbol rename/deletion safeguards include collector effects and jackpot triggers. Play resets consumed purchase selection from each accepted server response, even when the safe default mode's value did not change. A new purchase needs another explicit action. [V2C-12](v2-completion/V2C-12.md) records the authored workflow boundaries.

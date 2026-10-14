@@ -1,9 +1,12 @@
+import {existingMechanicsBlueprint} from "../v2/fixtures/ExistingMechanicsGame.js";
+import {emitPublicRuntime} from "../v2/helpers/publicRuntime.js";
 import {weightedBlueprint} from "../v2/fixtures/WeightedWholeSequenceGame.js";
 import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../fixtures/math/AuthoritativePaytableFixture.js";
 import {FRACTIONAL_BET_STAKES, FRACTIONAL_MIXED_CONTINUATION, fractionalBetBlueprint, amountTolerance, screenMultiplier} from "../fixtures/math/FractionalBetFixture.js";
 import ts from "typescript";
 import {RNG_PARITY_BLUEPRINT} from "../fixtures/wasm/createProductionParityFixture.js";
 import {
+    AUTHORED_MECHANIC_CATALOG,
     PackageBlueprintExtraction,
     BetMode,
     BetModeRuntimeSemanticsInvalidError,
@@ -1245,3 +1248,20 @@ describe("GamePackageGenerator", () => {
         expect(fs.existsSync(path.join(cwd, "sample-slot"))).toBe(false);
     });
 });
+
+it("recompiles authored mechanic TypeScript against emitted public CommonJS declarations", () => {
+    const runtime = emitPublicRuntime();
+    try {
+        for (const id of ["hold-bet-modes", "accumulating-holdAndWin-bet-modes", "fixed-freeGames-modes"]) {
+            const b = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
+            const built = new GamePackageGenerator("1.3.0").generate(b, runtime.directory);
+            const file = path.join(built.projectRoot, "tsconfig.json");
+            const config = ts.readConfigFile(file, ts.sys.readFile);
+            const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, built.projectRoot);
+            const program = ts.createProgram(parsed.fileNames, {...parsed.options, noEmit: true});
+            expect(ts.getPreEmitDiagnostics(program).map(d => ts.flattenDiagnosticMessageText(d.messageText, "\n"))).toEqual([]);
+        }
+    } finally {
+        runtime.dispose();
+    }
+}, 60000);

@@ -609,3 +609,5 @@ from observed count/denominator differences; multi-mode sets propagate these cha
 Reports without sequence fields remain comparable. Cancelled/failed simulation jobs
 keep their existing partial-result/completion contract; editor previews are not
 observed simulation results.
+
+Authored Hold&Win/jackpot/mode compositions use the existing aggregate/parallel runners and report renderers. Actual charged stake remains the denominator; zero-stake continuation payouts retain feature attribution. Jackpot statistics are run-local deltas, including reused/restored sessions. Each simulation worker owns independent session-local accumulating pools; reports do not represent one shared progressive. Fixed pools count contributions without growing their balance. A fixed mode selector intentionally repeats purchases when available, unlike Play's fresh-action purchase controls. Incomplete feature tails remain incomplete observations. See [the catalogue](v2-completion/V2C-12.md).

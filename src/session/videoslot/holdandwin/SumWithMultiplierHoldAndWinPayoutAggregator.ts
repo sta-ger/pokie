@@ -15,6 +15,10 @@ export class SumWithMultiplierHoldAndWinPayoutAggregator<T extends string | numb
         this.amountsAreBetMultiples = amountsAreBetMultiples;
     }
 
+    public isStatelessForSessionRestoration(): boolean {
+        return this.constructor === SumWithMultiplierHoldAndWinPayoutAggregator;
+    }
+
     public aggregate(lockedSymbols: readonly LockedHoldAndWinSymbol<T>[], bet: number): number {
         let sum = 0;
         let multiplier = 1;

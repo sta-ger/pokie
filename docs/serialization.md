@@ -467,3 +467,5 @@ capacity rejects without drawing or changing the session. Historical retries rem
 available at capacity. Exported recordings remain usable after the session is gone.
 `releaseAuditSession(session)` drops recorder references and releases/retires the direct
 runtime's retained results; drain work and export evidence before release.
+
+Built-in executable schemas include nested `hold-and-win` and `jackpot` nodes. Hold&Win snapshots retain entry denomination, unique configured locks/effects, respins, payout and the settled outcome. Jackpot snapshots retain configured accumulating balances, per-pool statistics and the settled award. Validation checks nested RNG state before restoration mutates any feature/pool. Certification excludes custom collaborators and shared mutable pools. Public round payloads/artifacts and retained results remain the output authority across restart; restoring state never credits a prior award again. File-session restart still requires compatible wallet/result/recovery ports; the transactional store persists those boundaries atomically. See [V2C-12](v2-completion/V2C-12.md) for evidence scope.

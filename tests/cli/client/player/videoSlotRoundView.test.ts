@@ -1,4 +1,5 @@
 import {
+    deriveFeatureCountersFromEvents,
     deriveAvailableBetModeIds,
     deriveAvailableBets,
     deriveBetModeId,
@@ -341,4 +342,10 @@ describe("pokie-examples compatibility (simple-slot-shaped round response)", () 
     it("derives the round's own totalWin unchanged", () => {
         expect(deriveTotalWin(simpleSlotRound)).toBe(100);
     });
+});
+
+it("projects authored mechanic observations and original purchase attribution from live and replay data", () => {
+    const data = {holdAndWin: {active: false, locks: [{position: [0, 0]}], respinsRemaining: 0, payout: 3}, jackpot: {pools: [{id: "mini", value: 10}], award: {poolId: "mini", amount: 12}}, chargedBetModeId: "buy"};
+    expect(deriveFeatureCounters(data)).toEqual([{label: "Charged mode", value: "buy"}, {label: "Locked symbols", value: 1}, {label: "Respins", value: 0}, {label: "Hold & Win payout", value: 3}, {label: "Jackpot mini", value: 10}, {label: "Jackpot award", value: 12}]);
+    expect(deriveFeatureCountersFromEvents([{type: "holdAndWin", data: data.holdAndWin}, {type: "jackpot", data: data.jackpot}, {type: "chargedBetMode", data: {id: "buy"}}])).toEqual(deriveFeatureCounters(data));
 });

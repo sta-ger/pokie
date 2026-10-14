@@ -1,3 +1,4 @@
+import {validateMechanicState} from "./validateMechanicState.js";
 import {WeightedSymbolsSequence} from "../session/videoslot/combinations/WeightedSymbolsSequence.js";
 import {validateSequenceSelections} from "../artifact/validateSequenceSelections.js";
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
@@ -11,7 +12,7 @@ import type {SessionStateSchema} from "../session/SessionStateRestoring.js";
 export function validateExecutableState(value: unknown, schema?: SessionStateSchema, customValidator?: (state: unknown) => void, partial?: boolean, live?: LiveSnapshotPolicy): void {
     partial = live?.partial ?? partial ?? false;
     if (schema !== undefined && (typeof schema !== "object" || schema === null ||
-        !["base", "seeded-video-slot", "free-games", "bet-modes", "custom"].includes(schema.kind))) throw new Error("Unknown executable state schema.");
+        !["base", "seeded-video-slot", "free-games", "bet-modes", "hold-and-win", "jackpot", "custom"].includes(schema.kind))) throw new Error("Unknown executable state schema.");
     if (schema?.kind === "seeded-video-slot" && schema.screenGeometry) new ScreenProjection(schema.screenGeometry).getGeometry();
     if (schema?.kind === "custom") {
         if (live?.opaque === true) {
@@ -58,7 +59,8 @@ export function validateExecutableState(value: unknown, schema?: SessionStateSch
     }
     if (schema?.kind === "free-games" && (state.freeGamesNum === undefined || state.freeGamesSum === undefined || state.freeGamesBank === undefined)) throw new Error("Required free-games state is missing.");
     if (schema?.kind === "bet-modes" && state.betModeId === undefined) throw new Error("Required bet-mode state is missing.");
-    if ((schema?.kind === "free-games" || schema?.kind === "bet-modes") && (schema.base === undefined || (state.base === undefined && live?.base?.optional !== true))) throw new Error("Required base schema/state is missing.");
+    if ((schema !== undefined && "base" in schema) && (schema.base === undefined || (state.base === undefined && live?.base?.optional !== true))) throw new Error("Required base schema/state is missing.");
+    if (schema) validateMechanicState(state, schema);
     if ("rngState" in state && live?.opaqueRng !== true && (typeof state.rngState !== "number" || !Number.isSafeInteger(state.rngState) || state.rngState < 0 || state.rngState > 0xffffffff)) {
         throw new Error("Invalid seeded RNG snapshot.");
     }
@@ -73,7 +75,7 @@ export function validateExecutableState(value: unknown, schema?: SessionStateSch
     }
     if ("betModeId" in state && (typeof state.betModeId !== "string" || !state.betModeId || (state.base === undefined && live?.base?.optional !== true))) throw new Error("Invalid bet-mode state.");
     if (schema?.kind === "bet-modes" && live !== undefined && !live.modes?.includes(state.betModeId as string)) throw new Error("Persisted bet mode is not supported by the trusted live model.");
-    if ((schema?.kind === "free-games" || schema?.kind === "bet-modes") && live !== undefined && live.base === undefined) throw new Error("Trusted nested snapshot policy is missing.");
+    if ((schema !== undefined && "base" in schema) && live !== undefined && live.base === undefined) throw new Error("Trusted nested snapshot policy is missing.");
     if (state.base !== undefined) validateExecutableState(state.base,
-        schema?.kind === "free-games" || schema?.kind === "bet-modes" ? schema.base : undefined, customValidator, partial, live?.base);
+        schema !== undefined && "base" in schema ? schema.base : undefined, customValidator, partial, live?.base);
 }

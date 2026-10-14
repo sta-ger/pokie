@@ -30,10 +30,28 @@ export type GameBlueprintWinModel =
 export type GameBlueprintFreeGames = {
     scatterSymbol: string;
     awardsByCount: Record<string, number>;
+    retriggerPolicy?: "additive";
+};
+
+export type GameBlueprintHoldAndWin = {
+    minimumCount: number;
+    initialRespins: number;
+    retriggerPolicy: "reset-on-new-lock";
+    symbolEffects: Record<string, {kind: "value"; amount: number} | {kind: "multiplier"; factor: number}>;
+    payout: {type: "sum-with-multiplier"; amountsAreBetMultiples: boolean};
+};
+
+export type GameBlueprintJackpot = {
+    pool: {id: string; type: "fixed"; amount: number} | {id: string; type: "accumulating"; seedValue: number};
+    contribution: {type: "percentage"; percentage: number};
+    trigger: {type: "symbol-count"; symbolId: string; minimumCount: number};
+    award: "single-tier";
 };
 
 export type GameBlueprintMechanics = {
     freeGames?: GameBlueprintFreeGames;
+    holdAndWin?: GameBlueprintHoldAndWin;
+    jackpot?: GameBlueprintJackpot;
 };
 
 // The minimal vertical-slice authoring format for "pokie build": reels/rows, symbols, paylines,

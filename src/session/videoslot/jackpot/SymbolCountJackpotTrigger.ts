@@ -20,6 +20,10 @@ export class SymbolCountJackpotTrigger<T extends string | number | symbol = stri
         this.minimumCount = minimumCount;
     }
 
+    public isStatelessForSessionRestoration(): boolean {
+        return this.constructor === SymbolCountJackpotTrigger;
+    }
+
     public isTriggered(context: JackpotTriggerContext<T>): boolean {
         return SymbolsCombinationsAnalyzer.getScatterSymbolsPositions<T>(context.symbols as T[][], this.symbolId).length >= this.minimumCount;
     }

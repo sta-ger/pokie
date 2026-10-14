@@ -15,6 +15,9 @@ export type VideoSlotInitialNetworkData<T extends string | number | symbol = str
     VideoSlotRoundNetworkData<T>;
 
 export type VideoSlotRoundNetworkData<T extends string | number | symbol = string> = {
+    holdAndWin?: ReturnType<typeof import("./observeVideoSlotFeatures.js").observeVideoSlotFeatures<T>>["holdAndWin"];
+    jackpot?: ReturnType<typeof import("./observeVideoSlotFeatures.js").observeVideoSlotFeatures<T>>["jackpot"];
+    chargedBetModeId?: string;
     reelsSymbols: T[][];
     /** Coverage of each visible cell row, independent of evaluation eligibility. */
     visibleRowCoverage?: number[];

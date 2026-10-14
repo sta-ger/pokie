@@ -102,7 +102,7 @@ export function buildGameModelProjection(
             availableBets,
             betModes: (blueprint.betModes ?? []).map((mode) => ({...mode})),
         }),
-        mechanics: available({freeGames: blueprint.mechanics?.freeGames}),
+        mechanics: available(JSON.parse(JSON.stringify(blueprint.mechanics ?? {}))),
         limits: available(deriveLimits(availableBets)),
     };
 }

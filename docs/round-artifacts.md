@@ -371,3 +371,5 @@ Root ESM/CJS exports provide recording and replay. The browser entry exports the
 recording types only; Studio uses the server verifier's verdict. Native outcome
 libraries retain their selection/hash profile; portable WASM retains its current
 runtime replay and compact state, without package audit support.
+
+Standard authored observations now include `holdAndWin` (locks, active flag, remaining respins and completion payout), `jackpot` (pool balances/statistics and award), and `chargedBetMode` events. Live VideoSlot payloads expose corresponding data and `chargedBetModeId` separately from selected `betModeId`. Shared player counters consume both live data and replay artifact events. Symbol-less jackpot wins carry a JSON `null` symbol ID. Seeded replay reconstructs commands; exact audit replay validates retained executable boundaries and outputs, including purchase and continuation commands.

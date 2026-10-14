@@ -1,3 +1,4 @@
+import type {WinEvaluationSnapshot} from "../winevaluation/WinEvaluationSnapshot.js";
 import type {JackpotPoolStatisticsSnapshot} from "../../JackpotStatisticsSnapshot.js";
 
 // Deterministic serialization/replay shape for VideoSlotWithJackpotSession. "poolStatistics" is the
@@ -23,6 +24,7 @@ import type {JackpotPoolStatisticsSnapshot} from "../../JackpotStatisticsSnapsho
 // when poolStatistics itself is absent (see its own doc comment on the exact migration rule). Never read or
 // written as an independently authoritative representation alongside poolStatistics.
 export type VideoSlotWithJackpotSessionState = {
+    lastOutcome?: {kind: "ordinary"} | {kind: "awarded"; poolId: string; amount: number; symbolId?: string | number | symbol; baseWinAmount: number; baseEvaluation: WinEvaluationSnapshot<string | number | symbol>};
     poolStatistics?: Readonly<Record<string, JackpotPoolStatisticsSnapshot>>;
     /** @deprecated Legacy pre-poolStatistics shape; see this type's own doc comment. */
     awardCount?: number;

@@ -1,4 +1,4 @@
-import type {GameBlueprintFreeGames} from "../../generated/GameBlueprint.js";
+import type {GameBlueprintFreeGames, GameBlueprintMechanics} from "../../generated/GameBlueprint.js";
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import type {SheetGrid} from "../SheetGrid.js";
 import type {MechanicsSheetMapping} from "./MechanicsSheetMapping.js";
@@ -9,8 +9,22 @@ const COLUMNS = ["Scatter Symbol", "Matches", "Free Games"];
 export class MechanicsSheetMapper implements MechanicsSheetMapping {
     public readonly sheetName = "Mechanics";
 
-    public fromRows(rows: SheetGrid): {value: GameBlueprintFreeGames | undefined; issues: ValidationIssue[]} {
+    public fromRows(rows: SheetGrid): {value: GameBlueprintFreeGames | undefined; mechanics?: GameBlueprintMechanics; issues: ValidationIssue[]} {
         const issues: ValidationIssue[] = [];
+        if (rows[0]?.[0] === "Mechanic" && rows[0]?.[1] === "Configuration JSON") {
+            const mechanics: Record<string, unknown> = {};
+            rows.slice(1).forEach((row, index) => {
+                if (isBlankRow(row)) return;
+                const name = cellToText(row[0]);
+                try {
+                    if (!name || !["freeGames", "holdAndWin", "jackpot"].includes(name) || name in mechanics) throw new Error("Unknown or duplicate mechanic.");
+                    mechanics[name] = JSON.parse(cellToText(row[1]) ?? "");
+                } catch (error) {
+                    issues.push({code: "parsheet-mechanics-invalid", severity: "error", path: `Mechanics.${index + 2}`, message: String(error)});
+                }
+            });
+            return {value: undefined, mechanics: mechanics as GameBlueprintMechanics, issues};
+        }
         const [header, ...dataRows] = rows;
         const columns = resolveColumnIndexes(header ?? [], COLUMNS, this.sheetName, issues);
         const scatterIndex = columns["Scatter Symbol"];
@@ -95,7 +109,12 @@ export class MechanicsSheetMapper implements MechanicsSheetMapping {
         return {value: {scatterSymbol, awardsByCount}, issues};
     }
 
-    public toRows(freeGames: GameBlueprintFreeGames): SheetGrid {
+    public toRows(freeGames: GameBlueprintFreeGames | undefined, mechanics?: GameBlueprintMechanics): SheetGrid {
+        if (mechanics && (mechanics.holdAndWin || mechanics.jackpot || mechanics.freeGames?.retriggerPolicy)) return [
+            ["Mechanic", "Configuration JSON"],
+            ...Object.entries(mechanics).filter(([, value]) => value !== undefined).map(([name, value]) => [name, JSON.stringify(value)]),
+        ];
+        if (!freeGames) return [COLUMNS];
         const rows: SheetGrid = [COLUMNS];
         const matchCounts = Object.keys(freeGames.awardsByCount)
             .map(Number)

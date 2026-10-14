@@ -1,3 +1,5 @@
+import {AUTHORED_MECHANIC_CATALOG} from "@fromstan/pokie";
+import {existingMechanicsBlueprint} from "../v2/fixtures/ExistingMechanicsGame.js";
 import crypto from "crypto";
 import fs from "fs";
 import os from "os";
@@ -364,4 +366,19 @@ describe("WasmArtifactBuilder", () => {
 
         await expect(new ProjectTargetResolver().resolve(outputPath)).rejects.toThrow(/module or game configuration does not match/i);
     });
+});
+
+it.each(["hold-flat", "fixed-base", "accumulating-base"])("fails closed for authored %s without publishing WASM or sidecars", async id => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-v2c12-wasm-"));
+    try {
+        const blueprint = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
+        const source = path.join(directory, "source.json");
+        fs.writeFileSync(source, JSON.stringify(blueprint));
+        const before = fs.readFileSync(source);
+        await expect(new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, path.join(directory, "out.wasm"))).rejects.toThrow(/does not implement mechanics.holdAndWin or mechanics.jackpot/);
+        expect(fs.readdirSync(directory)).toEqual(["source.json"]);
+        expect(fs.readFileSync(source)).toEqual(before);
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
 });

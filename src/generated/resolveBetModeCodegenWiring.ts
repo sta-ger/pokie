@@ -32,7 +32,11 @@ export function resolveBetModeCodegenWiring(blueprint: GameBlueprint): BetModeCo
     if (!betModes || betModes.length === 0) {
         return undefined;
     }
+    if (betModes.some(mode => !mode.id?.trim()) || new Set(betModes.map(mode => mode.id)).size !== betModes.length) {
+        throw new BetModeRuntimeSemanticsInvalidError("Bet modes require unique nonempty ids.");
+    }
     if (!betModes.some((mode) => mode.runtimeType !== undefined)) {
+        if (betModes.some(mode => mode.forcedFreeGames !== undefined)) throw new BetModeRuntimeSemanticsInvalidError("forcedFreeGames requires explicit runtimeType on every mode.");
         return undefined;
     }
     if (!betModes.every((mode) => mode.runtimeType !== undefined)) {

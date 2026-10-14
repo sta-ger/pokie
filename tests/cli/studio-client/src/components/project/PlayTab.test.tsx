@@ -1,5 +1,5 @@
 import {MantineProvider} from "@mantine/core";
-import {render, screen} from "@testing-library/react";
+import {fireEvent, render, screen} from "@testing-library/react";
 import {readFileSync} from "fs";
 import path from "path";
 import type {StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
@@ -284,4 +284,17 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
         expect(screen.getByText("Play prepares this game for a real round and creates a session in Studio. Nothing else needs to be set up.")).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "New Play session"})).toBeInTheDocument();
     });
+});
+
+it("clears consumed purchase UI intent even when the confirmed default mode has the same value", () => {
+    const onSpin = jest.fn();
+    const base: StudioRuntimeSessionView = {sessionId: "purchase", game: {id: "g", name: "G", version: "1"}, bet: 0.05, availableBets: [0.05], availableBetModeIds: ["base", "buy"], betModeId: "base", screen: [["A"]]};
+    const page = (session: StudioRuntimeSessionView) => <MantineProvider><PlayTab session={{status: "ok", session}} sessionId="purchase" onNewSession={() => undefined} onSpin={onSpin} onFindAnyWin={() => undefined} onFindSymbolWin={() => undefined} onFindFreeGames={() => undefined} /></MantineProvider>;
+    const {rerender} = render(page(base));
+    fireEvent.click(screen.getByRole("button", {name: "Select mode buy"}));
+    fireEvent.click(screen.getByRole("button", {name: "Spin"}));
+    expect(onSpin).toHaveBeenLastCalledWith(0.05, "buy", "stepwise");
+    rerender(page({...base, chargedBetModeId: "buy", totalWin: 0}));
+    fireEvent.click(screen.getByRole("button", {name: "Spin"}));
+    expect(onSpin).toHaveBeenLastCalledWith(0.05, "base", "stepwise");
 });

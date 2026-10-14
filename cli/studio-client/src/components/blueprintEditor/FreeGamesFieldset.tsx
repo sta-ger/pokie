@@ -50,6 +50,7 @@ export function FreeGamesFieldset({
         <PageSection legend="Free games">
             <IssueList title="Errors" issues={errors} />
             <IssueList title="Warnings" issues={warnings} />
+            <Text>Retrigger policy: additive.</Text>
             <Select
                 label="Scatter symbol"
                 placeholder="Scatter symbol"
@@ -95,7 +96,7 @@ export function FreeGamesFieldset({
                 </Table>
             </Table.ScrollContainer>
             <QuickActions>
-                <NumberInput aria-label="New match count" placeholder="Match count" min={2} step={1} value={newMatchCount} onChange={setNewMatchCount} />
+                <NumberInput aria-label="New match count" placeholder="Match count" min={1} step={1} value={newMatchCount} onChange={setNewMatchCount} />
                 <NumberInput aria-label="New free games awarded" placeholder="Free games awarded" value={newAwarded} onChange={setNewAwarded} />
                 <Group>
                     <Button

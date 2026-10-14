@@ -24,6 +24,16 @@ implements VideoSlotSessionHandling<T> {
 
     constructor(baseSession: VideoSlotSessionHandling<T>) {
         this.baseSession = baseSession;
+        // Preserve optional capabilities without advertising capabilities absent on the base.
+        // A concrete decorator's own implementation always wins.
+        for (const name of ["getBetModeId", "setBetMode", "getAvailableBetModeIds", "validateEntryAction",
+            "getChargedBetModeId", "getSimulationCategory", "getJackpotStatisticsSnapshot", "getJackpotPools",
+            "getJackpotLastRoundOutcome", "getJackpotPoolStatistics", "getJackpotAwardCount", "getJackpotTotalAwarded", "getJackpotTotalContributed",
+            "isHoldAndWinActive", "getLockedHoldAndWinSymbols", "getHoldAndWinRespinsRemaining", "getHoldAndWinPayout",
+            "getFreeGamesNum", "getFreeGamesSum", "getFreeGamesBank", "getWonFreeGamesNumber"]) {
+            const method: unknown = Reflect.get(baseSession, name);
+            if (!(name in this) && typeof method === "function") Reflect.defineProperty(this, name, {value: method.bind(baseSession)});
+        }
     }
 
     public setSelectionContext(context: string): void {

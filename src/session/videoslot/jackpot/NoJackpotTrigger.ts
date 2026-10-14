@@ -7,6 +7,10 @@ import type {JackpotTriggering} from "./JackpotTriggering.js";
 // its own. A real deployment must explicitly configure a genuine JackpotTriggering (e.g.
 // SymbolCountJackpotTrigger, or a custom probability-based one) to ever actually award anything.
 export class NoJackpotTrigger<T extends string | number | symbol = string> implements JackpotTriggering<T> {
+    public isStatelessForSessionRestoration(): boolean {
+        return this.constructor === NoJackpotTrigger;
+    }
+
     public isTriggered(_context: JackpotTriggerContext<T>): boolean {
         return false;
     }

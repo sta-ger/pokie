@@ -1,3 +1,6 @@
+import {captureWinEvaluation, restoreWinEvaluation} from "../winevaluation/WinEvaluationSnapshot.js";
+import {isSessionStateRestorable, resolveSessionStateSchema, type SessionStateRestoring, type SessionStateSchema} from "../../SessionStateRestoring.js";
+import {validateExecutableState} from "../../../runtime/validateExecutableState.js";
 import {rejectScreenGeometry} from "../coordinates/projectSymbolsCombination.js";
 import type {BuildableFromSessionState} from "../../BuildableFromSessionState.js";
 import type {ConvertableToSessionState} from "../../ConvertableToSessionState.js";
@@ -60,9 +63,10 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
         ConvertableToSessionState<VideoSlotWithHoldAndWinSessionState<T>>,
         BuildableFromSessionState<VideoSlotWithHoldAndWinSessionState<T>>,
         StakeAmountDetermining,
-        SimulationCategoryDetermining {
+        SimulationCategoryDetermining, SessionStateRestoring {
     private readonly roundHandler: HoldAndWinRoundHandling<T>;
     private readonly overlayTransformer = new SymbolOverlayTransformer();
+    private entryBet = 0;
     private active = false;
     private lockedSymbols: readonly LockedHoldAndWinSymbol<T>[] = [];
     private respinsRemaining = 0;
@@ -79,6 +83,34 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     ) {
         super(baseSession);
         this.roundHandler = roundHandler;
+    }
+
+    public getHoldAndWinEntryBet(): number {
+        return this.entryBet;
+    }
+    public setHoldAndWinEntryBet(bet: number): void {
+        this.entryBet = bet;
+    }
+
+    public override hasPendingLogicalRound(): boolean {
+        return this.active || super.hasPendingLogicalRound();
+    }
+
+    public getSessionStateSchema(): SessionStateSchema {
+        const config = this.roundHandler instanceof HoldAndWinRoundHandler ? this.roundHandler.getRestorationConfig() : undefined;
+        return config ? {kind: "hold-and-win", reels: this.getReelsNumber(), rows: this.getReelsSymbolsNumber(),
+            initialRespins: config.initialRespins, symbolEffects: config.symbolEffects, base: resolveSessionStateSchema(this.baseSession)} : {kind: "custom"};
+    }
+
+    public isSessionStateRestorable(): boolean {
+        return this.constructor === VideoSlotWithHoldAndWinSession && this.getSessionStateSchema().kind === "hold-and-win" && isSessionStateRestorable(this.baseSession);
+    }
+
+    public validateSessionState(value: unknown): void {
+        const schema = this.getSessionStateSchema();
+        if (schema.kind === "custom") throw new Error("Custom HoldAndWin collaborators require their own complete state codec.");
+        validateExecutableState(value, schema, undefined, !isSessionStateRestorable(this.baseSession));
+        (this.baseSession as VideoSlotSessionHandling<T> & SessionStateRestoring).validateSessionState?.((value as {base: unknown}).base);
     }
 
     public isHoldAndWinActive(): boolean {
@@ -123,6 +155,9 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
 
     public toSessionState(): VideoSlotWithHoldAndWinSessionState<T> {
         const state: VideoSlotWithHoldAndWinSessionState<T> = {
+            lastOutcome: this.lastRoundOutcome.kind === "completed" ? {kind: "completed", baseWinAmount: this.lastRoundOutcome.baseWinAmount, payout: this.lastRoundOutcome.payout,
+                baseEvaluation: captureWinEvaluation(this.lastRoundOutcome.baseRoundResult.winEvaluationResult), linesWinning: this.lastRoundOutcome.baseRoundResult.linesWinning, scattersWinning: this.lastRoundOutcome.baseRoundResult.scattersWinning} : {kind: this.lastRoundOutcome.kind},
+            entryBet: this.entryBet,
             active: this.active,
             lockedSymbols: this.lockedSymbols,
             respinsRemaining: this.respinsRemaining,
@@ -135,13 +170,20 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     }
 
     public fromSessionState(value: VideoSlotWithHoldAndWinSessionState<T>): this {
+        if (this.isSessionStateRestorable()) this.validateSessionState(value);
+        // Validate the entire nested state before changing locks or credits.
+        if (value.base !== undefined && this.supportsSessionStateRestore(this.baseSession)) this.baseSession.fromSessionState(value.base);
+        const outcome = value.lastOutcome;
+        if (outcome?.kind === "completed") {
+            const evaluation = restoreWinEvaluation(outcome.baseEvaluation);
+            this.lastRoundOutcome = {kind: "completed", baseWinAmount: outcome.baseWinAmount, payout: outcome.payout, lockedSymbols: value.lockedSymbols,
+                baseRoundResult: {winEvaluationResult: evaluation, winningLines: Object.fromEntries(evaluation.getLineWins().map(c => [c.getId(), c.getWinningLine()])), winningScatters: Object.fromEntries(evaluation.getScatterWins().map(c => [c.getSymbolId(), c.getWinningScatter()])) as Record<T, WinningScatterDescribing<T>>, linesWinning: outcome.linesWinning, scattersWinning: outcome.scattersWinning}};
+        } else this.lastRoundOutcome = {kind: outcome?.kind ?? "ordinary"};
+        this.entryBet = value.entryBet ?? this.getBet();
         this.active = value.active;
         this.lockedSymbols = value.lockedSymbols;
         this.respinsRemaining = value.respinsRemaining;
         this.payout = value.payout;
-        if (value.base !== undefined && this.supportsSessionStateRestore(this.baseSession)) {
-            this.baseSession.fromSessionState(value.base);
-        }
         return this;
     }
 
@@ -151,6 +193,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
 
     public override validateScreenCoordinates(): void {
         super.validateScreenCoordinates();
+        if (typeof Reflect.get(this.baseSession, "getJackpotPools") === "function" || typeof Reflect.get(this.baseSession, "getFreeGamesSum") === "function") throw new Error("HoldAndWin must be inside jackpot and cannot compete with free games.");
         rejectScreenGeometry({getScreenGeometry: () => this.getConfiguredScreenGeometry()}, "HoldAndWin");
     }
 
@@ -188,7 +231,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     // restores credits to their pre-play value for exactly that case. Same condition canPlayNextGame() uses
     // to let such a spin through regardless of balance, kept as one source of truth.
     public getStakeAmount(): number {
-        return this.active ? 0 : this.getBet();
+        return this.active ? 0 : (this.baseSession as VideoSlotSessionHandling<T> & Partial<StakeAmountDetermining>).getStakeAmount?.() ?? this.getBet();
     }
 
     // Standard result API stabilization: reports what the *last played round* actually paid out, per

@@ -1,3 +1,4 @@
+import {observeVideoSlotFeatures} from "../net/videoslot/observeVideoSlotFeatures.js";
 import type {RoundArtifactStepSource} from "./RoundArtifactStepSource.js";
 import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
 import {captureScreen} from "../session/captureScreen.js";
@@ -65,11 +66,13 @@ export function buildRoundArtifactFromSession<T extends string | number = string
 }
 
 function deriveStandardFeatureEvents(session: unknown): RoundArtifactFeatureEventInput[] {
-    if (!supportsWonFreeGamesNumberDetermining(session)) {
-        return [];
-    }
-    const wonFreeGamesNumber = session.getWonFreeGamesNumber();
-    return wonFreeGamesNumber > 0 ? [{type: "freeGamesTriggered", data: {count: wonFreeGamesNumber}}] : [];
+    const observations = observeVideoSlotFeatures(session);
+    const events: RoundArtifactFeatureEventInput[] = [];
+    if (supportsWonFreeGamesNumberDetermining(session) && session.getWonFreeGamesNumber() > 0) events.push({type: "freeGamesTriggered", data: {count: session.getWonFreeGamesNumber()}});
+    if (observations.holdAndWin) events.push({type: "holdAndWin", data: observations.holdAndWin});
+    if (observations.jackpot) events.push({type: "jackpot", data: observations.jackpot});
+    if (observations.chargedBetModeId) events.push({type: "chargedBetMode", data: {id: observations.chargedBetModeId}});
+    return events;
 }
 
 function supportsWonFreeGamesNumberDetermining(session: unknown): session is WonFreeGamesNumberDetermining {

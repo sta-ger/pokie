@@ -214,3 +214,5 @@ at conversion preflight and direct execution. The same restriction applies to
 PAR workbook export and automatic intermediate conversions. Neither target
 selects, concatenates or silently flattens a weighted reel; refusal occurs before
 publishing an output. Use a TypeScript package for whole-sequence variants.
+
+Authored `mechanics.holdAndWin` and `mechanics.jackpot` are rejected before WASM publication, alongside free games and nonempty bet modes. Their continuation/pool histories are also outside paid-grid outcome-library/Stake projection. Use the generated TypeScript package runtime for these workflows; stackable engine classes do not imply support in a different artifact target.

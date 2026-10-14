@@ -1,3 +1,4 @@
+import {determineChargedBetMode} from "../session/determineChargedBetMode.js";
 import {isSessionStateRestorable, resolveSessionStateSchema} from "../session/SessionStateRestoring.js";
 import {sequenceSelectionsEqual} from "../artifact/validateSequenceSelections.js";
 import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
@@ -268,7 +269,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         if (!session.canPlayNextGame()) throw new Error("Prepared session cannot play the next round.");
         const stake = typeof (session as Partial<StakeAmountDetermining>).getStakeAmount === "function"
             ? (session as GameSessionHandling & StakeAmountDetermining).getStakeAmount() : session.getBet();
-        const mode = supportsBetModeSelecting(session) ? session.getBetModeId() : undefined;
+        const mode = determineChargedBetMode(session, stake);
         const creditsBefore = session.getCreditsAmount();
         const bet = session.getBet();
         const context = command.continuation?.roundId ?? command.roundId;

@@ -1,4 +1,6 @@
+import {existingMechanicsBlueprint, generatedMechanicsGame, mechanicsSession} from "../../../v2/fixtures/ExistingMechanicsGame.js";
 import {
+    AUTHORED_MECHANIC_CATALOG,
     AggregateSimulationRunner,
     MinimumCountHoldAndWinTrigger,
     SumWithMultiplierHoldAndWinPayoutAggregator,
@@ -516,5 +518,52 @@ describe("VideoSlotWithHoldAndWinSession", () => {
         expect(breakdown?.base).toMatchObject({rounds: 1, totalWin: 15});
         // 4 respins total: 3 pay nothing (suppressed), the 4th (round 5) pays the aggregated 40.
         expect(breakdown?.holdAndWin).toMatchObject({rounds: 4, totalWin: 40, hitFrequency: 0.25});
+    });
+});
+
+describe("V2C-12 canonical HoldAndWin continuation", () => {
+    it.each([0.05, 7.5, 1e-7])("binds values to entry bet %s through fresh-instance restoration and direct bet changes", bet => {
+        const b = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === "hold-bet")!);
+        b.reelStrips = [["C"], ["A"], ["A"]];
+        const game = generatedMechanicsGame(b),
+            first = mechanicsSession(game);
+        first.setBet(bet);
+        first.play();
+        expect(first.hasPendingLogicalRound()).toBe(true);
+        const saved = JSON.parse(JSON.stringify(first.toSessionState()));
+        const restored = mechanicsSession(game);
+        restored.setCreditsAmount(first.getCreditsAmount());
+        restored.fromSessionState(saved);
+        restored.setBet(bet === 7.5 ? 0.05 : 7.5);
+        first.play();
+        restored.play();
+        expect(restored.getStakeAmount()).toBe(0);
+        expect(restored.getWinAmount()).toBe(0);
+        first.play();
+        restored.play();
+        expect(restored.hasPendingLogicalRound()).toBe(false);
+        expect(restored.getWinAmount()).toBe(2 * bet);
+        expect(restored.getWinAmount()).toBe(first.getWinAmount());
+        expect(restored.getCreditsAmount()).toBe(first.getCreditsAmount());
+        const completed = mechanicsSession(game);
+        completed.fromSessionState(JSON.parse(JSON.stringify(restored.toSessionState())));
+        expect(completed.getWinAmount()).toBe(2 * bet);
+    });
+
+    it("rejects corrupt locks, denomination and nested RNG without changing the live state", () => {
+        const b = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === "hold-flat")!);
+        b.reelStrips = [["C"], ["A"], ["A"]];
+        const session = mechanicsSession(generatedMechanicsGame(b));
+        session.play();
+        const before = JSON.parse(JSON.stringify(session.toSessionState()));
+        for (const corrupt of [
+            {...before, entryBet: NaN}, {...before, respinsRemaining: 0},
+            {...before, lockedSymbols: [...before.lockedSymbols, before.lockedSymbols[0]]},
+            {...before, lockedSymbols: [{...before.lockedSymbols[0], effect: {kind: "value", amount: Infinity}}]},
+            {...before, base: {}}, {...before, lastOutcome: {kind: "completed", payout: 100}},
+        ]) {
+            expect(() => session.fromSessionState(corrupt)).toThrow();
+            expect(session.toSessionState()).toEqual(before);
+        }
     });
 });

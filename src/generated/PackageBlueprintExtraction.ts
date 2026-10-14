@@ -285,7 +285,13 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
             };
             checkKeys(model.manifest, "manifest", ["id", "name", "version", "description", "author"]);
             checkKeys(model.winModel, "winModel", ["type", "minimumClusterSize"]);
-            checkKeys(model.mechanics, "mechanics", ["freeGames"]);
+            checkKeys(model.mechanics, "mechanics", ["freeGames", "holdAndWin", "jackpot"]);
+            checkKeys(model.mechanics?.holdAndWin, "mechanics.holdAndWin", ["minimumCount", "initialRespins", "retriggerPolicy", "symbolEffects", "payout"]);
+            checkKeys(model.mechanics?.holdAndWin?.payout, "mechanics.holdAndWin.payout", ["type", "amountsAreBetMultiples"]);
+            checkKeys(model.mechanics?.jackpot, "mechanics.jackpot", ["pool", "contribution", "trigger", "award"]);
+            checkKeys(model.mechanics?.jackpot?.pool, "mechanics.jackpot.pool", ["id", "type", "amount", "seedValue"]);
+            checkKeys(model.mechanics?.jackpot?.contribution, "mechanics.jackpot.contribution", ["type", "percentage"]);
+            checkKeys(model.mechanics?.jackpot?.trigger, "mechanics.jackpot.trigger", ["type", "symbolId", "minimumCount"]);
             checkKeys(model.screenGeometry, "screenGeometry", ["generated", "visible", "evaluated", "paylineSpace"]);
             checkKeys(model.screenGeometry?.generated, "screenGeometry.generated", ["reels", "rows"]);
             checkKeys(model.screenGeometry?.visible, "screenGeometry.visible", ["rowOffset", "rows"]);
@@ -301,7 +307,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                     "targetRtp",
                 ]),
             );
-            checkKeys(model.mechanics?.freeGames, "mechanics.freeGames", ["scatterSymbol", "awardsByCount"]);
+            checkKeys(model.mechanics?.freeGames, "mechanics.freeGames", ["scatterSymbol", "awardsByCount", "retriggerPolicy"]);
             if (descriptor.unsupported !== undefined) {
                 if (!Array.isArray(descriptor.unsupported)) throw new Error("unsupported: expected diagnostic array");
                 for (const boundary of descriptor.unsupported as PackageExtractionDiagnostic[]) {
