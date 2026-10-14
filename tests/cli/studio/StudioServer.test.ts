@@ -120,11 +120,15 @@ const runBundledNpmCommand: PackageCommandRunning = async (command, args, cwd, o
         }
         return await runPackageCommand(command, args, cwd, {
             ...options,
-            spawn: (executable, childArgs, spawnOptions) => spawn(
-                executable === "npm" && fs.existsSync(bundledNpm) ? bundledNpm : executable,
-                childArgs,
-                {...spawnOptions, env: {...process.env}},
-            ),
+            spawn: (executable, childArgs, spawnOptions) => {
+                const child = spawn(
+                    executable === "npm" && fs.existsSync(bundledNpm) ? bundledNpm : executable,
+                    childArgs,
+                    {...spawnOptions, env: {...process.env}},
+                );
+                expect(child.stdin).toBeNull();
+                return child;
+            },
         });
     } finally {
         if (original) fs.writeFileSync(packagePath, original);

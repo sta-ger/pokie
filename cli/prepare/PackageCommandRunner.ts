@@ -1,17 +1,19 @@
-import {execFile, spawn, type ChildProcessWithoutNullStreams} from "child_process";
+import {execFile, spawn, type ChildProcess} from "child_process";
 import fs from "fs";
 import {isDeepStrictEqual} from "node:util";
 import path from "path";
+import type {Readable} from "stream";
 import {PackageJsonLike, withLocalPokieDependency} from "@fromstan/pokie";
 import {LocalPokieDependencyClosureEntry, resolveLocalPokieDependencyClosure} from "./localPokieDependencyClosure.js";
 import {RuntimePreparationCancelledError} from "../materialize/RuntimePreparationCancelledError.js";
 
 export type PackageCommandResult = {stdout: string; stderr: string};
+// The runner consumes piped output; ignored stdin is null on native spawned children.
 export type PackageCommandSpawning = (
     command: string,
     args: string[],
     options: {cwd: string; detached: boolean; stdio: ["ignore", "pipe", "pipe"]},
-) => ChildProcessWithoutNullStreams;
+) => ChildProcess & {stdout: Readable; stderr: Readable};
 export type PackageCommandOptions = {readonly signal?: AbortSignal; readonly spawn?: PackageCommandSpawning};
 
 // `cwd` is always the package's own project root -- never a shell string, so `args` (e.g. "install",
