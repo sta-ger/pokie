@@ -1,3 +1,4 @@
+import {generatedMechanicsGame, replayModesBlueprint} from "../v2/fixtures/ExistingMechanicsGame.js";
 import {transactionalRoundGame} from "../v2/fixtures/TransactionalRoundGame.js";
 import {createOverscanGame} from "../v2/fixtures/OverscanGame.js";
 import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameContext, PokieGameManifest, ReplayRecorder, ReplayDescriptor, SessionRuntime, AuditRoundReplay, AuditReplayError, ConvertableToSessionState, captureAuditBoundary, SessionCommand} from "@fromstan/pokie";
@@ -466,5 +467,37 @@ describe("direct audit operation identity and retention", () => {
         expect(() => recorder.recordAudit(game, session, [{kind: "spin", bet: 7.5}], disposition)).toThrow("audit-identity at operation");
         expect(play).toHaveBeenCalledTimes(1);
         recorder.releaseAuditSession(session);
+    });
+});
+
+describe("F12 seeded step artifact attribution", () => {
+    describe.each([false, true])("weighted sequences: %s", weighted => {
+        it.each([
+            {mode: "base", stakes: [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]},
+            {mode: "ante", stakes: Array<number>(8).fill(0.05 * 1.5)},
+            {mode: "buy", stakes: [0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0]},
+            {mode: "buy-more", stakes: [1.25, 0, 0, 0, 1.25, 0, 0, 0]},
+        ])("retains executed $mode stake/mode at entry, continuation, completion and repurchase", ({mode, stakes}) => {
+            const game = generatedMechanicsGame(replayModesBlueprint(weighted));
+            for (let round = 1; round <= stakes.length; round++) {
+                const execution = new ReplayRecorder().execute({game, seed: "review-fixed", round, betModeId: mode});
+                const results = [];
+                let next = execution.next();
+                while (!next.done) {
+                    results.push(next.value.result);
+                    next = execution.next();
+                }
+                const descriptor = next.value;
+                const result = results[results.length - 1];
+                expect(results.map(result => result.status === "played" ? result.stake : undefined)).toEqual(stakes.slice(0, round));
+                expect(result).toMatchObject({status: "played", mode, stake: stakes[round - 1]});
+                expect(descriptor.totalBet).toBeCloseTo(stakes.slice(0, round).reduce((sum, stake) => sum + stake, 0), 12);
+                expect(descriptor.totalWin).toBe(0);
+                expect(descriptor.commands).toEqual(stakes.slice(0, round).map(stake => ({kind: "spin", ...(stake > 0 ? {mode} : {})})));
+                expect(descriptor.artifact).toMatchObject({betMode: mode, stake: stakes[round - 1]});
+                expect(descriptor.artifact?.featureEvents).toContainEqual(expect.objectContaining({type: "chargedBetMode", data: {id: mode}}));
+                expect(Boolean(descriptor.artifact?.sequenceSelections?.length)).toBe(weighted);
+            }
+        });
     });
 });

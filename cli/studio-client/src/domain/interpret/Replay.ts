@@ -156,7 +156,7 @@ export function describeReplayResult(job: StudioReplayJobView): ReplayResultView
         artifact: descriptor.artifact ? describeRoundArtifact(descriptor.artifact) : undefined,
         stateBefore: descriptor.stateBefore,
         stateAfter: descriptor.stateAfter,
-        modeName: descriptor.modePolicy?.betModeId ?? job.modeName,
+        modeName: descriptor.outcomeSource?.modeName,
         modePolicy: descriptor.modePolicy,
         commands: descriptor.commands,
     };

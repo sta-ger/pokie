@@ -1,3 +1,4 @@
+import {describeReplayResult} from "../../cli/studio-client/src/domain/interpret/Replay.js";
 import {StudioSimulationService} from "../../cli/studio/simulation/StudioSimulationService.js";
 import {buildSimulationReportDownload} from "../../cli/studio/simulation/buildSimulationReportDownload.js";
 import {describeSimulationReport} from "../../cli/studio-client/src/domain/interpret/Simulation.js";
@@ -102,6 +103,16 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
             const descriptor = JSON.parse(fs.readFileSync(replayPath, "utf8")) as api.ReplayDescriptor;
             const expected = new api.ReplayRecorder().record({game, seed: "31", round: 3, betModeId: mode});
             expect(descriptor).toMatchObject({round: 3, totalBet: expected.totalBet, totalWin: expected.totalWin, screen: expected.screen});
+            expect(descriptor.artifact).toEqual(expected.artifact);
+            expect(descriptor.artifact).toBeDefined();
+            const view = describeReplayResult({id: "catalogue-replay", status: "completed", round: 3, completedRounds: 3, startedAt: "2026-10-14T00:00:00Z", durationMs: 0, descriptor});
+            expect(view?.artifact?.canonicalArtifact).toEqual(descriptor.artifact);
+            expect(view?.modeName).toBeUndefined();
+            if (mode) {
+                expect(descriptor.artifact!.betMode).toBe(mode);
+                expect(view?.modePolicy?.betModeId).toBe(mode);
+                expect(view?.artifact?.featureEvents).toContainEqual(expect.objectContaining({type: "chargedBetMode", data: {id: mode}}));
+            }
             if (mode) {
                 expect(descriptor.modePolicy).toEqual({betModeId: mode, selection: "repeat-when-available"});
                 expect(descriptor.unit).toBe("step");

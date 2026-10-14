@@ -1155,6 +1155,7 @@ export function ReplayTab({
                                             <Table.Th>Seed</Table.Th>
                                             <Table.Td>{result.seed ?? "(none)"}</Table.Td>
                                         </Table.Tr>
+                                        {result.modePolicy && <Table.Tr><Table.Th>Package bet mode</Table.Th><Table.Td>{result.modePolicy.betModeId}</Table.Td></Table.Tr>}
                                         {result.modePolicy && <Table.Tr><Table.Th>Mode policy</Table.Th><Table.Td>{result.modePolicy.selection}; {result.commands?.length ?? 0} executed step commands</Table.Td></Table.Tr>}
                                         {result.modeName && (
                                             <Table.Tr>

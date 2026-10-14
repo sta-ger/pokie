@@ -13,7 +13,6 @@ import {executeLogicalReplayCommand} from "./internal/executeLogicalReplayComman
 import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
 import {buildLogicalRoundArtifact} from "../artifact/buildLogicalRoundArtifact.js";
 import type {LogicalRound} from "../runtime/LogicalRound.js";
-import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import {buildRoundArtifactFromSession} from "../artifact/buildRoundArtifactFromSession.js";
 import {PokieJsonRoundArtifactProjector} from "../artifact/PokieJsonRoundArtifactProjector.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
@@ -200,6 +199,7 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         const executedCommands: SessionCommand[] = [];
         const startedAt = Date.now();
         let logicalRound: LogicalRound | undefined;
+        let finalResult: ReturnType<typeof executeSessionCommand> | undefined;
         let totalBet = 0;
         let totalWin = 0;
         for (let played = 0; played < round; played++) {
@@ -215,6 +215,7 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
                 : options.entryCommands?.[played] ?? (selector ? {kind: "spin" as const, ...(selected.getStakeAmount?.() === 0 ? {} : {mode: selected.getBetModeId?.()})} : undefined);
             if (selector && command) executedCommands.push(command);
             const result = options.unit === "logical-round" ? executeLogicalReplayCommand(session, command!, signal) : executeSessionCommand(session, command, signal);
+            finalResult = result;
             logicalRound = result.logicalRound;
             if ((logicalRound && logicalRound.status !== "completed") || (session as Partial<CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded === true) throw new Error("Replay logical round exceeded the delivery bound; result is incomplete or exhausted.");
             totalBet += logicalRound?.totalStake ?? result.stake;
@@ -223,10 +224,10 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         }
         const durationMs = Date.now() - startedAt;
         const slot = session as Partial<VideoSlotSessionHandling>;
-        const geometry = slot.getScreenGeometry?.();
-        let artifact = (slot.getSequenceSelections?.().length || logicalRound || (geometry && !new ScreenProjection(geometry).isIdentity())) && slot.getWinEvaluationResult
+        // The live session now describes the next play; only the accepted result owns this step's charge.
+        let artifact = finalResult && slot.getSymbolsCombination && slot.getWinEvaluationResult
             ? new PokieJsonRoundArtifactProjector().project(buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {
-                roundId: logicalRound?.id ?? `replay:${seed ?? "no-seed"}:${round}`, provenance: {game: manifest, pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})},
+                roundId: logicalRound?.id ?? `replay:${seed ?? "no-seed"}:${round}`, stake: finalResult.stake, betMode: finalResult.mode, provenance: {game: manifest, pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})},
             })) : undefined;
 
         if (logicalRound && slot.getWinEvaluationResult) artifact = new PokieJsonRoundArtifactProjector().project(buildLogicalRoundArtifact(logicalRound,

@@ -1,4 +1,4 @@
-import {existingMechanicsBlueprint, generatedMechanicsGame} from "../../../v2/fixtures/ExistingMechanicsGame.js";
+import {existingMechanicsBlueprint, generatedMechanicsGame, replayModesBlueprint} from "../../../v2/fixtures/ExistingMechanicsGame.js";
 import {transactionalRoundGame} from "../../../v2/fixtures/TransactionalRoundGame.js";
 import {createOverscanGame} from "../../../v2/fixtures/OverscanGame.js";
 import {
@@ -1994,5 +1994,39 @@ describe("V2C-12 package simulation replay mode policy", () => {
             expect(job.descriptor).toBeUndefined();
         }
         await service.cancelAll();
+    });
+});
+
+describe.each([false, true])("F12 Studio replay attribution (weighted: %s)", weighted => {
+    it.each([
+        {mode: "base", stakes: Array<number>(8).fill(0.05)},
+        {mode: "ante", stakes: Array<number>(8).fill(0.05 * 1.5)},
+        {mode: "buy", stakes: [0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0]},
+        {mode: "buy-more", stakes: [1.25, 0, 0, 0, 1.25, 0, 0, 0]},
+    ])("publishes and downloads authoritative $mode steps, including completed continuations", async ({mode, stakes}) => {
+        const game = generatedMechanicsGame(replayModesBlueprint(weighted));
+        const service = new StudioReplayExecutionService(undefined, () => Promise.resolve(game), 1);
+        try {
+            for (let round = 1; round <= stakes.length; round++) {
+                const started = service.start("/f12", {round, seed: "review-fixed", modeName: mode});
+                if (started.status !== "created") throw new Error("Not created");
+                const job = await waitForTerminal(service, "/f12", started.job.id);
+                expect(job.status).toBe("completed");
+                const descriptor = job.descriptor!;
+                expect(descriptor.totalBet).toBeCloseTo(stakes.slice(0, round).reduce((sum, stake) => sum + stake, 0), 12);
+                expect(descriptor.totalWin).toBe(0);
+                expect(descriptor.commands).toEqual(stakes.slice(0, round).map(stake => ({kind: "spin", ...(stake > 0 ? {mode} : {})})));
+                expect(descriptor.artifact).toMatchObject({stake: stakes[round - 1], betMode: mode});
+                expect(descriptor.artifact?.featureEvents).toContainEqual(expect.objectContaining({type: "chargedBetMode", data: {id: mode}}));
+                const shared = new ReplayRecorder().record({game, seed: "review-fixed", round, betModeId: mode});
+                expect(descriptor.artifact).toEqual(shared.artifact);
+                expect(descriptor.commands).toEqual(shared.commands);
+                const download = service.getDownload("/f12", started.job.id);
+                if (download.status !== "ok") throw new Error("Download unavailable");
+                expect(JSON.parse(JSON.stringify(download.descriptor))).toEqual(JSON.parse(JSON.stringify(descriptor)));
+            }
+        } finally {
+            await service.cancelAll();
+        }
     });
 });

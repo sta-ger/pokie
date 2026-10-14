@@ -1,7 +1,6 @@
 import {createOverscanGame} from "../../v2/fixtures/OverscanGame.js";
 import {
     GameSessionHandling,
-    AUTHORED_MECHANIC_CATALOG,
     GamePackageGenerator,
     loadPokieGame,
     OutcomeLibraryBundleWriter,
@@ -24,7 +23,7 @@ import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
-import {existingMechanicsBlueprint, mechanicsSession} from "../../v2/fixtures/ExistingMechanicsGame.js";
+import {mechanicsSession, replayModesBlueprint} from "../../v2/fixtures/ExistingMechanicsGame.js";
 
 function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
     const calls: string[] = [];
@@ -205,10 +204,8 @@ describe("ReplayCommand generated package mode policy", () => {
         fs.rmSync(directory, {recursive: true, force: true});
     });
 
-    function fixture(withModes = true) {
-        const blueprint = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === "modes")!);
-        // No natural retrigger: only explicit purchases can grant these free games.
-        blueprint.reelStrips = [["A"], ["A"], ["A"]];
+    function fixture(withModes = true, weighted = false) {
+        const blueprint = replayModesBlueprint(weighted);
         if (!withModes) Reflect.deleteProperty(blueprint, "betModes");
         const built = new GamePackageGenerator("1.3.0").generate(blueprint, directory);
         let session: ReturnType<typeof mechanicsSession>;
@@ -239,6 +236,8 @@ describe("ReplayCommand generated package mode policy", () => {
         expect(descriptor.totalBet).toBeCloseTo(0.15, 12);
         expect(descriptor).toMatchObject({unit: "step", modePolicy: {betModeId: "ante", selection: "repeat-when-available"}, commands: [{kind: "spin", mode: "ante"}, {kind: "spin", mode: "ante"}]});
         expect(f.stakes).toEqual([0.05 * 1.5, 0.05 * 1.5]);
+        expect(descriptor.artifact).toMatchObject({stake: 0.05 * 1.5, betMode: "ante"});
+        expect(descriptor.artifact?.featureEvents).toContainEqual(expect.objectContaining({type: "chargedBetMode", data: {id: "ante"}}));
         expect(f.getSession().getBetModeId!()).toBe("ante");
     });
 
@@ -250,11 +249,27 @@ describe("ReplayCommand generated package mode policy", () => {
         await new ReplayCommand(f.load).run([f.root, "--seed", "31", "--round", "6", "--mode", mode, "--out", f.output]);
         const descriptor = JSON.parse(fs.readFileSync(f.output, "utf8")) as ReplayDescriptor;
         expect(f.stakes).toEqual(stakes);
+        expect(descriptor.artifact).toMatchObject({stake: stakes[stakes.length - 1], betMode: mode});
+        expect(descriptor.artifact?.featureEvents).toContainEqual(expect.objectContaining({type: "chargedBetMode", data: {id: mode}}));
         expect(descriptor.totalBet).toBeCloseTo(total, 12);
         expect(descriptor.modePolicy).toEqual({betModeId: mode, selection: "repeat-when-available"});
         expect(descriptor.commands).toEqual(stakes.map(stake => ({kind: "spin", ...(stake > 0 ? {mode} : {})})));
         expect(f.getSession().getBetModeId!()).toBe("base");
         expect(f.getSession().toSessionState()).toMatchObject({chargedBetModeId: mode});
+    });
+
+    it.each([false, true])("F12 downloads paid and completed continuation artifacts across repeated purchases (weighted: %s)", async weighted => {
+        const f = fixture(true, weighted);
+        for (const round of [1, 2, 3, 4, 5, 8]) {
+            await new ReplayCommand(f.load).run([f.root, "--seed", "review-fixed", "--round", String(round), "--mode", "buy-more", "--out", f.output]);
+            const descriptor = JSON.parse(fs.readFileSync(f.output, "utf8")) as ReplayDescriptor;
+            expect(descriptor.totalBet).toBeCloseTo(round < 5 ? 1.25 : 2.5, 12);
+            expect(descriptor.totalWin).toBe(0);
+            expect(descriptor.commands).toHaveLength(round);
+            expect(descriptor.artifact).toMatchObject({stake: (round - 1) % 4 === 0 ? 1.25 : 0, betMode: "buy-more"});
+            expect(descriptor.artifact?.featureEvents).toContainEqual(expect.objectContaining({type: "chargedBetMode", data: {id: "buy-more"}}));
+            expect(Boolean(descriptor.artifact?.sequenceSelections?.length)).toBe(weighted);
+        }
     });
 
     it("F11 rejects unknown selections before a spin or output publication", async () => {

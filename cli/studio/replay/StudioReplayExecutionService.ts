@@ -1,3 +1,4 @@
+import type {SessionCommandResult} from "../../../src/runtime/SessionRuntimeHandling.js";
 import {deepFreeze} from "../../../src/internal/deepFreeze.js";
 import {
     ReplayRecorder, computeAuditRoundHash, validateAuditReplayDescriptor, toCanonicalJson,
@@ -445,6 +446,7 @@ export class StudioReplayExecutionService {
             const sessionId = this.createId();
             let session: GameSessionHandling;
             let logicalRound: LogicalRound | undefined;
+            let finalResult: Extract<SessionCommandResult, {status: "played"}> | undefined;
             let playerCredits: number;
             try {
                 session = game.createSession(context);
@@ -504,6 +506,7 @@ export class StudioReplayExecutionService {
                         const next = execution.next();
                         if (next.done || next.value.result.status !== "played") throw new Error("Package replay did not return an accepted command.");
                         const result = next.value.result;
+                        finalResult = result;
                         logicalRound = result.logicalRound;
                         if (record.abortController.signal.aborted) {
                             record.completedRounds += played + (record.unit !== "logical-round" || logicalRound?.status === "completed" ? 1 : 0);
@@ -536,7 +539,7 @@ export class StudioReplayExecutionService {
             }
 
             const final = execution.next();
-            if (!final.done) throw new Error("Package replay did not complete.");
+            if (!final.done || !finalResult) throw new Error("Package replay did not complete.");
             const descriptor: ReplayDescriptor = {
                 ...final.value,
                 sessionId,
@@ -552,7 +555,7 @@ export class StudioReplayExecutionService {
                 ...(record.unit ? {unit: record.unit} : {}), ...(record.entryCommands ? {commands: record.entryCommands} : {}), ...(logicalRound ? {logicalRound} : {}),
                 artifact: logicalRound && this.hasVideoSlotShape(session)
                     ? new PokieJsonRoundArtifactProjector().project(buildLogicalRoundArtifact(logicalRound, buildRoundArtifactFromSession(session, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: this.pokieVersion, ...(record.configHash ? {configHash: record.configHash} : {})}})))
-                    : this.buildArtifact(session, manifest, record, this.mergeDebugPayloads(stateAfterFinal)),
+                    : this.buildArtifact(session, manifest, record, finalResult, this.mergeDebugPayloads(stateAfterFinal)),
                 ...(stateBeforeFinal !== undefined ? {stateBefore: this.toPublicSessionState(stateBeforeFinal)} : {}),
                 ...(stateAfterFinal !== undefined ? {stateAfter: this.toPublicSessionState(stateAfterFinal)} : {}),
             };
@@ -846,6 +849,7 @@ export class StudioReplayExecutionService {
         session: ReturnType<PokieGame["createSession"]>,
         manifest: ReturnType<PokieGame["getManifest"]>,
         record: StudioReplayJobRecord,
+        result: Extract<SessionCommandResult, {status: "played"}>,
         debug: Record<string, unknown> | undefined,
     ): ReplayDescriptor["artifact"] {
         if (!this.hasVideoSlotShape(session)) {
@@ -853,6 +857,8 @@ export class StudioReplayExecutionService {
         }
         const artifact = buildRoundArtifactFromSession(session, {
             roundId: `replay:${record.seed ?? "no-seed"}:${record.round}`,
+            stake: result.stake,
+            betMode: result.mode,
             provenance: {game: manifest, pokieVersion: this.pokieVersion, ...(record.configHash !== undefined ? {configHash: record.configHash} : {})},
             ...(debug !== undefined ? {debug} : {}),
         });

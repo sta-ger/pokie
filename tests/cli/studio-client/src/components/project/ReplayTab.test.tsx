@@ -1,8 +1,9 @@
+import {generatedMechanicsGame, replayModesBlueprint} from "../../../../../v2/fixtures/ExistingMechanicsGame";
 import {useState} from "react";
 import {ReplayRecorder} from "../../../../../../src/replay/ReplayRecorder";
 import {transactionalRoundGame} from "../../../../../v2/fixtures/TransactionalRoundGame";
 import {MantineProvider} from "@mantine/core";
-import {render, screen} from "@testing-library/react";
+import {render, screen, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {readFileSync} from "fs";
 import path from "path";
@@ -267,5 +268,40 @@ describe("ReplayTab audit wiring", () => {
         expect(screen.getByText(/Verified prefix: 1 deliveries.*Replay remains incomplete/)).toBeInTheDocument();
         expect(screen.getByText(/Next continuation: component-round, cursor 1/)).toBeInTheDocument();
         expect(screen.queryByRole("link", {name: "Download replay JSON"})).not.toBeInTheDocument();
+    });
+});
+
+describe("F12 seeded package replay presentation", () => {
+    it.each([false, true].flatMap(weighted => [
+        {mode: "ante", round: 1, stake: 0.05 * 1.5},
+        {mode: "buy", round: 1, stake: 0.5},
+        {mode: "buy", round: 2, stake: 0},
+        {mode: "buy-more", round: 3, stake: 0},
+        {mode: "buy-more", round: 4, stake: 0},
+        {mode: "buy-more", round: 5, stake: 1.25},
+    ].map(input => ({...input, weighted}))))("renders $mode step $round from the real recorder (weighted: $weighted)", async ({mode, round, stake, weighted}) => {
+        const user = userEvent.setup();
+        const descriptor = new ReplayRecorder().record({game: generatedMechanicsGame(replayModesBlueprint(weighted)), seed: "review-fixed", round, betModeId: mode});
+        const job: StudioReplayJobView = {id: "f12-replay", status: "completed", round, seed: "review-fixed", modeName: mode,
+            completedRounds: round, startedAt: "2026-10-14T00:00:00Z", durationMs: 0, descriptor};
+        const result = describeReplayResult(job);
+        expect(result?.artifact).toMatchObject({stake, betMode: mode});
+        expect(result?.artifact?.canonicalArtifact).toEqual(descriptor.artifact);
+        render(<MantineProvider><ReplayTab progress={describeReplayProgress(job)} result={result} error={undefined}
+            onRun={() => undefined} onCancel={() => undefined} onRetry={() => undefined}
+            listView={{status: "empty"}} listError={undefined} onRefreshList={() => undefined}
+            onInspectStored={() => Promise.resolve()} onCompareStored={() => undefined}
+            expected={{status: "empty"}} onLoadExpectedFromPaste={() => undefined} onClearExpected={() => undefined} comparison={undefined}
+            recentSpins={{status: "empty"}} recentSpinsError={undefined} onRefreshRecentSpins={() => undefined}
+            recentRuns={{status: "empty"}} recentRunsError={undefined} onRefreshRecentRuns={() => undefined} currentGame={descriptor.game} /></MantineProvider>);
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(screen.getByRole("button", {name: "Run again"}));
+        expect(screen.queryByText("Outcome library mode")).not.toBeInTheDocument();
+        expect(screen.getByRole("row", {name: `Package bet mode ${mode}`})).toBeInTheDocument();
+        expect(screen.getByRole("row", {name: `Bet mode ${mode}`})).toBeInTheDocument();
+        expect(screen.getByRole("row", {name: `Stake ${stake.toFixed(2)}`})).toBeInTheDocument();
+        const charged = screen.getByText("Charged mode").parentElement!;
+        expect(within(charged).getByText(mode)).toBeInTheDocument();
+        expect(screen.getByRole("link", {name: "Download replay JSON"})).toHaveAttribute("href", "/api/project/replays/f12-replay/download");
     });
 });

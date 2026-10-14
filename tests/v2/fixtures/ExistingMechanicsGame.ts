@@ -35,3 +35,16 @@ export function mechanicsSession(game: api.PokieGame, seed: string | number = 31
     session.setBet(0.05);
     return session;
 }
+
+/** Deterministic paid screens: features can enter only through an explicit purchase. */
+export function replayModesBlueprint(weighted = false): api.GameBlueprint {
+    const blueprint = existingMechanicsBlueprint(api.AUTHORED_MECHANIC_CATALOG.find(row => row.id === "modes")!);
+    blueprint.reelStrips = [["A"], ["A"], ["A"]];
+    if (weighted) {
+        Reflect.deleteProperty(blueprint, "reelStrips");
+        blueprint.reelSequences = Array.from({length: 3}, () => ({type: "weighted", variants: [
+            {id: "first", symbols: ["A"], weight: 1}, {id: "second", symbols: ["A"], weight: 3},
+        ]}));
+    }
+    return blueprint;
+}
