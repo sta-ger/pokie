@@ -16,6 +16,7 @@ export type ManagedOutcomeProjectOwnership = {
 
 export type ArtifactBuildResult = {
     readonly outputPath: string;
+    readonly packageExtraction?: import("../generated/PackageBlueprintExtraction.js").PackageBlueprintExtractionResult;
     // A direct Blueprint -> Outcome request may reuse an already registered compatible project instead of
     // producing a second bundle at its requested destination. Both values make that different destination
     // explicit to CLI and Studio callers; outputPath is always the actual opened project root.

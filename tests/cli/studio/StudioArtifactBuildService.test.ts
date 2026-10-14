@@ -1,3 +1,4 @@
+import {writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -31,6 +32,43 @@ describe("StudioArtifactBuildService", () => {
 
     afterEach(() => {
         fs.rmSync(workDir, {recursive: true, force: true});
+    });
+
+    it("previews package diagnostics and publishes/registers a separate Blueprint with extraction provenance", async () => {
+        const source = writeDescriptorPackage(workDir);
+        const destination = path.join(workDir, "extracted.json");
+        const register = jest.fn(() => Promise.resolve());
+        const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, register);
+        const preview = await packageService.preview(source, "blueprint", destination);
+        expect(preview.status).toBe("ok");
+        expect(preview.plan.packageExtraction?.source).toMatchObject({gameId: "math-probe", gameVersion: "0.1.0", kind: "custom"});
+        const result = await packageService.build(source, "blueprint", destination);
+        expect(result.status).toBe("ok");
+        expect(register).toHaveBeenCalledWith(destination, {conversionEvidencePath: `${destination}.conversion-evidence.json`});
+        const legacy = writeDescriptorPackage(workDir, {name: "legacy", legacy: true});
+        const unavailable = await packageService.preview(legacy, "blueprint", path.join(workDir, "legacy.json"));
+        expect(unavailable.status).toBe("unsupported");
+        expect(unavailable.plan.packageExtraction?.status).toBe("partial");
+        expect(fs.existsSync(path.join(workDir, "legacy.json"))).toBe(false);
+    });
+
+    it("rolls back package extraction files and registrations when registration fails or cancels", async () => {
+        const source = writeDescriptorPackage(workDir);
+        for (const cancelled of [false, true]) {
+            const destination = path.join(workDir, `${cancelled}.json`);
+            const controller = new AbortController();
+            const unregister = jest.fn(() => Promise.resolve());
+            const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, () => {
+                if (!cancelled) throw new Error("registration failed");
+                controller.abort();
+                return Promise.resolve();
+            }, undefined, undefined, unregister);
+            const result = await packageService.build(source, "blueprint", destination, {signal: controller.signal});
+            expect(result.status).toBe(cancelled ? "cancelled" : "error");
+            expect(unregister).toHaveBeenCalledWith(destination);
+            expect(fs.existsSync(destination)).toBe(false);
+            expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(false);
+        }
     });
 
     function writeBlueprintFile(blueprint: unknown = buildBlueprint()): string {

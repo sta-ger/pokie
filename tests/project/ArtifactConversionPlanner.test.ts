@@ -11,6 +11,18 @@ function project(type: PokieProject["type"]): PokieProject {
 describe("ArtifactConversionPlanner", () => {
     const planner = new ArtifactConversionPlanner();
 
+    it("plans one capability-based package extraction stage for Blueprint and supported model destinations", () => {
+        for (const target of ["blueprint", "tsPackage", "parWorkbook", "wasm"] as const) {
+            const plan = planner.plan(project("tsPackage"), target, {destinationPath: `/exports/${target}`});
+            expect(plan.status).toBe("planned");
+            expect(plan.steps[0]).toMatchObject({kind: "extractPackageModel", input: {kind: "tsPackage"}});
+            expect(plan.steps.filter(step => step.kind === "extractPackageModel")).toHaveLength(1);
+            expect(plan.steps.some(step => step.kind === "importParWorkbook")).toBe(false);
+            expect(plan.steps[0].losses?.join(" ")).toMatch(/does not prove arbitrary TypeScript losslessness/);
+        }
+        expect(planner.plan({...project("tsPackage"), capabilities: []}, "blueprint").status).toBe("unavailable");
+    });
+
     it("binds descriptor preparation to every referenced file and directory", () => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-artifact-input-binding-"));
         const descriptor = path.join(directory, "descriptor.json");

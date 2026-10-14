@@ -233,3 +233,74 @@ broken draft for correction; this does not authorize build or runtime publicatio
 Studio and CLI editing use that authoring option and validate before saving the new
 source. PAR and canonical WASM currently reject the `reelSequences` representation;
 build a TypeScript package to preserve it. See [the reel contract](reels-and-sequences.md#weighted-whole-sequence-reels).
+
+## Public package model extraction
+
+`PackageBlueprintExtraction.extract(packageRoot | game, {signal})` is the shared executable
+model reader for library callers, `pokie build` and Studio. `GamePackageInspector` remains a
+metadata-only reader: inspecting package.json does not execute a game. Explicit model extraction
+uses the normal trusted package loader; validation of returned metadata is not a sandbox for
+module execution. Path inputs own an isolated loader snapshot and release it on every terminal
+path. A supplied game remains caller-owned; extraction never creates, advances or destroys a
+session, and never calls a supplied game's release hook.
+
+A package may implement the optional `PokieGame.getModelDescriptor()` capability:
+
+```ts
+getModelDescriptor(): PackageModelDescriptor {
+    return {
+        descriptorVersion: 1,
+        blueprintSchemaVersion: 1,
+        sourceKind: "custom",
+        model: effectiveModel,
+        // Declare custom behavior outside the Blueprint contract:
+        // unsupported: [{path: "mechanics", code: "custom-feature", message: "..."}],
+    };
+}
+```
+
+`model` contains the effective, representable `GameBlueprint` data; it can be partial for
+inspection. `getManifest()` is authoritative for game identity and must agree with a descriptor's
+manifest. npm package name/version do not become game identity. Contract versions are independent
+of the game's manifest version. Generated CommonJS and recompilable TypeScript entrypoints expose
+the same descriptor without a Blueprint JSON file or historical build-info sidecar.
+
+Supported data includes manifest fields, geometry, symbol order, wild/scatter declarations,
+paylines, authored multiplier tables, declared numeric bets, lines/ways/clusters, scatter free-game
+awards and all Blueprint bet-mode declarations/semantics. Exact reel order and weighted
+whole-sequence variant IDs, order, weights (including zero), symbols and mixed exact/weighted
+reels survive extraction. Reels must already be materialized. Extraction never regenerates a
+model from symbolWeights, a new seed or hash, nor substitutes the currently selected variant.
+Absent payout/grant entries, empty symbol tables and explicit zeros remain distinct. There is
+no integer parsing of stakes and no runtime payout sampling to infer a linear model.
+
+Legacy packages without a descriptor return manifest and supported command declarations with
+`partial` diagnostics. A public getter returning zero cannot distinguish an authored omission
+from an explicit zero. Custom calculators, non-linear per-bet payouts, restricted wilds, custom
+patterns, unsupported symbol types and opaque features require explicit unsupported boundaries;
+the reader does not infer equivalence from getter availability. Missing data is never padded into
+a successful Blueprint. Unknown model/mechanic fields also prevent automatic generation.
+
+Results distinguish `complete`, `partial`, `unsupported`, `malformed` and `cancelled`. Each result
+contains source identity, descriptor/schema versions when known, path-addressed diagnostics and
+`exact`/`inferred`/`defaulted`/`unsupported` field evidence with authority. This implementation uses
+exact declarations and labelled runtime defaults rather than inferring payouts. Nested entries,
+variant definitions, known absent awards and omitted optional runtime defaults are recorded.
+The detached validator rejects cycles, non-finite numbers, bigint/functions/symbols, sparse
+collections, accessors, hidden properties, unsafe names, toJSON hooks and custom prototypes;
+it does not invoke metadata getters or serialization hooks. Resource limits fail with a bounded
+diagnostic. Package files and caller-owned descriptor objects remain unchanged.
+
+Descriptor fidelity means preserving the declaration. Representable model fidelity means the
+Blueprint can carry that declaration. Finite seeded traces are behavioral checks of those traces.
+None proves losslessness of arbitrary TypeScript or that edited/custom code obeys a declaration.
+
+A published Blueprint has a version-1 `<output>.conversion-evidence.json` companion with
+`kind: "package-extraction"`, `sourceBindingHash`, `extractedBlueprintHash` and the full `extraction`
+result. It is bound to source package bytes and the resulting exact-content Blueprint identity;
+it is not a PAR import and carries no fabricated workbook origin. Downstream model conversions
+retain the extracted Blueprint and evidence under `.pokie/package-extraction` (an adjacent
+`<file>.pokie/package-extraction` companion for file outputs). Studio preserves the evidence path
+when registering/reopening these new artifacts. Descriptor and source drift invalidate prepared
+plans. Existing destinations, occupied companions and source aliases are rejected; staging,
+publication, cancellation and registration failures roll back operation-owned outputs.

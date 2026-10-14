@@ -1,3 +1,4 @@
+import {writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {StudioRoundRecorder} from "../../../cli/studio/runtime/StudioRoundRecorder.js";
 import {transactionalRoundGame} from "../../v2/fixtures/TransactionalRoundGame.js";
 import {
@@ -7719,6 +7720,24 @@ describe("StudioServer", () => {
             );
             return filePath;
         }
+
+        it("shares package extraction diagnosis between Game Model, artifact preview and published jobs", async () => {
+            const source = writeDescriptorPackage(artifactWorkDir);
+            const url = await startServerForProject(source);
+            const model = await get(`${url}/api/project/gameModel`);
+            expect(model.status).toBe(200);
+            expect(model.body).toMatchObject({basics: {status: "available", data: {id: "math-probe", version: "0.1.0"}}, packageExtraction: {status: "complete", source: {kind: "custom"}}});
+            const destination = path.join(artifactWorkDir, "extracted.json");
+            const preview = await post(`${url}/api/project/artifacts/preview`, {target: "blueprint", outDir: destination});
+            expect(preview.body).toMatchObject({status: "ok", plan: {packageExtraction: {status: "complete"}, steps: [{kind: "extractPackageModel"}]}});
+            expect(fs.existsSync(destination)).toBe(false);
+            const started = await post(`${url}/api/project/artifacts/build`, {target: "blueprint", outDir: destination});
+            expect(started.status).toBe(202);
+            const completed = await waitForArtifactBuildJob(url, (started.body as {job: {id: string}}).job.id);
+            expect(completed.status).toBe("completed");
+            expect(completed.result).toMatchObject({status: "ok", outputPath: destination, conversionEvidencePath: `${destination}.conversion-evidence.json`});
+            expect(fs.existsSync(destination)).toBe(true);
+        });
 
         it("returns 409 for every route when there is no active project", async () => {
             const homeBaseUrl = await startServerForProject(undefined);

@@ -487,10 +487,10 @@ Options:
   handling](#conflict-handling-an-existing---out-destination) below.
 - `--dry-run` — validate and preview without writing anything.
 
-The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its 16 supported cells are
-`blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`,
+The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its conditional supported edges are
+`blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`, plus `blueprint`/`tsPackage`/`parWorkbook`/`wasm` when public model extraction is complete,
 `outcomeLibrary` → `outcomeLibrary`/`stakeAdapter`, `stakeAdapter` → `stakeAdapter`, and `parWorkbook` →
-`blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`. Every other advertised cell reports its exact missing prerequisite and a next command. Canonical WASM is built only from Blueprint/PAR; legacy sidecar-only WASM remains inspection-only. PAR-derived targets first import a durable Blueprint intermediate; dry-run prints that stage and
+`blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`. Every other advertised cell reports its exact missing prerequisite and a next command. Canonical WASM is built from supported Blueprint models, including PAR imports and complete public package descriptors; legacy sidecar-only WASM remains inspection-only. PAR-derived targets first import a durable Blueprint intermediate; dry-run prints that stage and
 any generated/reused Outcome intermediate without writing it.
 
 A `blueprint` → `tsPackage` conversion is the classic "generate a game package from a `GameBlueprint`" path,
@@ -508,6 +508,26 @@ publishing, never attempting to recover a game model from an outcome-based artif
 For random game generation, there is no `build random`/`--random` — generation and building are two separate,
 explicit steps: [`pokie create --random`](#pokie-create-name---random) writes a Blueprint Project, then `pokie
 build <the written file> --target tsPackage --out <dir>` turns it into a real package.
+
+### `tsPackage` -> `blueprint`: public model extraction
+
+```sh
+pokie build ./my-package --target blueprint --out ./recovered.blueprint.json --dry-run
+pokie build ./my-package --target blueprint --out ./recovered.blueprint.json
+```
+
+Preview reports the shared extractor's source kind, field-level diagnostics/defaults and comparison
+boundaries without publishing files. Only a complete validated descriptor can build. Legacy/opaque
+packages retain inspectable partial information and concrete recovery diagnostics. Builds publish a
+separate Blueprint plus a bound conversion-evidence companion; SIGINT cancels owned work. Opening
+and inspecting a package never rewrites it or replaces its Studio identity. Open the resulting
+Blueprint explicitly to edit it through the existing save/apply flow.
+
+Package -> package/PAR/WASM uses the same extraction stage through Blueprint and retains its evidence.
+Destination-specific restrictions still apply (for example weighted variants cannot enter WASM).
+The normal runtime Outcome/Stake routes keep their existing behavior. See the
+[descriptor and evidence contract](game-packages.md#public-package-model-extraction) for support
+boundaries and the difference between declaration fidelity and arbitrary-code losslessness.
 
 ### `blueprint` -> `tsPackage`: generating a game package from a `GameBlueprint`
 

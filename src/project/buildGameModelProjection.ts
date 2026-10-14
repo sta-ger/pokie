@@ -1,3 +1,5 @@
+import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
+import type {PackageBlueprintExtractionResult} from "../generated/PackageBlueprintExtraction.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {buildGameModelReels, type BuildGameModelReelsOptions} from "./buildGameModelReels.js";
 import type {
@@ -98,9 +100,44 @@ export function buildGameModelProjection(
         paytable: available(flattenPaytable(blueprint.paytable)),
         betsAndModes: available({
             availableBets,
-            betModes: (blueprint.betModes ?? []).map((mode) => ({id: mode.id, label: mode.label, costMultiplier: mode.costMultiplier, targetRtp: mode.targetRtp})),
+            betModes: (blueprint.betModes ?? []).map((mode) => ({...mode})),
         }),
         mechanics: available({freeGames: blueprint.mechanics?.freeGames}),
         limits: available(deriveLimits(availableBets)),
     };
+}
+
+
+/** Read-only sections consume the same extraction result used by artifact preflight. */
+export function buildPackageGameModelProjection(extraction: PackageBlueprintExtractionResult): GameModelProjection {
+    const reason = extraction.diagnostics.map(issue => `${issue.path}: ${issue.code}: ${issue.message}`).join("; ") || "No complete public package model is available.";
+    const model = extraction.model;
+    const valid = model && !new GameBlueprintValidator().validate(model).some(issue => issue.severity === "error");
+    const effective = valid ? {...model, availableBets: model!.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100],
+        paylines: model!.paylines ?? Array.from({length: model!.screenGeometry?.evaluated.rows ?? model!.rows!}, (_, row) => Array.from({length: model!.reels!}, () => row)),} as GameBlueprint : undefined;
+    const projection = valid ? buildGameModelProjection(effective!) : buildGameModelProjection(undefined, {manifest: model?.manifest, reason});
+    projection.packageExtraction = extraction;
+    if (!valid && model && extraction.status === "partial") {
+        if (Number.isInteger(model.reels) && Number.isInteger(model.rows) && model.reels! > 0 && model.rows! > 0) {
+            const winModel = model.winModel ?? {type: "lines"};
+            projection.layout = available({reels: model.reels, rows: model.rows, screenGeometry: model.screenGeometry, winModel, paylineCount: winModel.type === "lines" ? model.paylines?.length : undefined});
+        }
+        if (Array.isArray(model.symbols) && model.symbols.every(symbol => typeof symbol === "string")) {
+            projection.symbols = available(model.symbols.map(id => ({id, isWild: model.wilds?.includes(id) ?? false, isScatter: model.scatters?.includes(id) ?? false})));
+        }
+        if (model.availableBets) {
+            projection.betsAndModes = available({availableBets: model.availableBets, betModes: model.betModes ?? []});
+            projection.limits = available(deriveLimits(model.availableBets));
+        }
+    }
+    const sections: Record<string, keyof Omit<GameModelProjection, "packageExtraction">> = {
+        manifest: "basics", reels: "layout", rows: "layout", screenGeometry: "layout", winModel: "layout", paylines: "layout",
+        symbols: "symbols", wilds: "symbols", scatters: "symbols", reelStrips: "reels", reelSequences: "reels", paytable: "paytable",
+        availableBets: "betsAndModes", betModes: "betsAndModes", mechanics: "mechanics",
+    };
+    for (const diagnostic of extraction.diagnostics.filter(issue => issue.severity !== "warning")) {
+        const section = sections[diagnostic.path.split(".")[0]];
+        if (section) projection[section] = unavailable(`${diagnostic.code}: ${diagnostic.message}`);
+    }
+    return projection;
 }

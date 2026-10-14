@@ -1,3 +1,4 @@
+import {writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
 import {
     ArtifactBuilder,
     ArtifactBuilderRegistry,
@@ -92,6 +93,28 @@ describe("BuildCommand", () => {
     afterEach(() => {
         logSpy.mockRestore();
         errorSpy.mockRestore();
+    });
+
+    it("previews and builds public package models through the shared diagnosis/evidence workflow", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cli-extraction-"));
+        try {
+            const source = writeDescriptorPackage(root);
+            const destination = path.join(root, "model.json");
+            const command = new BuildCommand("1.3.0");
+            await expect(command.run([source, "--target", "blueprint", "--out", destination, "--dry-run"])).resolves.toBe(0);
+            expect(fs.existsSync(destination)).toBe(false);
+            const preview = logSpy.mock.calls.map(call => call[0]).join("\n");
+            expect(preview).toContain("extractPackageModel");
+            expect(preview).toContain("winModel: defaulted");
+            expect(preview).toContain("cannot prove arbitrary TypeScript losslessness");
+            await expect(command.run([source, "--target", "blueprint", "--out", destination])).resolves.toBe(0);
+            expect(JSON.parse(fs.readFileSync(destination, "utf8")).manifest.id).toBe("math-probe");
+            expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(true);
+            const legacy = writeDescriptorPackage(root, {name: "legacy", legacy: true});
+            await expect(command.run([legacy, "--target", "blueprint", "--out", path.join(root, "legacy.json"), "--dry-run"])).rejects.toThrow(/legacy-model-unavailable/);
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+        }
     });
 
     it("forwards lifecycle preflight and running updates to the terminal", async () => {
@@ -371,9 +394,9 @@ describe("BuildCommand", () => {
         );
 
         expect(error).toBeInstanceOf(Error);
-        expect((error as Error).message).toContain('"/some/existing/package" is a POKIE game package. It cannot build a POKIE game package.');
-        expect((error as Error).message).toContain("Missing prerequisite: a Game Blueprint source.");
-        expect((error as Error).message).toContain("Next: Open a Game Blueprint, then run `pokie build <path> --target tsPackage`.");
+        expect((error as Error).message).toContain("Package extraction malformed");
+        expect((error as Error).message).toContain("package-model-read-failed");
+        expect((error as Error).message).toContain("Supply a complete supported public effective-model descriptor");
     });
 
     it("uses the same registry path for the Outcome Library → Stake prerequisite hand-off", async () => {

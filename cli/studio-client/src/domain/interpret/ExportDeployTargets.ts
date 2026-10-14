@@ -72,10 +72,10 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
 > = {
     blueprint: {
         label: "Game Blueprint",
-        purpose: "Import this PAR workbook into an editable Game Blueprint.",
+        purpose: "Extract a supported public package model or import a PAR workbook into a separate editable Game Blueprint.",
         destination: "Choose where to save the imported Blueprint, or use the default destination.",
         technicalDestination: "A new Blueprint JSON file with adjacent conversion evidence.",
-        unavailableReason: "This project cannot supply a game model. Open a PAR workbook to import a Blueprint.",
+        unavailableReason: "This project cannot supply a complete representable game model. Open a package with a public model descriptor or a PAR workbook.",
     },
     tsPackage: {
         label: "TypeScript Game Package",

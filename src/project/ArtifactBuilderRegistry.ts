@@ -1,3 +1,5 @@
+import {prepareBlueprintForParSheetExport} from "../parsheet/ParSheetExporter.js";
+import {PackageBlueprintExtraction} from "../generated/PackageBlueprintExtraction.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import fs from "fs";
 import path from "path";
@@ -81,10 +83,10 @@ const TARGET_OPERATION: Readonly<Record<ArtifactTargetType, PokieOperation>> = {
 // than being left for a reader to infer from an empty/narrow "supportedSources" array alone.
 const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>> = {
     blueprint: [
-        "Imports a PAR workbook into a durable Game Blueprint with inspectable conversion evidence; it never recovers a game model from package, outcome, Stake, or WASM artifacts.",
+        "Imports a PAR workbook or extracts a package public effective-model descriptor into a separate Blueprint with field-level evidence. Partial or unsupported models cannot build artifacts; arbitrary code losslessness is not promised.",
     ],
     tsPackage: [
-        "Builds a runnable package from a GameBlueprint source only -- never compiles or targets WASM.",
+        "Builds a runnable package from a GameBlueprint, imported PAR model or complete public package descriptor.",
     ],
     outcomeLibrary: [
         "Republishes an existing weighted-outcome bundle, or materializes/generates one from a Blueprint or runnable package through the registry; " +
@@ -98,11 +100,11 @@ const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>>
     parWorkbook: [
         "Exports a Game Blueprint to a PAR workbook snapshot, preserving exact and weighted whole-sequence reels " +
             "and materializing generated/per-symbol sources as diagnosed deterministic snapshots, or republishes an existing " +
-            "PAR workbook; it does not recover a Blueprint from unrelated package or outcome artifacts.",
+            "PAR workbook; it uses complete public package descriptors through Blueprint and does not recover a model from outcome artifacts.",
     ],
     wasm: [
         WASM_PRODUCT_CONTRACT.executionBoundary,
-        "Builds a portable, integrity-bound POKIE WASM component from a Game Blueprint (or a PAR workbook through its model-preserving Blueprint import). It never compiles an arbitrary Node package into WASM.",
+        "Builds a portable, integrity-bound POKIE WASM component from a Game Blueprint (or a PAR workbook through its model-preserving Blueprint import). Complete public package descriptors use the same supported model boundary; arbitrary Node code is not compiled into WASM.",
     ],
 };
 
@@ -249,7 +251,7 @@ export class ArtifactBuilderRegistry {
     public async plan(
         source: PokieProject,
         target: ArtifactTargetType,
-        options: ArtifactConversionPlanningOptions & Pick<ArtifactBuildOptions, "outcomeLibraryGeneration"> = {},
+        options: ArtifactConversionPlanningOptions & Pick<ArtifactBuildOptions, "outcomeLibraryGeneration" | "signal"> = {},
     ): Promise<ArtifactConversionPlan> {
         const preparedPlan = await this.preparePlan(source, target, options);
         return preparedPlan;
@@ -264,8 +266,9 @@ export class ArtifactBuilderRegistry {
     public async preparePlan(
         source: PokieProject,
         target: ArtifactTargetType,
-        options: ArtifactConversionPlanningOptions & Pick<ArtifactBuildOptions, "outcomeLibraryGeneration"> = {},
+        options: ArtifactConversionPlanningOptions & Pick<ArtifactBuildOptions, "outcomeLibraryGeneration" | "signal"> = {},
     ): Promise<ArtifactConversionPlan> {
+        assertArtifactBuildNotCancelled(options);
         let plannedSource = source;
         let managedOutcome = options.managedOutcome;
         let planningOptions: ArtifactConversionPlanningOptions = options;
@@ -358,6 +361,28 @@ export class ArtifactBuilderRegistry {
             } finally {
                 await releasePokieGame(prepared.game);
             }
+        }
+        if (source.type === "tsPackage" && ["blueprint", "tsPackage", "parWorkbook", "wasm"].includes(target)) {
+            const inputBindingHash = computeProjectInputBindingHash(source);
+            const extraction = await new PackageBlueprintExtraction().extract(source.rootPath, {signal: options.signal});
+            assertArtifactBuildNotCancelled(options);
+            plannedSource = {...source, configurationProvenance: {...source.configurationProvenance, inputBindingHash, configurationHash: extraction.blueprintHash}};
+            let plan: ArtifactConversionPlan = {...this.planner.plan(plannedSource, target, planningOptions), packageExtraction: extraction};
+            let boundary: string | undefined;
+            if (extraction.status !== "complete") boundary = `Package extraction ${extraction.status}: ${extraction.diagnostics.map(issue => `${issue.path}: ${issue.code}: ${issue.message}`).join("; ")}`;
+            else if (target === "wasm") {
+                try {
+                    resolveCanonicalWasmGameModel(extraction.blueprint!);
+                } catch (error) {
+                    boundary = error instanceof Error ? error.message : String(error);
+                }
+            } else if (target === "parWorkbook") {
+                const errors = prepareBlueprintForParSheetExport(extraction.blueprint!).issues.filter(issue => issue.severity === "error");
+                if (errors.length) boundary = errors.map(issue => `${issue.code}: ${issue.message}`).join("; ");
+            }
+            if (inputBindingHash !== computeProjectInputBindingHash(source)) boundary = "Package source changed during model extraction; prepare a new plan.";
+            if (boundary) plan = {...plan, status: "unavailable", steps: [], diagnostic: {code: "unsupported-boundary", failedEdge: {from: source.type, to: target}, message: boundary, recovery: "Supply a complete supported public effective-model descriptor, or open the authored Blueprint."}};
+            return this.applyDestinationPolicy(plannedSource, target, planningOptions, plan);
         }
         return this.applyDestinationPolicy(plannedSource, target, planningOptions, this.planner.plan(plannedSource, target, planningOptions));
     }
@@ -461,7 +486,7 @@ export class ArtifactBuilderRegistry {
     // is safe to call directly without a caller re-deriving the same check itself), then hands off to the
     // registered ArtifactBuilder. Every ArtifactTargetType has a registered production builder.
     public async build(target: ArtifactTargetType, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
-        const plan = await this.preparePlan(source, target, {destinationPath, outcomeLibraryGeneration: options?.outcomeLibraryGeneration});
+        const plan = await this.preparePlan(source, target, {destinationPath, outcomeLibraryGeneration: options?.outcomeLibraryGeneration, signal: options?.signal});
         return this.executePlan(plan, source, destinationPath, options);
     }
 
@@ -470,12 +495,14 @@ export class ArtifactBuilderRegistry {
         // Preserve the public asynchronous execution boundary even for a
         // reuse-only plan, so adapters observe one lifecycle shape.
         await Promise.resolve();
+        assertArtifactBuildNotCancelled(options);
         this.assertExecutablePlan(plan);
         this.assertTargetAvailable(plan.target.kind as ArtifactTargetType);
-        await this.assertPlanSourceMatches(plan, source);
+        await this.assertPlanSourceMatches(plan, source, options);
         this.assertPlanDestinationMatches(plan, destinationPath);
-        await this.assertPlanGraphIsCurrent(plan, source, destinationPath);
-        if (source.type === "parWorkbook") return this.executeParDerivedPlan(plan, source, destinationPath, options);
+        await this.assertPlanGraphIsCurrent(plan, source, destinationPath, options);
+        assertArtifactBuildNotCancelled(options);
+        if (source.type === "parWorkbook" || plan.steps.some(step => step.kind === "extractPackageModel")) return this.executeParDerivedPlan(plan, source, destinationPath, options);
         return this.executeSelectedPlan(plan, source, destinationPath, options);
     }
 
@@ -541,21 +568,20 @@ export class ArtifactBuilderRegistry {
         const target = plan.target.kind as ArtifactTargetType;
         const destination = this.checkDestination(target, destinationPath, source.rootPath);
         if (!destination.available) throw new ArtifactBuildConflictError(destination.message ?? "The destination is unavailable.");
-        const wasmEvidenceRoot = target === "wasm" ? `${destinationPath}.pokie` : undefined;
-        if (wasmEvidenceRoot !== undefined && fs.existsSync(wasmEvidenceRoot)) {
-            throw new ArtifactBuildConflictError(`WASM conversion evidence companion "${wasmEvidenceRoot}" already exists. Choose a new output path or remove that companion explicitly before building.`);
-        }
+        const extractionKind = source.type === "tsPackage" ? "package-extraction" : "par-import";
+        const wasmEvidenceRoot = target === "wasm" || target === "parWorkbook" ? `${destinationPath}.pokie` : undefined;
+        if (wasmEvidenceRoot !== undefined) assertPreparedArtifactDestinationAvailable(source.rootPath, wasmEvidenceRoot, "file");
         // PAR's imported Blueprint is staged alongside the requested output,
         // before any downstream builder gets a chance to create a directory.
         // Create the explicit output parent at this shared boundary so every
         // registry-backed PAR entry point has identical nested-path behavior.
         await ensureArtifactDestinationParent(destinationPath);
-        if (target === "blueprint" || target === "parWorkbook") {
+        if (target === "blueprint" || (target === "parWorkbook" && source.type === "parWorkbook")) {
             const builder = this.builders.get(target);
             if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
             return builder.build(source, destinationPath, options);
         }
-        const intermediateDirectory = await fs.promises.mkdtemp(path.join(path.dirname(destinationPath), ".pokie-par-import-"));
+        const intermediateDirectory = await fs.promises.mkdtemp(path.join(path.dirname(destinationPath), `.pokie-${extractionKind}-`));
         // An empty caller-supplied directory is an allowed destination.  It
         // remains caller-owned if a later PAR publication phase fails: remove
         // the files this operation created, but leave the directory itself.
@@ -568,11 +594,13 @@ export class ArtifactBuilderRegistry {
             assertArtifactBuildNotCancelled(options);
             const blueprintBuilder = this.builders.get("blueprint");
             if (blueprintBuilder === undefined) throw new Error(this.unavailableTargetMessage("blueprint"));
-            await blueprintBuilder.build(source, intermediatePath, options);
+            const modelResult = await blueprintBuilder.build(source, intermediatePath, options);
+            if (plan.packageExtraction && modelResult.packageExtraction?.blueprintHash !== plan.packageExtraction.blueprintHash) throw new Error("Package model changed after preview; prepare a new extraction.");
+            await this.assertPlanSourceMatches(plan, source, options);
             imported = {
                 type: "blueprint",
                 rootPath: intermediatePath,
-                provenance: `imported from PAR workbook ${source.rootPath}`,
+                provenance: `derived from ${source.type} ${source.rootPath}`,
                 capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
             };
             // The PAR plan chose every downstream stage before import began.
@@ -589,9 +617,9 @@ export class ArtifactBuilderRegistry {
             // A WASM artifact is a file.  Its conversion evidence therefore
             // lives in an adjacent operation-owned companion, never under the
             // module path as though that file were a directory.
-            const durableDirectory = target === "wasm"
-                ? path.join(wasmEvidenceRoot!, "par-import")
-                : path.join(result.outputPath, ".pokie", "par-import");
+            const durableDirectory = wasmEvidenceRoot !== undefined
+                ? path.join(wasmEvidenceRoot, extractionKind)
+                : path.join(result.outputPath, ".pokie", extractionKind);
             const durableBlueprint = path.join(durableDirectory, "imported.blueprint.json");
             const durableEvidence = path.join(durableDirectory, "conversion-evidence.json");
             try {
@@ -599,6 +627,7 @@ export class ArtifactBuilderRegistry {
                 // attach a half-copied provenance record after the caller has
                 // cancelled the operation.
                 assertArtifactBuildNotCancelled(options);
+                await this.assertPlanSourceMatches(plan, source, options);
                 await fs.promises.mkdir(durableDirectory, {recursive: true});
                 await fs.promises.copyFile(intermediatePath, durableBlueprint);
                 assertArtifactBuildNotCancelled(options);
@@ -613,7 +642,7 @@ export class ArtifactBuilderRegistry {
                 await this.rollbackParDerivedPublication(result, imported, selectedPlan, destinationExistedEmpty);
                 throw error;
             }
-            return {...result, conversionEvidencePath: durableEvidence, importedBlueprintPath: durableBlueprint};
+            return {...result, conversionEvidencePath: durableEvidence, importedBlueprintPath: durableBlueprint, ...(plan.packageExtraction ? {packageExtraction: plan.packageExtraction} : {})};
         } finally {
             // Outcome streaming can finish its final writer callback while the
             // caller unwinds. Retry ENOTEMPTY rather than turning a completed
@@ -707,6 +736,9 @@ export class ArtifactBuilderRegistry {
     }
 
     private async removeParOperationOutput(outputPath: string, target: ArtifactTargetType, preserveDestinationDirectory: boolean): Promise<void> {
+        if (target === "parWorkbook") {
+            await fs.promises.rm(`${outputPath}.pokie`, {recursive: true, force: true});
+        }
         if (target === "wasm") {
             await Promise.all([
                 fs.promises.rm(outputPath, {force: true}),
@@ -731,7 +763,7 @@ export class ArtifactBuilderRegistry {
     }
 
     private async hydrateParDerivedPlan(plan: ArtifactConversionPlan, imported: PokieProject, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
-        const importStep = plan.steps.find((step) => step.kind === "importParWorkbook");
+        const importStep = plan.steps.find((step) => step.kind === "importParWorkbook" || step.kind === "extractPackageModel");
         if (importStep === undefined) throw new Error("The prepared PAR conversion plan has no import stage.");
         let source: ArtifactIdentity = {...resolveArtifactIdentity(imported), recognitionProvenance: importStep.output.recognitionProvenance};
         if (plan.target.kind === "outcomeLibrary" || plan.target.kind === "stakeAdapter") {
@@ -953,7 +985,7 @@ export class ArtifactBuilderRegistry {
         return left.configHash === right.configHash && left.gameId === right.gameId && left.gameVersion === right.gameVersion && left.pokieVersion === right.pokieVersion && (left.generation ?? "exact") === (right.generation ?? "exact") && left.maxExactOutcomeSpaceSize === right.maxExactOutcomeSpaceSize && left.compatibilityPolicyVersion === right.compatibilityPolicyVersion;
     }
 
-    private async assertPlanSourceMatches(plan: ArtifactConversionPlan, source: PokieProject): Promise<void> {
+    private async assertPlanSourceMatches(plan: ArtifactConversionPlan, source: PokieProject, options?: ArtifactBuildOptions): Promise<void> {
         const current = resolveArtifactIdentity(source);
         if (current.kind !== plan.source.kind || current.canonicalLocation !== plan.source.canonicalLocation ||
             current.recognitionProvenance !== plan.source.recognitionProvenance ||
@@ -993,6 +1025,7 @@ export class ArtifactBuilderRegistry {
                 // not consumed by BlueprintStakeOutcomeLibraryWorkflow;
                 // outcomeLibraryGeneration is the executable input.
                 outcomeLibraryGeneration: this.optionsForPlan(undefined, plan.source)?.outcomeLibraryGeneration,
+                signal: options?.signal,
             });
             if (!sameConfigurationProvenance(plan.source.configurationProvenance, refreshed.source.configurationProvenance)) {
                 throw new Error("The source configuration or generation provenance changed after this conversion was prepared; prepare a new plan before executing it.");
@@ -1007,11 +1040,12 @@ export class ArtifactBuilderRegistry {
      * be precisely the planner's result.  This rejects hand-built/deserialized
      * graphs which try to skip an unavailable edge or change a prerequisite.
      */
-    private async assertPlanGraphIsCurrent(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string): Promise<void> {
+    private async assertPlanGraphIsCurrent(plan: ArtifactConversionPlan, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<void> {
         const target = plan.target.kind as ArtifactTargetType;
         const current = await this.preparePlan(source, target, {
             destinationPath,
             outcomeLibraryGeneration: this.optionsForPlan(undefined, plan.source)?.outcomeLibraryGeneration,
+            signal: options?.signal,
         });
         if (JSON.stringify(current) !== JSON.stringify(plan)) {
             throw new Error("The prepared conversion graph is stale or invalid; prepare a new plan before executing it.");
@@ -1048,12 +1082,20 @@ export class ArtifactBuilderRegistry {
         // descendant blocked (including aliases), while retaining normal
         // occupied-destination checks for this one canonical managed output.
         let destination = this.checkDestination(target, options.destinationPath, this.destinationSafetySource(plan, source, options));
-        if (destination.available && target === "wasm" && source.type === "parWorkbook" && fs.existsSync(`${options.destinationPath}.pokie`)) {
-            destination = {available: false, message: `WASM conversion evidence companion "${options.destinationPath}.pokie" already exists. Choose a new output path.`};
+        if (destination.available && (target === "wasm" || target === "parWorkbook") && (source.type === "parWorkbook" || plan.packageExtraction)) {
+            try {
+                assertPreparedArtifactDestinationAvailable(source.rootPath, `${options.destinationPath}.pokie`, "file");
+            } catch (error) {
+                if (!(error instanceof ArtifactBuildConflictError)) throw error;
+                destination = {available: false, message: error.message};
+            }
         }
         // A Studio mode update atomically replaces the complete directory, but only after its
         // service has reopened every retained mode.  Admit that one precise case here so the
         // planner does not mistake a verified managed bundle for arbitrary non-empty output.
+        if (destination.available && target === "blueprint") {
+            destination = this.checkDestination("blueprint", `${options.destinationPath}.conversion-evidence.json`, source.rootPath);
+        }
         if (destination.available || (
             this.destinationSafetySource(plan, source, options) === undefined &&
             this.isVerifiedOutcomeBundleUpdate(target, options)

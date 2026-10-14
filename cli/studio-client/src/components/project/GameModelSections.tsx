@@ -1,3 +1,4 @@
+import {PackageExtractionDiagnostics} from "./PackageExtractionDiagnostics";
 import {Badge, Button, Group, NumberInput, Table, Tabs, Text} from "@mantine/core";
 import {getReelGenerationMode} from "../../domain/blueprintFormOps";
 import {useState} from "react";
@@ -790,6 +791,7 @@ export function GameModelSections({
 
     return (
         <div>
+            <PackageExtractionDiagnostics extraction={projection.packageExtraction} />
             <PageSection legend="Game basics" action={edit && <SectionEditAction id="basics" edit={edit} />}>
                 {editingBasics && edit ? (
                     <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>

@@ -1,4 +1,5 @@
 import {
+    PACKAGE_MODEL_EXTRACT_CAPABILITY,
     BLUEPRINT_BUILD_CAPABILITY,
     OUTCOME_LIBRARY_READ_CAPABILITY,
     OUTCOME_LIBRARY_GENERATE_CAPABILITY,
@@ -76,7 +77,7 @@ export const PROJECT_TYPE_CAPABILITIES: Readonly<Record<ProjectType, ProjectCapa
     // A loadable package is the code-first source for exact Outcome generation.  The registry materializes
     // its runtime before generation, so a package whose game has no exact-enumeration runtime fails closed
     // there instead of being mistaken for an already-readable Outcome bundle.
-    tsPackage: [RUNTIME_EXECUTE_CAPABILITY, OUTCOME_LIBRARY_GENERATE_CAPABILITY, STAKE_ADAPTER_EXPORT_CAPABILITY],
+    tsPackage: [PACKAGE_MODEL_EXTRACT_CAPABILITY, RUNTIME_EXECUTE_CAPABILITY, OUTCOME_LIBRARY_GENERATE_CAPABILITY, STAKE_ADAPTER_EXPORT_CAPABILITY],
     // A canonical outcome library is also the sole native source for a new Stake Engine export.  Grant the
     // narrow export capability here rather than teaching a CLI/Studio caller to bypass ArtifactBuilderRegistry and
     // invoke StakeEngineExporter itself: registry.build("stakeAdapter", outcomeLibrary, ...) is the one

@@ -42,7 +42,7 @@ const PROJECT_HINT =
     "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
     "project, or a standalone Outcome Library/Stake descriptor (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, outcomeLibrary, " +
     "stakeAdapter, PAR workbook, or wasm; PAR workbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, PAR workbook, or wasm; " +
-    "tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; " +
+    "tsPackage -> Blueprint or supported targets through public model extraction, outcomeLibrary or stakeAdapter; outcomeLibrary -> outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; " +
     "parWorkbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, or wasm; Blueprint -> wasm is the canonical portable-runtime source.";
 // parWorkbook is the one target whose artifact is a single file rather than a directory (see
 // assertArtifactDestinationAvailable's own "file"/"directory" split) -- its default destination needs a real
@@ -94,7 +94,7 @@ export class BuildCommand implements CliCommandHandling {
         return (
             'Build an artifact from a resolved POKIE project ("pokie build <project> --target <artifact>") -- ' +
             "the supported source-to-target matrix includes PAR workbook -> Blueprint/tsPackage/outcomeLibrary/stakeAdapter/parWorkbook/wasm; GameBlueprint -> tsPackage/outcomeLibrary/stakeAdapter/parWorkbook/wasm, " +
-            "tsPackage -> outcomeLibrary/stakeAdapter, outcomeLibrary -> outcomeLibrary/stakeAdapter, and same-type " +
+            "tsPackage -> Blueprint/tsPackage/PAR/wasm with a complete public model descriptor, or outcomeLibrary/stakeAdapter, outcomeLibrary -> outcomeLibrary/stakeAdapter, and same-type " +
             'republish for stakeAdapter/parWorkbook (for a first random game instead, see "pokie ' +
             'create --random"). --dry-run validates and previews without writing anything.'
         );
@@ -190,10 +190,11 @@ export class BuildCommand implements CliCommandHandling {
         }
 
         const out = options.out ?? this.resolveDestination(project.rootPath, options.target);
-        const conversionPlan = options.target === "stakeAdapter"
-            ? await this.stakeProjection.prepare(project, out, {outcomeLibraryGeneration: generation})
-            : await this.registry.preparePlan(project, options.target, {destinationPath: out, outcomeLibraryGeneration: generation});
+        const conversionPlan = await this.runWithArtifactLifecycle(lifecycle => options.target === "stakeAdapter"
+            ? this.stakeProjection.prepare(project, out, {...lifecycle, outcomeLibraryGeneration: generation})
+            : this.registry.preparePlan(project, options.target!, {destinationPath: out, outcomeLibraryGeneration: generation, signal: lifecycle.signal}));
         if (conversionPlan.status === "unavailable") {
+            if (conversionPlan.packageExtraction) this.printExtraction(conversionPlan.packageExtraction);
             const compatibility = describeArtifactConversionPlanDiagnostic(conversionPlan);
             throw new Error(`${conversionPlan.diagnostic!.message} Next: ${conversionPlan.diagnostic!.recovery}${compatibility === undefined ? "" : `\n${compatibility}`}`);
         }
@@ -419,6 +420,7 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`  target           ${target}`);
         console.log(`  source           ${project.rootPath}`);
         if (result.importedBlueprintPath !== undefined) console.log(`  imported Blueprint ${result.importedBlueprintPath}`);
+        if (result.packageExtraction) this.printExtraction(result.packageExtraction);
         if (result.conversionEvidencePath !== undefined) console.log(`  conversion evidence ${result.conversionEvidencePath}`);
 
         if (result.reusedCompatibleProject) {
@@ -537,9 +539,16 @@ export class BuildCommand implements CliCommandHandling {
         if (plan.steps.some((step) => step.kind === "importParWorkbook")) {
             console.log("  evidence eligibility determined by durable PAR conversion facts and Meta/hash provenance");
         }
+        if (plan.packageExtraction) this.printExtraction(plan.packageExtraction);
         const parImportLosses = plan.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []);
         if (parImportLosses.length > 0) console.log(`  PAR import boundary ${parImportLosses.join(" ")}`);
         if (plan.preflight.losses.length > 0) console.log(`  data boundary    ${plan.preflight.losses.join(" ")}`);
+    }
+    private printExtraction(extraction: import("@fromstan/pokie").PackageBlueprintExtractionResult): void {
+        console.log(`  package model ${extraction.status} (${extraction.source.kind})`);
+        for (const issue of extraction.diagnostics) console.log(`  ${issue.path}: ${issue.code}: ${issue.message}`);
+        for (const field of extraction.fields.filter(field => field.status !== "exact")) console.log(`  ${field.path}: ${field.status}: ${field.authority}`);
+        for (const limit of extraction.comparisonLimits) console.log(`  comparison boundary ${limit}`);
     }
 }
 

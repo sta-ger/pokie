@@ -133,6 +133,8 @@ export * from "./generated/GamePackageInspecting.js";
 export * from "./generated/GamePackageInspectionReport.js";
 export * from "./generated/GamePackageInspector.js";
 export * from "./generated/GeneratedGamePackage.js";
+export * from "./generated/PackageBlueprintExtraction.js";
+export * from "./generated/PackageModelDescriptor.js";
 export * from "./generated/RandomGameBlueprintGenerating.js";
 export * from "./generated/RandomGameBlueprintGenerator.js";
 export * from "./generated/RandomGameBlueprintMechanics.js";

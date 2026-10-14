@@ -1,3 +1,4 @@
+import {writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -20,6 +21,27 @@ import type {PokieProject} from "../../src/project/PokieProject.js";
 describe("ArtifactBuilderRegistry", () => {
     const registry = new ArtifactBuilderRegistry();
 
+    it("uses extraction once as the model stage for downstream packages/PAR and retains source-bound evidence", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-extraction-registry-"));
+        try {
+            const source = writeDescriptorPackage(root);
+            const project: PokieProject = {type: "tsPackage", rootPath: source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
+            for (const target of ["tsPackage", "parWorkbook"] as const) {
+                const destination = path.join(root, target === "parWorkbook" ? "model.xlsx" : "regenerated");
+                const plan = await registry.preparePlan(project, target, {destinationPath: destination});
+                expect(plan.status).toBe("planned");
+                const result = await registry.executePlan(plan, project, destination);
+                expect(result.packageExtraction?.source.gameId).toBe("math-probe");
+                expect(result.importedBlueprintPath).toContain("package-extraction");
+                expect(fs.existsSync(result.conversionEvidencePath!)).toBe(true);
+                expect(JSON.parse(fs.readFileSync(result.conversionEvidencePath!, "utf8")).kind).toBe("package-extraction");
+            }
+            expect(fs.readdirSync(root).some(name => name.startsWith(".pokie-"))).toBe(false);
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
     it("lists only matrix-advertised build targets", () => {
         expect(new Set(registry.listTargets())).toEqual(new Set(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"]));
     });
@@ -28,7 +50,7 @@ describe("ArtifactBuilderRegistry", () => {
         const descriptor = registry.describe("tsPackage");
 
         expect(descriptor.requiredSourceCapability).toBe(BLUEPRINT_BUILD_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["blueprint", "parWorkbook"]);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "parWorkbook"]);
     });
 
     it("reports the true required source capability and supported sources for an outcome-library build", () => {
@@ -59,12 +81,12 @@ describe("ArtifactBuilderRegistry", () => {
         const descriptor = registry.describe("parWorkbook");
 
         expect(descriptor.requiredSourceCapability).toBe(PAR_WORKBOOK_EXCHANGE_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["blueprint", "parWorkbook"]);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "parWorkbook"]);
         expect(descriptor.unsupportedNotes.join(" ")).toMatch(/Game Blueprint.*PAR workbook snapshot/i);
         expect(descriptor.unsupportedNotes.join(" ")).toMatch(/preserving exact and weighted whole-sequence reels/i);
         expect(descriptor.unsupportedNotes.join(" ")).toMatch(/generated\/per-symbol sources as diagnosed deterministic snapshots/i);
         expect(descriptor.unsupportedNotes.join(" ")).toMatch(/republishes an existing PAR workbook/i);
-        expect(descriptor.unsupportedNotes.join(" ")).toMatch(/does not recover a Blueprint from unrelated package or outcome artifacts/i);
+        expect(descriptor.unsupportedNotes.join(" ")).toMatch(/does not recover a model from outcome artifacts/i);
         expect(descriptor.unsupportedNotes.join(" ")).not.toMatch(/does not derive.*blueprint/i);
     });
 
@@ -79,8 +101,8 @@ describe("ArtifactBuilderRegistry", () => {
     it("exposes WASM as a canonical Blueprint/PAR target", () => {
         const tsPackageNotes = registry.describe("tsPackage").unsupportedNotes.join(" ");
 
-        expect(tsPackageNotes).toMatch(/never compiles or targets WASM/);
-        expect(registry.describe("wasm")).toMatchObject({requiredSourceCapability: WASM_EXPORT_CAPABILITY, supportedSources: ["blueprint", "parWorkbook"]});
+        expect(tsPackageNotes).toMatch(/complete public package descriptor/);
+        expect(registry.describe("wasm")).toMatchObject({requiredSourceCapability: WASM_EXPORT_CAPABILITY, supportedSources: ["blueprint", "tsPackage", "parWorkbook"]});
     });
 
     it("throws for a target it has no descriptor for", () => {
@@ -90,7 +112,7 @@ describe("ArtifactBuilderRegistry", () => {
     describe("supportsConversionFrom", () => {
         it("agrees with the descriptor's own supportedSources", () => {
             expect(registry.supportsConversionFrom("tsPackage", "blueprint")).toBe(true);
-            expect(registry.supportsConversionFrom("tsPackage", "tsPackage")).toBe(false);
+            expect(registry.supportsConversionFrom("tsPackage", "tsPackage")).toBe(true);
         });
     });
 
@@ -414,7 +436,7 @@ describe("ArtifactBuilderRegistry", () => {
             const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
 
             await expect(withBuilder.build("tsPackage", projectOf("tsPackage"), "/out/my-game")).rejects.toThrow(
-                /Missing prerequisite: a Game Blueprint source\. Next: Open a Game Blueprint/,
+                /Package extraction malformed:.*package-model-read-failed/,
             );
             expect(builder.calls).toBe(0);
         });

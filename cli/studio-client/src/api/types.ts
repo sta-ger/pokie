@@ -266,7 +266,7 @@ export type GameModelReels = {
 
 export type GameModelPaytableRow = {symbolId: string; matchCount: number; payout: number};
 
-export type GameModelBetMode = {id: string; label?: string; costMultiplier?: number; targetRtp?: number};
+export type GameModelBetMode = {id: string; label?: string; costMultiplier?: number; targetRtp?: number; runtimeType?: "base" | "ante" | "buyFeature"; isDefault?: boolean; forcedFreeGames?: number};
 
 export type GameModelBetsAndModes = {availableBets: number[]; betModes: GameModelBetMode[]};
 
@@ -277,6 +277,7 @@ export type GameModelMechanics = {freeGames?: GameModelFreeGames};
 export type GameModelLimits = {minBet?: number; maxBet?: number};
 
 export type GameModelProjection = {
+    packageExtraction?: PackageBlueprintExtractionResult;
     basics: GameModelSection<GameModelBasics>;
     layout: GameModelSection<GameModelLayout>;
     symbols: GameModelSection<GameModelSymbol[]>;
@@ -1447,10 +1448,11 @@ export type StudioArtifactTargetType = "blueprint" | "tsPackage" | "outcomeLibra
 // JSON-safe mirror of the server planner.  Studio deliberately consumes this payload instead of maintaining
 // another source/target table in the browser.
 export type StudioArtifactConversionPlan = {
+    packageExtraction?: PackageBlueprintExtractionResult;
     status: "planned" | "unavailable" | "conflict";
     source: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]; configurationProvenance?: {configurationHash?: string; pokieVersion?: string; generationSemantics?: "exact" | "boundedSample"; gameId?: string; gameVersion?: string; manifestIdentity?: string; sampleCount?: string; sampleSeed?: string}};
     target: {kind: string; canonicalLocation?: string; capabilities: string[]; configurationProvenance?: {generationSemantics?: "exact" | "boundedSample"; sampleCount?: string; sampleSeed?: string}};
-    steps: {kind: "importParWorkbook" | "publish" | "materializeRuntime" | "generateOutcomeLibrary" | "reuseManagedOutcomeLibrary"; choice: "materialize" | "reuse" | "publish"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; output: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]}; losses?: string[]}[];
+    steps: {kind: "extractPackageModel" | "importParWorkbook" | "publish" | "materializeRuntime" | "generateOutcomeLibrary" | "reuseManagedOutcomeLibrary"; choice: "materialize" | "reuse" | "publish"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; output: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]}; losses?: string[]}[];
     preflight: {destinationKind: "file" | "directory"; estimatedWork: "none" | "read" | "materialize" | "generate" | "publish"; losses: string[]; oneWay: boolean};
     managedOutcome?: {disposition: "reused" | "ineligible"; reason?: string};
     diagnostic?: {code: "missing-capability" | "missing-data" | "unsupported-boundary" | "stale-provenance" | "destination-conflict" | "unrecognized-source"; failedEdge: {from: StudioProjectType; to: StudioArtifactTargetType}; message: string; recovery: string};
@@ -1538,3 +1540,13 @@ export type StudioArtifactPreviewView =
           plan: StudioArtifactConversionPlan;
       }
     | {status: "error"; message: string; plan: StudioArtifactConversionPlan};
+
+
+export type PackageBlueprintExtractionResult = {
+    schemaVersion: 1;
+    status: "complete" | "partial" | "unsupported" | "malformed" | "cancelled";
+    source: {kind: "generated" | "custom" | "legacy"; location?: string; descriptorVersion?: number; blueprintSchemaVersion?: number; gameId?: string; gameVersion?: string};
+    fields: {path: string; status: "exact" | "inferred" | "defaulted" | "unsupported"; authority: string}[];
+    diagnostics: {path: string; code: string; message: string; severity?: "warning" | "error"}[];
+    comparisonLimits: string[];
+};

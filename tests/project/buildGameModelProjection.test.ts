@@ -1,4 +1,5 @@
-import {buildGameModelProjection} from "../../src/project/buildGameModelProjection.js";
+import {PackageBlueprintExtraction} from "../../src/generated/PackageBlueprintExtraction.js";
+import {buildPackageGameModelProjection, buildGameModelProjection} from "../../src/project/buildGameModelProjection.js";
 import type {GameBlueprint} from "../../src/generated/GameBlueprint.js";
 
 const BASE_BLUEPRINT: GameBlueprint = {
@@ -132,4 +133,16 @@ describe("buildGameModelProjection", () => {
         expect(rerolledProjection.reels.data.sharedWeightsSample!.seed).toEqual(99);
         expect(rerolledProjection.reels.data).not.toEqual(defaultProjection.reels.data);
     });
+});
+
+
+it("keeps mixed supported package sections inspectable without masking unsupported mechanics", async () => {
+    const model = {...BASE_BLUEPRINT, wilds: [], reelStrips: [["A", "B", "S"], ["A", "B", "S"], ["A", "B", "S"]], mechanics: {custom: true}};
+    const extraction = await new PackageBlueprintExtraction().extract({getManifest: () => model.manifest, createSession: () => {
+        throw new Error("no session");
+    }, getModelDescriptor: () => ({descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: model as unknown as GameBlueprint})});
+    const projection = buildPackageGameModelProjection(extraction);
+    expect(projection.packageExtraction?.status).toBe("unsupported");
+    expect(projection.paytable.status).toBe("available");
+    expect(projection.mechanics).toMatchObject({status: "unavailable", reason: expect.stringContaining("unsupported-model-field")});
 });

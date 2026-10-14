@@ -7,8 +7,11 @@ import {ArtifactBuildConflictError} from "../ArtifactBuildConflictError.js";
 // "pokie build" never has a per-target-different overwrite policy. "file" targets (parWorkbook) must simply not
 // exist yet -- there's no "empty file" equivalent.
 export function assertArtifactDestinationAvailable(destinationPath: string, kind: "file" | "directory"): void {
-    if (!fs.existsSync(destinationPath)) {
-        return;
+    try {
+        fs.lstatSync(destinationPath);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+        throw error;
     }
 
     if (kind === "file") {
