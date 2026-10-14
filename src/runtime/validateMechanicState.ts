@@ -7,6 +7,7 @@ export function validateMechanicState(state: Record<string, unknown>, schema: Se
     if (schema.kind === "hold-and-win" || schema.kind === "jackpot") {
         const outcome = state.lastOutcome as {kind?: string; payout?: number; amount?: number; baseWinAmount?: number; baseEvaluation?: WinEvaluationSnapshot; poolId?: string; linesWinning?: number; scattersWinning?: number} | undefined;
         if (!outcome || typeof outcome !== "object" || !(schema.kind === "hold-and-win" ? ["ordinary", "suppressed", "completed"] : ["ordinary", "awarded"]).includes(outcome.kind ?? "")) throw new Error("Required settled feature outcome is missing or invalid.");
+        if ((outcome.kind === "ordinary" || outcome.kind === "suppressed") && Object.keys(outcome).some(key => key !== "kind")) throw new Error("Unsettled feature outcome cannot retain settled payout data.");
         if (outcome.kind === "completed" || outcome.kind === "awarded") {
             if (!finite(outcome.baseWinAmount) || !finite(outcome.kind === "completed" ? outcome.payout : outcome.amount) || !outcome.baseEvaluation) throw new Error("Invalid settled feature amounts.");
             const evaluation = restoreWinEvaluation(outcome.baseEvaluation);
@@ -27,7 +28,7 @@ export function validateMechanicState(state: Record<string, unknown>, schema: Se
             (state.active ? Number(state.respinsRemaining) === 0 || state.payout !== 0 || locks.length === 0 || locks.length >= schema.reels * schema.rows : state.respinsRemaining !== 0) ||
             !finite(state.entryBet) || (state.active && state.entryBet === 0)) throw new Error("Invalid HoldAndWin progress, payout or entry denomination.");
         const kind = (state.lastOutcome as {kind: string}).kind;
-        if ((kind === "suppressed" && !state.active) || (kind === "ordinary" && !state.active && (locks.length !== 0 || state.payout !== 0)) ||
+        if ((kind === "suppressed" && !state.active) || (kind === "ordinary" && state.active && state.respinsRemaining !== schema.initialRespins) || (kind === "ordinary" && !state.active && (locks.length !== 0 || state.payout !== 0)) ||
             (kind === "completed" && locks.length === 0) ||
             ((state.active || kind === "completed") && (!finite(state.entryBet) || state.entryBet === 0 || (schema.bets !== undefined && !schema.bets.includes(state.entryBet))))) throw new Error("HoldAndWin outcome disagrees with progress or entry denomination.");
         const seen = new Set<string>();

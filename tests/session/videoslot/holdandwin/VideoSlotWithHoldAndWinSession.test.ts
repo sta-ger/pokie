@@ -559,6 +559,8 @@ describe("V2C-12 canonical HoldAndWin continuation", () => {
         for (const corrupt of [
             {...before, entryBet: NaN}, {...before, entryBet: 1}, {...before, respinsRemaining: 0},
             {...before, active: false, respinsRemaining: 0, payout: 100, lastOutcome: {kind: "ordinary"}},
+            {...before, lastOutcome: {kind: "ordinary", payout: 100}},
+            {...before, lastOutcome: {kind: "ordinary"}, respinsRemaining: 1},
             {...before, active: false, respinsRemaining: 0, lastOutcome: {kind: "suppressed"}},
             {...before, lockedSymbols: [...before.lockedSymbols, before.lockedSymbols[0]]},
             {...before, lockedSymbols: [{...before.lockedSymbols[0], effect: {kind: "value", amount: Infinity}}]},
