@@ -38,6 +38,7 @@ import {
 } from "@fromstan/pokie";
 import ExcelJS from "exceljs";
 import crypto from "crypto";
+import {spawn} from "child_process";
 import fs from "fs";
 import http, {type IncomingMessage} from "http";
 import os from "os";
@@ -100,14 +101,19 @@ function restoreEnv(name: string, value: string | undefined): void {
 
 // The materialization tests deliberately exercise the real `npm install` boundary. Invoke the npm bundled
 // with this test process's Node runtime directly, preserving the ordinary production command arguments while
-// avoiding a test-command policy wrapper injected into PATH.
-const runBundledNpmCommand: PackageCommandRunning = (command, args, cwd) => {
+// avoiding a test-command policy wrapper injected into PATH. Pass Jest's fixture environment explicitly:
+// native spawn's default environment belongs to the host process, not Jest's isolated process.env.
+const runBundledNpmCommand: PackageCommandRunning = (command, args, cwd, options) => {
     const bundledNpmDirectory = path.dirname(process.execPath);
     const bundledNpm = path.join(bundledNpmDirectory, process.platform === "win32" ? "npm.cmd" : "npm");
-    if (!fs.existsSync(bundledNpm)) {
-        return runPackageCommand(command, args, cwd);
-    }
-    return runPackageCommand(command === "npm" ? bundledNpm : command, args, cwd);
+    return runPackageCommand(command, args, cwd, {
+        ...options,
+        spawn: (executable, childArgs, spawnOptions) => spawn(
+            executable === "npm" && fs.existsSync(bundledNpm) ? bundledNpm : executable,
+            childArgs,
+            {...spawnOptions, env: {...process.env}},
+        ),
+    });
 };
 
 async function get(url: string): Promise<{status: number; body: unknown}> {
@@ -1908,17 +1914,29 @@ describe("StudioServer", () => {
         }
 
         it("materializes a genuinely loadable runtime through Home Open Project using the production materializing resolver, offline, with an installation path containing spaces, and reuses the cache on a second Open", async () => {
-            const {baseUrl, rawProjectRoot} = await startDefaultMaterializingServer();
+            // Reproduce the independent direct-Jest launch even when this file is run via npm.
+            const callerKeys = Object.keys(process.env).filter(key => key.startsWith("npm_lifecycle_") || key.startsWith("npm_package_") || key === "INIT_CWD" || key === "TMPDIR");
+            const callerEnvironment = callerKeys.map(key => [key, process.env[key]] as const);
+            for (const key of callerKeys) Reflect.deleteProperty(process.env, key);
+            try {
+                // Check the real child's configuration, rather than just the parent fixture's env.
+                const config = JSON.parse((await runBundledNpmCommand("npm", ["config", "list", "--json"], blueprintSourceDir)).stdout);
+                expect(config.offline).toBe(true);
+                expect(config.registry).toBe("http://127.0.0.1:1/");
+                const {baseUrl, rawProjectRoot} = await startDefaultMaterializingServer();
 
-            const first = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
-            expect(first.status).toBe(200);
-            const firstBody = first.body as {context: {projectRoot: string}; manifest: PokieGameManifest};
-            expect(firstBody.manifest.id).toBe("starter-slot");
+                const first = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+                expect(first.status).toBe(200);
+                const firstBody = first.body as {context: {projectRoot: string}; manifest: PokieGameManifest};
+                expect(firstBody.manifest.id).toBe("starter-slot");
 
-            await post(`${baseUrl}/api/projects/close`);
-            const second = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
-            expect(second.status).toBe(200);
-            expect((second.body as {manifest: PokieGameManifest}).manifest).toEqual(firstBody.manifest);
+                await post(`${baseUrl}/api/projects/close`);
+                const second = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+                expect(second.status).toBe(200);
+                expect((second.body as {manifest: PokieGameManifest}).manifest).toEqual(firstBody.manifest);
+            } finally {
+                for (const [key, value] of callerEnvironment) restoreEnv(key, value);
+            }
         });
 
         it("retries a transient staged install through Home Open Project so one Open reaches the Workspace, then reuses the cache", async () => {
