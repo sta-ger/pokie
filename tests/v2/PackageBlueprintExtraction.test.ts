@@ -190,7 +190,7 @@ describe("PackageBlueprintExtraction", () => {
     });
 
     it("preserves generated/visible/evaluated geometry and evaluation-local paylines", async () => {
-        await roundTrip({...base(), rows: 5, screenGeometry: {
+        await roundTrip({...base(), rows: 4, screenGeometry: {
             generated: {reels: 3, rows: 5}, visible: {rowOffset: 0.5, rows: 3},
             evaluated: {rowOffset: 1, rows: 3}, paylineSpace: "evaluated",
         }}, "geometry");
