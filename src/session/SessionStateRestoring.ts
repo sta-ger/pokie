@@ -7,7 +7,7 @@ export type SessionStateSchema =
     | {readonly kind: "base" | "custom"}
     | {readonly kind: "seeded-video-slot"; readonly weightedReels?: readonly {reelIndex: number; variants: readonly WeightedSequenceVariant<string | number>[]}[]; readonly reels?: number; readonly symbols?: readonly (string | number)[]; readonly screenGeometry?: ScreenGeometry}
     | {readonly kind: "free-games" | "bet-modes"; readonly base: SessionStateSchema}
-    | {readonly kind: "hold-and-win"; readonly reels: number; readonly rows: number; readonly initialRespins: number; readonly symbolEffects: Readonly<Record<string, unknown>>; readonly base: SessionStateSchema}
+    | {readonly kind: "hold-and-win"; readonly bets?: readonly number[]; readonly reels: number; readonly rows: number; readonly initialRespins: number; readonly symbolEffects: Readonly<Record<string, unknown>>; readonly base: SessionStateSchema}
     | {readonly kind: "jackpot"; readonly pools: readonly {id: string; type: "fixed" | "accumulating"; amount?: number; seedValue?: number}[]; readonly base: SessionStateSchema};
 
 /** Explicit promise that the codec covers every collaborator influencing future rounds,

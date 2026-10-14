@@ -1,3 +1,6 @@
+import {mergeJackpotStatisticsSnapshots} from "../../src/simulation/JackpotStatisticsMerging.js";
+import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";
+import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprintService.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {ParCommand} from "../../cli/commands/ParCommand.js";
@@ -132,4 +135,152 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         }
         expect(fs.readdirSync(directory)).toEqual([]);
     });
+    it("F1 rejects a changed retained entry denomination before RNG, wallet or repository mutation", async () => {
+        const blueprint = existingMechanicsBlueprint(catalogue.find(row => row.id === "hold-bet")!);
+        blueprint.reelStrips = [["C"], ["A"], ["A"]];
+        const game = generatedMechanicsGame(blueprint),
+            session = mechanicsSession(game);
+        const repository = new api.InMemorySessionRepository(),
+            wallet = new api.InMemoryWallet(100);
+        await repository.save("s", api.captureInitialPokieSessionState({seed: 31}, session, game.getSessionSerializer!(), true, game));
+        const handler = () => new api.SpinCommandHandler(game, repository, wallet);
+        const first = await handler().execute({kind: "spin", sessionId: "s", requestId: "entry", roundId: "entry", bet: 0.05, delivery: "stepwise"});
+        if (first.status !== "played") throw new Error(JSON.stringify(first));
+        const state = JSON.parse(JSON.stringify(first.state)) as api.PokieSessionState;
+        (state.featureState as {entryBet: number}).entryBet = 7.5;
+        expect(api.validatePersistedSession(state, game)).toMatchObject({status: "corrupt-state", reason: expect.stringContaining("entry denomination")});
+        await repository.save("s", state);
+        const save = jest.spyOn(repository, "save"),
+            create = jest.spyOn(game, "createSession"),
+            debit = jest.spyOn(wallet, "debit"),
+            credit = jest.spyOn(wallet, "credit");
+        const rejected = await handler().execute({kind: "spin", sessionId: "s", requestId: "continue", delivery: "stepwise", continuation: {roundId: "entry", cursor: 1}});
+        expect(rejected.status).toBe("corrupt-state");
+        expect(save).not.toHaveBeenCalled();
+        expect(create).not.toHaveBeenCalled();
+        expect(debit).not.toHaveBeenCalled();
+        expect(credit).not.toHaveBeenCalled();
+        expect(await repository.load("s")).toEqual(state);
+        jest.restoreAllMocks();
+        await repository.save("s", first.state);
+        const second = await handler().execute({kind: "spin", sessionId: "s", requestId: "second", delivery: "stepwise", continuation: {roundId: "entry", cursor: 1}});
+        if (second.status !== "played") throw new Error(JSON.stringify(second));
+        const final = await handler().execute({kind: "spin", sessionId: "s", requestId: "final", delivery: "stepwise", continuation: {roundId: "entry", cursor: 2}});
+        expect(final).toMatchObject({status: "played", win: 0.1, stake: 0});
+    });
+
+    it.each(["constructor", "__proto__"])("F4 preserves pool %s through both generated formats, restoration, simulation deltas and reporting", id => {
+        const blueprint = existingMechanicsBlueprint(catalogue.find(row => row.id === "accumulating-base")!);
+        blueprint.mechanics!.jackpot!.pool.id = id;
+        blueprint.reelStrips = [["J"], ["A"], ["A"]];
+        expect(errors(blueprint)).toEqual([]);
+        for (const typed of [false, true]) {
+            const game = generatedMechanicsGame(blueprint, typed),
+                session = mechanicsSession(game);
+            const runner = new api.AggregateSimulationRunner(session, 2);
+            runner.run();
+            expect(runner.getJackpotStatistics()).toMatchObject({awardCount: 2, totalAwarded: 20.01, totalContributed: 0.01});
+            expect(Object.keys(runner.getJackpotStatistics()!.pools)).toEqual([id]);
+            const snapshot = JSON.parse(JSON.stringify(session.toSessionState()));
+            expect(Object.keys(snapshot.pools)).toEqual([id]);
+            expect(Object.keys(snapshot.poolStatistics)).toEqual([id]);
+            const restored = mechanicsSession(game);
+            restored.fromSessionState(snapshot);
+            expect(restored.toSessionState()).toEqual(snapshot);
+            const nextRunner = new api.AggregateSimulationRunner(restored, 1);
+            const result = nextRunner.run();
+            const statistics = nextRunner.getJackpotStatistics()!;
+            expect(statistics).toMatchObject({awardCount: 1, totalAwarded: 10.005, totalContributed: 0.005});
+            const merged = mergeJackpotStatisticsSnapshots(runner.getJackpotStatistics(), statistics);
+            expect(merged.pools[id].awardCount).toBe(3);
+            expect(merged.pools[id].totalAwarded).toBeCloseTo(30.015);
+            expect(merged.pools[id].totalContributed).toBeCloseTo(0.015);
+            const report = new api.SimulationReportBuilder().build({manifest: game.getManifest(), requestedRounds: 1, statistics: result.getStatistics(), durationMs: 1, jackpot: statistics});
+            expect(JSON.parse(JSON.stringify(report)).jackpot.pools[id]).toBeDefined();
+        }
+    });
+
+    it("F5 preserves canonical lock identity and exact audit replay through reordered effects, extraction and PAR", async () => {
+        const blueprint = existingMechanicsBlueprint(catalogue.find(row => row.id === "hold-bet")!);
+        blueprint.reelStrips = [["C"], ["M"], ["A"]];
+        const reordered = JSON.parse(JSON.stringify(blueprint)) as api.GameBlueprint;
+        const effects = reordered.mechanics!.holdAndWin!.symbolEffects;
+        reordered.mechanics!.holdAndWin!.symbolEffects = {M: effects.M, C: effects.C};
+        expect(api.computeGameBlueprintHash(reordered)).toBe(api.computeGameBlueprintHash(blueprint));
+        const game = generatedMechanicsGame(blueprint),
+            reorderedGame = generatedMechanicsGame(reordered);
+        const extracted = await new api.PackageBlueprintExtraction().extract(reorderedGame);
+        const workbook = path.join(directory, "reordered.xlsx");
+        await new api.ParSheetExporter("1.3.0").exportToFile(reordered, workbook);
+        const imported = await new api.ParSheetImporter().importFromFile(workbook);
+        const games = [reorderedGame, generatedMechanicsGame(reordered, true), generatedMechanicsGame(extracted.blueprint!), generatedMechanicsGame(imported.blueprint)];
+        const recorded = new api.ReplayRecorder().recordAudit(game, mechanicsSession(game), [{kind: "spin", bet: 0.05, delivery: "composite", roundId: "key-order"}], {status: "calculated", sessionId: "s", durability: "detached"}, {seed: 31});
+        for (const equivalent of games) {
+            expect(equivalent.getConfigHash!()).toBe(game.getConfigHash!());
+            expect(new api.AuditRoundReplay().replay(equivalent, JSON.parse(JSON.stringify(recorded.audit))).verification).toBe("verified");
+            const session = mechanicsSession(equivalent);
+            session.play();
+            expect((session.toSessionState() as {lockedSymbols: {position: number[]}[]}).lockedSymbols.map(lock => lock.position)).toEqual([[0, 0], [1, 0]]);
+        }
+    });
+
+    it.each(["   ", 42, null, {}])("F6 aligns field diagnostics for mode id %p across CLI, Studio, resolver and generation", async id => {
+        const blueprint = existingMechanicsBlueprint(catalogue.find(row => row.id === "hold-flat-modes")!);
+        (blueprint.betModes![0] as unknown as {id: unknown}).id = id;
+        expect(errors(blueprint)).toContainEqual(expect.objectContaining({code: "blueprint-betmode-invalid-id", path: "betModes[0].id"}));
+        expect(new StudioBlueprintService("1.3.0", directory, new StudioHomeService("1.3.0")).validate(blueprint)).toMatchObject({status: "invalid", errors: expect.arrayContaining([expect.objectContaining({path: "betModes[0].id"})])});
+        const source = path.join(directory, "invalid.blueprint.json");
+        fs.writeFileSync(source, JSON.stringify(blueprint));
+        expect(await new ValidateCommand().run([source])).toBe(1);
+        expect(() => api.resolveBetModeCodegenWiring(blueprint)).toThrow(/betModes\[0\].id/);
+        expect(() => api.renderBuiltGameModule(blueprint, "1.3.0")).toThrow(/betModes\[0\].id/);
+        expect(() => api.renderBuiltGameModuleSource(blueprint, "1.3.0")).toThrow(/betModes\[0\].id/);
+        expect(() => new api.GamePackageGenerator("1.3.0").generate(blueprint, directory, "rejected")).toThrow(/betModes\[0\].id/);
+        expect(fs.existsSync(path.join(directory, "rejected"))).toBe(false);
+    });
+
+    it("F7 rejects HoldAndWin outside modes before play/restore and advances supported zero-credit continuations exactly once", () => {
+        const blueprint = existingMechanicsBlueprint(catalogue.find(row => row.id === "hold-flat-modes")!);
+        blueprint.reelStrips = [["C"], ["A"], ["A"]];
+        const game = generatedMechanicsGame(blueprint),
+            innerModes = mechanicsSession(game);
+        const unsupported = new api.VideoSlotWithHoldAndWinSession(innerModes, 2, new api.SymbolSetHoldAndWinCollector(blueprint.mechanics!.holdAndWin!.symbolEffects), new api.MinimumCountHoldAndWinTrigger(1));
+        innerModes.setBetMode!("ante");
+        const before = innerModes.toSessionState();
+        expect(unsupported.isSessionStateRestorable()).toBe(false);
+        expect(() => unsupported.play()).toThrow(/inside bet modes/);
+        expect(() => unsupported.fromSessionState(unsupported.toSessionState())).toThrow(/inside bet modes/);
+        expect(() => unsupported.validateSessionState(unsupported.toSessionState())).toThrow(/inside bet modes/);
+        expect(innerModes.toSessionState()).toEqual(before);
+        const session = mechanicsSession(game);
+        session.setBetMode!("ante");
+        session.play();
+        session.setCreditsAmount(0);
+        const base = Reflect.get(Reflect.get(session, "baseSession"), "baseSession") as api.VideoSlotSessionHandling;
+        const play = jest.spyOn(base, "play");
+        const rngBefore = (base as unknown as api.ConvertableToSessionState<{rngState: number}>).toSessionState().rngState;
+        session.play();
+        expect(play).toHaveBeenCalledTimes(1);
+        expect((base as unknown as api.ConvertableToSessionState<{rngState: number}>).toSessionState().rngState).not.toBe(rngBefore);
+        expect(session.getCreditsAmount()).toBe(0);
+        expect((session.toSessionState() as {base: {respinsRemaining: number}}).base.respinsRemaining).toBe(1);
+    });
+
+    it("F2 retains generated mechanic observations in public logical delivery", () => {
+        const blueprint = existingMechanicsBlueprint(catalogue.find(row => row.id === "fixed-holdAndWin-modes")!);
+        blueprint.reelStrips = [["C"], ["A"], ["J"]];
+        const session = mechanicsSession(generatedMechanicsGame(blueprint));
+        const result = new api.SessionRuntime(session).execute({kind: "spin", bet: 0.05, mode: "ante", roundId: "observations", delivery: "composite"});
+        if (result.status !== "played" || !result.logicalRound) throw new Error(JSON.stringify(result));
+        const visible = api.projectLogicalRound(result.logicalRound);
+        expect(visible.subrounds[0].featureEvents).toEqual(expect.arrayContaining([
+            expect.objectContaining({type: "holdAndWin", data: expect.objectContaining({active: true, locks: expect.any(Array), respinsRemaining: 2, payout: 0})}),
+            expect.objectContaining({type: "jackpot", data: expect.objectContaining({pools: [{id: "mini", value: 10}], award: {poolId: "mini", amount: 10}})}),
+            {type: "chargedBetMode", data: {id: "ante"}},
+        ]));
+        expect(visible.currentStep!.featureEvents).toEqual(expect.arrayContaining([
+            expect.objectContaining({type: "holdAndWin", data: expect.objectContaining({active: false, respinsRemaining: 0, payout: 2})}),
+        ]));
+    });
+
 });

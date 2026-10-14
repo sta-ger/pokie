@@ -255,7 +255,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             .sort()
             .forEach((poolId) => {
                 const stats = snapshot.pools[poolId];
-                pools[poolId] = {...stats, contribution: overallTotalBet > 0 ? stats.totalAwarded / overallTotalBet : 0};
+                Reflect.defineProperty(pools, poolId, {value: {...stats, contribution: overallTotalBet > 0 ? stats.totalAwarded / overallTotalBet : 0}, enumerable: true, configurable: true, writable: true});
             });
 
         return {

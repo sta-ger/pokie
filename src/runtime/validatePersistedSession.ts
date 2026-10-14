@@ -74,12 +74,15 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
         const last = state.logicalRound.subrounds[state.logicalRound.cursor - 1];
         if (last.win !== state.win || last.credits !== state.credits || ((last.finalScreen ?? last.screen) !== undefined && JSON.stringify(last.finalScreen ?? last.screen) !== JSON.stringify(state.screen))) return {status: "corrupt-state", reason: "Retained logical output differs from executable capture."};
         let schema = state.stateSchema;
-        let feature = state.featureState as {base?: unknown; freeGamesNum?: number; freeGamesSum?: number; active?: boolean} | undefined;
+        let feature = state.featureState as {base?: unknown; freeGamesNum?: number; freeGamesSum?: number; active?: boolean; entryBet?: number; lastOutcome?: {kind?: string}} | undefined;
         let pending = false;
         let known = schema?.kind !== "custom";
         while (schema && "base" in schema) {
             if (schema.kind === "free-games") pending ||= (feature?.freeGamesNum ?? 0) < (feature?.freeGamesSum ?? 0);
-            if (schema.kind === "hold-and-win") pending ||= feature?.active === true;
+            if (schema.kind === "hold-and-win") {
+                pending ||= feature?.active === true;
+                if ((feature?.active || feature?.lastOutcome?.kind === "completed") && feature.entryBet !== state.logicalRound.bet) return {status: "corrupt-state", reason: "HoldAndWin entry denomination differs from retained logical entry."};
+            }
             feature = feature?.base as typeof feature;
             schema = schema.base;
             if (schema.kind === "custom") known = false;

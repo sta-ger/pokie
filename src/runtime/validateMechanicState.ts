@@ -16,11 +16,20 @@ export function validateMechanicState(state: Record<string, unknown>, schema: Se
         }
     }
     if (schema.kind === "hold-and-win") {
+        let base = schema.base;
+        while ("base" in base) {
+            if (["bet-modes", "jackpot", "free-games"].includes(base.kind)) throw new Error("HoldAndWin must be inside bet modes and jackpot and cannot compete with free games.");
+            base = base.base;
+        }
         const locks = state.lockedSymbols as {position: number[]; symbolId: string; effect: unknown}[];
         if (typeof state.active !== "boolean" || !Array.isArray(locks) || !finite(state.payout) ||
             !Number.isSafeInteger(state.respinsRemaining) || Number(state.respinsRemaining) < 0 || Number(state.respinsRemaining) > schema.initialRespins ||
             (state.active ? Number(state.respinsRemaining) === 0 || state.payout !== 0 || locks.length === 0 || locks.length >= schema.reels * schema.rows : state.respinsRemaining !== 0) ||
             !finite(state.entryBet) || (state.active && state.entryBet === 0)) throw new Error("Invalid HoldAndWin progress, payout or entry denomination.");
+        const kind = (state.lastOutcome as {kind: string}).kind;
+        if ((kind === "suppressed" && !state.active) || (kind === "ordinary" && !state.active && (locks.length !== 0 || state.payout !== 0)) ||
+            (kind === "completed" && locks.length === 0) ||
+            ((state.active || kind === "completed") && (!finite(state.entryBet) || state.entryBet === 0 || (schema.bets !== undefined && !schema.bets.includes(state.entryBet))))) throw new Error("HoldAndWin outcome disagrees with progress or entry denomination.");
         const seen = new Set<string>();
         for (const lock of locks) {
             if (!lock || !Array.isArray(lock.position) || lock.position.length !== 2 || !lock.position.every(Number.isSafeInteger) ||

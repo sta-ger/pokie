@@ -852,3 +852,27 @@ describe("whole-sequence replay inspection", () => {
         expect(result.getByText("Reel 1: all-B (implicit:1)")).toBeInTheDocument();
     });
 });
+
+it("F2 presents allowed zero-valued mechanic observations after the actual Replay projection", () => {
+    const events = [
+        {type: "holdAndWin", data: {active: false, locks: [{position: [0, 0], symbolId: "C", effect: {kind: "value", amount: 0, secret: 9}, secret: 9}], respinsRemaining: 0, payout: 0, secret: 9}},
+        {type: "jackpot", data: {pools: [{id: "mini", value: 0, secret: 9}], statistics: {mini: {awardCount: 0, totalAwarded: 0, totalContributed: 0, secret: 9}}, award: {poolId: "mini", amount: 0, secret: 9}, secret: 9}},
+        {type: "chargedBetMode", data: {id: "ante", secret: 9}},
+        {type: "internal", data: {rngState: 42, secret: 9}},
+    ];
+    const canonical = artifactFor({featureEvents: events, steps: [{index: 0, screen: [["C"]], wins: [], totalWin: 0, featureEvents: events}]});
+    const displayed = describeRoundArtifact(canonical);
+    expect(displayed.featureEvents).toEqual(displayed.steps[0].featureEvents);
+    expect(JSON.stringify(displayed.steps[0].featureEvents)).not.toMatch(/secret|rngState/);
+    expect(displayed.steps[0].featureEvents).toEqual([
+        {type: "holdAndWin", data: {active: false, locks: [{position: [0, 0], symbolId: "C", effect: {kind: "value", amount: 0}}], respinsRemaining: 0, payout: 0}},
+        {type: "jackpot", data: {pools: [{id: "mini", value: 0}], statistics: {mini: {awardCount: 0, totalAwarded: 0, totalContributed: 0}}, award: {poolId: "mini", amount: 0}}},
+        {type: "chargedBetMode", data: {id: "ante"}},
+        {type: "internal"},
+    ]);
+    expect(displayed.canonicalArtifact).toBe(canonical);
+    const view = renderWithMantine(<RoundArtifactInspector artifact={displayed} />);
+    const counters = view.container.querySelector(".player-feature-counters") ?? view.container;
+    for (const label of ["Locked symbols", "Respins", "Hold & Win payout", "Jackpot mini", "Jackpot award", "Charged mode"]) expect(within(counters as HTMLElement).getByText(label)).toBeVisible();
+    expect(within(counters as HTMLElement).getByText("ante")).toBeVisible();
+});

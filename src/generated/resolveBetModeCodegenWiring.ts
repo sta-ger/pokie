@@ -17,9 +17,7 @@ export type BetModeCodegenWiring = {
 // Deliberately independent of GameBlueprintValidator: GamePackageGenerator.generate() (and this
 // function's own callers) don't require validation to have run first, so this re-checks every
 // semantic rule itself rather than trusting a validator pass that may not have happened. It does NOT
-// re-validate purely structural things GameBlueprintValidator alone is responsible for (id
-// non-emptiness/uniqueness) -- those are prerequisites for the blueprint being valid at all, not
-// specific to "should the bet-mode runtime be wired".
+// replace the full structural validator, but checks mode ids before reading runtime semantics.
 //
 // Once ANY mode sets "runtimeType", the whole array has committed to the explicit contract -- an
 // incomplete or invalid attempt from that point on throws BetModeRuntimeSemanticsInvalidError rather
@@ -32,9 +30,10 @@ export function resolveBetModeCodegenWiring(blueprint: GameBlueprint): BetModeCo
     if (!betModes || betModes.length === 0) {
         return undefined;
     }
-    if (betModes.some(mode => !mode.id?.trim()) || new Set(betModes.map(mode => mode.id)).size !== betModes.length) {
-        throw new BetModeRuntimeSemanticsInvalidError("Bet modes require unique nonempty ids.");
+    for (const [index, mode] of betModes.entries()) {
+        if (typeof mode?.id !== "string" || !mode.id.trim()) throw new BetModeRuntimeSemanticsInvalidError(`"betModes[${index}].id" must be a non-empty string.`);
     }
+    if (new Set(betModes.map(mode => mode.id)).size !== betModes.length) throw new BetModeRuntimeSemanticsInvalidError("Bet modes require unique ids.");
     if (!betModes.some((mode) => mode.runtimeType !== undefined)) {
         if (betModes.some(mode => mode.forcedFreeGames !== undefined)) throw new BetModeRuntimeSemanticsInvalidError("forcedFreeGames requires explicit runtimeType on every mode.");
         return undefined;

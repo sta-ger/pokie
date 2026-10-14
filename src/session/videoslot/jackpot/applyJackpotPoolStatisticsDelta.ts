@@ -9,7 +9,7 @@ export function applyJackpotPoolStatisticsDelta(
     poolId: string,
     delta: Partial<JackpotPoolStatisticsSnapshot>,
 ): Readonly<Record<string, JackpotPoolStatisticsSnapshot>> {
-    const existing: JackpotPoolStatisticsSnapshot = current[poolId] ?? {awardCount: 0, totalAwarded: 0, totalContributed: 0};
+    const existing: JackpotPoolStatisticsSnapshot = (Reflect.apply(Object.prototype.hasOwnProperty, current, [poolId]) ? current[poolId] : undefined) ?? {awardCount: 0, totalAwarded: 0, totalContributed: 0};
     return {
         ...current,
         [poolId]: {

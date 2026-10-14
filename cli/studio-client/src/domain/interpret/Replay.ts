@@ -79,6 +79,7 @@ export function describeRoundArtifact(artifact: RoundArtifact & {hash?: string})
         ...details,
         canonicalArtifact: artifact,
         wins: visible.wins,
+        featureEvents: visible.featureEvents,
         screen: formatScreenGrid(visible.screen),
         steps: visible.steps.map((step) => ({...step, screen: formatScreenGrid(step.screen)})),
     };

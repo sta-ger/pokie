@@ -164,7 +164,7 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
         let anyPoolCapturable = false;
         for (const pool of this.pools) {
             if (this.supportsPoolStateCapture(pool)) {
-                poolStates[pool.getId()] = pool.toSessionState();
+                Reflect.defineProperty(poolStates, pool.getId(), {value: pool.toSessionState(), enumerable: true, configurable: true, writable: true});
                 anyPoolCapturable = true;
             }
         }

@@ -42,7 +42,7 @@ export class SymbolSetHoldAndWinCollector<T extends string | number | symbol = s
                 }
             }
         }
-        return collected;
+        return collected.sort((a, b) => a.position[0] - b.position[0] || a.position[1] - b.position[1]);
     }
 
     private positionKey(position: readonly [number, number]): string {

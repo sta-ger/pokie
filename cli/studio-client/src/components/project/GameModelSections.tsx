@@ -1,3 +1,4 @@
+import {validateAuthoredMechanics} from "../../../../../src/generated/validateAuthoredMechanics";
 import {ExistingMechanicsFieldset} from "../blueprintEditor/ExistingMechanicsFieldset";
 import {PackageExtractionDiagnostics} from "./PackageExtractionDiagnostics";
 import {Badge, Button, Group, NumberInput, Table, Tabs, Text} from "@mantine/core";
@@ -117,7 +118,7 @@ function SectionEditAction({id, edit}: {id: GameModelSectionId; edit: GameModelE
         }
         return (
             <Group gap="xs" wrap="nowrap">
-                <Button id={`game-model-${id}-save`} data-pokie-game-model-action="save" data-pokie-game-model-section={id} size="xs" onClick={edit.onSave} loading={edit.saving} disabled={edit.sequenceDraftDirty}>
+                <Button id={`game-model-${id}-save`} data-pokie-game-model-action="save" data-pokie-game-model-section={id} size="xs" onClick={edit.onSave} loading={edit.saving} disabled={edit.sequenceDraftDirty || validateAuthoredMechanics(edit.blueprint).some(issue => issue.severity === "error") || edit.validationView.status === "invalid"}>
                     Save
                 </Button>
                 <Button id={`game-model-${id}-cancel`} data-pokie-game-model-action="cancel" data-pokie-game-model-section={id} size="xs" variant="default" onClick={edit.onCancel} disabled={edit.saving}>

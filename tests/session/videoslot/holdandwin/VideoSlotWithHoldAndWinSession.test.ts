@@ -557,7 +557,9 @@ describe("V2C-12 canonical HoldAndWin continuation", () => {
         session.play();
         const before = JSON.parse(JSON.stringify(session.toSessionState()));
         for (const corrupt of [
-            {...before, entryBet: NaN}, {...before, respinsRemaining: 0},
+            {...before, entryBet: NaN}, {...before, entryBet: 1}, {...before, respinsRemaining: 0},
+            {...before, active: false, respinsRemaining: 0, payout: 100, lastOutcome: {kind: "ordinary"}},
+            {...before, active: false, respinsRemaining: 0, lastOutcome: {kind: "suppressed"}},
             {...before, lockedSymbols: [...before.lockedSymbols, before.lockedSymbols[0]]},
             {...before, lockedSymbols: [{...before.lockedSymbols[0], effect: {kind: "value", amount: Infinity}}]},
             {...before, base: {}}, {...before, lastOutcome: {kind: "completed", payout: 100}},

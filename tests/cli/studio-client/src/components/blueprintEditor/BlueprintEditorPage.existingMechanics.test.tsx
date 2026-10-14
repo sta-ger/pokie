@@ -61,3 +61,47 @@ it("uses the same controls in Project Game Model and keeps mutation separate fro
     fireEvent.click(screen.getByRole("button", {name: "Save"}));
     expect(save).toHaveBeenCalledWith(expect.objectContaining({mechanics: expect.objectContaining({jackpot: expect.objectContaining({pool: expect.objectContaining({id: "grand"})})})}));
 });
+
+it.each([{holdAndWin: {}}, {jackpot: {}}, {holdAndWin: {payout: null, symbolEffects: []}}, {jackpot: {pool: null, contribution: [], trigger: null}}])("F3 retains malformed Home JSON %p, opens Form safely and prevents Create", async mechanics => {
+    const writes = jest.fn();
+    const fetchImpl: FetchLike = (url, init) => {
+        if (url === "/api/home/blueprints/validate") {
+            const {blueprint} = JSON.parse(String(init?.body));
+            const issues = new GameBlueprintValidator().validate(blueprint);
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "invalid", errors: issues.filter(i => i.severity === "error"), warnings: issues.filter(i => i.severity !== "error")})});
+        }
+        if (!init?.method || init.method === "GET") return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
+        writes(url);
+        return Promise.reject(new Error(`Unexpected write: ${url}`));
+    };
+    renderRoutedApp({fetchImpl});
+    fireEvent.click(screen.getByRole("button", {name: /Show advanced options/}));
+    fireEvent.click(await screen.findByLabelText("JSON"));
+    const field = screen.getByLabelText("Blueprint JSON");
+    const blueprint = {...JSON.parse((field as HTMLTextAreaElement).value), mechanics};
+    fireEvent.change(field, {target: {value: JSON.stringify(blueprint)}});
+    fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
+    fireEvent.click(screen.getByLabelText("Form"));
+    fireEvent.click(screen.getByRole("tab", {name: /^Bets/}));
+    expect(screen.getByText(/draft is incomplete or malformed/)).toBeVisible();
+    expect(screen.getByText("Mechanic validation")).toBeVisible();
+    await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeDisabled());
+    fireEvent.click(screen.getByLabelText("JSON"));
+    expect(JSON.parse((screen.getByLabelText("Blueprint JSON") as HTMLTextAreaElement).value).mechanics).toEqual(mechanics);
+    expect(writes).not.toHaveBeenCalled();
+}, 60000);
+
+it.each([{holdAndWin: {}}, {jackpot: {}}])("F3 opens malformed Project mechanics %p without discarding the draft or enabling Save", mechanics => {
+    const blueprint = {symbols: ["C"], mechanics};
+    const save = jest.fn(),
+        mutate = jest.fn();
+    const unavailable = {status: "unavailable" as const, reason: "Not supplied"};
+    render(<MantineProvider><GameModelSections projection={{basics: unavailable, layout: unavailable, symbols: unavailable, reels: unavailable, paytable: unavailable, betsAndModes: unavailable, limits: unavailable, mechanics: {status: "available", data: {}}}} edit={{ready: true, activeSection: "mechanics", blueprint, mutate, saving: false, onEdit: () => undefined, onSave: save, onCancel: () => undefined, drafts: {current: new Map()}, modeDrafts: {current: new Map()}, revision: 0, validationView: {status: "idle"}}} /></MantineProvider>);
+    expect(screen.getByText(/draft is incomplete or malformed/)).toBeVisible();
+    expect(screen.getByText("Mechanic validation")).toBeVisible();
+    expect(screen.getByRole("button", {name: "Save"})).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", {name: "Save"}));
+    expect(save).not.toHaveBeenCalled();
+    expect(mutate).not.toHaveBeenCalled();
+    expect(blueprint.mechanics).toEqual(mechanics);
+});

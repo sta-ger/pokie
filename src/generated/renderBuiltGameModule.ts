@@ -25,6 +25,7 @@ import {resolveReelStripGeneration} from "./resolveReelStripGeneration.js";
 function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: string, format: "cjs" | "ts"): string {
     // Validate direct library callers with the same authored rules as CLI and Studio.
     const issues = new GameBlueprintValidator().validate(blueprint).filter(issue => issue.severity === "error");
+    if (issues.some(issue => ["blueprint-betmode-invalid-id", "blueprint-betmode-invalid-entry"].includes(issue.code))) throw new Error(issues.map(issue => `${issue.path ?? "$"}: ${issue.message}`).join("; "));
     const betModeWiring = Array.isArray(blueprint.betModes) && blueprint.betModes.every(mode => mode && typeof mode === "object") ? resolveBetModeCodegenWiring(blueprint) : undefined;
     if (issues.length) throw new Error(issues.map(issue => `${issue.path ?? "$"}: ${issue.message}`).join("; "));
     const variantErrors = validateBlueprintReelSequences(blueprint as unknown as Record<string, unknown>);
@@ -222,7 +223,7 @@ ${winCalculatorDeclaration}        return ${wrapJackpot(sessionConstructionExpre
     const weightedReels = blueprint.reelSequences?.flatMap((reel, reelIndex) => reel.type === "weighted" ? [{reelIndex, variants: reel.variants}] : []);
     const baseStateSchema = {kind: "seeded-video-slot", ...(weightedReels?.length ? {weightedReels} : {}), reels: blueprint.reels, symbols: blueprint.symbols, ...(blueprint.screenGeometry ? {screenGeometry: blueprint.screenGeometry} : {})};
     const featureStateSchema = blueprint.mechanics?.freeGames !== undefined ? {kind: "free-games", base: baseStateSchema} : baseStateSchema;
-    const holdStateSchema = holdAndWin ? {kind: "hold-and-win", reels: blueprint.reels, rows: blueprint.rows, symbolEffects: holdAndWin.symbolEffects, initialRespins: holdAndWin.initialRespins, base: featureStateSchema} : featureStateSchema;
+    const holdStateSchema = holdAndWin ? {kind: "hold-and-win", reels: blueprint.reels, rows: blueprint.rows, bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], symbolEffects: holdAndWin.symbolEffects, initialRespins: holdAndWin.initialRespins, base: featureStateSchema} : featureStateSchema;
     const modeStateSchema = betModeWiring ? {kind: "bet-modes", base: holdStateSchema} : holdStateSchema;
     const stateSchema = jackpot ? {kind: "jackpot", pools: [jackpot.pool], base: modeStateSchema} : modeStateSchema;
     const blueprintDeclaration =

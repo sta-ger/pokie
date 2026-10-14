@@ -98,17 +98,18 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
 
     public getSessionStateSchema(): SessionStateSchema {
         const config = this.roundHandler instanceof HoldAndWinRoundHandler ? this.roundHandler.getRestorationConfig() : undefined;
-        return config ? {kind: "hold-and-win", reels: this.getReelsNumber(), rows: this.getReelsSymbolsNumber(),
+        return config ? {kind: "hold-and-win", bets: this.getAvailableBets(), reels: this.getReelsNumber(), rows: this.getReelsSymbolsNumber(),
             initialRespins: config.initialRespins, symbolEffects: config.symbolEffects, base: resolveSessionStateSchema(this.baseSession)} : {kind: "custom"};
     }
 
     public isSessionStateRestorable(): boolean {
-        return this.constructor === VideoSlotWithHoldAndWinSession && this.getSessionStateSchema().kind === "hold-and-win" && isSessionStateRestorable(this.baseSession);
+        return this.constructor === VideoSlotWithHoldAndWinSession && this.getSessionStateSchema().kind === "hold-and-win" && !this.hasIncompatibleBase() && isSessionStateRestorable(this.baseSession);
     }
 
     public validateSessionState(value: unknown): void {
         const schema = this.getSessionStateSchema();
         if (schema.kind === "custom") throw new Error("Custom HoldAndWin collaborators require their own complete state codec.");
+        if (this.hasIncompatibleBase()) throw new Error("HoldAndWin must be inside bet modes and jackpot and cannot compete with free games.");
         validateExecutableState(value, schema, undefined, !isSessionStateRestorable(this.baseSession));
         (this.baseSession as VideoSlotSessionHandling<T> & SessionStateRestoring).validateSessionState?.((value as {base: unknown}).base);
     }
@@ -170,6 +171,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     }
 
     public fromSessionState(value: VideoSlotWithHoldAndWinSessionState<T>): this {
+        if (this.hasIncompatibleBase()) throw new Error("HoldAndWin must be inside bet modes and jackpot and cannot compete with free games.");
         if (this.isSessionStateRestorable()) this.validateSessionState(value);
         // Validate the entire nested state before changing locks or credits.
         if (value.base !== undefined && this.supportsSessionStateRestore(this.baseSession)) this.baseSession.fromSessionState(value.base);
@@ -193,7 +195,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
 
     public override validateScreenCoordinates(): void {
         super.validateScreenCoordinates();
-        if (typeof Reflect.get(this.baseSession, "getJackpotPools") === "function" || typeof Reflect.get(this.baseSession, "getFreeGamesSum") === "function") throw new Error("HoldAndWin must be inside jackpot and cannot compete with free games.");
+        if (this.hasIncompatibleBase()) throw new Error("HoldAndWin must be inside bet modes and jackpot and cannot compete with free games.");
         rejectScreenGeometry({getScreenGeometry: () => this.getConfiguredScreenGeometry()}, "HoldAndWin");
     }
 
@@ -367,6 +369,10 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     // exactly "payout", not merely close to it, regardless of how unevenly "payout" divides among the locked
     // value symbols. The residual always lands on the *last* locked symbol in collection order — the same
     // order every time for the same locked set, never randomized or dependent on iteration/hash order.
+    private hasIncompatibleBase(): boolean {
+        return typeof Reflect.get(this.baseSession, "getJackpotPools") === "function" || typeof Reflect.get(this.baseSession, "getFreeGamesSum") === "function" || typeof Reflect.get(this.baseSession, "getBetModeId") === "function";
+    }
+
     private buildCompletedWinEvaluationResult(outcome: Extract<HoldAndWinRoundOutcome<T>, {kind: "completed"}>): WinEvaluationResult<T> {
         const valueLocked = outcome.lockedSymbols.filter(isValueLocked<T>);
         const rawSum = valueLocked.reduce((sum, locked) => sum + locked.effect.amount, 0);

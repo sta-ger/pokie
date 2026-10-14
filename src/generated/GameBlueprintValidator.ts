@@ -335,7 +335,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
 
             const e = entry as Record<string, unknown>;
             entries.push(e);
-            if (typeof e.id !== "string" || e.id.length === 0) {
+            if (typeof e.id !== "string" || e.id.trim().length === 0) {
                 issues.push({
                     code: "blueprint-betmode-invalid-id",
                     severity: "error",
