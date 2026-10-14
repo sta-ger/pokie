@@ -1188,17 +1188,43 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
     });
 
-    it("preserves the legacy replay shape with explicit identity coordinates", () => {
+    it("preserves replay screens, totals and step artifacts with explicit identity coordinates", () => {
         const blueprint = {...overscanBlueprint, screenGeometry: undefined};
         const identity: ScreenGeometry = {generated: {reels: 5, rows: 3}, visible: {rowOffset: 0, rows: 3}, evaluated: {rowOffset: 0, rows: 3}, paylineSpace: "evaluated"};
         const recorder = new ReplayRecorder();
-        const ordinary = recorder.record({game: createOverscanGame(blueprint), seed: "7", round: 6});
-        const explicit = recorder.record({game: createOverscanGame({...blueprint, screenGeometry: identity}), seed: "7", round: 6});
+        const ordinaryGame = createOverscanGame(blueprint);
+        const explicitGame = createOverscanGame({...blueprint, screenGeometry: identity});
+        const ordinary = recorder.record({game: ordinaryGame, seed: "7", round: 6});
+        const explicit = recorder.record({game: explicitGame, seed: "7", round: 6});
         expect(explicit.screen).toEqual(ordinary.screen);
         expect(explicit.totalWin).toBe(ordinary.totalWin);
         expect(explicit.totalBet).toBe(ordinary.totalBet);
-        expect(explicit).not.toHaveProperty("artifact");
         expect(Object.keys(explicit).sort()).toEqual(Object.keys(ordinary).sort());
+        for (const {descriptor, game} of [{descriptor: ordinary, game: ordinaryGame}, {descriptor: explicit, game: explicitGame}]) {
+            const artifact = descriptor.artifact;
+            if (!artifact) throw new Error("Video-slot replay must retain its executed step artifact.");
+            const session = game.createSession({seed: "7"});
+            session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
+            const runtime = new SessionRuntime(session);
+            const results = Array.from({length: descriptor.round}, () => runtime.execute({kind: "spin"}));
+            const finalResult = results[results.length - 1];
+            if (finalResult.status !== "played") throw new Error("Seeded fixture must reach its final replay step.");
+            expect(new RoundArtifactValidator().validate(artifact)).toEqual([]);
+            expect(artifact).toMatchObject({roundId: "replay:7:6", stake: 0.05, betMode: "base", screen: descriptor.screen,
+                provenance: {game: blueprint.manifest, pokieVersion: "1.3.0", configHash: game.getConfigHash!()}});
+            expect(artifact).toMatchObject({stake: finalResult.stake, betMode: finalResult.mode, totalWin: finalResult.win});
+            expect(artifact.steps).toHaveLength(1);
+            expect(artifact.steps[0].screen).toEqual(descriptor.screen);
+            expect(artifact.totalWin).toBe(artifact.steps[0].totalWin);
+            expect(artifact.wins).toEqual(artifact.steps[0].wins);
+            for (const source of [artifact, ...artifact.steps]) {
+                expect(source).not.toHaveProperty("geometry");
+                expect(source).not.toHaveProperty("generatedScreen");
+                expect(source).not.toHaveProperty("sequenceSelections");
+            }
+        }
+        // Explicit geometry changes model provenance, while the executed step remains identical.
+        expect({...explicit.artifact, hash: undefined, provenance: undefined}).toEqual({...ordinary.artifact, hash: undefined, provenance: undefined});
     });
 
     it("preserves zero-overscan screen, stops, initialization consumption, payout and public shapes", () => {
