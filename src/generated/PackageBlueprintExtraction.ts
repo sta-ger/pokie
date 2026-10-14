@@ -149,10 +149,14 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                             "getSessionCommandCapabilities",
                             result.fields,
                         );
-                    }
+                    } else throw new Error("getSessionCommandCapabilities.bets: expected positive numeric stakes");
                 }
                 if (game.getBetModes) {
-                    result.model.betModes = detachPackageModelData(game.getBetModes()) as GameBlueprint["betModes"];
+                    const modes = detachPackageModelData(game.getBetModes());
+                    if (!Array.isArray(modes) || modes.some(mode => !mode || typeof mode !== "object" || typeof mode.id !== "string" ||
+                        (mode.label !== undefined && typeof mode.label !== "string") ||
+                        [mode.costMultiplier, mode.targetRtp].some(value => value !== undefined && (typeof value !== "number" || !Number.isFinite(value))))) throw new Error("getBetModes: malformed public mode declarations");
+                    result.model.betModes = modes as GameBlueprint["betModes"];
                     this.recordFields(
                         result.model.betModes,
                         "betModes",
@@ -388,7 +392,11 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
             });
             for (const diagnostic of result.diagnostics.filter((issue) => issue.severity === undefined || issue.severity === "error")) result.fields.push({path: diagnostic.path, status: "unsupported", authority: diagnostic.code});
             const required = ["reels", "rows", "symbols", "paytable"];
-            if (missing.length > 0) result.status = required.some((field) => !hasOwn(model, field)) ? "partial" : "malformed";
+            const invalidPresentField = missing.some(issue => {
+                const field = (issue.path ?? requiredFieldPath(issue.code)).split(/[.[]/)[0];
+                return field !== "$" && hasOwn(model, field);
+            });
+            if (missing.length > 0) result.status = !invalidPresentField && required.some((field) => !hasOwn(model, field)) ? "partial" : "malformed";
             else if (result.diagnostics.some((issue) => issue.severity === undefined || issue.severity === "error")) result.status = "unsupported";
             else {
                 result.status = "complete";
@@ -402,6 +410,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
             return result;
         } catch (error) {
             result.status = options?.signal?.aborted ? "cancelled" : "malformed";
+            Reflect.deleteProperty(result, "model");
             Reflect.deleteProperty(result, "blueprint");
             Reflect.deleteProperty(result, "blueprintHash");
             result.diagnostics.push({
@@ -434,6 +443,8 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
 
 function requiredFieldPath(code: string): string {
     for (const field of [
+        "availablebets",
+        "screengeometry",
         "paytable",
         "reelstrips",
         "manifest",
@@ -448,7 +459,7 @@ function requiredFieldPath(code: string): string {
         "betmodes",
     ]) {
         if (code.startsWith(`blueprint-${field}`)) return (
-            ({winmodel: "winModel", betmodes: "betModes", reelstrips: "reelStrips"} as Record<string, string>)[
+            ({availablebets: "availableBets", screengeometry: "screenGeometry", winmodel: "winModel", betmodes: "betModes", reelstrips: "reelStrips"} as Record<string, string>)[
                 field
             ] ?? field
         );

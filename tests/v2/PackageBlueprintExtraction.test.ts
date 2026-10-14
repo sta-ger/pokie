@@ -226,6 +226,22 @@ describe("PackageBlueprintExtraction", () => {
         expect(extracted.diagnostics[0].code).toBe("legacy-model-unavailable");
         expect(release).not.toHaveBeenCalled();
     });
+    it("rejects malformed legacy getter data and invalid fields in otherwise partial descriptors", async () => {
+        for (const bad of ["modes", "bets"]) {
+            const game = custom(base());
+            Reflect.deleteProperty(game, "getModelDescriptor");
+            game.getSessionCommandCapabilities = () => ({bets: [0.05]});
+            if (bad === "modes") game.getBetModes = () => ({id: "bad"} as unknown as import("@fromstan/pokie").BetMode[]);
+            else game.getSessionCommandCapabilities = () => ({bets: ["bad"]} as unknown as {bets: number[]});
+            const result = await extractor.extract(game);
+            expect(result.status).toBe("malformed");
+            expect(result.model).toBeUndefined();
+            expect(result.blueprint).toBeUndefined();
+        }
+        const partial = {manifest: base().manifest, availableBets: ["bad"]};
+        expect((await extractor.extract(custom(partial))).status).toBe("malformed");
+    });
+
     it("retains exact custom declarations and field-level omissions without mutating objects", async () => {
         const model = {...base(), paytable: {A: {}, B: {3: 0}}};
         const before = JSON.stringify(model);
