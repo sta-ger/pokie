@@ -67,7 +67,7 @@ describe("StudioArtifactBuildService", () => {
         try {
             const result = await packageService.build(source, "blueprint", destination);
             expect(result.status).toBe("conflict");
-            expect(result.message).toMatch(/already exists/);
+            expect(result).toMatchObject({message: expect.stringMatching(/already exists/)});
             expect(register).not.toHaveBeenCalled();
             expect(fs.readFileSync(competitor)).toEqual(bytes);
             expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", path.basename(competitor)].sort());
@@ -90,7 +90,7 @@ describe("StudioArtifactBuildService", () => {
         }, undefined, undefined, unregister);
         const result = await packageService.build(source, "blueprint", destination);
         expect(result.status).toBe("error");
-        expect(result.message).toContain("registration failed");
+        expect(result).toMatchObject({message: expect.stringContaining("registration failed")});
         expect(unregister).toHaveBeenCalledWith(destination);
         expect(fs.readFileSync(competitor)).toEqual(bytes);
         expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", path.basename(competitor)].sort());
@@ -109,7 +109,7 @@ describe("StudioArtifactBuildService", () => {
             if (progress.message === "Extracting public package model into Blueprint") fs.writeFileSync(control, "99");
         }});
         expect(result.status).toBe("error");
-        expect(result.message).toContain("Package model changed after preview");
+        expect(result).toMatchObject({message: expect.stringContaining("Package model changed after preview")});
         expect(register).not.toHaveBeenCalled();
         expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", "payout.txt"]);
     });
@@ -127,7 +127,7 @@ describe("StudioArtifactBuildService", () => {
         for (const result of [await packageService.preview(source, "blueprint", destination), await packageService.build(source, "blueprint", destination)]) {
             expect(result.status).toBe("unsupported");
             expect(result.plan.packageExtraction?.status).toBe("malformed");
-            expect(result.message).toMatch(diagnostic);
+            expect(result).toMatchObject({message: expect.stringMatching(diagnostic)});
         }
         expect(register).not.toHaveBeenCalled();
         expect(fs.readdirSync(workDir)).toEqual(["descriptor-package"]);
