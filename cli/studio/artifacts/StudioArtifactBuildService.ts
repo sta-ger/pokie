@@ -111,6 +111,7 @@ export class StudioArtifactBuildService {
     // operation server-side so Build never repeats its library lookup.
     private readonly preparedStakeOperations = new Map<string, PreparedStakeOperationRecord>();
     private nextPreparedStakeOperationId = 1;
+    private readonly preparedExtractions = new Map<string, PreparedExtractionRecord>();
     private jobService: StudioJobService | undefined;
 
     constructor(
@@ -209,6 +210,9 @@ export class StudioArtifactBuildService {
         const preparedOperationId = operation === undefined
             ? undefined
             : this.retainPreparedStakeOperation(projectRoot, operation);
+        const extractionOperationId = target === "blueprint" && project.type === "tsPackage"
+            ? this.retainPreparedExtraction(projectRoot, project, destination, plan)
+            : undefined;
         return {
             status: "ok",
             target,
@@ -217,7 +221,7 @@ export class StudioArtifactBuildService {
             plannedOutputs,
             sourceType: project.type,
             plan,
-            ...(preparedOperationId === undefined ? {} : {preparedOperationId}),
+            ...((preparedOperationId ?? extractionOperationId) === undefined ? {} : {preparedOperationId: preparedOperationId ?? extractionOperationId}),
             ...(operation === undefined ? {} : {stakePreflight: this.stakePreflightView(operation)}),
         };
     }
@@ -302,6 +306,7 @@ export class StudioArtifactBuildService {
         destination: string,
         options?: ArtifactBuildOptions,
         preparedStakeOperation?: PreparedStakeProjectionOperation,
+        preparedPlan?: ArtifactConversionPlan,
     ): Promise<StudioArtifactBuildView> {
         // Directory targets deliberately accept a caller-created empty
         // destination.  It is not owned by this operation, even though its
@@ -314,11 +319,11 @@ export class StudioArtifactBuildService {
             : undefined;
         let plan: ArtifactConversionPlan;
         try {
-            plan = operation?.plan ?? await this.plan(project, target, destination, options);
+            plan = preparedPlan ?? operation?.plan ?? await this.plan(project, target, destination, options);
             assertArtifactBuildNotCancelled(options);
         } catch (error) {
             plan = new ArtifactConversionPlanner().plan(project, target, {destinationPath: destination});
-            return options?.signal?.aborted ? {status: "cancelled", message: "Artifact build cancelled before publication.", plan} : {status: "error", message: error instanceof Error ? error.message : String(error), plan};
+            return error instanceof ArtifactBuildCancelledError ? {status: "cancelled", message: "Artifact build cancelled before publication.", plan} : {status: "error", message: error instanceof Error ? error.message : String(error), plan};
         }
         if (plan.status === "unavailable") {
             return {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan};
@@ -377,7 +382,7 @@ export class StudioArtifactBuildService {
                 outputPath: result.outputPath,
                 outputKind: destinationKindFor(target),
                 sourceType: project.type,
-                plan,
+                plan: result.packageExtraction ? {...plan, packageExtraction: result.packageExtraction} : plan,
                 ...(result.preflight !== undefined
                     ? {
                         preflight: {
@@ -463,6 +468,15 @@ export class StudioArtifactBuildService {
         return prepared?.projectRoot === projectRoot ? prepared.operation.destinationPath : undefined;
     }
 
+    /** Consume only the extraction and destination the user reviewed. Execution revalidates its full graph. */
+    public startPreparedExtraction(projectRoot: string, preparedOperationId: string, outDir?: string): StudioPreparedStakeProjectionStartResult {
+        const prepared = this.preparedExtractions.get(preparedOperationId);
+        if (prepared === undefined || prepared.projectRoot !== canonicalStudioProjectIdentity(projectRoot) ||
+            prepared.destination !== path.resolve(outDir ?? resolveDefaultDestination(prepared.project.rootPath, "blueprint"))) return {status: "stale"};
+        this.preparedExtractions.delete(preparedOperationId);
+        return this.startOperation(projectRoot, "blueprint", prepared.destination, undefined, prepared);
+    }
+
     public getStatusForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.jobs.get(id);
@@ -525,6 +539,7 @@ export class StudioArtifactBuildService {
         target: ArtifactTargetType,
         outDir?: string,
         preparedStakeOperation?: PreparedStakeProjectionOperation,
+        preparedExtraction?: PreparedExtractionRecord,
     ): StudioArtifactBuildStartResult {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         this.trimTerminalJobs();
@@ -553,6 +568,7 @@ export class StudioArtifactBuildService {
             cancellationRequested: false,
             controller: new AbortController(),
             preparedStakeOperation,
+            preparedExtraction,
         };
         this.jobs.set(record.id, record);
         const execution = Promise.resolve().then(() => this.run(record, outDir));
@@ -583,9 +599,10 @@ export class StudioArtifactBuildService {
                 });
             },
         };
-        const result = record.preparedStakeOperation === undefined
-            ? await this.build(record.projectRoot, record.target, outDir, options)
-            : await this.executeStakeProjection(record.preparedStakeOperation, options);
+        let result: StudioArtifactBuildView;
+        if (record.preparedExtraction !== undefined) result = await this.buildResolved(record.preparedExtraction.project, "blueprint", record.preparedExtraction.destination, options, undefined, record.preparedExtraction.plan);
+        else if (record.preparedStakeOperation !== undefined) result = await this.executeStakeProjection(record.preparedStakeOperation, options);
+        else result = await this.build(record.projectRoot, record.target, outDir, options);
         const status = terminalStatusFor(result);
         Object.assign(record, {result, status});
         if (status === "completed") {
@@ -600,9 +617,9 @@ export class StudioArtifactBuildService {
                 detail: {target: record.target, outputKind: resultView.outputKind, result: resultView},
             });
         } else if (status === "cancelled") {
-            this.jobService?.cancelled(record.id, {summary: "Artifact build cancelled after staging cleanup."}, {action: "rebuild", reason: "Rebuild the artifact from its captured target and destination."});
+            this.jobService?.cancelled(record.id, {summary: "Artifact build cancelled after staging cleanup.", detail: {result}}, {action: "rebuild", reason: "Rebuild the artifact from its captured target and destination."});
         } else {
-            this.jobService?.fail(record.id, result.status === "error" ? result.message : "Artifact build failed.", {action: "rebuild", reason: "Resolve the reported build problem and rebuild."});
+            this.jobService?.fail(record.id, result.status !== "ok" ? result.message : "Artifact build failed.", {action: "rebuild", reason: "Resolve the reported build problem and refresh the preview before rebuilding."}, {summary: "Artifact build failed.", detail: {result}});
         }
     }
 
@@ -645,6 +662,14 @@ export class StudioArtifactBuildService {
             const oldest = terminal.shift();
             if (oldest !== undefined) this.jobs.delete(oldest.id);
         }
+    }
+
+    private retainPreparedExtraction(projectRoot: string, project: PokieProject, destination: string, plan: ArtifactConversionPlan): string {
+        const id = `extraction-${crypto.randomUUID()}`;
+        // Do not share a mutable public DTO with the retained publication authority.
+        this.preparedExtractions.set(id, {projectRoot: canonicalStudioProjectIdentity(projectRoot), project: structuredClone(project), destination: path.resolve(destination), plan: structuredClone(plan)});
+        while (this.preparedExtractions.size > 20) this.preparedExtractions.delete(this.preparedExtractions.keys().next().value!);
+        return id;
     }
 
     private retainPreparedStakeOperation(projectRoot: string, operation: PreparedStakeProjectionOperation): string {
@@ -874,6 +899,7 @@ type StudioArtifactBuildJobRecord = {
     cancellationRequested: boolean;
     readonly controller: AbortController;
     readonly preparedStakeOperation?: PreparedStakeProjectionOperation;
+    readonly preparedExtraction?: PreparedExtractionRecord;
     progress?: StudioArtifactBuildProgressView;
     result?: StudioArtifactBuildView;
 };
@@ -900,3 +926,5 @@ function toProgressView(progress: ArtifactBuildProgress): StudioArtifactBuildPro
         ...(progress.message !== undefined ? {message: progress.message} : {}),
     };
 }
+
+type PreparedExtractionRecord = {readonly projectRoot: string; readonly project: PokieProject; readonly destination: string; readonly plan: ArtifactConversionPlan};

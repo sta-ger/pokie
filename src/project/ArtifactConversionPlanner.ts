@@ -379,7 +379,7 @@ export function describeArtifactConversionPlanDiagnostic(plan: ArtifactConversio
         blueprint: "Game Blueprint", tsPackage: "POKIE game package", outcomeLibrary: "Outcome Library", stakeAdapter: "Stake Engine export", parWorkbook: "PAR workbook", wasm: "POKIE WASM component",
     };
     const prerequisites: Readonly<Record<ArtifactTargetType, {missing: string; next: string}>> = {
-        blueprint: {missing: "a PAR workbook source", next: "Open a PAR workbook, then run `pokie build <path> --target blueprint`."},
+        blueprint: {missing: "a PAR workbook or package with a complete supported public model descriptor", next: "Open a PAR workbook or supported package, then preview with `pokie build <path> --target blueprint --dry-run` before saving."},
         tsPackage: {missing: "a Game Blueprint source", next: "Open a Game Blueprint, then run `pokie build <path> --target tsPackage`."},
         outcomeLibrary: {missing: "a Game Blueprint, POKIE game package, or Outcome Library", next: "Open one of those sources, then run `pokie build <path> --target outcomeLibrary`."},
         stakeAdapter: {missing: "a Game Blueprint, POKIE game package, Outcome Library, or Stake Engine export", next: "Open one of those sources, then run `pokie build <path> --target stakeAdapter`."},

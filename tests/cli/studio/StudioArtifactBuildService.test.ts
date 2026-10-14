@@ -387,6 +387,99 @@ describe("StudioArtifactBuildService", () => {
         }
     });
 
+    describe("reviewed package extraction", () => {
+        async function terminal(packageService: StudioArtifactBuildService, source: string, id: string) {
+            for (let read = 0; read < 1000; read++) {
+                const view = packageService.getStatusForProject(source, id)!;
+                if (["completed", "failed", "cancelled"].includes(view.status)) return view;
+                await new Promise<void>(resolve => {
+                    setImmediate(resolve);
+                });
+            }
+            throw new Error("Extraction job did not settle");
+        }
+        it("consumes a single project/destination authority and rejects missing, mismatched and reused handles", async () => {
+            const source = writeDescriptorPackage(workDir);
+            const destination = path.join(workDir, "reviewed.json");
+            const preview = await service.preview(source, "blueprint", destination);
+            if (preview.status !== "ok") throw new Error(preview.status);
+            expect(preview.preparedOperationId).toMatch(/^extraction-/);
+            expect(service.startPreparedExtraction(source, "missing", destination)).toEqual({status: "stale"});
+            expect(service.startPreparedExtraction(workDir, preview.preparedOperationId!, destination)).toEqual({status: "stale"});
+            expect(service.startPreparedExtraction(source, preview.preparedOperationId!, `${destination}.other`)).toEqual({status: "stale"});
+            expect(fs.readdirSync(workDir)).toEqual(["descriptor-package"]);
+            const started = service.startPreparedExtraction(source, preview.preparedOperationId!, destination);
+            if (started.status !== "created") throw new Error(started.status);
+            expect(service.startPreparedExtraction(source, preview.preparedOperationId!, destination)).toEqual({status: "stale"});
+            const completed = await terminal(service, source, started.job.id);
+            expect(completed.status).toBe("completed");
+            expect(completed.result?.plan.packageExtraction).toEqual(preview.plan.packageExtraction);
+            const evidence = JSON.parse(fs.readFileSync(`${destination}.conversion-evidence.json`, "utf8"));
+            expect(evidence.extraction).toEqual(preview.plan.packageExtraction);
+        });
+        it.each(["bytes", "descriptor", "companion", "registration"])("preserves sources and destinations after %s changes between preview and save", async change => {
+            const control = path.join(workDir, "descriptor-kind.txt");
+            fs.writeFileSync(control, "custom");
+            const source = writeDescriptorPackage(workDir, {descriptorBody: `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: require("fs").readFileSync(${JSON.stringify(control)}, "utf8"), model};`});
+            const destination = path.join(workDir, "reviewed.json");
+            const registered = new Set<string>();
+            const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, root => {
+                registered.add(root);
+                if (change === "registration") throw new Error("registration unavailable");
+                return Promise.resolve();
+            }, undefined, undefined, root => {
+                registered.delete(root);
+                return Promise.resolve(); 
+            });
+            const preview = await packageService.preview(source, "blueprint", destination);
+            if (preview.status !== "ok") throw new Error(preview.status);
+            if (change === "bytes") fs.appendFileSync(path.join(source, "index.js"), "\n// authored change");
+            if (change === "descriptor") fs.writeFileSync(control, "generated");
+            if (change === "companion") fs.writeFileSync(`${destination}.conversion-evidence.json`, "competing evidence");
+            const bytes = fs.readFileSync(path.join(source, "index.js"));
+            const snapshots = runtimeSnapshotNames(source);
+            const started = packageService.startPreparedExtraction(source, preview.preparedOperationId!, destination);
+            if (started.status !== "created") throw new Error(started.status);
+            const result = await terminal(packageService, source, started.job.id);
+            expect(result.status).toBe("failed");
+            expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(bytes);
+            expect(runtimeSnapshotNames(source)).toEqual(snapshots);
+            expect(fs.existsSync(destination)).toBe(false);
+            expect(registered.size).toBe(0);
+            expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-kind.txt", "descriptor-package", ...(change === "companion" ? ["reviewed.json.conversion-evidence.json"] : [])].sort());
+            if (change === "companion") expect(fs.readFileSync(`${destination}.conversion-evidence.json`, "utf8")).toBe("competing evidence");
+        });
+        it("keeps cancellation nonterminal until the asynchronous descriptor settles and retains its durable result", async () => {
+            const fixture = writePausedDescriptorPackage(workDir);
+            const destination = path.join(workDir, "reviewed.json");
+            const jobsDirectory = path.join(workDir, "jobs");
+            service.attachJobService(new StudioJobService(new FileStudioJobRepository(jobsDirectory)));
+            const snapshots = runtimeSnapshotNames(fixture.source);
+            try {
+                const preview = await service.preview(fixture.source, "blueprint", destination);
+                if (preview.status !== "ok") throw new Error(preview.status);
+                fixture.arm();
+                const started = service.startPreparedExtraction(fixture.source, preview.preparedOperationId!, destination);
+                if (started.status !== "created") throw new Error(started.status);
+                await fixture.readStarted;
+                expect(service.cancelForProject(fixture.source, started.job.id)).toMatchObject({status: "cancelling"});
+                expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
+                fixture.settle();
+                const cancelled = await terminal(service, fixture.source, started.job.id);
+                expect(cancelled).toMatchObject({status: "cancelled", result: {status: "cancelled", plan: preview.plan}});
+                const reopened = new StudioArtifactBuildService("1.3.0");
+                reopened.attachJobService(new StudioJobService(new FileStudioJobRepository(jobsDirectory)));
+                expect(reopened.getStatusForProject(fixture.source, started.job.id)).toMatchObject({status: "cancelled", result: {status: "cancelled", plan: preview.plan}});
+                expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(false);
+            } finally {
+                fixture.restore();
+                await service.cancelAll(); 
+            }
+        });
+    });
+
     function writeBlueprintFile(blueprint: unknown = buildBlueprint()): string {
         const filePath = path.join(workDir, "blueprint.json");
         fs.writeFileSync(filePath, JSON.stringify(blueprint));

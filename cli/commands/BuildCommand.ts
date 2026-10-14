@@ -543,15 +543,20 @@ export class BuildCommand implements CliCommandHandling {
         if (plan.steps.some((step) => step.kind === "importParWorkbook")) {
             console.log("  evidence eligibility determined by durable PAR conversion facts and Meta/hash provenance");
         }
-        if (plan.packageExtraction) this.printExtraction(plan.packageExtraction);
+        if (plan.packageExtraction) {
+            this.printExtraction(plan.packageExtraction);
+            if (plan.target.kind === "blueprint") console.log(`  conversion evidence ${plan.target.canonicalLocation}.conversion-evidence.json`);
+        }
         const parImportLosses = plan.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []);
         if (parImportLosses.length > 0) console.log(`  PAR import boundary ${parImportLosses.join(" ")}`);
         if (plan.preflight.losses.length > 0) console.log(`  data boundary    ${plan.preflight.losses.join(" ")}`);
     }
     private printExtraction(extraction: import("@fromstan/pokie").PackageBlueprintExtractionResult): void {
         console.log(`  package model ${extraction.status} (${extraction.source.kind})`);
+        console.log(`  extraction source ${extraction.source.location ?? "caller-owned game"} (${extraction.source.gameId ?? "unknown id"}, v${extraction.source.gameVersion ?? "unknown"})`);
+        if (extraction.blueprintHash) console.log(`  extracted Blueprint hash ${extraction.blueprintHash}`);
         for (const issue of extraction.diagnostics) console.log(`  ${issue.path}: ${issue.code}: ${issue.message}`);
-        for (const field of extraction.fields.filter(field => field.status !== "exact")) console.log(`  ${field.path}: ${field.status}: ${field.authority}`);
+        for (const field of extraction.fields) console.log(`  ${field.path}: ${field.status}: ${field.authority}`);
         for (const limit of extraction.comparisonLimits) console.log(`  comparison boundary ${limit}`);
     }
 }

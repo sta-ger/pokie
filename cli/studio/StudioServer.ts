@@ -3271,6 +3271,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        const projectRoot = this.currentContext.projectRoot;
         if (await this.rejectCurrentWasmOperation(res, BUILD_OPERATION)) return;
         const body = await this.readJsonBody(req);
         let validated;
@@ -3281,6 +3282,26 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (validated.target === "blueprint") {
+            // Blueprint publication from a package must consume its reviewed extraction.
+            const source = await new ProjectTargetResolver().resolve(projectRoot);
+            if (this.currentContext.mode !== "project" || this.currentContext.projectRoot !== projectRoot) {
+                this.sendJson(res, 409, {error: "The active project changed. Refresh the preview before saving."});
+                return;
+            }
+            if (source?.type === "tsPackage" || validated.preparedOperationId !== undefined) {
+                const start = validated.preparedOperationId === undefined ? {status: "stale" as const}
+                    : this.artifactBuildService.startPreparedExtraction(projectRoot, validated.preparedOperationId, validated.outDir);
+                if (start.status === "stale") {
+                    this.sendJson(res, 409, {error: "Package extraction requires its current preparedOperationId and destination. Refresh the preview before saving."});
+                } else if (start.status === "conflict") {
+                    this.sendJson(res, 409, {error: "An artifact build already owns this destination.", activeJobId: start.activeJobId});
+                } else if (start.status === "unsupported") {
+                    this.sendJson(res, 409, {error: start.message});
+                } else this.sendJson(res, 202, start);
+                return;
+            }
+        }
         if (validated.target === "stakeAdapter") {
             if (validated.preparedOperationId === undefined) {
                 this.sendJson(res, 409, {error: "Stake build requires the preparedOperationId returned by its current preview. Refresh the preflight before building."});

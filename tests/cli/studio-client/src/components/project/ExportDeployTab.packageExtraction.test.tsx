@@ -10,12 +10,17 @@ function extraction(status: PackageBlueprintExtractionResult["status"] = "comple
     return {
         schemaVersion: 1,
         status,
-        source: {kind: "custom", gameId: "real-game", descriptorVersion: 1},
+        source: {kind: "custom", location: "/games/source", gameId: "real-game", descriptorVersion: 1},
         diagnostics:
             status === "complete"
                 ? []
                 : [{path: "mechanics", code: "opaque-feature", message: "Feature behavior is unavailable."}],
-        fields: [{path: "winModel", status: "defaulted", authority: "declared default lines"}],
+        fields: [
+            {path: "reels", status: "exact", authority: "public descriptor"},
+            {path: "declaredHint", status: "inferred", authority: "supplied inference"},
+            {path: "winModel", status: "defaulted", authority: "declared default lines"},
+            {path: "mechanics.custom", status: "unsupported", authority: "opaque custom feature"},
+        ],
         comparisonLimits: ["Custom declarations do not prove arbitrary TypeScript losslessness."],
     };
 }
@@ -79,6 +84,7 @@ function preview(destination = "/games/extracted.json") {
         destinationKind: "file",
         plannedOutputs: ["Blueprint and extraction evidence"],
         sourceType: "tsPackage",
+        preparedOperationId: "reviewed-extraction",
         plan: plan(),
     };
 }
@@ -90,22 +96,26 @@ it.each(["partial", "unsupported"] as const)(
         expect(await within(section).findByText(`Package model: ${status} (custom)`)).toBeInTheDocument();
         expect(within(section).getByText(/opaque-feature: Feature behavior is unavailable/)).toBeInTheDocument();
         expect(within(section).getByText(/do not prove arbitrary TypeScript losslessness/)).toBeInTheDocument();
-        expect(within(section).queryByRole("button", {name: "Build"})).not.toBeInTheDocument();
+        expect(within(section).queryByRole("button", {name: "Save Blueprint"})).not.toBeInTheDocument();
     },
 );
 
 it("previews extraction, builds a separate artifact and opens its returned Blueprint identity", async () => {
     let opened: string | undefined;
+    const builds: unknown[] = [];
     const fetchImpl = transport((url, init) => {
         const request = url.split("?")[0];
         if (request === "/api/project/artifacts/preview") return response(preview());
-        if (request === "/api/project/artifacts/build") return response(
-            {
-                status: "created",
-                job: {id: "extraction", target: "blueprint", status: "queued", cancellationRequested: false},
-            },
-            202,
-        );
+        if (request === "/api/project/artifacts/build") {
+            builds.push(JSON.parse(String(init?.body)));
+            return response(
+                {
+                    status: "created",
+                    job: {id: "extraction", target: "blueprint", status: "queued", cancellationRequested: false},
+                },
+                202,
+            );
+        }
         if (request === "/api/project/artifacts/build/extraction") return response({
             id: "extraction",
             target: "blueprint",
@@ -130,14 +140,20 @@ it("previews extraction, builds a separate artifact and opens its returned Bluep
     const section = await open(fetchImpl);
     expect(await within(section).findByText("Package model: complete (custom)")).toBeInTheDocument();
     expect(within(section).getByText(/winModel: defaulted/)).toBeInTheDocument();
-    fireEvent.click(within(section).getByRole("button", {name: "Build"}));
+    expect(builds).toEqual([]);
+    for (const field of ["reels: exact — public descriptor", "declaredHint: inferred — supplied inference", "mechanics.custom: unsupported — opaque custom feature"]) expect(within(section).getByText(field)).toBeInTheDocument();
+    expect(within(section).getByText(/Source: \/games\/source/)).toBeInTheDocument();
+    expect(within(section).getByText(/Conversion evidence:.*Preview publishes no files/)).toBeInTheDocument();
+    fireEvent.click(within(section).getByRole("button", {name: "Save Blueprint"}));
     expect(await within(section).findByText(/Built to \/games\/extracted.json/)).toBeInTheDocument();
+    expect(builds).toEqual([{target: "blueprint", preparedOperationId: "reviewed-extraction"}]);
     fireEvent.click(within(section).getByRole("button", {name: "Open as Project"}));
     await waitFor(() => expect(opened).toBe("/games/extracted.json"));
 });
 
 it("cancels extraction through the durable job and exposes no successful result action", async () => {
     let cancelled = false;
+    let cancellingReads = 0;
     const section = await open(
         transport((url) => {
             if (url.includes("/preview")) return response(preview());
@@ -157,10 +173,11 @@ it("cancels extraction through the durable job and exposes no successful result 
                 },
                 202,
             );
+            const cancelStatus = (cancelled && ++cancellingReads) < 3 ? "cancelling" : "cancelled";
             return response({
                 id: "extraction",
                 target: "blueprint",
-                status: cancelled ? "cancelled" : "running",
+                status: cancelled ? cancelStatus : "running",
                 cancellationRequested: cancelled,
                 ...(cancelled
                     ? {result: {status: "cancelled", message: "Cancelled before publication", plan: plan()}}
@@ -169,7 +186,7 @@ it("cancels extraction through the durable job and exposes no successful result 
         }),
     );
     await within(section).findByText("Package model: complete (custom)");
-    fireEvent.click(within(section).getByRole("button", {name: "Build"}));
+    fireEvent.click(within(section).getByRole("button", {name: "Save Blueprint"}));
     fireEvent.click(await within(section).findByRole("button", {name: "Cancel"}));
     expect(
         await within(section).findByText(/Build cancelled\. No incomplete artifact was published/),
@@ -210,4 +227,62 @@ it("suppresses a stale extraction preview after changing the destination", async
     );
     expect(within(section).queryByText(/stale opaque diagnosis/)).not.toBeInTheDocument();
     expect(within(section).getByText("Package model: complete (custom)")).toBeInTheDocument();
+});
+
+it("ignores an old job response after selecting another extraction destination", async () => {
+    let settle!: (value: Awaited<ReturnType<FetchLike>>) => void;
+    const section = await open(transport((url, init) => {
+        if (url.endsWith("/preview")) {
+            const body = JSON.parse(String(init?.body)) as {outDir?: string};
+            return response(preview(body.outDir));
+        }
+        if (url.endsWith("/build")) return response({status: "created", job: {id: "old", target: "blueprint", status: "queued", cancellationRequested: false}}, 202);
+        return new Promise(resolve => {
+            settle = resolve; 
+        });
+    }));
+    await within(section).findByText("Package model: complete (custom)");
+    fireEvent.click(within(section).getByRole("button", {name: "Save Blueprint"}));
+    await waitFor(() => expect(settle).toBeDefined());
+    fireEvent.change(within(section).getByLabelText("Output file (optional)"), {target: {value: "/games/next.json"}});
+    await within(section).findByText("Resolved absolute path: /games/next.json");
+    await act(async () => settle(await response({id: "old", target: "blueprint", status: "completed", cancellationRequested: false,
+        result: {status: "ok", outputPath: "/games/old.json", plan: plan()}})));
+    expect(within(section).queryByText(/Built to \/games\/old.json/)).not.toBeInTheDocument();
+    expect(within(section).queryByRole("button", {name: "Open as Project"})).not.toBeInTheDocument();
+});
+
+it("invalidates a rejected extraction preview and waits for a new preview before saving again", async () => {
+    let previewReads = 0;
+    let settle!: (value: Awaited<ReturnType<FetchLike>>) => void;
+    const section = await open(transport(url => {
+        if (url.endsWith("/preview")) {
+            if (++previewReads === 1) return response(preview());
+            return new Promise(resolve => {
+                settle = resolve; 
+            });
+        }
+        return Promise.resolve({ok: false, status: 409, json: () => Promise.resolve({error: "Source changed; refresh the preview"})});
+    }));
+    await within(section).findByText("Package model: complete (custom)");
+    fireEvent.click(within(section).getByRole("button", {name: "Save Blueprint"}));
+    await waitFor(() => expect(previewReads).toBe(2));
+    expect(within(section).getByRole("button", {name: "Build"})).toBeDisabled();
+    expect(within(section).queryByRole("button", {name: "Open as Project"})).not.toBeInTheDocument();
+    await act(async () => settle(await response(preview())));
+    expect(await within(section).findByRole("button", {name: "Save Blueprint"})).toBeEnabled();
+});
+
+it("does not show an open action for a failed job carrying an inconsistent success payload", async () => {
+    const section = await open(transport(url => {
+        if (url.endsWith("/preview")) return response(preview());
+        if (url.endsWith("/build")) return response({status: "created", job: {id: "failure", target: "blueprint", status: "queued", cancellationRequested: false}}, 202);
+        return response({id: "failure", target: "blueprint", status: "failed", cancellationRequested: false,
+            result: {status: "ok", outputPath: "/games/unpublished.json", plan: plan()}});
+    }));
+    await within(section).findByText("Package model: complete (custom)");
+    fireEvent.click(within(section).getByRole("button", {name: "Save Blueprint"}));
+    await waitFor(() => expect(within(section).queryByRole("button", {name: "Cancel"})).not.toBeInTheDocument());
+    expect(within(section).queryByRole("button", {name: "Open as Project"})).not.toBeInTheDocument();
+    expect(within(section).queryByText(/Built to/)).not.toBeInTheDocument();
 });
