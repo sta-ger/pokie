@@ -1583,21 +1583,21 @@ describe("StudioReplayExecutionService (integration, real loadPokieGame + fixtur
         const game = await loadPokieGame(fixtureRoot);
         const directDescriptor = new ReplayRecorder().record({game, round: 37, seed: "compare-me"});
 
-        // ReplayRecorder (the CLI's own `pokie replay`) never builds an `artifact` or captures
-        // stateBefore/stateAfter -- only Studio's own execution path does (see
-        // StudioReplayExecutionService.buildArtifact()/captureBoundaryState()) -- so those fields are
-        // compared separately below rather than expected to match directDescriptor exactly.
+        // Both paths retain artifacts; Studio additionally captures session state/debug and
+        // records its injected host version. Compare financial fields independently of that evidence.
+        const {artifact: directArtifact, ...directWithoutArtifact} = directDescriptor;
         const {artifact, stateBefore, stateAfter, credits, ...descriptorWithoutExtras} = job.descriptor ?? {};
         // sessionId is excluded too: both StudioReplayExecutionService and ReplayRecorder each mint
         // their own fresh session identity independently (see each one's own doc comment on
         // `sessionId`), so two separate replays of the same seed/round never share one.
         expect(descriptorWithoutExtras).toEqual({
-            ...directDescriptor,
+            ...directWithoutArtifact,
             sessionId: job.descriptor?.sessionId,
             timestamp: job.descriptor?.timestamp,
             durationMs: job.descriptor?.durationMs,
         });
         expect(artifact?.screen).toEqual(job.descriptor?.screen);
+        expect(artifact).toMatchObject({stake: directArtifact!.stake, betMode: directArtifact!.betMode, totalWin: directArtifact!.totalWin});
         expect(stateAfter?.screen).toEqual(job.descriptor?.screen);
         expect(credits).toBeDefined();
         expect(stateBefore).toBeDefined();
@@ -2005,7 +2005,7 @@ describe.each([false, true])("F12 Studio replay attribution (weighted: %s)", wei
         {mode: "buy-more", stakes: [1.25, 0, 0, 0, 1.25, 0, 0, 0]},
     ])("publishes and downloads authoritative $mode steps, including completed continuations", async ({mode, stakes}) => {
         const game = generatedMechanicsGame(replayModesBlueprint(weighted));
-        const service = new StudioReplayExecutionService(undefined, () => Promise.resolve(game), 1);
+        const service = new StudioReplayExecutionService(undefined, () => Promise.resolve(game), 1, undefined, undefined, undefined, "1.3.0");
         try {
             for (let round = 1; round <= stakes.length; round++) {
                 const started = service.start("/f12", {round, seed: "review-fixed", modeName: mode});

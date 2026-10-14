@@ -43,7 +43,7 @@ export function replayModesBlueprint(weighted = false): api.GameBlueprint {
     if (weighted) {
         Reflect.deleteProperty(blueprint, "reelStrips");
         blueprint.reelSequences = Array.from({length: 3}, () => ({type: "weighted", variants: [
-            {id: "first", symbols: ["A"], weight: 1}, {id: "second", symbols: ["A"], weight: 3},
+            {id: "first", symbols: ["A"], weight: 1}, {id: "second", symbols: ["C"], weight: 3},
         ]}));
     }
     return blueprint;
