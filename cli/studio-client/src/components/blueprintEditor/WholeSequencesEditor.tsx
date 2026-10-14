@@ -119,6 +119,21 @@ export function WholeSequencesEditor({
         onDirtyChange?.(nextDirty);
         setDraft(next);
     };
+    // Native input must reach the draft even when React's change-event value
+    // tracker already matches the DOM. Both events use the existing edit path.
+    const editExactSymbols = (event: {currentTarget: {value: string}}): void => {
+        const text = event.currentTarget.value;
+        edit((next) => {
+            next[selected].symbols = text ? text.split("\n") : [];
+        });
+    };
+    const editVariantText = (index: number, field: "id" | "weight" | "symbols", text: string): void => {
+        edit((next) => {
+            let value: string | string[] = text;
+            if (field === "symbols") value = text ? text.split("\n") : [];
+            definitions(next[selected].variants)[index][field] = value;
+        });
+    };
     const inspect = async (): Promise<void> => {
         invalidate();
         if (errors.length) {
@@ -191,12 +206,8 @@ export function WholeSequencesEditor({
                         <Textarea
                             label="Exact ordered symbols (one per line)"
                             value={Array.isArray(reel.symbols) ? reel.symbols.join("\n") : ""}
-                            onChange={(event) => {
-                                const text = event.currentTarget.value;
-                                edit((next) => {
-                                    next[selected].symbols = text ? text.split("\n") : [];
-                                });
-                            }}
+                            onInput={editExactSymbols}
+                            onChange={editExactSymbols}
                         />
                     )}
                     {variants.map((variant, index) => (
@@ -204,34 +215,20 @@ export function WholeSequencesEditor({
                             <TextInput
                                 label={`Variant ${index + 1} ID`}
                                 value={String(variant.id ?? "")}
-                                onChange={(event) => {
-                                    const text = event.currentTarget.value;
-                                    edit((next) => {
-                                        definitions(next[selected].variants)[index].id = text;
-                                    });
-                                }}
+                                onInput={(event) => editVariantText(index, "id", event.currentTarget.value)}
+                                onChange={(event) => editVariantText(index, "id", event.currentTarget.value)}
                             />
                             <TextInput
                                 label={`Variant ${index + 1} relative weight`}
                                 value={String(variant.weight ?? "")}
-                                onChange={(event) => {
-                                    const text = event.currentTarget.value;
-                                    edit((next) => {
-                                        definitions(next[selected].variants)[index].weight = text;
-                                    });
-                                }}
+                                onInput={(event) => editVariantText(index, "weight", event.currentTarget.value)}
+                                onChange={(event) => editVariantText(index, "weight", event.currentTarget.value)}
                             />
                             <Textarea
                                 label={`Variant ${index + 1} ordered symbols (one per line)`}
                                 value={Array.isArray(variant.symbols) ? variant.symbols.join("\n") : ""}
-                                onChange={(event) => {
-                                    const text = event.currentTarget.value;
-                                    edit((next) => {
-                                        definitions(next[selected].variants)[index].symbols = text
-                                            ? text.split("\n")
-                                            : [];
-                                    });
-                                }}
+                                onInput={(event) => editVariantText(index, "symbols", event.currentTarget.value)}
+                                onChange={(event) => editVariantText(index, "symbols", event.currentTarget.value)}
                             />
                             <Button
                                 variant="default"

@@ -8,6 +8,7 @@ import {GameModelTab} from "../../../../../../cli/studio-client/src/components/p
 import {buildGameModelProjection} from "../../../../../../src/project/buildGameModelProjection";
 import type {GameBlueprint} from "../../../../../../src/generated/GameBlueprint";
 import {act, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {useState} from "react";
 import {saveBlueprint, type FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {ReelGenerationModeSelector} from "../../../../../../cli/studio-client/src/components/blueprintEditor/ReelGenerationModeSelector";
@@ -261,7 +262,7 @@ it("Project Reels Apply works, Save uses expectedHash and retains local edits ma
     fireEvent.click(within(reelSection).getByRole("button", {name: "Save"}));
     await waitFor(() => expect(savedBody?.expectedHash).toBe("loaded-version"));
     expect(savedBody?.blueprint.reelSequences[0].variants?.[0].id).toBe("applied");
-    change("Variant 1 ID", "concurrent");
+    nativeInput("Variant 1 ID", "concurrent");
     await act(async () => {
         finish({
             ok: true,
@@ -295,6 +296,88 @@ function homeFetch(url: Parameters<FetchLike>[0], init?: Parameters<FetchLike>[1
     if (String(url).endsWith("/registry")) return response([]);
     return fetchImpl(url, init);
 }
+function nativeInput(label: string, value: string) {
+    const input = screen.getByLabelText(label) as HTMLInputElement | HTMLTextAreaElement;
+    // Keep the DOM's tracked value, as native entry can, rather than having fireEvent
+    // bypass React's value tracker with its synthetic target-value setter.
+    input.value = value;
+    fireEvent.input(input, {inputType: "insertText"});
+    expect(input).toHaveValue(value);
+}
+
+it("actual guided Home validates, inspects, Applies and Saves native input across all five weighted reels", async () => {
+    const user = userEvent.setup();
+    const initial = {
+        ...original,
+        reels: 5,
+        symbols: ["A", "K", "Q", "J"],
+        reelSequences: Array.from({length: 5}, () => ({type: "weighted", variants: []})),
+    };
+    source = JSON.stringify(initial);
+    const requests: Record<string, unknown>[] = [];
+    const router = renderHome((url, init) => {
+        if (String(url).endsWith("/load")) return response({status: "ok", path: "model.json", blueprint: initial, blueprintHash: "loaded-version"});
+        if (String(url).endsWith("/open")) return response({context: {mode: "project", projectRoot: "model.json"}, manifest: initial.manifest});
+        if (String(url).endsWith("/game-model-preview")) requests.push(JSON.parse(String(init?.body)).blueprint);
+        return homeFetch(url, init);
+    });
+    fireEvent.click(await screen.findByRole("tab", {name: /^Reels/}));
+    await screen.findByRole("button", {name: "Add variant"});
+    const sequences = ["A\nK\nQ\nJ", "K\nQ\nJ\nA", "Q\nJ\nA\nK", "J\nA\nK\nQ", "A\nA\nK\nJ"];
+    const expected = sequences.map((text, i) => ({type: "weighted", variants: [{id: `native-${i + 1}`, weight: (i + 1) / 4, symbols: text.split("\n")}]}));
+    for (let i = 0; i < sequences.length; i++) {
+        if (i > 0) {
+            await user.click(screen.getByRole("combobox", {name: "Sequence reel"}));
+            await user.keyboard("{ArrowDown}{Enter}");
+            expect(screen.getByRole("combobox", {name: "Sequence reel"})).toHaveValue(`Reel ${i + 1}`);
+        }
+        fireEvent.click(screen.getByRole("button", {name: "Add variant"}));
+        nativeInput("Variant 1 ID", `native-${i + 1}`);
+        nativeInput("Variant 1 relative weight", String((i + 1) / 4));
+        nativeInput("Variant 1 ordered symbols (one per line)", sequences[i]);
+    }
+    expect(screen.queryByText("Invalid whole sequences")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Save game"})).toBeDisabled();
+    expect(source).toBe(JSON.stringify(initial));
+    await preview();
+    expect(requests.at(-1)).toMatchObject({reelSequences: expected});
+    expect(screen.getByRole("group", {name: "Inspected complete definitions"})).toHaveTextContent("native-5");
+    fireEvent.click(screen.getByRole("button", {name: "Apply whole sequences"}));
+    await waitFor(() => expect(screen.getByRole("button", {name: "Save game"})).toBeEnabled());
+    expect(source).toBe(JSON.stringify(initial));
+    fireEvent.click(screen.getByRole("button", {name: "Save game"}));
+    await screen.findByText("Opened workspace");
+    expect(JSON.parse(source).reelSequences).toEqual(expected);
+    expect(router.state.location.pathname).toBe("/project/model.json/overview");
+});
+
+it("actual guided Home validates native exact/weighted input and protects source after invalid, stale and cancelled edits", async () => {
+    const user = userEvent.setup();
+    renderHome(homeFetch);
+    await readyHomeReels();
+    nativeInput("Variant 1 ordered symbols (one per line)", "Missing\nA");
+    expect(screen.getByText("Invalid whole sequences")).toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Preview whole sequences"})).toBeDisabled();
+    nativeInput("Variant 1 ordered symbols (one per line)", "");
+    expect(screen.getByText("Invalid whole sequences")).toBeInTheDocument();
+    nativeInput("Variant 1 ordered symbols (one per line)", "A\\nB");
+    expect(screen.getByText("Invalid whole sequences")).toBeInTheDocument();
+    nativeInput("Variant 1 ordered symbols (one per line)", "A\nB");
+    await preview();
+    nativeInput("Variant 1 relative weight", "0.5");
+    expect(screen.getByRole("button", {name: "Apply whole sequences"})).toBeDisabled();
+    await user.click(screen.getByRole("combobox", {name: "Sequence reel"}));
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(screen.getByRole("combobox", {name: "Sequence reel"})).toHaveValue("Reel 2");
+    nativeInput("Exact ordered symbols (one per line)", "B\nA");
+    await preview();
+    expect(screen.getByRole("group", {name: "Inspected complete definitions"})).toHaveTextContent("B → A");
+    fireEvent.click(screen.getByRole("button", {name: "Cancel sequence changes"}));
+    expect(screen.getByLabelText("Exact ordered symbols (one per line)")).toHaveValue("A\nB");
+    expect(screen.getByRole("button", {name: "Apply whole sequences"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Save game"})).toBeEnabled();
+    expect(source).toBe(JSON.stringify(original));
+});
 async function readyHomeReels() {
     await waitFor(() => expect(screen.getByRole("button", {name: "Save game"})).toBeEnabled());
     fireEvent.click(screen.getByRole("tab", {name: /^Reels/}));
@@ -304,7 +387,7 @@ async function readyHomeReels() {
 it.each(["new", "load", "json", "navigation"])("actual guided Home protects a clean Blueprint's unapplied sequence draft from %s", async action => {
     const router = renderHome(homeFetch);
     await readyHomeReels();
-    change("Variant 1 ID", "unapplied");
+    nativeInput("Variant 1 ID", "unapplied");
     if (action === "new") fireEvent.click(screen.getByRole("button", {name: "Choose a different start"}));
     if (action === "load" || action === "json") {
         fireEvent.click(screen.getByRole("button", {name: /Show advanced options/}));
@@ -378,7 +461,7 @@ it.each([
     expect(loadPersistedBlueprintDraft()).toBeDefined();
     fireEvent.click(screen.getByRole("button", {name: "Save game"}));
     await waitFor(() => expect(finish).toBeDefined());
-    if (edit === "unapplied") change("Variant 1 ID", "newer local sequence");
+    if (edit === "unapplied") nativeInput("Variant 1 ID", "newer local sequence");
     if (edit === "applied") {
         fireEvent.click(screen.getByRole("tab", {name: /^Game basics/}));
         change("Game name", "Newer applied draft");
