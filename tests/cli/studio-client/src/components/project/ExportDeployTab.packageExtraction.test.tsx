@@ -396,7 +396,7 @@ it("withholds successful actions when a completed read races requested cancellat
     }));
     await within(section).findByText("Package model: complete (custom)");
     fireEvent.click(within(section).getByRole("button", {name: "Save Blueprint"}));
-    await within(section).findByText("Publishing");
+    await within(section).findByText(/Publishing/);
     fireEvent.click(within(section).getByRole("button", {name: "Cancel"}));
     await within(section).findByText(/completed before cancellation reached the server/);
     for (const name of ["Open as Project", "Add to Projects", "Open output folder"]) {

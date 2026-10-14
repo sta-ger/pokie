@@ -222,7 +222,8 @@ it("cancels a real TypeScript publication while its queued start response is wit
         const user = userEvent.setup();
         unmount = renderRoutedApp({fetchImpl, initialEntries: [`/project/${encodeURIComponent(blueprint)}/exportDeploy`]}).unmount;
         const card = (await screen.findByText("TypeScript Game Package", {selector: "p"})).closest('[data-pokie-lifecycle-form]') as HTMLElement;
-        await user.click(within(card).getByRole("button", {name: "Configure TypeScript Game Package"}));
+        const configure = document.getElementById("export-configure-artifact-tsPackage")!;
+        if (configure.getAttribute("aria-expanded") === "false") await user.click(configure);
         const build = within(card).getByRole("button", {name: "Build"});
         await waitFor(() => expect(build).toBeEnabled());
         await user.click(build);
