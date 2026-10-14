@@ -68,6 +68,7 @@ describe("PackageBlueprintExtraction", () => {
         expect(extraction.blueprint?.paytable).toEqual(blueprint.paytable);
         expect(extraction.blueprint?.mechanics).toEqual(blueprint.mechanics);
         expect(extraction.blueprint?.betModes).toEqual(blueprint.betModes);
+        expect(extraction.blueprint?.screenGeometry).toEqual(blueprint.screenGeometry);
         expect(
             new GameBlueprintValidator().validate(extraction.blueprint).filter((issue) => issue.severity === "error"),
         ).toEqual([]);
@@ -89,7 +90,8 @@ describe("PackageBlueprintExtraction", () => {
             for (let round = 0; round < 12; round++) {
                 for (const session of sessions) {
                     session.setCreditsAmount(10000);
-                    session.setBet(blueprint.availableBets![round % blueprint.availableBets!.length]);
+                    const bets = blueprint.availableBets ?? [1, 2, 3];
+                    session.setBet(bets[round % bets.length]);
                     if (blueprint.betModes?.some((mode) => mode.runtimeType)) {
                         (session as unknown as {setBetMode(id: string): void}).setBetMode(
                             blueprint.betModes[round % blueprint.betModes.length].id,
@@ -185,6 +187,21 @@ describe("PackageBlueprintExtraction", () => {
     });
     it("preserves an explicitly empty paytable without inventing runtime defaults", async () => {
         await roundTrip({...base(), paytable: {}}, "empty-table");
+    });
+
+    it("preserves generated/visible/evaluated geometry and evaluation-local paylines", async () => {
+        await roundTrip({...base(), rows: 5, screenGeometry: {
+            generated: {reels: 3, rows: 5}, visible: {rowOffset: 0.5, rows: 3},
+            evaluated: {rowOffset: 1, rows: 3}, paylineSpace: "evaluated",
+        }}, "geometry");
+    });
+
+    it.each(["default", "weights"])("regenerates the effective %s reels and labelled default bets without new authoring instructions", async source => {
+        const blueprint = {...base()};
+        Reflect.deleteProperty(blueprint, "reelStrips");
+        Reflect.deleteProperty(blueprint, "availableBets");
+        if (source === "weights") blueprint.symbolWeights = {A: 3, B: 2};
+        await roundTrip(blueprint, "materialized");
     });
 
     it("extracts materialized default/weight reels without rerunning authoring instructions", async () => {
