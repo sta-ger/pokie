@@ -1529,14 +1529,14 @@ it("discovers authored executable modes and submits selected and explicit all-mo
     });
     renderRoutedApp({fetchImpl: fake.fetchImpl, initialEntries: ["/project/overview"]});
     await goToSimulationTab(user);
-    const select = await screen.findByLabelText("Bet mode");
+    const select = await screen.findByRole("combobox", {name: "Bet mode"});
     await user.click(select);
     expect(screen.queryByRole("option", {name: "legacy"})).not.toBeInTheDocument();
     await user.click(screen.getByRole("option", {name: "ante"}));
     await user.click(screen.getByRole("button", {name: "Run Simulation"}));
     await waitFor(() => expect(requests[0]?.modeName).toBe("ante"));
     await user.click(screen.getByRole("button", {name: stepperStep("Configure", "Set rounds")}));
-    await user.click(screen.getByLabelText("Bet mode"));
+    await user.click(screen.getByRole("combobox", {name: "Bet mode"}));
     await user.click(screen.getByRole("option", {name: "All modes"}));
     await user.click(screen.getByRole("button", {name: "Run Simulation"}));
     await waitFor(() => expect(requests[1]?.modeName).toBe("all"));
@@ -1557,4 +1557,30 @@ it.each(["ante", "all"])("explicit history rerun preserves %s mode policy", asyn
     await goToSimulationTab(user);
     await user.click(await screen.findByRole("button", {name: "Run again"}));
     await waitFor(() => expect(requests[0]).toMatchObject({rounds: 2, seed: "retained-seed", workers: 1, modeName}));
+});
+
+it("hands a concrete all-mode simulation selection to replay with the retained seed and mode", async () => {
+    const user = userEvent.setup();
+    const requests: Record<string, unknown>[] = [];
+    const fake = createRoutedFakeFetch({
+        ...BASE_ROUTES,
+        "/api/project/reports": () => ({ok: true, status: 200, body: [{id: "all-run", status: "completed", game: {id: "a", version: "1"}, requestedRounds: 2, modeName: "all", modes: {base: {rounds: 2, betMode: "base"}, ante: {rounds: 2, betMode: "ante"}}, seed: "retained-seed", workers: 1, durationMs: 1, startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), hasWarnings: false}]}),
+        "/api/project/replays": call => {
+            if (call.init?.method !== "POST") return {ok: true, status: 200, body: []};
+            requests.push(JSON.parse(call.init.body ?? "{}"));
+            return {ok: true, status: 202, body: {id: "sample", status: "failed", round: 1, completedRounds: 0, durationMs: 1, startedAt: new Date().toISOString(), error: "Test terminal"}};
+        },
+        "/api/project/replays/sample": () => ({ok: true, status: 200, body: {id: "sample", status: "failed", round: 1, completedRounds: 0, durationMs: 1, startedAt: new Date().toISOString(), error: "Test terminal"}}),
+    });
+    renderRoutedApp({fetchImpl: fake.fetchImpl, initialEntries: ["/project/overview"]});
+    await screen.findByRole("heading", {name: "A"});
+    await user.click(screen.getByRole("button", {name: "Replay & Debug"}));
+    await user.click(await screen.findByRole("radio", {name: "Recent Simulation"}));
+    await user.click(await screen.findByRole("button", {name: /a v1 — seed retained-seed/}));
+    expect(screen.getByRole("button", {name: "Load"})).toBeDisabled();
+    await user.click(screen.getByRole("combobox", {name: "Simulation bet mode"}));
+    await user.click(screen.getByRole("option", {name: "ante"}));
+    await user.click(screen.getByRole("button", {name: "Load"}));
+    await user.click(await screen.findByRole("button", {name: "Run again"}));
+    await waitFor(() => expect(requests[0]).toMatchObject({round: 1, seed: "retained-seed", simulationId: "all-run", modeName: "ante"}));
 });

@@ -682,11 +682,12 @@ export function ReplayTab({
                                         type="button"
                                         onClick={() => {
                                             setSelectedSimEntry(entry);
+                                            setSelectedSimulationMode(undefined);
                                             setSimRound(1);
                                         }}
                                         style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
                                     >
-                                        {entry.game.id} v{entry.game.version} — seed {entry.seed ?? "(none)"}, {entry.actualRounds} rounds
+                                        {entry.game.id} v{entry.game.version} — seed {entry.seed ?? "(none)"}, {entry.actualRounds ?? "per-mode"} rounds
                                         {entry.modeName ? `, mode ${entry.modeName}` : ""}, {new Date(entry.startedAt).toLocaleString()}
                                     </Anchor>
                                 </List.Item>
@@ -703,12 +704,9 @@ export function ReplayTab({
                                 value={simRound}
                                 onChange={(value) => setSimRound(typeof value === "number" ? value : 1)}
                             />
-                            {/* Reuses the picked simulation's own already-recorded modeName -- never a
-                                separately-selected mode -- so this reproduction genuinely samples against the
-                                same mode that run did, preserving that run's own provenance rather than
-                                defaulting back to the manifest's first mode. */}
+                            {/* A bundle needs a concrete mode; single-mode runs retain their recorded selection. */}
                             {selectedSimEntry.modes && <Select label="Simulation bet mode" data={Object.keys(selectedSimEntry.modes)} value={selectedSimulationMode ?? null} onChange={value => setSelectedSimulationMode(value ?? undefined)} allowDeselect={false} />}
-                            <Button disabled={selectedSimEntry.modes !== undefined && selectedSimulationMode === undefined} onClick={() => loadTarget(simRound, selectedSimEntry.seed, selectedSimEntry.modes ? selectedSimulationMode : selectedSimEntry.modeName)}>Load</Button>
+                            <Button disabled={selectedSimEntry.modes !== undefined && (selectedSimulationMode === undefined || selectedSimEntry.modes[selectedSimulationMode] === undefined)} onClick={() => loadTarget(simRound, selectedSimEntry.seed, selectedSimEntry.modes ? selectedSimulationMode : selectedSimEntry.modeName)}>Load</Button>
                         </QuickActions>
                     )}
                 </div>
