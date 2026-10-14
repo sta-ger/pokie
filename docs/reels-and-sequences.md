@@ -384,6 +384,13 @@ without claiming a runtime selection. Canonical PAR preserves exact and weighted
 `ReelSequences` sheet. WASM still rejects this source before publishing an output. Generated TypeScript game
 packages preserve all alternatives and IDs.
 
+Outcome Library bundles have a separate positive-integer frequency contract.
+Exact enumeration of weighted sequences can produce fractional probability weights;
+the bundle writer rejects those weights rather than rounding them. An explicit
+`pokie build SOURCE --target outcomeLibrary --sample N --seed SEED` publishes
+sampled integer frequencies. That sampled bundle does not replace the lossless
+sequence definitions retained by a TypeScript package or PAR workbook.
+
 Weighted reel definitions, including mixed exact strips, remain fixed for the
 lifetime of a generator/session. Replacing them on a live configuration is rejected
 before drawing or publishing a state/statistics snapshot. Create a new session for

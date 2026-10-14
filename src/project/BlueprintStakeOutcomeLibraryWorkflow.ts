@@ -14,6 +14,8 @@ import {ReelsSymbolsSequencesGenerator} from "../session/videoslot/combinations/
 import {SeededRandomNumberGenerator} from "../session/videoslot/combinations/SeededRandomNumberGenerator.js";
 import {SymbolsCombinationsGenerator} from "../session/videoslot/combinations/SymbolsCombinationsGenerator.js";
 import {SymbolsSequence} from "../session/videoslot/combinations/SymbolsSequence.js";
+import {WeightedSymbolsSequence} from "../session/videoslot/combinations/WeightedSymbolsSequence.js";
+import {validateExecutableState} from "../runtime/validateExecutableState.js";
 import {Paytable} from "../session/videoslot/paytable/Paytable.js";
 import {VideoSlotConfig} from "../session/videoslot/VideoSlotConfig.js";
 import {VideoSlotSession} from "../session/videoslot/VideoSlotSession.js";
@@ -91,6 +93,8 @@ const GENERATED_RUNTIME = {
     SelectedEvaluatorGroupWinAggregationPolicy,
     SymbolsCombinationsGenerator,
     SymbolsSequence,
+    WeightedSymbolsSequence,
+    validateExecutableState,
     VideoSlotConfig,
     VideoSlotSession,
     VideoSlotSessionSerializer,
