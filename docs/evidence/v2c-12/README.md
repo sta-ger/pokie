@@ -162,3 +162,33 @@ library, mode and stake; the replay images visibly show completed 1/1,
 matching result, mode and seed. Runtime artifacts are intentionally not
 committed. This receipt reuses the prior ante/purchase/simulation/native-draw
 observations and does not claim controller approval.
+
+## Current package handoff and omitted-seed audit observation (2026-10-14)
+
+This bounded follow-up is bound to product candidate
+`b669f487ac1881510f02db00afb56ac204282bad`.  One fresh Studio run used
+separate application and browser profiles; its retained runtime transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-75a0b3989d3dd707/run-2026-10-14T23-46-17-733Z/transcript.json`
+(SHA-256 `29034bef45891f74c7720199f7913d898f231cc54cd6673b8ba0733bbb64e4b3`).
+
+Through Studio JSON authoring, the run created the literal-reel
+`v2c12-ordinary-whole-sequence` fixture from
+`tests/v2/fixtures/ExistingMechanicsGame.ts`, built the current TypeScript
+Game Package, and used the rendered **Open as Project** handoff.  The opened
+runtime reported `Game format Playable game`, `Added from your computer`, and
+the package `tsPackage` location; no source-project runtime was substituted.
+
+An omitted-seed package Play session selected ante and completed with visible
+stake `0.07500000000000001` and charged mode `ante`.  Public Replay selected
+that Session Spin, whose screen stated `Full audit export`; **Download JSON**
+produced `spin-d6f931b8-b1e4-44b8-8438-aa795c391c2a.json` (14,372 bytes,
+SHA-256 `a890224692e2dc4f2bb1d02e8b50e9766c00ac558834457695b5963e035095a9`).
+Reading the actual downloaded bytes confirmed `seed: null`, audit delivery
+count 1, `artifact.stake: 0.07500000000000001`, and
+`artifact.betMode: "ante"`.  The visible **Load for audit replay** followed
+by **Reproduce** completed 1/1 and rendered `Audit verified -- complete
+recorded operation` and `Match -- recorded and recreated results agree`.
+
+This is partial collection only.  It does not claim the required weighted
+whole-sequence package or the buy/buy-more continuation matrix; those rows
+remain uncollected for the next candidate-bound run.
