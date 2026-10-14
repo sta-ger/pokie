@@ -7,7 +7,7 @@ import {render, screen, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {readFileSync} from "fs";
 import path from "path";
-import type {StudioReplayJobView} from "../../../../../../cli/studio-client/src/api/types";
+import type {StudioReplayJobView, StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
 import {describeReplayProgress, describeReplayResult} from "../../../../../../cli/studio-client/src/domain/interpret/Replay";
 import {ReplayTab, type ExpectedReplayState} from "../../../../../../cli/studio-client/src/components/project/ReplayTab";
 
@@ -276,6 +276,7 @@ describe("F12 seeded package replay presentation", () => {
         {mode: "ante", round: 1, stake: 0.05 * 1.5},
         {mode: "buy", round: 1, stake: 0.5},
         {mode: "buy", round: 2, stake: 0},
+        {mode: "buy", round: 3, stake: 0.5},
         {mode: "buy-more", round: 3, stake: 0},
         {mode: "buy-more", round: 4, stake: 0},
         {mode: "buy-more", round: 5, stake: 1.25},
@@ -287,21 +288,37 @@ describe("F12 seeded package replay presentation", () => {
         const result = describeReplayResult(job);
         expect(result?.artifact).toMatchObject({stake, betMode: mode});
         expect(result?.artifact?.canonicalArtifact).toEqual(descriptor.artifact);
+        const downloaded = JSON.parse(JSON.stringify(descriptor)) as NonNullable<StudioReplayJobView["descriptor"]>;
+        const spin: StudioRuntimeSessionView = {
+            sessionId: descriptor.sessionId, game: descriptor.game, credits: descriptor.credits, bet: 0.05,
+            win: descriptor.artifact?.totalWin, studioRound: round, studioSource: "play", studioOperation: "spin",
+            debug: {artifact: downloaded.artifact, recording: downloaded, stateBefore: descriptor.stateBefore, stateAfter: descriptor.stateAfter},
+        };
         render(<MantineProvider><ReplayTab progress={describeReplayProgress(job)} result={result} error={undefined}
             onRun={() => undefined} onCancel={() => undefined} onRetry={() => undefined}
             listView={{status: "empty"}} listError={undefined} onRefreshList={() => undefined}
             onInspectStored={() => Promise.resolve()} onCompareStored={() => undefined}
             expected={{status: "empty"}} onLoadExpectedFromPaste={() => undefined} onClearExpected={() => undefined} comparison={undefined}
-            recentSpins={{status: "empty"}} recentSpinsError={undefined} onRefreshRecentSpins={() => undefined}
+            recentSpins={{status: "loaded", entries: [spin]}} recentSpinsError={undefined} onRefreshRecentSpins={() => undefined}
             recentRuns={{status: "empty"}} recentRunsError={undefined} onRefreshRecentRuns={() => undefined} currentGame={descriptor.game} /></MantineProvider>);
         await user.click(screen.getByRole("button", {name: "Load"}));
         await user.click(screen.getByRole("button", {name: "Run again"}));
         expect(screen.queryByText("Outcome library mode")).not.toBeInTheDocument();
         expect(screen.getByRole("row", {name: `Package bet mode ${mode}`})).toBeInTheDocument();
         expect(screen.getByRole("row", {name: `Bet mode ${mode}`})).toBeInTheDocument();
-        expect(screen.getByRole("row", {name: `Stake ${stake.toFixed(2)}`})).toBeInTheDocument();
+        const stakeRow = screen.getByRole("row", {name: `Stake ${String(stake)}`});
+        expect(Number(within(stakeRow).getByRole("cell").textContent)).toBe(downloaded.artifact?.stake);
         const charged = screen.getByText("Charged mode").parentElement!;
         expect(within(charged).getByText(mode)).toBeInTheDocument();
         expect(screen.getByRole("link", {name: "Download replay JSON"})).toHaveAttribute("href", "/api/project/replays/f12-replay/download");
+        expect(downloaded.artifact?.featureEvents).toContainEqual({type: "chargedBetMode", data: {id: mode}});
+
+        await user.click(screen.getByRole("radio", {name: "Session Spin"}));
+        await user.click(screen.getByRole("button", {name: new RegExp(`Session 1.*Round ${round}.*Spin`)}));
+        expect(screen.getByRole("row", {name: `Stake ${String(stake)}`})).toBeInTheDocument();
+        expect(screen.getByRole("row", {name: `Bet mode ${mode}`})).toBeInTheDocument();
+        expect(within(screen.getByText("Charged mode").parentElement!).getByText(mode)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Download JSON"})).toBeEnabled();
+        expect(Number(within(screen.getByRole("row", {name: `Stake ${String(stake)}`})).getByRole("cell").textContent)).toBe(downloaded.artifact?.stake);
     });
 });

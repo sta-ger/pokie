@@ -38,7 +38,8 @@ export function RoundDetailsTable({
                 </Table.Tr>
                 <Table.Tr>
                     <Table.Th>Stake</Table.Th>
-                    <Table.Td>{artifact.stake.toFixed(2)}</Table.Td>
+                    {/* Stakes are game denominations, which can include fractions of a cent. */}
+                    <Table.Td>{artifact.stake}</Table.Td>
                 </Table.Tr>
             </Table.Tbody>
         </Table>
