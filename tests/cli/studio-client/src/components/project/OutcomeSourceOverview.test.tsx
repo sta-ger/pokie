@@ -66,7 +66,7 @@ function drawnMode(mode: string): OutcomeSourceSampleView {
 }
 
 it.each(["base", "ante"])("uniquely selects the %s row and dispatches its explicit weighted draw seed", async mode => {
-    const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: drawnMode(mode)}));
+    const {fetchImpl, calls} = createFakeFetch(({url}) => ({ok: true, status: 200, body: url === "/api/project/outcome-source/sample" ? drawnMode(mode) : {}}));
     const recorded = renderNativeModes(fetchImpl);
     expect(screen.getAllByRole("button", {name: /^Draw an outcome/}).map(button => button.textContent)).toEqual([
         "Draw an outcome (base)", "Draw an outcome (ante)",
@@ -77,7 +77,7 @@ it.each(["base", "ante"])("uniquely selects the %s row and dispatches its explic
     await user.type(screen.getByLabelText("Seed (optional)"), " v2c12-weighted-draw ");
     await user.click(screen.getByRole("button", {name: `Draw an outcome (${mode})`}));
     await screen.findByText(`Drew outcome "${mode}-outcome"`);
-    expect(calls).toEqual([{
+    expect(calls.filter(call => call.url === "/api/project/outcome-source/sample")).toEqual([{
         url: "/api/project/outcome-source/sample",
         init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({modeName: mode, seed: "v2c12-weighted-draw"})},
     }]);
@@ -89,7 +89,7 @@ it.each(["base", "ante"])("uniquely selects the %s row and dispatches its explic
 
 it("disables both mode actions during a draw, reports rejection and permits a different mode retry", async () => {
     let resolveDraw: ((response: Awaited<ReturnType<FetchLike>>) => void) | undefined;
-    const fetchImpl = jest.fn<ReturnType<FetchLike>, Parameters<FetchLike>>(() => new Promise(resolve => {
+    const fetchImpl = jest.fn<ReturnType<FetchLike>, Parameters<FetchLike>>(url => url === "/api/project/symbol-artwork" ? Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({})}) : new Promise(resolve => {
         resolveDraw = resolve;
     }));
     const recorded = renderNativeModes(fetchImpl);
