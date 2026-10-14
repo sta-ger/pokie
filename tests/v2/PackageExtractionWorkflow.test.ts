@@ -46,7 +46,7 @@ async function compareSeeded(source: string, regenerated: string, model: GameBlu
                 expect(restored.toSessionState()).toEqual(sessions[0].toSessionState());
                 expect(restored.toSessionState()).toEqual(sessions[1].toSessionState());
             } finally {
-                (restored as unknown as {destroy?: () => void}).destroy?.(); 
+                (restored as unknown as {destroy?: () => void}).destroy?.();
             }
         }
     } finally {
@@ -58,10 +58,10 @@ async function compareSeeded(source: string, regenerated: string, model: GameBlu
 describe("package to editable Blueprint public journey (controller-owned)", () => {
     let directory: string;
     beforeEach(() => {
-        directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-extraction-workflow-")); 
+        directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-extraction-workflow-"));
     });
     afterEach(() => {
-        fs.rmSync(directory, {recursive: true, force: true}); 
+        fs.rmSync(directory, {recursive: true, force: true});
     });
 
     it.each(["generated", "code-first"])("preserves %s identity, diagnostics, provenance, authored zeros and seeded continuation", async kind => {
@@ -87,16 +87,16 @@ describe("package to editable Blueprint public journey (controller-owned)", () =
         expect(extraction.status).toBe("complete");
         const projection = await buildProjectGameModel(source, project, false, {
             loadBlueprint: () => {
-                throw new Error("Package opening must not read a Blueprint"); 
+                throw new Error("Package opening must not read a Blueprint");
             },
             inspectPackage: () => {
-                throw new Error("Model preview must extract, not inspect"); 
+                throw new Error("Model preview must extract, not inspect");
             },
             importParWorkbook: () => {
-                throw new Error("Not a PAR workbook"); 
+                throw new Error("Not a PAR workbook");
             },
             readWasmManifest: () => {
-                throw new Error("Not a WASM component"); 
+                throw new Error("Not a WASM component");
             },
         });
         expect(projection.packageExtraction).toEqual(extraction);
@@ -113,7 +113,7 @@ describe("package to editable Blueprint public journey (controller-owned)", () =
         if (preview.status !== "ok") throw new Error(preview.status);
         const logged: string[] = [];
         const log = jest.spyOn(console, "log").mockImplementation(value => {
-            logged.push(String(value)); 
+            logged.push(String(value));
         });
         try {
             expect(await new BuildCommand("1.3.0").run([source, "--target", "blueprint", "--out", path.join(directory, "cli.json"), "--dry-run"])).toBe(0);
@@ -139,7 +139,7 @@ describe("package to editable Blueprint public journey (controller-owned)", () =
             expect(terminal.result?.plan.packageExtraction).toEqual(extraction);
         } finally {
             log.mockRestore();
-            await service.cancelAll(); 
+            await service.cancelAll();
         }
         let evidenceBytes: Buffer | undefined;
         for (const output of [destination, path.join(directory, "cli.json"), path.join(directory, "studio.json")]) {

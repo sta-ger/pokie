@@ -245,7 +245,7 @@ it("ignores an old job response after selecting another extraction destination",
         }
         if (url.endsWith("/build")) return response({status: "created", job: {id: "old", target: "blueprint", status: "queued", cancellationRequested: false}}, 202);
         return new Promise(resolve => {
-            settle = resolve; 
+            settle = resolve;
         });
     }));
     await within(section).findByText("Package model: complete (custom)");
@@ -266,7 +266,7 @@ it("invalidates a rejected extraction preview and waits for a new preview before
         if (url.endsWith("/preview")) {
             if (++previewReads === 1) return response(preview());
             return new Promise(resolve => {
-                settle = resolve; 
+                settle = resolve;
             });
         }
         return Promise.resolve({ok: false, status: 409, json: () => Promise.resolve({error: "Source changed; refresh the preview"})});

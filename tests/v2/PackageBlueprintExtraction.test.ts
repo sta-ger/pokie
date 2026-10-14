@@ -69,13 +69,13 @@ describe("PackageBlueprintExtraction", () => {
             session.setCreditsAmount(10000);
             for (const bet of [0.05, 7.5, 1e-7]) {
                 session.setBet(bet);
-                session.play(); 
+                session.play();
             }
             expect(session.getWinAmount()).toBeGreaterThanOrEqual(0);
             expect(session.toSessionState()).toBeDefined();
         } finally {
             (session as unknown as {destroy?: () => void}).destroy?.();
-            await runtime.release(); 
+            await runtime.release();
         }
         expect(fs.readdirSync(source).sort()).toEqual(["index.js", "package.json"]);
         expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(before);

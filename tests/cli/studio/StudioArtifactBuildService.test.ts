@@ -446,7 +446,7 @@ describe("StudioArtifactBuildService", () => {
                 return Promise.resolve();
             }, undefined, undefined, root => {
                 registered.delete(root);
-                return Promise.resolve(); 
+                return Promise.resolve();
             });
             const preview = await packageService.preview(source, "blueprint", destination);
             if (preview.status !== "ok") throw new Error(preview.status);
@@ -492,7 +492,7 @@ describe("StudioArtifactBuildService", () => {
                 expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(false);
             } finally {
                 fixture.restore();
-                await service.cancelAll(); 
+                await service.cancelAll();
             }
         });
     });
