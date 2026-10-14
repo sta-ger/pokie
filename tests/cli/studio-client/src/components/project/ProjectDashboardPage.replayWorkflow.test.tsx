@@ -1826,7 +1826,7 @@ describe("P9-07 production native descriptors", () => {
         let rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         try {
             await user.type(await screen.findByLabelText("Seed (optional)"), "closure-library-a");
-            await user.click(screen.getByRole("button", {name: "Draw an outcome"}));
+            await user.click(screen.getByRole("button", {name: "Draw an outcome (base)"}));
             const download = await screen.findByRole("link", {name: "Download draw replay JSON"});
             const url = download.getAttribute("href")!;
             const recorded = await request<ReplayDescriptor>(url);
@@ -1840,7 +1840,7 @@ describe("P9-07 production native descriptors", () => {
             // A second draw makes the actual saved finding observable: round/status alone
             // cannot identify the first draw after reopening.
             fireEvent.change(screen.getByLabelText("Seed (optional)"), {target: {value: "closure-library-b"}});
-            await user.click(screen.getByRole("button", {name: "Draw an outcome"}));
+            await user.click(screen.getByRole("button", {name: "Draw an outcome (base)"}));
             await waitFor(() => expect(screen.getByRole("link", {name: "Download draw replay JSON"}).getAttribute("href")).not.toBe(url));
             const liveEntries = await request<StudioReplayListEntry[]>("/api/project/replays");
             const savedEntry = liveEntries.find((entry) => entry.seed === "closure-library-a")!;
@@ -1921,7 +1921,7 @@ describe("P9-07 production native descriptors", () => {
         const user = userEvent.setup();
         let rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         try {
-            await user.click(await screen.findByRole("button", {name: "Draw an outcome"}));
+            await user.click(await screen.findByRole("button", {name: "Draw an outcome (base)"}));
             const url = (await screen.findByRole("link", {name: "Download draw replay JSON"})).getAttribute("href")!;
             expect(screen.getByText(/No seed was recorded, so exact reproduction is unavailable/)).toBeInTheDocument();
             const recorded = await request<ReplayDescriptor>(url);

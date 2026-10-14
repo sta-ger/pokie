@@ -98,7 +98,7 @@ describe("ProjectDashboardPage - Outcome Source workflow", () => {
         expect(screen.getByText("95.50%")).toBeInTheDocument();
         expect(screen.getByText("25.00%")).toBeInTheDocument();
 
-        await userEvent.click(screen.getByRole("button", {name: "Draw an outcome"}));
+        await userEvent.click(screen.getByRole("button", {name: "Draw an outcome (base)"}));
 
         const drawn = (await screen.findByText('Drew outcome "2"')).closest(".mantine-Alert-root") as HTMLElement;
         expect(within(drawn).getByText(/weight 150 of 1000/)).toBeInTheDocument();
@@ -122,6 +122,6 @@ describe("ProjectDashboardPage - Outcome Source workflow", () => {
         expect(screen.getByText("reads its full outcome set up front rather than streaming it")).toBeInTheDocument();
         expect(screen.getByText("92.00%")).toBeInTheDocument();
 
-        expect(screen.queryByRole("button", {name: "Draw an outcome"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: /^Draw an outcome/})).not.toBeInTheDocument();
     });
 });
