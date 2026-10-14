@@ -1,8 +1,16 @@
 import {restoreWinEvaluation, type WinEvaluationSnapshot} from "../session/videoslot/winevaluation/WinEvaluationSnapshot.js";
-import type {SessionStateSchema} from "../session/SessionStateRestoring.js";
+import {getSessionCompositionError, type SessionStateSchema} from "../session/SessionStateRestoring.js";
 
 /** Validate financial feature state before any nested object is mutated. */
 export function validateMechanicState(state: Record<string, unknown>, schema: SessionStateSchema): void {
+    const baseKinds: string[] = [];
+    let baseSchema = "base" in schema ? schema.base : undefined;
+    while (baseSchema && "base" in baseSchema) {
+        baseKinds.push(baseSchema.kind);
+        baseSchema = baseSchema.base;
+    }
+    const compositionError = getSessionCompositionError(schema.kind, baseKinds);
+    if (compositionError) throw new Error(compositionError);
     const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0;
     if (schema.kind === "hold-and-win" || schema.kind === "jackpot") {
         const outcome = state.lastOutcome as {kind?: string; payout?: number; amount?: number; baseWinAmount?: number; baseEvaluation?: WinEvaluationSnapshot; poolId?: string; linesWinning?: number; scattersWinning?: number} | undefined;
@@ -17,11 +25,6 @@ export function validateMechanicState(state: Record<string, unknown>, schema: Se
         }
     }
     if (schema.kind === "hold-and-win") {
-        let base = schema.base;
-        while ("base" in base) {
-            if (["bet-modes", "jackpot", "free-games"].includes(base.kind)) throw new Error("HoldAndWin must be inside bet modes and jackpot and cannot compete with free games.");
-            base = base.base;
-        }
         const locks = state.lockedSymbols as {position: number[]; symbolId: string; effect: unknown}[];
         if (typeof state.active !== "boolean" || !Array.isArray(locks) || !finite(state.payout) ||
             !Number.isSafeInteger(state.respinsRemaining) || Number(state.respinsRemaining) < 0 || Number(state.respinsRemaining) > schema.initialRespins ||

@@ -31,7 +31,7 @@ function canonicalize(value: unknown): unknown {
     if (value !== null && typeof value === "object") {
         const sorted: Record<string, unknown> = {};
         for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-            sorted[key] = canonicalize((value as Record<string, unknown>)[key]);
+            Reflect.defineProperty(sorted, key, {value: canonicalize((value as Record<string, unknown>)[key]), enumerable: true});
         }
         return sorted;
     }

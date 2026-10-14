@@ -115,8 +115,16 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
 
     /** Nonmutating entry guard used by command preparation before a debit or selection is committed. */
     public validateEntryAction(): void {
+        const error = this.getCompositionError("bet-modes");
+        if (error) throw new Error(error);
         const mode = this.resolveActiveBetMode();
         if (mode.forcesFeatureEntry() && this.getStakeAmount() > 0 && !this.canForceFeatureEntry(mode)) throw new ForcedFeatureEntryUnsupportedError(mode.getId());
+    }
+
+    public override validateScreenCoordinates(): void {
+        super.validateScreenCoordinates();
+        const error = this.getCompositionError("bet-modes");
+        if (error) throw new Error(error);
     }
 
     public override play(): void {
@@ -173,7 +181,7 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     }
 
     public isSessionStateRestorable(): boolean {
-        return this.constructor === VideoSlotWithBetModesSession && isSessionStateRestorable(this.baseSession) &&
+        return this.constructor === VideoSlotWithBetModesSession && this.getCompositionError("bet-modes") === undefined && isSessionStateRestorable(this.baseSession) &&
             (this.betModesConfig as {isResolvedForSessionRestoration?: () => boolean}).isResolvedForSessionRestoration?.() === true &&
             (this.forcedFeatureEntryHandler as {isStatelessForSessionRestoration?: () => boolean}).isStatelessForSessionRestoration?.() === true;
     }
@@ -187,6 +195,8 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     }
 
     public validateSessionState(state: unknown): void {
+        const error = this.getCompositionError("bet-modes");
+        if (error) throw new Error(error);
         const value = state as BetModeSessionState;
         if (typeof value !== "object" || value === null || value.base === undefined ||
             !this.getAvailableBetModeIds().includes(value.betModeId) || !this.supportsSessionStateRestore(this.baseSession)) {

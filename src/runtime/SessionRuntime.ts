@@ -48,6 +48,9 @@ export class SessionRuntime implements SessionRuntimeHandling {
 
     /** The executable progress authority is shared by restore, retry and settlement recovery. */
     public static validateLogicalRoundProgress(session: GameSessionHandling, round: LogicalRound): void {
+        const charged = session as {getChargedBetModeId?: () => string | undefined; isHoldAndWinActive?: () => boolean; getHoldAndWinEntryBet?: () => number; getHoldAndWinLastRoundOutcome?: () => {kind: string}};
+        if (round.mode !== undefined && typeof charged.getChargedBetModeId === "function" && charged.getChargedBetModeId() !== round.mode) throw new Error("Charged bet mode differs from retained entry attribution.");
+        if ((charged.isHoldAndWinActive?.() || charged.getHoldAndWinLastRoundOutcome?.().kind === "completed") && charged.getHoldAndWinEntryBet?.() !== round.bet) throw new Error("HoldAndWin entry denomination differs from retained logical entry.");
         const selections = (session as Partial<VideoSlotSessionHandling>).getSequenceSelections?.();
         const artifacts = round.subrounds[round.cursor - 1]?.artifacts;
         const retained = artifacts?.[artifacts.length - 1]?.sequenceSelections;
@@ -137,6 +140,11 @@ export class SessionRuntime implements SessionRuntimeHandling {
         if (command.continuation && round && round.deliveryCursor >= 10000) return "Logical round delivery bound reached; retain its incomplete evidence.";
         if (command.continuation) {
             if (!round || round.id !== command.continuation.roundId || round.status !== "pending" || round.deliveryCursor !== command.continuation.cursor) return "Continuation does not name the next pending subround.";
+            try {
+                SessionRuntime.validateLogicalRoundProgress(this.session, round);
+            } catch (error) {
+                return error instanceof Error ? error.message : String(error);
+            }
             if (this.session.getBet() !== round.bet) return "Continuation cannot change the entry bet.";
             const stages = round.subrounds[round.cursor - 1].artifacts?.length ?? 0;
             const stake = (this.session as Partial<StakeAmountDetermining>).getStakeAmount?.() ?? this.session.getBet();

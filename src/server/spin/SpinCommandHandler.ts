@@ -938,6 +938,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                     : undefined;
             const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer, this.capturePolicy, roundArtifactRequest);
             newState.credits = newBalance;
+            newState.chargedEntry = stakeAmount > 0 ? {bet: session.getBet(), ...(betMode !== undefined ? {mode: betMode} : {})} : state.chargedEntry;
             if (!this.idempotencyRepository.loadRound && state.logicalRoundIds) newState.logicalRoundIds = state.logicalRoundIds;
             if (!this.idempotencyRepository.loadRound && executed.logicalRound && !intent?.continuation) newState.logicalRoundIds = [...new Set([...(state.logicalRoundIds ?? []), ...(state.logicalRound ? [state.logicalRound.id] : []), executed.logicalRound.id])];
             if (state.logicalRoundStatistics) newState.logicalRoundStatistics = state.logicalRoundStatistics;

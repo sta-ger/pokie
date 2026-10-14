@@ -55,3 +55,11 @@ function canonicalSchema(value: unknown): unknown {
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonicalSchema(item)]));
     return value;
 }
+
+/** Built-in decorator order is shared by execution guards and codec certification. */
+export function getSessionCompositionError(kind: SessionStateSchema["kind"], baseKinds: readonly string[]): string | undefined {
+    if (kind === "hold-and-win" && baseKinds.some(base => ["bet-modes", "jackpot", "free-games"].includes(base))) return "HoldAndWin must be inside bet modes and jackpot and cannot compete with free games.";
+    if (kind === "free-games" && baseKinds.some(base => ["hold-and-win", "bet-modes", "jackpot"].includes(base))) return "Free games must be inside bet modes and jackpot and cannot compete with HoldAndWin.";
+    if (kind === "bet-modes" && baseKinds.includes("jackpot")) return "Bet modes must be inside jackpot so contributions use the actual charged stake.";
+    return undefined;
+}

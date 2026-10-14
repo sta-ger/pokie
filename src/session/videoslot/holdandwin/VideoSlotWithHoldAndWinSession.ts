@@ -370,7 +370,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     // value symbols. The residual always lands on the *last* locked symbol in collection order — the same
     // order every time for the same locked set, never randomized or dependent on iteration/hash order.
     private hasIncompatibleBase(): boolean {
-        return typeof Reflect.get(this.baseSession, "getJackpotPools") === "function" || typeof Reflect.get(this.baseSession, "getFreeGamesSum") === "function" || typeof Reflect.get(this.baseSession, "getBetModeId") === "function";
+        return this.getCompositionError("hold-and-win") !== undefined;
     }
 
     private buildCompletedWinEvaluationResult(outcome: Extract<HoldAndWinRoundOutcome<T>, {kind: "completed"}>): WinEvaluationResult<T> {

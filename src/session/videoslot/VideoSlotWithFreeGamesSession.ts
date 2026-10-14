@@ -49,21 +49,13 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         super(baseSession);
         this.config = config;
         this.freeGamesRoundHandler = freeGamesRoundHandler;
-        this.validateScreenCoordinates();
+        this.validateCoordinates();
     }
 
     public override validateScreenCoordinates(): void {
-        super.validateScreenCoordinates();
-        const projection = resolveScreenProjection(this.config);
-        const baseGeometry = this.getConfiguredScreenGeometry();
-        // Legacy ordinary wrappers use their configuration for grants, while the base owns
-        // the screen dimensions. Declared coordinates require both owners to agree.
-        if (!areScreenGeometriesCompatible(projection?.getGeometry(), baseGeometry) ||
-            ((projection || baseGeometry) &&
-                (this.config.getReelsNumber() !== this.baseSession.getReelsNumber() ||
-                this.config.getReelsSymbolsNumber() !== this.baseSession.getReelsSymbolsNumber()))) {
-            throw new Error("Free-games base session must expose the same upcoming coordinate contract.");
-        }
+        const error = this.getCompositionError("free-games");
+        if (error) throw new Error(error);
+        this.validateCoordinates();
     }
 
     public getWonFreeGamesNumber(): number {
@@ -100,7 +92,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     }
 
     public isSessionStateRestorable(): boolean {
-        return this.constructor === VideoSlotWithFreeGamesSession && this.config instanceof VideoSlotWithFreeGamesConfig && this.config.isResolvedForSessionRestoration() && isSessionStateRestorable(this.baseSession) && this.freeGamesRoundHandler.constructor === FreeGamesRoundHandler;
+        return this.constructor === VideoSlotWithFreeGamesSession && this.getCompositionError("free-games") === undefined && this.config instanceof VideoSlotWithFreeGamesConfig && this.config.isResolvedForSessionRestoration() && isSessionStateRestorable(this.baseSession) && this.freeGamesRoundHandler.constructor === FreeGamesRoundHandler;
     }
 
     public toSessionState(): VideoSlotWithFreeGamesSessionState {
@@ -120,6 +112,8 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     }
 
     public validateSessionState(state: unknown): void {
+        const error = this.getCompositionError("free-games");
+        if (error) throw new Error(error);
         const value = state as VideoSlotWithFreeGamesSessionState;
         if (typeof value !== "object" || value === null || value.base === undefined ||
             !Number.isSafeInteger(value.freeGamesNum) || value.freeGamesNum < 0 ||
@@ -199,6 +193,20 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
 
     public hasPendingLogicalRound(): boolean {
         return this.hasUnfinishedFreeGames();
+    }
+
+    private validateCoordinates(): void {
+        super.validateScreenCoordinates();
+        const projection = resolveScreenProjection(this.config);
+        const baseGeometry = this.getConfiguredScreenGeometry();
+        // Legacy ordinary wrappers use their configuration for grants, while the base owns
+        // the screen dimensions. Declared coordinates require both owners to agree.
+        if (!areScreenGeometriesCompatible(projection?.getGeometry(), baseGeometry) ||
+            ((projection || baseGeometry) &&
+                (this.config.getReelsNumber() !== this.baseSession.getReelsNumber() ||
+                this.config.getReelsSymbolsNumber() !== this.baseSession.getReelsSymbolsNumber()))) {
+            throw new Error("Free-games base session must expose the same upcoming coordinate contract.");
+        }
     }
 
     private hasUnfinishedFreeGames(): boolean {

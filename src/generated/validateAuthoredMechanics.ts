@@ -36,6 +36,7 @@ export function validateAuthoredMechanics(blueprint: Record<string, unknown>): V
             if (!effects || typeof effects !== "object" || Array.isArray(effects) || !Object.keys(effects).length) error(`${path}.symbolEffects`, "must contain at least one symbol effect.");
             else for (const [symbol, raw] of Object.entries(effects)) {
                 const effectPath = `${path}.symbolEffects.${symbol}`;
+                if (["__proto__", "constructor", "prototype", "toJSON"].includes(symbol)) error(effectPath, "reserved symbol-effect key cannot be published or extracted; rename the symbol and its references.", "blueprint-mechanics-symbol-key-unsupported");
                 if (!symbols.includes(symbol)) error(effectPath, "unknown symbol.");
                 const effect = object(raw, effectPath, ["kind", "amount", "factor"]);
                 if (effect && ((effect.kind !== "value" && effect.kind !== "multiplier") || (effect.kind === "value" && (!finite(effect.amount) || effect.factor !== undefined)) || (effect.kind === "multiplier" && (!finite(effect.factor) || effect.amount !== undefined)))) error(effectPath, "requires value/amount or multiplier/factor with a finite nonnegative value.");
