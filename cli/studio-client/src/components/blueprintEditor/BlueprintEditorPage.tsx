@@ -28,7 +28,6 @@ import {useConfirmedProjectOpen} from "../../hooks/useOpenProject";
 import {ErrorState} from "../common/ErrorState";
 import {QuickActions} from "../common/QuickActions";
 import {RecoveryNotice} from "../common/RecoveryNotice";
-import {SuccessResult} from "../common/SuccessResult";
 import {BetsList} from "./BetsList";
 import {BlueprintBuildPanel} from "./BlueprintBuildPanel";
 import {BlueprintJsonPanel} from "./BlueprintJsonPanel";
@@ -1228,12 +1227,12 @@ export function BlueprintEditorPage({
                         </Button>
                     </QuickActions>
                     {managedSaveView.status === "loading" && !workspaceOpenPending && (
-                        <Text id="blueprint-create-game-saving" c="dimmed" size="sm" mb="sm">
+                        <Text id="blueprint-create-game-saving" role="status" c="dimmed" size="sm" mb="sm">
                             Studio is saving your game before opening its workspace.
                         </Text>
                     )}
                     {workspaceOpenPending && (
-                        <Text id="blueprint-create-game-opening" c="dimmed" size="sm" mb="sm">
+                        <Text id="blueprint-create-game-opening" role="status" c="dimmed" size="sm" mb="sm">
                             Your game was saved. Studio is opening its workspace.
                         </Text>
                     )}
@@ -1242,7 +1241,6 @@ export function BlueprintEditorPage({
                             {validationGuidance}
                         </Text>
                     )}
-                    {managedSaveView.status === "ok" && <SuccessResult message="Your game was saved. Opening its workspace…" />}
                     {workspaceOpenError && (
                         <RecoveryNotice
                             title="Your game was saved, but Studio couldn't open its workspace"

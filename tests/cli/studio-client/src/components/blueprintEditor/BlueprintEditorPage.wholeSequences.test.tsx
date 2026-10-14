@@ -341,6 +341,17 @@ it.each(["save", "open"].flatMap(stage => [true, false].flatMap(loaded => [
     await waitFor(() => expect(screen.getByRole("button", {name: actionName})).toBeEnabled());
     fireEvent.click(screen.getByRole("button", {name: actionName}));
     await waitFor(() => expect(finish).toBeDefined());
+    const pendingAction = screen.getByRole("button", {name: loaded || stage === "open" ? "Save game" : "Create game"});
+    const pendingDescription = stage === "open"
+        ? "Your game was saved. Studio is opening its workspace."
+        : "Studio is saving your game before opening its workspace.";
+    expect(pendingAction).toBeDisabled();
+    expect(pendingAction).toHaveAttribute("aria-busy", "true");
+    expect(pendingAction).toHaveAccessibleDescription(pendingDescription);
+    expect(screen.getByText(pendingDescription)).toHaveAttribute("role", "status");
+    expect(router.state.location.pathname).toBe("/home/design");
+    expect(screen.queryByText("Opening your game…")).not.toBeInTheDocument();
+    expect(opened).toBe(stage === "open" ? 1 : 0);
     const input = screen.getByLabelText(label);
     expect(input).toBeEnabled();
     act(() => input.focus());
@@ -354,6 +365,7 @@ it.each(["save", "open"].flatMap(stage => [true, false].flatMap(loaded => [
     expect(router.state.location.pathname).toBe("/home/design");
     expect(screen.queryByText("Opened workspace")).not.toBeInTheDocument();
     expect(screen.getByLabelText(label)).toHaveValue(value);
+    expect(screen.queryByText(pendingDescription)).not.toBeInTheDocument();
     expect(acceptedSource).toBe(JSON.stringify(submitted));
     expect(JSON.parse(acceptedSource!).manifest[field]).not.toBe(value);
     expect(opened).toBe(stage === "save" ? 0 : 1);

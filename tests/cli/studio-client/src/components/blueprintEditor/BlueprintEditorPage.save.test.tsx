@@ -137,6 +137,7 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         expect(saving).toHaveAttribute("aria-busy", "true");
         expect(saving).toBeDisabled();
         expect(saving).toHaveAccessibleDescription("Your game was saved. Studio is opening its workspace.");
+        expect(screen.getByText("Your game was saved. Studio is opening its workspace.")).toHaveAttribute("role", "status");
         await user.click(saving);
         expect(calls.filter((call) => call.url === "/api/home/blueprints/validate")).toHaveLength(1);
         expect(calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(1);
@@ -226,6 +227,7 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         expect(screen.getByRole("button", {name: "Save game"})).toBeEnabled();
         expect(screen.getByRole("button", {name: "Save game"})).not.toHaveAttribute("aria-busy");
         expect(screen.queryByText("Your game was saved. Studio is opening its workspace.")).not.toBeInTheDocument();
+        expect(screen.queryByText("Your game was saved. Opening its workspace…")).not.toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Go to Your projects"}));
         await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/home/projects"));
