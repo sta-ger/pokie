@@ -1,3 +1,4 @@
+import {ArtifactPublicationOwnership, rollbackArtifactPublication} from "./ArtifactPublicationOwnership.js";
 import {prepareBlueprintForParSheetExport} from "../parsheet/ParSheetExporter.js";
 import {PackageBlueprintExtraction} from "../generated/PackageBlueprintExtraction.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
@@ -601,6 +602,8 @@ export class ArtifactBuilderRegistry {
         // the files this operation created, but leave the directory itself.
         const destinationExistedEmpty = await this.isExistingEmptyDirectory(destinationPath);
         const intermediatePath = path.join(intermediateDirectory, "imported.blueprint.json");
+        const publication = new ArtifactPublicationOwnership();
+        const stagedTerminal = target === "tsPackage" || target === "parWorkbook" || target === "wasm";
         let imported: PokieProject | undefined;
         let selectedPlan: ArtifactConversionPlan | undefined;
         let result: ArtifactBuildResult | undefined;
@@ -622,7 +625,19 @@ export class ArtifactBuilderRegistry {
             // runtime provenance, then execute those selected stages directly;
             // calling build() here would silently prepare a second plan.
             selectedPlan = await this.hydrateParDerivedPlan(plan, imported, options);
-            result = await this.executeSelectedPlan(selectedPlan, imported, destinationPath, options);
+            const terminalPath = stagedTerminal ? path.join(intermediateDirectory, "terminal", path.basename(destinationPath)) : destinationPath;
+            if (stagedTerminal) await ensureArtifactDestinationParent(terminalPath);
+            result = await this.executeSelectedPlan(selectedPlan, imported, terminalPath, options);
+            if (stagedTerminal) {
+                // Builders own only private staging paths. The registry owns each actual
+                // terminal publication, including the WASM integrity sidecar.
+                result = {...result, outputPath: destinationPath, publishedFileOwnership: publication.files, publishedDirectoryOwnership: publication.directories};
+                assertArtifactBuildNotCancelled(options);
+                const currentDestination = this.checkDestination(target, destinationPath, source.rootPath);
+                if (!currentDestination.available) throw new ArtifactBuildConflictError(currentDestination.message ?? "The destination is unavailable.");
+                if (target === "wasm") await publication.publish(wasmComponentManifestSidecarPath(terminalPath), wasmComponentManifestSidecarPath(destinationPath), options);
+                await publication.publish(terminalPath, destinationPath, options);
+            }
             // The temporary Blueprint is only an execution allocation.  Once
             // the selected terminal writer succeeds, retain an inspectable
             // copy and its evidence under the final artifact instead of
@@ -636,27 +651,28 @@ export class ArtifactBuilderRegistry {
                 : path.join(result.outputPath, ".pokie", extractionKind);
             const durableBlueprint = path.join(durableDirectory, "imported.blueprint.json");
             const durableEvidence = path.join(durableDirectory, "conversion-evidence.json");
-            try {
-                // Cancellation is a terminal lifecycle failure too: do not
-                // attach a half-copied provenance record after the caller has
-                // cancelled the operation.
-                assertArtifactBuildNotCancelled(options);
-                await this.assertPlanSourceMatches(plan, source, options);
-                await fs.promises.mkdir(durableDirectory, {recursive: true});
-                await fs.promises.copyFile(intermediatePath, durableBlueprint);
-                assertArtifactBuildNotCancelled(options);
-                await fs.promises.copyFile(evidenceSource, durableEvidence);
-                assertArtifactBuildNotCancelled(options);
-                result = await this.promoteParManagedOutcomes(result, imported, durableBlueprint, selectedPlan, durableDirectory, options);
-            } catch (error) {
-                // Publication, generated managed prerequisites, and durable
-                // attachment are one operation.  Remove only roots selected
-                // for materialization by this plan; a reused managed Outcome
-                // belongs to an earlier operation and must survive.
-                await this.rollbackParDerivedPublication(result, imported, selectedPlan, destinationExistedEmpty);
-                throw error;
-            }
-            return {...result, conversionEvidencePath: durableEvidence, importedBlueprintPath: durableBlueprint, ...(plan.packageExtraction ? {packageExtraction: plan.packageExtraction} : {})};
+            // Cancellation is a terminal lifecycle failure too: do not
+            // attach a half-copied provenance record after the caller has
+            // cancelled the operation.
+            assertArtifactBuildNotCancelled(options);
+            await this.assertPlanSourceMatches(plan, source, options);
+            await publication.publish(intermediatePath, durableBlueprint, options);
+            assertArtifactBuildNotCancelled(options);
+            await publication.publish(evidenceSource, durableEvidence, options);
+            assertArtifactBuildNotCancelled(options);
+            result = await this.promoteParManagedOutcomes(result, imported, durableBlueprint, selectedPlan, durableDirectory, options);
+            return {
+                ...result,
+                publishedFileOwnership: stagedTerminal ? publication.files : [...(result.publishedFileOwnership ?? []), ...publication.files],
+                ...(stagedTerminal ? {publishedDirectoryOwnership: publication.directories} : {}),
+                conversionEvidencePath: durableEvidence,
+                importedBlueprintPath: durableBlueprint,
+                ...(plan.packageExtraction ? {packageExtraction: plan.packageExtraction} : {}),
+            };
+        } catch (error) {
+            await rollbackArtifactPublication({publishedFileOwnership: publication.files, publishedDirectoryOwnership: publication.directories});
+            if (result && imported && selectedPlan) await this.rollbackParDerivedPublication(result, imported, selectedPlan, destinationExistedEmpty);
+            throw error;
         } finally {
             // Outcome streaming can finish its final writer callback while the
             // caller unwinds. Retry ENOTEMPTY rather than turning a completed
@@ -672,7 +688,8 @@ export class ArtifactBuilderRegistry {
             await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath).catch(() => undefined);
             if (entry.rootPath !== result.outputPath) await fs.promises.rm(entry.rootPath, {recursive: true, force: true}).catch(() => undefined);
         }
-        await this.removeParOperationOutput(result.outputPath, plan.target.kind as ArtifactTargetType, preserveDestinationDirectory);
+        if (result.publishedDirectoryOwnership !== undefined) await rollbackArtifactPublication(result);
+        else await this.removeParOperationOutput(result.outputPath, plan.target.kind as ArtifactTargetType, preserveDestinationDirectory);
     }
 
     /**

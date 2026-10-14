@@ -1,5 +1,6 @@
 import {
     ArtifactBuildConflictError,
+    rollbackArtifactPublication,
     ArtifactBuildCancelledError,
     type ArtifactConversionPlan,
     type ArtifactBuildOptions,
@@ -787,6 +788,7 @@ export class StudioArtifactBuildService {
                     await registry.releaseManagedOutcomeProject(ownership.sourceRootPath, projectRoot).catch(() => undefined);
                 }
             }
+            if (result.publishedDirectoryOwnership !== undefined && (projectRoot === result.outputPath || projectRoot === result.importedBlueprintPath)) continue;
             if (result.publishedFileOwnership?.some(entry => entry.path === projectRoot)) {
                 // Blueprint publication carries actual file identities through registration.
                 // A replacement belongs to its writer even when registration later fails.
@@ -811,6 +813,10 @@ export class StudioArtifactBuildService {
                 await fs.promises.rm(projectRoot, {recursive: true, force: true}).catch(() => undefined);
             }
             await fs.promises.rm(`${projectRoot}.conversion-evidence.json`, {force: true}).catch(() => undefined);
+        }
+        if (result.publishedDirectoryOwnership !== undefined) {
+            await rollbackArtifactPublication(result);
+            return;
         }
         if ((plan.target.kind === "wasm" || (plan.target.kind === "parWorkbook" && plan.packageExtraction)) && !outputDestinationExisted) {
             // WASM publication has a file module plus integrity and PAR

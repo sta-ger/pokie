@@ -7,7 +7,7 @@ import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry
 import {PackageBlueprintExtraction} from "../../src/generated/PackageBlueprintExtraction.js";
 import {ParSheetImporter} from "../../src/parsheet/ParSheetImporter.js";
 import {BlueprintArtifactBuilder} from "../../src/project/BlueprintArtifactBuilder.js";
-import {computeArtifactInputBindingHash, type ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
+import {computeProjectInputBindingHash, computeArtifactInputBindingHash, type ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
 import {ManagedOutcomeProjectService} from "../../src/project/ManagedOutcomeProjectService.js";
 import {ParSheetExporter} from "../../src/parsheet/ParSheetExporter.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
@@ -76,6 +76,129 @@ describe("ArtifactBuilderRegistry", () => {
             }
         },
     );
+
+    describe.each([
+        {sourceType: "tsPackage", target: "tsPackage", empty: false},
+        {sourceType: "tsPackage", target: "tsPackage", empty: true},
+        {sourceType: "tsPackage", target: "parWorkbook", empty: false},
+        {sourceType: "tsPackage", target: "wasm", empty: false},
+        {sourceType: "parWorkbook", target: "tsPackage", empty: false},
+        {sourceType: "parWorkbook", target: "wasm", empty: false},
+    ] as const)("downstream $sourceType -> $target (caller directory: $empty)", ({sourceType, target, empty}) => {
+        let root: string;
+        let project: PokieProject;
+        let destination: string;
+        let durableDirectory: string;
+        let callerDirectoryInode: number | undefined;
+        const bytes = Buffer.from([0, 255, 13, 10, 42]);
+        beforeEach(() => {
+            root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-downstream-ownership-"));
+            const source = sourceType === "tsPackage" ? writeDescriptorPackage(root) : path.join(root, "source.xlsx");
+            if (sourceType === "parWorkbook") fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), source);
+            project = {type: sourceType, rootPath: source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES[sourceType]};
+            destination = path.join(root, "output");
+            if (empty) {
+                fs.mkdirSync(destination);
+                callerDirectoryInode = fs.statSync(destination).ino;
+            }
+            const kind = sourceType === "tsPackage" ? "package-extraction" : "par-import";
+            durableDirectory = target === "tsPackage" ? path.join(destination, ".pokie", kind) : path.join(`${destination}.pokie`, kind);
+        });
+        afterEach(() => {
+            jest.restoreAllMocks();
+            fs.rmSync(root, {recursive: true, force: true});
+        });
+        const memberPath = (member: string): string => path.join(durableDirectory, member === "blueprint" ? "imported.blueprint.json" : "conversion-evidence.json");
+        const sentinelPath = (): string => path.join(durableDirectory, "unrelated.bin");
+        const addSentinel = (): void => {
+            fs.mkdirSync(durableDirectory, {recursive: true});
+            fs.writeFileSync(sentinelPath(), bytes);
+        };
+        const assertCleanup = (survivor: string): void => {
+            expect(fs.readFileSync(survivor)).toEqual(bytes);
+            expect(fs.readFileSync(sentinelPath())).toEqual(bytes);
+            const terminal = target === "tsPackage" ? path.join(destination, "package.json") : destination;
+            if (survivor !== terminal) expect(fs.existsSync(terminal)).toBe(false);
+            for (const member of ["blueprint", "evidence"]) {
+                if (survivor !== memberPath(member)) expect(fs.existsSync(memberPath(member))).toBe(false);
+            }
+            expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(false);
+            const filesBelow = (directory: string): string[] => !fs.existsSync(directory) ? [] : fs.readdirSync(directory, {withFileTypes: true}).flatMap(entry => entry.isDirectory() ? filesBelow(path.join(directory, entry.name)) : [path.join(directory, entry.name)]);
+            const survivingFiles = target === "tsPackage" ? filesBelow(destination) : [...filesBelow(`${destination}.pokie`), ...(fs.existsSync(destination) ? [destination] : [])];
+            expect(survivingFiles.sort()).toEqual([survivor, sentinelPath()].sort());
+            expect(fs.readdirSync(root).some(name => name.startsWith(".pokie-"))).toBe(false);
+            if (empty) expect(fs.statSync(destination).ino).toBe(callerDirectoryInode);
+        };
+
+        it.each(["blueprint", "evidence"])("rejects a competing retained %s created after preflight without changing its bytes", async member => {
+            const plan = await registry.preparePlan(project, target, {destinationPath: destination});
+            const link = fs.promises.link.bind(fs.promises);
+            jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+                if (String(to) === memberPath("blueprint")) {
+                    addSentinel();
+                    fs.writeFileSync(memberPath(member), bytes);
+                }
+                await link(from, to);
+            });
+            await expect(registry.executePlan(plan, project, destination)).rejects.toThrow(/already exists/);
+            assertCleanup(memberPath(member));
+        });
+
+        it("preserves unrelated companion contents and competing evidence on attachment I/O failure", async () => {
+            const link = fs.promises.link.bind(fs.promises);
+            jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+                if (String(to) === memberPath("evidence")) {
+                    addSentinel();
+                    fs.writeFileSync(memberPath("evidence"), bytes);
+                    throw new Error("injected attachment failure");
+                }
+                await link(from, to);
+            });
+            await expect(registry.build(target, project, destination)).rejects.toThrow("injected attachment failure");
+            assertCleanup(memberPath("evidence"));
+        });
+
+        it.each(["terminal", "blueprint", "evidence"])("preserves a replaced %s when attachment is cancelled", async member => {
+            const controller = new AbortController();
+            const terminal = target === "tsPackage" ? path.join(destination, "package.json") : destination;
+            const competitor = member === "terminal" ? terminal : memberPath(member);
+            const boundary = member === "evidence" ? memberPath("evidence") : memberPath("blueprint");
+            const link = fs.promises.link.bind(fs.promises);
+            jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+                await link(from, to);
+                if (String(to) === boundary) {
+                    addSentinel();
+                    const replacement = path.join(root, "replacement.tmp");
+                    fs.writeFileSync(replacement, bytes);
+                    fs.renameSync(replacement, competitor);
+                    controller.abort();
+                }
+            });
+            await expect(registry.build(target, project, destination, {signal: controller.signal})).rejects.toThrow(/cancelled/i);
+            assertCleanup(competitor);
+        });
+
+        it("returns a complete rollback inventory and correctly bound retained evidence on success", async () => {
+            const result = await registry.build(target, project, destination);
+            const evidence = JSON.parse(fs.readFileSync(result.conversionEvidencePath!, "utf8"));
+            expect(result.importedBlueprintPath).toBe(memberPath("blueprint"));
+            expect(result.conversionEvidencePath).toBe(memberPath("evidence"));
+            if (sourceType === "tsPackage") {
+                expect(evidence.extractedBlueprintHash).toBe(result.packageExtraction?.blueprintHash);
+                expect(evidence.sourceBindingHash).toBe(computeProjectInputBindingHash(project));
+            } else expect(evidence.sourceWorkbook).toBe(project.rootPath);
+            for (const file of result.publishedFileOwnership ?? []) {
+                const stat = fs.lstatSync(file.path);
+                expect({dev: stat.dev, ino: stat.ino}).toEqual({dev: file.dev, ino: file.ino});
+            }
+            expect(result.publishedFileOwnership?.map(entry => entry.path)).toEqual(expect.arrayContaining([memberPath("blueprint"), memberPath("evidence"), target === "tsPackage" ? path.join(destination, "package.json") : destination]));
+            if (empty) {
+                expect(fs.statSync(destination).ino).toBe(callerDirectoryInode);
+                expect(result.publishedDirectoryOwnership?.find(entry => entry.path === destination)?.removeOnRollback).toBe(false);
+            }
+            expect(fs.readdirSync(root).some(name => name.startsWith(".pokie-"))).toBe(false);
+        });
+    });
 
     describe.each(["tsPackage", "parWorkbook"] as const)("exclusive %s Blueprint publication", sourceType => {
         let root: string;
