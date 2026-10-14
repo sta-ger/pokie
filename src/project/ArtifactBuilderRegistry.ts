@@ -570,7 +570,14 @@ export class ArtifactBuilderRegistry {
         if (!destination.available) throw new ArtifactBuildConflictError(destination.message ?? "The destination is unavailable.");
         const extractionKind = source.type === "tsPackage" ? "package-extraction" : "par-import";
         const wasmEvidenceRoot = target === "wasm" || target === "parWorkbook" ? `${destinationPath}.pokie` : undefined;
-        if (wasmEvidenceRoot !== undefined) assertPreparedArtifactDestinationAvailable(source.rootPath, wasmEvidenceRoot, "file");
+        if (wasmEvidenceRoot !== undefined) {
+            try {
+                assertPreparedArtifactDestinationAvailable(source.rootPath, wasmEvidenceRoot, "file"); 
+            } catch (error) {
+                if (!(error instanceof ArtifactBuildConflictError)) throw error;
+                throw new ArtifactBuildConflictError(`Conversion evidence companion "${wasmEvidenceRoot}" is unavailable: ${error.message}`);
+            }
+        }
         // PAR's imported Blueprint is staged alongside the requested output,
         // before any downstream builder gets a chance to create a directory.
         // Create the explicit output parent at this shared boundary so every
@@ -1087,7 +1094,7 @@ export class ArtifactBuilderRegistry {
                 assertPreparedArtifactDestinationAvailable(source.rootPath, `${options.destinationPath}.pokie`, "file");
             } catch (error) {
                 if (!(error instanceof ArtifactBuildConflictError)) throw error;
-                destination = {available: false, message: error.message};
+                destination = {available: false, message: `Conversion evidence companion "${options.destinationPath}.pokie" is unavailable: ${error.message}`};
             }
         }
         // A Studio mode update atomically replaces the complete directory, but only after its

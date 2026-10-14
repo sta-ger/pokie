@@ -7727,6 +7727,9 @@ describe("StudioServer", () => {
             const model = await get(`${url}/api/project/gameModel`);
             expect(model.status).toBe(200);
             expect(model.body).toMatchObject({basics: {status: "available", data: {id: "math-probe", version: "0.1.0"}}, packageExtraction: {status: "complete", source: {kind: "custom"}}});
+            const targets = await get(`${url}/api/project/artifacts/targets`);
+            expect(targets.status).toBe(200);
+            expect(targets.body).toEqual(expect.arrayContaining([{target: "blueprint", supported: true, state: "supported", plan: expect.objectContaining({packageExtraction: expect.objectContaining({status: "complete"})}), unsupportedNotes: expect.any(Array)}]));
             const destination = path.join(artifactWorkDir, "extracted.json");
             const preview = await post(`${url}/api/project/artifacts/preview`, {target: "blueprint", outDir: destination});
             expect(preview.body).toMatchObject({status: "ok", plan: {packageExtraction: {status: "complete"}, steps: [{kind: "extractPackageModel"}]}});

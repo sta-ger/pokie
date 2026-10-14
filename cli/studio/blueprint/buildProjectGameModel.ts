@@ -13,21 +13,10 @@ export type GameModelSourceReaders = {
     readWasmManifest: typeof readWasmComponentManifest;
 };
 
-// The one place GET /api/project/gameModel's own inputs -- the current project's resolved PokieProject
-// (see ProjectTargetResolver), plus whether it's an opened "blueprint" project (see StudioServer's own
-// isOpenedBlueprintProject -- a plain-file `projectRoot` counts even when resolution itself came back
-// empty) -- are turned into the canonical GameModelProjection buildGameModelProjection() itself computes.
-// Mirrors the exact three-way dispatch StudioServer's handleInspectProject/handleValidateProject already
-// established (see StudioServer.ts's own doc comment on resolveOpenedProject): "blueprint" reads the full
-// tracked source via StudioBlueprintService; "outcomeLibrary"/"stakeAdapter" never derive a game model at
-// all (a pre-generated outcome source is drawn from, not modeled -- see OutcomeSourceProjectReport's own
-// doc comment); canonical "wasm" exposes its integrity-bound embedded model while legacy files expose their manifest identity (the portable runtime does not
-// introspect anything beyond that -- see PokieWasmComponentManifest's own doc comment); everything else
-// ("tsPackage", the default) exposes only package.json's own version/description as `basics` (its own
-// "name" is an npm package identifier that isn't reliably this game's own id or name, see the tsPackage
-// branch's own doc comment below, so it is never projected into either field), since GamePackageInspector
-// reads nothing deeper. Every branch's `reason` is plain language a caller (GameModelTab.tsx) shows
-// verbatim, never a guess the UI has to construct itself.
+// GET /api/project/gameModel routes requested model reads to the authoritative format reader.
+// Package model extraction is executable and capability-based; ordinary package metadata inspection
+// remains separate. An unresolved source only has metadata. Every unavailable section carries a
+// concrete reason, while package projections retain field evidence and comparison boundaries.
 export async function buildProjectGameModel(
     projectRoot: string,
     resolved: PokieProject | undefined,

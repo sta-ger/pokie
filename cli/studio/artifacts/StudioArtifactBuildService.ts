@@ -145,9 +145,18 @@ export class StudioArtifactBuildService {
         const project = await resolveStudioProjectSource(this.resolveProject, projectRoot);
         return Promise.all(this.registry.listTargets().map(async (target) => {
             const descriptor = this.registry.describe(target);
-            const plan = project === undefined
-                ? createUnresolvedRuntimePlan(projectRoot, target)
-                : await this.plan(project, target);
+            let plan: ArtifactConversionPlan;
+            try {
+                plan = project === undefined ? createUnresolvedRuntimePlan(projectRoot, target) : await this.plan(project, target);
+            } catch (error) {
+                if (project === undefined) throw error;
+                plan = {
+                    ...new ArtifactConversionPlanner().plan(project, target), status: "unavailable", steps: [],
+                    diagnostic: {code: "unsupported-boundary", failedEdge: {from: project.type, to: target},
+                        message: `${target} preflight failed: ${(error instanceof Error ? error.message : "Runtime inspection failed").slice(0, 2000)}`,
+                        recovery: "Inspect this target's runtime capabilities or choose an available model conversion."},
+                };
+            }
             const plannerFields = this.targetPlannerFields(plan);
             return {
                 target,

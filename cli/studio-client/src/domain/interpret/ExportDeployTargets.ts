@@ -151,7 +151,7 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioArtifac
                 writePublishBehavior:
                     "A registry-backed preview reports the resolved destination (and any conflict) before Build is ever clicked; Build itself still writes the artifact to disk in one step, and directory destinations must be new or empty, and file destinations (even zero-byte files) must be new; conflicts are refused untouched.",
                 capabilities: [],
-                limits: entry.target === "wasm" ? entry.unsupportedNotes : [],
+                limits: entry.target === "wasm" || entry.plan?.packageExtraction || entry.plan?.steps.some(step => step.kind === "extractPackageModel") ? entry.unsupportedNotes : [],
                 prerequisites: entry.plan?.status === "planned"
                     ? entry.plan.steps.map((step) => `${step.choice} ${step.kind}`)
                     : [],
