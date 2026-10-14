@@ -252,7 +252,7 @@ export class ArtifactBuilderRegistry {
     public async plan(
         source: PokieProject,
         target: ArtifactTargetType,
-        options: ArtifactConversionPlanningOptions & Pick<ArtifactBuildOptions, "outcomeLibraryGeneration" | "signal"> = {},
+        options: ArtifactConversionPlanningOptions & Pick<ArtifactBuildOptions, "outcomeLibraryGeneration" | "signal" | "onProgress"> = {},
     ): Promise<ArtifactConversionPlan> {
         const preparedPlan = await this.preparePlan(source, target, options);
         return preparedPlan;
@@ -267,7 +267,7 @@ export class ArtifactBuilderRegistry {
     public async preparePlan(
         source: PokieProject,
         target: ArtifactTargetType,
-        options: ArtifactConversionPlanningOptions & Pick<ArtifactBuildOptions, "outcomeLibraryGeneration" | "signal"> = {},
+        options: ArtifactConversionPlanningOptions & Pick<ArtifactBuildOptions, "outcomeLibraryGeneration" | "signal" | "onProgress"> = {},
     ): Promise<ArtifactConversionPlan> {
         assertArtifactBuildNotCancelled(options);
         let plannedSource = source;
@@ -1061,6 +1061,7 @@ export class ArtifactBuilderRegistry {
                 // outcomeLibraryGeneration is the executable input.
                 outcomeLibraryGeneration: this.optionsForPlan(undefined, plan.source)?.outcomeLibraryGeneration,
                 signal: options?.signal,
+                onProgress: options?.onProgress,
             });
             if (!sameConfigurationProvenance(plan.source.configurationProvenance, refreshed.source.configurationProvenance)) {
                 throw new Error("The source configuration or generation provenance changed after this conversion was prepared; prepare a new plan before executing it.");
@@ -1081,6 +1082,7 @@ export class ArtifactBuilderRegistry {
             destinationPath,
             outcomeLibraryGeneration: this.optionsForPlan(undefined, plan.source)?.outcomeLibraryGeneration,
             signal: options?.signal,
+            onProgress: options?.onProgress,
         });
         if (JSON.stringify(current) !== JSON.stringify(plan)) {
             throw new Error("The prepared conversion graph is stale or invalid; prepare a new plan before executing it.");
