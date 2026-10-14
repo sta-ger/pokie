@@ -5,7 +5,7 @@ import {GAME_BLUEPRINT_SCHEMA_VERSION, type GameBlueprint} from "./GameBlueprint
 import {GameBlueprintValidator} from "./GameBlueprintValidator.js";
 import {PACKAGE_MODEL_DESCRIPTOR_VERSION} from "./PackageModelDescriptor.js";
 
-export type PackageExtractionDiagnostic = {path: string; code: string; message: string; severity?: "warning" | "error"};
+export type PackageExtractionDiagnostic = {path: string; code: string; message: string; severity?: "warning" | "error" | "info"};
 export type PackageExtractionField = {
     path: string;
     status: "exact" | "inferred" | "defaulted" | "unsupported";
