@@ -49,7 +49,8 @@ export function describeRoundPresentation(stateBefore: unknown, stateAfter: unkn
     const initial = initialPayload(stateBefore) ?? initialPayload(stateAfter);
     const round = asRecord(stateAfter);
     if (initial === undefined) {
-        return {featureCounters: deriveFeatureCountersFromEvents(events)};
+        const featureCounters = deriveFeatureCountersFromEvents(events);
+        return featureCounters.length > 0 ? {featureCounters} : {};
     }
 
     return {

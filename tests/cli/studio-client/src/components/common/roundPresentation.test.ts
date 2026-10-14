@@ -33,6 +33,23 @@ describe("describeRoundPresentation", () => {
 
     it("keeps an artifact-only import honest when no captured session data is available", () => {
         expect(describeRoundPresentation(undefined, undefined)).toEqual({});
+        expect(describeRoundPresentation(undefined, undefined, undefined, [{type: "custom"}])).toEqual({});
+        expect(describeRoundPresentation(undefined, undefined, undefined, [{type: "holdAndWin", data: {}}])).toEqual({});
+    });
+
+    it("preserves artifact-only feature observations including zero counters without inventing static session data", () => {
+        expect(describeRoundPresentation(undefined, undefined, "ante", [
+            {type: "holdAndWin", data: {locks: [[0, 0]], respinsRemaining: 0, payout: 7.5}},
+            {type: "jackpot", data: {pools: [{id: "main", value: 0}], award: {amount: 0}}},
+            {type: "chargedBetMode", data: {id: "ante"}},
+        ])).toEqual({featureCounters: [
+            {label: "Charged mode", value: "ante"},
+            {label: "Locked symbols", value: 1},
+            {label: "Respins", value: 0},
+            {label: "Hold & Win payout", value: 7.5},
+            {label: "Jackpot main", value: 0},
+            {label: "Jackpot award", value: 0},
+        ]});
     });
 
     it("reads the saved Studio Play capture's immutable initial payload", () => {

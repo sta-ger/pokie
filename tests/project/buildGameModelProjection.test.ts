@@ -143,6 +143,25 @@ it("keeps mixed supported package sections inspectable without masking unsupport
     }, getModelDescriptor: () => ({descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: model as unknown as GameBlueprint})});
     const projection = buildPackageGameModelProjection(extraction);
     expect(projection.packageExtraction?.status).toBe("unsupported");
-    expect(projection.paytable.status).toBe("available");
+    expect(projection.packageExtraction).toBe(extraction);
+    expect(extraction.blueprint).toBeUndefined();
+    expect(extraction.blueprintHash).toBeUndefined();
+    expect(projection.paytable).toEqual(buildGameModelProjection(model).paytable);
+    expect(projection.layout.status).toBe("available");
+    expect(projection.symbols.status).toBe("available");
+    expect(projection.reels.status).toBe("available");
+    expect(projection.mechanics).toMatchObject({status: "unavailable", reason: expect.stringContaining("unsupported-model-field")});
+    expect(projection.mechanics).toMatchObject({status: "unavailable", reason: expect.stringContaining("blueprint-mechanics-unknown-field")});
+});
+
+it("does not forgive malformed payouts alongside unsupported package mechanics", async () => {
+    const model = {...BASE_BLUEPRINT, paytable: {A: {3: -1}}, mechanics: {custom: true}};
+    const extraction = await new PackageBlueprintExtraction().extract({getManifest: () => model.manifest, createSession: () => {
+        throw new Error("no session");
+    }, getModelDescriptor: () => ({descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: model as unknown as GameBlueprint})});
+    const projection = buildPackageGameModelProjection(extraction);
+    expect(extraction.status).toBe("malformed");
+    expect(extraction.blueprint).toBeUndefined();
+    expect(projection.paytable).toMatchObject({status: "unavailable", reason: expect.stringContaining("blueprint-paytable")});
     expect(projection.mechanics).toMatchObject({status: "unavailable", reason: expect.stringContaining("unsupported-model-field")});
 });
