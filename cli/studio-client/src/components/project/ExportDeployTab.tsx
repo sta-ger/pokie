@@ -2,6 +2,7 @@ import {PackageExtractionDiagnostics} from "./PackageExtractionDiagnostics";
 import {useEffect, useId, useRef, useState} from "react";
 import {Badge, Button, Group, List, Text, TextInput} from "@mantine/core";
 import {
+    activateArtifactBuild,
     cancelArtifactBuild,
     checkNativePickerAvailability,
     cancelOutcomeLibraryGeneration,
@@ -1576,14 +1577,28 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         const version = artifactRunVersions.current[target] = (artifactRunVersions.current[target] ?? 0) + 1;
         artifactActiveBuilds.current[target] = {jobId: "", cancellationRequested: false};
         setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running", jobId: "", cancellationRequested: false}}));
-        startArtifactBuild(fetchImpl, target, artifactDestinations[target]?.trim() || undefined, preparedOperationId)
+        startArtifactBuild(fetchImpl, target, artifactDestinations[target]?.trim() || undefined, preparedOperationId, true)
             .then((job) => {
-                if (!artifactMounted.current || artifactRunVersions.current[target] !== version) return;
+                if (!artifactMounted.current || artifactRunVersions.current[target] !== version) {
+                    // The abandoned card must not leave its unactivated reservation behind.
+                    cancelArtifactBuild(fetchImpl, job.id).catch(() => undefined);
+                    return;
+                }
                 const active = artifactActiveBuilds.current[target];
                 active.jobId = job.id;
                 active.cancellationRequested ||= job.cancellationRequested || job.status === "cancelling";
                 setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running", jobId: job.id, progress: job.progress, cancellationRequested: active.cancellationRequested}}));
-                if (active.cancellationRequested) requestArtifactCancellation(target, job.id, version);
+                if (active.cancellationRequested) {
+                    requestArtifactCancellation(target, job.id, version);
+                } else {
+                    activateArtifactBuild(fetchImpl, job.id).catch((error: unknown) => {
+                        if (artifactMounted.current && artifactRunVersions.current[target] === version && artifactActiveBuilds.current[target]) {
+                            setArtifactActionError(describeProjectActionError("Starting the artifact build", errorMessage(error)));
+                            // Release the queued reservation and settle cleanup even if activation failed.
+                            requestArtifactCancellation(target, job.id, version);
+                        }
+                    });
+                }
                 pollArtifactBuild(target, job.id, version);
             })
             .catch((error: unknown) => {
@@ -1658,12 +1673,17 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 }
                 clearTimeout(artifactBuildPollTimers.current[target]);
                 Reflect.deleteProperty(artifactBuildPollTimers.current, target);
+                const cancellationRequested = artifactActiveBuilds.current[target]?.cancellationRequested;
                 Reflect.deleteProperty(artifactActiveBuilds.current, target);
                 if (target === "blueprint") refreshArtifactPreviews();
                 if (job.status === "cancelled" && job.result?.status === "cancelled") {
                     // The terminal response is authoritative.  Do not turn a
                     // cancelled job into a client-side capability decision.
                     setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "cancelled", plan: job.result!.plan}}));
+                } else if (job.status === "completed" && cancellationRequested) {
+                    setArtifactBuildRuns((runs) => ({...runs, [target]: {
+                        status: "error", message: "The artifact completed before cancellation reached the server. Inspect the retained operation before retrying.",
+                    }}));
                 } else if (job.status === "completed" && job.result !== undefined && job.result.status === "ok") {
                     const result = job.result;
                     setArtifactBuildRuns((runs) => ({

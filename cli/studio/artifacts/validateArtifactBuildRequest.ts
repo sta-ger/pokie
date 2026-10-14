@@ -4,12 +4,14 @@ export type ArtifactBuildRequestInput = {
     target?: unknown;
     outDir?: unknown;
     preparedOperationId?: unknown;
+    deferExecution?: unknown;
 };
 
 export type ValidatedArtifactBuildRequest = {
     readonly target: ArtifactTargetType;
     readonly outDir?: string;
     readonly preparedOperationId?: string;
+    readonly deferExecution?: boolean;
 };
 
 // The same closed vocabulary ArtifactBuilderRegistry.listTargets() (and BuildCommand's own --target
@@ -28,7 +30,7 @@ function isNonEmptyString(value: unknown): value is string {
 // are StudioArtifactBuildService's own job (the same capability-diagnostic/conflict concerns
 // ArtifactBuilderRegistry.build() itself already reports, not a second, differently-worded check here).
 export function validateArtifactBuildRequest(input: ArtifactBuildRequestInput): ValidatedArtifactBuildRequest {
-    const {target, outDir, preparedOperationId} = input;
+    const {target, outDir, preparedOperationId, deferExecution} = input;
 
     if (!isNonEmptyString(target) || !ARTIFACT_TARGET_TYPES.includes(target as ArtifactTargetType)) {
         throw new Error(`"target" must be one of: ${ARTIFACT_TARGET_TYPES.join(", ")}.`);
@@ -40,7 +42,12 @@ export function validateArtifactBuildRequest(input: ArtifactBuildRequestInput): 
         throw new Error('"preparedOperationId" must be a non-empty string when given.');
     }
 
+    if (deferExecution !== undefined && typeof deferExecution !== "boolean") {
+        throw new Error('"deferExecution" must be a boolean when given.');
+    }
+
     return {
+        ...(deferExecution === undefined ? {} : {deferExecution}),
         target: target as ArtifactTargetType,
         outDir: outDir as string | undefined,
         ...(preparedOperationId === undefined ? {} : {preparedOperationId}),

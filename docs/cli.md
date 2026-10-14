@@ -3869,6 +3869,15 @@ return 409. Source or descriptor drift fails the job without publication; refres
 saving again. Poll `GET /api/project/artifacts/build/:id` through `cancelling` until cleanup reaches a
 terminal state. Failure and cancellation retain their plan/diagnostics in durable job results.
 
+The rendered Studio cards request `deferExecution: true`: the start response reserves a queued job
+without running a writer. After receiving its ID, the client sends either
+`POST /api/project/artifacts/build/:id/cancel` for retained startup cancellation, or
+`POST /api/project/artifacts/build/:id/activate` to allow execution. Activation is idempotent and
+project-scoped. Cancelling an unactivated job, closing its project or shutting down Studio settles
+it without publication. Destination controls stay locked until terminal cleanup. Direct build API
+callers that omit `deferExecution` retain the immediate execution contract.
+
+
 Declared structural fidelity and bounded seeded comparisons do not prove arbitrary TypeScript
 behavioral equivalence. The extraction evidence is historical provenance; editing the saved Blueprint
 does not update its original extraction hash or rewrite the source package.

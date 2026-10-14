@@ -419,18 +419,18 @@ export class StudioArtifactBuildService {
     // Starts independently from the request that created it, so a client can observe the preflight and
     // every running update rather than waiting for one terminal HTTP response.  Retention is bounded;
     // active jobs are never evicted.
-    public start(projectRoot: string, target: ArtifactTargetType, outDir?: string): StudioArtifactBuildStartResult {
+    public start(projectRoot: string, target: ArtifactTargetType, outDir?: string, deferExecution = false): StudioArtifactBuildStartResult {
         // A direct service caller has the same no-job boundary as the HTTP
         // route: a WASM path must never receive an id, destination, staging
         // plan, or queued builder merely to fail later.
         if (isWasmComponentFile(projectRoot)) {
             return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "build a POKIE game package")};
         }
-        return this.startOperation(projectRoot, target, outDir);
+        return this.startOperation(projectRoot, target, outDir, undefined, undefined, deferExecution);
     }
 
     /** Consume a preview-issued operation, rejecting stale or cross-project handles. */
-    public async startPreparedStakeProjection(projectRoot: string, preparedOperationId: string): Promise<StudioPreparedStakeProjectionStartResult> {
+    public async startPreparedStakeProjection(projectRoot: string, preparedOperationId: string, deferExecution = false): Promise<StudioPreparedStakeProjectionStartResult> {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const prepared = this.preparedStakeOperations.get(preparedOperationId);
         if (prepared === undefined || prepared.projectRoot !== projectRoot) return {status: "stale"};
@@ -458,7 +458,7 @@ export class StudioArtifactBuildService {
             return {status: "stale"};
         }
         this.preparedStakeOperations.delete(preparedOperationId);
-        return this.startOperation(projectRoot, "stakeAdapter", prepared.operation.destinationPath, prepared.operation);
+        return this.startOperation(projectRoot, "stakeAdapter", prepared.operation.destinationPath, prepared.operation, undefined, deferExecution);
     }
 
     /** Returns the destination bound by a preview without exposing its operation. */
@@ -469,12 +469,20 @@ export class StudioArtifactBuildService {
     }
 
     /** Consume only the extraction and destination the user reviewed. Execution revalidates its full graph. */
-    public startPreparedExtraction(projectRoot: string, preparedOperationId: string, outDir?: string): StudioPreparedStakeProjectionStartResult {
+    public startPreparedExtraction(projectRoot: string, preparedOperationId: string, outDir?: string, deferExecution = false): StudioPreparedStakeProjectionStartResult {
         const prepared = this.preparedExtractions.get(preparedOperationId);
         if (prepared === undefined || prepared.projectRoot !== canonicalStudioProjectIdentity(projectRoot) ||
             prepared.destination !== path.resolve(outDir ?? resolveDefaultDestination(prepared.project.rootPath, "blueprint"))) return {status: "stale"};
         this.preparedExtractions.delete(preparedOperationId);
-        return this.startOperation(projectRoot, "blueprint", prepared.destination, undefined, prepared);
+        return this.startOperation(projectRoot, "blueprint", prepared.destination, undefined, prepared, deferExecution);
+    }
+
+    /** Studio acknowledges the allocated ID before permitting any writer to execute. */
+    public activateForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
+        const record = this.jobs.get(id);
+        if (record?.projectRoot !== canonicalStudioProjectIdentity(projectRoot)) return undefined;
+        this.executeRecord(record);
+        return this.toJobView(record);
     }
 
     public getStatusForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
@@ -496,6 +504,7 @@ export class StudioArtifactBuildService {
             this.jobService?.cancel(projectRoot, id);
             record.cancellationRequested = true;
             record.controller.abort();
+            this.executeRecord(record);
         }
         return this.toJobView(record);
     }
@@ -507,6 +516,7 @@ export class StudioArtifactBuildService {
                 this.jobService?.cancel(projectRoot, record.id);
                 record.cancellationRequested = true;
                 record.controller.abort();
+                this.executeRecord(record);
             }
         }
     }
@@ -517,6 +527,7 @@ export class StudioArtifactBuildService {
                 this.jobService?.cancel(record.projectRoot, record.id);
                 record.cancellationRequested = true;
                 record.controller.abort();
+                this.executeRecord(record);
             }
         }
         await Promise.allSettled([...this.pendingExecutions]);
@@ -540,6 +551,7 @@ export class StudioArtifactBuildService {
         outDir?: string,
         preparedStakeOperation?: PreparedStakeProjectionOperation,
         preparedExtraction?: PreparedExtractionRecord,
+        deferExecution = false,
     ): StudioArtifactBuildStartResult {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         this.trimTerminalJobs();
@@ -569,11 +581,18 @@ export class StudioArtifactBuildService {
             controller: new AbortController(),
             preparedStakeOperation,
             preparedExtraction,
+            outDir,
+            executionStarted: false,
         };
         this.jobs.set(record.id, record);
-        const execution = Promise.resolve().then(() => this.run(record, outDir));
-        this.trackExecution(execution);
+        if (!deferExecution) this.executeRecord(record);
         return {status: "created", job: this.toJobView(record)};
+    }
+
+    private executeRecord(record: StudioArtifactBuildJobRecord): void {
+        if (record.executionStarted || (record.status !== "queued" && record.status !== "running")) return;
+        record.executionStarted = true;
+        this.trackExecution(Promise.resolve().then(() => this.run(record, record.outDir)));
     }
 
     private async run(record: StudioArtifactBuildJobRecord, outDir: string | undefined): Promise<void> {
@@ -600,7 +619,11 @@ export class StudioArtifactBuildService {
             },
         };
         let result: StudioArtifactBuildView;
-        if (record.preparedExtraction !== undefined) result = await this.buildResolved(record.preparedExtraction.project, "blueprint", record.preparedExtraction.destination, options, undefined, record.preparedExtraction.plan);
+        if (record.controller.signal.aborted) result = {
+            status: "cancelled", message: "Artifact build cancelled before execution.",
+            plan: record.preparedExtraction?.plan ?? record.preparedStakeOperation?.plan ?? createUnresolvedRuntimePlan(record.projectRoot, record.target, outDir),
+        };
+        else if (record.preparedExtraction !== undefined) result = await this.buildResolved(record.preparedExtraction.project, "blueprint", record.preparedExtraction.destination, options, undefined, record.preparedExtraction.plan);
         else if (record.preparedStakeOperation !== undefined) result = await this.executeStakeProjection(record.preparedStakeOperation, options);
         else result = await this.build(record.projectRoot, record.target, outDir, options);
         const status = terminalStatusFor(result);
@@ -908,6 +931,8 @@ type StudioArtifactBuildJobRecord = {
     readonly target: ArtifactTargetType;
     status: "queued" | "running" | "completed" | "failed" | "cancelled";
     cancellationRequested: boolean;
+    executionStarted: boolean;
+    readonly outDir?: string;
     readonly controller: AbortController;
     readonly preparedStakeOperation?: PreparedStakeProjectionOperation;
     readonly preparedExtraction?: PreparedExtractionRecord;

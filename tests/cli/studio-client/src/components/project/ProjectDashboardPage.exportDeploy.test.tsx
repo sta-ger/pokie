@@ -65,6 +65,7 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
 function fetchImplFrom(routes: Record<string, () => {ok: boolean; status: number; body: unknown}>): FetchLike {
     return (url, init) => {
         const [path] = url.split("?");
+        if (path.endsWith("/activate")) return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({})});
         const route = routes[path];
         if (route) {
             const result = route();
@@ -221,7 +222,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(within(section).queryByText(/doesn't exist|pick an existing location/)).not.toBeInTheDocument();
         await user.click(within(section).getByRole("button", {name: "Build"}));
         expect(await within(section).findByText(`Built to /games/${selected}.`)).toBeInTheDocument();
-        expect(buildRequests).toEqual([{target, outDir: selected}]);
+        expect(buildRequests).toEqual([{target, outDir: selected, deferExecution: true}]);
         expect(within(section).queryByText(/doesn't exist|pick an existing location/)).not.toBeInTheDocument();
     });
 
@@ -800,7 +801,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await waitFor(() => expect(within(section).getByRole("button", {name: "Build"})).toBeEnabled());
         await user.click(within(section).getByRole("button", {name: "Build"}));
         expect(await within(section).findByText("Built to /games/recovered.wasm.")).toBeInTheDocument();
-        expect(buildRequest).toEqual({target: "wasm", outDir: "/games/recovered.wasm"});
+        expect(buildRequest).toEqual({target: "wasm", outDir: "/games/recovered.wasm", deferExecution: true});
     });
 
     it("builds a canonical WASM file through the shared card, native Save picker, and ordinary project follow-ups", async () => {
@@ -885,7 +886,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         });
 
         await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
-        expect(buildRequest).toEqual({target: "wasm", outDir: "/games/chosen-game.wasm"});
+        expect(buildRequest).toEqual({target: "wasm", outDir: "/games/chosen-game.wasm", deferExecution: true});
         expect(await within(buildArtifactSection).findByText(/Built to \/games\/chosen-game\.wasm/)).toBeInTheDocument();
 
         await user.click(within(buildArtifactSection).getByRole("button", {name: "Add to Projects"}));
@@ -1269,7 +1270,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(within(buildArtifactSection).getByText("Plan: generate generateManagedOutcomeLibrary")).toBeInTheDocument();
         await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
 
-        expect(buildRequest).toEqual({target: "stakeAdapter", outDir: undefined, preparedOperationId: "stake-preview-1"});
+        expect(buildRequest).toEqual({target: "stakeAdapter", outDir: undefined, preparedOperationId: "stake-preview-1", deferExecution: true});
         expect(within(buildArtifactSection).getByText(/Stake route: generate compatible Outcome Library/)).toBeInTheDocument();
         expect(within(buildArtifactSection).getByText(/Estimated Stake items: 5000/)).toBeInTheDocument();
         expect(await within(buildArtifactSection).findByText("Built to /games/stakeengine.")).toBeInTheDocument();
@@ -1874,12 +1875,18 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             let finish = false;
             let cancellingReads = 0;
             let builds = 0;
+            let activations = 0;
             const fetchImpl: FetchLike = (url, init) => {
                 const [requestPath] = url.split("?");
                 const respond = (body: unknown) => Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
                 if (requestPath === "/api/project/artifacts/targets") return respond([{target, supported: true, state: "supported", unsupportedNotes: []}]);
                 if (requestPath === "/api/project/artifacts/preview") return respond({status: "ok", target, destination: `/games/${target}`, destinationKind, plannedOutputs: [target], sourceType: "blueprint"});
+                if (requestPath.endsWith("/activate")) {
+                    activations++;
+                    return respond({});
+                }
                 if (requestPath === "/api/project/artifacts/build") {
+                    expect(JSON.parse(String(init?.body))).toMatchObject({target, deferExecution: true});
                     builds++;
                     return new Promise(resolve => {
                         accept = resolve;
@@ -1918,6 +1925,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             expect(destination).toBeDisabled();
             expect(destination).toHaveValue("");
             expect(builds).toBe(1);
+            expect(activations).toBe(0);
             await waitFor(() => expect(cancellingReads).toBeGreaterThan(1));
             finish = true;
             await within(section).findByText(/Build cancelled/);

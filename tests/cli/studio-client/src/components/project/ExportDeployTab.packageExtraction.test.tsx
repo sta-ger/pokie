@@ -47,6 +47,8 @@ function response(body: unknown, status = 200): ReturnType<FetchLike> {
 }
 function transport(handler: FetchLike, sourcePlan = plan()): FetchLike {
     return (url, init) => {
+        // Successful activation acknowledges the reservation; subsequent GETs own progress/results.
+        if (url.endsWith("/activate")) return response({});
         const request = url.split("?")[0];
         if (request === "/api/project/jobs") return response({jobs: []});
         if (request === "/api/home/fs/browse") return response({status: "error", reason: "absent", error: "Path does not exist", resolvedPath: "/games"});
@@ -152,7 +154,7 @@ it("previews extraction, builds a separate artifact and opens its returned Bluep
     expect(within(section).getByText("Extracted Blueprint hash: sha256:reviewed-model")).toBeInTheDocument();
     fireEvent.click(within(section).getByRole("button", {name: "Save Blueprint"}));
     expect(await within(section).findByText(/Built to \/games\/extracted.json/)).toBeInTheDocument();
-    expect(builds).toEqual([{target: "blueprint", preparedOperationId: "reviewed-extraction"}]);
+    expect(builds).toEqual([{target: "blueprint", preparedOperationId: "reviewed-extraction", deferExecution: true}]);
     fireEvent.click(within(section).getByRole("button", {name: "Open as Project"}));
     await waitFor(() => expect(opened).toBe("/games/extracted.json"));
 });
@@ -275,9 +277,11 @@ it("retains cancellation while startup is pending and locks the destination unti
     let builds = 0;
     let cancels = 0;
     let reads = 0;
-    const section = await open(transport((url) => {
+    const activations: string[] = [];
+    const fetchImpl = transport((url, init) => {
         if (url.endsWith("/preview")) return response(preview());
         if (url.endsWith("/build")) {
+            expect(JSON.parse(String(init?.body))).toMatchObject({deferExecution: true});
             builds++;
             return new Promise(resolve => {
                 accept = resolve;
@@ -292,7 +296,11 @@ it("retains cancellation while startup is pending and locks the destination unti
         reads++;
         return response({id: "pending", target: "blueprint", status: finish ? "cancelled" : "running", cancellationRequested: finish,
             ...(finish ? {result: {status: "cancelled", message: "Cleanup settled", plan: plan()}} : {progress: {status: "running", message: "Waiting for descriptor"}})});
-    }));
+    });
+    const section = await open((url, init) => {
+        if (url.endsWith("/activate")) activations.push(url);
+        return fetchImpl(url, init);
+    });
     await within(section).findByText("Package model: complete (custom)");
     const save = within(section).getByRole("button", {name: "Save Blueprint"});
     const destination = within(section).getByLabelText("Output file (optional)");
@@ -318,6 +326,7 @@ it("retains cancellation while startup is pending and locks the destination unti
     await within(section).findByText(/Build cancelled/);
     expect(destination).toBeEnabled();
     expect(cancels).toBe(1);
+    expect(activations).toEqual([]);
     expect(within(section).queryByRole("button", {name: "Open as Project"})).not.toBeInTheDocument();
 });
 
@@ -371,4 +380,28 @@ it.each(["cancelled", "failed"] as const)("keeps the running and cancelling dest
     expect(destination).toBeEnabled();
     expect(within(section).queryByRole("button", {name: "Open as Project"})).not.toBeInTheDocument();
     expect(within(section).queryByRole("button", {name: "Add to Projects"})).not.toBeInTheDocument();
+});
+
+it("withholds successful actions when a completed read races requested cancellation", async () => {
+    let finish = false;
+    const section = await open(transport((url) => {
+        if (url.endsWith("/preview")) return response(preview());
+        if (url.endsWith("/build")) return response({status: "created", job: {id: "racing", target: "blueprint", status: "queued", cancellationRequested: false}}, 202);
+        if (url.endsWith("/cancel")) {
+            finish = true;
+            return response({id: "racing", target: "blueprint", status: "completed", cancellationRequested: false});
+        }
+        return response({id: "racing", target: "blueprint", status: finish ? "completed" : "running", cancellationRequested: false,
+            ...(finish ? {result: {status: "ok", target: "blueprint", outputPath: "/games/extracted.json", outputKind: "file", sourceType: "tsPackage", plan: plan()}} : {progress: {status: "running", message: "Publishing"}})});
+    }));
+    await within(section).findByText("Package model: complete (custom)");
+    fireEvent.click(within(section).getByRole("button", {name: "Save Blueprint"}));
+    await within(section).findByText("Publishing");
+    fireEvent.click(within(section).getByRole("button", {name: "Cancel"}));
+    await within(section).findByText(/completed before cancellation reached the server/);
+    for (const name of ["Open as Project", "Add to Projects", "Open output folder"]) {
+        expect(within(section).queryByRole("button", {name})).not.toBeInTheDocument();
+    }
+    expect(within(section).queryByText("Build completed")).not.toBeInTheDocument();
+    expect(within(section).getByLabelText("Output file (optional)")).toBeEnabled();
 });

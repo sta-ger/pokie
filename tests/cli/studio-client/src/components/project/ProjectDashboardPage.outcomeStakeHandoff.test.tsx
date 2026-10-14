@@ -154,7 +154,7 @@ it("submits the original Blueprint refreshed Stake operation once and borrows it
         expect(await terminalJob.json()).toMatchObject({status: "completed", result: stakeResult});
         expect(stakePreviews.at(-1)?.preparedOperationId).not.toBe(initialOperation);
         expect(builds.filter(build => build.target === "stakeAdapter")).toEqual([
-            {target: "stakeAdapter", preparedOperationId: refreshedOperation},
+            {target: "stakeAdapter", preparedOperationId: refreshedOperation, deferExecution: true},
         ]);
         expect(fs.readFileSync(path.join(compatibleRoot, "manifest.json"), "utf8")).toBe(compatibleManifest);
         expect(fs.readFileSync(path.join(outcomeRoot, "manifest.json"), "utf8")).toBe(outcomeManifest);
@@ -168,3 +168,84 @@ it("submits the original Blueprint refreshed Stake operation once and borrows it
         fs.rmSync(directory, {recursive: true, force: true});
     }
 }, 30_000);
+
+it("cancels a real TypeScript publication while its queued start response is withheld", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-v2c11-startup-"));
+    const blueprint = path.join(directory, "source.blueprint.json");
+    const model: GameBlueprint = {
+        manifest: {id: "startup-slot", name: "Startup Slot", version: "1.0.0"},
+        reels: 3, rows: 1, symbols: ["A"], paytable: {A: {3: 3}},
+        reelStrips: [["A"], ["A"], ["A"]], availableBets: [0.05],
+    };
+    fs.writeFileSync(blueprint, JSON.stringify(model));
+    const input = fs.readFileSync(blueprint);
+    const runtimeRoot = path.join(directory, "runtime");
+    new GamePackageGenerator("1.3.0").generate(model, directory, runtimeRoot);
+    const runtime = await loadPokieGameRuntime(runtimeRoot, (entry) => require(entry));
+    const loadGame = () => Promise.resolve(runtime.game);
+    const resolveRuntimePackageRoot = () => Promise.resolve({runtimePath: runtimeRoot, release: () => Promise.resolve()});
+    const home = new StudioHomeService("1.3.0", undefined, loadGame, undefined, resolveRuntimePackageRoot);
+    const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
+    const server = new StudioServer({
+        pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: directory,
+        homeService: home, blueprintService: new StudioBlueprintService("1.3.0", directory, home),
+        projectRegistrationService: new StudioProjectRegistrationService(), jobService: jobs,
+        loadGame, resolveRuntimePackageRoot, initialContext: {mode: "project", projectRoot: blueprint},
+    });
+    let unmount: (() => void) | undefined;
+    let releaseStart!: () => void;
+    const startDelivery = new Promise<void>(resolve => {
+        releaseStart = resolve;
+    });
+    let jobId: string | undefined;
+    let activations = 0;
+    try {
+        const address = await server.start();
+        const fetchImpl: FetchLike = (url, init) => new Promise((resolve, reject) => {
+            if (url.endsWith("/activate")) activations++;
+            const request = http.request(`http://${address.host}:${address.port}${url}`, {method: init?.method, headers: init?.headers}, response => {
+                const chunks: Buffer[] = [];
+                response.on("data", (chunk: Buffer) => chunks.push(chunk));
+                response.on("end", () => {
+                    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+                    const result = {ok: (response.statusCode ?? 500) < 300, status: response.statusCode ?? 500, json: () => Promise.resolve(body)};
+                    if (url === "/api/project/artifacts/build") {
+                        jobId = body.job.id;
+                        startDelivery.then(() => resolve(result));
+                    } else resolve(result);
+                });
+            });
+            request.on("error", reject);
+            request.setTimeout(10_000, () => request.destroy(new Error(`Timed out: ${url}`)));
+            request.end(init?.body);
+        });
+        const user = userEvent.setup();
+        unmount = renderRoutedApp({fetchImpl, initialEntries: [`/project/${encodeURIComponent(blueprint)}/exportDeploy`]}).unmount;
+        const card = (await screen.findByText("TypeScript Game Package", {selector: "p"})).closest('[data-pokie-lifecycle-form]') as HTMLElement;
+        await user.click(within(card).getByRole("button", {name: "Configure TypeScript Game Package"}));
+        const build = within(card).getByRole("button", {name: "Build"});
+        await waitFor(() => expect(build).toBeEnabled());
+        await user.click(build);
+        await waitFor(() => expect(jobId).toBeDefined());
+        expect(jobs.get(blueprint, jobId!)?.status).toBe("queued");
+        expect(fs.existsSync(path.join(directory, "tsPackage"))).toBe(false);
+        await user.click(within(card).getByRole("button", {name: "Cancel"}));
+        expect(await within(card).findByText(/Starting artifact build.*Cancellation requested/)).toBeVisible();
+        expect(within(card).getByLabelText("Output directory (optional)")).toBeDisabled();
+        releaseStart();
+        await within(card).findByText(/Build cancelled/);
+        expect(jobs.get(blueprint, jobId!)).toMatchObject({status: "cancelled"});
+        expect(jobs.get(blueprint, jobId!)?.result?.outputs).toBeUndefined();
+        expect(activations).toBe(0);
+        expect(fs.existsSync(path.join(directory, "tsPackage"))).toBe(false);
+        expect(fs.readFileSync(blueprint)).toEqual(input);
+        for (const name of ["Open as Project", "Add to Projects", "Open output folder"]) {
+            expect(within(card).queryByRole("button", {name})).not.toBeInTheDocument();
+        }
+    } finally {
+        releaseStart();
+        unmount?.();
+        await server.stop();
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});

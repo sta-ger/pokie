@@ -34,6 +34,89 @@ describe("StudioArtifactBuildService", () => {
         fs.rmSync(workDir, {recursive: true, force: true});
     });
 
+    async function terminal(packageService: StudioArtifactBuildService, source: string, id: string) {
+        for (let read = 0; read < 1000; read++) {
+            const view = packageService.getStatusForProject(source, id)!;
+            if (["completed", "failed", "cancelled"].includes(view.status)) return view;
+            await new Promise<void>(resolve => {
+                setImmediate(resolve);
+            });
+        }
+        throw new Error("Extraction job did not settle");
+    }
+
+    it.each(["blueprint", "tsPackage", "parWorkbook", "stakeAdapter", "wasm"] as const)(
+        "holds %s publication until Studio acknowledges startup and cancels without executing a writer",
+        async target => {
+            const source = target === "blueprint" ? writeDescriptorPackage(workDir) : writeBlueprintFile();
+            const sourceFile = target === "blueprint" ? path.join(source, "index.js") : source;
+            const input = fs.readFileSync(sourceFile);
+            const destination = path.join(workDir, "deferred-output");
+            const jobs = new StudioJobService(new FileStudioJobRepository(path.join(workDir, "jobs")));
+            service.attachJobService(jobs);
+            const preview = await service.preview(source, target, destination);
+            expect(preview.status).toBe("ok");
+            if (preview.status !== "ok") throw new Error("expected preview");
+            let started;
+            if (target === "blueprint") started = service.startPreparedExtraction(source, preview.preparedOperationId!, destination, true);
+            else if (target === "stakeAdapter") started = await service.startPreparedStakeProjection(source, preview.preparedOperationId!, true);
+            else started = service.start(source, target, destination, true);
+            if (started.status !== "created") throw new Error("expected queued build");
+            // Drain promise continuations as if the start response were delayed. No builder may run.
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(service.getStatusForProject(source, started.job.id)).toMatchObject({status: "queued"});
+            expect(fs.existsSync(destination)).toBe(false);
+            expect(service.activateForProject(workDir, started.job.id)).toBeUndefined();
+            expect(service.cancelForProject(source, started.job.id)).toMatchObject({status: "cancelling", cancellationRequested: true});
+            const result = await terminal(service, source, started.job.id);
+            expect(result).toMatchObject({status: "cancelled", result: {status: "cancelled"}});
+            // A late or duplicate activation must never resurrect the cancelled writer.
+            service.activateForProject(source, started.job.id);
+            await Promise.resolve();
+            expect(jobs.get(source, started.job.id)).toMatchObject({status: "cancelled"});
+            expect(jobs.get(source, started.job.id)?.result?.outputs).toBeUndefined();
+            expect(fs.existsSync(destination)).toBe(false);
+            expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(false);
+            expect(fs.readFileSync(sourceFile)).toEqual(input);
+            expect(fs.readdirSync(workDir).sort()).toEqual([path.basename(source), "jobs"].sort());
+            await service.cancelAll();
+        },
+    );
+
+    it("activates the acknowledged TypeScript build once through the real writer", async () => {
+        const source = writeBlueprintFile();
+        const input = fs.readFileSync(source);
+        const destination = path.join(workDir, "acknowledged-package");
+        const registry = new ArtifactBuilderRegistry("1.3.0");
+        const execute = jest.spyOn(registry, "executePlan");
+        const building = new StudioArtifactBuildService("1.3.0", registry);
+        const started = building.start(source, "tsPackage", destination, true);
+        if (started.status !== "created") throw new Error("expected queued build");
+        await Promise.resolve();
+        expect(execute).not.toHaveBeenCalled();
+        expect(building.activateForProject(source, started.job.id)).toMatchObject({status: "queued"});
+        building.activateForProject(source, started.job.id);
+        const result = await terminal(building, source, started.job.id);
+        expect(result).toMatchObject({status: "completed", result: {status: "ok", target: "tsPackage", outputPath: destination}});
+        expect(execute).toHaveBeenCalledTimes(1);
+        expect(fs.existsSync(path.join(destination, "package.json"))).toBe(true);
+        expect(fs.readFileSync(source)).toEqual(input);
+        await building.cancelAll();
+    });
+
+    it.each(["shutdown", "project-close"] as const)("settles an unacknowledged reservation on %s", async action => {
+        const source = writeBlueprintFile();
+        const destination = path.join(workDir, "abandoned-package");
+        const started = service.start(source, "tsPackage", destination, true);
+        if (started.status !== "created") throw new Error("expected queued build");
+        if (action === "shutdown") await service.cancelAll();
+        else service.cancelActiveForProject(source);
+        expect(await terminal(service, source, started.job.id)).toMatchObject({status: "cancelled", result: {status: "cancelled"}});
+        expect(fs.existsSync(destination)).toBe(false);
+        expect(fs.readdirSync(workDir)).toEqual([path.basename(source)]);
+    });
+
     it.each(["blueprint", "tsPackage"] as const)("durably cancels %s during its final asynchronous descriptor read without artifact actions or registration", async target => {
         const fixture = writePausedDescriptorPackage(workDir);
         const snapshots = runtimeSnapshotNames(fixture.source);
@@ -405,16 +488,6 @@ describe("StudioArtifactBuildService", () => {
     });
 
     describe("reviewed package extraction", () => {
-        async function terminal(packageService: StudioArtifactBuildService, source: string, id: string) {
-            for (let read = 0; read < 1000; read++) {
-                const view = packageService.getStatusForProject(source, id)!;
-                if (["completed", "failed", "cancelled"].includes(view.status)) return view;
-                await new Promise<void>(resolve => {
-                    setImmediate(resolve);
-                });
-            }
-            throw new Error("Extraction job did not settle");
-        }
         it("consumes a single project/destination authority and rejects missing, mismatched and reused handles", async () => {
             const source = writeDescriptorPackage(workDir);
             const destination = path.join(workDir, "reviewed.json");
