@@ -19,7 +19,7 @@ export function mergeJackpotStatisticsSnapshots(
     if (base === undefined) {
         return addition;
     }
-    const pools: Record<string, JackpotPoolStatisticsSnapshot> = {...base.pools};
+    const pools: Record<string, JackpotPoolStatisticsSnapshot> = Object.fromEntries(Object.entries(base.pools));
     for (const [poolId, stats] of Object.entries(addition.pools)) {
         const existing = Reflect.apply(Object.prototype.hasOwnProperty, pools, [poolId]) ? pools[poolId] : undefined;
         Reflect.defineProperty(pools, poolId, {value: existing === undefined ? stats : mergePoolStatistics(existing, stats), enumerable: true, configurable: true, writable: true});

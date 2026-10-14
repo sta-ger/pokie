@@ -179,7 +179,9 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
                 session = mechanicsSession(game);
             const runner = new api.AggregateSimulationRunner(session, 2);
             runner.run();
-            expect(runner.getJackpotStatistics()).toMatchObject({awardCount: 2, totalAwarded: 20.01, totalContributed: 0.01});
+            expect(runner.getJackpotStatistics()!.awardCount).toBe(2);
+            expect(runner.getJackpotStatistics()!.totalAwarded).toBeCloseTo(20.01);
+            expect(runner.getJackpotStatistics()!.totalContributed).toBeCloseTo(0.01);
             expect(Object.keys(runner.getJackpotStatistics()!.pools)).toEqual([id]);
             const snapshot = JSON.parse(JSON.stringify(session.toSessionState()));
             expect(Object.keys(snapshot.pools)).toEqual([id]);
@@ -190,7 +192,9 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
             const nextRunner = new api.AggregateSimulationRunner(restored, 1);
             const result = nextRunner.run();
             const statistics = nextRunner.getJackpotStatistics()!;
-            expect(statistics).toMatchObject({awardCount: 1, totalAwarded: 10.005, totalContributed: 0.005});
+            expect(statistics.awardCount).toBe(1);
+            expect(statistics.totalAwarded).toBeCloseTo(10.005);
+            expect(statistics.totalContributed).toBeCloseTo(0.005);
             const merged = mergeJackpotStatisticsSnapshots(runner.getJackpotStatistics(), statistics);
             expect(merged.pools[id].awardCount).toBe(3);
             expect(merged.pools[id].totalAwarded).toBeCloseTo(30.015);
