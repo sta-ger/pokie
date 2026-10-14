@@ -177,7 +177,11 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     }
 
     public getSessionStateSchema(): SessionStateSchema {
-        return {kind: "bet-modes", base: resolveSessionStateSchema(this.baseSession)};
+        const stakeModifying = this.betModesConfig.getBetModeIds().some(id => {
+            const mode = this.betModesConfig.getBetMode(id)!;
+            return mode.getStakeMultiplier() !== 1 || mode.forcesFeatureEntry();
+        });
+        return {kind: "bet-modes", ...(stakeModifying ? {stakeModifying: true} : {}), base: resolveSessionStateSchema(this.baseSession)};
     }
 
     public isSessionStateRestorable(): boolean {

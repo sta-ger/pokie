@@ -7,6 +7,7 @@ export function validateMechanicState(state: Record<string, unknown>, schema: Se
     let baseSchema = "base" in schema ? schema.base : undefined;
     while (baseSchema && "base" in baseSchema) {
         baseKinds.push(baseSchema.kind);
+        if (baseSchema.kind === "bet-modes" && baseSchema.stakeModifying) baseKinds.push("stake-modifying-bet-modes");
         baseSchema = baseSchema.base;
     }
     const compositionError = getSessionCompositionError(schema.kind, baseKinds);

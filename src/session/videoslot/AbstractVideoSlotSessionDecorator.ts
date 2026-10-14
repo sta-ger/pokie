@@ -191,6 +191,7 @@ implements VideoSlotSessionHandling<T> {
         let schema = resolveSessionStateSchema(this.baseSession);
         while ("base" in schema) {
             kinds.push(schema.kind);
+            if (schema.kind === "bet-modes" && schema.stakeModifying) kinds.push("stake-modifying-bet-modes");
             schema = schema.base;
         }
         // Optional capabilities also identify legacy/custom wrappers with no built-in schema.
