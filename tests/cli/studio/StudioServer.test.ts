@@ -7778,8 +7778,12 @@ describe("StudioServer", () => {
             const source = writeDescriptorPackage(artifactWorkDir);
             const sourceBytes = fs.readFileSync(path.join(source, "index.js"));
             const url = await startServerForProject(source);
-            const context = await get(`${url}/api/project/context`);
-            expect(context.body).toMatchObject({projectRoot: source, type: "tsPackage"});
+            // Direct project startup returns before its asynchronous dashboard load settles.
+            const context = await pollUntilProjectContextSettled(`${url}/api/project/context`);
+            expect(context.status).toBe(200);
+            expect(context.body).toMatchObject({status: "loaded", projectRoot: source, type: "tsPackage", game: {id: "math-probe", version: "0.1.0"}});
+            expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(sourceBytes);
+            expect(fs.readdirSync(artifactWorkDir).sort()).toEqual([...initialInventory, "descriptor-package"].sort());
             const model = await get(`${url}/api/project/gameModel`);
             expect(model.status).toBe(200);
             expect(model.body).toMatchObject({basics: {status: "available", data: {id: "math-probe", version: "0.1.0"}}, packageExtraction: {status: "complete", source: {kind: "custom"}}});
