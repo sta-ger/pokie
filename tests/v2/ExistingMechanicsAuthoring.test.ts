@@ -334,7 +334,7 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
             destination = path.join(directory, "rejected.xlsx");
         fs.writeFileSync(source, JSON.stringify(blueprint));
         expect(await new ValidateCommand().run([source])).toBe(1);
-        expect(await new BuildCommand("1.3.0").run([source, "--target", "tsPackage", "--out", path.join(directory, "cli-rejected")])).toBe(1);
+        await expect(new BuildCommand("1.3.0").run([source, "--target", "tsPackage", "--out", path.join(directory, "cli-rejected")])).rejects.toThrow(/reserved symbol-effect key/);
         expect(await new api.ParSheetExporter("1.3.0").exportToFile(blueprint, destination)).toContainEqual(expect.objectContaining(diagnostic));
         expect(fs.existsSync(destination)).toBe(false);
         expect(fs.existsSync(path.join(directory, "rejected"))).toBe(false);
