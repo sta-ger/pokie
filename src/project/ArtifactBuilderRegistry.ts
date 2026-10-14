@@ -603,7 +603,6 @@ export class ArtifactBuilderRegistry {
         const destinationExistedEmpty = await this.isExistingEmptyDirectory(destinationPath);
         const intermediatePath = path.join(intermediateDirectory, "imported.blueprint.json");
         const publication = new ArtifactPublicationOwnership();
-        const stagedTerminal = target === "tsPackage" || target === "parWorkbook" || target === "wasm";
         let imported: PokieProject | undefined;
         let selectedPlan: ArtifactConversionPlan | undefined;
         let result: ArtifactBuildResult | undefined;
@@ -625,19 +624,17 @@ export class ArtifactBuilderRegistry {
             // runtime provenance, then execute those selected stages directly;
             // calling build() here would silently prepare a second plan.
             selectedPlan = await this.hydrateParDerivedPlan(plan, imported, options);
-            const terminalPath = stagedTerminal ? path.join(intermediateDirectory, "terminal", path.basename(destinationPath)) : destinationPath;
-            if (stagedTerminal) await ensureArtifactDestinationParent(terminalPath);
+            const terminalPath = path.join(intermediateDirectory, "terminal", path.basename(destinationPath));
+            await ensureArtifactDestinationParent(terminalPath);
             result = await this.executeSelectedPlan(selectedPlan, imported, terminalPath, options);
-            if (stagedTerminal) {
-                // Builders own only private staging paths. The registry owns each actual
-                // terminal publication, including the WASM integrity sidecar.
-                result = {...result, outputPath: destinationPath, publishedFileOwnership: publication.files, publishedDirectoryOwnership: publication.directories};
-                assertArtifactBuildNotCancelled(options);
-                const currentDestination = this.checkDestination(target, destinationPath, source.rootPath);
-                if (!currentDestination.available) throw new ArtifactBuildConflictError(currentDestination.message ?? "The destination is unavailable.");
-                if (target === "wasm") await publication.publish(wasmComponentManifestSidecarPath(terminalPath), wasmComponentManifestSidecarPath(destinationPath), options);
-                await publication.publish(terminalPath, destinationPath, options);
-            }
+            // Builders own only private staging paths. The registry owns each actual
+            // terminal publication, including the WASM integrity sidecar.
+            result = {...result, outputPath: destinationPath, publishedFileOwnership: publication.files, publishedDirectoryOwnership: publication.directories};
+            assertArtifactBuildNotCancelled(options);
+            const currentDestination = this.checkDestination(target, destinationPath, source.rootPath);
+            if (!currentDestination.available) throw new ArtifactBuildConflictError(currentDestination.message ?? "The destination is unavailable.");
+            if (target === "wasm") await publication.publish(wasmComponentManifestSidecarPath(terminalPath), wasmComponentManifestSidecarPath(destinationPath), options);
+            await publication.publish(terminalPath, destinationPath, options);
             // The temporary Blueprint is only an execution allocation.  Once
             // the selected terminal writer succeeds, retain an inspectable
             // copy and its evidence under the final artifact instead of
@@ -660,11 +657,11 @@ export class ArtifactBuilderRegistry {
             assertArtifactBuildNotCancelled(options);
             await publication.publish(evidenceSource, durableEvidence, options);
             assertArtifactBuildNotCancelled(options);
-            result = await this.promoteParManagedOutcomes(result, imported, durableBlueprint, selectedPlan, durableDirectory, options);
+            result = await this.promoteParManagedOutcomes(result, imported, durableBlueprint, selectedPlan, durableDirectory, publication, terminalPath, options);
             return {
                 ...result,
-                publishedFileOwnership: stagedTerminal ? publication.files : [...(result.publishedFileOwnership ?? []), ...publication.files],
-                ...(stagedTerminal ? {publishedDirectoryOwnership: publication.directories} : {}),
+                publishedFileOwnership: publication.files,
+                publishedDirectoryOwnership: publication.directories,
                 conversionEvidencePath: durableEvidence,
                 importedBlueprintPath: durableBlueprint,
                 ...(plan.packageExtraction ? {packageExtraction: plan.packageExtraction} : {}),
@@ -686,7 +683,7 @@ export class ArtifactBuilderRegistry {
         for (const entry of ownership) {
             if (entry.disposition !== "owned") continue;
             await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath).catch(() => undefined);
-            if (entry.rootPath !== result.outputPath) await fs.promises.rm(entry.rootPath, {recursive: true, force: true}).catch(() => undefined);
+            if (entry.rootPath !== result.outputPath && !result.publishedDirectoryOwnership?.some(directory => directory.path === entry.rootPath)) await fs.promises.rm(entry.rootPath, {recursive: true, force: true}).catch(() => undefined);
         }
         if (result.publishedDirectoryOwnership !== undefined) await rollbackArtifactPublication(result);
         else await this.removeParOperationOutput(result.outputPath, plan.target.kind as ArtifactTargetType, preserveDestinationDirectory);
@@ -705,6 +702,8 @@ export class ArtifactBuilderRegistry {
         durableBlueprintPath: string,
         plan: ArtifactConversionPlan,
         durableDirectory: string,
+        publication: ArtifactPublicationOwnership,
+        terminalPath: string,
         options?: ArtifactBuildOptions,
     ): Promise<ArtifactBuildResult> {
         const ownership = this.managedOutcomeOwnership(result, plan, imported.rootPath);
@@ -717,18 +716,16 @@ export class ArtifactBuilderRegistry {
         try {
             for (const entry of owned) {
                 assertArtifactBuildNotCancelled(options);
-                const durableRoot = entry.rootPath === result.outputPath
-                    ? entry.rootPath
+                const durableRoot = entry.rootPath === terminalPath
+                    ? result.outputPath
                     : path.join(durableDirectory, "outcome-library");
                 await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath);
-                if (durableRoot !== entry.rootPath) {
-                    await fs.promises.rm(durableRoot, {recursive: true, force: true});
-                    await fs.promises.rename(entry.rootPath, durableRoot);
-                }
+                if (durableRoot !== entry.rootPath && entry.rootPath !== terminalPath) await publication.publish(entry.rootPath, durableRoot, options);
                 assertArtifactBuildNotCancelled(options);
-                await this.managedOutcomeProjects.registerAndOpen(durableBlueprintPath, durableRoot, compatibility);
-                registered.push({rootPath: durableRoot, sourceRootPath: durableBlueprintPath});
                 promoted.set(entry.rootPath, durableRoot);
+                registered.push({rootPath: durableRoot, sourceRootPath: durableBlueprintPath});
+                await publication.ensureDirectory(path.join(durableDirectory, ".pokie"));
+                await this.managedOutcomeProjects.registerAndOpen(durableBlueprintPath, durableRoot, compatibility);
                 assertArtifactBuildNotCancelled(options);
             }
         } catch (error) {
@@ -741,7 +738,7 @@ export class ArtifactBuilderRegistry {
             for (const entry of owned) {
                 const rootPath = promoted.get(entry.rootPath) ?? entry.rootPath;
                 await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath).catch(() => undefined);
-                if (rootPath !== result.outputPath) await fs.promises.rm(rootPath, {recursive: true, force: true}).catch(() => undefined);
+                if (rootPath === entry.rootPath && rootPath !== result.outputPath) await fs.promises.rm(rootPath, {recursive: true, force: true}).catch(() => undefined);
             }
             throw error;
         }

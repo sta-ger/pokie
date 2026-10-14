@@ -4,9 +4,9 @@ import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
 import {computeBlueprintHash} from "../parsheet/computeBlueprintHash.js";
 import type {ParSheetImporting} from "../parsheet/ParSheetImporting.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
-import {ArtifactBuildConflictError} from "./ArtifactBuildConflictError.js";
+import {ArtifactPublicationOwnership, rollbackArtifactPublication} from "./ArtifactPublicationOwnership.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
-import {assertArtifactBuildNotCancelled, ensureArtifactDestinationParent, reportArtifactBuildProgress, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
+import {assertArtifactBuildNotCancelled, reportArtifactBuildProgress, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import {PackageBlueprintExtraction, type PackageBlueprintExtractionResult} from "../generated/PackageBlueprintExtraction.js";
@@ -42,7 +42,6 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
         const inputBinding = computeProjectInputBindingHash(source);
         if (options?.preparedPackageModel && options.preparedPackageModel.inputBindingHash !== inputBinding) throw new Error("Package source changed after preview; prepare a new extraction.");
-        await ensureArtifactDestinationParent(destinationPath);
         const evidencePath = `${destinationPath}.conversion-evidence.json`;
         // Evidence is part of the Blueprint publication contract, not a
         // disposable log.  Do the same occupied-output check for it before
@@ -50,37 +49,18 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
         // overwritten (or removed by the rollback below).
         assertArtifactDestinationIsSafe(source.rootPath, evidencePath);
         assertArtifactDestinationAvailable(evidencePath, this.destinationKind);
-        const ownedFiles = new Map<string, fs.Stats>();
+        const publication = new ArtifactPublicationOwnership();
+        const staging = new ArtifactPublicationOwnership();
         let blueprintTemp: string | undefined;
         let evidenceTemp: string | undefined;
         const stage = async (filePath: string, contents: string): Promise<void> => {
             const file = await fs.promises.open(filePath, "wx");
             try {
-                ownedFiles.set(filePath, await file.stat());
+                const identity = await file.stat();
+                staging.files.push({path: filePath, dev: identity.dev, ino: identity.ino});
                 await file.writeFile(contents, "utf8");
             } finally {
                 await file.close();
-            }
-        };
-        const publish = async (temporaryPath: string, outputPath: string): Promise<void> => {
-            try {
-                // Same-directory links expose the complete staged bytes atomically and
-                // fail on occupied paths; rename would replace a concurrent writer.
-                await fs.promises.link(temporaryPath, outputPath);
-                ownedFiles.set(outputPath, ownedFiles.get(temporaryPath)!);
-            } catch (error) {
-                if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new ArtifactBuildConflictError(`"${outputPath}" already exists. Choose a different --out path.`);
-                throw error;
-            }
-        };
-        const removeOwned = async (filePath: string): Promise<void> => {
-            const identity = ownedFiles.get(filePath);
-            if (!identity) return;
-            try {
-                const current = await fs.promises.lstat(filePath);
-                if (current.dev === identity.dev && current.ino === identity.ino) await fs.promises.unlink(filePath);
-            } catch {
-                // Keep the original error and preserve paths now owned by another writer.
             }
         };
         try {
@@ -101,6 +81,8 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
             // one. A Blueprint without its evidence is not a successful
             // conversion, and a cancellation between the two links must take
             // the same rollback path as an importer or sidecar failure.
+            await publication.ensureDirectory(path.dirname(destinationPath));
+            staging.directories.push(...publication.directories.map(entry => ({...entry, removeOnRollback: false})));
             const publicationId = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
             blueprintTemp = path.join(path.dirname(destinationPath), `.${path.basename(destinationPath)}.${publicationId}.tmp`);
             evidenceTemp = path.join(path.dirname(evidencePath), `.${path.basename(evidencePath)}.${publicationId}.tmp`);
@@ -125,28 +107,24 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
             if (inputBinding !== computeProjectInputBindingHash(source)) throw new Error("Package/PAR source changed during extraction; prepare a new conversion.");
             assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
             assertArtifactDestinationAvailable(evidencePath, this.destinationKind);
-            await publish(blueprintTemp, destinationPath);
+            await publication.publish(blueprintTemp, destinationPath, options);
             assertArtifactBuildNotCancelled(options);
-            await publish(evidenceTemp, evidencePath);
+            await publication.publish(evidenceTemp, evidencePath, options);
             assertArtifactBuildNotCancelled(options);
             reportArtifactBuildProgress(options, {status: "completed"});
             return {
                 outputPath: destinationPath,
                 conversionEvidencePath: evidencePath,
-                publishedFileOwnership: [destinationPath, evidencePath].map(filePath => {
-                    const identity = ownedFiles.get(filePath)!;
-                    return {path: filePath, dev: identity.dev, ino: identity.ino};
-                }),
+                publishedFileOwnership: publication.files,
+                publishedDirectoryOwnership: publication.directories,
                 ...(extraction ? {packageExtraction: extraction} : {}),
             };
         } catch (error) {
-            await Promise.all([removeOwned(destinationPath), removeOwned(evidencePath)]);
+            await rollbackArtifactPublication({publishedFileOwnership: staging.files, publishedDirectoryOwnership: staging.directories});
+            await rollbackArtifactPublication({publishedFileOwnership: publication.files, publishedDirectoryOwnership: publication.directories});
             throw error;
         } finally {
-            await Promise.all([
-                ...(blueprintTemp === undefined ? [] : [removeOwned(blueprintTemp)]),
-                ...(evidenceTemp === undefined ? [] : [removeOwned(evidenceTemp)]),
-            ]);
+            await rollbackArtifactPublication({publishedFileOwnership: staging.files, publishedDirectoryOwnership: staging.directories});
         }
     }
 

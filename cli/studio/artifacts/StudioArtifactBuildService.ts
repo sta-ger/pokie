@@ -788,20 +788,7 @@ export class StudioArtifactBuildService {
                     await registry.releaseManagedOutcomeProject(ownership.sourceRootPath, projectRoot).catch(() => undefined);
                 }
             }
-            if (result.publishedDirectoryOwnership !== undefined && (projectRoot === result.outputPath || projectRoot === result.importedBlueprintPath)) continue;
-            if (result.publishedFileOwnership?.some(entry => entry.path === projectRoot)) {
-                // Blueprint publication carries actual file identities through registration.
-                // A replacement belongs to its writer even when registration later fails.
-                for (const entry of result.publishedFileOwnership) {
-                    try {
-                        const current = await fs.promises.lstat(entry.path);
-                        if (current.dev === entry.dev && current.ino === entry.ino) await fs.promises.unlink(entry.path);
-                    } catch {
-                        // Preserve the registration failure and any competing publication.
-                    }
-                }
-                continue;
-            }
+            if (result.publishedDirectoryOwnership?.some(entry => projectRoot === entry.path) || result.publishedFileOwnership?.some(entry => entry.path === projectRoot)) continue;
             if (projectRoot === result.outputPath && outputDestinationExisted) {
                 // The destination was a caller-owned empty directory at
                 // preflight.  Remove only this operation's publication and

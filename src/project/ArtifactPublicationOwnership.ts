@@ -12,23 +12,29 @@ export class ArtifactPublicationOwnership {
     public readonly files: FileOwnership[] = [];
     public readonly directories: DirectoryOwnership[] = [];
 
-    public async ensureDirectory(directory: string): Promise<void> {
+    public async ensureDirectory(directory: string, requireEmpty = false): Promise<void> {
         directory = path.resolve(directory);
+        const parent = path.dirname(directory);
+        if (parent !== directory) await this.ensureDirectory(parent);
+        const assertEmpty = async (): Promise<void> => {
+            if (requireEmpty && (await fs.promises.readdir(directory)).length > 0) throw new ArtifactBuildConflictError(`"${directory}" already exists and is not empty. Choose a different --out path.`);
+        };
         const guard = this.directories.find(entry => entry.path === directory);
         if (guard) {
             const current = await fs.promises.lstat(directory);
             if (current.dev !== guard.dev || current.ino !== guard.ino) throw new ArtifactBuildConflictError(`"${directory}" was replaced during publication.`);
+            await assertEmpty();
             return;
         }
         try {
             const current = await fs.promises.lstat(directory);
             if (!current.isDirectory()) throw new ArtifactBuildConflictError(`"${directory}" already exists and is not a directory.`);
+            await assertEmpty();
             this.directories.push({path: directory, dev: current.dev, ino: current.ino, removeOnRollback: false});
             return;
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
         }
-        await this.ensureDirectory(path.dirname(directory));
         try {
             await fs.promises.mkdir(directory);
             const current = await fs.promises.lstat(directory);
@@ -36,7 +42,7 @@ export class ArtifactPublicationOwnership {
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
             // Another writer allocated this directory; it is a guard, never ours to remove.
-            await this.ensureDirectory(directory);
+            await this.ensureDirectory(directory, requireEmpty);
         }
     }
 
@@ -44,7 +50,7 @@ export class ArtifactPublicationOwnership {
         assertArtifactBuildNotCancelled(options);
         const staged = await fs.promises.lstat(stagedPath);
         if (staged.isDirectory()) {
-            await this.ensureDirectory(outputPath);
+            await this.ensureDirectory(outputPath, true);
             for (const name of await fs.promises.readdir(stagedPath)) {
                 await this.publish(path.join(stagedPath, name), path.join(outputPath, name), options);
             }

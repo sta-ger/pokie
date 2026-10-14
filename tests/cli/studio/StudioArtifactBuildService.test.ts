@@ -210,6 +210,79 @@ describe("StudioArtifactBuildService", () => {
         expect(fs.readdirSync(workDir).some(name => name.startsWith(".pokie-"))).toBe(false);
     });
 
+    describe.each(["tsPackage", "parWorkbook"] as const)("direct %s Blueprint ancestor ownership", sourceType => {
+        it.each([false, true])("preserves replacement ancestors and hard links on registration rollback (cancelled: %s)", async cancelled => {
+            const source = sourceType === "tsPackage" ? writeDescriptorPackage(workDir) : path.join(workDir, "source.xlsx");
+            if (sourceType === "parWorkbook") fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), source);
+            const parent = path.join(workDir, "nested");
+            const destination = path.join(parent, "model.json");
+            const moved = path.join(workDir, "moved-publication");
+            const controller = new AbortController();
+            const registered = new Set<string>();
+            const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, root => {
+                registered.add(root);
+                fs.renameSync(parent, moved);
+                fs.mkdirSync(parent);
+                for (const name of ["model.json", "model.json.conversion-evidence.json"]) fs.linkSync(path.join(moved, name), path.join(parent, name));
+                fs.writeFileSync(path.join(parent, "unrelated.bin"), "another directory owner");
+                if (!cancelled) throw new Error("registration failed");
+                controller.abort();
+                return Promise.resolve();
+            }, undefined, undefined, root => {
+                registered.delete(root);
+                return Promise.resolve();
+            });
+            expect(await packageService.build(source, "blueprint", destination, {signal: controller.signal})).toMatchObject({status: cancelled ? "cancelled" : "error"});
+            expect(registered.size).toBe(0);
+            for (const name of ["model.json", "model.json.conversion-evidence.json"]) expect(fs.readFileSync(path.join(parent, name))).toEqual(fs.readFileSync(path.join(moved, name)));
+            expect(fs.readdirSync(parent).sort()).toEqual(["model.json", "model.json.conversion-evidence.json", "unrelated.bin"]);
+            expect(fs.readFileSync(path.join(parent, "unrelated.bin"), "utf8")).toBe("another directory owner");
+        });
+    });
+
+    describe.each([
+        {target: "outcomeLibrary", empty: false}, {target: "outcomeLibrary", empty: true},
+        {target: "stakeAdapter", empty: false}, {target: "stakeAdapter", empty: true},
+    ] as const)("PAR $target registration ownership (caller directory: $empty)", ({target, empty}) => {
+        it.each([false, true])("preserves competing evidence and unrelated contents (cancelled: %s)", async cancelled => {
+            const source = path.join(workDir, "source.xlsx");
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), source);
+            const destination = path.join(workDir, "output");
+            if (empty) fs.mkdirSync(destination);
+            const callerInode = empty ? fs.statSync(destination).ino : undefined;
+            const durableDirectory = path.join(destination, ".pokie", "par-import");
+            const blueprint = path.join(durableDirectory, "imported.blueprint.json");
+            const evidence = path.join(durableDirectory, "conversion-evidence.json");
+            const sentinel = path.join(durableDirectory, "unrelated.bin");
+            const bytes = Buffer.from([0, 255, 13, 10, 42]);
+            const controller = new AbortController();
+            const registered = new Set<string>();
+            const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, root => {
+                registered.add(root);
+                if (root === blueprint) {
+                    fs.writeFileSync(sentinel, bytes);
+                    const replacement = path.join(workDir, "replacement.tmp");
+                    fs.writeFileSync(replacement, bytes);
+                    fs.renameSync(replacement, evidence);
+                    if (!cancelled) throw new Error("registration failed");
+                    controller.abort();
+                }
+                return Promise.resolve();
+            }, undefined, undefined, root => {
+                registered.delete(root);
+                return Promise.resolve();
+            });
+            expect(await packageService.build(source, target, destination, {signal: controller.signal})).toMatchObject({status: cancelled ? "cancelled" : "error"});
+            expect(registered.size).toBe(0);
+            expect(fs.readFileSync(evidence)).toEqual(bytes);
+            expect(fs.readFileSync(sentinel)).toEqual(bytes);
+            expect(fs.readdirSync(durableDirectory).sort()).toEqual(["conversion-evidence.json", "unrelated.bin"]);
+            expect(fs.readdirSync(destination)).toEqual([".pokie"]);
+            if (empty) expect(fs.statSync(destination).ino).toBe(callerInode);
+            expect(fs.readdirSync(workDir).some(name => name.startsWith(".pokie-"))).toBe(false);
+        });
+    });
+
     it("rejects final model drift through Studio without output or registration", async () => {
         const control = path.join(workDir, "payout.txt");
         fs.writeFileSync(control, "1");
