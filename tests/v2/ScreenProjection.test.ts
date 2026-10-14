@@ -1212,7 +1212,7 @@ describe("Generated / visible / evaluated screen contracts", () => {
             expect(new RoundArtifactValidator().validate(artifact)).toEqual([]);
             expect(artifact).toMatchObject({roundId: "replay:7:6", stake: 0.05, betMode: "base", screen: descriptor.screen,
                 provenance: {game: blueprint.manifest, pokieVersion: "1.3.0", configHash: game.getConfigHash!()}});
-            expect(artifact).toMatchObject({stake: finalResult.stake, betMode: finalResult.mode, totalWin: finalResult.win});
+            expect(artifact).toMatchObject({stake: finalResult.stake, betMode: finalResult.mode ?? "base", totalWin: finalResult.win});
             expect(artifact.steps).toHaveLength(1);
             expect(artifact.steps[0].screen).toEqual(descriptor.screen);
             expect(artifact.totalWin).toBe(artifact.steps[0].totalWin);
