@@ -99,7 +99,7 @@ export function writeRunnableCodeFirstPackage(parent: string): string {
     fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "code-first-probe", version: "1", pokie: {entry: "index.js"}}));
     fs.writeFileSync(path.join(root, "index.js"), `
 const {VideoSlotConfig, VideoSlotWithFreeGamesConfig, VideoSlotWithFreeGamesSession,
-    SymbolsSequence, SymbolsCombinationsGenerator, SeededRandomNumberGenerator, CustomLinesDefinitions} = require("@fromstan/pokie");
+    SymbolsSequence, SymbolsCombinationsGenerator, SeededRandomNumberGenerator, CustomLinesDefinitions, Paytable} = require("@fromstan/pokie");
 const manifest = {id: "code-first-probe", name: "Code first probe", version: "1"};
 const symbols = ["A", "B", "S"];
 const strips = [["A", "B", "S", "A"], ["B", "S", "A", "A"], ["S", "A", "B", "A"]];
@@ -118,7 +118,9 @@ function createConfig() {
     lines.setLineDefinition("0", [0, 0, 0]);
     config.setLinesDefinitions(lines);
     config.setSymbolsSequences(strips.map(strip => new SymbolsSequence().fromArray(strip)));
-    for (const [symbol, table] of Object.entries(payouts)) for (const [count, payout] of Object.entries(table)) config.getPaytable().setPayoutForSymbol(symbol, Number(count), payout);
+    const paytable = new Paytable(stakes);
+    for (const [symbol, table] of Object.entries(payouts)) for (const [count, payout] of Object.entries(table)) paytable.setPayoutForSymbol(symbol, Number(count), payout);
+    config.setPaytable(paytable);
     const free = new VideoSlotWithFreeGamesConfig(config, {});
     for (const [count, award] of Object.entries(grants)) free.setFreeGamesForScatters("S", Number(count), award);
     return free;

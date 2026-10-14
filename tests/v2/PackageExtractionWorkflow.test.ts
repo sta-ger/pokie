@@ -66,7 +66,13 @@ describe("package to editable Blueprint public journey (controller-owned)", () =
 
     it.each(["generated", "code-first"])("preserves %s identity, diagnostics, provenance, authored zeros and seeded continuation", async kind => {
         const generator = new GamePackageGenerator("1.3.0");
-        const generatedModel = {...fractionalBetBlueprint([0.05, 7.5, 1e-7], true), paytable: {A: {3: 5}, B: {3: 0}}};
+        const generatedModel: GameBlueprint = {
+            ...fractionalBetBlueprint([0.05, 7.5, 1e-7], true),
+            symbols: ["A", "B", "S"], scatters: ["S"],
+            reelStrips: [["A", "B", "S", "A"], ["B", "S", "A", "A"], ["S", "A", "B", "A"]],
+            paytable: {A: {3: 5}, B: {3: 0}, S: {2: 0}},
+            mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {2: 0, 3: 2}}},
+        };
         const source = kind === "generated" ? generator.generate(generatedModel, directory, path.join(directory, "generated")).projectRoot
             : writeRunnableCodeFirstPackage(directory);
         const before = inventory(source);
