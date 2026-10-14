@@ -376,8 +376,7 @@ describe("PackageBlueprintExtraction", () => {
             return descriptor;`,});
         const input = fs.readFileSync(path.join(source, "index.js"));
         const destination = path.join(directory, "unsafe.json");
-        const snapshots = (): string[] => fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-")).sort();
-        const before = snapshots();
+        const before = runtimeSnapshotNames(source);
         const result = await extractor.extract(source);
         expect(result.status).toBe("malformed");
         expect(result.diagnostics[0].message).toContain("$.then: accessor");
@@ -385,7 +384,7 @@ describe("PackageBlueprintExtraction", () => {
         expect(fs.existsSync(marker)).toBe(false);
         expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(input);
         expect(fs.readdirSync(directory)).toEqual(["descriptor-package"]);
-        expect(snapshots()).toEqual(before);
+        expect(runtimeSnapshotNames(source)).toEqual(before);
     });
 
     it("extracts and publishes a real asynchronous package descriptor", async () => {
@@ -665,21 +664,15 @@ describe("PackageBlueprintExtraction", () => {
         fs.writeFileSync(entry, `const manifest = {name: "Unsafe", version: "1"};
 Object.defineProperty(manifest, "id", {enumerable: true, get() { require("fs").writeFileSync(${JSON.stringify(marker)}, "invoked"); return "unsafe"; }});
 module.exports = {getManifest() { return manifest; }, createSession() { throw new Error("no session"); }};`);
-        const before = fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-")).sort();
+        const before = runtimeSnapshotNames(source);
         const bytes = fs.readFileSync(entry);
         expect((await extractor.extract(source)).status).toBe("malformed");
         expect(fs.existsSync(marker)).toBe(false);
         expect(fs.readFileSync(entry)).toEqual(bytes);
-        expect(fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-")).sort()).toEqual(before);
+        expect(runtimeSnapshotNames(source)).toEqual(before);
     });
 
     it("releases real runtime snapshots on success, malformed descriptors and opaque legacy reads", async () => {
-        const snapshots = (): string[] =>
-            fs
-                .readdirSync(os.tmpdir())
-                .filter((name) => name.startsWith("pokie-runtime-"))
-                .sort();
-        const before = snapshots();
         for (const options of [
             {name: "custom"},
             {name: "legacy", legacy: true},
@@ -687,6 +680,7 @@ module.exports = {getManifest() { return manifest; }, createSession() { throw ne
         ]) {
             const source = writeDescriptorPackage(directory, options);
             const input = fs.readFileSync(path.join(source, "index.js"));
+            const before = runtimeSnapshotNames(source);
             const result = await extractor.extract(source);
             expect(result.status).toBe(
                 ({custom: "complete", legacy: "partial", malformed: "malformed"} as Record<string, string>)[
@@ -694,7 +688,34 @@ module.exports = {getManifest() { return manifest; }, createSession() { throw ne
                 ],
             );
             expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(input);
-            expect(snapshots()).toEqual(before);
+            expect(runtimeSnapshotNames(source)).toEqual(before);
+        }
+    });
+
+    it("releases its extraction snapshot when another caller acquires a runtime lease during the read", async () => {
+        const fixture = writePausedDescriptorPackage(directory);
+        const otherSource = writeDescriptorPackage(directory, {name: "retained-package"});
+        const before = runtimeSnapshotNames(fixture.source);
+        let otherRuntime: Awaited<ReturnType<typeof loadPokieGameRuntime>> | undefined;
+        fixture.arm();
+        const extraction = extractor.extract(fixture.source);
+        try {
+            await fixture.readStarted;
+            expect(runtimeSnapshotNames(fixture.source)).toHaveLength(before.length + 1);
+            otherRuntime = await loadPokieGameRuntime(otherSource);
+            const retained = runtimeSnapshotNames(otherSource);
+            expect(retained).toHaveLength(1);
+            fixture.settle();
+            expect((await extraction).status).toBe("complete");
+            expect(runtimeSnapshotNames(fixture.source)).toEqual(before);
+            expect(runtimeSnapshotNames(otherSource)).toEqual(retained);
+            expect(otherRuntime.game.getManifest()).toEqual(base().manifest);
+            await otherRuntime.release();
+            expect(runtimeSnapshotNames(otherSource)).toEqual([]);
+        } finally {
+            fixture.restore();
+            await extraction;
+            await otherRuntime?.release();
         }
     });
 
