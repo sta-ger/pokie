@@ -667,7 +667,8 @@ export class StudioArtifactBuildService {
     private retainPreparedExtraction(projectRoot: string, project: PokieProject, destination: string, plan: ArtifactConversionPlan): string {
         const id = `extraction-${crypto.randomUUID()}`;
         // Do not share a mutable public DTO with the retained publication authority.
-        this.preparedExtractions.set(id, {projectRoot: canonicalStudioProjectIdentity(projectRoot), project: structuredClone(project), destination: path.resolve(destination), plan: structuredClone(plan)});
+        // Resolver provenance is deliberately non-enumerable; copy it explicitly before cloning.
+        this.preparedExtractions.set(id, {projectRoot: canonicalStudioProjectIdentity(projectRoot), project: structuredClone({...project, configurationProvenance: project.configurationProvenance}), destination: path.resolve(destination), plan: structuredClone(plan)});
         while (this.preparedExtractions.size > 20) this.preparedExtractions.delete(this.preparedExtractions.keys().next().value!);
         return id;
     }

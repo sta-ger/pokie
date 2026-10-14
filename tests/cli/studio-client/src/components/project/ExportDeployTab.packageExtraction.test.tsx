@@ -10,6 +10,7 @@ function extraction(status: PackageBlueprintExtractionResult["status"] = "comple
     return {
         schemaVersion: 1,
         status,
+        blueprintHash: "sha256:reviewed-model",
         source: {kind: "custom", location: "/games/source", gameId: "real-game", descriptorVersion: 1},
         diagnostics:
             status === "complete"
@@ -27,7 +28,7 @@ function extraction(status: PackageBlueprintExtractionResult["status"] = "comple
 function plan(model = extraction()): StudioArtifactConversionPlan {
     return {
         status: model.status === "complete" ? "planned" : "unavailable",
-        source: {kind: "tsPackage", capabilities: []},
+        source: {kind: "tsPackage", capabilities: [], configurationProvenance: {inputBindingHash: "sha256:reviewed-source"}},
         target: {kind: "blueprint", capabilities: []},
         steps: [
             {
@@ -47,6 +48,9 @@ function response(body: unknown, status = 200): ReturnType<FetchLike> {
 function transport(handler: FetchLike, sourcePlan = plan()): FetchLike {
     return (url, init) => {
         const request = url.split("?")[0];
+        if (request === "/api/project/jobs") return response({jobs: []});
+        if (request === "/api/home/fs/browse") return response({status: "error", reason: "absent", error: "Path does not exist", resolvedPath: "/games"});
+        if (request === "/api/home/fs/native-browse/availability") return response({status: "unavailable", reason: "Fixture has no native picker"});
         if (request === "/api/project/context") return response({
             status: "loaded",
             projectRoot: "/games/source",
@@ -144,6 +148,8 @@ it("previews extraction, builds a separate artifact and opens its returned Bluep
     for (const field of ["reels: exact — public descriptor", "declaredHint: inferred — supplied inference", "mechanics.custom: unsupported — opaque custom feature"]) expect(within(section).getByText(field)).toBeInTheDocument();
     expect(within(section).getByText(/Source: \/games\/source/)).toBeInTheDocument();
     expect(within(section).getByText(/Conversion evidence:.*Preview publishes no files/)).toBeInTheDocument();
+    expect(within(section).getByText("Source binding: sha256:reviewed-source")).toBeInTheDocument();
+    expect(within(section).getByText("Extracted Blueprint hash: sha256:reviewed-model")).toBeInTheDocument();
     fireEvent.click(within(section).getByRole("button", {name: "Save Blueprint"}));
     expect(await within(section).findByText(/Built to \/games\/extracted.json/)).toBeInTheDocument();
     expect(builds).toEqual([{target: "blueprint", preparedOperationId: "reviewed-extraction"}]);
@@ -173,7 +179,8 @@ it("cancels extraction through the durable job and exposes no successful result 
                 },
                 202,
             );
-            const cancelStatus = (cancelled && ++cancellingReads) < 3 ? "cancelling" : "cancelled";
+            if (cancelled) cancellingReads++;
+            const cancelStatus = cancellingReads < 3 ? "cancelling" : "cancelled";
             return response({
                 id: "extraction",
                 target: "blueprint",
@@ -282,7 +289,7 @@ it("does not show an open action for a failed job carrying an inconsistent succe
     }));
     await within(section).findByText("Package model: complete (custom)");
     fireEvent.click(within(section).getByRole("button", {name: "Save Blueprint"}));
-    await waitFor(() => expect(within(section).queryByRole("button", {name: "Cancel"})).not.toBeInTheDocument());
+    await within(section).findByText("Artifact job failed without confirming a successful publication.");
     expect(within(section).queryByRole("button", {name: "Open as Project"})).not.toBeInTheDocument();
     expect(within(section).queryByText(/Built to/)).not.toBeInTheDocument();
 });

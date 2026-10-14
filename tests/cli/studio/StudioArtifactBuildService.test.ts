@@ -412,7 +412,7 @@ describe("StudioArtifactBuildService", () => {
             if (started.status !== "created") throw new Error(started.status);
             expect(service.startPreparedExtraction(source, preview.preparedOperationId!, destination)).toEqual({status: "stale"});
             const completed = await terminal(service, source, started.job.id);
-            expect(completed.status).toBe("completed");
+            if (completed.status !== "completed") throw new Error(`Reviewed extraction failed: ${JSON.stringify({status: completed.status, result: completed.result?.status, message: completed.result && "message" in completed.result ? completed.result.message : undefined})}`);
             expect(completed.result?.plan.packageExtraction).toEqual(preview.plan.packageExtraction);
             const evidence = JSON.parse(fs.readFileSync(`${destination}.conversion-evidence.json`, "utf8"));
             expect(evidence.extraction).toEqual(preview.plan.packageExtraction);

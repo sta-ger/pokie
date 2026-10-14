@@ -95,7 +95,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         description:
             'Build an artifact from a resolved POKIE project ("pokie build <project> --target <artifact>") -- the ' +
             "supported source-to-target matrix includes PAR workbook -> Blueprint/tsPackage/outcomeLibrary/stakeAdapter/parWorkbook/wasm; GameBlueprint -> tsPackage/outcomeLibrary/stakeAdapter/parWorkbook/wasm, " +
-            "tsPackage -> outcomeLibrary/stakeAdapter, outcomeLibrary -> outcomeLibrary/stakeAdapter, and same-type " +
+            "tsPackage -> Blueprint/tsPackage/PAR/wasm with a complete public model descriptor, or outcomeLibrary/stakeAdapter, outcomeLibrary -> outcomeLibrary/stakeAdapter, and same-type " +
             'republish for stakeAdapter/parWorkbook (for a first random game instead, see "pokie ' +
             'create --random"). --dry-run validates and previews without writing anything.',
         verbs: [
@@ -783,7 +783,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
             "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
             "project, or a standalone Outcome Library/Stake descriptor (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, outcomeLibrary, " +
             "stakeAdapter, PAR workbook, or wasm; PAR workbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, PAR workbook, or wasm; " +
-            "tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; " +
+            "tsPackage -> Blueprint or supported targets through public model extraction, outcomeLibrary or stakeAdapter; outcomeLibrary -> outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; " +
             "parWorkbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, or wasm; Blueprint -> wasm is the canonical portable-runtime source.",
     },
     {
