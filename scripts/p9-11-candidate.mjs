@@ -43,6 +43,10 @@ const tooling = new Set([
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.validationWorkflow.test.tsx",
     "tests/cli/studio-client/src/integration/happyPath.test.tsx",
     "tests/cli/studio-client/src/studioSurfaceInventory.baseline.test.tsx",
+    // V2C-11 gate correction: fixture lease identity and focused rollback regression only.
+    "tests/cli/studio/StudioArtifactBuildService.test.ts",
+    "tests/v2/fixtures/PackageExtractionFixture.ts",
+    "docs/v2-completion/V2C-11.md",
     "tests/testUtils/createP911CandidateFixture.mjs",
     "tests/scripts/p9-11-corrective-closeout.test.mjs", "tests/packaging/npmPackSmoke.test.ts", "tests/packaging/P805ValeraProgrammer.test.ts",
 ]);

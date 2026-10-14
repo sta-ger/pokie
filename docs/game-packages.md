@@ -304,3 +304,33 @@ retain the extracted Blueprint and evidence under `.pokie/package-extraction` (a
 when registering/reopening these new artifacts. Descriptor and source drift invalidate prepared
 plans. Existing destinations, occupied companions and source aliases are rejected; staging,
 publication, cancellation and registration failures roll back operation-owned outputs.
+
+
+## Package extraction to an editable Blueprint
+
+Opening or registering a package preserves its `tsPackage` identity and source bytes. Model preview
+uses `PackageBlueprintExtraction.extract(packageRoot | game, {signal})`, the same authority used by
+artifact planning, CLI and Studio. Path inputs release their owned runtime snapshots. Caller-supplied
+games and sessions remain caller-owned; extraction does not create or advance sessions.
+
+A version-1 public effective-model descriptor can declare representable model data. This is distinct
+from inspecting manifest metadata. Legacy getters alone yield partial diagnostics. Unsupported custom
+mechanic paths/codes/messages and field authorities remain visible; capability advertisement permits
+an extraction attempt, not a promise of successful conversion. Exact, inferred (when supplied),
+defaulted and unsupported fields and comparison limits travel with the result.
+
+Preview `pokie build PACKAGE --target blueprint --dry-run`; explicitly save using the same command
+without `--dry-run`, optionally with `--out FILE`. Studio exposes this through Build/Export's **Save
+Blueprint** and **Open as Project**, with the reviewed preview bound to its save job. Source/destination
+changes require a fresh preview. Outputs must be new files; publication stages Blueprint and evidence
+and rolls back operation-owned artifacts on failure, cancellation or failed Studio registration.
+
+The companion `FILE.conversion-evidence.json` has `schemaVersion: 1`, `kind: "package-extraction"`,
+`sourceBindingHash`, `extractedBlueprintHash` and the full `extraction` result. Studio registration
+retains this evidence path across reopen without inventing PAR-workbook provenance. Save normal
+Blueprint edits in the separate authoring project: its historical evidence remains the original
+extraction record, not a description of subsequent edits.
+
+Descriptors establish declared structural fidelity. Finite seeded comparisons cover exercised traces
+only; they cannot prove arbitrary custom executable-code equivalence. Missing/zero authored payouts
+and grants are preserved, never padded into equivalent-looking defaults.

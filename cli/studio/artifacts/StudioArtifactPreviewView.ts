@@ -15,7 +15,7 @@ export type StudioArtifactPreviewView =
           readonly plannedOutputs: readonly string[];
           readonly sourceType: ProjectType;
           readonly plan: ArtifactConversionPlan;
-          /** Opaque handle for the exact retained Stake operation. */
+          /** Opaque handle for the retained Stake operation or package extraction plan. */
           readonly preparedOperationId?: string;
           /** Stake information known before publication. */
           readonly stakePreflight?: {

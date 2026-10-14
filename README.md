@@ -94,6 +94,14 @@ See [pokie-examples](https://github.com/sta-ger/pokie-examples) for a working de
 megaways-style, cluster pays, sticky respin, growing grid, value-pay + multiplier wilds, mixed evaluators, and a
 verifiable/seeded-RNG spin).
 
+Package extraction uses the same artifact route: `pokie build PACKAGE --target blueprint --dry-run`
+previews the public effective-model descriptor and diagnostics; omitting `--dry-run` explicitly saves
+an editable Blueprint and its `.conversion-evidence.json` companion to new file paths. Studio's
+Build/Export tab provides the same preview and **Save Blueprint**, then **Open as Project**.
+Opening a custom package keeps it code-first. A complete declared model is required for save;
+unsupported mechanics stay visible, and finite seeded comparisons cannot establish arbitrary
+executable-code equivalence. See [package extraction](docs/game-packages.md#package-extraction-to-an-editable-blueprint).
+
 ## Usage
 
 ### Session

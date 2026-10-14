@@ -7774,8 +7774,16 @@ describe("StudioServer", () => {
         }
 
         it("shares package extraction diagnosis between Game Model, artifact preview and published jobs", async () => {
+            const initialInventory = fs.readdirSync(artifactWorkDir).sort();
             const source = writeDescriptorPackage(artifactWorkDir);
+            const sourceBytes = fs.readFileSync(path.join(source, "index.js"));
             const url = await startServerForProject(source);
+            // Direct project startup returns before its asynchronous dashboard load settles.
+            const context = await pollUntilProjectContextSettled(`${url}/api/project/context`);
+            expect(context.status).toBe(200);
+            expect(context.body).toMatchObject({status: "loaded", projectRoot: source, type: "tsPackage", game: {id: "math-probe", version: "0.1.0"}});
+            expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(sourceBytes);
+            expect(fs.readdirSync(artifactWorkDir).sort()).toEqual([...initialInventory, "descriptor-package"].sort());
             const model = await get(`${url}/api/project/gameModel`);
             expect(model.status).toBe(200);
             expect(model.body).toMatchObject({basics: {status: "available", data: {id: "math-probe", version: "0.1.0"}}, packageExtraction: {status: "complete", source: {kind: "custom"}}});
@@ -7786,12 +7794,54 @@ describe("StudioServer", () => {
             const preview = await post(`${url}/api/project/artifacts/preview`, {target: "blueprint", outDir: destination});
             expect(preview.body).toMatchObject({status: "ok", plan: {packageExtraction: {status: "complete"}, steps: [{kind: "extractPackageModel"}]}});
             expect(fs.existsSync(destination)).toBe(false);
-            const started = await post(`${url}/api/project/artifacts/build`, {target: "blueprint", outDir: destination});
+            expect((preview.body as {plan: {packageExtraction: unknown}}).plan.packageExtraction).toEqual((model.body as {packageExtraction: unknown}).packageExtraction);
+            expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(sourceBytes);
+            expect(fs.readdirSync(artifactWorkDir).sort()).toEqual([...initialInventory, "descriptor-package"].sort());
+            const absent = await post(`${url}/api/project/artifacts/build`, {target: "blueprint", outDir: destination});
+            expect(absent.status).toBe(409);
+            const started = await post(`${url}/api/project/artifacts/build`, {target: "blueprint", outDir: destination, preparedOperationId: (preview.body as {preparedOperationId: string}).preparedOperationId});
             expect(started.status).toBe(202);
             const completed = await waitForArtifactBuildJob(url, (started.body as {job: {id: string}}).job.id);
             expect(completed.status).toBe("completed");
             expect(completed.result).toMatchObject({status: "ok", outputPath: destination, conversionEvidencePath: `${destination}.conversion-evidence.json`});
             expect(fs.existsSync(destination)).toBe(true);
+        });
+
+        it.each(["source", "descriptor", "destination", "project", "companion", "unsupported"])("rejects %s drift across HTTP extraction preview/save without publication", async change => {
+            const control = path.join(artifactWorkDir, "descriptor-control.txt");
+            fs.writeFileSync(control, "custom");
+            const source = writeDescriptorPackage(artifactWorkDir, {descriptorBody:
+                `const kind = require("fs").readFileSync(${JSON.stringify(control)}, "utf8"); return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: kind === "unsupported" ? "custom" : kind, model, ...(kind === "unsupported" ? {unsupported: [{path: "mechanics.custom", code: "opaque", message: "Cannot represent this custom feature"}]} : {})};`});
+            const url = await startServerForProject(source);
+            const destination = path.join(artifactWorkDir, "reviewed.json");
+            const preview = await post(`${url}/api/project/artifacts/preview`, {target: "blueprint", outDir: destination});
+            expect(preview.body).toMatchObject({status: "ok", preparedOperationId: expect.any(String)});
+            const id = (preview.body as {preparedOperationId: string}).preparedOperationId;
+            if (change === "source") fs.appendFileSync(path.join(source, "index.js"), "\n// authored change");
+            if (change === "descriptor") fs.writeFileSync(control, "generated");
+            if (change === "unsupported") fs.writeFileSync(control, "unsupported");
+            if (change === "companion") fs.writeFileSync(`${destination}.conversion-evidence.json`, "competing owner");
+            if (change === "project") {
+                const other = writeDescriptorPackage(artifactWorkDir, {name: "other-package"});
+                const opened = await post(`${url}/api/home/projects/open`, {projectRoot: other});
+                expect(opened.status).toBe(200);
+            }
+            const bytes = fs.readFileSync(path.join(source, "index.js"));
+            const inventory = fs.readdirSync(artifactWorkDir).sort();
+            const started = await post(`${url}/api/project/artifacts/build`, {target: "blueprint", outDir: change === "destination" ? `${destination}.other` : destination, preparedOperationId: id});
+            if (change === "destination" || change === "project") expect(started.status).toBe(409);
+            else {
+                expect(started.status).toBe(202);
+                const failed = await waitForArtifactBuildJob(url, (started.body as {job: {id: string}}).job.id);
+                expect(failed.status).toBe("failed");
+                expect(failed.result).toMatchObject({plan: {packageExtraction: {source: {location: source}}}});
+            }
+            expect(fs.existsSync(destination)).toBe(false);
+            expect(fs.existsSync(`${destination}.other`)).toBe(false);
+            if (change === "companion") expect(fs.readFileSync(`${destination}.conversion-evidence.json`, "utf8")).toBe("competing owner");
+            else expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(false);
+            expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(bytes);
+            expect(fs.readdirSync(artifactWorkDir).sort()).toEqual(inventory);
         });
 
         it("returns 409 for every route when there is no active project", async () => {

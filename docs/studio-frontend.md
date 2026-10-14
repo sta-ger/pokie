@@ -376,3 +376,20 @@ and next-command identity in job views and durable job detail, with no completed
 Terminal publication saves the compatibility view before durable completion; failed saves
 retain a failed recoverable job consistently in live and restarted views. Studio Play
 sessions remain process-only even when replay jobs use durable job storage.
+
+
+## Package extraction preview/save
+
+The package Game Model and Build/Export use the server's shared extraction result. Opening a package
+keeps it code-first and publishes no Blueprint. Preview shows source identity, exact/inferred/defaulted/
+unsupported fields with authority, diagnostics and structural/seeded comparison limits. The Blueprint
+card shows both output paths before the explicit **Save Blueprint** action. Incomplete or unsupported
+models remain diagnostic cards and cannot be saved.
+
+The save job consumes the server-retained preview handle, source binding, full model/evidence and
+resolved destination. Missing/mismatched handles, source changes and changed descriptors require a
+fresh preview. Destination/project changes invalidate old client responses. Polling includes
+`cancelling` until cleanup settles; failed/cancelled results offer no successful open/edit action.
+**Open as Project** uses existing navigation and dirty-state controls to open the saved file as a
+separate editable authoring project. Its evidence companion remains historical extraction provenance
+after ordinary edits. The original package stays unchanged.

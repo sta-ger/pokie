@@ -1297,9 +1297,9 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const artifactBuildJobRoute = (/^\/api\/project\/artifacts\/build\/([^/]+)(?:\/(cancel))?$/).exec(url.pathname);
+        const artifactBuildJobRoute = (/^\/api\/project\/artifacts\/build\/([^/]+)(?:\/(cancel|activate))?$/).exec(url.pathname);
         if (artifactBuildJobRoute !== null) {
-            await this.handleArtifactBuildJob(method, res, artifactBuildJobRoute[1], artifactBuildJobRoute[2] === "cancel");
+            await this.handleArtifactBuildJob(method, res, artifactBuildJobRoute[1], artifactBuildJobRoute[2]);
             return;
         }
 
@@ -3271,6 +3271,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        const projectRoot = this.currentContext.projectRoot;
         if (await this.rejectCurrentWasmOperation(res, BUILD_OPERATION)) return;
         const body = await this.readJsonBody(req);
         let validated;
@@ -3281,6 +3282,26 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (validated.target === "blueprint") {
+            // Blueprint publication from a package must consume its reviewed extraction.
+            const source = await new ProjectTargetResolver().resolve(projectRoot);
+            if (this.currentContext.mode !== "project" || this.currentContext.projectRoot !== projectRoot) {
+                this.sendJson(res, 409, {error: "The active project changed. Refresh the preview before saving."});
+                return;
+            }
+            if (source?.type === "tsPackage" || validated.preparedOperationId !== undefined) {
+                const start = validated.preparedOperationId === undefined ? {status: "stale" as const}
+                    : this.artifactBuildService.startPreparedExtraction(projectRoot, validated.preparedOperationId, validated.outDir, validated.deferExecution);
+                if (start.status === "stale") {
+                    this.sendJson(res, 409, {error: "Package extraction requires its current preparedOperationId and destination. Refresh the preview before saving."});
+                } else if (start.status === "conflict") {
+                    this.sendJson(res, 409, {error: "An artifact build already owns this destination.", activeJobId: start.activeJobId});
+                } else if (start.status === "unsupported") {
+                    this.sendJson(res, 409, {error: start.message});
+                } else this.sendJson(res, 202, start);
+                return;
+            }
+        }
         if (validated.target === "stakeAdapter") {
             if (validated.preparedOperationId === undefined) {
                 this.sendJson(res, 409, {error: "Stake build requires the preparedOperationId returned by its current preview. Refresh the preflight before building."});
@@ -3291,7 +3312,7 @@ export class StudioServer implements StudioServerHandling {
                 this.sendJson(res, 409, {error: "The prepared Stake operation is stale or names a different destination. Refresh the preflight before building."});
                 return;
             }
-            const start = await this.artifactBuildService.startPreparedStakeProjection(this.canonicalPathIdentity(this.currentContext.projectRoot), validated.preparedOperationId);
+            const start = await this.artifactBuildService.startPreparedStakeProjection(this.canonicalPathIdentity(this.currentContext.projectRoot), validated.preparedOperationId, validated.deferExecution);
             if (start.status === "unsupported") {
                 this.sendJson(res, 409, {error: start.message});
                 return;
@@ -3307,7 +3328,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 202, {status: "created", job: start.job});
             return;
         }
-        const result = this.artifactBuildService.start(this.canonicalPathIdentity(this.currentContext.projectRoot), validated.target, validated.outDir);
+        const result = this.artifactBuildService.start(this.canonicalPathIdentity(this.currentContext.projectRoot), validated.target, validated.outDir, validated.deferExecution);
         if (result.status === "unsupported") {
             this.sendJson(res, 409, {error: result.message});
             return;
@@ -3319,18 +3340,19 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 202, result);
     }
 
-    private handleArtifactBuildJob(method: string, res: ServerResponse, id: string, cancel: boolean): Promise<void> {
+    private handleArtifactBuildJob(method: string, res: ServerResponse, id: string, action?: string): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return Promise.resolve();
         }
-        if ((cancel && method !== "POST") || (!cancel && method !== "GET")) {
+        if ((action !== undefined && method !== "POST") || (action === undefined && method !== "GET")) {
             this.sendJson(res, 405, {error: "Method not allowed."});
             return Promise.resolve();
         }
-        const job = cancel
-            ? this.artifactBuildService.cancelForProject(this.canonicalPathIdentity(this.currentContext.projectRoot), id)
-            : this.artifactBuildService.getStatusForProject(this.currentContext.projectRoot, id);
+        let job;
+        if (action === "activate") job = this.artifactBuildService.activateForProject(this.currentContext.projectRoot, id);
+        else if (action === "cancel") job = this.artifactBuildService.cancelForProject(this.currentContext.projectRoot, id);
+        else job = this.artifactBuildService.getStatusForProject(this.currentContext.projectRoot, id);
         if (job === undefined) {
             this.sendJson(res, 404, {error: "Artifact build job not found."});
             return Promise.resolve();

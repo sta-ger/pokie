@@ -1402,17 +1402,24 @@ export async function startArtifactBuild(
     target: StudioArtifactTargetType,
     outDir?: string,
     preparedOperationId?: string,
+    deferExecution?: boolean,
 ): Promise<StudioArtifactBuildJobView> {
     const response = await fetchImpl("/api/project/artifacts/build", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({target, outDir, ...(preparedOperationId === undefined ? {} : {preparedOperationId})}),
+        body: JSON.stringify({target, outDir, ...(deferExecution === undefined ? {} : {deferExecution}), ...(preparedOperationId === undefined ? {} : {preparedOperationId})}),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to start the artifact build"));
     }
     const view = (await response.json()) as {status: "created"; job: StudioArtifactBuildJobView};
     return view.job;
+}
+
+/** Release a queued Studio build only after its ID and startup cancellation intent are known. */
+export async function activateArtifactBuild(fetchImpl: FetchLike, id: string): Promise<void> {
+    const response = await fetchImpl(`/api/project/artifacts/build/${encodeURIComponent(id)}/activate`, {method: "POST"});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to activate the artifact build"));
 }
 
 export async function getArtifactBuild(fetchImpl: FetchLike, id: string): Promise<StudioArtifactBuildJobView> {

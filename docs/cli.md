@@ -3838,3 +3838,46 @@ and selection denominators. `pokie diff` explains sequence order, weight, symbol
 and context/model changes independently of payout differences. Weighted outcome
 libraries retain their capability-directed report/diff routes; they are not reel
 variants or per-symbol weights. WASM remains unsupported for `reelSequences`.
+
+
+## Package extraction preview and save (V2C-11)
+
+Use the canonical artifact route; there is no top-level `export` command:
+
+```sh
+pokie build ./custom-package --target blueprint --out ./editable.json --dry-run
+pokie build ./custom-package --target blueprint --out ./editable.json
+```
+
+The default output is `blueprint.json` beside the source package. Preview prints source identity,
+extraction status, every supplied exact/inferred/defaulted/unsupported field and its authority,
+diagnostics, comparison limits and the Blueprint/evidence paths. It publishes no artifacts.
+Inferred fields are displayed only if the shared extraction result supplies them. Extraction reads
+executable public descriptors; metadata inspection and opening a package do not convert it.
+Partial, malformed, legacy and unsupported custom mechanics cannot be saved as complete models.
+
+Explicit build creates an editable validated Blueprint and a version-1
+`editable.json.conversion-evidence.json` companion. Both paths must be absent; directories, source
+aliases and occupied companions are rejected. Preparation-to-publication source/model drift,
+publication races, extraction failure and cancellation preserve competing files and remove only
+operation-owned artifacts. SIGINT waits for descriptor settlement and snapshot release.
+
+Studio clients preview with `POST /api/project/artifacts/preview` (`target: "blueprint"`, optional
+`outDir`). For a package, pass its returned `preparedOperationId` and the same destination to
+`POST /api/project/artifacts/build`. Missing, cross-project, reused or destination-mismatched handles
+return 409. Source or descriptor drift fails the job without publication; refresh the preview before
+saving again. Poll `GET /api/project/artifacts/build/:id` through `cancelling` until cleanup reaches a
+terminal state. Failure and cancellation retain their plan/diagnostics in durable job results.
+
+The rendered Studio cards request `deferExecution: true`: the start response reserves a queued job
+without running a writer. After receiving its ID, the client sends either
+`POST /api/project/artifacts/build/:id/cancel` for retained startup cancellation, or
+`POST /api/project/artifacts/build/:id/activate` to allow execution. Activation is idempotent and
+project-scoped. Cancelling an unactivated job, closing its project or shutting down Studio settles
+it without publication. Destination controls stay locked until terminal cleanup. Direct build API
+callers that omit `deferExecution` retain the immediate execution contract.
+
+
+Declared structural fidelity and bounded seeded comparisons do not prove arbitrary TypeScript
+behavioral equivalence. The extraction evidence is historical provenance; editing the saved Blueprint
+does not update its original extraction hash or rewrite the source package.

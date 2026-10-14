@@ -46,9 +46,14 @@ describe("buildProjectGameModel", () => {
             for (const legacy of [false, true]) {
                 const source = writeDescriptorPackage(root, {name: String(legacy), legacy});
                 const project: PokieProject = {type: "tsPackage", rootPath: source, capabilities: ["runtime.execute"], provenance: "fixture"};
+                const bytes = fs.readFileSync(path.join(source, "index.js"));
+                const inventory = fs.readdirSync(source).sort();
                 const result = await buildProjectGameModel(source, project, false, readers());
                 const extraction = await new PackageBlueprintExtraction().extract(source);
                 expect(result.packageExtraction).toEqual(extraction);
+                expect(project.type).toBe("tsPackage");
+                expect(fs.readdirSync(source).sort()).toEqual(inventory);
+                expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(bytes);
                 expect(result.basics).toMatchObject({status: "available", data: {id: "math-probe", version: "0.1.0"}});
                 expect(result.paytable.status).toBe(legacy ? "unavailable" : "available");
             }

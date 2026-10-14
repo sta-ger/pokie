@@ -1,5 +1,6 @@
 import {ArtifactPublicationOwnership, rollbackArtifactPublication} from "./ArtifactPublicationOwnership.js";
 import {prepareBlueprintForParSheetExport} from "../parsheet/ParSheetExporter.js";
+import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import {PackageBlueprintExtraction} from "../generated/PackageBlueprintExtraction.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import fs from "fs";
@@ -366,6 +367,7 @@ export class ArtifactBuilderRegistry {
         if (source.type === "tsPackage" && ["blueprint", "tsPackage", "parWorkbook", "wasm"].includes(target)) {
             const inputBindingHash = computeProjectInputBindingHash(source);
             const extraction = await new PackageBlueprintExtraction().extract(source.rootPath, {signal: options.signal});
+            if (options.signal?.aborted && extraction.status === "malformed") throw new Error(`Package extraction malformed: ${extraction.diagnostics.map(issue => `${issue.path}: ${issue.code}: ${issue.message}`).join("; ")}`);
             assertArtifactBuildNotCancelled(options);
             plannedSource = {...source, configurationProvenance: {...source.configurationProvenance, inputBindingHash, configurationHash: extraction.blueprintHash}};
             let plan: ArtifactConversionPlan = {...this.planner.plan(plannedSource, target, planningOptions), packageExtraction: extraction};
@@ -581,7 +583,7 @@ export class ArtifactBuilderRegistry {
             const inputBindingHash = plan.source.configurationProvenance?.inputBindingHash;
             const blueprintHash = plan.packageExtraction.blueprintHash;
             if (!inputBindingHash || !blueprintHash) throw new Error("Prepared package extraction is missing its source/model binding.");
-            modelOptions = {...options, preparedPackageModel: {inputBindingHash, blueprintHash}};
+            modelOptions = {...options, preparedPackageModel: {inputBindingHash, blueprintHash, extractionHash: computeGameBlueprintHash(plan.packageExtraction)}};
         }
         const extractionKind = source.type === "tsPackage" ? "package-extraction" : "par-import";
         const wasmEvidenceRoot = target === "wasm" || target === "parWorkbook" ? `${destinationPath}.pokie` : undefined;

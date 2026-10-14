@@ -17,7 +17,8 @@ export function writeDescriptorPackage(
     );
     fs.writeFileSync(
         path.join(root, "index.js"),
-        `const model = ${JSON.stringify(model)};
+        `// Fixture source: ${JSON.stringify(path.resolve(root))}
+const model = ${JSON.stringify(model)};
 module.exports = {
     getManifest() { return model.manifest; },
     createSession() { throw new Error("Model extraction must not create a session"); },
@@ -76,8 +77,8 @@ export function writePausedDescriptorPackage(
 
 /** Inventory this fixture's leases, independent of other workers sharing the temporary directory. */
 export function runtimeSnapshotNames(packageSource: string): string[] {
-    // Paused descriptors embed their unique absolute control path in index.js. The loader copies
-    // those bytes unchanged, so this binding still detects every live or leaked fixture snapshot.
+    // Every descriptor embeds its absolute fixture root in index.js. The loader copies those
+    // bytes unchanged, so this binding detects owned leases without matching a sibling's model.
     const entry = fs.readFileSync(path.join(packageSource, "index.js"));
     const temporaryDirectory = os.tmpdir();
     return fs.readdirSync(temporaryDirectory).filter(name => {
@@ -90,4 +91,53 @@ export function runtimeSnapshotNames(packageSource: string): string[] {
             throw error;
         }
     }).sort();
+}
+
+/** Independently assembled runnable code-first game: no generated module or Blueprint artifact. */
+export function writeRunnableCodeFirstPackage(parent: string): string {
+    const root = path.join(parent, "code-first");
+    fs.mkdirSync(root);
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "code-first-probe", version: "1", pokie: {entry: "index.js"}}));
+    fs.writeFileSync(path.join(root, "index.js"), `
+const {VideoSlotConfig, VideoSlotWithFreeGamesConfig, VideoSlotWithFreeGamesSession,
+    SymbolsSequence, SymbolsCombinationsGenerator, SeededRandomNumberGenerator, CustomLinesDefinitions, Paytable} = require("@fromstan/pokie");
+const manifest = {id: "code-first-probe", name: "Code first probe", version: "1"};
+const symbols = ["A", "B", "S"];
+const strips = [["A", "B", "S", "A"], ["B", "S", "A", "A"], ["S", "A", "B", "A"]];
+const stakes = [0.05, 7.5, 1e-7];
+const payouts = {A: {3: 5}, B: {3: 0}, S: {2: 0}};
+const grants = {2: 0, 3: 2};
+function createConfig() {
+    const config = new VideoSlotConfig();
+    config.setAvailableBets(stakes);
+    config.setReelsNumber(3);
+    config.setReelsSymbolsNumber(1);
+    config.setWildSymbols([]);
+    config.setScatterSymbols(["S"]);
+    config.setAvailableSymbols(symbols);
+    const lines = new CustomLinesDefinitions();
+    lines.setLineDefinition("0", [0, 0, 0]);
+    config.setLinesDefinitions(lines);
+    config.setSymbolsSequences(strips.map(strip => new SymbolsSequence().fromArray(strip)));
+    const paytable = new Paytable(stakes);
+    for (const [symbol, table] of Object.entries(payouts)) for (const [count, payout] of Object.entries(table)) paytable.setPayoutForSymbol(symbol, Number(count), payout);
+    config.setPaytable(paytable);
+    const free = new VideoSlotWithFreeGamesConfig(config, {});
+    for (const [count, award] of Object.entries(grants)) free.setFreeGamesForScatters("S", Number(count), award);
+    return free;
+}
+module.exports = {
+    getManifest() { return manifest; },
+    getModelDescriptor() { return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: {
+        manifest, reels: 3, rows: 1, symbols, wilds: [], scatters: ["S"], paylines: [[0, 0, 0]],
+        paytable: payouts, reelStrips: strips, availableBets: stakes, mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: grants}}
+    }}; },
+    createSession(context) {
+        const config = createConfig();
+        const generator = new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(context.seed));
+        return new VideoSlotWithFreeGamesSession(config, generator);
+    }
+};
+`);
+    return root;
 }

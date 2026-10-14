@@ -1,4 +1,4 @@
-import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "./fixtures/PackageExtractionFixture.js";
+import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage, writeRunnableCodeFirstPackage} from "./fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -54,6 +54,48 @@ describe("PackageBlueprintExtraction", () => {
     });
     afterEach(() => {
         fs.rmSync(directory, {recursive: true, force: true});
+    });
+
+    it("extracts an independently assembled runnable code-first source without embedded Blueprint artifacts", async () => {
+        const source = writeRunnableCodeFirstPackage(directory);
+        const before = fs.readFileSync(path.join(source, "index.js"));
+        const extracted = await extractor.extract(source);
+        expect(extracted).toMatchObject({status: "complete", source: {kind: "custom", gameId: "code-first-probe"}});
+        expect(extracted.blueprint?.paytable).toEqual({A: {3: 5}, B: {3: 0}, S: {2: 0}});
+        expect(extracted.blueprint?.mechanics?.freeGames?.awardsByCount).toEqual({2: 0, 3: 2});
+        const runtime = await loadPokieGameRuntime(source);
+        const session = runtime.game.createSession({seed: 37}) as VideoSlotSession;
+        try {
+            session.setCreditsAmount(10000);
+            for (const bet of [0.05, 7.5, 1e-7]) {
+                session.setBet(bet);
+                session.play();
+            }
+            expect(session.getWinAmount()).toBeGreaterThanOrEqual(0);
+            expect(session.toSessionState()).toBeDefined();
+        } finally {
+            (session as unknown as {destroy?: () => void}).destroy?.();
+            await runtime.release();
+        }
+        expect(fs.readdirSync(source).sort()).toEqual(["index.js", "package.json"]);
+        expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(before);
+    });
+
+    it.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)("binds final %s publication to the complete reviewed extraction even when the Blueprint hash stays equal", async target => {
+        const control = path.join(directory, "kind.txt");
+        fs.writeFileSync(control, "custom");
+        const source = writeDescriptorPackage(directory, {descriptorBody: `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: require("fs").readFileSync(${JSON.stringify(control)}, "utf8"), model};`});
+        const input = fs.readFileSync(path.join(source, "index.js"));
+        const registry = new ArtifactBuilderRegistry("1.3.0");
+        const destination = path.join(directory, "output");
+        const project = packageProject(source);
+        const plan = await registry.preparePlan(project, target, {destinationPath: destination});
+        expect(plan.packageExtraction?.status).toBe("complete");
+        await expect(registry.executePlan(plan, project, destination, {onProgress: progress => {
+            if (progress.message === "Extracting public package model into Blueprint") fs.writeFileSync(control, "generated");
+        }})).rejects.toThrow(/Package model changed after preview/);
+        expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(input);
+        expect(fs.readdirSync(directory).sort()).toEqual(["descriptor-package", "kind.txt"]);
     });
 
     async function roundTrip(blueprint: GameBlueprint, seed: string | number): Promise<void> {

@@ -202,6 +202,7 @@ it("keeps build preflight, conflict recovery and the same completed receipt acro
             writes.push(JSON.parse(init?.body ?? "{}"));
             return respond({status: "created", job: {id: "presentation-build", target: "tsPackage", status: "queued", cancellationRequested: false}}, 202);
         }
+        if (path === "/api/project/artifacts/build/presentation-build/activate") return respond({});
         if (path === "/api/project/artifacts/build/presentation-build") return respond({id: "presentation-build",
             target: "tsPackage", status: "completed", cancellationRequested: false,
             result: {status: "ok", target: "tsPackage", outputPath: LONG_PATH, outputKind: "directory", sourceType: "blueprint"}});
@@ -233,7 +234,7 @@ it("keeps build preflight, conflict recovery and the same completed receipt acro
         expect(receipt).toHaveClass("studio-technical-text");
         expect(receipt.closest('[role="status"]')).toHaveClass("studio-operation-result");
         expect(within(choice).getByText("Build completed")).toBeVisible();
-        expect(writes).toEqual([{target: "tsPackage", outDir: "new-package"}]);
+        expect(writes).toEqual([{target: "tsPackage", outDir: "new-package", deferExecution: true}]);
         await user.click(toggle);
         expect(receipt).not.toBeVisible();
         expect(within(choice).getByText("Built")).toBeVisible();

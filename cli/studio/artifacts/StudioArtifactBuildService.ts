@@ -111,6 +111,7 @@ export class StudioArtifactBuildService {
     // operation server-side so Build never repeats its library lookup.
     private readonly preparedStakeOperations = new Map<string, PreparedStakeOperationRecord>();
     private nextPreparedStakeOperationId = 1;
+    private readonly preparedExtractions = new Map<string, PreparedExtractionRecord>();
     private jobService: StudioJobService | undefined;
 
     constructor(
@@ -209,6 +210,9 @@ export class StudioArtifactBuildService {
         const preparedOperationId = operation === undefined
             ? undefined
             : this.retainPreparedStakeOperation(projectRoot, operation);
+        const extractionOperationId = target === "blueprint" && project.type === "tsPackage"
+            ? this.retainPreparedExtraction(projectRoot, project, destination, plan)
+            : undefined;
         return {
             status: "ok",
             target,
@@ -217,7 +221,7 @@ export class StudioArtifactBuildService {
             plannedOutputs,
             sourceType: project.type,
             plan,
-            ...(preparedOperationId === undefined ? {} : {preparedOperationId}),
+            ...((preparedOperationId ?? extractionOperationId) === undefined ? {} : {preparedOperationId: preparedOperationId ?? extractionOperationId}),
             ...(operation === undefined ? {} : {stakePreflight: this.stakePreflightView(operation)}),
         };
     }
@@ -302,6 +306,7 @@ export class StudioArtifactBuildService {
         destination: string,
         options?: ArtifactBuildOptions,
         preparedStakeOperation?: PreparedStakeProjectionOperation,
+        preparedPlan?: ArtifactConversionPlan,
     ): Promise<StudioArtifactBuildView> {
         // Directory targets deliberately accept a caller-created empty
         // destination.  It is not owned by this operation, even though its
@@ -314,11 +319,11 @@ export class StudioArtifactBuildService {
             : undefined;
         let plan: ArtifactConversionPlan;
         try {
-            plan = operation?.plan ?? await this.plan(project, target, destination, options);
+            plan = preparedPlan ?? operation?.plan ?? await this.plan(project, target, destination, options);
             assertArtifactBuildNotCancelled(options);
         } catch (error) {
             plan = new ArtifactConversionPlanner().plan(project, target, {destinationPath: destination});
-            return options?.signal?.aborted ? {status: "cancelled", message: "Artifact build cancelled before publication.", plan} : {status: "error", message: error instanceof Error ? error.message : String(error), plan};
+            return error instanceof ArtifactBuildCancelledError ? {status: "cancelled", message: "Artifact build cancelled before publication.", plan} : {status: "error", message: error instanceof Error ? error.message : String(error), plan};
         }
         if (plan.status === "unavailable") {
             return {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan};
@@ -377,7 +382,7 @@ export class StudioArtifactBuildService {
                 outputPath: result.outputPath,
                 outputKind: destinationKindFor(target),
                 sourceType: project.type,
-                plan,
+                plan: result.packageExtraction ? {...plan, packageExtraction: result.packageExtraction} : plan,
                 ...(result.preflight !== undefined
                     ? {
                         preflight: {
@@ -414,18 +419,18 @@ export class StudioArtifactBuildService {
     // Starts independently from the request that created it, so a client can observe the preflight and
     // every running update rather than waiting for one terminal HTTP response.  Retention is bounded;
     // active jobs are never evicted.
-    public start(projectRoot: string, target: ArtifactTargetType, outDir?: string): StudioArtifactBuildStartResult {
+    public start(projectRoot: string, target: ArtifactTargetType, outDir?: string, deferExecution = false): StudioArtifactBuildStartResult {
         // A direct service caller has the same no-job boundary as the HTTP
         // route: a WASM path must never receive an id, destination, staging
         // plan, or queued builder merely to fail later.
         if (isWasmComponentFile(projectRoot)) {
             return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "build a POKIE game package")};
         }
-        return this.startOperation(projectRoot, target, outDir);
+        return this.startOperation(projectRoot, target, outDir, undefined, undefined, deferExecution);
     }
 
     /** Consume a preview-issued operation, rejecting stale or cross-project handles. */
-    public async startPreparedStakeProjection(projectRoot: string, preparedOperationId: string): Promise<StudioPreparedStakeProjectionStartResult> {
+    public async startPreparedStakeProjection(projectRoot: string, preparedOperationId: string, deferExecution = false): Promise<StudioPreparedStakeProjectionStartResult> {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const prepared = this.preparedStakeOperations.get(preparedOperationId);
         if (prepared === undefined || prepared.projectRoot !== projectRoot) return {status: "stale"};
@@ -453,7 +458,7 @@ export class StudioArtifactBuildService {
             return {status: "stale"};
         }
         this.preparedStakeOperations.delete(preparedOperationId);
-        return this.startOperation(projectRoot, "stakeAdapter", prepared.operation.destinationPath, prepared.operation);
+        return this.startOperation(projectRoot, "stakeAdapter", prepared.operation.destinationPath, prepared.operation, undefined, deferExecution);
     }
 
     /** Returns the destination bound by a preview without exposing its operation. */
@@ -461,6 +466,23 @@ export class StudioArtifactBuildService {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const prepared = this.preparedStakeOperations.get(preparedOperationId);
         return prepared?.projectRoot === projectRoot ? prepared.operation.destinationPath : undefined;
+    }
+
+    /** Consume only the extraction and destination the user reviewed. Execution revalidates its full graph. */
+    public startPreparedExtraction(projectRoot: string, preparedOperationId: string, outDir?: string, deferExecution = false): StudioPreparedStakeProjectionStartResult {
+        const prepared = this.preparedExtractions.get(preparedOperationId);
+        if (prepared === undefined || prepared.projectRoot !== canonicalStudioProjectIdentity(projectRoot) ||
+            prepared.destination !== path.resolve(outDir ?? resolveDefaultDestination(prepared.project.rootPath, "blueprint"))) return {status: "stale"};
+        this.preparedExtractions.delete(preparedOperationId);
+        return this.startOperation(projectRoot, "blueprint", prepared.destination, undefined, prepared, deferExecution);
+    }
+
+    /** Studio acknowledges the allocated ID before permitting any writer to execute. */
+    public activateForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
+        const record = this.jobs.get(id);
+        if (record?.projectRoot !== canonicalStudioProjectIdentity(projectRoot)) return undefined;
+        this.executeRecord(record);
+        return this.toJobView(record);
     }
 
     public getStatusForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
@@ -482,6 +504,7 @@ export class StudioArtifactBuildService {
             this.jobService?.cancel(projectRoot, id);
             record.cancellationRequested = true;
             record.controller.abort();
+            this.executeRecord(record);
         }
         return this.toJobView(record);
     }
@@ -493,6 +516,7 @@ export class StudioArtifactBuildService {
                 this.jobService?.cancel(projectRoot, record.id);
                 record.cancellationRequested = true;
                 record.controller.abort();
+                this.executeRecord(record);
             }
         }
     }
@@ -503,6 +527,7 @@ export class StudioArtifactBuildService {
                 this.jobService?.cancel(record.projectRoot, record.id);
                 record.cancellationRequested = true;
                 record.controller.abort();
+                this.executeRecord(record);
             }
         }
         await Promise.allSettled([...this.pendingExecutions]);
@@ -525,6 +550,8 @@ export class StudioArtifactBuildService {
         target: ArtifactTargetType,
         outDir?: string,
         preparedStakeOperation?: PreparedStakeProjectionOperation,
+        preparedExtraction?: PreparedExtractionRecord,
+        deferExecution = false,
     ): StudioArtifactBuildStartResult {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         this.trimTerminalJobs();
@@ -553,11 +580,19 @@ export class StudioArtifactBuildService {
             cancellationRequested: false,
             controller: new AbortController(),
             preparedStakeOperation,
+            preparedExtraction,
+            outDir,
+            executionStarted: false,
         };
         this.jobs.set(record.id, record);
-        const execution = Promise.resolve().then(() => this.run(record, outDir));
-        this.trackExecution(execution);
+        if (!deferExecution) this.executeRecord(record);
         return {status: "created", job: this.toJobView(record)};
+    }
+
+    private executeRecord(record: StudioArtifactBuildJobRecord): void {
+        if (record.executionStarted || (record.status !== "queued" && record.status !== "running")) return;
+        record.executionStarted = true;
+        this.trackExecution(Promise.resolve().then(() => this.run(record, record.outDir)));
     }
 
     private async run(record: StudioArtifactBuildJobRecord, outDir: string | undefined): Promise<void> {
@@ -583,9 +618,14 @@ export class StudioArtifactBuildService {
                 });
             },
         };
-        const result = record.preparedStakeOperation === undefined
-            ? await this.build(record.projectRoot, record.target, outDir, options)
-            : await this.executeStakeProjection(record.preparedStakeOperation, options);
+        let result: StudioArtifactBuildView;
+        if (record.controller.signal.aborted) result = {
+            status: "cancelled", message: "Artifact build cancelled before execution.",
+            plan: record.preparedExtraction?.plan ?? record.preparedStakeOperation?.plan ?? createUnresolvedRuntimePlan(record.projectRoot, record.target, outDir),
+        };
+        else if (record.preparedExtraction !== undefined) result = await this.buildResolved(record.preparedExtraction.project, "blueprint", record.preparedExtraction.destination, options, undefined, record.preparedExtraction.plan);
+        else if (record.preparedStakeOperation !== undefined) result = await this.executeStakeProjection(record.preparedStakeOperation, options);
+        else result = await this.build(record.projectRoot, record.target, outDir, options);
         const status = terminalStatusFor(result);
         Object.assign(record, {result, status});
         if (status === "completed") {
@@ -600,9 +640,9 @@ export class StudioArtifactBuildService {
                 detail: {target: record.target, outputKind: resultView.outputKind, result: resultView},
             });
         } else if (status === "cancelled") {
-            this.jobService?.cancelled(record.id, {summary: "Artifact build cancelled after staging cleanup."}, {action: "rebuild", reason: "Rebuild the artifact from its captured target and destination."});
+            this.jobService?.cancelled(record.id, {summary: "Artifact build cancelled after staging cleanup.", detail: {result}}, {action: "rebuild", reason: "Rebuild the artifact from its captured target and destination."});
         } else {
-            this.jobService?.fail(record.id, result.status === "error" ? result.message : "Artifact build failed.", {action: "rebuild", reason: "Resolve the reported build problem and rebuild."});
+            this.jobService?.fail(record.id, result.status !== "ok" ? result.message : "Artifact build failed.", {action: "rebuild", reason: "Resolve the reported build problem and refresh the preview before rebuilding."}, {summary: "Artifact build failed.", detail: {result}});
         }
     }
 
@@ -645,6 +685,15 @@ export class StudioArtifactBuildService {
             const oldest = terminal.shift();
             if (oldest !== undefined) this.jobs.delete(oldest.id);
         }
+    }
+
+    private retainPreparedExtraction(projectRoot: string, project: PokieProject, destination: string, plan: ArtifactConversionPlan): string {
+        const id = `extraction-${crypto.randomUUID()}`;
+        // Do not share a mutable public DTO with the retained publication authority.
+        // Resolver provenance is deliberately non-enumerable; copy it explicitly before cloning.
+        this.preparedExtractions.set(id, {projectRoot: canonicalStudioProjectIdentity(projectRoot), project: structuredClone({...project, configurationProvenance: project.configurationProvenance}), destination: path.resolve(destination), plan: structuredClone(plan)});
+        while (this.preparedExtractions.size > 20) this.preparedExtractions.delete(this.preparedExtractions.keys().next().value!);
+        return id;
     }
 
     private retainPreparedStakeOperation(projectRoot: string, operation: PreparedStakeProjectionOperation): string {
@@ -772,9 +821,12 @@ export class StudioArtifactBuildService {
             // Studio-level registration loop starts.
             ...new Set([...registeredRoots, ...ownedRoots]).values(),
         ].sort((left, right) => right.length - left.length);
+        const registrationCleanupErrors: unknown[] = [];
         for (const projectRoot of rollbackRoots) {
             if (!ownedRoots.has(projectRoot)) continue;
-            await this.unregisterManagedProject(projectRoot).catch(() => undefined);
+            await this.unregisterManagedProject(projectRoot).catch((error: unknown) => {
+                registrationCleanupErrors.push(error);
+            });
             // The registry may have registered a generated Outcome before
             // Studio reaches its own project-registration loop.  Releasing
             // that record is a separate operation from removing the root: a
@@ -785,7 +837,9 @@ export class StudioArtifactBuildService {
                     releaseManagedOutcomeProject?: (sourceRootPath: string, rootPath: string) => Promise<void>;
                 };
                 if (registry.releaseManagedOutcomeProject !== undefined) {
-                    await registry.releaseManagedOutcomeProject(ownership.sourceRootPath, projectRoot).catch(() => undefined);
+                    await registry.releaseManagedOutcomeProject(ownership.sourceRootPath, projectRoot).catch((error: unknown) => {
+                        registrationCleanupErrors.push(error);
+                    });
                 }
             }
             if (result.publishedDirectoryOwnership?.some(entry => projectRoot === entry.path) || result.publishedFileOwnership?.some(entry => entry.path === projectRoot)) continue;
@@ -801,8 +855,12 @@ export class StudioArtifactBuildService {
             }
             await fs.promises.rm(`${projectRoot}.conversion-evidence.json`, {force: true}).catch(() => undefined);
         }
+        const assertRegistrationCleanup = (): void => {
+            if (registrationCleanupErrors.length) throw new Error(`Could not confirm Studio registration rollback: ${registrationCleanupErrors.map(error => error instanceof Error ? error.message : String(error)).join("; ")}`);
+        };
         if (result.publishedDirectoryOwnership !== undefined || result.publishedFileOwnership !== undefined) {
             await rollbackArtifactPublication(result);
+            assertRegistrationCleanup();
             return;
         }
         if ((plan.target.kind === "wasm" || (plan.target.kind === "parWorkbook" && plan.packageExtraction)) && !outputDestinationExisted) {
@@ -815,6 +873,7 @@ export class StudioArtifactBuildService {
                 fs.promises.rm(`${result.outputPath}.pokie`, {recursive: true, force: true}),
             ]).catch(() => undefined);
         }
+        assertRegistrationCleanup();
     }
 
     private durableManagedRoots(result: import("@fromstan/pokie").ArtifactBuildResult, plan: ArtifactConversionPlan): readonly string[] {
@@ -872,8 +931,11 @@ type StudioArtifactBuildJobRecord = {
     readonly target: ArtifactTargetType;
     status: "queued" | "running" | "completed" | "failed" | "cancelled";
     cancellationRequested: boolean;
+    executionStarted: boolean;
+    readonly outDir?: string;
     readonly controller: AbortController;
     readonly preparedStakeOperation?: PreparedStakeProjectionOperation;
+    readonly preparedExtraction?: PreparedExtractionRecord;
     progress?: StudioArtifactBuildProgressView;
     result?: StudioArtifactBuildView;
 };
@@ -900,3 +962,5 @@ function toProgressView(progress: ArtifactBuildProgress): StudioArtifactBuildPro
         ...(progress.message !== undefined ? {message: progress.message} : {}),
     };
 }
+
+type PreparedExtractionRecord = {readonly projectRoot: string; readonly project: PokieProject; readonly destination: string; readonly plan: ArtifactConversionPlan};

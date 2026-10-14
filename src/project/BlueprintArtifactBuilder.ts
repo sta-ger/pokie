@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
+import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import {computeBlueprintHash} from "../parsheet/computeBlueprintHash.js";
 import type {ParSheetImporting} from "../parsheet/ParSheetImporting.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
@@ -23,9 +24,10 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
         this.importer = importer;
     }
 
-    public async validate(source: PokieProject): Promise<void> {
+    public async validate(source: PokieProject, options?: ArtifactBuildOptions): Promise<void> {
         if (source.type === "tsPackage") {
-            const extracted = await new PackageBlueprintExtraction().extract(source.rootPath);
+            const extracted = await new PackageBlueprintExtraction().extract(source.rootPath, {signal: options?.signal});
+            if (extracted.status === "cancelled") assertArtifactBuildNotCancelled(options);
             this.assertComplete(extracted);
             return;
         }
@@ -73,7 +75,8 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
                 // outcome enters the shared builder cancellation lifecycle.
                 if (extraction.status === "cancelled") assertArtifactBuildNotCancelled(options);
                 this.assertComplete(extraction);
-                if (options?.preparedPackageModel && extraction.blueprintHash !== options.preparedPackageModel.blueprintHash) throw new Error("Package model changed after preview; prepare a new extraction.");
+                if (options?.preparedPackageModel && (extraction.blueprintHash !== options.preparedPackageModel.blueprintHash ||
+                    (options.preparedPackageModel.extractionHash !== undefined && computeGameBlueprintHash(extraction) !== options.preparedPackageModel.extractionHash))) throw new Error("Package model changed after preview; prepare a new extraction.");
             }
             const imported = extraction ? {blueprint: extraction.blueprint!, issues: [], provenance: undefined, conversionEvidence: undefined} : await this.importer.importFromFile(source.rootPath);
             const errors = imported.issues.filter((issue) => issue.severity === "error");

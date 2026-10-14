@@ -2,6 +2,7 @@ import {PackageExtractionDiagnostics} from "./PackageExtractionDiagnostics";
 import {useEffect, useId, useRef, useState} from "react";
 import {Badge, Button, Group, List, Text, TextInput} from "@mantine/core";
 import {
+    activateArtifactBuild,
     cancelArtifactBuild,
     checkNativePickerAvailability,
     cancelOutcomeLibraryGeneration,
@@ -383,7 +384,8 @@ function TargetCard({
     }, [recoveryRequest]);
 
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
-    const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running";
+    const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running" &&
+        (!(card.artifactTarget === "blueprint" && artifactPreview.result.plan?.packageExtraction) || artifactPreview.result.preparedOperationId !== undefined);
     let artifactBuildDisabledReason = "Fix the displayed build preflight issue before building this artifact.";
     if (artifactBuildRun.status === "running") artifactBuildDisabledReason = "This artifact is already building. Wait for it to finish or cancel it before starting another build.";
     else if (artifactPreview.status === "loading") artifactBuildDisabledReason = "Waiting for the build destination preflight to finish.";
@@ -661,29 +663,31 @@ function TargetCard({
 
                 {card.kind === "buildArtifact" && card.artifactTarget && card.supported && (
                     <>
-                        <PathInput
-                            label={isFileArtifactTarget(card.artifactTarget) ? "Output file (optional)" : "Output directory (optional)"}
-                            description={`${isFileArtifactTarget(card.artifactTarget) ? "Use a new file path." : "Use a new or empty directory."} Existing files will not be overwritten. Choose with Browse or type a server-filesystem path. Leave blank to use the shown default.`}
-                            kind={isFileArtifactTarget(card.artifactTarget) ? "file" : "directory"}
-                            pathPurpose="destination"
-                            filePickerMode={isFileArtifactTarget(card.artifactTarget) ? "save" : "open"}
-                            fileFilters={artifactFileFilters(card.artifactTarget)}
-                            browseTitle={artifactDestinationTitle(card.artifactTarget)}
-                            browseId={`artifact-${card.artifactTarget}-destination`}
-                            // This belongs to the editable control, not PathInput's
-                            // layout wrapper. The packed browser collector reads the
-                            // rendered input before it can enable Build, so keeping
-                            // the contract on the actual form field prevents a
-                            // route-level adapter from claiming a configured build.
-                            id={card.artifactTarget === "parWorkbook" ? "artifact-build-destination" : undefined}
-                            attributes={card.artifactTarget === "parWorkbook" ? {input: {
-                                "data-pokie-lifecycle-field": "artifact-build-destination",
-                            }} : undefined}
-                            value={artifactDestination}
-                            error={artifactPreview.status === "conflict" ? "Choose a new or empty destination; existing files will not be overwritten." : undefined}
-                            onChange={(event) => onArtifactDestinationChange(card.artifactTarget!, event.currentTarget.value)}
-                            onPathSelected={(destination) => onArtifactDestinationChange(card.artifactTarget!, destination)}
-                        />
+                        <fieldset disabled={artifactBuildRun.status === "running"} style={{border: 0, margin: 0, padding: 0}}>
+                            <PathInput
+                                label={isFileArtifactTarget(card.artifactTarget) ? "Output file (optional)" : "Output directory (optional)"}
+                                description={`${isFileArtifactTarget(card.artifactTarget) ? "Use a new file path." : "Use a new or empty directory."} Existing files will not be overwritten. Choose with Browse or type a server-filesystem path. Leave blank to use the shown default.`}
+                                kind={isFileArtifactTarget(card.artifactTarget) ? "file" : "directory"}
+                                pathPurpose="destination"
+                                filePickerMode={isFileArtifactTarget(card.artifactTarget) ? "save" : "open"}
+                                fileFilters={artifactFileFilters(card.artifactTarget)}
+                                browseTitle={artifactDestinationTitle(card.artifactTarget)}
+                                browseId={`artifact-${card.artifactTarget}-destination`}
+                                // This belongs to the editable control, not PathInput's
+                                // layout wrapper. The packed browser collector reads the
+                                // rendered input before it can enable Build, so keeping
+                                // the contract on the actual form field prevents a
+                                // route-level adapter from claiming a configured build.
+                                id={card.artifactTarget === "parWorkbook" ? "artifact-build-destination" : undefined}
+                                attributes={card.artifactTarget === "parWorkbook" ? {input: {
+                                    "data-pokie-lifecycle-field": "artifact-build-destination",
+                                }} : undefined}
+                                value={artifactDestination}
+                                error={artifactPreview.status === "conflict" ? "Choose a new or empty destination; existing files will not be overwritten." : undefined}
+                                onChange={(event) => onArtifactDestinationChange(card.artifactTarget!, event.currentTarget.value)}
+                                onPathSelected={(destination) => onArtifactDestinationChange(card.artifactTarget!, destination)}
+                            />
+                        </fieldset>
                         {artifactPreview.status === "loading" && (
                             <Text size="sm" c="dimmed" mt={4}>
                                 Checking destination…
@@ -728,6 +732,10 @@ function TargetCard({
                                         {artifactPreview.result.stakePreflight.warnings.map((warning, index) => <Text key={index} size="sm" c="orange">{warning}</Text>)}
                                     </>
                                 )}
+                                {card.artifactTarget === "blueprint" && artifactPreview.result.plan?.packageExtraction && (
+                                    <Text size="sm">Conversion evidence: {artifactPreview.result.destination}.conversion-evidence.json. Preview publishes no files; Save Blueprint explicitly creates a separate editable project.</Text>
+                                )}
+                                {artifactPreview.result.plan?.packageExtraction && artifactPreview.result.plan.source.configurationProvenance?.inputBindingHash && <Text size="sm">Source binding: {artifactPreview.result.plan.source.configurationProvenance.inputBindingHash}</Text>}
                                 <PackageExtractionDiagnostics extraction={artifactPreview.result.plan?.packageExtraction} />
                                 {artifactPreview.result.plan?.preflight.losses.map((loss, index) => <Text key={index} size="sm" c="orange">Data boundary: {loss}</Text>)}
                                 {artifactPreview.result.plan?.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []).map((loss, index) => <Text key={index} size="sm" c="orange">PAR import boundary: {loss}</Text>)}
@@ -761,10 +769,10 @@ function TargetCard({
                             disabled={!canBuildArtifact}
                             title={!canBuildArtifact ? artifactBuildDisabledReason : undefined}
                         >
-                            Build
+                            {card.artifactTarget === "blueprint" && artifactPreview.status === "ok" && artifactPreview.result.plan?.packageExtraction ? "Save Blueprint" : "Build"}
                         </Button>
                         {artifactBuildRun.status === "running" && (
-                            <Button size="xs" mt="sm" ml="xs" color="red" variant="light" onClick={() => onCancelArtifactBuild(card.artifactTarget!)}>
+                            <Button size="xs" mt="sm" ml="xs" color="red" variant="light" disabled={artifactBuildRun.cancellationRequested} onClick={() => onCancelArtifactBuild(card.artifactTarget!)}>
                                 Cancel
                             </Button>
                         )}
@@ -786,7 +794,7 @@ function TargetCard({
                         {artifactBuildRun.status === "running" && artifactBuildRun.progress?.preflight === undefined && (
                             <Text size="sm" c="dimmed" mt={4}>
                                 {artifactBuildRun.progress?.status !== "preflight" &&
-                                    (`Building artifact${artifactBuildRun.progress?.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
+                                    (`${artifactBuildRun.jobId ? "Building artifact" : "Starting artifact build"}${artifactBuildRun.progress?.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
                                         `${artifactBuildRun.progress?.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""})` : ""}`)}
                                 {artifactBuildRun.cancellationRequested ? " Cancellation requested…" : ""}
                             </Text>
@@ -822,6 +830,7 @@ function TargetCard({
                                     {artifactBuildRun.result.importedBlueprintPath !== undefined && ` Imported Blueprint: ${artifactBuildRun.result.importedBlueprintPath}.`}
                                     {artifactBuildRun.result.conversionEvidencePath !== undefined && ` Conversion evidence: ${artifactBuildRun.result.conversionEvidencePath}.`}
                                 </Text>
+                                {artifactBuildRun.result.plan?.packageExtraction && <Text size="sm" c="dimmed">Extraction evidence records this original publication. Subsequent Blueprint edits preserve it as historical provenance.</Text>}
                                 {artifactBuildRun.result.plan !== undefined && (
                                     <Text size="sm" c="dimmed" mt={4}>
                                         Executed plan: {artifactBuildRun.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}.
@@ -1253,6 +1262,9 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     // once a build attempt itself hits it.
     const [artifactPreviews, setArtifactPreviews] = useState<Record<string, ArtifactPreviewRunView>>({});
     const [artifactDestinations, setArtifactDestinations] = useState<Record<string, string>>({});
+    // Ownership starts before POST returns, and survives cancellation and transient poll failures.
+    // Keep intent synchronously so neither a render nor an older server read can discard it.
+    const artifactActiveBuilds = useRef<Record<string, {jobId: string; cancellationRequested: boolean}>>({});
     useEffect(() => {
         if (recoveryRequest === undefined) return;
         // Outcome Library recovery is a form reconstruction, never an
@@ -1290,7 +1302,9 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             // cannot retain a narrowing of an optional prop across that closure.
             const target = recoveryRequest.target;
             const outDir = recoveryRequest.outDir;
-            setArtifactDestinations((destinations) => ({...destinations, [target]: outDir}));
+            if (!artifactActiveBuilds.current[target]) {
+                setArtifactDestinations((destinations) => ({...destinations, [target]: outDir}));
+            }
         }
         // Deployment never auto-publishes from a retained record.  Re-select
         // its exact target so the user can inspect the regenerated plan and
@@ -1340,8 +1354,16 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     // see ArtifactBuildRunView's own doc comment.
     const [artifactBuildRuns, setArtifactBuildRuns] = useState<Record<string, ArtifactBuildRunView>>({});
     const artifactBuildPollTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-    useEffect(() => () => {
-        Object.values(artifactBuildPollTimers.current).forEach((timer) => clearTimeout(timer));
+    const artifactRunVersions = useRef<Record<string, number>>({});
+    const artifactMounted = useRef(true);
+    const artifactPollReads = useRef<Record<string, number>>({});
+    useEffect(() => {
+        artifactMounted.current = true;
+        const timers = artifactBuildPollTimers.current;
+        return () => {
+            artifactMounted.current = false;
+            Object.values(timers).forEach((timer) => clearTimeout(timer));
+        };
     }, []);
     // Every outputPath a successful build's own "Add to Projects" has already registered this session --
     // keyed by outputPath (not target), since a rebuild against a different outDir is a different
@@ -1546,43 +1568,92 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     // what this does and doesn't promise. Guarded by this target's own current run status (rather than a
     // shared useDoubleSubmitGuard) since every target's own build runs fully independently of every other.
     function handleBuildArtifact(target: StudioArtifactTargetType): void {
-        if (artifactBuildRuns[target]?.status === "running") {
+        if (artifactActiveBuilds.current[target]) {
             return;
         }
         const preview = artifactPreviews[target];
         const preparedOperationId = preview?.status === "ok" ? preview.result.preparedOperationId : undefined;
-        startArtifactBuild(fetchImpl, target, artifactDestinations[target]?.trim() || undefined, preparedOperationId)
+        if (preview?.status !== "ok") return;
+        const version = artifactRunVersions.current[target] = (artifactRunVersions.current[target] ?? 0) + 1;
+        artifactActiveBuilds.current[target] = {jobId: "", cancellationRequested: false};
+        setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running", jobId: "", cancellationRequested: false}}));
+        startArtifactBuild(fetchImpl, target, artifactDestinations[target]?.trim() || undefined, preparedOperationId, true)
             .then((job) => {
-                setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running", jobId: job.id, progress: job.progress, cancellationRequested: false}}));
-                pollArtifactBuild(target, job.id);
+                if (!artifactMounted.current || artifactRunVersions.current[target] !== version) {
+                    // The abandoned card must not leave its unactivated reservation behind.
+                    cancelArtifactBuild(fetchImpl, job.id).catch(() => undefined);
+                    return;
+                }
+                const active = artifactActiveBuilds.current[target];
+                active.jobId = job.id;
+                active.cancellationRequested ||= job.cancellationRequested || job.status === "cancelling";
+                setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running", jobId: job.id, progress: job.progress, cancellationRequested: active.cancellationRequested}}));
+                if (active.cancellationRequested) {
+                    requestArtifactCancellation(target, job.id, version);
+                } else {
+                    activateArtifactBuild(fetchImpl, job.id).catch((error: unknown) => {
+                        if (artifactMounted.current && artifactRunVersions.current[target] === version && artifactActiveBuilds.current[target]) {
+                            setArtifactActionError(describeProjectActionError("Starting the artifact build", errorMessage(error)));
+                            // Release the queued reservation and settle cleanup even if activation failed.
+                            requestArtifactCancellation(target, job.id, version);
+                        }
+                    });
+                }
+                pollArtifactBuild(target, job.id, version);
             })
-            .catch((error: unknown) => setArtifactBuildRuns((runs) => ({
-                ...runs,
-                [target]: {status: "error", message: describeProjectActionError("The artifact build", errorMessage(error))},
-            })));
+            .catch((error: unknown) => {
+                if (!artifactMounted.current || artifactRunVersions.current[target] !== version) return;
+                Reflect.deleteProperty(artifactActiveBuilds.current, target);
+                setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "error", message: describeProjectActionError("The artifact build", errorMessage(error))}}));
+                refreshArtifactPreviews();
+            });
     }
 
     function handleCancelArtifactBuild(target: StudioArtifactTargetType): void {
-        const run = artifactBuildRuns[target];
-        if (run?.status !== "running") return;
-        setArtifactBuildRuns((runs) => ({...runs, [target]: {...run, cancellationRequested: true}}));
-        cancelArtifactBuild(fetchImpl, run.jobId)
-            .then(() => pollArtifactBuild(target, run.jobId))
-            .catch((error: unknown) => setArtifactBuildRuns((runs) => ({
-                ...runs,
-                [target]: {status: "error", message: describeProjectActionError("The artifact build cancellation", errorMessage(error))},
-            })));
+        const active = artifactActiveBuilds.current[target];
+        if (!active || active.cancellationRequested) return;
+        active.cancellationRequested = true;
+        setArtifactBuildRuns((runs) => {
+            const run = runs[target];
+            return run?.status === "running" ? {...runs, [target]: {...run, cancellationRequested: true}} : runs;
+        });
+        // A pending start has no ID yet. Its accepted response sends this retained intent.
+        if (active.jobId) requestArtifactCancellation(target, active.jobId, artifactRunVersions.current[target]);
     }
 
-    function pollArtifactBuild(target: StudioArtifactTargetType, jobId: string): void {
+    function requestArtifactCancellation(target: StudioArtifactTargetType, jobId: string, version: number): void {
+        cancelArtifactBuild(fetchImpl, jobId)
+            .then(() => {
+                if (artifactMounted.current && artifactRunVersions.current[target] === version && artifactActiveBuilds.current[target]) pollArtifactBuild(target, jobId, version);
+            })
+            .catch((error: unknown) => {
+                if (!artifactMounted.current || artifactRunVersions.current[target] !== version || !artifactActiveBuilds.current[target]) return;
+                artifactActiveBuilds.current[target].cancellationRequested = false;
+                setArtifactBuildRuns((runs) => {
+                    const run = runs[target];
+                    return run?.status === "running" ? {...runs, [target]: {...run, cancellationRequested: false}} : runs;
+                });
+                setArtifactActionError(describeProjectActionError("The artifact build cancellation", errorMessage(error)));
+                // Keep ownership and allow a retry even if the cancellation request failed.
+                pollArtifactBuild(target, jobId, version);
+            });
+    }
+
+    function pollArtifactBuild(target: StudioArtifactTargetType, jobId: string, version: number): void {
+        if (!artifactMounted.current || artifactRunVersions.current[target] !== version || !artifactActiveBuilds.current[target]) return;
+        const read = artifactPollReads.current[target] = (artifactPollReads.current[target] ?? 0) + 1;
         getArtifactBuild(fetchImpl, jobId)
             .then((job) => {
+                if (!artifactMounted.current || artifactRunVersions.current[target] !== version || artifactPollReads.current[target] !== read) return;
+                if (artifactPollReads.current[target] !== read) return;
                 // A card only owns a job for the target it started. Never let a
                 // completed response for a sibling artifact replace this card's
                 // follow-up actions: doing so can make TypeScript Package's
                 // "Open as Project" open a PAR workbook output instead.
                 if (job.target !== target) {
+                    clearTimeout(artifactBuildPollTimers.current[target]);
                     Reflect.deleteProperty(artifactBuildPollTimers.current, target);
+                    Reflect.deleteProperty(artifactActiveBuilds.current, target);
                     setArtifactBuildRuns((runs) => ({
                         ...runs,
                         [target]: {
@@ -1592,17 +1663,28 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     }));
                     return;
                 }
-                if (job.status === "queued" || job.status === "running") {
-                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running", jobId, progress: job.progress, cancellationRequested: job.cancellationRequested}}));
-                    artifactBuildPollTimers.current[target] = setTimeout(() => pollArtifactBuild(target, jobId), 100);
+                if (job.status === "queued" || job.status === "running" || job.status === "cancelling") {
+                    const active = artifactActiveBuilds.current[target];
+                    active.cancellationRequested ||= job.cancellationRequested || job.status === "cancelling";
+                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running", jobId, progress: job.progress, cancellationRequested: active.cancellationRequested}}));
+                    clearTimeout(artifactBuildPollTimers.current[target]);
+                    artifactBuildPollTimers.current[target] = setTimeout(() => pollArtifactBuild(target, jobId, version), 100);
                     return;
                 }
+                clearTimeout(artifactBuildPollTimers.current[target]);
                 Reflect.deleteProperty(artifactBuildPollTimers.current, target);
+                const cancellationRequested = artifactActiveBuilds.current[target]?.cancellationRequested;
+                Reflect.deleteProperty(artifactActiveBuilds.current, target);
+                if (target === "blueprint") refreshArtifactPreviews();
                 if (job.status === "cancelled" && job.result?.status === "cancelled") {
                     // The terminal response is authoritative.  Do not turn a
                     // cancelled job into a client-side capability decision.
                     setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "cancelled", plan: job.result!.plan}}));
-                } else if (job.result !== undefined && job.result.status === "ok") {
+                } else if (job.status === "completed" && cancellationRequested) {
+                    setArtifactBuildRuns((runs) => ({...runs, [target]: {
+                        status: "error", message: "The artifact completed before cancellation reached the server. Inspect the retained operation before retrying.",
+                    }}));
+                } else if (job.status === "completed" && job.result !== undefined && job.result.status === "ok") {
                     const result = job.result;
                     setArtifactBuildRuns((runs) => ({
                         ...runs,
@@ -1616,20 +1698,25 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     if (target === "outcomeLibrary") refreshArtifactPreviews();
                 } else {
                     const result = job.result;
+                    let message = "Artifact build ended without a result.";
+                    if (result !== undefined) message = result.status === "ok"
+                        ? "Artifact job failed without confirming a successful publication." : describeArtifactBuildResultError(result);
                     setArtifactBuildRuns((runs) => ({
                         ...runs,
                         [target]: {
                             status: "error",
-                            message: result !== undefined ? describeArtifactBuildResultError(result) : "Artifact build ended without a result.",
+                            message,
                             ...(result !== undefined ? {plan: result.plan} : {}),
                         },
                     }));
                 }
             })
-            .catch((error: unknown) => setArtifactBuildRuns((runs) => ({
-                ...runs,
-                [target]: {status: "error", message: describeProjectActionError("The artifact build", errorMessage(error))},
-            })));
+            .catch((error: unknown) => {
+                if (!artifactMounted.current || artifactRunVersions.current[target] !== version || artifactPollReads.current[target] !== read) return;
+                setArtifactActionError(describeProjectActionError("The artifact build", errorMessage(error)));
+                clearTimeout(artifactBuildPollTimers.current[target]);
+                artifactBuildPollTimers.current[target] = setTimeout(() => pollArtifactBuild(target, jobId, version), 100);
+            });
     }
 
     // A successful build's own output is itself a resolvable PokieProject (of the built target's own
@@ -1729,9 +1816,15 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                                             onBuildArtifact={handleBuildArtifact}
                                             onCancelArtifactBuild={handleCancelArtifactBuild}
                                             artifactDestination={card.artifactTarget === undefined ? "" : artifactDestinations[card.artifactTarget] ?? ""}
-                                            onArtifactDestinationChange={(target, destination) =>
-                                                setArtifactDestinations((destinations) => ({...destinations, [target]: destination}))
-                                            }
+                                            onArtifactDestinationChange={(target, destination) => {
+                                                // Also guard picker callbacks opened before the job started.
+                                                if (artifactActiveBuilds.current[target]) return;
+                                                artifactRunVersions.current[target] = (artifactRunVersions.current[target] ?? 0) + 1;
+                                                clearTimeout(artifactBuildPollTimers.current[target]);
+                                                setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "idle"}}));
+                                                setArtifactPreviews((previews) => ({...previews, [target]: {status: "loading"}}));
+                                                setArtifactDestinations((destinations) => ({...destinations, [target]: destination}));
+                                            }}
                                             onOpenAsProject={(result) => handleOpenArtifactAsProject(card.artifactTarget!, result)}
                                             onAddToProjects={handleAddArtifactToProjects}
                                             addedToProjects={addedToProjects}
