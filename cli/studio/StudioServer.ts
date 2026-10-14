@@ -2983,7 +2983,7 @@ export class StudioServer implements StudioServerHandling {
             bet: descriptor.totalBet,
             win: descriptor.totalWin,
             ...(descriptor.screen !== null ? {screen: descriptor.screen} : {}),
-            ...(descriptor.artifact !== undefined ? {debug: {artifact: descriptor.artifact}} : {}),
+            debug: {recording: descriptor, ...(descriptor.artifact !== undefined ? {artifact: descriptor.artifact} : {})},
             ...(descriptor.outcomeSource !== undefined ? {replay: descriptor.outcomeSource} : {}),
         };
         this.roundRecorder.record(view, {
