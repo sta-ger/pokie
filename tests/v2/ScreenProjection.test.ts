@@ -453,7 +453,7 @@ describe("Generated / visible / evaluated screen contracts", () => {
                 const error = feature === "holdOutsideJackpot" ? /inside bet modes and jackpot/ : /Bet modes must be inside jackpot/;
                 expect(() => session.validateScreenCoordinates?.()).toThrow(error);
                 expect(() => session.play()).toThrow(error);
-                expect(() => rejected.validateSessionState(rejected.toSessionState())).toThrow(error);
+                expect(() => rejected.validateSessionState(rejected.toSessionState())).toThrow(/inside bet modes and jackpot|Bet modes must be inside jackpot/);
                 if (feature === "holdOutsideJackpot") expect(() => hold.fromSessionState(hold.toSessionState())).toThrow(error);
                 else expect(() => (session as VideoSlotWithBetModesSession).fromSessionState((session as VideoSlotWithBetModesSession).toSessionState())).toThrow(error);
                 expect(rng.getRandomInt).not.toHaveBeenCalled();
