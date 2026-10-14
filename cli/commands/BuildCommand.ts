@@ -189,18 +189,19 @@ export class BuildCommand implements CliCommandHandling {
             throw new Error(`"${projectPath}" was not recognized as a POKIE project.\n\n${PROJECT_HINT}`);
         }
 
-        const out = options.out ?? this.resolveDestination(project.rootPath, options.target);
+        const target = options.target;
+        const out = options.out ?? this.resolveDestination(project.rootPath, target);
         const conversionPlan = await this.runWithArtifactLifecycle(async lifecycle => {
-            const conversionPlan = options.target === "stakeAdapter"
+            const conversionPlan = target === "stakeAdapter"
                 ? await this.stakeProjection.prepare(project, out, {...lifecycle, outcomeLibraryGeneration: generation})
-                : await this.registry.preparePlan(project, options.target!, {destinationPath: out, outcomeLibraryGeneration: generation, signal: lifecycle.signal});
+                : await this.registry.preparePlan(project, target, {destinationPath: out, outcomeLibraryGeneration: generation, signal: lifecycle.signal});
             if (conversionPlan.status === "unavailable") {
                 if (conversionPlan.packageExtraction) this.printExtraction(conversionPlan.packageExtraction);
                 const compatibility = describeArtifactConversionPlanDiagnostic(conversionPlan);
                 throw new Error(`${conversionPlan.diagnostic!.message} Next: ${conversionPlan.diagnostic!.recovery}${compatibility === undefined ? "" : `\n${compatibility}`}`);
             }
             if (conversionPlan.status === "conflict") {
-                throw new Error(describeDestinationConflict(options.target, conversionPlan.diagnostic!.message));
+                throw new Error(describeDestinationConflict(target, conversionPlan.diagnostic!.message));
             }
 
             if (options.dryRun) {
@@ -208,9 +209,9 @@ export class BuildCommand implements CliCommandHandling {
                 // injected Blueprint reader/validator and renders the complete generated-package summary.
                 // Every other supported cell must validate its own registry source/artifact contract before
                 // the generic dry-run branch can claim success.
-                if (!(options.target === "tsPackage" && project.type === "blueprint")) {
-                    if (options.target === "stakeAdapter") await this.stakeProjection.validate(project, conversionPlan);
-                    else await this.registry.validate(options.target, project, conversionPlan, lifecycle);
+                if (!(target === "tsPackage" && project.type === "blueprint")) {
+                    if (target === "stakeAdapter") await this.stakeProjection.validate(project, conversionPlan);
+                    else await this.registry.validate(target, project, conversionPlan, lifecycle);
                 }
             }
             return conversionPlan;
