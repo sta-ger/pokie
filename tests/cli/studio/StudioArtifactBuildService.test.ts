@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
-import {ArtifactBuildCancelledError, ArtifactBuilderRegistry, ArtifactConversionPlanner, ManagedOutcomeProjectService, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, type ArtifactTargetType, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "@fromstan/pokie";
+import {ArtifactBuildCancelledError, ArtifactBuilderRegistry, ArtifactConversionPlanner, ManagedOutcomeProjectService, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, resolvePokieGameEntryModule, type ArtifactTargetType, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
@@ -473,6 +473,11 @@ describe("StudioArtifactBuildService", () => {
     it.each([false, true])("keeps registration cleanup failure observable after owned files roll back (cancelled: %s)", async cancelled => {
         const source = writeDescriptorPackage(workDir);
         const bytes = fs.readFileSync(path.join(source, "index.js"));
+        // Another worker may retain an otherwise identical descriptor while this build rolls back.
+        const sibling = writeDescriptorPackage(workDir, {name: "sibling-package"});
+        const siblingBytes = fs.readFileSync(path.join(sibling, "index.js"));
+        const lease = await resolvePokieGameEntryModule(sibling);
+        const siblingSnapshots = runtimeSnapshotNames(sibling);
         const controller = new AbortController();
         const destination = path.join(workDir, "cleanup.json");
         const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, () => {
@@ -480,11 +485,19 @@ describe("StudioArtifactBuildService", () => {
             controller.abort();
             return Promise.resolve();
         }, undefined, undefined, () => Promise.reject(new Error("registry cleanup confirmation failed")));
-        const result = await packageService.build(source, "blueprint", destination, {signal: controller.signal});
-        expect(result).toMatchObject({status: "error", message: expect.stringContaining("registration rollback: registry cleanup confirmation failed")});
-        expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(bytes);
-        expect(fs.readdirSync(workDir)).toEqual(["descriptor-package"]);
-        expect(runtimeSnapshotNames(source)).toEqual([]);
+        try {
+            expect(siblingSnapshots).toHaveLength(1);
+            const result = await packageService.build(source, "blueprint", destination, {signal: controller.signal});
+            expect(result).toMatchObject({status: "error", message: expect.stringContaining("registration rollback: registry cleanup confirmation failed")});
+            expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(bytes);
+            expect(fs.readFileSync(path.join(sibling, "index.js"))).toEqual(siblingBytes);
+            expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", "sibling-package"]);
+            expect(runtimeSnapshotNames(source)).toEqual([]);
+            expect(runtimeSnapshotNames(sibling)).toEqual(siblingSnapshots);
+        } finally {
+            await lease.release();
+        }
+        expect(runtimeSnapshotNames(sibling)).toEqual([]);
     });
 
     describe("reviewed package extraction", () => {

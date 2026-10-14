@@ -17,7 +17,8 @@ export function writeDescriptorPackage(
     );
     fs.writeFileSync(
         path.join(root, "index.js"),
-        `const model = ${JSON.stringify(model)};
+        `// Fixture source: ${JSON.stringify(path.resolve(root))}
+const model = ${JSON.stringify(model)};
 module.exports = {
     getManifest() { return model.manifest; },
     createSession() { throw new Error("Model extraction must not create a session"); },
@@ -76,8 +77,8 @@ export function writePausedDescriptorPackage(
 
 /** Inventory this fixture's leases, independent of other workers sharing the temporary directory. */
 export function runtimeSnapshotNames(packageSource: string): string[] {
-    // Paused descriptors embed their unique absolute control path in index.js. The loader copies
-    // those bytes unchanged, so this binding still detects every live or leaked fixture snapshot.
+    // Every descriptor embeds its absolute fixture root in index.js. The loader copies those
+    // bytes unchanged, so this binding detects owned leases without matching a sibling's model.
     const entry = fs.readFileSync(path.join(packageSource, "index.js"));
     const temporaryDirectory = os.tmpdir();
     return fs.readdirSync(temporaryDirectory).filter(name => {
