@@ -481,7 +481,7 @@ describe("F12 seeded step artifact attribution", () => {
             const game = generatedMechanicsGame(replayModesBlueprint(weighted));
             for (let round = 1; round <= stakes.length; round++) {
                 const execution = new ReplayRecorder().execute({game, seed: "review-fixed", round, betModeId: mode});
-                const results = [];
+                const results: ReturnType<SessionRuntime["execute"]>[] = [];
                 let next = execution.next();
                 while (!next.done) {
                     results.push(next.value.result);

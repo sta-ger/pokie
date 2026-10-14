@@ -9,7 +9,7 @@ import type {
     StudioReplayListEntry,
     StudioReplayStatus,
     StudioRuntimeSessionView,
-} from "../../api/types";
+} from "../../api/types.js";
 
 // Pure view-model transforms for the Replay tab — same role as interpretSimulation.ts: main.ts/dom.ts
 // consume these instead of branching on the raw job/list shapes themselves, and (being pure) these are
