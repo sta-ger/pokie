@@ -90,3 +90,6 @@ export const OUTCOME_SOURCE_READ_CAPABILITY: ProjectCapability = "outcomeSource.
 // contract for (see StakeEngineOutcomeSourceReading's own doc comment) — its own exact analysis/diff/report
 // remain read-only, under OUTCOME_SOURCE_READ_CAPABILITY, instead.
 export const OUTCOME_SOURCE_SAMPLE_CAPABILITY: ProjectCapability = "outcomeSource.sample";
+
+/** Capability to request extraction. Complete model support is checked at preflight. */
+export const PACKAGE_MODEL_EXTRACT_CAPABILITY: ProjectCapability = "package.model.extract";

@@ -95,7 +95,7 @@ export type GameModelReels = {
 
 export type GameModelPaytableRow = {symbolId: string; matchCount: number; payout: number};
 
-export type GameModelBetMode = {id: string; label?: string; costMultiplier?: number; targetRtp?: number};
+export type GameModelBetMode = import("../gamepackage/BetMode.js").BetMode;
 
 export type GameModelBetsAndModes = {availableBets: number[]; betModes: GameModelBetMode[]};
 
@@ -110,6 +110,7 @@ export type GameModelMechanics = {freeGames?: GameModelFreeGames};
 export type GameModelLimits = {minBet?: number; maxBet?: number};
 
 export type GameModelProjection = {
+    packageExtraction?: import("../generated/PackageBlueprintExtraction.js").PackageBlueprintExtractionResult;
     basics: GameModelSection<GameModelBasics>;
     layout: GameModelSection<GameModelLayout>;
     symbols: GameModelSection<GameModelSymbol[]>;

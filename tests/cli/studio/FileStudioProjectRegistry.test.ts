@@ -32,6 +32,14 @@ describe("FileStudioProjectRegistry", () => {
         fs.rmSync(tempDir, {recursive: true, force: true});
     });
 
+    it("retains package extraction evidence on reopening without inventing a PAR origin", async () => {
+        const first = new FileStudioProjectRegistry(registryFile);
+        await first.upsert(entry("/games/extracted.json", {type: "blueprint", conversionEvidencePath: "/games/extracted.json.conversion-evidence.json"}));
+        const reopened = (await new FileStudioProjectRegistry(registryFile).list())[0];
+        expect(reopened.conversionEvidencePath).toBe("/games/extracted.json.conversion-evidence.json");
+        expect(reopened.importedFromParSheetPath).toBeUndefined();
+    });
+
     it("starts empty when the registry file doesn't exist yet", async () => {
         const registry = new FileStudioProjectRegistry(registryFile);
 

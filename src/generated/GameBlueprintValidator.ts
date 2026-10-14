@@ -369,6 +369,15 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                 });
             }
 
+            if (e.isDefault !== undefined && typeof e.isDefault !== "boolean") {
+                issues.push({
+                    code: "blueprint-betmode-invalid-isdefault",
+                    severity: "error",
+                    message: `"${path}.isDefault", if present, must be a boolean.`,
+                    path: `${path}.isDefault`,
+                });
+            }
+
             if (e.targetRtp !== undefined && !(typeof e.targetRtp === "number" && Number.isFinite(e.targetRtp) && e.targetRtp > 0)) {
                 issues.push({
                     code: "blueprint-betmode-invalid-targetrtp",
@@ -445,17 +454,8 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                 return;
             }
 
-            if (e.isDefault !== undefined && typeof e.isDefault !== "boolean") {
-                issues.push({
-                    code: "blueprint-betmode-invalid-isdefault",
-                    severity: "error",
-                    message: `"${path}.isDefault", if present, must be a boolean.`,
-                    path: `${path}.isDefault`,
-                });
-                validSoFar = false;
-            } else if (e.isDefault === true) {
-                defaults.push({entry: e, index});
-            }
+            if (e.isDefault !== undefined && typeof e.isDefault !== "boolean") validSoFar = false;
+            else if (e.isDefault === true) defaults.push({entry: e, index});
 
             if (e.forcedFreeGames !== undefined && !(typeof e.forcedFreeGames === "number" && Number.isInteger(e.forcedFreeGames) && e.forcedFreeGames > 0)) {
                 issues.push({
@@ -664,7 +664,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         const paytableRecord = paytable as Record<string, unknown>;
         const paytableSymbols = Object.keys(paytableRecord);
         if (paytableSymbols.length === 0) {
-            issues.push({code: "blueprint-paytable-empty", severity: "error", message: '"paytable" must define at least one symbol payout.'});
+            issues.push({code: "blueprint-paytable-empty", severity: "warning", message: 'The authored empty "paytable" pays zero for every symbol.'});
         }
 
         for (const symbolId of paytableSymbols) {
@@ -685,11 +685,11 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
             }
 
             const payouts = paytableRecord[symbolId];
-            if (typeof payouts !== "object" || payouts === null || Array.isArray(payouts) || Object.keys(payouts).length === 0) {
+            if (typeof payouts !== "object" || payouts === null || Array.isArray(payouts)) {
                 issues.push({
                     code: "blueprint-paytable-invalid-payouts",
                     severity: "error",
-                    message: `"paytable.${symbolId}" must be a non-empty object mapping match-count to a bet multiplier.`,
+                    message: `"paytable.${symbolId}" must be an object mapping match-count to a bet multiplier.`,
                 });
                 continue;
             }
@@ -1440,7 +1440,8 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
             if (!reachable.has(symbolId)) {
                 issues.push({
                     code,
-                    severity: "error",
+                    // Literal runtime models can retain unreachable authored awards without changing math.
+                    severity: source === "reelStrips" ? "warning" : "error",
                     message: `"${symbolId}" is referenced by "paytable"/"wilds"/"scatters" but never appears in "${source}", so it can never land on the reels — any payout for it is impossible to win.`,
                     suggestion: `Add "${symbolId}" to "${source}", or remove references to it from "paytable"/"wilds"/"scatters".`,
                 });

@@ -16,6 +16,11 @@ export type ManagedOutcomeProjectOwnership = {
 
 export type ArtifactBuildResult = {
     readonly outputPath: string;
+    /** Identities of exclusively published files, retained for registration rollback. */
+    readonly publishedFileOwnership?: readonly {readonly path: string; readonly dev: number; readonly ino: number}[];
+    /** Directory identities guard file rollback; only operation-created empty directories are removed. */
+    readonly publishedDirectoryOwnership?: readonly {readonly path: string; readonly dev: number; readonly ino: number; readonly removeOnRollback: boolean}[];
+    readonly packageExtraction?: import("../generated/PackageBlueprintExtraction.js").PackageBlueprintExtractionResult;
     // A direct Blueprint -> Outcome request may reuse an already registered compatible project instead of
     // producing a second bundle at its requested destination. Both values make that different destination
     // explicit to CLI and Studio callers; outputPath is always the actual opened project root.

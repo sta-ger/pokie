@@ -65,7 +65,8 @@ export class GamePackageGenerator implements GamePackageGenerating {
     // src/index.ts. Nothing under the built package tracks where it came from (no embedded blueprint
     // copy, no build-info file, no "src/generated" nesting) — see BUILT_PACKAGE_FILES — so a later
     // source edit or rebuild never has to reconcile against, or is constrained by, whatever produced
-    // this package originally.
+    // this package originally. The public descriptor exposes only its effective embedded model,
+    // never discarded authoring-time generation instructions.
     public generate(
         blueprint: GameBlueprint,
         cwd: string,

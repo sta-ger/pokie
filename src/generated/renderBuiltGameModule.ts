@@ -305,6 +305,9 @@ module.exports = {
     getManifest() {
         return blueprint.manifest;
     },
+    getModelDescriptor() {
+        return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model: blueprint};
+    },
     getSessionStateSchema() {
         return ${JSON.stringify(stateSchema)};
     },

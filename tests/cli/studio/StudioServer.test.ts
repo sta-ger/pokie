@@ -1,3 +1,4 @@
+import {writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {StudioRoundRecorder} from "../../../cli/studio/runtime/StudioRoundRecorder.js";
 import {transactionalRoundGame} from "../../v2/fixtures/TransactionalRoundGame.js";
 import {
@@ -37,6 +38,7 @@ import {
 } from "@fromstan/pokie";
 import ExcelJS from "exceljs";
 import crypto from "crypto";
+import {spawn} from "child_process";
 import fs from "fs";
 import http, {type IncomingMessage} from "http";
 import os from "os";
@@ -46,7 +48,7 @@ import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
 import {OutcomeLibraryCommand} from "../../../cli/commands/OutcomeLibraryCommand.js";
 import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
-import {PackageCommandResult, PackageCommandRunning, runPackageCommand, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
+import {PackageCommandRunning, runPackageCommand, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {createRecommendedBlueprint} from "../../../cli/studio-client/src/domain/blueprintEditorState.js";
@@ -99,14 +101,38 @@ function restoreEnv(name: string, value: string | undefined): void {
 
 // The materialization tests deliberately exercise the real `npm install` boundary. Invoke the npm bundled
 // with this test process's Node runtime directly, preserving the ordinary production command arguments while
-// avoiding a test-command policy wrapper injected into PATH.
-const runBundledNpmCommand: PackageCommandRunning = (command, args, cwd) => {
+// avoiding a test-command policy wrapper injected into PATH. Pass Jest's fixture environment explicitly:
+// native spawn's default environment belongs to the host process, not Jest's isolated process.env.
+const runBundledNpmCommand: PackageCommandRunning = async (command, args, cwd, options) => {
     const bundledNpmDirectory = path.dirname(process.execPath);
     const bundledNpm = path.join(bundledNpmDirectory, process.platform === "win32" ? "npm.cmd" : "npm");
-    if (!fs.existsSync(bundledNpm)) {
-        return runPackageCommand(command, args, cwd);
+    const packagePath = path.join(cwd, "package.json");
+    const original = command === "npm" && args[0] === "install" ? fs.readFileSync(packagePath) : undefined;
+    try {
+        if (original) {
+            // npm resolves dev metadata even with --omit=dev. Keep this real-install fixture independent
+            // of registry cache contents, without changing production's runtime dependency rewrite.
+            const pkg = JSON.parse(original.toString("utf8"));
+            for (const name of ["typescript", "@types/node"]) {
+                if (pkg.devDependencies?.[name]) pkg.devDependencies[name] = `file:${path.join(REPO_ROOT, "node_modules", name)}`;
+            }
+            fs.writeFileSync(packagePath, JSON.stringify(pkg));
+        }
+        return await runPackageCommand(command, args, cwd, {
+            ...options,
+            spawn: (executable, childArgs, spawnOptions) => {
+                const child = spawn(
+                    executable === "npm" && fs.existsSync(bundledNpm) ? bundledNpm : executable,
+                    childArgs,
+                    {...spawnOptions, env: {...process.env}},
+                );
+                expect(child.stdin).toBeNull();
+                return child;
+            },
+        });
+    } finally {
+        if (original) fs.writeFileSync(packagePath, original);
     }
-    return runPackageCommand(command === "npm" ? bundledNpm : command, args, cwd);
 };
 
 async function get(url: string): Promise<{status: number; body: unknown}> {
@@ -1813,7 +1839,7 @@ describe("StudioServer", () => {
         function failFirstInstallThenDelegate(base: PackageCommandRunning): PackageCommandRunning & {calls: number} {
             let calls = 0;
             let failed = false;
-            const runner = (command: string, args: string[], cwd: string): Promise<PackageCommandResult> => {
+            const runner: PackageCommandRunning = (command, args, cwd, options) => {
                 calls++;
                 if (args[0] === "install" && !failed) {
                     failed = true;
@@ -1823,7 +1849,7 @@ describe("StudioServer", () => {
                         }),
                     );
                 }
-                return base(command, args, cwd);
+                return base(command, args, cwd, options);
             };
             // Object.assign copies a getter's *current value*, not the accessor itself -- defineProperty is
             // what keeps `.calls` live across every subsequent invocation of `runner`. Reflect.defineProperty
@@ -1907,17 +1933,43 @@ describe("StudioServer", () => {
         }
 
         it("materializes a genuinely loadable runtime through Home Open Project using the production materializing resolver, offline, with an installation path containing spaces, and reuses the cache on a second Open", async () => {
-            const {baseUrl, rawProjectRoot} = await startDefaultMaterializingServer();
+            // Reproduce the independent direct-Jest launch even when this file is run via npm.
+            const callerKeys = Object.keys(process.env).filter(key => key.startsWith("npm_lifecycle_") || key.startsWith("npm_package_") || key === "INIT_CWD" || key === "TMPDIR");
+            const callerEnvironment = callerKeys.map(key => [key, process.env[key]] as const);
+            for (const key of callerKeys) Reflect.deleteProperty(process.env, key);
+            try {
+                // Check the real child's configuration, rather than just the parent fixture's env.
+                const config = JSON.parse((await runBundledNpmCommand("npm", ["config", "list", "--json"], blueprintSourceDir)).stdout);
+                expect(config.offline).toBe(true);
+                expect(config.registry).toBe("http://127.0.0.1:1/");
+                const {baseUrl, rawProjectRoot} = await startDefaultMaterializingServer();
+                const sourceBytes = fs.readFileSync(rawProjectRoot);
 
-            const first = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
-            expect(first.status).toBe(200);
-            const firstBody = first.body as {context: {projectRoot: string}; manifest: PokieGameManifest};
-            expect(firstBody.manifest.id).toBe("starter-slot");
+                const first = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+                expect((first.body as {detail?: string}).detail).toBeUndefined();
+                expect(first).toMatchObject({status: 200});
+                const firstBody = first.body as {context: {projectRoot: string}; manifest: PokieGameManifest};
+                expect(firstBody.manifest.id).toBe("starter-slot");
+                const cacheEntries = fs.readdirSync(materializeCacheRoot);
+                expect(cacheEntries).toHaveLength(1);
+                const runtimeRoot = path.join(materializeCacheRoot, cacheEntries[0]);
+                const installedPackage = JSON.parse(fs.readFileSync(path.join(runtimeRoot, "package.json"), "utf8"));
+                expect(installedPackage.dependencies["@fromstan/pokie"]).toBe(`^${UNPUBLISHED_POKIE_VERSION}`);
+                for (const spec of Object.values(installedPackage.devDependencies)) expect(spec).not.toMatch(/^file:/);
+                expect(fs.existsSync(path.join(runtimeRoot, "node_modules", "typescript"))).toBe(false);
+                expect(fs.realpathSync(path.join(runtimeRoot, "node_modules", "@fromstan", "pokie"))).toBe(fs.realpathSync(REPO_ROOT));
+                const runtimeInode = fs.statSync(path.join(runtimeRoot, "dist", "index.js")).ino;
 
-            await post(`${baseUrl}/api/projects/close`);
-            const second = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
-            expect(second.status).toBe(200);
-            expect((second.body as {manifest: PokieGameManifest}).manifest).toEqual(firstBody.manifest);
+                await post(`${baseUrl}/api/projects/close`);
+                const second = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+                expect(second.status).toBe(200);
+                expect((second.body as {manifest: PokieGameManifest}).manifest).toEqual(firstBody.manifest);
+                expect(fs.readdirSync(materializeCacheRoot)).toEqual(cacheEntries);
+                expect(fs.statSync(path.join(runtimeRoot, "dist", "index.js")).ino).toBe(runtimeInode);
+                expect(fs.readFileSync(rawProjectRoot)).toEqual(sourceBytes);
+            } finally {
+                for (const [key, value] of callerEnvironment) restoreEnv(key, value);
+            }
         });
 
         it("retries a transient staged install through Home Open Project so one Open reaches the Workspace, then reuses the cache", async () => {
@@ -1925,7 +1977,8 @@ describe("StudioServer", () => {
             const {baseUrl, rawProjectRoot} = await startMaterializingServer(flakyRunner);
 
             const openedAfterAutomaticRetry = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
-            expect(openedAfterAutomaticRetry.status).toBe(200);
+            expect((openedAfterAutomaticRetry.body as {detail?: string}).detail).toBeUndefined();
+            expect(openedAfterAutomaticRetry).toMatchObject({status: 200});
             expect(flakyRunner.calls).toBe(2);
 
             await post(`${baseUrl}/api/projects/close`);
@@ -7719,6 +7772,27 @@ describe("StudioServer", () => {
             );
             return filePath;
         }
+
+        it("shares package extraction diagnosis between Game Model, artifact preview and published jobs", async () => {
+            const source = writeDescriptorPackage(artifactWorkDir);
+            const url = await startServerForProject(source);
+            const model = await get(`${url}/api/project/gameModel`);
+            expect(model.status).toBe(200);
+            expect(model.body).toMatchObject({basics: {status: "available", data: {id: "math-probe", version: "0.1.0"}}, packageExtraction: {status: "complete", source: {kind: "custom"}}});
+            const targets = await get(`${url}/api/project/artifacts/targets`);
+            expect(targets.status).toBe(200);
+            expect((targets.body as {target: string; plan: unknown}[]).find(target => target.target === "blueprint")).toMatchObject({supported: true, state: "supported", plan: {packageExtraction: {status: "complete"}}});
+            const destination = path.join(artifactWorkDir, "extracted.json");
+            const preview = await post(`${url}/api/project/artifacts/preview`, {target: "blueprint", outDir: destination});
+            expect(preview.body).toMatchObject({status: "ok", plan: {packageExtraction: {status: "complete"}, steps: [{kind: "extractPackageModel"}]}});
+            expect(fs.existsSync(destination)).toBe(false);
+            const started = await post(`${url}/api/project/artifacts/build`, {target: "blueprint", outDir: destination});
+            expect(started.status).toBe(202);
+            const completed = await waitForArtifactBuildJob(url, (started.body as {job: {id: string}}).job.id);
+            expect(completed.status).toBe("completed");
+            expect(completed.result).toMatchObject({status: "ok", outputPath: destination, conversionEvidencePath: `${destination}.conversion-evidence.json`});
+            expect(fs.existsSync(destination)).toBe(true);
+        });
 
         it("returns 409 for every route when there is no active project", async () => {
             const homeBaseUrl = await startServerForProject(undefined);

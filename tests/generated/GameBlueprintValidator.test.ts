@@ -895,6 +895,13 @@ describe("GameBlueprintValidator", () => {
                 expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmodes-incomplete-runtimetype");
             });
 
+            it.each(["yes", 1, null, {}, []])("rejects metadata-only isDefault %p", isDefault => {
+                const issues = new GameBlueprintValidator().validate({...validBlueprint(), betModes: [{id: "base", isDefault}]});
+                expect(issues).toContainEqual(expect.objectContaining({
+                    code: "blueprint-betmode-invalid-isdefault", severity: "error", path: "betModes[0].isDefault",
+                }));
+            });
+
             it("accepts a metadata-only default without opting into runtime semantics", () => {
                 const blueprint = {...validBlueprint(), betModes: [{id: "base", isDefault: true}]};
 

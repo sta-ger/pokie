@@ -1,10 +1,12 @@
 import {
     ArtifactBuildConflictError,
+    rollbackArtifactPublication,
     ArtifactBuildCancelledError,
     type ArtifactConversionPlan,
     type ArtifactBuildOptions,
     type ArtifactBuildProgress,
     ArtifactBuilderRegistry,
+    ArtifactConversionPlanner,
     ArtifactTargetType,
     describeArtifactConversionPlanDiagnostic,
     ManagedOutcomeProjectService,
@@ -59,7 +61,7 @@ function destinationKindFor(target: ArtifactTargetType): "file" | "directory" {
 function plannedOutputsFor(target: ArtifactTargetType): readonly string[] {
     switch (target) {
         case "blueprint":
-            return ["Game Blueprint JSON file with PAR conversion evidence"];
+            return ["Game Blueprint JSON file with conversion evidence"];
         case "tsPackage":
             return ["Runnable TypeScript game package directory"];
         case "outcomeLibrary":
@@ -144,9 +146,18 @@ export class StudioArtifactBuildService {
         const project = await resolveStudioProjectSource(this.resolveProject, projectRoot);
         return Promise.all(this.registry.listTargets().map(async (target) => {
             const descriptor = this.registry.describe(target);
-            const plan = project === undefined
-                ? createUnresolvedRuntimePlan(projectRoot, target)
-                : await this.plan(project, target);
+            let plan: ArtifactConversionPlan;
+            try {
+                plan = project === undefined ? createUnresolvedRuntimePlan(projectRoot, target) : await this.plan(project, target);
+            } catch (error) {
+                if (project === undefined) throw error;
+                plan = {
+                    ...new ArtifactConversionPlanner().plan(project, target), status: "unavailable", steps: [],
+                    diagnostic: {code: "unsupported-boundary", failedEdge: {from: project.type, to: target},
+                        message: `${target} preflight failed: ${(error instanceof Error ? error.message : "Runtime inspection failed").slice(0, 2000)}`,
+                        recovery: "Inspect this target's runtime capabilities or choose an available model conversion."},
+                };
+            }
             const plannerFields = this.targetPlannerFields(plan);
             return {
                 target,
@@ -301,7 +312,14 @@ export class StudioArtifactBuildService {
         const operation = target === "stakeAdapter"
             ? preparedStakeOperation ?? await this.stakeProjection.prepareOperation(project, destination, options)
             : undefined;
-        const plan = operation?.plan ?? await this.plan(project, target, destination, options);
+        let plan: ArtifactConversionPlan;
+        try {
+            plan = operation?.plan ?? await this.plan(project, target, destination, options);
+            assertArtifactBuildNotCancelled(options);
+        } catch (error) {
+            plan = new ArtifactConversionPlanner().plan(project, target, {destinationPath: destination});
+            return options?.signal?.aborted ? {status: "cancelled", message: "Artifact build cancelled before publication.", plan} : {status: "error", message: error instanceof Error ? error.message : String(error), plan};
+        }
         if (plan.status === "unavailable") {
             return {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan};
         }
@@ -318,7 +336,7 @@ export class StudioArtifactBuildService {
                 ...this.durableManagedRoots(result, plan),
                 // A PAR import's Blueprint is itself a durable Studio project,
                 // not merely a transient prerequisite like an Outcome bundle.
-                ...(target === "blueprint" || project.type === "parWorkbook" ? [result.outputPath] : []),
+                ...(target === "blueprint" || project.type === "parWorkbook" || plan.packageExtraction ? [result.outputPath] : []),
                 // Every PAR-derived terminal artifact owns a durable imported
                 // Blueprint.  Register that model as well as the terminal so
                 // a restart can reopen its workbook/evidence provenance.
@@ -697,7 +715,7 @@ export class StudioArtifactBuildService {
     private plan(project: PokieProject, target: ArtifactTargetType, destinationPath?: string, options?: ArtifactBuildOptions): Promise<ArtifactConversionPlan> {
         return target === "stakeAdapter"
             ? this.stakeProjection.prepare(project, destinationPath, options)
-            : this.registry.preparePlan(project, target, {destinationPath, outcomeLibraryGeneration: options?.outcomeLibraryGeneration});
+            : this.registry.preparePlan(project, target, {destinationPath, outcomeLibraryGeneration: options?.outcomeLibraryGeneration, signal: options?.signal});
     }
 
     // Resolves `projectRoot` into a PokieProject and `target`'s own default destination -- the exact same
@@ -770,6 +788,7 @@ export class StudioArtifactBuildService {
                     await registry.releaseManagedOutcomeProject(ownership.sourceRootPath, projectRoot).catch(() => undefined);
                 }
             }
+            if (result.publishedDirectoryOwnership?.some(entry => projectRoot === entry.path) || result.publishedFileOwnership?.some(entry => entry.path === projectRoot)) continue;
             if (projectRoot === result.outputPath && outputDestinationExisted) {
                 // The destination was a caller-owned empty directory at
                 // preflight.  Remove only this operation's publication and
@@ -782,13 +801,17 @@ export class StudioArtifactBuildService {
             }
             await fs.promises.rm(`${projectRoot}.conversion-evidence.json`, {force: true}).catch(() => undefined);
         }
-        if (plan.target.kind === "wasm" && !outputDestinationExisted) {
+        if (result.publishedDirectoryOwnership !== undefined || result.publishedFileOwnership !== undefined) {
+            await rollbackArtifactPublication(result);
+            return;
+        }
+        if ((plan.target.kind === "wasm" || (plan.target.kind === "parWorkbook" && plan.packageExtraction)) && !outputDestinationExisted) {
             // WASM publication has a file module plus integrity and PAR
             // companions. They are allocated together by this operation, so
             // no partially published component may survive failed Studio
             // registration or post-writer cancellation.
             await Promise.all([
-                fs.promises.rm(wasmComponentManifestSidecarPath(result.outputPath), {force: true}),
+                ...(plan.target.kind === "wasm" ? [fs.promises.rm(wasmComponentManifestSidecarPath(result.outputPath), {force: true})] : []),
                 fs.promises.rm(`${result.outputPath}.pokie`, {recursive: true, force: true}),
             ]).catch(() => undefined);
         }

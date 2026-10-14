@@ -1,3 +1,4 @@
+import {PackageExtractionDiagnostics} from "./PackageExtractionDiagnostics";
 import {useEffect, useId, useRef, useState} from "react";
 import {Badge, Button, Group, List, Text, TextInput} from "@mantine/core";
 import {
@@ -80,7 +81,7 @@ function artifactFileFilters(target: StudioArtifactTargetType) {
 
 function artifactDestinationTitle(target: StudioArtifactTargetType): string {
     if (target === "parWorkbook") return "Choose a PAR workbook destination";
-    if (target === "blueprint") return "Choose an imported Blueprint destination";
+    if (target === "blueprint") return "Choose a Blueprint destination";
     if (target === "wasm") return "Choose a portable WASM game destination";
     return "Choose an artifact output directory";
 }
@@ -439,6 +440,7 @@ function TargetCard({
                         Unavailable for this project
                     </Text>
                     <List size="sm" withPadding>
+                        {!card.supported && <PackageExtractionDiagnostics extraction={card.artifactPlan?.packageExtraction} />}
                         {card.unavailableReasons.map((reason, index) => (
                             <List.Item key={index}>{reason}</List.Item>
                         ))}
@@ -726,6 +728,7 @@ function TargetCard({
                                         {artifactPreview.result.stakePreflight.warnings.map((warning, index) => <Text key={index} size="sm" c="orange">{warning}</Text>)}
                                     </>
                                 )}
+                                <PackageExtractionDiagnostics extraction={artifactPreview.result.plan?.packageExtraction} />
                                 {artifactPreview.result.plan?.preflight.losses.map((loss, index) => <Text key={index} size="sm" c="orange">Data boundary: {loss}</Text>)}
                                 {artifactPreview.result.plan?.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []).map((loss, index) => <Text key={index} size="sm" c="orange">PAR import boundary: {loss}</Text>)}
                                 {artifactPreview.status === "conflict" && <ErrorState message="Destination unavailable. Choose a different destination; Build will not overwrite it." />}
@@ -734,6 +737,7 @@ function TargetCard({
                         {(artifactPreview.status === "unsupported" || artifactPreview.status === "error") && (
                             <>
                                 <ErrorState message={artifactPreview.message} />
+                                {artifactPreview.status === "unsupported" && <PackageExtractionDiagnostics extraction={artifactPreview.plan.packageExtraction} />}
                                 {artifactPreview.status === "unsupported" && (
                                     <Text size="sm" c="dimmed" mt={4}>
                                         Planner diagnostic: {artifactPreview.plan.diagnostic?.message ?? (artifactPreview.plan.status === "planned" ? "The conversion route is supported; the concrete source still must pass validation." : "No executable conversion steps.")}

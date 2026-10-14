@@ -1,10 +1,16 @@
+import {ArtifactBuildCancelledError} from "../../src/project/ArtifactBuildOptions.js";
+import {ArtifactPublicationOwnership} from "../../src/project/ArtifactPublicationOwnership.js";
+import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import type {ArtifactBuilder} from "../../src/project/ArtifactBuilder.js";
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
+import {PackageBlueprintExtraction} from "../../src/generated/PackageBlueprintExtraction.js";
+import {loadPokieGameRuntime, type LoadedPokieGame} from "../../src/gamepackage/loadPokieGame.js";
+import {ParSheetImporter} from "../../src/parsheet/ParSheetImporter.js";
 import {BlueprintArtifactBuilder} from "../../src/project/BlueprintArtifactBuilder.js";
-import {computeArtifactInputBindingHash, type ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
+import {computeProjectInputBindingHash, computeArtifactInputBindingHash, type ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
 import {ManagedOutcomeProjectService} from "../../src/project/ManagedOutcomeProjectService.js";
 import {ParSheetExporter} from "../../src/parsheet/ParSheetExporter.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
@@ -20,6 +26,507 @@ import type {PokieProject} from "../../src/project/PokieProject.js";
 describe("ArtifactBuilderRegistry", () => {
     const registry = new ArtifactBuilderRegistry();
 
+    it("uses extraction once as the model stage for downstream packages/PAR and retains source-bound evidence", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-extraction-registry-"));
+        try {
+            const source = writeDescriptorPackage(root);
+            const project: PokieProject = {type: "tsPackage", rootPath: source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
+            for (const target of ["tsPackage", "parWorkbook"] as const) {
+                const destination = path.join(root, target === "parWorkbook" ? "model.xlsx" : "regenerated");
+                const plan = await registry.preparePlan(project, target, {destinationPath: destination});
+                expect(plan.status).toBe("planned");
+                const result = await registry.executePlan(plan, project, destination);
+                expect(result.packageExtraction?.source.gameId).toBe("math-probe");
+                expect(result.importedBlueprintPath).toContain("package-extraction");
+                expect(fs.existsSync(result.conversionEvidencePath!)).toBe(true);
+                expect(JSON.parse(fs.readFileSync(result.conversionEvidencePath!, "utf8")).kind).toBe("package-extraction");
+            }
+            expect(fs.readdirSync(root).some(name => name.startsWith(".pokie-"))).toBe(false);
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
+    it.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)("cancels the final descriptor read for %s before publishing or running downstream writers", async target => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-async-extraction-registry-"));
+        const fixture = writePausedDescriptorPackage(root);
+        const snapshots = runtimeSnapshotNames(fixture.source);
+        const input = fs.readFileSync(path.join(fixture.source, "index.js"));
+        const controller = new AbortController();
+        const project: PokieProject = {type: "tsPackage", rootPath: fixture.source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
+        const destination = path.join(root, "output");
+        const progress: string[] = [];
+        try {
+            const plan = await registry.preparePlan(project, target, {destinationPath: destination});
+            expect(plan.status).toBe("planned");
+            const checked = expect(registry.executePlan(plan, project, destination, {signal: controller.signal, onProgress: value => {
+                progress.push(value.status);
+                if (value.message === "Extracting public package model into Blueprint") fixture.arm();
+            }})).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+            await fixture.readStarted;
+            expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
+            expect(fs.existsSync(destination)).toBe(false);
+            controller.abort();
+            fixture.settle();
+            await checked;
+            expect(progress).toContain("cancelled");
+            expect(progress).not.toContain("completed");
+            expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
+            expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
+            expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
+            expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
+        } finally {
+            fixture.restore();
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
+    it("propagates cancellation into validation's initial preparation when no plan is supplied", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-unprepared-validation-"));
+        const fixture = writePausedDescriptorPackage(root, undefined, {pauseAtRead: 1});
+        const snapshots = runtimeSnapshotNames(fixture.source);
+        const project: PokieProject = {type: "tsPackage", rootPath: fixture.source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
+        const controller = new AbortController();
+        try {
+            const checked = expect(registry.validate("blueprint", project, undefined, {signal: controller.signal}))
+                .rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+            await fixture.readStarted;
+            expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
+            controller.abort();
+            fixture.settle();
+            await checked;
+            expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
+            expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
+        } finally {
+            fixture.restore();
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
+    describe.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)("package %s validation lifecycle", target => {
+        it.each([true, false])("releases the validation snapshot with cancellation=%s and preserves optional callers", async cancel => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-validation-extraction-"));
+            const fixture = writePausedDescriptorPackage(root);
+            const snapshots = runtimeSnapshotNames(fixture.source);
+            const input = fs.readFileSync(path.join(fixture.source, "index.js"));
+            const project: PokieProject = {type: "tsPackage", rootPath: fixture.source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
+            const controller = new AbortController();
+            const progress: string[] = [];
+            try {
+                const plan = await registry.preparePlan(project, target, {destinationPath: path.join(root, "output")});
+                expect(plan.packageExtraction?.status).toBe("complete");
+                expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
+                fixture.arm();
+                const running = cancel
+                    ? registry.validate(target, project, plan, {signal: controller.signal, onProgress: value => {
+                        progress.push(value.status);
+                    }})
+                    : registry.validate(target, project, plan);
+                const checked = cancel ? expect(running).rejects.toBeInstanceOf(ArtifactBuildCancelledError) : expect(running).resolves.toBeUndefined();
+                await fixture.readStarted;
+                expect(fixture.readCount).toBe(2);
+                expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
+                if (cancel) controller.abort();
+                fixture.settle();
+                await checked;
+                if (cancel) expect(progress).toEqual(["cancelled"]);
+                expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
+                expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
+                expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
+                expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
+            } finally {
+                fixture.restore();
+                fs.rmSync(root, {recursive: true, force: true});
+            }
+        });
+
+        it("rejects a malformed validation read after successful preparation as source drift", async () => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-malformed-validation-"));
+            const fixture = writePausedDescriptorPackage(root, '{descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: descriptorInput === "malformed" ? {...model, manifest: null} : model}');
+            const snapshots = runtimeSnapshotNames(fixture.source);
+            const input = fs.readFileSync(path.join(fixture.source, "index.js"));
+            const project: PokieProject = {type: "tsPackage", rootPath: fixture.source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
+            try {
+                const plan = await registry.preparePlan(project, target, {destinationPath: path.join(root, "output")});
+                expect(plan.packageExtraction?.status).toBe("complete");
+                fs.writeFileSync(fixture.control, "malformed");
+                fixture.arm();
+                const checked = expect(registry.validate(target, project, plan, {signal: new AbortController().signal}))
+                    .rejects.toThrow(/source configuration or generation provenance changed/);
+                await fixture.readStarted;
+                fixture.settle();
+                await checked;
+                expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
+                expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
+                expect(fs.readFileSync(fixture.control, "utf8")).toBe("malformed");
+                expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
+            } finally {
+                fixture.restore();
+                fs.rmSync(root, {recursive: true, force: true});
+            }
+        });
+    });
+
+    it("tracks the validation lease while unrelated runtime snapshots are allocated and released", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-snapshot-ownership-"));
+        const fixture = writePausedDescriptorPackage(root);
+        const unrelatedSource = writeDescriptorPackage(root, {
+            name: "unrelated-package",
+            descriptorBody: `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model, fixtureIdentity: ${JSON.stringify(root)}};`,
+        });
+        const input = fs.readFileSync(path.join(fixture.source, "index.js"));
+        const project: PokieProject = {type: "tsPackage", rootPath: fixture.source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
+        let unrelated: LoadedPokieGame | undefined;
+        let running: Promise<void> | undefined;
+        try {
+            unrelated = await loadPokieGameRuntime(unrelatedSource);
+            const unrelatedSnapshots = runtimeSnapshotNames(unrelatedSource);
+            expect(unrelatedSnapshots).toHaveLength(1);
+            expect(runtimeSnapshotNames(fixture.source)).toEqual([]);
+            const plan = await registry.preparePlan(project, "wasm", {destinationPath: path.join(root, "output")});
+            fixture.arm();
+            running = registry.validate("wasm", project, plan);
+            await fixture.readStarted;
+            expect(fixture.readCount).toBe(2);
+            const validationSnapshots = runtimeSnapshotNames(fixture.source);
+            expect(validationSnapshots).toHaveLength(1);
+            expect(fs.readdirSync(os.tmpdir())).toEqual(expect.arrayContaining([...validationSnapshots, ...unrelatedSnapshots]));
+            await unrelated.release();
+            expect(runtimeSnapshotNames(unrelatedSource)).toEqual([]);
+            expect(runtimeSnapshotNames(fixture.source)).toEqual(validationSnapshots);
+            unrelated = await loadPokieGameRuntime(unrelatedSource);
+            const replacementSnapshots = runtimeSnapshotNames(unrelatedSource);
+            expect(replacementSnapshots).toHaveLength(1);
+            expect(replacementSnapshots).not.toEqual(unrelatedSnapshots);
+            expect(runtimeSnapshotNames(fixture.source)).toEqual(validationSnapshots);
+            fixture.settle();
+            await running;
+            expect(runtimeSnapshotNames(fixture.source)).toEqual([]);
+            expect(runtimeSnapshotNames(unrelatedSource)).toEqual(replacementSnapshots);
+            expect(fs.existsSync(path.join(root, "output"))).toBe(false);
+            expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
+            expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
+            expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt", "unrelated-package"]);
+        } finally {
+            fixture.restore();
+            await running?.catch(() => undefined);
+            await unrelated?.release();
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
+    it.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)(
+        "rejects final descriptor drift before exposing either model output for %s",
+        async target => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-model-binding-"));
+            try {
+                const control = path.join(root, "payout.txt");
+                fs.writeFileSync(control, "1");
+                const source = writeDescriptorPackage(root, {descriptorBody:
+                    `model.paytable.A[3] = Number(require("fs").readFileSync(${JSON.stringify(control)}, "utf8"));
+                    return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model};`,});
+                const input = fs.readFileSync(path.join(source, "index.js"));
+                const project: PokieProject = {type: "tsPackage", rootPath: source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
+                const destination = path.join(root, target === "blueprint" ? "model.json" : target);
+                const plan = await registry.preparePlan(project, target, {destinationPath: destination});
+                expect(plan.status).toBe("planned");
+                expect(plan.packageExtraction?.blueprint?.paytable.A[3]).toBe(1);
+                const link = jest.spyOn(fs.promises, "link");
+                try {
+                    await expect(registry.executePlan(plan, project, destination, {onProgress: progress => {
+                        if (progress.message === "Extracting public package model into Blueprint") fs.writeFileSync(control, "99");
+                    }})).rejects.toThrow(/Package model changed after preview/);
+                    expect(link).not.toHaveBeenCalled();
+                } finally {
+                    link.mockRestore();
+                }
+                expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(input);
+                expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "payout.txt"]);
+            } finally {
+                fs.rmSync(root, {recursive: true, force: true});
+            }
+        },
+    );
+
+    describe.each([
+        {sourceType: "tsPackage", target: "tsPackage", empty: false},
+        {sourceType: "tsPackage", target: "tsPackage", empty: true},
+        {sourceType: "tsPackage", target: "parWorkbook", empty: false},
+        {sourceType: "tsPackage", target: "wasm", empty: false},
+        {sourceType: "parWorkbook", target: "tsPackage", empty: false},
+        {sourceType: "parWorkbook", target: "wasm", empty: false},
+        {sourceType: "parWorkbook", target: "outcomeLibrary", empty: false},
+        {sourceType: "parWorkbook", target: "outcomeLibrary", empty: true},
+        {sourceType: "parWorkbook", target: "stakeAdapter", empty: false},
+        {sourceType: "parWorkbook", target: "stakeAdapter", empty: true},
+    ] as const)("downstream $sourceType -> $target (caller directory: $empty)", ({sourceType, target, empty}) => {
+        let root: string;
+        let project: PokieProject;
+        let destination: string;
+        let durableDirectory: string;
+        let callerDirectoryInode: number | undefined;
+        const bytes = Buffer.from([0, 255, 13, 10, 42]);
+        beforeEach(() => {
+            root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-downstream-ownership-"));
+            const source = sourceType === "tsPackage" ? writeDescriptorPackage(root) : path.join(root, "source.xlsx");
+            if (sourceType === "parWorkbook") fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), source);
+            project = {type: sourceType, rootPath: source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES[sourceType]};
+            destination = path.join(root, "output");
+            if (empty) {
+                fs.mkdirSync(destination);
+                callerDirectoryInode = fs.statSync(destination).ino;
+            }
+            const kind = sourceType === "tsPackage" ? "package-extraction" : "par-import";
+            durableDirectory = target !== "wasm" && target !== "parWorkbook" ? path.join(destination, ".pokie", kind) : path.join(`${destination}.pokie`, kind);
+        });
+        afterEach(() => {
+            jest.restoreAllMocks();
+            fs.rmSync(root, {recursive: true, force: true});
+        });
+        const terminalPath = (): string => {
+            if (target === "tsPackage") return path.join(destination, "package.json");
+            if (target === "outcomeLibrary") return path.join(destination, "manifest.json");
+            if (target === "stakeAdapter") return path.join(destination, "pokie-manifest.json");
+            return destination;
+        };
+        const memberPath = (member: string): string => path.join(durableDirectory, member === "blueprint" ? "imported.blueprint.json" : "conversion-evidence.json");
+        const sentinelPath = (): string => path.join(durableDirectory, "unrelated.bin");
+        const addSentinel = (): void => {
+            fs.mkdirSync(durableDirectory, {recursive: true});
+            fs.writeFileSync(sentinelPath(), bytes);
+        };
+        const assertCleanup = (survivor: string): void => {
+            expect(fs.readFileSync(survivor)).toEqual(bytes);
+            expect(fs.readFileSync(sentinelPath())).toEqual(bytes);
+            const terminal = terminalPath();
+            if (survivor !== terminal) expect(fs.existsSync(terminal)).toBe(false);
+            for (const member of ["blueprint", "evidence"]) {
+                if (survivor !== memberPath(member)) expect(fs.existsSync(memberPath(member))).toBe(false);
+            }
+            expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(false);
+            const filesBelow = (directory: string): string[] => !fs.existsSync(directory) ? [] : fs.readdirSync(directory, {withFileTypes: true}).flatMap(entry => entry.isDirectory() ? filesBelow(path.join(directory, entry.name)) : [path.join(directory, entry.name)]);
+            const survivingFiles = target !== "wasm" && target !== "parWorkbook" ? filesBelow(destination) : [...filesBelow(`${destination}.pokie`), ...(fs.existsSync(destination) ? [destination] : [])];
+            expect(survivingFiles.sort()).toEqual([survivor, sentinelPath()].sort());
+            expect(fs.readdirSync(root).some(name => name.startsWith(".pokie-"))).toBe(false);
+            if (empty) expect(fs.statSync(destination).ino).toBe(callerDirectoryInode);
+        };
+
+        if (target !== "parWorkbook" && target !== "wasm") it.each(["existing", "created"])("rejects a %s directory populated between final preflight and acquisition", async boundary => {
+            const acquire = ArtifactPublicationOwnership.prototype.ensureDirectory;
+            if (boundary === "existing" || empty) {
+                jest.spyOn(ArtifactPublicationOwnership.prototype, "ensureDirectory").mockImplementation(async function(this: ArtifactPublicationOwnership, directory, requireEmpty) {
+                    if (path.resolve(directory) === destination && requireEmpty) {
+                        fs.mkdirSync(destination, {recursive: true});
+                        fs.writeFileSync(path.join(destination, "competing.bin"), bytes);
+                    }
+                    await Reflect.apply(acquire, this, [directory, requireEmpty]);
+                });
+            } else {
+                const mkdir = fs.promises.mkdir.bind(fs.promises);
+                jest.spyOn(fs.promises, "mkdir").mockImplementation(async (directory, options) => {
+                    const result = await mkdir(directory, options);
+                    if (path.resolve(String(directory)) === destination) fs.writeFileSync(path.join(destination, "competing.bin"), bytes);
+                    return result;
+                });
+            }
+            await expect(registry.build(target, project, destination)).rejects.toThrow(/already exists and is not empty/);
+            expect(fs.readdirSync(destination)).toEqual(["competing.bin"]);
+            expect(fs.readFileSync(path.join(destination, "competing.bin"))).toEqual(bytes);
+            if (empty) expect(fs.statSync(destination).ino).toBe(callerDirectoryInode);
+            expect(fs.readdirSync(root).some(name => name.startsWith(".pokie-"))).toBe(false);
+        });
+
+        it.each(["blueprint", "evidence"])("rejects a competing retained %s created after preflight without changing its bytes", async member => {
+            const plan = await registry.preparePlan(project, target, {destinationPath: destination});
+            const link = fs.promises.link.bind(fs.promises);
+            jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+                if (String(to) === memberPath("blueprint")) {
+                    addSentinel();
+                    fs.writeFileSync(memberPath(member), bytes);
+                }
+                await link(from, to);
+            });
+            await expect(registry.executePlan(plan, project, destination)).rejects.toThrow(/already exists/);
+            assertCleanup(memberPath(member));
+        });
+
+        it("preserves unrelated companion contents and competing evidence on attachment I/O failure", async () => {
+            const link = fs.promises.link.bind(fs.promises);
+            jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+                if (String(to) === memberPath("evidence")) {
+                    addSentinel();
+                    fs.writeFileSync(memberPath("evidence"), bytes);
+                    throw new Error("injected attachment failure");
+                }
+                await link(from, to);
+            });
+            await expect(registry.build(target, project, destination)).rejects.toThrow("injected attachment failure");
+            assertCleanup(memberPath("evidence"));
+        });
+
+        it.each(["terminal", "blueprint", "evidence"])("preserves a replaced %s when attachment is cancelled", async member => {
+            const controller = new AbortController();
+            const terminal = terminalPath();
+            const competitor = member === "terminal" ? terminal : memberPath(member);
+            const boundary = member === "evidence" ? memberPath("evidence") : memberPath("blueprint");
+            const link = fs.promises.link.bind(fs.promises);
+            jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+                await link(from, to);
+                if (String(to) === boundary) {
+                    addSentinel();
+                    const replacement = path.join(root, "replacement.tmp");
+                    fs.writeFileSync(replacement, bytes);
+                    fs.renameSync(replacement, competitor);
+                    controller.abort();
+                }
+            });
+            await expect(registry.build(target, project, destination, {signal: controller.signal})).rejects.toThrow(/cancelled/i);
+            assertCleanup(competitor);
+        });
+
+        it("returns a complete rollback inventory and correctly bound retained evidence on success", async () => {
+            const result = await registry.build(target, project, destination);
+            const evidence = JSON.parse(fs.readFileSync(result.conversionEvidencePath!, "utf8"));
+            expect(result.importedBlueprintPath).toBe(memberPath("blueprint"));
+            expect(result.conversionEvidencePath).toBe(memberPath("evidence"));
+            if (sourceType === "tsPackage") {
+                expect(evidence.extractedBlueprintHash).toBe(result.packageExtraction?.blueprintHash);
+                expect(evidence.sourceBindingHash).toBe(computeProjectInputBindingHash(project));
+            } else expect(evidence.sourceWorkbook).toBe(project.rootPath);
+            for (const file of result.publishedFileOwnership ?? []) {
+                const stat = fs.lstatSync(file.path);
+                expect({dev: stat.dev, ino: stat.ino}).toEqual({dev: file.dev, ino: file.ino});
+            }
+            expect(result.publishedFileOwnership?.map(entry => entry.path)).toEqual(expect.arrayContaining([memberPath("blueprint"), memberPath("evidence"), terminalPath()]));
+            if (empty) {
+                expect(fs.statSync(destination).ino).toBe(callerDirectoryInode);
+                expect(result.publishedDirectoryOwnership?.find(entry => entry.path === destination)?.removeOnRollback).toBe(false);
+            }
+            expect(fs.readdirSync(root).some(name => name.startsWith(".pokie-"))).toBe(false);
+        });
+    });
+
+    describe.each(["tsPackage", "parWorkbook"] as const)("exclusive %s Blueprint publication", sourceType => {
+        let root: string;
+        let project: PokieProject;
+        let destination: string;
+        beforeEach(() => {
+            root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-exclusive-publication-"));
+            let source: string;
+            if (sourceType === "tsPackage") source = writeDescriptorPackage(root);
+            else {
+                source = path.join(root, "source.xlsx");
+                fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), source);
+            }
+            project = {type: sourceType, rootPath: source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES[sourceType]};
+            destination = path.join(root, "model.json");
+        });
+        afterEach(() => {
+            jest.restoreAllMocks();
+            fs.rmSync(root, {recursive: true, force: true});
+        });
+        const memberPath = (member: string): string => member === "blueprint" ? destination : `${destination}.conversion-evidence.json`;
+        const assertOnlyCompetitor = (competitor: string, bytes: Buffer): void => {
+            expect(fs.readFileSync(competitor)).toEqual(bytes);
+            const other = competitor === destination ? memberPath("evidence") : destination;
+            expect(fs.existsSync(other)).toBe(false);
+            expect(fs.readdirSync(root).filter(name => name.startsWith(".") || name === "model.json" || name === "model.json.conversion-evidence.json")).toEqual([path.basename(competitor)]);
+        };
+
+        it.each(["blueprint", "evidence"])("preserves competing %s bytes introduced during the model read", async member => {
+            const competitor = memberPath(member);
+            const bytes = Buffer.from([0, 255, 13, 10, 42]);
+            if (sourceType === "tsPackage") {
+                const extract = PackageBlueprintExtraction.prototype.extract;
+                jest.spyOn(PackageBlueprintExtraction.prototype, "extract").mockImplementation(async (input, options) => {
+                    const result = await Reflect.apply(extract, new PackageBlueprintExtraction(), [input, options]);
+                    fs.writeFileSync(competitor, bytes);
+                    return result;
+                });
+            } else {
+                const read = ParSheetImporter.prototype.importFromFile;
+                jest.spyOn(ParSheetImporter.prototype, "importFromFile").mockImplementation(async filePath => {
+                    const result = await Reflect.apply(read, new ParSheetImporter(), [filePath]);
+                    fs.writeFileSync(competitor, bytes);
+                    return result;
+                });
+            }
+            await expect(new BlueprintArtifactBuilder().build(project, destination)).rejects.toThrow(/already exists/);
+            assertOnlyCompetitor(competitor, bytes);
+        });
+
+        it.each(["blueprint", "evidence"])("does not replace %s introduced after the availability check", async member => {
+            const competitor = memberPath(member);
+            const bytes = Buffer.from("concurrent writer\n");
+            const link = fs.promises.link.bind(fs.promises);
+            jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+                if (String(to) === competitor) fs.writeFileSync(competitor, bytes);
+                await link(from, to);
+            });
+            await expect(new BlueprintArtifactBuilder().build(project, destination)).rejects.toThrow(/already exists/);
+            assertOnlyCompetitor(competitor, bytes);
+        });
+
+        it.each(["blueprint", "evidence"])("preserves a replaced %s during cancellation rollback", async member => {
+            const competitor = memberPath(member);
+            const bytes = Buffer.from("replacement from another writer");
+            const controller = new AbortController();
+            const link = fs.promises.link.bind(fs.promises);
+            jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+                await link(from, to);
+                if (String(to) === competitor) {
+                    fs.unlinkSync(competitor);
+                    fs.writeFileSync(competitor, bytes);
+                    controller.abort();
+                }
+            });
+            await expect(new BlueprintArtifactBuilder().build(project, destination, {signal: controller.signal})).rejects.toThrow(/cancelled/);
+            assertOnlyCompetitor(competitor, bytes);
+        });
+
+        it("preserves hard-linked publications under a replaced ancestor on cancellation", async () => {
+            const parent = path.join(root, "nested");
+            const moved = path.join(root, "moved-publication");
+            destination = path.join(parent, "model.json");
+            const controller = new AbortController();
+            const link = fs.promises.link.bind(fs.promises);
+            jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+                await link(from, to);
+                if (String(to) === memberPath("evidence")) {
+                    fs.renameSync(parent, moved);
+                    fs.mkdirSync(parent);
+                    for (const member of ["blueprint", "evidence"]) fs.linkSync(path.join(moved, path.basename(memberPath(member))), memberPath(member));
+                    fs.writeFileSync(path.join(parent, "unrelated.bin"), "replacement directory");
+                    controller.abort();
+                }
+            });
+            await expect(new BlueprintArtifactBuilder().build(project, destination, {signal: controller.signal})).rejects.toThrow(/cancelled/);
+            for (const member of ["blueprint", "evidence"]) expect(fs.readFileSync(memberPath(member))).toEqual(fs.readFileSync(path.join(moved, path.basename(memberPath(member)))));
+            expect(fs.readdirSync(parent).sort()).toEqual(["model.json", "model.json.conversion-evidence.json", "unrelated.bin"]);
+            expect(fs.readFileSync(path.join(parent, "unrelated.bin"), "utf8")).toBe("replacement directory");
+        });
+
+        it.each(["blueprint", "evidence"])("cleans only its allocations when %s publication fails", async member => {
+            const link = fs.promises.link.bind(fs.promises);
+            jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+                if (String(to) === memberPath(member)) throw new Error("injected publication failure");
+                await link(from, to);
+            });
+            await expect(new BlueprintArtifactBuilder().build(project, destination)).rejects.toThrow(/injected publication failure/);
+            expect(fs.readdirSync(root)).toEqual([path.basename(project.rootPath)]);
+        });
+
+        it("removes its first staging file when companion staging fails", async () => {
+            const open = fs.promises.open.bind(fs.promises);
+            jest.spyOn(fs.promises, "open").mockImplementation((filePath, flags, mode) => {
+                if (String(filePath).includes("conversion-evidence.json.") && flags === "wx") return Promise.reject(new Error("injected staging failure"));
+                return open(filePath, flags, mode);
+            });
+            await expect(new BlueprintArtifactBuilder().build(project, destination)).rejects.toThrow(/injected staging failure/);
+            expect(fs.readdirSync(root)).toEqual([path.basename(project.rootPath)]);
+        });
+    });
+
     it("lists only matrix-advertised build targets", () => {
         expect(new Set(registry.listTargets())).toEqual(new Set(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"]));
     });
@@ -28,7 +535,7 @@ describe("ArtifactBuilderRegistry", () => {
         const descriptor = registry.describe("tsPackage");
 
         expect(descriptor.requiredSourceCapability).toBe(BLUEPRINT_BUILD_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["blueprint", "parWorkbook"]);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "parWorkbook"]);
     });
 
     it("reports the true required source capability and supported sources for an outcome-library build", () => {
@@ -59,12 +566,12 @@ describe("ArtifactBuilderRegistry", () => {
         const descriptor = registry.describe("parWorkbook");
 
         expect(descriptor.requiredSourceCapability).toBe(PAR_WORKBOOK_EXCHANGE_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["blueprint", "parWorkbook"]);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "parWorkbook"]);
         expect(descriptor.unsupportedNotes.join(" ")).toMatch(/Game Blueprint.*PAR workbook snapshot/i);
         expect(descriptor.unsupportedNotes.join(" ")).toMatch(/preserving exact and weighted whole-sequence reels/i);
         expect(descriptor.unsupportedNotes.join(" ")).toMatch(/generated\/per-symbol sources as diagnosed deterministic snapshots/i);
         expect(descriptor.unsupportedNotes.join(" ")).toMatch(/republishes an existing PAR workbook/i);
-        expect(descriptor.unsupportedNotes.join(" ")).toMatch(/does not recover a Blueprint from unrelated package or outcome artifacts/i);
+        expect(descriptor.unsupportedNotes.join(" ")).toMatch(/does not recover a model from outcome artifacts/i);
         expect(descriptor.unsupportedNotes.join(" ")).not.toMatch(/does not derive.*blueprint/i);
     });
 
@@ -79,8 +586,8 @@ describe("ArtifactBuilderRegistry", () => {
     it("exposes WASM as a canonical Blueprint/PAR target", () => {
         const tsPackageNotes = registry.describe("tsPackage").unsupportedNotes.join(" ");
 
-        expect(tsPackageNotes).toMatch(/never compiles or targets WASM/);
-        expect(registry.describe("wasm")).toMatchObject({requiredSourceCapability: WASM_EXPORT_CAPABILITY, supportedSources: ["blueprint", "parWorkbook"]});
+        expect(tsPackageNotes).toMatch(/complete public package descriptor/);
+        expect(registry.describe("wasm")).toMatchObject({requiredSourceCapability: WASM_EXPORT_CAPABILITY, supportedSources: ["blueprint", "tsPackage", "parWorkbook"]});
     });
 
     it("throws for a target it has no descriptor for", () => {
@@ -90,7 +597,7 @@ describe("ArtifactBuilderRegistry", () => {
     describe("supportsConversionFrom", () => {
         it("agrees with the descriptor's own supportedSources", () => {
             expect(registry.supportsConversionFrom("tsPackage", "blueprint")).toBe(true);
-            expect(registry.supportsConversionFrom("tsPackage", "tsPackage")).toBe(false);
+            expect(registry.supportsConversionFrom("tsPackage", "tsPackage")).toBe(true);
         });
     });
 
@@ -414,7 +921,7 @@ describe("ArtifactBuilderRegistry", () => {
             const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
 
             await expect(withBuilder.build("tsPackage", projectOf("tsPackage"), "/out/my-game")).rejects.toThrow(
-                /Missing prerequisite: a Game Blueprint source\. Next: Open a Game Blueprint/,
+                /Package extraction malformed:.*package-model-read-failed/,
             );
             expect(builder.calls).toBe(0);
         });

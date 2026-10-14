@@ -266,3 +266,14 @@ describe("WASM Build/Export product boundary", () => {
         expect(wasm?.writePublishBehavior).toContain("even zero-byte files");
     });
 });
+
+
+it("describes package extraction as a conditional model workflow rather than a PAR import", () => {
+    const plan = planned("blueprint");
+    plan.source.kind = "tsPackage";
+    plan.steps[0].kind = "extractPackageModel";
+    const [card] = describeArtifactBuildTargetCards([{target: "blueprint", supported: true, state: "supported", unsupportedNotes: ["Public descriptors require complete model validation."], plan}]);
+    expect(card.purpose).toContain("public package model");
+    expect(card.artifactPlan?.steps[0].kind).toBe("extractPackageModel");
+    expect(card.limits.join(" ")).toContain("complete model validation");
+});

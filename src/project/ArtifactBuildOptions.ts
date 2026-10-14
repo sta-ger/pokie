@@ -24,6 +24,8 @@ export type ArtifactBuildProgress = {
 export type ArtifactBuildOptions = {
     readonly signal?: AbortSignal;
     readonly onProgress?: (progress: ArtifactBuildProgress) => void;
+    /** Registry-prepared package authority, checked again before Blueprint publication. */
+    readonly preparedPackageModel?: {readonly inputBindingHash: string; readonly blueprintHash: string};
     // Only meaningful while converting a runnable Blueprint/tsPackage into an Outcome Library.  Keeping
     // this on the registry-owned lifecycle options lets CLI and other callers select a direct sampled
     // generation without growing a parallel, CLI-only conversion path.

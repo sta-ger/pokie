@@ -4,6 +4,7 @@ import {FRACTIONAL_BET_STAKES, FRACTIONAL_MIXED_CONTINUATION, fractionalBetBluep
 import ts from "typescript";
 import {RNG_PARITY_BLUEPRINT} from "../fixtures/wasm/createProductionParityFixture.js";
 import {
+    PackageBlueprintExtraction,
     BetMode,
     BetModeRuntimeSemanticsInvalidError,
     BUILT_PACKAGE_FILES,
@@ -85,6 +86,10 @@ describe("GamePackageGenerator", () => {
         fractionalGames.push(cjs);
         const typed = await loadPokieGameRuntime(result.projectRoot, entry => require(path.join(path.dirname(entry), "fractional-typed.js")));
         fractionalGames.push(typed);
+        expect(await cjs.game.getModelDescriptor!()).toEqual(await typed.game.getModelDescriptor!());
+        const extraction = await new PackageBlueprintExtraction().extract(cjs.game);
+        expect(extraction.status).toBe("complete");
+        expect(extraction.blueprint?.paytable).toEqual(blueprint.paytable);
         return [cjs.game, typed.game];
     }
 

@@ -1,3 +1,4 @@
+import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -31,6 +32,359 @@ describe("StudioArtifactBuildService", () => {
 
     afterEach(() => {
         fs.rmSync(workDir, {recursive: true, force: true});
+    });
+
+    it.each(["blueprint", "tsPackage"] as const)("durably cancels %s during its final asynchronous descriptor read without artifact actions or registration", async target => {
+        const fixture = writePausedDescriptorPackage(workDir);
+        const snapshots = runtimeSnapshotNames(fixture.source);
+        const input = fs.readFileSync(path.join(fixture.source, "index.js"));
+        const register = jest.fn(() => Promise.resolve());
+        const registry = new ArtifactBuilderRegistry("1.3.0");
+        const execute = registry.executePlan.bind(registry);
+        jest.spyOn(registry, "executePlan").mockImplementation((plan, source, destination, options) => execute(plan, source, destination, {
+            ...options, onProgress: value => {
+                options?.onProgress?.(value);
+                if (value.message === "Extracting public package model into Blueprint") fixture.arm();
+            },
+        }));
+        const packageService = new StudioArtifactBuildService("1.3.0", registry, undefined, register);
+        const durableDirectory = path.join(workDir, "jobs");
+        const jobs = new StudioJobService(new FileStudioJobRepository(durableDirectory));
+        packageService.attachJobService(jobs);
+        try {
+            const started = packageService.start(fixture.source, target, path.join(workDir, "output"));
+            if (started.status !== "created") throw new Error("expected artifact job");
+            await fixture.readStarted;
+            expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
+            expect(packageService.getStatusForProject(fixture.source, started.job.id)).toMatchObject({status: "running"});
+            expect(packageService.cancelForProject(fixture.source, started.job.id)).toMatchObject({status: "cancelling", cancellationRequested: true});
+            fixture.settle();
+            await packageService.cancelAll();
+            expect(packageService.getStatusForProject(fixture.source, started.job.id)).toMatchObject({
+                status: "cancelled", result: {status: "cancelled"}, progress: {status: "cancelled"},
+            });
+            expect(jobs.list(fixture.source)).toEqual([expect.objectContaining({id: started.job.id, status: "cancelled"})]);
+            const durable = new FileStudioJobRepository(durableDirectory).get(started.job.id);
+            expect(durable).toMatchObject({status: "cancelled"});
+            expect(durable?.result?.outputs).toBeUndefined();
+            const restarted = new StudioArtifactBuildService("1.3.0");
+            restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(durableDirectory)));
+            expect(restarted.getStatusForProject(fixture.source, started.job.id)).toMatchObject({status: "cancelled"});
+            expect(register).not.toHaveBeenCalled();
+            expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
+            expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
+            expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
+            expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", "descriptor-read.txt", "jobs"]);
+        } finally {
+            fixture.restore();
+            await packageService.cancelAll();
+        }
+    });
+
+    it("previews package diagnostics and publishes/registers a separate Blueprint with extraction provenance", async () => {
+        const source = writeDescriptorPackage(workDir);
+        const destination = path.join(workDir, "extracted.json");
+        const register = jest.fn(() => Promise.resolve());
+        const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, register);
+        const preview = await packageService.preview(source, "blueprint", destination);
+        expect(preview.status).toBe("ok");
+        expect(preview.plan.packageExtraction?.source).toMatchObject({gameId: "math-probe", gameVersion: "0.1.0", kind: "custom"});
+        const result = await packageService.build(source, "blueprint", destination);
+        expect(result.status).toBe("ok");
+        expect(register).toHaveBeenCalledWith(destination, {conversionEvidencePath: `${destination}.conversion-evidence.json`});
+        const legacy = writeDescriptorPackage(workDir, {name: "legacy", legacy: true});
+        const unavailable = await packageService.preview(legacy, "blueprint", path.join(workDir, "legacy.json"));
+        expect(unavailable.status).toBe("unsupported");
+        expect(unavailable.plan.packageExtraction?.status).toBe("partial");
+        expect(fs.existsSync(path.join(workDir, "legacy.json"))).toBe(false);
+    });
+
+    it.each(["blueprint", "evidence"])("keeps concurrent %s publication intact and does not register", async member => {
+        const source = writeDescriptorPackage(workDir);
+        const destination = path.join(workDir, "extracted.json");
+        const competitor = member === "blueprint" ? destination : `${destination}.conversion-evidence.json`;
+        const bytes = Buffer.from([0, 255, 13, 10, 42]);
+        const register = jest.fn(() => Promise.resolve());
+        const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, register);
+        const link = fs.promises.link.bind(fs.promises);
+        const spy = jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+            if (String(to) === competitor) fs.writeFileSync(competitor, bytes);
+            await link(from, to);
+        });
+        try {
+            const result = await packageService.build(source, "blueprint", destination);
+            expect(result.status).toBe("conflict");
+            expect(result).toMatchObject({message: expect.stringMatching(/already exists/)});
+            expect(register).not.toHaveBeenCalled();
+            expect(fs.readFileSync(competitor)).toEqual(bytes);
+            expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", path.basename(competitor)].sort());
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    it.each(["blueprint", "evidence"])("preserves a competing %s replacement on registration failure", async member => {
+        const source = writeDescriptorPackage(workDir);
+        const destination = path.join(workDir, "extracted.json");
+        const competitor = member === "blueprint" ? destination : `${destination}.conversion-evidence.json`;
+        const bytes = Buffer.from("another writer's replacement");
+        const unregister = jest.fn(() => Promise.resolve());
+        const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, () => {
+            const replacement = path.join(workDir, "replacement.tmp");
+            fs.writeFileSync(replacement, bytes);
+            fs.renameSync(replacement, competitor);
+            throw new Error("registration failed");
+        }, undefined, undefined, unregister);
+        const result = await packageService.build(source, "blueprint", destination);
+        expect(result.status).toBe("error");
+        expect(result).toMatchObject({message: expect.stringContaining("registration failed")});
+        expect(unregister).toHaveBeenCalledWith(destination);
+        expect(fs.readFileSync(competitor)).toEqual(bytes);
+        expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", path.basename(competitor)].sort());
+    });
+
+    describe.each([
+        {target: "tsPackage", empty: false},
+        {target: "tsPackage", empty: true},
+        {target: "parWorkbook", empty: false},
+        {target: "wasm", empty: false},
+    ] as const)("downstream $target registration rollback (caller directory: $empty)", ({target, empty}) => {
+        it.each([
+            {member: "terminal", cancelled: false}, {member: "terminal", cancelled: true},
+            {member: "blueprint", cancelled: false}, {member: "blueprint", cancelled: true},
+            {member: "evidence", cancelled: false}, {member: "evidence", cancelled: true},
+        ])("preserves replaced $member and unrelated contents (cancelled: $cancelled)", async ({member, cancelled}) => {
+            const source = writeDescriptorPackage(workDir);
+            const destination = path.join(workDir, "output");
+            if (empty) fs.mkdirSync(destination);
+            const callerInode = empty ? fs.statSync(destination).ino : undefined;
+            const durableDirectory = target === "tsPackage" ? path.join(destination, ".pokie", "package-extraction") : path.join(`${destination}.pokie`, "package-extraction");
+            const blueprint = path.join(durableDirectory, "imported.blueprint.json");
+            const evidence = path.join(durableDirectory, "conversion-evidence.json");
+            const terminal = target === "tsPackage" ? path.join(destination, "package.json") : destination;
+            const retainedMember = member === "blueprint" ? blueprint : evidence;
+            const competitor = member === "terminal" ? terminal : retainedMember;
+            const sentinel = path.join(durableDirectory, "unrelated.bin");
+            const bytes = Buffer.from([0, 255, 13, 10, 42]);
+            const controller = new AbortController();
+            const registered = new Set<string>();
+            const unregister = jest.fn((rootPath: string) => {
+                registered.delete(rootPath);
+                return Promise.resolve();
+            });
+            const register = jest.fn((rootPath: string) => {
+                registered.add(rootPath);
+                // The terminal has already registered; the retained Blueprint is the
+                // second registration, so both records must unwind on failure.
+                if (rootPath === blueprint) {
+                    fs.writeFileSync(sentinel, bytes);
+                    const replacement = path.join(workDir, "replacement.tmp");
+                    fs.writeFileSync(replacement, bytes);
+                    fs.renameSync(replacement, competitor);
+                    if (!cancelled) throw new Error("downstream registration failed");
+                    controller.abort();
+                }
+                return Promise.resolve();
+            });
+            const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, register, undefined, undefined, unregister);
+            const result = await packageService.build(source, target, destination, {signal: controller.signal});
+            expect(result.status).toBe(cancelled ? "cancelled" : "error");
+            if (!cancelled) expect(result).toMatchObject({message: expect.stringContaining("downstream registration failed")});
+            expect(register).toHaveBeenCalledWith(destination, {conversionEvidencePath: evidence});
+            expect(unregister).toHaveBeenCalledWith(destination);
+            expect(unregister).toHaveBeenCalledWith(blueprint);
+            expect(registered.size).toBe(0);
+            expect(fs.readFileSync(competitor)).toEqual(bytes);
+            expect(fs.readFileSync(sentinel)).toEqual(bytes);
+            for (const owned of [terminal, blueprint, evidence]) if (owned !== competitor) expect(fs.existsSync(owned)).toBe(false);
+            expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(false);
+            const filesBelow = (directory: string): string[] => !fs.existsSync(directory) ? [] : fs.readdirSync(directory, {withFileTypes: true}).flatMap(entry => entry.isDirectory() ? filesBelow(path.join(directory, entry.name)) : [path.join(directory, entry.name)]);
+            const survivingFiles = target === "tsPackage" ? filesBelow(destination) : [...filesBelow(`${destination}.pokie`), ...(fs.existsSync(destination) ? [destination] : [])];
+            expect(survivingFiles.sort()).toEqual([competitor, sentinel].sort());
+            if (empty) expect(fs.statSync(destination).ino).toBe(callerInode);
+            expect(fs.readdirSync(workDir).some(name => name.startsWith(".pokie-"))).toBe(false);
+        });
+    });
+
+    it.each([false, true])("preserves a replaced WASM integrity sidecar during registration rollback (cancelled: %s)", async cancelled => {
+        const source = writeDescriptorPackage(workDir);
+        const destination = path.join(workDir, "output.wasm");
+        const competitor = `${destination}.pokie-wasm.json`;
+        const controller = new AbortController();
+        const bytes = Buffer.from("replaced integrity file");
+        const registered = new Set<string>();
+        const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, rootPath => {
+            registered.add(rootPath);
+            const replacement = path.join(workDir, "replacement.tmp");
+            fs.writeFileSync(replacement, bytes);
+            fs.renameSync(replacement, competitor);
+            if (!cancelled) throw new Error("registration failed");
+            controller.abort();
+            return Promise.resolve();
+        }, undefined, undefined, rootPath => {
+            registered.delete(rootPath);
+            return Promise.resolve();
+        });
+        expect(await packageService.build(source, "wasm", destination, {signal: controller.signal})).toMatchObject({status: cancelled ? "cancelled" : "error"});
+        expect(fs.readFileSync(competitor)).toEqual(bytes);
+        expect(fs.existsSync(destination)).toBe(false);
+        expect(fs.existsSync(`${destination}.pokie`)).toBe(false);
+        expect(registered.size).toBe(0);
+        expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", path.basename(competitor)].sort());
+    });
+
+    it.each([false, true])("preserves a replaced package directory and its contents during registration rollback (cancelled: %s)", async cancelled => {
+        const source = writeDescriptorPackage(workDir);
+        const destination = path.join(workDir, "output");
+        const moved = path.join(workDir, "moved-publication");
+        const controller = new AbortController();
+        const bytes = Buffer.from("another directory owner");
+        const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, () => {
+            fs.renameSync(destination, moved);
+            fs.mkdirSync(destination);
+            fs.writeFileSync(path.join(destination, "unrelated.bin"), bytes);
+            // A hard link to an operation-owned inode inside a replacement
+            // ancestor must not be deleted from that other writer's directory.
+            fs.linkSync(path.join(moved, "package.json"), path.join(destination, "package.json"));
+            if (!cancelled) throw new Error("registration failed");
+            controller.abort();
+            return Promise.resolve();
+        });
+        expect(await packageService.build(source, "tsPackage", destination, {signal: controller.signal})).toMatchObject({status: cancelled ? "cancelled" : "error"});
+        expect(fs.readFileSync(path.join(destination, "unrelated.bin"))).toEqual(bytes);
+        expect(fs.readFileSync(path.join(destination, "package.json"))).toEqual(fs.readFileSync(path.join(moved, "package.json")));
+        expect(fs.readdirSync(destination).sort()).toEqual(["package.json", "unrelated.bin"]);
+        expect(fs.readdirSync(workDir).some(name => name.startsWith(".pokie-"))).toBe(false);
+    });
+
+    describe.each(["tsPackage", "parWorkbook"] as const)("direct %s Blueprint ancestor ownership", sourceType => {
+        it.each([false, true])("preserves replacement ancestors and hard links on registration rollback (cancelled: %s)", async cancelled => {
+            const source = sourceType === "tsPackage" ? writeDescriptorPackage(workDir) : path.join(workDir, "source.xlsx");
+            if (sourceType === "parWorkbook") fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), source);
+            const parent = path.join(workDir, "nested");
+            const destination = path.join(parent, "model.json");
+            const moved = path.join(workDir, "moved-publication");
+            const controller = new AbortController();
+            const registered = new Set<string>();
+            const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, root => {
+                registered.add(root);
+                fs.renameSync(parent, moved);
+                fs.mkdirSync(parent);
+                for (const name of ["model.json", "model.json.conversion-evidence.json"]) fs.linkSync(path.join(moved, name), path.join(parent, name));
+                fs.writeFileSync(path.join(parent, "unrelated.bin"), "another directory owner");
+                if (!cancelled) throw new Error("registration failed");
+                controller.abort();
+                return Promise.resolve();
+            }, undefined, undefined, root => {
+                registered.delete(root);
+                return Promise.resolve();
+            });
+            expect(await packageService.build(source, "blueprint", destination, {signal: controller.signal})).toMatchObject({status: cancelled ? "cancelled" : "error"});
+            expect(registered.size).toBe(0);
+            for (const name of ["model.json", "model.json.conversion-evidence.json"]) expect(fs.readFileSync(path.join(parent, name))).toEqual(fs.readFileSync(path.join(moved, name)));
+            expect(fs.readdirSync(parent).sort()).toEqual(["model.json", "model.json.conversion-evidence.json", "unrelated.bin"]);
+            expect(fs.readFileSync(path.join(parent, "unrelated.bin"), "utf8")).toBe("another directory owner");
+        });
+    });
+
+    describe.each([
+        {target: "outcomeLibrary", empty: false}, {target: "outcomeLibrary", empty: true},
+        {target: "stakeAdapter", empty: false}, {target: "stakeAdapter", empty: true},
+    ] as const)("PAR $target registration ownership (caller directory: $empty)", ({target, empty}) => {
+        it.each([false, true])("preserves competing evidence and unrelated contents (cancelled: %s)", async cancelled => {
+            const source = path.join(workDir, "source.xlsx");
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), source);
+            const destination = path.join(workDir, "output");
+            if (empty) fs.mkdirSync(destination);
+            const callerInode = empty ? fs.statSync(destination).ino : undefined;
+            const durableDirectory = path.join(destination, ".pokie", "par-import");
+            const blueprint = path.join(durableDirectory, "imported.blueprint.json");
+            const evidence = path.join(durableDirectory, "conversion-evidence.json");
+            const sentinel = path.join(durableDirectory, "unrelated.bin");
+            const bytes = Buffer.from([0, 255, 13, 10, 42]);
+            const controller = new AbortController();
+            const registered = new Set<string>();
+            const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, root => {
+                registered.add(root);
+                if (root === blueprint) {
+                    fs.writeFileSync(sentinel, bytes);
+                    const replacement = path.join(workDir, "replacement.tmp");
+                    fs.writeFileSync(replacement, bytes);
+                    fs.renameSync(replacement, evidence);
+                    if (!cancelled) throw new Error("registration failed");
+                    controller.abort();
+                }
+                return Promise.resolve();
+            }, undefined, undefined, root => {
+                registered.delete(root);
+                return Promise.resolve();
+            });
+            expect(await packageService.build(source, target, destination, {signal: controller.signal})).toMatchObject({status: cancelled ? "cancelled" : "error"});
+            expect(registered.size).toBe(0);
+            expect(fs.readFileSync(evidence)).toEqual(bytes);
+            expect(fs.readFileSync(sentinel)).toEqual(bytes);
+            expect(fs.readdirSync(durableDirectory).sort()).toEqual(["conversion-evidence.json", "unrelated.bin"]);
+            expect(fs.readdirSync(destination)).toEqual([".pokie"]);
+            if (empty) expect(fs.statSync(destination).ino).toBe(callerInode);
+            expect(fs.readdirSync(workDir).some(name => name.startsWith(".pokie-"))).toBe(false);
+        });
+    });
+
+    it("rejects final model drift through Studio without output or registration", async () => {
+        const control = path.join(workDir, "payout.txt");
+        fs.writeFileSync(control, "1");
+        const source = writeDescriptorPackage(workDir, {descriptorBody:
+            `model.paytable.A[3] = Number(require("fs").readFileSync(${JSON.stringify(control)}, "utf8"));
+            return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model};`,});
+        const destination = path.join(workDir, "extracted.json");
+        const register = jest.fn(() => Promise.resolve());
+        const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, register);
+        const result = await packageService.build(source, "blueprint", destination, {onProgress: progress => {
+            if (progress.message === "Extracting public package model into Blueprint") fs.writeFileSync(control, "99");
+        }});
+        expect(result.status).toBe("error");
+        expect(result).toMatchObject({message: expect.stringContaining("Package model changed after preview")});
+        expect(register).not.toHaveBeenCalled();
+        expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", "payout.txt"]);
+    });
+
+    it.each([
+        ['manifest: null', /manifest/],
+        ['betModes: [{id: "metadata", isDefault: "yes"}]', /betModes\[0\].isDefault.*boolean/],
+    ] as const)("exposes malformed %s in preview/build and cannot publish", async (declaration, diagnostic) => {
+        const source = writeDescriptorPackage(workDir, {descriptorBody:
+            `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: {...model, ${declaration}}};`,});
+        const input = fs.readFileSync(path.join(source, "index.js"));
+        const destination = path.join(workDir, "extracted.json");
+        const register = jest.fn(() => Promise.resolve());
+        const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, register);
+        for (const result of [await packageService.preview(source, "blueprint", destination), await packageService.build(source, "blueprint", destination)]) {
+            expect(result.status).toBe("unsupported");
+            expect(result.plan.packageExtraction?.status).toBe("malformed");
+            expect(result).toMatchObject({message: expect.stringMatching(diagnostic)});
+        }
+        expect(register).not.toHaveBeenCalled();
+        expect(fs.readdirSync(workDir)).toEqual(["descriptor-package"]);
+        expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(input);
+    });
+
+    it("rolls back package extraction files and registrations when registration fails or cancels", async () => {
+        const source = writeDescriptorPackage(workDir);
+        for (const cancelled of [false, true]) {
+            const destination = path.join(workDir, `${cancelled}.json`);
+            const controller = new AbortController();
+            const unregister = jest.fn(() => Promise.resolve());
+            const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, () => {
+                if (!cancelled) throw new Error("registration failed");
+                controller.abort();
+                return Promise.resolve();
+            }, undefined, undefined, unregister);
+            const result = await packageService.build(source, "blueprint", destination, {signal: controller.signal});
+            expect(result.status).toBe(cancelled ? "cancelled" : "error");
+            expect(unregister).toHaveBeenCalledWith(destination);
+            expect(fs.existsSync(destination)).toBe(false);
+            expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(false);
+        }
     });
 
     function writeBlueprintFile(blueprint: unknown = buildBlueprint()): string {

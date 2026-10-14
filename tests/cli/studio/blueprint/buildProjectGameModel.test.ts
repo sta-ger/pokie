@@ -1,7 +1,8 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import type {GamePackageInspectionReport, PokieProject, WasmComponentManifestReadResult} from "@fromstan/pokie";
+import {writeDescriptorPackage} from "../../../v2/fixtures/PackageExtractionFixture.js";
+import {PackageBlueprintExtraction, type GamePackageInspectionReport, type PokieProject, type WasmComponentManifestReadResult} from "@fromstan/pokie";
 import {buildProjectGameModel, type GameModelSourceReaders} from "../../../../cli/studio/blueprint/buildProjectGameModel.js";
 import type {StudioBlueprintLoadView} from "../../../../cli/studio/blueprint/StudioBlueprintLoadView.js";
 
@@ -39,6 +40,23 @@ function outcomeLibraryProject(): PokieProject {
 }
 
 describe("buildProjectGameModel", () => {
+    it("uses shared package extraction for descriptor and legacy views, retaining concrete identity/diagnoses", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-package-model-"));
+        try {
+            for (const legacy of [false, true]) {
+                const source = writeDescriptorPackage(root, {name: String(legacy), legacy});
+                const project: PokieProject = {type: "tsPackage", rootPath: source, capabilities: ["runtime.execute"], provenance: "fixture"};
+                const result = await buildProjectGameModel(source, project, false, readers());
+                const extraction = await new PackageBlueprintExtraction().extract(source);
+                expect(result.packageExtraction).toEqual(extraction);
+                expect(result.basics).toMatchObject({status: "available", data: {id: "math-probe", version: "0.1.0"}});
+                expect(result.paytable.status).toBe(legacy ? "unavailable" : "available");
+            }
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
     it("loads and projects the tracked Blueprint source for an opened blueprint project", async () => {
         const loadBlueprint = (root: string): StudioBlueprintLoadView => {
             expect(root).toBe("/games/a/blueprint.json");

@@ -8,6 +8,8 @@ import type {PokieGameContext} from "./PokieGameContext.js";
 import type {PokieGameManifest} from "./PokieGameManifest.js";
 
 export interface PokieGame {
+    /** Nonmutating declaration of effective representable data; never an arbitrary-code losslessness promise. */
+    getModelDescriptor?(): import("../generated/PackageModelDescriptor.js").PackageModelDescriptor | Promise<import("../generated/PackageModelDescriptor.js").PackageModelDescriptor>;
     getManifest(): PokieGameManifest;
     /** Custom sessions explicitly promise the LogicalRoundProgressProviding contract. */
     supportsLogicalRoundDelivery?(): boolean;
