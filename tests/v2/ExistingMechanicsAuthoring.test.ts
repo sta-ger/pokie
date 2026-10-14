@@ -169,8 +169,8 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         expect(final).toMatchObject({status: "played", win: 0.1, stake: 0});
     });
 
-    it.each(["constructor", "__proto__"])("F4 preserves pool %s through both generated formats, restoration, simulation deltas and reporting", id => {
-        const blueprint = existingMechanicsBlueprint(catalogue.find(row => row.id === "accumulating-base")!);
+    it.each((["fixed", "accumulating"] as const).flatMap(poolType => ["constructor", "__proto__"].map(id => ({id, poolType}))))("F4 preserves $poolType pool $id through both generated formats, restoration, simulation deltas and reporting", ({id, poolType}) => {
+        const blueprint = existingMechanicsBlueprint(catalogue.find(row => row.id === `${poolType}-base`)!);
         blueprint.mechanics!.jackpot!.pool.id = id;
         blueprint.reelStrips = [["J"], ["A"], ["A"]];
         expect(errors(blueprint)).toEqual([]);
@@ -180,11 +180,11 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
             const runner = new api.AggregateSimulationRunner(session, 2);
             runner.run();
             expect(runner.getJackpotStatistics()!.awardCount).toBe(2);
-            expect(runner.getJackpotStatistics()!.totalAwarded).toBeCloseTo(20.01);
+            expect(runner.getJackpotStatistics()!.totalAwarded).toBeCloseTo(poolType === "fixed" ? 20 : 20.01);
             expect(runner.getJackpotStatistics()!.totalContributed).toBeCloseTo(0.01);
             expect(Object.keys(runner.getJackpotStatistics()!.pools)).toEqual([id]);
             const snapshot = JSON.parse(JSON.stringify(session.toSessionState()));
-            expect(Object.keys(snapshot.pools)).toEqual([id]);
+            expect(Object.keys(snapshot.pools ?? {})).toEqual(poolType === "fixed" ? [] : [id]);
             expect(Object.keys(snapshot.poolStatistics)).toEqual([id]);
             const restored = mechanicsSession(game);
             restored.fromSessionState(snapshot);
@@ -193,11 +193,11 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
             const result = nextRunner.run();
             const statistics = nextRunner.getJackpotStatistics()!;
             expect(statistics.awardCount).toBe(1);
-            expect(statistics.totalAwarded).toBeCloseTo(10.005);
+            expect(statistics.totalAwarded).toBeCloseTo(poolType === "fixed" ? 10 : 10.005);
             expect(statistics.totalContributed).toBeCloseTo(0.005);
             const merged = mergeJackpotStatisticsSnapshots(runner.getJackpotStatistics(), statistics);
             expect(merged.pools[id].awardCount).toBe(3);
-            expect(merged.pools[id].totalAwarded).toBeCloseTo(30.015);
+            expect(merged.pools[id].totalAwarded).toBeCloseTo(poolType === "fixed" ? 30 : 30.015);
             expect(merged.pools[id].totalContributed).toBeCloseTo(0.015);
             const report = new api.SimulationReportBuilder().build({manifest: game.getManifest(), requestedRounds: 1, statistics: result.getStatistics(), durationMs: 1, jackpot: statistics});
             expect(JSON.parse(JSON.stringify(report)).jackpot.pools[id]).toBeDefined();
