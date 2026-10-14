@@ -1,3 +1,4 @@
+import type {JsonObject, JsonValue} from "../json/JsonValue.js";
 import type {RoundArtifactFeatureEvent} from "./RoundArtifactFeatureEvent.js";
 import {RoundArtifactValidator} from "./RoundArtifactValidator.js";
 import type {RoundArtifactProjector} from "./RoundArtifactProjector.js";
@@ -60,7 +61,7 @@ export function projectPublicRoundStep<T extends string | number>(step: RoundSte
 /** Public mechanic observations are an explicit allowlist, including nested fields. */
 export function projectPublicFeatureEvent(event: RoundArtifactFeatureEvent): RoundArtifactFeatureEvent {
     const source = event.data ?? {};
-    const data: import("../json/JsonValue.js").JsonObject = {};
+    const data: Record<string, JsonValue> = {};
     const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
     if (finite(source.count)) data.count = source.count;
     if (event.type === "chargedBetMode" && typeof source.id === "string") data.id = source.id;
@@ -72,7 +73,7 @@ export function projectPublicFeatureEvent(event: RoundArtifactFeatureEvent): Rou
             const {position, symbolId, effect} = raw;
             if (!Array.isArray(position) || position.length !== 2 || !position.every(n => finite(n) && Number.isSafeInteger(n)) ||
                 (typeof symbolId !== "string" && typeof symbolId !== "number") || !effect || typeof effect !== "object" || Array.isArray(effect)) return [];
-            let publicEffect: import("../json/JsonValue.js").JsonObject | undefined;
+            let publicEffect: JsonObject | undefined;
             if (effect.kind === "value" && finite(effect.amount)) publicEffect = {kind: "value", amount: effect.amount};
             if (effect.kind === "multiplier" && finite(effect.factor)) publicEffect = {kind: "multiplier", factor: effect.factor};
             return publicEffect ? [{position: [...position], symbolId, effect: publicEffect}] : [];
@@ -81,12 +82,16 @@ export function projectPublicFeatureEvent(event: RoundArtifactFeatureEvent): Rou
     if (event.type === "jackpot") {
         if (Array.isArray(source.pools)) data.pools = source.pools.flatMap(pool => pool && typeof pool === "object" && !Array.isArray(pool) && typeof pool.id === "string" && finite(pool.value) ? [{id: pool.id, value: pool.value}] : []);
         const award = source.award;
-        if (award && typeof award === "object" && !Array.isArray(award) && typeof award.poolId === "string" && finite(award.amount)) data.award = {poolId: award.poolId, amount: award.amount};
+        if (isJsonObject(award) && typeof award.poolId === "string" && finite(award.amount)) data.award = {poolId: award.poolId, amount: award.amount};
         const statistics = source.statistics;
-        if (statistics && typeof statistics === "object" && !Array.isArray(statistics)) data.statistics = Object.fromEntries(Object.entries(statistics).flatMap(([id, stats]) => {
-            if (!stats || typeof stats !== "object" || Array.isArray(stats) || !finite(stats.awardCount) || !finite(stats.totalAwarded) || !finite(stats.totalContributed)) return [];
+        if (isJsonObject(statistics)) data.statistics = Object.fromEntries(Object.entries(statistics).flatMap(([id, stats]) => {
+            if (!isJsonObject(stats) || !finite(stats.awardCount) || !finite(stats.totalAwarded) || !finite(stats.totalContributed)) return [];
             return [[id, {awardCount: stats.awardCount, totalAwarded: stats.totalAwarded, totalContributed: stats.totalContributed}]];
         }));
     }
     return {type: event.type, ...(Object.keys(data).length ? {data} : {})};
+}
+
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
 }

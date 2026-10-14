@@ -48,8 +48,8 @@ describe("SymbolSetHoldAndWinCollector", () => {
 
 it("collects in reel/row order regardless of effect-key insertion order", () => {
     const effects = {M: {kind: "multiplier" as const, factor: 2}, C: {kind: "value" as const, amount: 10}};
-    const first = new SymbolSetHoldAndWinCollector(effects);
-    const second = new SymbolSetHoldAndWinCollector({C: effects.C, M: effects.M});
+    const first = new SymbolSetHoldAndWinCollector<string>(effects);
+    const second = new SymbolSetHoldAndWinCollector<string>({C: effects.C, M: effects.M});
     const screen = [["C", "M"], ["M", "C"]];
     expect(first.collect(screen, [])).toEqual(second.collect(screen, []));
     expect(first.collect(screen, []).map(lock => lock.position)).toEqual([[0, 0], [0, 1], [1, 0], [1, 1]]);
