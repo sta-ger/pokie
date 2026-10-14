@@ -40,6 +40,27 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         for (const row of catalogue) expect(errors(existingMechanicsBlueprint(row))).toEqual([]);
     });
 
+    it.each(catalogue)("$id: unseeded generated CJS/TS owns restorable RNG state through fresh public Spin handlers", async row => {
+        for (const typed of [false, true]) {
+            const game = generatedMechanicsGame(existingMechanicsBlueprint(row), typed);
+            const session = game.createSession();
+            const repository = new api.InMemorySessionRepository();
+            const wallet = new api.InMemoryWallet(session.getCreditsAmount());
+            const initial = api.captureInitialPokieSessionState(undefined, session, game.getSessionSerializer!(), true, game);
+            expect(initial.executionState).toBe("durably-restorable");
+            expect(initial.context).toBeUndefined();
+            expect(api.validatePersistedSession(initial, game)).toBeUndefined();
+            await repository.save("unseeded", initial);
+            for (let step = 0; step < 3; step++) {
+                const result = await new api.SpinCommandHandler(game, repository, wallet).execute({kind: "spin", sessionId: "unseeded", requestId: `step-${step}`});
+                if (result.status !== "played") throw new Error(JSON.stringify(result));
+                expect(result.state.executionState).toBe("durably-restorable");
+                expect(result.auditUnavailableReason).toBeUndefined();
+                expect(new api.AuditRoundReplay().replay(game, result.audit!).verification).toBe("verified");
+            }
+        }
+    });
+
     it.each(catalogue)("$id: actual Studio runner retains selected/all-mode report presentation and downloads", async row => {
         const game = generatedMechanicsGame(existingMechanicsBlueprint(row));
         const service = new StudioSimulationService(undefined, () => Promise.resolve(game), undefined, 3);

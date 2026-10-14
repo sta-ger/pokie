@@ -139,15 +139,36 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         new SessionRuntime(session).release();
     }
 
-    public describeAudit(audit: AuditRoundRecording): ReplayDescriptor {
+    public describeAudit(audit: AuditRoundRecording, unit: "step" | "logical-round" = "step"): ReplayDescriptor {
         validateAuditRoundRecording(audit);
         const last = audit.deliveries[audit.deliveries.length - 1];
-        const artifact = [...audit.deliveries].reverse().find(delivery => delivery.artifact)?.artifact;
+        const evaluated = [...audit.deliveries].reverse().find(delivery => delivery.artifact);
+        let artifact = evaluated?.artifact;
+        // v1 audit deliveries retain their original logical aggregates. The export's artifact
+        // describes the final calculation, while logicalRound and totals retain the whole history.
+        // Display-only deliveries reuse the last calculation rather than inventing a zero-charge spin.
+        if (unit === "step" && artifact && evaluated?.execution === "accepted-boundary" && evaluated.result.logicalRound) {
+            const executed = evaluated.result;
+            const subround = executed.logicalRound!.subrounds[executed.logicalRound!.cursor - 1];
+            const steps = subround.artifacts?.map((step, index) => ({...step, index}));
+            if (!steps?.length) throw new AuditReplayError("audit-artifact", "artifact.steps", "Final executed subround has no retained evaluated steps.");
+            const final = steps[steps.length - 1];
+            const {hash: _hash, ...template} = artifact;
+            const totalWin = steps.reduce((sum, step) => sum + step.totalWin, 0);
+            artifact = new PokieJsonRoundArtifactProjector().project({...template,
+                stake: executed.stake, betMode: executed.mode ?? template.betMode, totalWin,
+                payoutMultiplier: executed.stake > 0 ? totalWin / executed.stake : 0,
+                steps, screen: final.screen, wins: steps.flatMap(step => step.wins),
+                featureEvents: steps.flatMap(step => step.featureEvents ?? []),
+                ...(final.sequenceSelections ? {sequenceSelections: final.sequenceSelections} : {}),
+                ...(final.geometry ? {geometry: final.geometry, generatedScreen: final.generatedScreen} : {})});
+        }
         const round = last.result.logicalRound;
         return {audit, auditStatus: "recorded", auditCompletion: audit.captureUnavailable ? "pending" : round?.status ?? "completed",
             ...(audit.captureUnavailable ? {auditUnavailableReason: "An accepted delivery could not be captured; only the preceding executable prefix is available."} : {}), sessionId: last.disposition.sessionId, game: audit.game,
             seed: audit.context?.seed === undefined ? null : String(audit.context.seed), round: 1,
-            commands: audit.deliveries.map(delivery => delivery.command), ...(round ? {logicalRound: round, unit: "logical-round"} : {}),
+            commands: audit.deliveries.map(delivery => delivery.command), ...(round ? {logicalRound: round, unit} : {}),
+            ...(unit === "step" && evaluated?.result.mode ? {modePolicy: {betModeId: evaluated.result.mode, selection: "recorded-commands" as const}} : {}),
             totalBet: round?.totalStake ?? audit.deliveries.reduce((sum, delivery) => sum + delivery.result.stake, 0),
             totalWin: round?.totalWin ?? audit.deliveries.reduce((sum, delivery) => sum + delivery.result.win, 0), credits: last.result.credits,
             screen: (artifact?.screen ?? round?.subrounds[round.cursor - 1].screen)?.map(reel => [...reel]) ?? null,

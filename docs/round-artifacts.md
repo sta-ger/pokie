@@ -304,6 +304,16 @@ its owning result publication boundary. Its retained result exposes `audit`, or
 `auditUnavailableReason` when the model/codec cannot support exact reconstruction.
 Full history belongs to retained operation/results, not recursive session snapshots.
 
+New audit descriptors expose the final executed step as `artifact`, with its
+actual charge and charged bet mode. `logicalRound`, totals and the unchanged v1
+audit deliveries retain aggregate accounting separately. Package mode attribution
+uses `modePolicy.selection: "recorded-commands"`; those commands describe the
+actual explicit entries and zero-stake continuations, rather than a repeat-mode
+selector. Studio Session Spin displays and downloads this same step artifact.
+Previously exported v1 logical-round descriptors remain accepted against their
+original aggregate projection. Display-only deliveries reuse the last evaluated
+artifact and do not manufacture a new spin.
+
 Direct retries require a request identity or explicit logical delivery identity. Identical
 unkeyed calls execute separately. A retry returns its immutable original descriptor and
 digest; changed commands, construction context, disposition or model are rejected before

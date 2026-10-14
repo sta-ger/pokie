@@ -877,7 +877,7 @@ export type OutcomeSourceReplayDescriptorView = {
 export type ReplayDescriptor = {
     unit?: "step" | "logical-round";
     commands?: readonly import("../../../../src/runtime/SessionCommand.js").SessionCommand[];
-    modePolicy?: {betModeId: string; selection: "repeat-when-available"};
+    modePolicy?: {betModeId: string; selection: "repeat-when-available" | "recorded-commands"};
     audit?: import("../../../../src/replay/AuditRoundRecording.js").AuditRoundRecording;
     auditStatus?: "verified" | "recorded" | "legacy-best-effort" | "unsupported";
     auditCompletion?: "completed" | "pending" | "exhausted";

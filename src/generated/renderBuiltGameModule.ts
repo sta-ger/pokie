@@ -108,9 +108,10 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     // reproduces the same round across fresh processes -- see PokieGameContext.seed and ReplayRecorder,
     // which already threads context.seed through every game.createSession() call and only needed the
     // generated package itself to stop ignoring it.
-    const combinationsGeneratorDeclaration = `        const combinationsGenerator = context && context.seed !== undefined
-            ? new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(context.seed))
-            : new SymbolsCombinationsGenerator(config);
+    // An omitted seed still needs an owned executable RNG state for restore/exact audit.
+    // Randomize only its initial state; explicit seeds retain their existing draw sequence.
+    const combinationsGeneratorDeclaration = `        const combinationsGenerator = new SymbolsCombinationsGenerator(config,
+            new SeededRandomNumberGenerator(context && context.seed !== undefined ? context.seed : Math.floor(Math.random() * 0x100000000)));
 `;
     const configDeclaration = `        const config = createConfig(context);\n${combinationsGeneratorDeclaration}${winCalculatorDeclaration}`;
     // Only wraps the session in VideoSlotWithBetModesSession when resolveBetModeCodegenWiring()

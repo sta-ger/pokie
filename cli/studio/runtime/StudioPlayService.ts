@@ -433,15 +433,17 @@ export class StudioPlayService {
                     ),
                 };
                 result.session.studioRequestId = (handled.state.logicalRound?.entry as {requestId?: string} | undefined)?.requestId ?? handled.requestId;
+                const recording = handled.audit ? new ReplayRecorder().describeAudit(handled.audit) : undefined;
                 result.session.debug = {...result.session.debug, stateBefore: handled.previousState, requestId: handled.requestId,
-                    ...(handled.audit ? {recording: new ReplayRecorder().describeAudit(handled.audit)} : {auditUnavailableReason: handled.auditUnavailableReason})};
+                    ...(recording ? {recording, ...(recording.artifact ? {artifact: recording.artifact} : {})} : {auditUnavailableReason: handled.auditUnavailableReason})};
             }
             if (handled.status !== "played" && handled.committedResult && (result.status === "error" || result.status === "blocked")) {
                 const prefix = handled.committedResult;
                 result.session = this.buildSessionView(sessionId, active.manifest, prefix.state, prefix.credits, prefix.win, prefix.state.roundPayload, active.session);
                 result.session.studioRequestId = (prefix.state.logicalRound?.entry as {requestId?: string} | undefined)?.requestId ?? prefix.requestId;
+                const recording = prefix.audit ? new ReplayRecorder().describeAudit(prefix.audit) : undefined;
                 result.session.debug = {...result.session.debug, stateBefore: prefix.previousState, requestId: prefix.requestId,
-                    ...(prefix.audit ? {recording: new ReplayRecorder().describeAudit(prefix.audit)} : {auditUnavailableReason: prefix.auditUnavailableReason})};
+                    ...(recording ? {recording, ...(recording.artifact ? {artifact: recording.artifact} : {})} : {auditUnavailableReason: prefix.auditUnavailableReason})};
             }
         }
 

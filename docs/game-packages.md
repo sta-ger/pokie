@@ -209,8 +209,13 @@ Blueprint screenGeometry, generated packages and conversion support: see [the co
 
 ### Exact audit capability
 
-A generated seeded game declares its model hash, compatible executable schema and
-command capabilities. A hand-authored game must supply the same authorities for
+A generated game declares its model hash, compatible executable schema and
+command capabilities. Its sessions use the existing seeded RNG codec even when
+the caller omits a seed: that session randomly initializes its own RNG state,
+which is retained for restoration and exact audit. An omitted seed remains
+absent from request provenance; exact replay restores the captured state rather
+than recreating it from an invented caller seed. Explicit seeds keep their
+existing deterministic draw sequence. A hand-authored game must supply the same authorities for
 exact audit replay, including a `getConfigHash` covering effective math configuration
 and all custom collaborators. Manifest id/version alone cannot prove model equality.
 `createSession` must return a detached executable instance, never a live serving

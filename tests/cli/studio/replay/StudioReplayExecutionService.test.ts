@@ -1997,6 +1997,31 @@ describe("V2C-12 package simulation replay mode policy", () => {
     });
 });
 
+it.each([false, true])("replays and downloads an unseeded generated-package purchase audit (weighted=%s)", async weighted => {
+    const game = generatedMechanicsGame(replayModesBlueprint(weighted));
+    const recorder = new ReplayRecorder();
+    const session = game.createSession();
+    const descriptor = recorder.recordAudit(game, session, [{kind: "spin", mode: "buy", delivery: "composite", roundId: "unseeded-purchase"}],
+        {status: "calculated", sessionId: "recorded-play", durability: "detached"});
+    const service = new StudioReplayExecutionService(undefined, () => Promise.resolve(game), 1);
+    try {
+        const started = service.start("/unseeded-purchase", {round: 1, recording: JSON.parse(JSON.stringify(descriptor))});
+        if (started.status !== "created") throw new Error("Audit not created");
+        const job = await waitForTerminal(service, "/unseeded-purchase", started.job.id);
+        expect(job).toMatchObject({status: "completed", descriptor: {auditStatus: "verified", auditCompletion: "completed",
+            seed: null, artifact: {stake: 0, betMode: "buy"}, modePolicy: {betModeId: "buy", selection: "recorded-commands"}}});
+        expect(job.descriptor?.audit).toEqual(descriptor.audit);
+        expect(job.descriptor?.commands).toEqual(descriptor.commands);
+        expect(job.descriptor?.artifact).toEqual(descriptor.artifact);
+        const download = service.getDownload("/unseeded-purchase", started.job.id);
+        if (download.status !== "ok") throw new Error("Audit download unavailable");
+        expect(JSON.parse(JSON.stringify(download.descriptor))).toEqual(job.descriptor);
+    } finally {
+        await service.cancelAll();
+        recorder.releaseAuditSession(session);
+    }
+});
+
 describe.each([false, true])("F12 Studio replay attribution (weighted: %s)", weighted => {
     it.each([
         {mode: "base", stakes: Array<number>(8).fill(0.05)},
