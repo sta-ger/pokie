@@ -358,8 +358,9 @@ describe("StudioPlayService", () => {
                     expect(descriptor!.artifact?.steps).toHaveLength(1);
                     expect(descriptor!.artifact?.featureEvents).toContainEqual({type: "chargedBetMode", data: {id: mode}});
                     expect(Boolean(descriptor!.artifact?.sequenceSelections?.length)).toBe(weighted);
-                    expect(descriptor!.audit!.deliveries.at(-1)?.result).toMatchObject({stake, mode});
-                    expect(descriptor!.commands?.at(-1)).toEqual(expect.objectContaining(intent));
+                    const deliveries = descriptor!.audit!.deliveries;
+                    expect(deliveries[deliveries.length - 1].result).toMatchObject({stake, mode});
+                    expect(descriptor!.commands![descriptor!.commands!.length - 1]).toEqual(expect.objectContaining(intent));
                     const download = JSON.parse(buildReplayDownload(descriptor!, "step").body);
                     const imported = validateReplayRequest({recording: download}).recording!;
                     expect(imported).toEqual(descriptor);

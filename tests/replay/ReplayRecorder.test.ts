@@ -512,7 +512,8 @@ describe("generated package audit step exports", () => {
         expect(descriptor).toMatchObject({seed: null, unit: "step", totalBet: 0.5, logicalRound: {status: "completed"},
             artifact: {stake: 0, betMode: "buy"}, modePolicy: {betModeId: "buy", selection: "recorded-commands"}});
         expect(descriptor.audit?.deliveries.map(delivery => delivery.result.stake)).toEqual([0.5, 0]);
-        expect(descriptor.audit?.deliveries.at(-1)?.artifact?.stake).toBe(0.5);
+        const deliveries = descriptor.audit!.deliveries;
+        expect(deliveries[deliveries.length - 1].artifact?.stake).toBe(0.5);
         expect(descriptor.artifact?.steps).toHaveLength(1);
         expect(() => validateAuditReplayDescriptor(JSON.parse(JSON.stringify(descriptor)), game)).not.toThrow();
         expect(recorder.replay(game, descriptor.audit!)).toMatchObject({auditStatus: "verified", artifact: descriptor.artifact, modePolicy: descriptor.modePolicy});
