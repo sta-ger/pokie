@@ -105,3 +105,13 @@ describe("SimulationReportSetDiffer", () => {
         expect(Object.keys(setDiff).sort()).toEqual(["changed", "game", "onlyInLeft", "onlyInRight", "perMode"]);
     });
 });
+
+it("propagates whole-sequence model differences through per-mode and top-level changes", () => {
+    const report = buildReport("base", 0);
+    report.reelSequences = [{reelIndex: 0, context: "logical-round", model: JSON.stringify({context: "logical-round-v1", reels: []}), selections: 0, variants: [{id: "a", weight: 1, probability: 1, count: 0, frequency: 0, uncovered: true}]}];
+    const changed: SimulationReport = {...report, reelSequences: [{...report.reelSequences[0], variants: [{...report.reelSequences[0].variants[0], weight: 2}]}]};
+    const diff = new SimulationReportSetDiffer().diff(buildSet({base: report}), buildSet({base: changed}));
+    expect(diff.changed).toBe(true);
+    expect(diff.perMode.base.rtp.delta).toBe(0);
+    expect(diff.perMode.base.reelSequences?.changes).toEqual(expect.arrayContaining([expect.objectContaining({kind: "weight", left: 1, right: 2})]));
+});

@@ -39,6 +39,7 @@ export function MetadataFieldset({
     const readManifest = (field: ManifestField): string => (typeof manifest[field] === "string" ? (manifest[field] as string) : "");
 
     const setManifestField = (field: ManifestField, value: string): void => {
+        if (readManifest(field) === value) return;
         mutate((b) => {
             const nextManifest = toRecordCopy(b.manifest);
             if (value.length === 0 && field !== "id" && field !== "name" && field !== "version") {
@@ -53,6 +54,7 @@ export function MetadataFieldset({
     // A project's initial id is a deterministic convenience derived from its Name.  Once somebody
     // types a different Game id it is theirs: later Name edits never overwrite that explicit choice.
     const setName = (value: string): void => {
+        if (readManifest("name") === value) return;
         mutate((b) => {
             const nextManifest = toRecordCopy(b.manifest);
             const previousName = typeof nextManifest.name === "string" ? nextManifest.name : "";
@@ -74,8 +76,9 @@ export function MetadataFieldset({
                 <div>
                     <TextInput
                         label="Game id"
-                        defaultValue={readManifest("id")}
-                        onBlur={(event) => setManifestField("id", event.currentTarget.value)}
+                        value={readManifest("id")}
+                        onInput={(event) => setManifestField("id", event.currentTarget.value)}
+                        onChange={(event) => setManifestField("id", event.currentTarget.value)}
                         error={fieldErrorMessage(issues, "manifest.id")}
                     />
                     <FieldWarningText message={fieldWarningMessage(issues, "manifest.id")} />
@@ -84,11 +87,9 @@ export function MetadataFieldset({
                     <TextInput
                         label="Game name"
                         value={readManifest("name")}
-                        // Name drives the managed project's identity.  Keep the editor's event-time
-                        // state current while typing so a Create Project click in the same React batch
-                        // cannot validate and save the preceding, still-valid name before its blur is
-                        // committed.  The other metadata fields remain blur-committed because they do
-                        // not participate in that primary-action identity path.
+                        // Native input must update the event-time draft before Save/Open completes,
+                        // even while focus remains here. onChange also covers change-only controls.
+                        onInput={(event) => setName(event.currentTarget.value)}
                         onChange={(event) => setName(event.currentTarget.value)}
                         error={fieldErrorMessage(issues, "manifest.name")}
                     />
@@ -97,21 +98,24 @@ export function MetadataFieldset({
                 <div>
                     <TextInput
                         label="Version"
-                        defaultValue={readManifest("version")}
-                        onBlur={(event) => setManifestField("version", event.currentTarget.value)}
+                        value={readManifest("version")}
+                        onInput={(event) => setManifestField("version", event.currentTarget.value)}
+                        onChange={(event) => setManifestField("version", event.currentTarget.value)}
                         error={fieldErrorMessage(issues, "manifest.version")}
                     />
                     <FieldWarningText message={fieldWarningMessage(issues, "manifest.version")} />
                 </div>
                 <TextInput
                     label="Description (optional)"
-                    defaultValue={readManifest("description")}
-                    onBlur={(event) => setManifestField("description", event.currentTarget.value)}
+                    value={readManifest("description")}
+                    onInput={(event) => setManifestField("description", event.currentTarget.value)}
+                    onChange={(event) => setManifestField("description", event.currentTarget.value)}
                 />
                 <TextInput
                     label="Author (optional)"
-                    defaultValue={readManifest("author")}
-                    onBlur={(event) => setManifestField("author", event.currentTarget.value)}
+                    value={readManifest("author")}
+                    onInput={(event) => setManifestField("author", event.currentTarget.value)}
+                    onChange={(event) => setManifestField("author", event.currentTarget.value)}
                 />
             </SimpleGrid>
         </PageSection>

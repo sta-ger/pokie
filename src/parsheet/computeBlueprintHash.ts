@@ -1,3 +1,4 @@
+import {PAR_SEQUENCE_CONTEXT, PAR_SEQUENCE_SAMPLING} from "./mapping/ReelSequencesSheetMapper.js";
 import crypto from "crypto";
 import type {BetMode} from "../gamepackage/BetMode.js";
 import type {GameBlueprint, GameBlueprintManifest, GameBlueprintMechanics, GameBlueprintWinModel} from "../generated/GameBlueprint.js";
@@ -37,6 +38,11 @@ function canonicalizeBlueprint(blueprint: GameBlueprint): Record<string, unknown
     setIfNonEmptyArray(canonical, "scatters", blueprint.scatters);
     canonical.paytable = canonicalizePaytable(blueprint.paytable);
     setIfNonEmptyArray(canonical, "reelStrips", blueprint.reelStrips);
+    if (blueprint.reelSequences !== undefined) {
+        canonical.reelSequences = blueprint.reelSequences.map(reel => reel.type === "exact" ? {type: "exact", symbols: reel.symbols} : {type: "weighted", variants: reel.variants.map(({id, weight, symbols}) => ({id, weight, symbols}))});
+        canonical.sequenceContext = PAR_SEQUENCE_CONTEXT;
+        canonical.variantSampling = PAR_SEQUENCE_SAMPLING;
+    }
     setIfNonEmptyArray(canonical, "paylines", blueprint.paylines);
     setIfNonEmptyArray(canonical, "availableBets", blueprint.availableBets);
     if (blueprint.winModel !== undefined) {

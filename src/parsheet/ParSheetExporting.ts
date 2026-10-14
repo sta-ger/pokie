@@ -1,6 +1,8 @@
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 
 export type ParSheetExportOptions = {
+    /** A republished workbook cannot upgrade previously ineligible conversion evidence. */
+    readonly losslessEligible?: boolean;
     readonly signal?: AbortSignal;
     readonly onProgress?: (progress: {readonly message: string}) => void;
 };

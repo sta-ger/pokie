@@ -594,3 +594,18 @@ repeated reads, saved stage delivery and idempotent retry do not recount a choic
 Restorable runtime rollback and compensated persistence failure restore counters
 with selection/RNG state. Variant state keeps only active contextual selections and
 configured counters, rather than a history of completed round IDs.
+
+
+Whole-sequence observed frequency is **variant count / selections for that reel and
+context**, not count / delivered spins. Markdown, HTML, JSON downloads and Studio
+show the actual denominator, configured probabilities and distinct uncovered versus
+zero-weight coverage. Positive probabilities that underflow numeric display retain
+an exact `probabilityRatio`. Zero-selection results have zero frequency and no NaN.
+
+The existing simulation-report differ (and `pokie diff`) includes `reelSequences`.
+It explains variant additions/removals, ordering, authored weight, full-array and
+context/model changes even when payout metrics agree. Configured changes are separate
+from observed count/denominator differences; multi-mode sets propagate these changes.
+Reports without sequence fields remain comparable. Cancelled/failed simulation jobs
+keep their existing partial-result/completion contract; editor previews are not
+observed simulation results.

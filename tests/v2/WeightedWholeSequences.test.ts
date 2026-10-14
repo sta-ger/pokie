@@ -517,7 +517,8 @@ describe("canonical weighted whole sequences", () => {
         first.merge(api.SimulationAccumulator.fromSnapshot(second.toSnapshot()));
         expect(first.getStatistics().reelSequences![0].selections).toBe(2000);
         const stats = new api.AggregateSimulationRunner(session, 10000).run().getStatistics();
-        expect(stats.reelSequences![0].variants[0].frequency).toBeCloseTo(0.25, 1); // tolerance < 0.05
+        expect(stats.reelSequences![0].variants[0].frequency).toBeCloseTo(0.25, 1);
+        // tolerance < 0.05
         expect(Math.abs(stats.rtp - 1)).toBeLessThan(0.06);
         const state = session.toSessionState() as {sequenceState: {selections: unknown[]; counts: Record<string, number>[]}};
         expect(state.sequenceState.selections).toHaveLength(1);
@@ -690,11 +691,12 @@ describe("canonical weighted whole sequences", () => {
             fs.writeFileSync(source, JSON.stringify(weightedBlueprint));
             const planner = new api.ArtifactConversionPlanner();
             const project: api.PokieProject = {type: "blueprint", rootPath: source, capabilities: api.PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "Blueprint fields"};
-            for (const kind of ["parWorkbook", "wasm"] as const) expect(planner.plan(project, kind).status).toBe("unavailable");
+            expect(planner.plan(project, "parWorkbook").status).not.toBe("unavailable");
+            expect(planner.plan(project, "wasm").status).toBe("unavailable");
             const unsupported = path.join(directory, "unsupported");
             await expect(new api.WasmArtifactBuilder("1").build(project, path.join(unsupported, "game.pokie.wasm"))).rejects.toThrow("reelSequences");
-            const issues = await new api.ParSheetExporter("1").exportToFile(weightedBlueprint, path.join(unsupported, "game.xlsx"));
-            expect(issues.some(issue => issue.code === "parsheet-weighted-sequences-unsupported" && issue.severity === "error")).toBe(true);
+            const issues = await new api.ParSheetExporter("1").exportToFile(weightedBlueprint, path.join(directory, "game.xlsx"));
+            expect(issues.filter(issue => issue.severity === "error")).toEqual([]);
             expect(fs.existsSync(unsupported)).toBe(false);
             fs.writeFileSync(source, JSON.stringify(invalid));
             expect(() => api.loadGameBlueprint(source)).toThrow("reelSequences");
@@ -729,7 +731,7 @@ describe("canonical weighted whole sequences", () => {
         expect(() => new api.ResizableSymbolsCombinationsGenerator(config, [1, 1], rng).generateSymbolsCombination()).toThrow("weighted whole sequences");
         expect(() => new api.VariableHeightSymbolsCombinationsGenerator(config, [new api.SymbolsSequence<number>().fromArray([1]), new api.SymbolsSequence<number>().fromArray([1])], rng).generateSymbolsCombination()).toThrow("weighted whole sequences");
         expect(calls).toEqual([]);
-        expect(api.prepareBlueprintForParSheetExport(weightedBlueprint).blueprint).toBeUndefined();
+        expect(api.prepareBlueprintForParSheetExport(weightedBlueprint).blueprint?.reelSequences).toEqual(weightedBlueprint.reelSequences);
         expect(() => api.resolveCanonicalWasmGameModel(weightedBlueprint)).toThrow("reelSequences");
         expect(api.buildGameModelReels(weightedBlueprint).reels[0]).toMatchObject({source: "weighted", weightedVariants: variants.map((v, i) => ({...v, id: i ? "all-B" : "all-A"}))});
     });

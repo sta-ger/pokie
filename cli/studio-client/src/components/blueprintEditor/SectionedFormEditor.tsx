@@ -43,6 +43,7 @@ export function SectionedFormEditor({
     modeDrafts,
     revision,
     validationView,
+    onSequenceDirtyChange,
 }: {
     blueprint: Record<string, unknown>;
     mutate: BlueprintMutate;
@@ -50,6 +51,7 @@ export function SectionedFormEditor({
     modeDrafts: ReelGenerationModeDraftsRef;
     revision: number;
     validationView: BlueprintValidationView;
+    onSequenceDirtyChange?: (dirty: boolean) => void;
 }) {
     const [activeSection, setActiveSection] = useState<BlueprintSectionId>("basics");
     // Mantine's keepMounted mode preserves local field state, but mounting every heavy editor panel on
@@ -163,7 +165,7 @@ export function SectionedFormEditor({
                     {visitedSections.has("reels") && <>
                         <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.reels)} />
                         <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.reels)} />
-                        <ReelGenerationModeSelector blueprint={blueprint} mutate={mutate} drafts={drafts} modeDrafts={modeDrafts} revision={revision} />
+                        <ReelGenerationModeSelector blueprint={blueprint} mutate={mutate} drafts={drafts} modeDrafts={modeDrafts} revision={revision} onDirtyChange={onSequenceDirtyChange} />
                     </>}
                 </Tabs.Panel>
 

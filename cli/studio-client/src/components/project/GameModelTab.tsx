@@ -87,6 +87,9 @@ export function GameModelTab({
     const confirm = useConfirm();
     const editor = useBlueprintEditor();
     const [state, setState] = useState<GameModelState>({status: "loading"});
+    const [sequenceDraftDirty, setSequenceDraftDirty] = useState(false);
+    const sequenceDirtyRef = useRef(false);
+    const sourceHash = useRef<string | undefined>(undefined);
     const [editState, setEditState] = useState<EditState>({status: "viewing"});
     const [validationView, setValidationView] = useState<BlueprintValidationView>({status: "idle"});
     const [editError, setEditError] = useState<GameModelFailure>();
@@ -134,7 +137,7 @@ export function GameModelTab({
 
     const refreshing = state.status === "loading" || (state.status === "loaded" && state.refreshing === true);
 
-    const isDirty = (editState.status === "editing" || editState.status === "saving") && editor.state.revision !== editState.baselineRevision;
+    const isDirty = (editState.status === "editing" || editState.status === "saving") && (editor.state.revision !== editState.baselineRevision || sequenceDraftDirty);
 
     useEffect(() => {
         onDirtyChange?.(isDirty);
@@ -188,6 +191,8 @@ export function GameModelTab({
                 }
                 const revisionBeforeLoad = editor.state.revision;
                 setValidationView({status: "idle"});
+                sourceHash.current = result.blueprintHash;
+                setSequenceDraftDirty(false);
                 editor.loadFrom(result.blueprint);
                 setEditState({status: "editing", section, baselineRevision: revisionBeforeLoad + 1});
             })
@@ -220,6 +225,8 @@ export function GameModelTab({
                 }
                 const revisionBeforeLoad = editor.state.revision;
                 setValidationView({status: "idle"});
+                sourceHash.current = result.blueprintHash;
+                setSequenceDraftDirty(false);
                 editor.loadFrom(result.blueprint);
                 editor.mutate((blueprint) => {
                     setReelGenerationMode(blueprint, "reelStripGeneration");
@@ -251,8 +258,6 @@ export function GameModelTab({
     };
 
     const mutateBlueprint: BlueprintMutate = (mutate) => {
-        // Also reject late preview callbacks and events queued before the disabled form renders.
-        if (saveGuard.isBlocked()) return;
         // The previous Save validated a different revision. Retire its diagnostics as soon as
         // the user corrects the draft; the next Save still validates before writing anything.
         setValidationView({status: "stale"});
@@ -261,14 +266,16 @@ export function GameModelTab({
     };
 
     const handleSave = (): void => {
-        if (editState.status !== "editing" || projectRoot === undefined || !saveGuard.begin()) {
+        if (sequenceDraftDirty || editState.status !== "editing" || projectRoot === undefined || !saveGuard.begin()) {
             return;
         }
         const {section, baselineRevision} = editState;
         // A field's blur and this primary action can occur in the same React event batch. Read the
         // editor's event-time state so Save includes that just-committed field value rather than the
         // previous render's snapshot.
-        const blueprintToSave = editor.getCurrentState().blueprint;
+        const snapshot = editor.getCurrentState();
+        const blueprintToSave = snapshot.blueprint;
+        const expectedHash = sourceHash.current;
         setEditError(undefined);
         setEditState({status: "saving", section, baselineRevision});
         setValidationView({status: "loading"});
@@ -285,13 +292,14 @@ export function GameModelTab({
                 // write of the whole just-validated blueprint back to its own already-tracked path.
                 // `overwrite: true`: this section's edit started from that exact path's own content (see
                 // handleEdit above), so there's nothing here to confirm overwriting.
-                return saveBlueprint(fetchImpl, projectRoot, blueprintToSave, true).then((saveResult) => {
+                return saveBlueprint(fetchImpl, projectRoot, blueprintToSave, true, expectedHash).then((saveResult) => {
                     if (saveResult.status !== "ok") {
                         setEditState({status: "editing", section, baselineRevision});
                         setEditError({message: describePathActionError("This game's saved design", saveResult.error), detail: saveResult.error});
                         return;
                     }
-                    setEditState({status: "viewing"});
+                    sourceHash.current = saveResult.blueprintHash;
+                    setEditState(editor.getCurrentState().revision === snapshot.revision && !sequenceDirtyRef.current ? {status: "viewing"} : {status: "editing", section, baselineRevision: snapshot.revision});
                     // View Mode must show exactly the saved truth, straight off the server -- never the
                     // in-editor draft this component happens to still be holding.
                     refresh();
@@ -329,6 +337,11 @@ export function GameModelTab({
                                 drafts: editor.drafts,
                                 modeDrafts: editor.modeDrafts,
                                 revision: editor.state.revision,
+                                sequenceDraftDirty,
+                                onSequenceDirtyChange: dirty => {
+                                    sequenceDirtyRef.current = dirty;
+                                    setSequenceDraftDirty(dirty);
+                                },
                             }
                             : undefined
                     }

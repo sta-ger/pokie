@@ -1,3 +1,4 @@
+import {diffReelSequences} from "./diffReelSequences.js";
 import type {SimulationReport} from "../reporting/SimulationReport.js";
 import type {SimulationReportBreakdown, SimulationReportBreakdownComponent} from "../reporting/SimulationReportBreakdown.js";
 import {SimulationCategoryOrdering} from "../simulation/SimulationCategoryOrdering.js";
@@ -24,6 +25,7 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
     }
 
     public diff(left: SimulationReport, right: SimulationReport): SimulationReportDiff {
+        const reelSequences = diffReelSequences(left.reelSequences, right.reelSequences);
         const rtp = this.metricDiff(left.rtp, right.rtp);
         const hitFrequency = this.metricDiff(left.hitFrequency, right.hitFrequency);
         const maxWin = this.metricDiff(left.maxWin, right.maxWin);
@@ -48,7 +50,8 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
         const spinsPerSecond = this.metricDiff(left.spinsPerSecond, right.spinsPerSecond);
 
         return {
-            changed: this.hasChanges(game.changed, seed.changed, betMode, [requestedRounds, rounds, totalBet, totalWin, rtp, hitFrequency, maxWin, durationMs, spinsPerSecond], breakdown, left.breakdown, right.breakdown),
+            changed: !!reelSequences?.changed || this.hasChanges(game.changed, seed.changed, betMode, [requestedRounds, rounds, totalBet, totalWin, rtp, hitFrequency, maxWin, durationMs, spinsPerSecond], breakdown, left.breakdown, right.breakdown),
+            ...(reelSequences === undefined ? {} : {reelSequences}),
             game,
             seed,
             betMode,
@@ -61,7 +64,9 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
             maxWin,
             durationMs,
             spinsPerSecond,
-            warnings: this.buildWarnings(rtp, hitFrequency, maxWin, breakdown, left.breakdown, right.breakdown, betMode),
+            warnings: [...this.buildWarnings(rtp, hitFrequency, maxWin, breakdown, left.breakdown, right.breakdown, betMode),
+                ...(reelSequences?.changes.map(change => `Whole-sequence ${change.kind} change at ${change.reelIndex < 0 ? "model" : `reel ${change.reelIndex + 1}`} ${change.path}: ${JSON.stringify(change.left)} -> ${JSON.stringify(change.right)}`) ?? []),
+                ...(reelSequences?.observationsChanged ? ["Whole-sequence observed counts or selection denominators changed (sampling results)."] : [])],
             breakdown,
         };
     }

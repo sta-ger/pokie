@@ -1,4 +1,5 @@
 import {Badge, Button, Group, NumberInput, Table, Tabs, Text} from "@mantine/core";
+import {getReelGenerationMode} from "../../domain/blueprintFormOps";
 import {useState} from "react";
 import type {
     GameModelBetsAndModes,
@@ -72,6 +73,8 @@ export type GameModelEditController = {
     onSave: () => void;
     onCancel: () => void;
     saving: boolean;
+    sequenceDraftDirty?: boolean;
+    onSequenceDirtyChange?: (dirty: boolean) => void;
     validationView: BlueprintValidationView;
     blueprint: Record<string, unknown>;
     mutate: BlueprintMutate;
@@ -112,7 +115,7 @@ function SectionEditAction({id, edit}: {id: GameModelSectionId; edit: GameModelE
         }
         return (
             <Group gap="xs" wrap="nowrap">
-                <Button id={`game-model-${id}-save`} data-pokie-game-model-action="save" data-pokie-game-model-section={id} size="xs" onClick={edit.onSave} loading={edit.saving}>
+                <Button id={`game-model-${id}-save`} data-pokie-game-model-action="save" data-pokie-game-model-section={id} size="xs" onClick={edit.onSave} loading={edit.saving} disabled={edit.sequenceDraftDirty}>
                     Save
                 </Button>
                 <Button id={`game-model-${id}-cancel`} data-pokie-game-model-action="cancel" data-pokie-game-model-section={id} size="xs" variant="default" onClick={edit.onCancel} disabled={edit.saving}>
@@ -823,9 +826,9 @@ export function GameModelSections({
 
             <PageSection legend="Reels" action={edit && <SectionEditAction id="reels" edit={edit} />}>
                 {editingReels && edit ? (
-                    <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
+                    <fieldset disabled={edit.saving && getReelGenerationMode(edit.blueprint) !== "reelSequences"} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="reels" edit={edit} />
-                        <ReelGenerationModeSelector blueprint={edit.blueprint} mutate={edit.mutate} drafts={edit.drafts} modeDrafts={edit.modeDrafts} revision={edit.revision} />
+                        <ReelGenerationModeSelector blueprint={edit.blueprint} mutate={edit.mutate} drafts={edit.drafts} modeDrafts={edit.modeDrafts} revision={edit.revision} onDirtyChange={edit.onSequenceDirtyChange} />
                     </fieldset>
                 ) : (
                     <ReelsSection section={projection.reels} sampleControls={reelsSampleControls} />

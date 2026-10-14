@@ -765,11 +765,25 @@ describe("GameBlueprintValidator", () => {
             );
         });
 
-        it("flags an invalid match-count key and a non-positive award", () => {
-            const blueprint = withFreeGames({awardsByCount: {1: 5, 3: 0}});
+        it.each([{2: 0}, {2: 0, 3: 8, 4: 15}])("accepts authored zero grants in %j without changing awards", (awardsByCount) => {
+            const blueprint = withFreeGames({awardsByCount});
+            const originalAwards = {...awardsByCount};
+
+            expect(validator.validate(blueprint).filter((issue) => issue.severity === "error")).toEqual([]);
+            expect(blueprint.mechanics.freeGames.awardsByCount).toEqual(originalAwards);
+        });
+
+        it("flags an invalid match-count key and a negative award", () => {
+            const blueprint = withFreeGames({awardsByCount: {1: 5, 3: -1}});
 
             expect(codesOf(validator.validate(blueprint))).toEqual(
                 expect.arrayContaining(["blueprint-mechanics-freegames-invalid-count", "blueprint-mechanics-freegames-invalid-award"]),
+            );
+        });
+
+        it.each([-1, 0.5, NaN, Infinity, -Infinity, "0", null])("rejects an invalid free-game award %j", (awarded) => {
+            expect(validator.validate(withFreeGames({awardsByCount: {3: awarded}}))).toContainEqual(
+                expect.objectContaining({code: "blueprint-mechanics-freegames-invalid-award", severity: "error"}),
             );
         });
 

@@ -8,6 +8,7 @@ export function validateBlueprintReelSequences(blueprint: Record<string, unknown
     const source = blueprint.reelSequences;
     if (source === undefined) return [];
     const errors: string[] = [];
+    for (const key of ["sequenceContext", "variantSampling"]) if (blueprint[key] !== undefined) errors.push(`${key}: sequence context is fixed at logical-round-v1 / binary64-integer-ratios-v1, not authored metadata.`);
     if (!Number.isSafeInteger(blueprint.reels) || (blueprint.reels as number) <= 0) errors.push("reelSequences: reels must be a positive integer.");
     if (!Number.isSafeInteger(blueprint.rows) || (blueprint.rows as number) <= 0) errors.push("reelSequences: rows must be a positive integer.");
     try {
@@ -22,8 +23,13 @@ export function validateBlueprintReelSequences(blueprint: Record<string, unknown
         const value = entry as {type?: unknown; symbols?: unknown; variants?: unknown};
         try {
             if (!value || typeof value !== "object") throw new Error(`${path}: expected exact or weighted definition.`);
+            const allowed = value.type === "weighted" ? ["type", "variants"] : ["type", "symbols"];
+            for (const key of Object.keys(value)) if (!allowed.includes(key)) errors.push(`${path}.${key}: unsupported sequence field or context metadata.`);
             if (value.type === "weighted") {
                 if (value.symbols !== undefined) throw new Error(`${path}: ambiguous exact and weighted definition.`);
+                if (Array.isArray(value.variants)) value.variants.forEach((variant, variantIndex) => {
+                    if (variant && typeof variant === "object") for (const key of Object.keys(variant)) if (!["id", "symbols", "weight"].includes(key)) errors.push(`${path}.variants[${variantIndex}].${key}: unsupported variant field.`);
+                });
                 new WeightedSymbolsSequence(value.variants as WeightedSequenceVariant[], blueprint.symbols as string[], `${path}.variants`).getSize();
             } else if (value.type === "exact") {
                 if (value.variants !== undefined || !Array.isArray(value.symbols) || value.symbols.length === 0 || Array.from(value.symbols).some(symbol => typeof symbol !== "string" || !Array.isArray(blueprint.symbols) || !blueprint.symbols.includes(symbol))) throw new Error(`${path}.symbols: expected a nonempty exact array of known symbols without variants.`);

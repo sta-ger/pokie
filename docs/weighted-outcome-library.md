@@ -396,3 +396,12 @@ no invented unique variant-selection identity. The source/checkpoint identity
 binds variant IDs, weights, full arrays and ordering. Cancellation retains only
 explicitly owned valid checkpoints, cleans ordinary temporary partitions and
 publishes no completed library. See [weighted mathematics](math-modeling.md#weighted-whole-sequences).
+
+
+Weighted whole-sequence reels now support lossless PAR interchange and rendered
+Studio authoring. They are authored runtime alternatives with per-logical-round
+selection denominators; `WeightedOutcomeLibrary` remains a precomputed-outcome
+artifact with its own analyzer/report route. Per-symbol `symbolWeights` is a third
+capability, whose PAR conversion is a diagnosed literal snapshot. No outcome-library
+reconstruction edge to Blueprint/PAR or arbitrary TypeScript-source recovery is
+implied by sequence interchange.

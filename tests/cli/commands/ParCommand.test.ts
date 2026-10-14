@@ -1,3 +1,4 @@
+import {weightedBlueprint} from "../../v2/fixtures/WeightedWholeSequenceGame.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -56,6 +57,28 @@ describe("ParCommand", () => {
     afterEach(() => {
         logSpy.mockRestore();
         errorSpy.mockRestore();
+    });
+
+    it("exports/imports weighted reels through real command services and preserves evidence without overwriting the source", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "weighted-par-command-"));
+        const source = path.join(directory, "source.blueprint.json"),
+            workbook = path.join(directory, "source.xlsx"),
+            imported = path.join(directory, "imported.json");
+        fs.writeFileSync(source, JSON.stringify(weightedBlueprint));
+        const before = fs.readFileSync(source);
+        const command = new ParCommand("1");
+        try {
+            expect(await command.run(["export", source, "--out", workbook, "--dry-run"])).toBe(0);
+            expect(fs.existsSync(workbook)).toBe(false);
+            expect(await command.run(["export", source, "--out", workbook])).toBe(0);
+            expect(await command.run(["import", workbook, "--out", imported, "--format", "json"])).toBe(0);
+            expect(JSON.parse(fs.readFileSync(imported, "utf8")).reelSequences).toEqual(weightedBlueprint.reelSequences);
+            expect(JSON.parse(fs.readFileSync(`${imported}.conversion-evidence.json`, "utf8"))).toMatchObject({losslessEligible: true, provenanceHashMatches: true});
+            expect(fs.readFileSync(source)).toEqual(before);
+            await expect(command.run(["export", source, "--out", workbook])).rejects.toThrow();
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
     });
 
     it("has the expected name and description", () => {

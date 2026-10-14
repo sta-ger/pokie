@@ -1,3 +1,4 @@
+import type {ReelSequencesDiff} from "./diffReelSequences.js";
 import type {SimulationReportBreakdownComponent} from "../reporting/SimulationReportBreakdown.js";
 
 export type SimulationReportMetricDiff = {
@@ -32,6 +33,7 @@ export type SimulationReportDiff = {
     // means callers do not need to infer it from every metric, optional breakdown, and metadata
     // field themselves.
     changed: boolean;
+    reelSequences?: ReelSequencesDiff;
     game: {
         left: {id: string; name: string; version: string};
         right: {id: string; name: string; version: string};

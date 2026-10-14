@@ -178,7 +178,8 @@
         "docs/v2-completion/V2C-05.md",
         "docs/v2-completion/V2C-06.md",
         "docs/v2-completion/V2C-07.md",
-        "docs/v2-completion/V2C-08.md"
+        "docs/v2-completion/V2C-08.md",
+        "docs/v2-completion/V2C-09.md"
     ],
     "dependencies": {
         "commander": "^14.0.3",

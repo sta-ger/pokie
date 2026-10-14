@@ -380,9 +380,16 @@ The fixed-height generator and the built-in free-game/bet-mode decorators suppor
 this contract. Variable-height and resizable generators reject weighted inputs
 before drawing. Custom generators must explicitly declare support and own the
 corresponding context/capture contract; forced-grid enumeration declares support
-without claiming a runtime selection. Canonical PAR and WASM conversions currently
-reject `reelSequences` before publishing an output. Generated TypeScript game
+without claiming a runtime selection. Canonical PAR preserves exact and weighted `reelSequences` through the
+`ReelSequences` sheet. WASM still rejects this source before publishing an output. Generated TypeScript game
 packages preserve all alternatives and IDs.
+
+Outcome Library bundles have a separate positive-integer frequency contract.
+Exact enumeration of weighted sequences can produce fractional probability weights;
+the bundle writer rejects those weights rather than rounding them. An explicit
+`pokie build SOURCE --target outcomeLibrary --sample N --seed SEED` publishes
+sampled integer frequencies. That sampled bundle does not replace the lossless
+sequence definitions retained by a TypeScript package or PAR workbook.
 
 Weighted reel definitions, including mixed exact strips, remain fixed for the
 lifetime of a generator/session. Replacing them on a live configuration is rejected
@@ -395,3 +402,45 @@ When restoring a standalone generator, pair `getSelectionState()` /
 context counter is part of that state, so the next generation reselects once.
 `pokie edit` preserves weighted sources and authored fields outside the wizard's
 questions; edit alternatives in Studio/JSON, then apply/save explicitly.
+
+
+### Whole-sequence Studio and PAR workflow
+
+Home Design and Project Game Model → Reels share rendered whole-sequence controls.
+Select a reel, add or remove variants, edit case-sensitive IDs and relative weights,
+and enter complete ordered symbols (one per line). Exact and weighted reels may
+coexist. Preview inspects all definitions without selecting a live strip or consuming
+session RNG. Apply updates the Blueprint draft; **Save game** persists it. Local edits
+invalidate Preview/Apply, including pending responses; Cancel restores the applied
+draft. Switching sources or replacing an unapplied design requires confirmation.
+Project saves use the loaded content hash and retain edits made during a save request.
+
+The workbook uses `ReelSequences` instead of `ReelStrips` for this source. Columns
+`Reel`, `Variant` and `Position` are contiguous one-based indices; `Type`, `ID`,
+`Weight`, `Symbol` and `Length` preserve complete definitions and ordering. Exact
+members have a single array with blank ID/weight. Weights are decimal **text cells**,
+so ExcelJS serialization preserves fractional, subnormal and extreme finite binary64
+values. IDs and symbols are text too (including numeric-looking IDs).
+
+`Context` is `logical-round-v1`; `Sampling` is `binary64-integer-ratios-v1`.
+These versioned contracts are fixed, not authored selectors. Unsupported context,
+conflicting sheets, missing/duplicate indices, invalid variants and unknown symbols
+produce sheet/row/column or authored-field diagnostics. Relative weights need a
+positive total; they need not sum to one or 100. Zero entries are valid. Negative or
+nonfinite weights, all-zero totals, unequal lengths, duplicate IDs/arrays and empty
+variants are invalid; large finite totals do not overflow validation.
+
+`Meta` records the PAR structural hash, including sequence definitions and context.
+Object-key order is canonicalized; array order is meaningful. This hash remains
+separate from Studio's exact-content hash. Untouched canonical XLSX imports match
+provenance. Edits invalidate identity or fail validation; ignored/defaulted/formula
+materialization withholds a lossless claim. Imported Blueprint publications include
+conversion-evidence sidecars. Managed Studio import evidence is bound to workbook
+bytes and imported content, survives restart, and loses its lossless claim after
+workbook drift or draft edits. Republishing cannot upgrade ineligible evidence.
+
+Legacy literal `ReelStrips` remains supported. Generated reels and per-symbol
+`symbolWeights` export as separately diagnosed deterministic snapshots. Whole-sequence
+PAR does not materialize or flatten alternatives. `pokie reel generate` retains its
+explicit unsupported materialization boundary, and weighted outcome libraries remain
+precomputed outcome artifacts, with no reconstruction edge to Blueprint/PAR.

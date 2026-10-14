@@ -375,3 +375,57 @@ describe("SimulationReportDiffer betMode", () => {
         expect(diff.betMode).toEqual({left: null, right: "ante", changed: true});
     });
 });
+
+it.each(["unchanged", "order", "weight", "context", "symbols", "added", "removed", "missing", "sampling"])("explains whole-sequence %s changes with identical payout metrics", kind => {
+    const variants = [{id: "a", weight: 1, probability: 0.25, count: 0, frequency: 0, uncovered: true}, {id: "b", weight: 3, probability: 0.75, count: 0, frequency: 0, uncovered: true}];
+    const model = {context: "logical-round-v1", rows: 1, reels: [[{id: "a", weight: 1, symbols: ["A"]}, {id: "b", weight: 3, symbols: ["B"]}]]};
+    const before: SimulationReport = {...left, reelSequences: [{reelIndex: 0, context: "logical-round", selections: 0, model: JSON.stringify(model), variants}]};
+    const after: SimulationReport = JSON.parse(JSON.stringify(before));
+    if (kind === "order") {
+ after.reelSequences![0] = {...after.reelSequences![0], variants: [...variants].reverse()};
+ model.reels[0].reverse();
+    }
+    if (kind === "weight") {
+ after.reelSequences![0] = {...after.reelSequences![0], variants: [{...variants[0], weight: 2}, variants[1]]};
+ model.reels[0][0].weight = 2;
+    }
+    if (kind === "context") model.context = "future-context-v2";
+    if (kind === "symbols") model.reels[0][0].symbols = ["B", "A"];
+    if (kind === "added") after.reelSequences![0] = {...after.reelSequences![0], variants: [...variants, {...variants[0], id: "new"}]};
+    if (kind === "removed") after.reelSequences![0] = {...after.reelSequences![0], variants: [variants[0]]};
+    if (kind === "sampling") after.reelSequences![0] = {...after.reelSequences![0], selections: 2, variants: variants.map(v => ({...v, count: 1, frequency: 0.5, uncovered: false}))};
+    after.reelSequences![0] = {...after.reelSequences![0], model: JSON.stringify(model)};
+    if (kind === "missing") Reflect.deleteProperty(after, "reelSequences");
+    const result = new SimulationReportDiffer().diff(before, after);
+    expect(result.rtp.delta).toBe(0);
+    expect(result.changed).toBe(kind !== "unchanged");
+    expect(result.reelSequences?.configuredChanged).toBe(!["unchanged", "sampling"].includes(kind));
+    expect(result.reelSequences?.observationsChanged).toBe(kind === "sampling");
+    if (!["unchanged", "sampling"].includes(kind)) expect(result.reelSequences?.changes.some(change => change.kind === (kind === "missing" ? "availability" : kind))).toBe(true);
+    if (kind === "unchanged") expect(result.reelSequences?.changes).toEqual([]);
+});
+
+
+it.each(["weighted", "exact"])("attributes a reel 2 %s definition edit once with mixed siblings", type => {
+    const variants = [{id: "a", weight: 1, probability: 1, count: 0, frequency: 0, uncovered: true}];
+    const weighted = [{id: "a", weight: 1, symbols: ["A"]}];
+    const model = {context: "logical-round-v1", reels: [weighted, type === "exact" ? ["A"] : weighted, ["B"]]};
+    const sequence = (reelIndex: number) => ({reelIndex, context: "logical-round" as const, selections: 0, model: JSON.stringify(model), variants});
+    const before: SimulationReport = {...left, reelSequences: type === "exact" ? [sequence(0)] : [sequence(0), sequence(1)]};
+    const changedModel = JSON.parse(JSON.stringify(model));
+    if (type === "exact") changedModel.reels[1] = ["B"];
+    else changedModel.reels[1][0].symbols = ["B"];
+    const after: SimulationReport = {...before, reelSequences: before.reelSequences!.map(reel => ({...reel, model: JSON.stringify(changedModel)}))};
+    const diff = new SimulationReportDiffer().diff(before, after);
+    expect(diff.reelSequences).toMatchObject({configuredChanged: true, observationsChanged: false});
+    expect(diff.reelSequences!.changes).toEqual([
+        expect.objectContaining({reelIndex: 1, kind: "symbols", path: type === "exact" ? "model.reels[1]" : 'model.reels[1].variants["a"].symbols'}),
+    ]);
+    expect(diff.warnings).toHaveLength(1);
+    expect(diff.warnings[0]).toContain("change at reel 2");
+    expect(diff.warnings[0]).not.toContain("reel 1");
+    const sampled: SimulationReport = {...after, reelSequences: after.reelSequences!.map(reel => ({...reel, selections: 1, variants: variants.map(variant => ({...variant, count: 1, frequency: 1, uncovered: false}))}))};
+    const sampledDiff = new SimulationReportDiffer().diff(before, sampled);
+    expect(sampledDiff.reelSequences!.changes).toEqual(diff.reelSequences!.changes);
+    expect(sampledDiff.reelSequences!.observationsChanged).toBe(true);
+});
