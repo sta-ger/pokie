@@ -13,6 +13,7 @@ import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useNavigationBlockerConfirm} from "../../hooks/useNavigationBlockerConfirm";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
+import {IssueList} from "../common/IssueList";
 import {QuickActions} from "../common/QuickActions";
 import {GameModelSections, type GameModelSectionId} from "./GameModelSections";
 
@@ -316,6 +317,10 @@ export function GameModelTab({
     return (
         <div>
             {editError && <ErrorState message={editError.message} detail={editError.detail} />}
+            {validationView.status === "error" && <ErrorState message={describePathActionError("This game model save", validationView.message)} />}
+            {/* Save validates the whole source. Retain a complete summary even when an issue
+                belongs to a different section or has no field-level presentation. */}
+            {validationView.status === "invalid" && <IssueList title="Save blocked — correct these errors before saving" issues={validationView.errors} />}
             {state.status === "loading" && <LoadingState label="Loading game model…" />}
             {state.status === "loaded" && state.failure && <ErrorState message={state.failure.message} detail={state.failure.detail} />}
             {state.status === "error" && <ErrorState message={state.failure.message} detail={state.failure.detail} />}

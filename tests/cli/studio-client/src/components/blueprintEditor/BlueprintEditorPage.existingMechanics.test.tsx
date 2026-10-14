@@ -1,10 +1,157 @@
 import {MantineProvider} from "@mantine/core";
-import {fireEvent, render, screen, waitFor} from "@testing-library/react";
+import {fireEvent, render, screen, waitFor, within} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {useState} from "react";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {GameModelSections} from "../../../../../../cli/studio-client/src/components/project/GameModelSections";
 import {GameBlueprintValidator} from "../../../../../../src/generated/GameBlueprintValidator";
+import type {GameBlueprint} from "../../../../../../src/generated/GameBlueprint";
+import {buildGameModelProjection} from "../../../../../../src/project/buildGameModelProjection";
+import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
+
+function projectValidationSurface() {
+    let saved: GameBlueprint = {
+        manifest: {id: "v2c12-accum-recovery", name: "V2C12 Accumulating Recovery", version: "1.0.0"},
+        reels: 3, rows: 1, symbols: ["A", "C", "M", "J", "S"], scatters: ["S"], paytable: {A: {3: 0}},
+        availableBets: [0.05, 7.5, 1e-7], reelStrips: [["C", "A", "S", "J", "M"], ["A", "S", "J", "C", "M"], ["A", "S", "J", "C", "M"]],
+        mechanics: {
+            freeGames: {scatterSymbol: "S", awardsByCount: {2: 0, 3: 2}, retriggerPolicy: "additive"},
+            jackpot: {pool: {id: "mini", type: "accumulating", seedValue: 10}, contribution: {type: "percentage", percentage: 0.1}, trigger: {type: "symbol-count", symbolId: "J", minimumCount: 1}, award: "single-tier"},
+        },
+        betModes: [{id: "base", runtimeType: "base", isDefault: true}, {id: "ante", runtimeType: "ante", costMultiplier: 1.5}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 10, forcedFreeGames: 2}, {id: "buy-more", runtimeType: "buyFeature", costMultiplier: 25, forcedFreeGames: 4}],
+    };
+    const validator = new GameBlueprintValidator();
+    expect(validator.validate(saved).filter(issue => issue.severity === "error")).toEqual([]);
+    const routes = createRoutedFakeFetch({
+        "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+        "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/recovery", game: saved.manifest, type: "blueprint", capabilities: ["blueprint.build"]}}),
+        "/api/project/gameModel": () => ({ok: true, status: 200, body: buildGameModelProjection(saved)}),
+        "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/recovery", blueprint: saved, blueprintHash: "saved-hash"}}),
+        "/api/home/blueprints/validate": ({init}) => {
+            const issues = validator.validate(JSON.parse(String(init?.body)).blueprint);
+            const errors = issues.filter(issue => issue.severity === "error");
+            return {ok: true, status: 200, body: {status: errors.length ? "invalid" : "ok", errors, warnings: issues.filter(issue => issue.severity !== "error")}};
+        },
+        "/api/home/blueprints/save": ({init}) => {
+            saved = JSON.parse(String(init?.body)).blueprint as GameBlueprint;
+            expect(validator.validate(saved).filter(issue => issue.severity === "error")).toEqual([]);
+            return {ok: true, status: 200, body: {status: "ok", path: "/games/recovery", blueprintHash: "updated-hash"}};
+        },
+    });
+    return {...routes, getSaved: () => saved};
+}
+
+async function projectSection(legend: string): Promise<HTMLElement> {
+    return (await screen.findByText(legend, {selector: "span"})).closest("fieldset")!;
+}
+
+it.each(["save", "discard"])("V2C-12 exposes whitespace-only Project name validation and recovers through %s", async finish => {
+    const user = userEvent.setup();
+    const routes = projectValidationSurface();
+    const original = routes.getSaved();
+    renderRoutedApp({fetchImpl: routes.fetchImpl, initialEntries: ["/project/gameModel"]});
+    const basics = await projectSection("Game basics");
+    await user.click(await within(basics).findByRole("button", {name: "Edit"}));
+    const name = await within(basics).findByLabelText("Game name");
+    await user.clear(name);
+    await user.type(name, " ");
+    const save = within(basics).getByRole("button", {name: "Save"});
+    await user.click(save);
+    await waitFor(() => expect(name).toHaveAttribute("aria-invalid", "true"));
+    expect(within(basics).getByText('"manifest.name" must be a non-empty string.')).toBeVisible();
+    expect(name).toHaveValue(" ");
+    expect(save).toBeDisabled();
+    expect(routes.getSaved()).toEqual(original);
+    expect(routes.calls.some(call => call.url === "/api/home/blueprints/save")).toBe(false);
+    expect(JSON.parse(String(routes.calls.find(call => call.url === "/api/home/blueprints/validate")?.init?.body)).blueprint.manifest.name).toBe(" ");
+    if (finish === "save") {
+        await user.clear(name);
+        await user.type(name, "Recovered game");
+        expect(name).not.toHaveAttribute("aria-invalid", "true");
+        expect(screen.queryByText(/Save blocked/)).not.toBeInTheDocument();
+        expect(save).toBeEnabled();
+        expect(routes.getSaved()).toEqual(original);
+        await user.click(save);
+        await within(basics).findByRole("button", {name: "Edit"});
+        expect(within(basics).getByText("Name: Recovered game")).toBeVisible();
+        expect(routes.getSaved()).toEqual({...original, manifest: {...original.manifest, name: "Recovered game"}});
+        expect(routes.calls.filter(call => call.url === "/api/home/blueprints/save")).toHaveLength(1);
+        const body = JSON.parse(String(routes.calls.find(call => call.url === "/api/home/blueprints/save")?.init?.body));
+        expect(body).toMatchObject({overwrite: true, expectedHash: "saved-hash", blueprint: routes.getSaved()});
+    } else {
+        await user.click(within(basics).getByRole("button", {name: "Cancel"}));
+        await screen.findByText("Discard your unsaved changes to this section?");
+        await user.click(screen.getByRole("button", {name: "Confirm"}));
+        await within(basics).findByRole("button", {name: "Edit"});
+        expect(within(basics).getByText(`Name: ${original.manifest.name}`)).toBeVisible();
+        expect(routes.getSaved()).toEqual(original);
+        expect(routes.calls.some(call => call.url === "/api/home/blueprints/save")).toBe(false);
+    }
+    await user.click(within(basics).getByRole("button", {name: "Edit"}));
+    expect(await within(basics).findByLabelText("Game name")).toHaveValue(routes.getSaved().manifest.name);
+    expect(screen.queryByText(/must be a non-empty string/)).not.toBeInTheDocument();
+}, 60000);
+
+it.each([
+    {section: "Game basics", field: "Game id", path: "manifest.id"},
+    {section: "Game basics", field: "Version", path: "manifest.version"},
+    {section: "Layout", field: "Rows", path: "rows"},
+    {section: "Layout", field: "Reels", path: "reels"},
+])("V2C-12 retains actionable Project $path diagnostics at the real validator boundary", async ({section, field, path}) => {
+    const user = userEvent.setup();
+    const routes = projectValidationSurface();
+    const original = routes.getSaved();
+    renderRoutedApp({fetchImpl: routes.fetchImpl, initialEntries: ["/project/gameModel"]});
+    const panel = await projectSection(section);
+    await user.click(await within(panel).findByRole("button", {name: "Edit"}));
+    const input = await within(panel).findByLabelText(field);
+    await user.clear(input);
+    if (section === "Game basics") await user.type(input, "   ");
+    if (field === "Reels") {
+        await user.tab();
+        await screen.findByText(/Reduce reels from 3 to 0/);
+        await user.click(screen.getByRole("button", {name: "Confirm"}));
+    }
+    await user.click(within(panel).getByRole("button", {name: "Save"}));
+    await waitFor(() => expect(input).toHaveAttribute("aria-invalid", "true"));
+    expect(input).toHaveAccessibleDescription(new RegExp(path.replace(/\./g, "\\.")));
+    const submitted = JSON.parse(String(routes.calls.find(call => call.url === "/api/home/blueprints/validate")?.init?.body)).blueprint;
+    const summary = screen.getByText("Save blocked — correct these errors before saving").parentElement!;
+    for (const issue of new GameBlueprintValidator().validate(submitted).filter(issue => issue.severity === "error")) {
+        expect(summary).toHaveTextContent(`${issue.code}: ${issue.message}`);
+    }
+    expect(routes.getSaved()).toEqual(original);
+    expect(routes.calls.some(call => call.url === "/api/home/blueprints/save")).toBe(false);
+}, 60000);
+
+it.each(["validate", "save"])("V2C-12 renders Project %s request failure and permits an explicit retry", async endpoint => {
+    const user = userEvent.setup();
+    const routes = projectValidationSurface();
+    const original = routes.getSaved();
+    let fail = true;
+    const fetchImpl: FetchLike = (url, init) => {
+        if (url === `/api/home/blueprints/${endpoint}` && fail) {
+            fail = false;
+            return Promise.reject(new Error("Failed to fetch"));
+        }
+        return routes.fetchImpl(url, init);
+    };
+    renderRoutedApp({fetchImpl, initialEntries: ["/project/gameModel"]});
+    const basics = await projectSection("Game basics");
+    await user.click(await within(basics).findByRole("button", {name: "Edit"}));
+    const name = await within(basics).findByLabelText("Game name");
+    await user.clear(name);
+    await user.type(name, "Retry game");
+    await user.click(within(basics).getByRole("button", {name: "Save"}));
+    expect(await screen.findByText("This game model save couldn't reach POKIE Studio. Start or restart Studio, then try again.")).toBeVisible();
+    expect(name).toHaveValue("Retry game");
+    expect(routes.getSaved()).toEqual(original);
+    await user.click(within(basics).getByRole("button", {name: "Save"}));
+    await within(basics).findByRole("button", {name: "Edit"});
+    expect(within(basics).getByText("Name: Retry game")).toBeVisible();
+    expect(routes.calls.filter(call => call.url === "/api/home/blueprints/save")).toHaveLength(1);
+}, 60000);
 
 it("authors Hold&Win and jackpot in Home, preserves JSON equivalence and applies JSON explicitly", async () => {
     const writes: unknown[] = [];

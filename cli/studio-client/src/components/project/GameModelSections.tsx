@@ -151,6 +151,13 @@ function SectionValidationIssues({id, edit}: {id: BlueprintSectionId; edit: Game
     );
 }
 
+function sectionFieldIssues(id: BlueprintSectionId, edit: GameModelEditController): ValidationIssue[] {
+    const view = edit.validationView;
+    const errors = view.status === "invalid" ? view.errors : [];
+    const warnings = view.status === "invalid" || view.status === "ok" ? view.warnings : [];
+    return classifyIssuesBySection([...errors, ...warnings]).bySection[id];
+}
+
 // Mechanics' own slice of GameModelTab's own last validateBlueprint() result -- "mechanics" isn't one of
 // BlueprintSectionId's own six members (see GameModelSectionId's own doc comment on why), so it has no
 // entry in classifyIssuesBySection's shared, code-prefix-driven categorization; every
@@ -800,7 +807,7 @@ export function GameModelSections({
                 {editingBasics && edit ? (
                     <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="basics" edit={edit} />
-                        <MetadataFieldset blueprint={edit.blueprint} mutate={edit.mutate} legend="Game basics" />
+                        <MetadataFieldset blueprint={edit.blueprint} mutate={edit.mutate} legend="Game basics" issues={sectionFieldIssues("basics", edit)} />
                     </fieldset>
                 ) : (
                     <BasicsSection section={projection.basics} />
@@ -811,7 +818,7 @@ export function GameModelSections({
                 {editingLayout && edit ? (
                     <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="layout" edit={edit} />
-                        <LayoutFieldset blueprint={edit.blueprint} mutate={edit.mutate} />
+                        <LayoutFieldset blueprint={edit.blueprint} mutate={edit.mutate} issues={sectionFieldIssues("layout", edit)} />
                         <PaylinesEditor blueprint={edit.blueprint} mutate={edit.mutate} />
                     </fieldset>
                 ) : (
