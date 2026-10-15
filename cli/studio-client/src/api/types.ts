@@ -776,6 +776,7 @@ export type StudioSimulationReportListEntry = {
     game: {id: string; version: string};
     requestedRounds: number;
     actualRounds?: number;
+    sampling?: SimulationReport["sampling"];
     seed?: string;
     workers: number;
     rtp?: number;

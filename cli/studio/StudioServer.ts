@@ -3547,7 +3547,7 @@ export class StudioServer implements StudioServerHandling {
                 }
             }
             const selected = "modes" in report ? report.modes[validated.modeName!] : report;
-            if ((selected.workers ?? 1) !== 1 || selected.seed === null || validated.seed !== selected.seed || validated.round > selected.rounds || validated.unit === "logical-round" || validated.entryCommands !== undefined || (validated.modeName !== undefined && validated.modeName !== selected.betMode)) {
+            if ((selected.workers ?? 1) !== 1 || selected.seed === null || validated.seed !== selected.seed || validated.round > (selected.sampling?.acceptedSubrounds ?? selected.rounds) || validated.unit === "logical-round" || validated.entryCommands !== undefined || (validated.modeName !== undefined && validated.modeName !== selected.betMode)) {
                 this.sendJson(res, 400, {error: "Simulation replay requires the retained seed, selected mode and step range from a single-worker run."});
                 return;
             }

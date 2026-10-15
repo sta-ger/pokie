@@ -325,6 +325,7 @@ describe("V2C-14 authored bounded mechanics", () => {
                 });
                 const output = simulation.getReport(directory, started.job.id);
                 expect(output).toMatchObject({status: "ok", report: {sampling: {unit: "completed-logical-round", acceptedSubrounds: 18}}});
+                expect(simulation.listReports(directory)[0]).toMatchObject({sampling: {unit: "completed-logical-round", acceptedSubrounds: 18}});
             } finally {
                 await simulation.cancelAll();
             }
@@ -333,7 +334,7 @@ describe("V2C-14 authored bounded mechanics", () => {
                 const created = await play.newSession(directory, 31);
                 if (created.status !== "ok") throw new Error(JSON.stringify(created));
                 const result = await play.spin(created.session.sessionId, undefined, 0.05, undefined, {requestId: "play", roundId: "play", delivery: "composite"});
-                expect(result.status).toBe("ok");
+                expect(result).toMatchObject({status: "ok", session: {logicalRound: {status: "completed"}, boundedMechanics: expect.any(Object), debug: {artifact: {featureEvents: expect.arrayContaining([expect.objectContaining({type: "boundedMechanics"})])}}}});
             } finally {
                 await play.reset();
             }
@@ -346,6 +347,53 @@ describe("V2C-14 authored bounded mechanics", () => {
     });
 
 
+
+
+    it.each(["cascade", "respins", "collection"] as const)("%s interrupted and completed audit evidence passes CLI and Studio verification", async id => {
+        const blueprint = id === "collection" ? constant(id) : boundedBlueprint(id),
+            game = generatedMechanicsGame(blueprint);
+        let seed = 31;
+        if (id !== "collection") {
+            for (seed = 0; seed < 1000; seed++) {
+                const probe = boundedSession(game, seed);
+                probe.play();
+                if (probe.hasPendingLogicalRound() || (probe.getBoundedMechanicObservation()!.cascade?.winningCascades ?? 0) > 0) break;
+            }
+            expect(seed).toBeLessThan(1000);
+        }
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            for (const delivery of ["stepwise", "composite"] as const) {
+                const session = boundedSession(game, seed);
+                // A standalone collection has no interruptible chain: retain its partially filled
+                // prior paid round, then audit the threshold crossing from that durable basis.
+                if (id === "collection") session.play();
+                const descriptor = new api.ReplayRecorder().recordAudit(game, session, [{kind: "spin", roundId: delivery, delivery}], {status: "calculated", sessionId: "prefix", durability: "detached"}, {seed});
+                const completion = id !== "collection" && delivery === "stepwise" ? "pending" : "completed";
+                expect(descriptor.auditCompletion).toBe(completion);
+                if (id === "collection") expect(descriptor.totalWin).toBe(10);
+                const recording = path.join(directory, `${delivery}.json`),
+                    verified = path.join(directory, `${delivery}-verified.json`);
+                fs.writeFileSync(recording, JSON.stringify(descriptor));
+                await new ReplayCommand(() => Promise.resolve(game)).run([directory, "--recording", recording, "--out", verified]);
+                expect(JSON.parse(fs.readFileSync(verified, "utf8"))).toMatchObject({auditStatus: "verified", auditCompletion: completion});
+                const replay = new StudioReplayExecutionService(undefined, () => Promise.resolve(game));
+                try {
+                    await replay.inspectRecording(directory, descriptor);
+                    const started = replay.start(directory, {round: descriptor.round, recording: descriptor as NonNullable<Parameters<StudioReplayExecutionService["start"]>[1]["recording"]>});
+                    if (started.status !== "created") throw new Error(JSON.stringify(started));
+                    for (let n = 0; n < 1000 && ["queued", "running"].includes(replay.getStatus(directory, started.job.id)!.status); n++) await new Promise<void>(resolve => {
+                        setImmediate(resolve);
+                    });
+                    expect(replay.getDownload(directory, started.job.id)).toMatchObject({status: "ok", descriptor: {auditStatus: "verified", auditCompletion: completion}});
+                } finally {
+                    await replay.cancelAll();
+                }
+            }
+        } finally {
+            log.mockRestore();
+        }
+    });
 
     it.each(["lines", "ways", "clusters"] as const)("%s direct construction matches generated weighted mechanics and next RNG", type => {
         const blueprint = boundedBlueprint("cascade-respins-collection");

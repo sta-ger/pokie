@@ -342,7 +342,7 @@ and grants are preserved, never padded into equivalent-looking defaults.
 
 ## Authored Hold&Win, jackpot and bet modes
 
-Blueprint `mechanics` accepts `freeGames`, `holdAndWin` and `jackpot`. Unknown fields and unsupported policies fail validation, including direct generator/render calls. Free games use `retriggerPolicy: "additive"` (also the legacy omitted default). Award counts start at one and awards may be zero. Hold&Win requires the explicit `reset-on-new-lock` policy:
+Blueprint `mechanics` accepts `freeGames`, `holdAndWin`, `jackpot`, `modifiers`, `cascade`, `respins` and `collection`. The bounded contracts and their composition restrictions are documented in [bounded mechanics](bounded-mechanics.md). Unknown fields and unsupported policies fail validation, including direct generator/render calls. Free games use `retriggerPolicy: "additive"` (also the legacy omitted default). Award counts start at one and awards may be zero. Hold&Win requires the explicit `reset-on-new-lock` policy:
 
 ```json
 {

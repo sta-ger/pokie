@@ -134,6 +134,13 @@ prefix retained from an earlier runner on the same session. Monetary totals/RTP
 include all actually observed stakes and payouts, even unfinished tails; means
 and distributions include completed samples only.
 
+Recent Simulation replay selects an accepted **subround** from 1 through
+`sampling.acceptedSubrounds`; its selector and server guard use this range, while
+the report continues to display completed logical-round metrics. Recorded audit
+replay can verify an interrupted prefix or a completed logical round. A standalone
+collection has no interruptible chain; its audit captures a threshold crossing
+from a previously accumulated partial balance.
+
 Snapshots and merges retain logical sample moments without retaining screens or
 an array of all outcomes. Chunks reuse one session and its unfinished accounting.
 A restored bare executable tail without its observed entry is excluded from

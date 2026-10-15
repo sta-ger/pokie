@@ -687,7 +687,7 @@ export function ReplayTab({
                                         }}
                                         style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
                                     >
-                                        {entry.game.id} v{entry.game.version} — seed {entry.seed ?? "(none)"}, {entry.actualRounds ?? "per-mode"} rounds
+                                        {entry.game.id} v{entry.game.version} — seed {entry.seed ?? "(none)"}, {entry.actualRounds ?? "per-mode"} {entry.sampling ? `logical rounds, ${entry.sampling.acceptedSubrounds} subrounds` : "rounds"}
                                         {entry.modeName ? `, mode ${entry.modeName}` : ""}, {new Date(entry.startedAt).toLocaleString()}
                                     </Anchor>
                                 </List.Item>
@@ -697,9 +697,9 @@ export function ReplayTab({
                     {selectedSimEntry && (
                         <QuickActions>
                             <NumberInput
-                                label="Round"
+                                label={selectedSimEntry.sampling ? "Subround" : "Round"}
                                 min={1}
-                                max={selectedSimEntry.modes?.[selectedSimulationMode ?? ""]?.rounds ?? selectedSimEntry.actualRounds}
+                                max={selectedSimEntry.sampling?.acceptedSubrounds ?? selectedSimEntry.modes?.[selectedSimulationMode ?? ""]?.rounds ?? selectedSimEntry.actualRounds}
                                 step={1}
                                 value={simRound}
                                 onChange={(value) => setSimRound(typeof value === "number" ? value : 1)}
