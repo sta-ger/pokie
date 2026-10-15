@@ -31,7 +31,7 @@ export type ReportDetailState =
 const DEFAULT_ROUNDS = 10000;
 const RECENT_RUNS_PAGE_SIZE = 50;
 
-type FormValues = {rounds: number; seed: string; workers: number; modeName: string; convergence?: StudioSimulationReportListEntry["convergence"]};
+type FormValues = {rounds: number; seed: string; workers: number; modeName: string};
 
 // The single Configure -> Run -> Review -> Export workflow, replacing the old separate Simulation and
 // Reports tabs. All data-fetching is still owned by ProjectDashboardPage (useSimulationPoll, the
@@ -96,9 +96,10 @@ export function SimulationTab({
     recoveryRequest?: Readonly<Record<string, unknown>>;
 }) {
     const confirm = useConfirm();
+    const [capturedConvergence, setCapturedConvergence] = useState<StudioSimulationReportListEntry["convergence"]>();
     const form = useForm<FormValues>({
         mode: "uncontrolled",
-        initialValues: {rounds: DEFAULT_ROUNDS, seed: "", workers: 1, modeName: "", convergence: undefined as StudioSimulationReportListEntry["convergence"]},
+        initialValues: {rounds: DEFAULT_ROUNDS, seed: "", workers: 1, modeName: ""},
         validate: {rounds: getSimulationRoundsError},
         validateInputOnChange: ["rounds"],
         validateInputOnBlur: ["rounds"],
@@ -115,8 +116,8 @@ export function SimulationTab({
             ...(seed === undefined ? {} : {seed}),
             ...(workers === undefined ? {} : {workers}),
             ...(modeName === undefined ? {} : {modeName}),
-            convergence: recoveryRequest.convergence as StudioSimulationReportListEntry["convergence"],
         });
+        setCapturedConvergence(recoveryRequest.convergence as StudioSimulationReportListEntry["convergence"]);
         form.validateField("rounds");
         // Mantine's uncontrolled form object is intentionally stable.
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -284,7 +285,7 @@ export function SimulationTab({
                 <form
                     data-pokie-lifecycle-form="simulation"
                     onSubmit={form.onSubmit((values) =>
-                        onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined, values.convergence),
+                        onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined, capturedConvergence),
                     )}
                 >
                     <Text size="sm" c="dimmed" mb="sm">
@@ -321,7 +322,7 @@ export function SimulationTab({
                             key={form.key("modeName")}
                         />
                     )}
-                    {form.getValues().convergence && <Text size="sm">Captured adaptive stopping: minimum {form.getValues().convergence?.minRounds} usable samples per worker; tolerance {form.getValues().convergence?.rtpTolerance} RTP units; check every {form.getValues().convergence?.checkIntervalRounds} accepted plays; stable checks {form.getValues().convergence?.stableChecks ?? 3}. These settings will be retained on retry. <Button variant="subtle" size="xs" onClick={() => form.setFieldValue("convergence", undefined)}>Use fixed budget</Button></Text>}
+                    {capturedConvergence && <Text size="sm">Captured adaptive stopping: minimum {capturedConvergence?.minRounds} usable samples per worker; tolerance {capturedConvergence?.rtpTolerance} RTP units; check every {capturedConvergence?.checkIntervalRounds} accepted plays; stable checks {capturedConvergence?.stableChecks ?? 3}. These settings will be retained on retry. <Button variant="subtle" size="xs" onClick={() => setCapturedConvergence(undefined)}>Use fixed budget</Button></Text>}
                     <AdvancedDisclosure detail="seed, workers">
                         <QuickActions>
                             <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
