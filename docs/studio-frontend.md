@@ -422,3 +422,28 @@ See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
 payout/duration units, authoring/interchange, restoration/replay, statistics and
 custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
 maps every mandatory family separately from arbitrary custom callbacks.
+
+### Mathematical definition comparison preview
+
+Project → Game Model includes a saved-source comparison. While editing a section,
+it offers saved-versus-draft comparison. Design Game → Game Model preview also
+offers saved-versus-draft comparison after a source has been loaded or saved.
+The action only previews: saving/applying and building remain explicit actions.
+
+`POST /api/math-definition-diff/preview` accepts `leftPath`, a non-negative integer
+`revision`, exactly one of `rightPath` or `draft`, and optional `projectRoot`.
+The project binding must match the current project and left source; stale binding
+returns 409, malformed requests 400. A valid request returns the shared
+`MathDefinitionDiff` result, structurally identical to CLI definition JSON for the
+same sources. Invalid, failed, cancelled, unsupported and partial definitions are
+visible result states, separate from transport failures.
+
+The UI renders server identities, completeness/limits, changed paths, exact
+before/after presence and values, provenance, ordering and validation differences.
+It offers loading/cancel and actionable errors. A new comparison, source/project
+change, draft revision/edit or unmount aborts the old request and discards late
+results even if transport ignores cancellation. Requests compare snapshots of the
+source read at execution and the supplied draft revision; they do not monitor
+external file edits. Disconnect, project transition and shutdown cancel source
+reads and await owned extraction cleanup before their work completes. Source
+loading stays in the server; the browser imports only the machine contract type.

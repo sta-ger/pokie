@@ -1,3 +1,6 @@
+import {detachPackageModelData} from "./internal/detachPackageModelData.js";
+export {detachPackageModelData} from "./internal/detachPackageModelData.js";
+import {validateMathDefinitionMaxWinPolicy} from "../diff/validateMathDefinitionMaxWinPolicy.js";
 import {isPromise} from "util/types";
 import type {ValidationIssueSeverity} from "../validation/ValidationIssueSeverity.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
@@ -31,6 +34,7 @@ export interface PackageBlueprintExtractionResult {
     fields: PackageExtractionField[];
     diagnostics: PackageExtractionDiagnostic[];
     comparisonLimits: string[];
+    maxWinPolicy?: import("../diff/MathDefinitionDiff.js").MathDefinitionMaxWinPolicy;
 }
 export interface PackageBlueprintExtracting {
     extract(source: string | PokieGame, options?: {signal?: AbortSignal}): Promise<PackageBlueprintExtractionResult>;
@@ -51,39 +55,6 @@ const OPTIONAL_DEFAULTS: Record<string, string> = {
     betModes: "generated runtime: no modes",
     screenGeometry: "VideoSlotConfig: visible/evaluated grid equals reels x rows",
 };
-
-/** Strict detached JSON copying. Never invokes accessors or toJSON; bounds depth and size. */
-export function detachPackageModelData(value: unknown): unknown {
-    const ancestors = new Set<object>();
-    let nodes = 0;
-    const copy = (input: unknown, field: string, depth: number): unknown => {
-        if (++nodes > 1000000 || depth > 100) throw new Error(`${field}: metadata exceeds extraction limits`);
-        if (input === null || typeof input === "string" || typeof input === "boolean") return input;
-        if (typeof input === "number" && Number.isFinite(input)) return input;
-        if (typeof input !== "object" || input === null) throw new Error(`${field}: unsupported JSON value`);
-        if (ancestors.has(input)) throw new Error(`${field}: cyclic metadata`);
-        const array = Array.isArray(input);
-        const prototype = Reflect.getPrototypeOf(input);
-        if (prototype !== (array ? Array.prototype : Object.prototype) && !(prototype === null && !array)) throw new Error(`${field}: unsupported object prototype`);
-        ancestors.add(input);
-        const result: Record<string, unknown> | unknown[] = array ? [] : {};
-        const descriptors = Object.getOwnPropertyDescriptors(input);
-        if (Reflect.ownKeys(input).some((key) => typeof key !== "string")) throw new Error(`${field}: symbol property`);
-        if (array) {
-            for (let i = 0; i < (input as unknown[]).length; i++) if (!descriptors[String(i)]) throw new Error(`${field}: sparse collection`);
-        }
-        for (const [key, descriptor] of Object.entries(descriptors)) {
-            if (array && key === "length") continue;
-            if (["__proto__", "constructor", "prototype", "toJSON"].includes(key)) throw new Error(`${field}.${key}: unsafe property`);
-            if (!descriptor.enumerable || !hasOwn(descriptor, "value")) throw new Error(`${field}.${key}: accessor or hidden metadata`);
-            if (array && (!(/^(0|[1-9]\d*)$/).test(key) || Number(key) >= (input as unknown[]).length)) throw new Error(`${field}.${key}: malformed collection`);
-            Reflect.set(result, key, copy(descriptor.value, `${field}.${key}`, depth + 1));
-        }
-        ancestors.delete(input);
-        return result;
-    };
-    return copy(value, "$", 0);
-}
 
 /** One executable read boundary. Path inputs own a loader snapshot; supplied games remain caller-owned.
  * No session is created or advanced, so opaque legacy mechanics remain explicitly unavailable.
@@ -200,7 +171,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
             const descriptor = detachPackageModelData(descriptorData) as Record<string, unknown>;
             if (cancelled()) return result;
             for (const key of Object.keys(descriptor)) if (
-                !["descriptorVersion", "blueprintSchemaVersion", "sourceKind", "model", "unsupported"].includes(key)
+                !["descriptorVersion", "blueprintSchemaVersion", "sourceKind", "model", "unsupported", "maxWinPolicy"].includes(key)
             ) throw new Error(`Descriptor field ${key} is outside version 1`);
             result.source = {
                 ...result.source,
@@ -235,6 +206,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                 descriptorVersion: 1,
                 blueprintSchemaVersion: 1,
             };
+            if (descriptor.maxWinPolicy !== undefined) result.maxWinPolicy = validateMathDefinitionMaxWinPolicy(descriptor.maxWinPolicy);
             const model = descriptor.model as Partial<GameBlueprint>;
             if (
                 (model.reels ?? 0) > 1000 ||

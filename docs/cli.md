@@ -3909,3 +3909,51 @@ evidence and incomplete features display explicitly. See [analytics formulas,
 capabilities, bounds and worker seed policy](simulation.md#feature-analytics-aggregates-v2c-16).
 
 Simulation console output includes the saved report's sampling, empirical precision, bounded payout distribution, feature attribution and weighted-selection coverage diagnostics. JSON and `pokie report --format markdown|html` preserve those same populations. Native outcome-library sampling also emits an ordinary renderable simulation projection while retaining its library identity and raw statistics. Older native sampled JSON is accepted explicitly; this is distinct from `pokie report <outcome-library>` static analysis. A short, zero-win or noisy run cannot establish exact or target RTP.
+
+### Comparing mathematical definitions
+
+```sh
+pokie diff old.blueprint.json new.blueprint.json
+pokie diff ./old-package ./new-package --comparison definition --format json
+pokie diff model.xlsx model.blueprint.json --comparison definition --ci
+pokie diff old.blueprint.json new.blueprint.json --format json --out new-diff.json
+```
+
+`--comparison auto` (default) selects definition comparison for two definition
+projects (Blueprint, TypeScript package, PAR or WASM); report pairs retain their
+statistical route, and Outcome Library/Stake pairs retain aggregate analysis.
+`--comparison definition` explicitly selects the definition reader, including
+invalid authored JSON that recognition cannot classify. `--comparison statistics`
+selects the existing report/outcome route. A report/project or incompatible
+statistics/project mix fails with an actionable diagnostic. No top-level export
+command is added.
+
+Definition JSON is the same schema-version-1 result returned by Studio's preview
+API; see [math-modeling.md](math-modeling.md#version-1-machine-contract). JSON
+stdout contains only the result, with diagnostics and completeness inside it;
+command/output failures use stderr and a nonzero exit. `--out` exclusively and
+atomically publishes a **new** JSON file. Existing destinations, source aliases,
+input-contained destinations (including symlink aliases), races and write failures
+cannot replace inputs or a competing winner. Owned staging is removed on failure.
+No history database is created.
+
+| Result | Default `pokie diff` | Definition `--ci` |
+| --- | ---: | ---: |
+| Complete unchanged | 0 | 0 |
+| Complete mathematical change (including operational order) | 0 | 1 |
+| Representation/provenance/validation-only change with valid complete sources | 0 | 0 |
+| Partial or unsupported definition | 1 | 2 |
+| Invalid input / failed read / cancellation / output failure | 1 | 2 |
+
+`--ci` applies only to definition comparisons; using it for statistics is an
+error (2). SIGINT cancels definition acquisition and waits for owned extraction
+cleanup. Existing top-level statistical diff still succeeds on differences;
+`pokie stakeengine diff` retains its 0/1/2 threshold contract. These defaults are
+not silently changed by adding definition comparison.
+
+Existing report/report-set results add `comparisonKind: "simulation-statistics"`;
+Outcome Library, outcome-source project and Stake analysis results add
+`comparisonKind: "aggregate-analysis"`. Existing fields, thresholds, availability
+rules and per-mode semantics remain. Consumers should allow additive fields.
+Exact aggregate artifact statistics are not sampled simulation observations and
+neither kind establishes definition equality.

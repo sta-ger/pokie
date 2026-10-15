@@ -168,3 +168,11 @@ is additive. Native outcome events do not prove lifecycle; WASM lacks canonical
 component/lifecycle evidence. See [formulas and support boundaries](../simulation.md#feature-analytics-aggregates-v2c-16).
 
 V2C-17 report projection: canonical lifecycle evidence supports entry/retrigger/completion distributions; arbitrary custom event names and flattened artifact categories do not. Native outcome artifacts support observed components but no canonical lifecycle. Canonical WASM remains amount-only. Supported configured features with no entries are displayed as unobserved, separately from unsupported attribution and legacy missing analytics. Empirical confidence/adaptive precision is not exact RTP or proof of rare-event coverage; low-evidence diagnostics use completed usable samples rather than the requested budget.
+
+V2C-18 adds read-only canonical definition comparison across the existing authored
+reel/variant, paytable, bet-mode, geometry and mechanics contracts (free games,
+hold-and-win, jackpots, modifiers, cascade, respins, collection, weighted bonus).
+CLI and Studio use one differ and authoritative readers. This introduces no
+payout caps or new mechanics. Custom executable fidelity and undeclared custom
+max-win policy remain explicit limitations; PAR/WASM/outcome-only boundaries are
+listed in [math-modeling.md](../math-modeling.md#canonical-definition-comparison-v2c-18).

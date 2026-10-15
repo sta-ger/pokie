@@ -35,6 +35,7 @@ export class SimulationReportSetDiffer {
         const onlyInRight = Object.keys(right.modes).filter((modeId) => !leftIds.includes(modeId));
 
         return {
+            comparisonKind: "simulation-statistics",
             changed: game.changed || Object.values(perMode).some((diff) => diff.changed) || onlyInLeft.length > 0 || onlyInRight.length > 0,
             game,
             perMode,

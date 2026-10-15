@@ -1407,7 +1407,7 @@ export function BlueprintEditorPage({
             )}
 
             <BlueprintValidationPanel view={validationView} onValidate={handleValidate} automatic={guided} />
-            <GameModelPreviewPanel key={`gamemodel-${editor.formGeneration}`} blueprint={blueprint} />
+            <GameModelPreviewPanel key={`gamemodel-${editor.formGeneration}`} blueprint={blueprint} sourcePath={blueprintPath} revision={editor.state.revision} />
             <Collapse expanded={!guided || advancedOpened}>
                 {guided && <Text size="sm" c="dimmed" mb="sm">
                     Create game saves this design and opens its workspace. Build Package exports the current

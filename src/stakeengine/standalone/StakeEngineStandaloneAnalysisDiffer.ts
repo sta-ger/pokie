@@ -54,6 +54,7 @@ export class StakeEngineStandaloneAnalysisDiffer implements StakeEngineStandalon
         });
 
         return {
+            comparisonKind: "aggregate-analysis",
             stakeDir: {left: left.stakeDir, right: right.stakeDir},
             perMode,
             onlyInLeft: leftModeNames.filter((modeName) => !rightByModeName.has(modeName)),

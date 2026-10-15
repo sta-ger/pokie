@@ -1,3 +1,6 @@
+import {dispatch} from "../../../cli/dispatch.js";
+import {fractionalBetBlueprint} from "../../fixtures/math/FractionalBetFixture.js";
+import {writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {featureAnalyticsReport} from "../../v2/fixtures/FeatureAnalyticsFixture.js";
 import {
     OutcomeLibraryBundleWriter,
@@ -548,7 +551,7 @@ describe("DiffCommand (SimulationReportSet -- diffing two `pokie sim --mode all`
         await command.run(["left.json", "right.json", "--format", "json"]);
 
         const setDiff = JSON.parse(logSpy.mock.calls[0][0]);
-        expect(Object.keys(setDiff).sort()).toEqual(["changed", "game", "onlyInLeft", "onlyInRight", "perMode"]);
+        expect(Object.keys(setDiff).sort()).toEqual(["changed", "comparisonKind", "game", "onlyInLeft", "onlyInRight", "perMode"]);
 
         logSpy.mockRestore();
     });
@@ -828,5 +831,143 @@ it("public JSON and text diffs attribute a mixed-model reel 2 edit without namin
         expect(parsed.reelSequences.observationsChanged).toBe(false);
     } finally {
         log.mockRestore();
+    }
+});
+
+describe("DiffCommand canonical definitions through dispatch", () => {
+    let root: string, a: string, b: string;
+    let log: jest.SpyInstance, error: jest.SpyInstance;
+    beforeEach(() => {
+        root = fs.mkdtempSync(path.join(os.tmpdir(), "definition-cli-"));
+        a = path.join(root, "a.blueprint.json");
+        b = path.join(root, "b.blueprint.json");
+        fs.writeFileSync(a, JSON.stringify(fractionalBetBlueprint([0.05, 7.5, 1e-7], true)));
+        fs.copyFileSync(a, b);
+        log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        error = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    });
+    afterEach(() => {
+        jest.restoreAllMocks();
+        fs.rmSync(root, {recursive: true, force: true});
+    });
+    const run = (args: string[], command = new DiffCommand()) =>
+        dispatch([command], ["node", "pokie", "diff", ...args]);
+    it("auto-selects definitions with parseable versioned JSON and retains successful default on differences", async () => {
+        const changed = fractionalBetBlueprint([0.05, 7.5, 1e-7], true);
+        changed.paytable.A[3] = 7.5;
+        fs.writeFileSync(b, JSON.stringify(changed));
+        expect(await run([a, b, "--format", "json"])).toBe(0);
+        expect(log).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({
+            schemaVersion: 1,
+            comparisonKind: "math-definition",
+            status: "different",
+        });
+        expect(error).not.toHaveBeenCalled();
+    });
+    it("implements opt-in CI policy for unchanged, math, representation-only, partial, invalid and failure", async () => {
+        expect(await run([a, b, "--ci"])).toBe(0);
+        const changed = fractionalBetBlueprint([0.05, 7.5, 1e-7], true);
+        changed.paytable.A[3] = 7.5;
+        fs.writeFileSync(b, JSON.stringify(changed));
+        expect(await run([a, b, "--ci"])).toBe(1);
+        fs.writeFileSync(
+            b,
+            JSON.stringify({...fractionalBetBlueprint([0.05, 7.5, 1e-7], true), winModel: {type: "lines"}}),
+        );
+        expect(await run([a, b, "--ci"])).toBe(0);
+        const custom = writeDescriptorPackage(root);
+        expect(await run([custom, custom, "--ci"])).toBe(2);
+        fs.writeFileSync(b, JSON.stringify({...changed, availableBets: ["0.05"]}));
+        expect(await run([a, b, "--comparison", "definition", "--ci"])).toBe(2);
+        expect(await run([a, path.join(root, "missing"), "--comparison", "definition", "--ci"])).toBe(2);
+        expect(await run([a, b, "--comparison", "statistics", "--ci"])).toBe(2);
+    });
+    it("maps SIGINT cancellation through dispatch without publishing an equality result", async () => {
+        const read = fs.readFileSync.bind(fs);
+        let cancelled = false;
+        jest.spyOn(fs, "readFileSync").mockImplementation((...args) => {
+            const contents = read(...args);
+            if (!cancelled && String(args[0]) === a) {
+                cancelled = true;
+                process.emit("SIGINT");
+            }
+            return contents;
+        });
+        const count = process.listenerCount("SIGINT");
+        expect(await run([a, b, "--comparison", "definition", "--format", "json", "--ci"])).toBe(2);
+        expect(JSON.parse(log.mock.calls[0][0]).status).toBe("cancelled");
+        expect(process.listenerCount("SIGINT")).toBe(count);
+    });
+    it("preserves output aliases, containment, occupied paths and cleanup during publication failure", async () => {
+        const original = fs.readFileSync(a);
+        const alias = path.join(root, "alias.json");
+        fs.symlinkSync(a, alias);
+        const occupied = path.join(root, "occupied.json");
+        fs.writeFileSync(occupied, "keep");
+        for (const output of [a, alias, occupied]) expect(await run([a, b, "--ci", "--out", output])).toBe(2);
+        const custom = writeDescriptorPackage(root);
+        const symlink = path.join(root, "package-alias");
+        fs.symlinkSync(custom, symlink);
+        expect(await run([custom, custom, "--ci", "--out", path.join(symlink, "diff.json")])).toBe(2);
+        const output = path.join(root, "new.json");
+        const link = jest.spyOn(fs, "linkSync").mockImplementation(() => {
+            throw new Error("publication failed");
+        });
+        expect(await run([a, b, "--ci", "--out", output])).toBe(2);
+        link.mockRestore();
+        expect(fs.existsSync(output)).toBe(false);
+        expect(fs.readdirSync(root).some((name) => name.includes(".pokie-diff-"))).toBe(false);
+        expect(fs.readFileSync(a)).toEqual(original);
+        expect(fs.readFileSync(occupied, "utf8")).toBe("keep");
+    });
+    it("publishes only an explicitly requested definition JSON and cleans staging after a write failure", async () => {
+        const before = fs.readFileSync(a);
+        const output = path.join(root, "diff.json");
+        expect(await run([a, b, "--format", "json", "--out", output])).toBe(0);
+        expect(JSON.parse(fs.readFileSync(output, "utf8"))).toEqual(JSON.parse(log.mock.calls[0][0]));
+        const write = fs.writeFileSync.bind(fs);
+        jest.spyOn(fs, "writeFileSync").mockImplementation((file, ...args) => {
+            if (String(file).includes(".pokie-diff-")) throw new Error("staging write failed");
+            return write(file, ...args);
+        });
+        const failed = path.join(root, "failed.json");
+        expect(await run([a, b, "--ci", "--out", failed])).toBe(2);
+        expect(fs.existsSync(failed)).toBe(false);
+        expect(fs.readdirSync(root).some((name) => name.includes(".pokie-diff-"))).toBe(false);
+        expect(fs.readFileSync(a)).toEqual(before);
+    });
+    it("retains the winner of a definition output publication race and cleans staging", async () => {
+        const out = path.join(root, "race.json");
+        const link = fs.linkSync.bind(fs);
+        jest.spyOn(fs, "linkSync").mockImplementation((source, destination) => {
+            fs.writeFileSync(destination, "winner", {flag: "wx"});
+            link(source, destination);
+        });
+        expect(await run([a, b, "--ci", "--out", out])).toBe(2);
+        expect(fs.readFileSync(out, "utf8")).toBe("winner");
+        expect(fs.readdirSync(root).some((name) => name.includes(".pokie-diff-"))).toBe(false);
+    });
+});
+
+it("reserves definition JSON stdout while executable descriptors log diagnostics", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "definition-stdout-"));
+    const source = writeDescriptorPackage(root, {
+        descriptorBody:
+            'process.stdout.write("descriptor diagnostic\\n"); return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model};',
+    });
+    const stdoutWrite = process.stdout.write;
+    const stderr = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+        await new DiffCommand().run([source, source, "--comparison", "definition", "--format", "json"]);
+        expect(log).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(log.mock.calls[0][0]).comparisonKind).toBe("math-definition");
+        expect(stderr).toHaveBeenCalledWith("descriptor diagnostic\n");
+        expect(process.stdout.write).toBe(stdoutWrite);
+    } finally {
+        stderr.mockRestore();
+        log.mockRestore();
+        fs.rmSync(root, {recursive: true, force: true});
     }
 });

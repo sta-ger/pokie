@@ -1,3 +1,4 @@
+export type {MathDefinitionDiff} from "../../../../src/diff/MathDefinitionDiff.js";
 import type {WeightedBonusStatistics} from "../../../../src/session/videoslot/authored/WeightedBonus.js";
 import type {ReelSequenceSelection, ReelSequenceStatistics, WeightedSequenceVariant} from "../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {LogicalRoundDelivery} from "../../../../src/runtime/projectLogicalRound.js";

@@ -1,3 +1,5 @@
+import {compareMathDefinitions} from "../../src/diff/MathDefinitionSourceReader.js";
+import type {MathDefinitionDiff} from "../../src/diff/MathDefinitionDiff.js";
 import {
     ArtifactConversionPlan,
     GamePackageInspecting,
@@ -310,6 +312,7 @@ export class StudioServer implements StudioServerHandling {
     // Every dashboard/Home/Play preparation belongs to one generation.  A new project intent aborts
     // the previous resolver work; the generation check is still required because a loader can finish
     // just as its signal is observed.
+    private readonly definitionPreviews = new Map<AbortController, Promise<MathDefinitionDiff>>();
     private readonly dashboardLoads = new Set<Promise<void>>();
     private runtimePreparation: {generation: number; controller: AbortController} | undefined;
     private nextRuntimePreparationGeneration = 0;
@@ -525,6 +528,7 @@ export class StudioServer implements StudioServerHandling {
         // Listener closure alone cannot attest to worker or staging cleanup.
         const drains = await Promise.allSettled([
             listenerClosed,
+            Promise.allSettled([...this.definitionPreviews.values()]),
             this.simulationService.cancelAll(),
             this.replayService.cancelAll(),
             this.artifactBuildService.cancelAll(),
@@ -556,6 +560,8 @@ export class StudioServer implements StudioServerHandling {
     // those Home jobs invisible by changing the context would strand real
     // publishing work behind a finished confirmation.
     private async cancelActiveJobsForOldProject(excludeJobId?: string): Promise<void> {
+        for (const controller of this.definitionPreviews.keys()) controller.abort();
+        await Promise.allSettled([...this.definitionPreviews.values()]);
         if (this.currentContext.mode === "project") {
             const projectId = this.canonicalPathIdentity(this.currentContext.projectRoot);
             this.simulationService.cancelActiveForProject(projectId);
@@ -864,6 +870,7 @@ export class StudioServer implements StudioServerHandling {
     }
 
     private cancelRuntimePreparation(): void {
+        for (const controller of this.definitionPreviews.keys()) controller.abort();
         this.runtimePreparation?.controller.abort();
         this.runtimePreparation = undefined;
         this.nextRuntimePreparationGeneration++;
@@ -884,6 +891,42 @@ export class StudioServer implements StudioServerHandling {
             .catch(() => {
                 // Best-effort only -- a migration failure must never crash Studio's own startup.
             });
+    }
+
+    private async handleMathDefinitionDiffPreview(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        if (!body || typeof body !== "object" || Array.isArray(body)) throw new StudioHttpRequestError(400, "Expected a comparison request object.");
+        const request = body as Record<string, unknown>;
+        if (Object.keys(request).some(key => !["projectRoot", "leftPath", "rightPath", "draft", "revision"].includes(key)) ||
+            typeof request.leftPath !== "string" || !request.leftPath.trim() ||
+            typeof request.revision !== "number" || !Number.isSafeInteger(request.revision) || request.revision < 0 ||
+            (request.projectRoot !== undefined && typeof request.projectRoot !== "string") ||
+            (Reflect.apply(Object.prototype.hasOwnProperty, request, ["draft"]) === Reflect.apply(Object.prototype.hasOwnProperty, request, ["rightPath"])) ||
+            (request.rightPath !== undefined && (typeof request.rightPath !== "string" || !request.rightPath.trim())) ||
+            (request.draft !== undefined && (!request.draft || typeof request.draft !== "object" || Array.isArray(request.draft)))) {
+            throw new StudioHttpRequestError(400, "Supply leftPath, non-negative integer revision, and exactly one of rightPath or draft.");
+        }
+        const context = this.currentContext;
+        if (request.projectRoot !== undefined && (context.mode !== "project" ||
+            this.canonicalPathIdentity(request.projectRoot as string) !== this.canonicalPathIdentity(context.projectRoot) ||
+            this.canonicalPathIdentity(request.leftPath) !== this.canonicalPathIdentity(context.projectRoot))) {
+            throw new StudioHttpRequestError(409, "Project changed. Reopen the current project's comparison.");
+        }
+        const controller = new AbortController();
+        const abort = (): void => controller.abort();
+        req.once("aborted", abort);
+        res.once("close", abort);
+        const comparison = compareMathDefinitions(request.leftPath, request.rightPath as string ?? {kind: "blueprint", model: request.draft}, {signal: controller.signal});
+        this.definitionPreviews.set(controller, comparison);
+        try {
+            const result = await comparison;
+            if (this.currentContext !== context) throw new StudioHttpRequestError(409, "Project changed. Run the comparison again.");
+            if (!res.destroyed) this.sendJson(res, 200, result);
+        } finally {
+            this.definitionPreviews.delete(controller);
+            req.off("aborted", abort);
+            res.off("close", abort);
+        }
     }
 
     private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -1029,6 +1072,11 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/home/blueprints/reel-strip-generation-preview") {
             await this.handleBlueprintReelStripGenerationPreview(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/math-definition-diff/preview") {
+            await this.handleMathDefinitionDiffPreview(req, res);
             return;
         }
 

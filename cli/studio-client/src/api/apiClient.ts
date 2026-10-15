@@ -1435,3 +1435,13 @@ export async function cancelArtifactBuild(fetchImpl: FetchLike, id: string): Pro
     if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to cancel the artifact build"));
     return (await response.json()) as StudioArtifactBuildJobView;
 }
+
+/** Preview only. The response is the shared server differ's versioned machine result. */
+export async function previewMathDefinitionDiff(fetchImpl: FetchLike, request: {
+    leftPath: string; rightPath?: string; draft?: unknown; projectRoot?: string; revision: number;
+}, signal?: AbortSignal): Promise<import("./types").MathDefinitionDiff> {
+    const response = await fetchImpl("/api/math-definition-diff/preview", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(request), signal});
+    const body = await response.json();
+    if (!response.ok) throw new Error((body as {error?: string}).error ?? `Comparison failed (HTTP ${response.status}).`);
+    return body as import("./types").MathDefinitionDiff;
+}

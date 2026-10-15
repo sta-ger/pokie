@@ -1,3 +1,4 @@
+import {MathDefinitionDiffPreview} from "../common/MathDefinitionDiffPreview";
 import {Button} from "@mantine/core";
 import {useCallback, useEffect, useRef, useState} from "react";
 import {getGameModel, loadBlueprint, saveBlueprint, validateBlueprint} from "../../api/apiClient";
@@ -316,6 +317,7 @@ export function GameModelTab({
 
     return (
         <div>
+            <MathDefinitionDiffPreview sourcePath={projectRoot} projectRoot={projectRoot} draft={editState.status === "editing" ? editor.state.blueprint : undefined} revision={editor.state.revision} />
             {editError && <ErrorState message={editError.message} detail={editError.detail} />}
             {validationView.status === "error" && <ErrorState message={describePathActionError("This game model save", validationView.message)} />}
             {/* Save validates the whole source. Retain a complete summary even when an issue

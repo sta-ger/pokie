@@ -761,3 +761,32 @@ function sparseCollection(): number[] {
     Reflect.deleteProperty(sparse, "1");
     return sparse;
 }
+
+describe("comparison-only max-win declarations", () => {
+    it("retains declared policy with its units, scope and authority without changing model data", async () => {
+        const model = fractionalBetBlueprint([0.05, 7.5, 1e-7], true);
+        const game = {
+            getManifest: () => model.manifest,
+            getModelDescriptor: () => ({
+                descriptorVersion: 1 as const,
+                blueprintSchemaVersion: 1 as const,
+                sourceKind: "custom" as const,
+                model,
+                maxWinPolicy: {
+                    type: "declared" as const,
+                    value: 7.5,
+                    unit: "bet-multiple" as const,
+                    scope: "logical-round" as const,
+                    authority: "declared external collaborator",
+                },
+            }),
+            createSession: () => {
+                throw new Error("must not create sessions");
+            },
+        };
+        const result = await new PackageBlueprintExtraction().extract(game);
+        expect(result.status).toBe("complete");
+        expect(result.maxWinPolicy).toEqual(game.getModelDescriptor().maxWinPolicy);
+        expect(result.model).toEqual(model);
+    });
+});

@@ -35,6 +35,7 @@ export type StakeEngineStandaloneModeAnalysisDiff = {
 };
 
 export type StakeEngineStandaloneAnalysisDiff = {
+    comparisonKind?: "aggregate-analysis";
     stakeDir: {left: string; right: string};
     perMode: Record<string, StakeEngineStandaloneModeAnalysisDiff>;
     onlyInLeft: string[];
