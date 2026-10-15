@@ -242,6 +242,9 @@ describe("V2C-14 authored bounded mechanics", () => {
         const generator = new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(31));
         const session = new api.BoundedVideoSlotSession(config, generator, validRules);
         const before = session.toSessionState();
+        const controlGenerator = new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(31));
+        const control = new api.BoundedVideoSlotSession(config, controlGenerator, validRules);
+        expect(control.toSessionState()).toEqual(before);
         (blueprint.mechanics![mechanic] as unknown as Record<string, unknown>)[field] = {toString: null, valueOf: null};
         expect(() => api.renderBuiltGameModule(blueprint, "1.3.0")).toThrow(expectedPath);
         expect(() => api.renderBuiltGameModuleSource(blueprint, "1.3.0")).toThrow(expectedPath);
@@ -249,7 +252,9 @@ describe("V2C-14 authored bounded mechanics", () => {
         expect(session.toSessionState()).toEqual(before);
         for (let repeat = 0; repeat < 2; repeat++) {
             const reused = new api.BoundedVideoSlotSession(config, generator, validRules);
-            expect(reused.toSessionState()).toEqual(before);
+            // Successful construction draws an initial screen; compare against uninterrupted use.
+            const expected = new api.BoundedVideoSlotSession(config, controlGenerator, validRules);
+            expect(reused.toSessionState()).toEqual(expected.toSessionState());
             blueprint.mechanics = validRules;
             expect(() => api.renderBuiltGameModule(blueprint, "1.3.0")).not.toThrow();
             expect(() => api.renderBuiltGameModuleSource(blueprint, "1.3.0")).not.toThrow();
