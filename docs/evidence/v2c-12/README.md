@@ -412,3 +412,38 @@ Together with the retained ordinary/weighted antecedent, buy, omitted-seed,
 and initial buy-more evidence above, this completes the previously missing
 weighted later buy-more Replay/descriptor branch. Runtime artifacts remain in
 the assigned harness and are not committed.
+
+## Seeded package Replay financial viewport (2026-10-15)
+
+Candidate product identity remains `c480a805286ea4a93ed141b8e1cebf36ac9a308f`.
+The fresh public Studio run at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-23105d651b032fb6/run-2026-10-15T01-14-32-143Z/transcript.json`
+(SHA-256 `50e4794f340aaf90efe87de3edf54bc6adbcf1305b57d72245f0c25eb2e2f6ad`)
+reused the authenticated current build (output SHA-256
+`87b0f47abe27909daeae3eb8dd63224e87cd420201c3a65a4c4f6429ac1673f2`).
+It publicly built and opened a weighted whole-sequence TypeScript package, then
+ran its `ante` 0.05 session with seed `v2c12-c480-replay-seeded`.
+
+The selected-spin descriptor (`spin-e03daa1e-de60-44dc-8442-76514dc1bfc9.json`,
+22,057 bytes, SHA-256
+`1662d04f2ea65c3ab397c53967b2418489db10bd5736f8fbdd84fcd6389916ca`) and
+the completed public **Replay Artifact → Reproduce** descriptor
+(`v2c12-c480-replay-1.0.0-998820d763534329b92619d2e0a177e0.json`, 32,299
+bytes, SHA-256 `03cd2b7bb589afad5635c067c44c19f2f8823efbccf0e810f409ec92b75ff538`)
+both contain `artifact.stake: 0.07500000000000001`, `artifact.betMode: "ante"`,
+the charged-mode event, `recorded-commands` mode policy, and the one executed
+0.05 ante spin command. The Replay result itself rendered job
+`998820d763534329b92619d2e0a177e0`, session
+`07cf581a-55df-4be8-b010-a47e34d9f6a9`, package bet mode `ante`, and policy
+`recorded-commands; 1 executed step commands`, followed by completed 1/1 and
+an audit-verified match.
+
+I independently opened both retained captures. `1-observation.png` (SHA-256
+`43dc8d2476b53718c5e59939e60f2a44d8859eb3d61dcc64c6e39b0f44e51756`)
+legibly shows the completed Replay job, package bet mode and policy.
+`2-observation.png` (SHA-256
+`5dd85c08479b52582b7a8906eea7d2d15cd9ffac170337a6096a9bb60ae5f1ab`)
+legibly shows the same Replay's Bet mode `ante`, Stake
+`0.07500000000000001`, charged mode `ante`, and whole-sequence selections.
+The screenshots are runtime-only; this bounded receipt retains only their
+checksums and the transcript locator.
