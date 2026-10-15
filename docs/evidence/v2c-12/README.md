@@ -306,3 +306,42 @@ This closes the missing seeded-ante observation for both package mechanisms,
 but is still not approval: the complete ordinary/weighted repeated
 buy/buy-more continuation rows and corresponding per-step Replay descriptors
 remain uncollected.
+
+## Package continuation follow-up (2026-10-15)
+
+The isolated public-Studio runs
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-75a0b3989d3dd707/run-2026-10-15T00-16-47-670Z/transcript.json`
+and `run-2026-10-15T00-23-26-843Z/transcript.json` reused the authenticated
+candidate build and exercised newly authored ordinary and weighted
+`reelSequences` package fixtures through visible JSON authoring, TypeScript
+package Build, and Open as Project.  The weighted package was visibly a
+read-only `Playable game` added from the local package; its Replay showed
+whole-sequence selections and configuration hash
+`sha256:b207eb595cfccd894daace2a218722b3d468740aa66b14eb45b8a605b79c984e`.
+
+The ordinary package completed buy (entry `0.5`, final visible Replay stake
+`0`) and buy-more (entry `1.25`, three zero-stake continuations, final Replay
+stake `0`); its actual public downloads were respectively 30,806 bytes,
+SHA-256 `2e128c7ba1eaa39b748c179be30e4d290bff3a1815655576b91473039ad1c9d7`,
+and 82,058 bytes, SHA-256
+`6b798345d2f755d1a1f3fed196a248ce6809c90848dfd97cea4cf0b6bb908277`.
+Both descriptors retain their paid entry, zero-stake continuation(s), mode,
+charged-mode event, and logical-round total (`0.5` or `1.25`).
+
+The weighted package visibly completed buy (`0.5`) and buy-more (`1.25`, four
+subrounds) with charged modes, including the displayed final buy-more Replay
+row `stake 0`, `mode buy-more`, and whole-sequence selections.  Its downloaded
+buy and buy-more descriptors were 46,654 bytes,
+SHA-256 `a5448b31bea2eb90ce23a8c7c3dfa7fef4ca1faeffcafe224e1f8ca359c75de8`,
+and 122,388 bytes, SHA-256
+`5bdfe85aeee0d16fcec43ea547e87ad37e07c7dee5e72c23777dc8568def67d3`.
+Their delivery stakes are `[0.5,0]` and `[1.25,0,0,0]` and their logical-round
+totals are `0.5` and `1.25`, respectively. I independently opened the retained
+ordinary and weighted financial/Replay screenshots; they were legible and
+agree with these observations.
+
+This remains bounded partial evidence, not approval. The required subsequent
+weighted buy-more `1.25` purchase was not collected: after the completed
+round the visible mode reset to base, and the two attempted later Spins were
+rendered as base `0.05` rows rather than the requested purchase. No product
+defect is asserted from that unfulfilled collection path.
