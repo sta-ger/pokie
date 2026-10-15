@@ -1,9 +1,20 @@
-import {existingMechanicsBlueprint, generatedMechanicsGame} from "../../../v2/fixtures/ExistingMechanicsGame.js";
+import {existingMechanicsBlueprint, generatedMechanicsGame, replayModesBlueprint} from "../../../v2/fixtures/ExistingMechanicsGame.js";
+import {emitPublicRuntime} from "../../../v2/helpers/publicRuntime.js";
+import {createRequire} from "node:module";
+import ts from "typescript";
+import {StudioReplayExecutionService} from "../../../../cli/studio/replay/StudioReplayExecutionService.js";
+import {buildReplayDownload} from "../../../../cli/studio/replay/buildReplayDownload.js";
+import {describeReplayResult} from "../../../../cli/studio-client/src/domain/interpret/Replay.js";
 import {buildSimulationReportDownload} from "../../../../cli/studio/simulation/buildSimulationReportDownload.js";
 import {validateSimulationRequest} from "../../../../cli/studio/simulation/validateSimulationRequest.js";
 import {createOverscanGame} from "../../../v2/fixtures/OverscanGame.js";
 import {
     AUTHORED_MECHANIC_CATALOG,
+    BetModeSelecting,
+    ForcingBetModeSelectionRejectedError,
+    GamePackageGenerator,
+    ReplayDescriptor,
+    ReplayRecorder,
     isSimulationReportSet,
     GameSessionHandling,
     loadPokieGame,
@@ -1316,4 +1327,97 @@ describe("V2C-12 authored Studio simulation mode/report policy", () => {
         expect(service.getReport("/unknown", start.job.id)).toEqual({status: "not-ready", jobStatus: "failed"});
         await service.cancelAll();
     });
+});
+
+describe("V2C-12 separately loaded package simulation to Replay", () => {
+    let runtime: ReturnType<typeof emitPublicRuntime>;
+    beforeAll(() => {
+        runtime = emitPublicRuntime();
+    }, 60000);
+    afterAll(() => runtime?.dispose());
+
+    it.each([false, true].flatMap(weighted => [false, true].map(typed => ({weighted, typed}))))("completes the financial matrix across package copies (weighted=$weighted, typed=$typed)", async ({weighted, typed}) => {
+        const blueprint = replayModesBlueprint(weighted);
+        const root = path.join(runtime.directory, `simulation-${weighted}-${typed}`);
+        const built = new GamePackageGenerator("1.3.0").generate(blueprint, root);
+        const entry = path.join(built.projectRoot, "dist", "index.js");
+        if (typed) fs.writeFileSync(entry, ts.transpileModule(fs.readFileSync(path.join(built.projectRoot, "src", "index.ts"), "utf8"), {
+            compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
+        }).outputText);
+        // Native package resolution deliberately avoids Jest's @fromstan/pokie source alias.
+        const game = createRequire(path.join(runtime.directory, "consumer.cjs"))(entry) as PokieGame;
+        const session = game.createSession({seed: "v2c12-ordinary-buy-recent"}) as GameSessionHandling & BetModeSelecting;
+        session.setCreditsAmount(1000);
+        session.setBetMode("buy");
+        session.play();
+        try {
+            session.setBetMode("buy");
+            throw new Error("Expected a continuation rejection");
+        } catch (error) {
+            expect(error).toMatchObject({name: "ForcingBetModeSelectionRejectedError"});
+            expect(error).not.toBeInstanceOf(ForcingBetModeSelectionRejectedError);
+        }
+
+        const loadGame = () => Promise.resolve(game);
+        const jobs = new StudioJobService(new FileStudioJobRepository(path.join(root, "jobs")));
+        const simulation = new StudioSimulationService(undefined, loadGame, undefined, 1);
+        simulation.attachJobService(jobs);
+        const replay = new StudioReplayExecutionService(undefined, loadGame, 1);
+        replay.attachJobService(jobs);
+        try {
+            for (const [modeName, stakes, targets] of [
+                ["ante", [0.07500000000000001], [1]],
+                ["buy", [0.5, 0, 0.5], [1, 2, 3]],
+                ["buy-more", [1.25, 0, 0, 0, 1.25], [1, 2, 4, 5]],
+            ] as const) {
+                const seed = `v2c12-${weighted ? "weighted" : "ordinary"}-${modeName}-recent`;
+                const request = validateSimulationRequest({rounds: stakes.length, seed, workers: 1, modeName});
+                const started = simulation.start(root, request);
+                if (started.status !== "created") throw new Error("No simulation job");
+                const completed = await waitForTerminal(simulation, started.job.id);
+                const totalBet = stakes.reduce<number>((sum, stake) => sum + stake, 0);
+                expect(completed).toMatchObject({status: "completed", roundsCompleted: stakes.length, report: {seed, betMode: modeName, totalBet, reproducibility: {configHash: game.getConfigHash!()}}});
+                expect(jobs.get(root, started.job.id)?.request).toMatchObject(request);
+                const restarted = new StudioSimulationService(undefined, loadGame);
+                restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(path.join(root, "jobs"))));
+                const recent = restarted.listReports(root).find(report => report.id === started.job.id)!;
+                expect(recent).toMatchObject({seed, modeName});
+                expect(restarted.getReport(root, recent.id)).toMatchObject({status: "ok", report: {totalBet, betMode: modeName}});
+                for (const round of targets) {
+                    const replayRequest = {round, seed: recent.seed, modeName: recent.modeName, simulationId: recent.id, expectedConfigHash: game.getConfigHash!()};
+                    expect(replayRequest).not.toHaveProperty("recording");
+                    const start = replay.start(root, replayRequest);
+                    if (start.status !== "created") throw new Error("No replay job");
+                    const deadline = Date.now() + 10000;
+                    while (["queued", "running"].includes(replay.getStatus(root, start.job.id)!.status) && Date.now() < deadline) await flushMacrotask();
+                    const job = replay.getStatus(root, start.job.id)!;
+                    expect(job).toMatchObject({status: "completed", simulationId: recent.id, completedRounds: round});
+                    const download = replay.getDownload(root, job.id);
+                    if (download.status !== "ok") throw new Error(JSON.stringify(job));
+                    const descriptor = JSON.parse(buildReplayDownload(download.descriptor, job.id).body) as ReplayDescriptor;
+                    const expectedCommands = stakes.slice(0, round).map(stake => ({kind: "spin", ...(stake > 0 ? {mode: modeName} : {})}));
+                    expect(descriptor).toMatchObject({seed, configHash: game.getConfigHash!(), modePolicy: {betModeId: modeName, selection: "repeat-when-available"}, totalBet: stakes.slice(0, round).reduce<number>((sum, stake) => sum + stake, 0), artifact: {stake: stakes[round - 1], betMode: modeName}});
+                    expect(descriptor.commands).toEqual(expectedCommands);
+                    expect(descriptor.artifact?.featureEvents).toContainEqual({type: "chargedBetMode", data: {id: modeName}});
+                    const view = describeReplayResult(job)!;
+                    expect(view.artifact).toMatchObject({stake: descriptor.artifact!.stake, betMode: modeName});
+                    expect(view.modePolicy).toEqual(descriptor.modePolicy);
+                    const library = new ReplayRecorder().record({game, seed, round, betModeId: modeName});
+                    expect(library).toMatchObject({commands: descriptor.commands, modePolicy: descriptor.modePolicy, totalBet: descriptor.totalBet, artifact: {stake: descriptor.artifact!.stake, betMode: modeName}});
+                }
+                const repeated = restarted.start(root, request);
+                if (repeated.status !== "created") throw new Error("No repeated simulation");
+                expect(await waitForTerminal(restarted, repeated.job.id)).toMatchObject({status: "completed", report: {totalBet, betMode: modeName}});
+                await restarted.cancelAll();
+            }
+            const all = simulation.start(root, {rounds: 5, workers: 1, seed: "all-modes", modeName: "all"});
+            if (all.status !== "created") throw new Error("No all-mode simulation");
+            expect(await waitForTerminal(simulation, all.job.id)).toMatchObject({status: "completed", roundsCompleted: 20, report: {modes: {
+                base: {totalBet: 0.25}, ante: {totalBet: 0.37500000000000006}, buy: {totalBet: 1.5}, "buy-more": {totalBet: 2.5},
+            }}});
+        } finally {
+            await replay.cancelAll();
+            await simulation.cancelAll();
+        }
+    }, 30000);
 });
