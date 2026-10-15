@@ -55,3 +55,42 @@ result exists for cascade delivery, respin continuation, collection
 threshold/reset, Studio simulation/report downloads, or Recent Simulation
 replay. This is recorded as a driver-inconclusive collection boundary, not a
 product finding and not a substitute for those observations.
+
+## 2026-10-15 focused recovery collection — product finding
+
+Product identity for this recovery is
+`465835d6895a458f2b01961cecd7c298ffc38f75`. The immutable transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-14-df81562f37bd1be3/run-2026-10-15T13-48-28-713Z/transcript.json`.
+The candidate build was reused by the neutral launcher; the fresh Studio run
+used isolated application and browser profiles and was closed cleanly.
+
+- A seedless three-round single-worker simulation completed as job
+  `df1d7c89e4ba4ef2a380725b30f56337`. Recent Simulation rendered the exact
+  unavailable explanation and disabled **Load**: “This simulation has no
+  recorded seed. Run a new simulation with an explicit seed and one worker to
+  replay its subrounds.” A distinct seeded report (`v2c14-replay-seed`) then
+  completed as job `99cf6b3d219b4a6c8f6dcc2f9c1329c5`.
+- The seeded replay loaded round 3 and **Run again** completed as job
+  `efef55c275694d00b8b7afdd42c48b92`, rendering the same seed, stake `0.05`,
+  and config hash
+  `sha256:9c40e9e6b2d06f68bafdd4f5cd51c31deee6e50932d5dcf30f5da30447b628fd`.
+  The visible Download replay JSON control produced
+  `bounded-cascade-1.0.0-efef55c275694d00b8b7afdd42c48b92.json` (3017 bytes,
+  SHA-256 `7ad6c4642a0f1a782a6878018d068a05c3885076816fd8043efa02c74da69612`),
+  whose seed, round, and replay-session identity matched the rendered card.
+- The public `bounded-collection` fixture's **Find any win** result rendered
+  one subround, stake `0.05`, payout `10.000000000000046`, collection
+  contribution `3`, threshold `4`, triggered `true`, payout `10`, and reset
+  `subtract-threshold`. Independent inspection of `1-observation.png` and
+  `2-observation.png` in the run directory found their replay and collection
+  result surfaces legible.
+- Immediately after that completed collection result, the public **Game
+  Model** navigation control entered its rendered loading state and then
+  rendered **Mechanics — No mechanics/features configured.** This contradicts
+  the active collection mechanics just exercised. The exact candidate-owned
+  boundary is `cli/studio-client/src/components/project/GameModelSections.tsx`:
+  `MechanicsSection` only tests `freeGames`, `holdAndWin`, `jackpot`, and
+  `modifiers` before selecting that empty-state text, omitting collection,
+  cascade, and respin mechanics. This is a reproducible P1 product finding
+  blocking the required guided form/JSON agreement observation; no product
+  source or test was changed by this verification.
