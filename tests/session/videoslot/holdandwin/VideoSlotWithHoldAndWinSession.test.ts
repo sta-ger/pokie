@@ -639,7 +639,7 @@ describe("V2C-13 HoldAndWin synchronous rollback", () => {
             expect(session.isHoldAndWinActive()).toBe(false);
             expect(session.getLockedHoldAndWinSymbols()).toEqual([]);
             expect(session.getHoldAndWinRespinsRemaining()).toBe(0);
-            expect(session.getHoldAndWinEntryBet()).toBe(0);
+            expect(session.getHoldAndWinEntryBet?.()).toBe(0);
             expect(session.getStakeAmount()).toBe(stake);
             expectNoPayout(session, b);
         }
@@ -649,7 +649,7 @@ describe("V2C-13 HoldAndWin synchronous rollback", () => {
             candidate.setCreditsAmount(10000);
             candidate.play();
             expect(candidate.isHoldAndWinActive()).toBe(true);
-            expect(candidate.getHoldAndWinEntryBet()).toBe(0.05);
+            expect(candidate.getHoldAndWinEntryBet?.()).toBe(0.05);
             expect(candidate.getStakeAmount()).toBe(0);
             expect(observeVideoSlotFeatures(candidate).jackpot!.statistics.mini.awardCount).toBe(1);
         }
@@ -676,7 +676,7 @@ describe("V2C-13 HoldAndWin synchronous rollback", () => {
         expect(session.isHoldAndWinActive()).toBe(phase === "active");
         expect(session.getLockedHoldAndWinSymbols()).toEqual(observeVideoSlotFeatures(setup).holdAndWin!.locks);
         expect(session.getHoldAndWinRespinsRemaining()).toBe(phase === "active" ? 2 : 0);
-        expect(session.getHoldAndWinEntryBet()).toBe(0.05);
+        expect(session.getHoldAndWinEntryBet?.()).toBe(0.05);
         expectNoPayout(session, b);
         const restored = create();
         restored.fromSessionState(before);
@@ -704,7 +704,7 @@ describe("V2C-13 HoldAndWin synchronous rollback", () => {
             expect(session.getCreditsAmount()).toBe(0);
             expect(session.toSessionState()).toEqual(before);
             expect(session.isHoldAndWinActive()).toBe(true);
-            expect(session.getHoldAndWinEntryBet()).toBe(1e-7);
+            expect(session.getHoldAndWinEntryBet?.()).toBe(1e-7);
             expect(session.getHoldAndWinRespinsRemaining()).toBe(2);
             expect(session.getLockedHoldAndWinSymbols()).toHaveLength(2);
             expect(session.getStakeAmount()).toBe(0);
