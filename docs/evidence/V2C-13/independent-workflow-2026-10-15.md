@@ -472,3 +472,44 @@ runtime/CLI/Studio receipts. This closes the two previously open reviewer
 rows; no product finding was observed. The target-test receipt remains the
 controller-issued clean-candidate 13-suite/866-test result, and packaging and
 official full/release gates remain deferred.
+
+### Reviewer-requested combined modifier edit, save, and reopen
+
+The preceding aggregate closure described observations from several focused
+flows; it did not itself establish the reviewer-requested *single positive*
+combined authoring transition. This fresh isolated Studio run supplies that
+missing transition for candidate `debfa4fcd75292ee55ee07a0988b3ba65f065ff8`.
+Its closed candidate-bound transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-13-ae3c5ca5da4f8f85/run-2026-10-15T10-44-37-258Z/transcript.json`
+(SHA-256 `e2c8cffc088c5abc66410e66757c8510ba40e10bd126610a8ed6fd502ae12038`).
+It used a newly copied `wild-transform` fixture in fresh application and
+browser storage, started Studio through the candidate's
+`node ./dist/cli/pokie.js --no-open`, and did not rerun tests, packaging, or
+any official gate.
+
+Through rendered Home controls it added expansion, sticky, and reel rules to
+the existing transform rule; set the expansion coordinate to reel `1`, changed
+W2's multiplier factor from `2` to `4`, changed sticky lifetime from `2` to
+`4`, and moved the reel rule ahead of sticky. The visible declaration order
+was then transform, expansion `[[1,0]]`, reel (selector `0`), sticky; the
+rendered substitution restrictions remained W2/W3 to A and transform B to A.
+Home `Save game` rendered its own disabled/loading save state before the
+project-open materialization completed. In Project → Game Model → Mechanics,
+the real Edit/Save flow changed W3's factor to `5`; Save rendered its local
+loading state and then the read-only declaration showed W2 factor `4`, W3
+factor `5`, the four ordered rules, selector/restriction values, coordinate,
+and sticky lifetime `4`.
+
+The project was then closed through the rendered control, reopened from the
+rendered Projects registry, and its Game Model rendered the same declarations
+and values again. Independent visual inspection found the Home sticky editor,
+Project edit form, and Project read-only saved mechanics readable and
+internally consistent. The retained runtime-only captures are
+`1-observation.png` SHA-256
+`d0dd20571dd7e246fcc960305b00b1b3f6cf77e02921c5a619100ae067a42a35`,
+`2-observation.png` SHA-256
+`9a1b4c62b7ff1abccd14dfe5018db7d7b66df2553651a630384dee304f522996`, and
+`3-observation.png` SHA-256
+`20d98329f25a53df31a06a481c4eccbdf1279ca2b91f3a10fceb93c44df753c0`.
+Those images and the full transcript remain in the harness rather than this
+evidence commit. Owned Studio and browser children drained on close.
