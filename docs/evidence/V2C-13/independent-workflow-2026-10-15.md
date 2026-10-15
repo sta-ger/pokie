@@ -249,3 +249,54 @@ weighted whole-sequence package executions, XLSX round trip, full catalogue
 sweep, and independent worker-session isolation remain uncollected. The
 controller-owned targeted receipt remains the only test invocation; packaging
 and official full/release gates remain deferred.
+
+### Fresh wild-reel save, reload, Play, replay and download
+
+The controller-owned targeted receipt at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-targeted-results/13b6da3faae14bec8f560371/result.json`
+was read together with its complete stdout/stderr. It identifies clean candidate
+`ac581e39e0cd121a870a9b15ee176811f9181f5b` before/after, exit 0, and
+13 passed suites / 866 passed tests; no test was re-run. Current HEAD
+`50adb0252ae7c4f3a99069018dbc53643329d7ad` is the clean evidence-only
+descendant (its only earlier diff from the candidate is this evidence record).
+
+Fresh Studio run
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-13-b86253e3a60d58fd/run-2026-10-15T09-53-42-748Z/transcript.json`
+(SHA-256 `d0a2257f7df50b28aef13711e5f104d85a8c18f73e7c83c69d23d0c2788cd09a`)
+used `node ./dist/cli/pokie.js --no-open` with isolated application and browser
+profiles. Through the rendered Home form it resolved and loaded
+`wild-reel.blueprint.json`; Load rendered disabled/loading and then `Save game`.
+The Reel strips surface visibly showed B, W2, W3 and its declared reel modes.
+Save rendered its local pending state, materialized `Wild reel` Project, then
+Close project → public Projects → Open explicitly reloaded that project. Both
+materialization terminals were rendered.
+
+In the reopened Project, an actual Play session spun once. Its accepted local
+pending `Spinning…` terminalled as one subround at stake 0.05 with A/W2/W3,
+total win 3.00 and multiplier 60. The public seeded Replay then used seed
+`v2c13-wild-reel-replay`, replay job
+`22d0a86248934533be9e6723544918eb`, session
+`3914be0b-5a1b-425f-89d9-4c9d479c842c`, and config hash
+`sha256:76f0e8d64cf065282ddf214d59f1aa678e86285c72734376b6cf881c25c1fb07`.
+Its exact local lifecycle moved queued 0/1 to completed 1/1. The resulting
+public JSON download was observed through the browser download channel:
+`wild-reel-1.0.0-22d0a86248934533be9e6723544918eb.json`, 7,959 bytes,
+SHA-256 `db1d7f2688bc2e67b19777037d3faa0c7486865b819f634ff7ed222c7afaf515`.
+Its decoded bytes match the rendered session, seed, game/version, round 1,
+stake 0.05, A/W2/W3 screen, total win 3 and config hash. Runtime download and
+browser files are not committed.
+
+Independent visual inspection found the reel-editor, Play-result and replay
+screens readable and coherent. Their screenshot SHA-256 values are respectively
+`597a0553fe43b6326f826617488a2205a6f826faaf0cee0cb424470efc3b1be6`,
+`936c3383dc98c16e1dc901bbc360f65c094078412e4c8f8c53562a324cb54ec3`, and
+`4e2d2872f48deb1d8da650c744a05f28407c4608845236005a3f158e62eae71b`.
+The interactive control returned close and subsequent process inspection found
+no owned Studio/Chromium process. The launcher transcript did not write its
+optional final `ended_at`/`cleanup` fields before its process exited; retain
+that as a transport-record limitation, not a product failure.
+
+This newly closes explicit wild-reel save/reload, exact Play, seeded replay and
+download branches. It does not complete the six-capability matrix, malformed /
+stale recovery, catalogue and sticky lifecycle sweep, all rendered reports,
+ordinary/weighted rendered package routes, or the remaining worker evidence.
