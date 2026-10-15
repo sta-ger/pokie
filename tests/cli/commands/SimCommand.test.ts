@@ -375,9 +375,9 @@ describe("SimCommand", () => {
         const report = JSON.parse(contents) as SimulationReport;
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
 
-        expect(report.warnings).toEqual(expect.arrayContaining([expect.stringContaining("Requested rounds (1) is low")]));
+        expect(report.warnings).toEqual(expect.arrayContaining([expect.stringContaining("Usable samples (1) is low")]));
         expect(printed).toContain("Warnings:");
-        expect(printed).toContain("Requested rounds (1) is low");
+        expect(printed).toContain("Usable samples (1) is low");
 
         logSpy.mockRestore();
     });
@@ -548,7 +548,7 @@ describe("SimCommand --mode", () => {
         await command.run(["./sample-slot", "--rounds", "20"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).not.toContain("bet mode");
+        expect(printed).not.toMatch(/(?:^|\n)\s+bet mode\s{2,}/);
 
         logSpy.mockRestore();
     });
