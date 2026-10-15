@@ -7,6 +7,7 @@ export class SimulationCategoryNameNormalizer {
     // Long enough for any reasonable category name ("holdAndWin", "bonus-buy-super", ...), short
     // enough to keep JSON reports and table output readable.
     public static readonly MAX_LENGTH = 64;
+    public static readonly MAX_CATEGORIES = 128;
     // Starts with a letter, then letters/digits/hyphen/underscore — mirrors the "base"/"freeGames"
     // identifier style already used by the built-in categories, while still allowing "hold-and-win"
     // or "bonus_buy" style names.

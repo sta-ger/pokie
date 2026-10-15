@@ -8,6 +8,7 @@ import type {StudioJobRecoveryView} from "../jobs/StudioJobView.js";
 // own field here (Studio's own response DTO) rather than as a change to SimulationReport itself, so
 // the shared report type/its existing renderers/docs are completely untouched.
 export type StudioSimulationStatisticsView = {
+    analytics?: import("../../../src/simulation/FeatureAnalytics.js").FeatureAnalytics;
     volatility: number;
     payoutStandardDeviation: number;
     returnStandardDeviation: number;

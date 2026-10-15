@@ -631,3 +631,116 @@ See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
 payout/duration units, authoring/interchange, restoration/replay, statistics and
 custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
 maps every mandatory family separately from arbitrary custom callbacks.
+
+## Feature analytics aggregates (V2C-16)
+
+`AggregateSimulationRunner` and `Simulation` share the accepted mathematical-play
+observer. `SimulationAccumulator.addRound(stake, win, observation?)` accepts its
+plain-data observation contract; omit observation when only amounts are known.
+`statistics.analytics` carries schema/event version 1, executable `modelId`,
+capabilities and the metric policy through snapshots, chunk/worker merges,
+reports, CLI JSON/text and Studio report details/downloads. Older reports with no
+analytics remain readable and display **unavailable**, rather than invented zero
+observations. `setSimulationModelIdentity(session, game.getConfigHash?.())` binds
+an executable identity for direct runners; the package/parallel paths do this
+automatically. A custom model without a hash is explicitly unidentified. A null
+identity cannot merge with a known identity. Two anonymous envelopes may merge
+only with matching metric/capability policy; this is not evidence of the same
+executable model. An empty, unconfigured accumulator
+can adopt an envelope; a configured empty accumulator still enforces its policy. Restored older amount-only
+accumulators can continue amount-only accounting, keeping analytics unavailable;
+they cannot acquire current provenance or accept identified observations without
+rebuilding from evidence.
+
+Every rate retains numerator and denominator. Paid entries count positive
+**actual charged stake**, including purchases; logical entries count observed
+new logical entries on a session, including legitimate zero-stake entries. Accepted
+subrounds count successful plays once and remain the requested-round/progress
+budget. Completed logical rounds exclude incomplete/exhausted and restored tails
+without entry evidence. Mathematical cascade evaluations have a separate count;
+delivery-only stages and retries never call this observer. Completed logical
+sample core report metrics can therefore have a different population from the
+observed monetary totals and the analytics subround metrics.
+
+- Entry frequency = feature entries / paid entries, or / logical entries, with
+  both alternatives labeled. Retrigger frequency = extension events / feature
+  entries; grants separately count the number of granted games/respins, including
+  unused grants when Hold&Win completes on its triggering entry. Weighted bonus
+  respin grants use the selected duration; they are not extra entry events.
+- Duration = executed feature subrounds / completed feature instances. A natural
+  base trigger does not execute a free spin. A purchase executes its first free
+  spin on entry, which is included in duration and separately counted as
+  `entrySubrounds`. Cascades are mathematical stages, not extra feature plays.
+- Average bonus win = completed feature win sum / completions. Zero-duration and
+  zero-win completions enter their distributions. Both duration and win use four
+  fixed buckets: `0`, `(0,10)`, `[10,100)`, `100+`. Duration is integral. A parent
+  and a child may both observe the same feature play; lifecycle win summaries
+  overlap and are **not** an additive payout partition.
+- The additive partition reads the session evaluation's canonical components
+  once: jackpot components first, then feature continuations/explicit feature
+  awards, then base components. A purchase's executed free spin is feature win.
+  Collection and weighted awards and released free-game banks are never added a
+  second time. Components retain identity, occurrences, samples and amount;
+  source artifacts retain their original components and metadata unchanged.
+  Bet mode is a separate dimension. Each dimension reports RTP contribution
+  (amount / actual charged stake) and payout share (amount / total observed win).
+- Symbol, line and scatter hits are canonical component presence per accepted
+  subround, deduplicated by symbol/line/scatter ID within that subround. Component
+  occurrence totals remain separate. A zero-valued canonical component counts
+  as component presence; landed display symbols alone never count as paid wins.
+- Dead spins = zero-win accepted subrounds / all accepted subrounds. Maximum-win
+  frequency counts the exact maximum, including zero in an all-zero run; empty
+  runs have zero occurrences. Maximum contribution = maximum * occurrences /
+  total win. Top wins retain exactly the largest ten positive subround payouts
+  (or all when fewer): descending order, repeated equal values occupy slots,
+  equal-value identity is immaterial. Contribution uses their sum / total win.
+
+All zero-denominator ratios return numeric zero, and raw counts distinguish an
+observed zero from unavailable lifecycle/components or an unconfigured feature.
+Native outcome libraries use their flattened canonical wins once, supporting
+component hits and jackpot attribution. Their other component amounts are marked
+unattributed (`partition.unavailable`): event presence does not establish a
+feature lifecycle. Current WASM rounds expose monetary totals but no canonical
+win components or lifecycle evidence; those metrics remain explicitly unavailable.
+Neither adapter gains support for additional mechanics.
+
+Built-in free games, Hold&Win, bounded respins, collection, cascades, weighted
+bonuses, modifiers and their already-supported jackpot/bet-mode compositions use
+the same observer. Retained active state is session-local and contains only fixed
+feature counters, duration and win sums. Same-session chunks complete the original
+instance once; a separately restored tail records excluded completion and carried
+subrounds, never a fabricated feature entry. A fixed per-session terminal marker
+keeps a middle-only chunk visibly incomplete, including carried-in incomplete
+features, even when its entry lies outside that chunk. A completion whose known entry was
+outside a selected chunk is labeled carried. Independent worker trajectories
+never reconcile each other's unfinished features. Failure/cancellation prefixes
+are diagnostics, not completed reports.
+
+Analytics stores seven feature rows, two four-bucket distributions per feature,
+ten top payouts, at most 512 component/hit IDs, 128 modes/categories and 64 session trajectories.
+Category names remain limited to 64 characters, and imported payout histograms
+accept only their four fixed buckets.
+Excess model dimensions/trajectories reject before mutation. Logical reconciliation
+immediately discards matched coordinates and summarizes abandoned samples;
+unmatched disjoint coordinates are capped at 128 per trajectory. This bounds even
+adversarial partition fragmentation rather than merely coalescing adjacent ranges.
+No event, screen, completed-feature ID or logical-round ID is retained per play.
+The legacy `Simulation` API still retains payout/bet/RTP history arrays: its shared
+analytics is bounded, but that entire API intentionally remains history-retaining.
+
+Partition equivalence means **identical observations**. Integer/exactly representable
+fixtures prove exact monetary and count merges; arbitrary floating-point addition
+is order-dependent. Fractional stakes (0.05, 7.5, 1e-7) are retained without rounding.
+For workers=1 the seed is unchanged. For workers>1 each seed is
+`<seed>::worker<index>/<totalWorkers>`. Fixed seed, worker count, model and options
+are reproducible; changing worker count does not preserve the sequential draw
+stream. Features and accumulating jackpots are session-local, and every worker
+can end with its own unfinished tail. Saved reproducibility metadata and analytics
+provenance travel together; merge rates are derived from summed numerators and
+denominators, never averages of worker rates.
+
+Native outcome reports also retain their actual `derived-round-seed-v1` policy
+(`"<seed>:<round>"`, no package-worker split). WASM reports retain the single
+portable seeded-host policy. These adapter policies do not claim equivalence to
+the package worker RNG streams. Unseeded outcome API callers retain their own
+random-source contract rather than a fabricated seeded replay guarantee.

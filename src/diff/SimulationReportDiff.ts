@@ -1,3 +1,4 @@
+import type {FeatureAnalytics as SimulationReportAnalytics} from "../simulation/FeatureAnalytics.js";
 import type {ReelSequencesDiff} from "./diffReelSequences.js";
 import type {SimulationReportBreakdownComponent} from "../reporting/SimulationReportBreakdown.js";
 
@@ -33,6 +34,7 @@ export type SimulationReportDiff = {
     // means callers do not need to infer it from every metric, optional breakdown, and metadata
     // field themselves.
     changed: boolean;
+    analytics?: {changed: boolean; left: SimulationReportAnalytics | null; right: SimulationReportAnalytics | null};
     weightedBonus?: {configurationChanged: boolean; observationsChanged: boolean};
     reelSequences?: ReelSequencesDiff;
     game: {

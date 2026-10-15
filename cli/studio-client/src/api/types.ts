@@ -670,6 +670,7 @@ export type SimulationReportReproducibility = {
 // kept as its own client-side copy here, same convention as every other type in this file.
 export type SimulationReport = {
     sampling?: import("../../../../src/reporting/SimulationReport.js").SimulationReport["sampling"];
+    analytics?: import("../../../../src/simulation/FeatureAnalytics.js").FeatureAnalytics;
     logicalRounds?: import("../../../../src/simulation/LogicalRoundStatistics.js").LogicalRoundStatistics;
     modifiers?: import("../../../../src/simulation/ModifierStatistics.js").ModifierStatistics;
     weightedBonus?: WeightedBonusStatistics;
@@ -731,6 +732,7 @@ export type SimulationReportSet = {
 // standard SimulationReport — see cli/studio/simulation/StudioSimulationJobView.ts's own doc comment
 // for why these live here rather than as a change to SimulationReport itself.
 export type StudioSimulationStatisticsView = {
+    analytics?: import("../../../../src/simulation/FeatureAnalytics.js").FeatureAnalytics;
     volatility: number;
     payoutStandardDeviation: number;
     returnStandardDeviation: number;

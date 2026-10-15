@@ -1,3 +1,4 @@
+import {describeFeatureAnalytics} from "../simulation/describeFeatureAnalytics.js";
 import {describeWeightedBonusCoverage} from "../session/videoslot/authored/WeightedBonus.js";
 import {describeSequenceVariantCoverage} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {SimulationReport} from "./SimulationReport.js";
@@ -106,6 +107,8 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             ...(report.weightedBonus ? [`<h2>Weighted bonus ${this.escapeHtml(report.weightedBonus.tableId)}</h2><p>${report.weightedBonus.selections} eligible selections; ${report.weightedBonus.completed} completed; ${report.weightedBonus.incomplete} incomplete net of carried tails</p>`, "<table><tr><th>Outcome ID</th><th>Weight</th><th>Configured probability</th><th>Count</th><th>Actual frequency</th><th>Coverage</th></tr>", ...report.weightedBonus.outcomes.map(o => `<tr><td>${this.escapeHtml(o.id)}</td><td>${o.weight}</td><td>${o.probability}</td><td>${o.count}</td><td>${o.frequency}</td><td>${describeWeightedBonusCoverage(o.weight, o.uncovered)}</td></tr>`), "</table>"] : []),
             ...(report.reelSequences ?? []).flatMap(reel => [`<h2>Weighted reel ${reel.reelIndex + 1} (${reel.context}; ${reel.selections} selections)</h2>`, "<table><tr><th>Variant ID</th><th>Weight</th><th>Probability</th><th>Count</th><th>Frequency</th><th>Coverage</th></tr>",
                 ...reel.variants.map(variant => `<tr><td>${this.escapeHtml(variant.id)}</td><td>${variant.weight}</td><td>${variant.probability === 0 && variant.weight > 0 ? `${variant.probabilityRatio?.numerator}/${variant.probabilityRatio?.denominator}` : variant.probability}</td><td>${variant.count}</td><td>${variant.frequency}</td><td>${describeSequenceVariantCoverage(variant.weight, variant.uncovered)}</td></tr>`), "</table>"]),
+            "<h2>Feature analytics</h2>",
+            ...describeFeatureAnalytics(report.analytics).map(line => `<p>${this.escapeHtml(line)}</p>`),
             ...this.renderBreakdownSection(report),
             ...this.renderJackpotSection(report),
             ...this.renderConvergenceSection(report),

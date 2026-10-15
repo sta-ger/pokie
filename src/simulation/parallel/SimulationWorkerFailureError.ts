@@ -4,10 +4,12 @@
 // reason (never a raw stack trace: a worker thread's Error.stack points at code the caller of `pokie
 // sim`/Studio never sees and shouldn't have to reason about).
 export class SimulationWorkerFailureError extends Error {
+    public readonly observedPrefix?: import("../SimulationStatistics.js").SimulationStatistics;
     public readonly workerIndex: number;
 
-    constructor(workerIndex: number, reason: string) {
+    constructor(workerIndex: number, reason: string, observedPrefix?: import("../SimulationStatistics.js").SimulationStatistics) {
         super(`Worker ${workerIndex} failed: ${reason}`);
+        this.observedPrefix = observedPrefix;
         this.name = "SimulationWorkerFailureError";
         this.workerIndex = workerIndex;
     }

@@ -1,6 +1,8 @@
 export interface SimulationHandling {
     run(): void;
 
+    getFeatureAnalytics?(): import("./FeatureAnalytics.js").FeatureAnalytics | undefined;
+
     getLastRtp(): number;
 
     getAverageRtp(): number;

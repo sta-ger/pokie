@@ -1,3 +1,4 @@
+import {featureAnalyticsReport} from "../../../../../v2/fixtures/FeatureAnalyticsFixture";
 import {describeSimulationReport, type SimulationReportView} from "../../../../../../cli/studio-client/src/domain/interpret/Simulation";
 import type {SimulationReport} from "../../../../../../cli/studio-client/src/api/types";
 import {MantineProvider} from "@mantine/core";
@@ -71,4 +72,18 @@ it("forwards real bonus selection statistics through the API view and rendered r
     expect(within(large).getByText("observed")).toBeVisible();
     expect(result.getByText("unobserved")).toBeVisible();
     expect(result.getByText("zero weight")).toBeVisible();
+});
+
+it("renders analytics availability, zero denominators, unfinished features and populated ratios", () => {
+    const zero = featureAnalyticsReport("empty");
+    const result = render(<MantineProvider><SimulationReportDisplay view={describeSimulationReport({...zero, analytics: undefined})} /></MantineProvider>);
+    expect(result.getByText(/Feature analytics unavailable/)).toBeVisible();
+    result.rerender(<MantineProvider><SimulationReportDisplay view={describeSimulationReport(zero)} /></MantineProvider>);
+    expect(result.getAllByText(/bonus win \/ completions: 0 \/ 0 = 0/)).toHaveLength(7);
+    expect(result.container.textContent).not.toContain("NaN");
+    result.rerender(<MantineProvider><SimulationReportDisplay view={describeSimulationReport(featureAnalyticsReport("incomplete"))} /></MantineProvider>);
+    expect(result.getByText(/freeGames: entries \/ paid rounds: 1 \/ 1 = 1/)).toHaveTextContent("incomplete: 1");
+    result.rerender(<MantineProvider><SimulationReportDisplay view={describeSimulationReport(featureAnalyticsReport())} /></MantineProvider>);
+    expect(result.getByText(/freeGames: duration/)).toHaveTextContent("bonus win / completions: 4 / 1 = 4");
+    expect(result.getByText(/feature: RTP contribution \/ actual charged stake/)).toHaveTextContent("payout share / total win");
 });

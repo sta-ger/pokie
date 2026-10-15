@@ -752,8 +752,14 @@ describe("SimCommand --mode all (integration, real generated package)", () => {
         expect(reportSet.modes.ante.betMode).toBe("ante");
         expect(reportSet.modes["buy-10"].betMode).toBe("buy-10");
         expect(reportSet.modes["buy-20"].betMode).toBe("buy-20");
-        // Each mode's own rounds were actually played in full -- never split/shared across modes.
-        Object.values(reportSet.modes).forEach((report) => expect(report.rounds).toBe(30));
+        // Every mode receives its own accepted-subround budget. Purchase tails are unfinished samples.
+        Object.values(reportSet.modes).forEach(report => {
+            expect(report.sampling?.acceptedSubrounds).toBe(30);
+            expect(report.analytics?.subrounds).toBe(30);
+            expect(report.rounds).toBe(report.analytics?.logicalCompletions);
+        });
+        expect(Object.fromEntries(Object.entries(reportSet.modes).map(([id, report]) => [id, report.rounds]))).toEqual({base: 30, ante: 30, "buy-10": 3, "buy-20": 1});
+        expect(reportSet.modes["buy-20"].analytics?.lifecycle.freeGames.incomplete).toBe(1);
     });
 
     it("never computes a blended/overall RTP or totals across modes -- only the per-mode reports", async () => {
@@ -1009,7 +1015,8 @@ describe("SimCommand (integration, real game with a free-games feature)", () => 
         const {base, freeGames} = report.breakdown!.components;
         expect(base.rounds).toBeGreaterThan(0);
         expect(freeGames.rounds).toBeGreaterThan(0);
-        expect(base.rounds + freeGames.rounds).toBe(report.rounds);
+        expect(base.rounds + freeGames.rounds).toBe(report.sampling?.acceptedSubrounds ?? report.rounds);
+        expect(report.analytics?.subrounds).toBe(base.rounds + freeGames.rounds);
         expect(base.totalBet + freeGames.totalBet).toBeCloseTo(report.totalBet, 10);
         expect(base.totalWin + freeGames.totalWin).toBeCloseTo(report.totalWin, 10);
     });
@@ -1082,7 +1089,12 @@ describe("SimCommand runtime package materialization boundary", () => {
             const report = JSON.parse(fs.readFileSync(output, "utf8"));
             expect(report).toMatchObject({rounds: 10000, workers: 1, totalBet: 10000, totalWin: 7425});
             expect(JSON.parse(log.mock.calls[0][0])).toEqual(report);
-            expect(Buffer.byteLength(JSON.stringify(report))).toBeLessThan(5000);
+            // Seven fixed analytics rows/rates add constant overhead, independent of requested plays.
+            expect(report.analytics).toMatchObject({subrounds: 10000, envelope: {lifecycle: false, components: false}});
+            expect(Object.keys(report.analytics.features)).toHaveLength(7);
+            expect(report.analytics.topWins).toHaveLength(10);
+            expect(Object.keys(report.analytics.components)).toHaveLength(0);
+            expect(Buffer.byteLength(JSON.stringify(report))).toBeLessThan(10000);
             expect(JSON.stringify(report)).not.toMatch(/"draws"|"roundResults"|"trace"/);
         } finally {
             log.mockRestore();
@@ -1390,9 +1402,10 @@ describe("SimCommand outcome-source routing (integration, real outcome-library b
         await command.run([bundleDir, "--rounds", "200", "--seed", "sim-seed", "--mode", "base", "--format", "json"]);
 
         expect(loadGame).not.toHaveBeenCalled();
-        const report = JSON.parse(logSpy.mock.calls[0][0]) as {libraryId: string; statistics: {rounds: number; rtp: number; totalBet: number}};
+        const report = JSON.parse(logSpy.mock.calls[0][0]) as {libraryId: string; workerSeedStrategy: string; statistics: {rounds: number; rtp: number; totalBet: number}};
         expect(report.libraryId).toBe("base-lib");
         expect(report.statistics.rounds).toBe(200);
+        expect(report.workerSeedStrategy).toContain("derived-round-seed-v1");
         expect(report.statistics.totalBet).toBe(200);
         expect(report.statistics.rtp).toBeGreaterThanOrEqual(0);
 

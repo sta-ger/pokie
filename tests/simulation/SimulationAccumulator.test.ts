@@ -1,3 +1,4 @@
+import {analyticsEnvelope} from "../../src/simulation/FeatureAnalytics.js";
 import {AggregateSimulationRunner, GameSession, GameSessionConfig, SimulationAccumulator} from "@fromstan/pokie";
 
 describe("SimulationAccumulator", () => {
@@ -295,4 +296,89 @@ describe("AggregateSimulationRunner", () => {
         expect(stats.rounds).toBe(2);
         expect(stats.totalBet).toBe(20);
     });
+});
+
+it("rejects unbounded imported histogram dimensions without changing the source", () => {
+    const accumulator = new SimulationAccumulator();
+    accumulator.addRound(1, 0);
+    const snapshot = accumulator.toSnapshot();
+    snapshot.payoutHistogram["custom-round-1"] = 1;
+    expect(() => SimulationAccumulator.fromSnapshot(snapshot)).toThrow(/fixed buckets/);
+    expect(Object.keys(accumulator.toSnapshot().payoutHistogram)).toEqual(["0"]);
+});
+
+it("keeps older amount-only history readable and appendable without fabricating current provenance", () => {
+    const original = new SimulationAccumulator();
+    original.addRound(1, 0);
+    const snapshot = original.toSnapshot();
+    Reflect.deleteProperty(snapshot, "analytics");
+    const legacy = SimulationAccumulator.fromSnapshot(snapshot);
+    legacy.addRound(1, 0);
+    expect(legacy.getStatistics()).toMatchObject({rounds: 2, totalBet: 2});
+    expect(legacy.getStatistics().analytics).toBeUndefined();
+    const before = legacy.toSnapshot();
+    expect(() => legacy.configureAnalytics(analyticsEnvelope("known"))).toThrow(/historical/);
+    expect(legacy.toSnapshot()).toEqual(before);
+});
+
+it("validates direct merge invariants and modifier observations before mutation", () => {
+    const target = new SimulationAccumulator();
+    target.addRound(1, 0);
+    const before = target.toSnapshot();
+    expect(() => target.addModifierStatistics({steps: NaN, ruleApplications: 0, stickySteps: 0, multipliedComponents: 0})).toThrow(/modifier/);
+    expect(() => target.addModifierStatistics({} as Parameters<SimulationAccumulator["addModifierStatistics"]>[0])).toThrow(/modifier/);
+    const malformed = new SimulationAccumulator();
+    Reflect.set(malformed, "totalPayout", Infinity);
+    expect(() => target.merge(malformed)).toThrow(/totalPayout/);
+    expect(target.toSnapshot()).toEqual(before);
+});
+
+const snapshotCorruptions = [
+    ["duration without completions", (s: ReturnType<SimulationAccumulator["toSnapshot"]>) => {
+        s.analytics!.features.freeGames.durationSum = 100;
+    }],
+    ["win without completions", (s: ReturnType<SimulationAccumulator["toSnapshot"]>) => {
+        s.analytics!.features.freeGames.winSum = 123;
+    }],
+    ["oversized mode", (s: ReturnType<SimulationAccumulator["toSnapshot"]>) => {
+        s.analytics!.betModes["m".repeat(1000000)] = 0;
+    }],
+    ["empty mode", (s: ReturnType<SimulationAccumulator["toSnapshot"]>) => {
+        s.analytics!.betModes[""] = 0;
+    }],
+    ["conflicting maximum count", (s: ReturnType<SimulationAccumulator["toSnapshot"]>) => {
+        s.maxWinCount = 0;
+    }],
+    ["missing maximum count", (s: ReturnType<SimulationAccumulator["toSnapshot"]>) => {
+        Reflect.deleteProperty(s, "maxWinCount");
+    }],
+] as const;
+it.each(snapshotCorruptions)("rejects %s on restoration and direct merge before destination mutation", (_name, corrupt) => {
+    const source = new SimulationAccumulator();
+    source.addRound(1, 2);
+    const malformed = source.toSnapshot();
+    corrupt(malformed);
+    const input = JSON.stringify(malformed);
+    expect(() => SimulationAccumulator.fromSnapshot(malformed)).toThrow(/analytics/i);
+    expect(JSON.stringify(malformed)).toBe(input);
+    // Bypass restoration deliberately to exercise the public merge boundary independently.
+    Reflect.set(source, "analytics", malformed.analytics);
+    Reflect.set(source, "maxWinCount", malformed.maxWinCount);
+    const target = new SimulationAccumulator();
+    target.addRound(1, 3);
+    const before = target.toSnapshot();
+    expect(() => target.merge(source)).toThrow(/analytics/i);
+    expect(target.toSnapshot()).toEqual(before);
+});
+
+it("preserves the distinct zero-maximum conventions through restoration and merging", () => {
+    const a = new SimulationAccumulator();
+    a.addRound(1, 0);
+    const restored = SimulationAccumulator.fromSnapshot(JSON.parse(JSON.stringify(a.toSnapshot())));
+    restored.merge(a);
+    expect(restored.toSnapshot()).toMatchObject({maxWin: 0, maxWinCount: 0, analytics: {maxWin: 0, maxWinCount: 2}});
+    expect(restored.getStatistics()).toMatchObject({maxWinFrequency: 0, analytics: {maxWinRate: {value: 1}}});
+    a.addRound(1, 2);
+    restored.merge(SimulationAccumulator.fromSnapshot(a.toSnapshot()));
+    expect(restored.toSnapshot()).toMatchObject({maxWin: 2, maxWinCount: 1, analytics: {maxWin: 2, maxWinCount: 1}});
 });

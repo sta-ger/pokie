@@ -159,3 +159,10 @@ checks reference integrity; executed behavioral assertions provide coverage.
 Neither parsed references nor historical receipts establish acceptance.
 Current repair execution and independent/controller decisions remain in
 [V2C-15](V2C-15.md); all acceptance cells are still open.
+
+V2C-16 adds shared bounded analytics to the existing supported simulation rows,
+without expanding mechanic compositions or target support. Duration counts executed
+feature subrounds; cascade delivery stages remain separate. Parent/child lifecycle
+summaries may overlap, while the canonical base/feature/jackpot monetary partition
+is additive. Native outcome events do not prove lifecycle; WASM lacks canonical
+component/lifecycle evidence. See [formulas and support boundaries](../simulation.md#feature-analytics-aggregates-v2c-16).

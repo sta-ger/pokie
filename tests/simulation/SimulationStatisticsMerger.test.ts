@@ -195,3 +195,30 @@ describe("SimulationStatisticsMerger", () => {
         expect(mixed.jackpot!.awardCount).toBe(1);
     });
 });
+
+it("bounds category unions and handles a category named constructor as plain data", () => {
+    const accumulator = new SimulationAccumulator();
+    accumulator.addRound(1, 0);
+    const component = {rounds: 1, totalBet: 1, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0};
+    const merger = new SimulationStatisticsMerger();
+    const result = merger.merge([{accumulator: accumulator.toSnapshot(), breakdown: {constructor: component}}]);
+    expect(result.breakdown!.constructor).toEqual(component);
+    expect(() => merger.merge([{accumulator: accumulator.toSnapshot(), breakdown: Object.fromEntries([["__proto__", component]])}])).toThrow(/category key/);
+    const breakdown = Object.fromEntries(Array.from({length: 129}, (_, i) => [`category-${i}`, {...component, rounds: 0, totalBet: 0}]));
+    expect(() => merger.merge([{accumulator: new SimulationAccumulator().toSnapshot(), breakdown}])).toThrow(/category dimension bound/);
+});
+
+it("rejects conflicting positive maxima before changing any supplied partition", () => {
+    const a = new SimulationAccumulator();
+    a.addRound(1, 5);
+    const valid = a.toSnapshot();
+    const invalid = a.toSnapshot();
+    invalid.maxWinCount = 0;
+    const before = JSON.stringify([valid, invalid]);
+    for (const snapshots of [[valid, invalid], [invalid, valid]]) {
+        expect(() => new SimulationStatisticsMerger().merge(snapshots.map(accumulator => ({accumulator})))).toThrow(/analytics/i);
+        expect(JSON.stringify([valid, invalid])).toBe(before);
+    }
+    const merged = new SimulationStatisticsMerger().merge([{accumulator: valid}, {accumulator: valid}]).statistics;
+    expect(merged).toMatchObject({maxWinFrequency: 1, analytics: {maxWinCount: 2, maxWinRate: {value: 1}}});
+});

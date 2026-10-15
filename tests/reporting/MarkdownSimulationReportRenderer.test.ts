@@ -1,3 +1,4 @@
+import {featureAnalyticsReport} from "../v2/fixtures/FeatureAnalyticsFixture.js";
 import {MarkdownSimulationReportRenderer, SimulationReport} from "@fromstan/pokie";
 
 const report: SimulationReport = {
@@ -237,4 +238,21 @@ describe("MarkdownSimulationReportRenderer", () => {
         expect(markdown).toContain("**Consecutive stable checks**: 0");
         expect(markdown).toContain("**Achieved RTP half-width**: 8.000 pp");
     });
+});
+
+it("renders zero, unavailable, incomplete and populated feature analytics with denominator labels", () => {
+    const zero = featureAnalyticsReport("empty");
+    const renderer = new MarkdownSimulationReportRenderer();
+    expect(renderer.render({...zero, analytics: undefined})).toContain("Feature analytics unavailable");
+    const text = renderer.render(zero);
+    expect(text).toContain("entries / paid rounds: 0 / 0 = 0");
+    expect(text).toContain("bonus win / completions: 0 / 0 = 0");
+    expect(text).toContain("RTP contribution / actual charged stake");
+    expect(text).toContain("payout share / total win");
+    expect(text).not.toContain("NaN");
+    const incomplete = renderer.render(featureAnalyticsReport("incomplete"));
+    expect(incomplete).toContain("entries / paid rounds: 1 / 1 = 1");
+    expect(incomplete).toContain("incomplete: 1");
+    expect(incomplete).toContain("duration (executed feature subrounds; triggering entry counted only if it executes the feature)");
+    expect(renderer.render(featureAnalyticsReport())).toContain("bonus win / completions: 4 / 1 = 4");
 });

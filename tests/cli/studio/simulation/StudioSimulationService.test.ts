@@ -1172,10 +1172,12 @@ describe("StudioSimulationService (integration, real loadPokieGame + fixture gam
         const job = await waitForTerminal(service, result.job.id);
 
         expect(job.status).toBe("completed");
-        const {base, freeGames} = job.report!.breakdown!.components;
+        if (!job.report || isSimulationReportSet(job.report)) throw new Error("Expected single-mode report");
+        const {base, freeGames} = job.report.breakdown!.components;
         expect(base.rounds).toBeGreaterThan(0);
         expect(freeGames.rounds).toBeGreaterThan(0);
-        expect(base.rounds + freeGames.rounds).toBe(job.report!.rounds);
+        expect(base.rounds + freeGames.rounds).toBe(job.report!.sampling?.acceptedSubrounds ?? job.report!.rounds);
+        expect(job.report!.analytics?.subrounds).toBe(base.rounds + freeGames.rounds);
     });
 });
 
@@ -1269,7 +1271,10 @@ describe("V2C-12 authored Studio simulation mode/report policy", () => {
         expect(job.report.modes["buy-more"].totalBet).toBeCloseTo(2.5);
         expect(job.roundsCompleted).toBe(24);
         expect(job.report).not.toHaveProperty("rtp");
-        expect(service.listReports("/purchases")[0]).toMatchObject({modeName: "all", modes: {buy: {rounds: 6, betMode: "buy"}}});
+        Object.values(job.report.modes).forEach(report => expect(report.analytics?.subrounds).toBe(6));
+        expect(job.report.modes.buy.analytics?.logicalCompletions).toBe(3);
+        expect(job.report.modes["buy-more"].analytics?.lifecycle.freeGames.incomplete).toBe(1);
+        expect(service.listReports("/purchases")[0]).toMatchObject({modeName: "all", modes: {buy: {rounds: 3, betMode: "buy"}}});
         await service.cancelAll();
     });
 
@@ -1283,6 +1288,8 @@ describe("V2C-12 authored Studio simulation mode/report policy", () => {
             const started = service.start(directory, {rounds: 2, seed: "saved", modeName: "all"});
             if (started.status !== "created") throw new Error("Not created");
             const completed = await waitForTerminal(service, started.job.id);
+            if (!completed.report || !isSimulationReportSet(completed.report)) throw new Error("Expected all-mode analytics");
+            expect(completed.report.modes.ante.analytics).toMatchObject({envelope: {schemaVersion: 1, modelId: game.getConfigHash!()}, paidEntries: 2, totalStake: expect.closeTo(0.15, 12)});
             expect(jobs.get(directory, started.job.id)?.request.modeName).toBe("all");
             const restarted = new StudioSimulationService(undefined, () => Promise.resolve(game));
             restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(directory)));
@@ -1419,4 +1426,45 @@ describe("V2C-12 separately loaded package simulation to Replay", () => {
             await simulation.cancelAll();
         }
     }, 30000);
+});
+
+it.each(["cancelled", "failed"] as const)("persists %s analytics prefixes through restart without publishing reports", async terminal => {
+    const directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c16-prefix-"));
+    const blueprint = replayModesBlueprint();
+    const game = generatedMechanicsGame(blueprint);
+    let plays = 0;
+    const create = game.createSession.bind(game);
+    game.createSession = context => {
+        const session = create(context);
+        const play = session.play.bind(session);
+        session.play = () => {
+            if (terminal === "failed" && plays === 1) throw new Error("analytics prefix failure");
+            plays++;
+            play();
+        };
+        return session;
+    };
+    let id = "";
+    const service: StudioSimulationService = new StudioSimulationService(undefined, () => Promise.resolve(game), undefined, 1, undefined, () => {
+        if (terminal === "cancelled") service.cancel(id);
+        return Promise.resolve();
+    });
+    service.attachJobService(new StudioJobService(new FileStudioJobRepository(directory)));
+    try {
+        const start = service.start(directory, {rounds: 5, seed: "prefix"});
+        if (start.status !== "created") throw new Error("Not created");
+        id = start.job.id;
+        const finished = await waitForTerminal(service, id);
+        expect(finished.status).toBe(terminal);
+        expect(finished.observedPrefix?.analytics).toMatchObject({subrounds: 1, paidEntries: 1, envelope: {schemaVersion: 1, modelId: game.getConfigHash!()}});
+        expect(service.listReports(directory)).toEqual([]);
+        const restarted = new StudioSimulationService(undefined, () => Promise.resolve(game));
+        restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(directory)));
+        expect(restarted.getStatusForProject(directory, id)?.observedPrefix).toEqual(JSON.parse(JSON.stringify(finished.observedPrefix)));
+        expect(restarted.listReports(directory)).toEqual([]);
+        await restarted.cancelAll();
+    } finally {
+        await service.cancelAll();
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
 });

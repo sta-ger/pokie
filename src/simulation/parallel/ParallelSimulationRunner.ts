@@ -1,3 +1,4 @@
+import {setSimulationModelIdentity} from "../SessionFeatureAnalyticsObserver.js";
 import {loadPokieGame, releasePokieGame} from "../../gamepackage/loadPokieGame.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {PokieGameManifest} from "../../gamepackage/PokieGameManifest.js";
@@ -139,8 +140,10 @@ export class ParallelSimulationRunner {
     private async runInProcess(workers = 1): Promise<ParallelSimulationResult> {
         const loadGame = this.options.loadGame ?? loadPokieGame;
         const game = await loadGame(this.packageRoot);
+        let observedPrefix: SimulationStatistics | undefined;
         try {
             const session = game.createSession(this.options.seed === undefined ? undefined : {seed: this.options.seed});
+            setSimulationModelIdentity(session, game.getConfigHash?.());
             // Simulations measure RTP/volatility, not risk of ruin — same as every other simulation path.
             session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
 
@@ -172,10 +175,11 @@ export class ParallelSimulationRunner {
                 betModeSelector,
             );
 
+            observedPrefix = accumulator.getStatistics();
             return {
                 manifest: game.getManifest(),
                 configHash: game.getConfigHash?.(),
-                statistics: accumulator.getStatistics(),
+                statistics: observedPrefix,
                 breakdown,
                 jackpot,
                 workers,
@@ -184,8 +188,14 @@ export class ParallelSimulationRunner {
                 stopReason,
                 convergence: convergenceChecker?.buildOutcome(),
             };
+        } catch (error) {
+            observedPrefix = (error as {observedPrefix?: SimulationStatistics} | null)?.observedPrefix ?? observedPrefix;
+            throw error;
         } finally {
-            await releasePokieGame(game);
+            await releasePokieGame(game).catch((error: unknown) => {
+                if (error instanceof Error && observedPrefix) Object.assign(error, {observedPrefix});
+                return Promise.reject(error);
+            });
         }
     }
 
@@ -210,6 +220,8 @@ export class ParallelSimulationRunner {
             onProgress: this.options.onProgress ? (progress) => this.reportProgress(progressByWorker, progress) : undefined,
         });
 
+        const configHash = this.resolveConfigHash(results);
+        for (const result of results) if (result.accumulator.analytics && result.accumulator.analytics.envelope.modelId !== (result.configHash ?? null)) throw new Error("Simulation worker analytics provenance disagrees with its executable model identity.");
         const merger = new SimulationStatisticsMerger();
         const merged = merger.merge(
             results.map((result) => ({accumulator: result.accumulator, breakdown: result.breakdown, jackpot: result.jackpot})),
@@ -217,7 +229,7 @@ export class ParallelSimulationRunner {
 
         return {
             manifest: results[0].manifest,
-            configHash: this.resolveConfigHash(results),
+            configHash,
             statistics: merged.statistics,
             breakdown: merged.breakdown,
             jackpot: merged.jackpot,
@@ -301,7 +313,7 @@ export class ParallelSimulationRunner {
     }
 
     private resolveConfigHash(results: SimulationWorkerResult[]): string | undefined {
-        const hashes = Array.from(new Set(results.map((result) => result.configHash).filter((hash): hash is string => hash !== undefined)));
+        const hashes = Array.from(new Set(results.map((result) => result.configHash)));
         if (hashes.length > 1) {
             throw new Error("Simulation workers loaded different resolved game models; refusing to publish a mixed-model report.");
         }

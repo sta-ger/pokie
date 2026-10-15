@@ -74,53 +74,66 @@ export async function runChunkedSimulation(
     let roundsRemaining = rounds;
     let stopReason: SimulationStopReason = "maxRounds";
 
-    while (roundsRemaining > 0) {
-        if (callbacks.shouldStop?.()) {
-            throw new SimulationCancelledError(accumulator.getStatistics());
+    try {
+        while (roundsRemaining > 0) {
+            if (callbacks.shouldStop?.()) {
+                throw new SimulationCancelledError(accumulator.getStatistics());
+            }
+
+            const chunkRounds = Math.min(chunkSize, roundsRemaining);
+            const runner = new AggregateSimulationRunner(session, chunkRounds, undefined, undefined, betModeSelector);
+            let chunkAccumulator: SimulationAccumulator;
+            try {
+                chunkAccumulator = runner.run(callbacks.shouldStop);
+            } catch (error) {
+                const snapshot = (error as {accumulatorSnapshot?: import("../../SimulationAccumulatorSnapshot.js").SimulationAccumulatorSnapshot}).accumulatorSnapshot;
+                if (snapshot) accumulator.merge(SimulationAccumulator.fromSnapshot(snapshot));
+                if (error instanceof Error) Object.assign(error, {observedPrefix: accumulator.getStatistics(), accumulatorSnapshot: accumulator.toSnapshot()});
+                throw error;
+            }
+            accumulator.merge(chunkAccumulator);
+            const chunkBreakdown = runner.getBreakdownStatistics();
+            if (chunkBreakdown) {
+                breakdown = mergeSimulationBreakdowns(breakdown, chunkBreakdown);
+            }
+            // Each chunk's own AggregateSimulationRunner.getJackpotStatistics() is already scoped to just that
+            // chunk's own rounds (see that method's own doc comment), so merging them here — the same additive
+            // combination cross-worker merging already uses — is correct and chunk-count-independent: splitting
+            // the same total rounds into more/fewer chunks never changes the final merged totals.
+            const chunkJackpot = runner.getJackpotStatistics();
+            if (chunkJackpot) {
+                jackpot = mergeJackpotStatisticsSnapshots(jackpot, chunkJackpot);
+            }
+
+            const chunkRoundsPlayed = chunkAccumulator.getStatistics().rounds;
+            roundsCompleted += chunkRoundsPlayed;
+            const stoppedEarly = chunkRoundsPlayed < chunkRounds;
+            roundsRemaining -= chunkRounds;
+            // Never checked once the session has already stopped itself early this chunk — sessionStopped
+            // always takes precedence over converged, since there's no meaningful "converged" statistic to
+            // report on a run the session itself cut short.
+            const cancelled = callbacks.shouldStop?.() === true;
+            const converged = !cancelled && !stoppedEarly && (callbacks.checkConvergence?.(accumulator, roundsCompleted) ?? false);
+
+            await callbacks.onChunkComplete?.({roundsCompleted, accumulator: accumulator.toSnapshot(), isFinished: cancelled || stoppedEarly || converged || roundsRemaining <= 0});
+
+            if (cancelled || callbacks.shouldStop?.()) throw new SimulationCancelledError(accumulator.getStatistics());
+
+            // The session stopped playing on its own before using every round in this chunk — no point
+            // scheduling further chunks once that's happened.
+            if (stoppedEarly) {
+                stopReason = "sessionStopped";
+                break;
+            }
+            if (converged) {
+                stopReason = "converged";
+                break;
+            }
         }
 
-        const chunkRounds = Math.min(chunkSize, roundsRemaining);
-        const runner = new AggregateSimulationRunner(session, chunkRounds, undefined, undefined, betModeSelector);
-        const chunkAccumulator = runner.run(callbacks.shouldStop);
-        accumulator.merge(chunkAccumulator);
-        const chunkBreakdown = runner.getBreakdownStatistics();
-        if (chunkBreakdown) {
-            breakdown = mergeSimulationBreakdowns(breakdown, chunkBreakdown);
-        }
-        // Each chunk's own AggregateSimulationRunner.getJackpotStatistics() is already scoped to just that
-        // chunk's own rounds (see that method's own doc comment), so merging them here — the same additive
-        // combination cross-worker merging already uses — is correct and chunk-count-independent: splitting
-        // the same total rounds into more/fewer chunks never changes the final merged totals.
-        const chunkJackpot = runner.getJackpotStatistics();
-        if (chunkJackpot) {
-            jackpot = mergeJackpotStatisticsSnapshots(jackpot, chunkJackpot);
-        }
-
-        const chunkRoundsPlayed = chunkAccumulator.getStatistics().rounds;
-        roundsCompleted += chunkRoundsPlayed;
-        const stoppedEarly = chunkRoundsPlayed < chunkRounds;
-        roundsRemaining -= chunkRounds;
-        // Never checked once the session has already stopped itself early this chunk — sessionStopped
-        // always takes precedence over converged, since there's no meaningful "converged" statistic to
-        // report on a run the session itself cut short.
-        const cancelled = callbacks.shouldStop?.() === true;
-        const converged = !cancelled && !stoppedEarly && (callbacks.checkConvergence?.(accumulator, roundsCompleted) ?? false);
-
-        await callbacks.onChunkComplete?.({roundsCompleted, accumulator: accumulator.toSnapshot(), isFinished: cancelled || stoppedEarly || converged || roundsRemaining <= 0});
-
-        if (cancelled || callbacks.shouldStop?.()) throw new SimulationCancelledError(accumulator.getStatistics());
-
-        // The session stopped playing on its own before using every round in this chunk — no point
-        // scheduling further chunks once that's happened.
-        if (stoppedEarly) {
-            stopReason = "sessionStopped";
-            break;
-        }
-        if (converged) {
-            stopReason = "converged";
-            break;
-        }
+    } catch (error) {
+        if (error instanceof Error) Object.assign(error, {observedPrefix: accumulator.getStatistics(), accumulatorSnapshot: accumulator.toSnapshot()});
+        throw error;
     }
-
     return {accumulator, breakdown, jackpot, roundsCompleted, stopReason};
 }

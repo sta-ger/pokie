@@ -74,3 +74,11 @@ inspectable and late responses cannot repopulate the active project view.
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
 contracts, supported compositions, authoring/build/extraction/PAR workflow,
 logical-round accounting, continuation and durability boundaries.
+
+V2C-16 reports persist the analytics envelope, raw counts and denominators in the
+existing job detail store. Reopened reports and JSON/Markdown/HTML downloads retain
+the same analytics. Cancelled/failed observed prefixes remain diagnostic and are
+not listed as completed reports; publication follows runtime/worker cleanup.
+Worker feature trajectories and accumulating jackpot pools are independent.
+Worker seed derivation and the executable model identity remain in each mode's
+saved report; see [simulation analytics](simulation.md#feature-analytics-aggregates-v2c-16).

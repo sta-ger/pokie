@@ -31,6 +31,7 @@ describe("DefaultGameSessionSimulation", () => {
         const expected = {rounds: 2, steps: 2, totalStake: base.getBet() * 2, totalWin: 0};
         expect(simulation.getLogicalRoundStatistics()).toEqual(expected);
         expect(aggregate.getStatistics().logicalRounds).toEqual(expected);
+        expect(simulation.getFeatureAnalytics()).toEqual(aggregate.getStatistics().analytics);
     });
 
     test("playSpecifiedNumOfRoundsAndCalculateRtpTest", () => {

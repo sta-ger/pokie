@@ -1,3 +1,4 @@
+import {setSimulationModelIdentity} from "../../SessionFeatureAnalyticsObserver.js";
 import {loadPokieGame, releasePokieGame} from "../../../gamepackage/loadPokieGame.js";
 import {parentPort, workerData} from "worker_threads";
 import {FixedBetModeForNextSimulationRoundSetting} from "../../FixedBetModeForNextSimulationRoundSetting.js";
@@ -26,6 +27,7 @@ async function main(): Promise<void> {
     try {
         game = await loadPokieGame(request.packageRoot);
         const session = game.createSession(request.seed === undefined ? undefined : {seed: request.seed});
+        setSimulationModelIdentity(session, game.getConfigHash?.());
         // Simulations measure RTP/volatility, not risk of ruin — same as every other simulation path.
         session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
 
@@ -66,6 +68,7 @@ async function main(): Promise<void> {
             type: "error",
             workerIndex: request.workerIndex,
             message: error instanceof Error ? error.message : String(error),
+            accumulator: (error as {accumulatorSnapshot?: import("../../SimulationAccumulatorSnapshot.js").SimulationAccumulatorSnapshot}).accumulatorSnapshot,
         };
     } finally {
         if (game !== undefined) {
@@ -76,6 +79,7 @@ async function main(): Promise<void> {
                     type: "error",
                     workerIndex: request.workerIndex,
                     message: `could not release game runtime: ${error instanceof Error ? error.message : String(error)}`,
+                    accumulator: terminal!.accumulator,
                 };
             }
         }

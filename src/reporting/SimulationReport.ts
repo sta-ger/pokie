@@ -22,6 +22,7 @@ export type SimulationReportReproducibility = {
 };
 
 export type SimulationReport = {
+    analytics?: import("../simulation/FeatureAnalytics.js").FeatureAnalytics;
     logicalRounds?: import("../simulation/LogicalRoundStatistics.js").LogicalRoundStatistics;
     sampling?: {unit: "completed-logical-round"; acceptedSubrounds: number; carriedSubrounds?: number; excludedSubrounds: number; trajectories: "independent-session-per-worker"};
     modifiers?: ModifierStatistics;
@@ -75,9 +76,8 @@ export type SimulationReport = {
     // Raw round counts per payout bucket (SimulationStatistics.payoutHistogram, passed through
     // unchanged) — see PayoutHistogramBucketOrder.ts for the fixed bucket keys/ordering this uses.
     payoutHistogram?: Record<string, number>;
-    // Share of rounds whose payout fell in the same bucket as this run's own maxWin (see
-    // PayoutHistogramBucketOrder.ts) — a derived read of payoutHistogram, not a new statistic: how
-    // often a round produced a payout on the scale of the biggest one observed.
+    // Exact largest positive payout frequency in this report's sampling population.
+    // Analytics separately counts the zero maximum in an all-zero accepted-subround run.
     maxWinFrequency?: number;
     averagePayoutConfidenceInterval95?: {low: number; high: number};
     rtpConfidenceInterval95?: {low: number; high: number};

@@ -1,3 +1,4 @@
+import {featureAnalyticsReport, aggregate, corpus} from "../v2/fixtures/FeatureAnalyticsFixture.js";
 import {SimulationReport, SimulationReportDiffer} from "@fromstan/pokie";
 
 const reproducibility = {
@@ -428,4 +429,16 @@ it.each(["weighted", "exact"])("attributes a reel 2 %s definition edit once with
     const sampledDiff = new SimulationReportDiffer().diff(before, sampled);
     expect(sampledDiff.reelSequences!.changes).toEqual(diff.reelSequences!.changes);
     expect(sampledDiff.reelSequences!.observationsChanged).toBe(true);
+});
+
+it("observes analytics-only changes and availability even when all legacy totals match", () => {
+    const original = featureAnalyticsReport();
+    const rows = corpus.map(([bet, win, observation]): typeof corpus[number] => [bet, win, {...observation, components: observation.components?.map(component => ({...component, symbol: component.symbol === "A" ? "B" : component.symbol}))}]);
+    const alternate = {...original, analytics: aggregate(rows).getStatistics().analytics!};
+    expect(alternate.analytics.totalWin).toBe(original.totalWin);
+    expect(alternate.analytics.totalStake).toBe(original.totalBet);
+    const differ = new SimulationReportDiffer();
+    expect(differ.diff(original, alternate)).toMatchObject({changed: true, analytics: {changed: true}});
+    expect(differ.diff({...original, analytics: undefined}, original)).toMatchObject({changed: true, analytics: {changed: true}});
+    expect(differ.diff(original, original)).toMatchObject({changed: false, analytics: {changed: false}});
 });

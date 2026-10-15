@@ -24,6 +24,7 @@ export type SimulationWorkerErrorMessage = {
     // Always `error.message` (or String(error) for a non-Error throw) — never a stack trace, see
     // docs/simulation.md.
     message: string;
+    accumulator?: import("../../SimulationAccumulatorSnapshot.js").SimulationAccumulatorSnapshot;
 };
 
 export type SimulationWorkerMessage = SimulationWorkerProgressMessage | SimulationWorkerResultMessage | SimulationWorkerErrorMessage;

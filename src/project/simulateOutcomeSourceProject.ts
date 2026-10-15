@@ -1,3 +1,4 @@
+import {artifactAnalyticsObservation} from "../simulation/artifactAnalyticsObservation.js";
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
 import {deriveDeterministicSeed} from "../pregenerated/internal/deriveDeterministicSeed.js";
 import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedOutcomeRandomSource.js";
@@ -22,6 +23,7 @@ export type OutcomeSourceSimulationReport = {
     readonly seed?: string;
     readonly durationMs: number;
     readonly statistics: SimulationStatistics;
+    readonly workerSeedStrategy?: string;
     // The last real sampled round makes a seeded simulation directly replayable, without exposing
     // its nondeterministic report duration as part of the comparison contract.
     readonly lastReplay?: PreGeneratedRoundReplayDescriptor;
@@ -67,7 +69,7 @@ export async function simulateOutcomeSourceProject(
         const selection = await outcomeSource.drawOutcome(roundRandomSource);
         libraryId = selection.libraryId;
         libraryHash = selection.libraryHash;
-        accumulator.addRound(selection.outcome.artifact.stake, selection.outcome.artifact.totalWin);
+        accumulator.addRound(selection.outcome.artifact.stake, selection.outcome.artifact.totalWin, artifactAnalyticsObservation(selection.outcome.artifact, selection.libraryHash));
         if (seed !== undefined) {
             lastReplay = {
                 game: selection.outcome.artifact.provenance.game,
@@ -100,7 +102,13 @@ export async function simulateOutcomeSourceProject(
             seed,
             durationMs: Date.now() - startedAt,
             statistics: accumulator.getStatistics(),
+            workerSeedStrategy: describeOutcomeSourceSeedPolicy(seed),
             ...(lastReplay === undefined ? {} : {lastReplay}),
         },
     };
+}
+
+/** Outcome draws use their existing per-round seed derivation, independently of package workers. */
+export function describeOutcomeSourceSeedPolicy(seed?: string): string {
+    return seed === undefined ? "caller-provided outcome random source (no seeded reproducibility policy)" : 'derived-round-seed-v1: "<seed>:<round>" (single in-process outcome sampler)';
 }
