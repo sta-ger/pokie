@@ -285,7 +285,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
             };
             checkKeys(model.manifest, "manifest", ["id", "name", "version", "description", "author"]);
             checkKeys(model.winModel, "winModel", ["type", "minimumClusterSize"]);
-            checkKeys(model.mechanics, "mechanics", ["freeGames", "holdAndWin", "jackpot"]);
+            checkKeys(model.mechanics, "mechanics", ["freeGames", "holdAndWin", "jackpot", "modifiers"]);
             checkKeys(model.mechanics?.holdAndWin, "mechanics.holdAndWin", ["minimumCount", "initialRespins", "retriggerPolicy", "symbolEffects", "payout"]);
             checkKeys(model.mechanics?.holdAndWin?.payout, "mechanics.holdAndWin.payout", ["type", "amountsAreBetMultiples"]);
             checkKeys(model.mechanics?.jackpot, "mechanics.jackpot", ["pool", "contribution", "trigger", "award"]);

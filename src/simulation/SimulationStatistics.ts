@@ -1,6 +1,8 @@
+import type {ModifierStatistics} from "./ModifierStatistics.js";
 import type {ReelSequenceStatistics} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {LogicalRoundStatistics} from "./LogicalRoundStatistics.js";
 export type SimulationStatistics = {
+    modifiers?: ModifierStatistics;
     reelSequences?: ReelSequenceStatistics[];
     logicalRounds?: LogicalRoundStatistics;
     rounds: number;

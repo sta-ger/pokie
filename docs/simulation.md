@@ -611,3 +611,10 @@ keep their existing partial-result/completion contract; editor previews are not
 observed simulation results.
 
 Authored Hold&Win/jackpot/mode compositions use the existing aggregate/parallel runners and report renderers. Actual charged stake remains the denominator; zero-stake continuation payouts retain feature attribution. Jackpot statistics are run-local deltas, including reused/restored sessions. Each simulation worker owns independent session-local accumulating pools; reports do not represent one shared progressive. Fixed pools count contributions without growing their balance. A fixed mode selector intentionally repeats purchases when available, unlike Play's fresh-action purchase controls. Incomplete feature tails remain incomplete observations. See [the catalogue](v2-completion/V2C-12.md).
+
+Authored modifier reports expose `modifiers.steps`, `ruleApplications`,
+`stickySteps` (including the expiry application) and `multipliedComponents`.
+Counters are collected after execution, carried through accumulator snapshots,
+then summed across chunks/workers. Sticky state stays with each session across
+chunks and starts empty in each worker/job. Existing worker seed partitioning
+still applies: serial and parallel sticky trajectories are not promised identical.

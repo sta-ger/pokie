@@ -1,4 +1,5 @@
 import {
+    WinEvaluationPipeline, WinEvaluationContext, ValueWinComponent,
     AggregateSimulationRunner,
     CascadeGridTransformer,
     CascadingSpinResolver,
@@ -553,4 +554,31 @@ describe("WinRuntimeContract", () => {
         expect(calculator.validateWinEvaluation(config.getAvailableBets()[0], symbols).hasErrors()).toBe(true);
         expect(calculator.getWinEvaluationPipeline().getOptions().validateOnEvaluate).toBe(false);
     });
+});
+
+
+test.each([true, false])("nonfinite component and aggregate payouts reject with pipeline validation %s", validateOnEvaluate => {
+    const config = new VideoSlotConfig();
+    const context = new WinEvaluationContext(config.getAvailableBets()[0], new SymbolsCombination().fromMatrix(Array.from({length: 5}, () => ["A", "A", "A"])), config);
+    for (const amounts of [[Infinity], [NaN], [Number.MAX_VALUE, Number.MAX_VALUE]]) {
+        const pipeline = new WinEvaluationPipeline<string>([{
+            getEvaluatorId: () => "overflow",
+            getEvaluatorGroup: () => "value",
+            getComponentType: () => "value",
+            evaluate: () => amounts.map(amount => new ValueWinComponent(new WinningValue("A", [[0, 0]], amount))),
+        }], undefined, undefined, undefined, {validateOnEvaluate});
+        expect(() => pipeline.evaluate(context)).toThrow(/overflow/);
+    }
+});
+
+
+test("aggregation across finite evaluator totals cannot publish an infinite payout", () => {
+    const config = new VideoSlotConfig();
+    const pipeline = new WinEvaluationPipeline<string>(["first", "second"].map(id => ({
+        getEvaluatorId: () => id,
+        getEvaluatorGroup: () => id,
+        getComponentType: () => "value",
+        evaluate: () => [new ValueWinComponent(new WinningValue("A", [[0, 0]], Number.MAX_VALUE))],
+    })), new SumAllEnabledWinAggregationPolicy(), undefined, undefined, {validateOnEvaluate: false});
+    expect(() => pipeline.evaluate(new WinEvaluationContext(config.getAvailableBets()[0], new SymbolsCombination().fromMatrix(Array.from({length: 5}, () => ["A", "A", "A"])), config))).toThrow(/overflow/);
 });

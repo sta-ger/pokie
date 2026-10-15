@@ -277,6 +277,63 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(() => pipeline.evaluate(new WinEvaluationContext(1, combination(), config))).toThrow(/only 15/);
     });
 
+    it.each(["freeGames", "ante", "jackpot", "stacked"] as const)("F1/F8 distinguishes preflight rejection from executed overflow and recovers (%s)", feature => {
+        const config = overscanConfig();
+        config.setScreenGeometry(undefined);
+        config.setCreditsAmount(10000);
+        config.setSymbolsSequences(Array.from({length: 5}, () => new SymbolsSequence().fromArray(["B"])));
+        const base = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(31)));
+        const free = new VideoSlotWithFreeGamesSession(new VideoSlotWithFreeGamesConfig(config, {}), undefined, undefined, base);
+        const modes = new VideoSlotWithBetModesSession(feature === "stacked" ? free : base,
+            new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2})]));
+        modes.setBetMode("ante");
+        const pool = new AccumulatingJackpotPool("preflight", 20);
+        const jackpot = new VideoSlotWithJackpotSession(feature === "stacked" ? modes : base, [pool],
+            new PercentageOfBetJackpotContributor(0.1), new SymbolCountJackpotTrigger("B", 3));
+        const session = {freeGames: free, ante: modes, jackpot, stacked: jackpot}[feature];
+        session.play();
+        expect(session.getWinAmount()).toBeGreaterThan(0);
+        const state = session.toSessionState();
+        const credits = session.getCreditsAmount();
+        const screen = session.getSymbolsCombination().toMatrix();
+        const serializer = new VideoSlotSessionSerializer();
+        const settled = serializer.getRoundData(session);
+        const incompatibleGeometry = {...overscanGeometry, generated: {reels: 4, rows: 7}};
+        for (let attempt = 0; attempt < 2; attempt++) {
+            config.setScreenGeometry(incompatibleGeometry);
+            expect(() => session.play()).toThrow(/does not match configured reels/);
+            expect(session.toSessionState()).toEqual(state);
+            expect(session.getCreditsAmount()).toBe(credits);
+            expect(serializer.getRoundData(session)).toEqual(settled);
+        }
+        config.setScreenGeometry(undefined);
+        config.getPaytable().setPayoutForSymbol("B", 5, Number.MAX_VALUE);
+        expect(() => session.play()).toThrow(/overflow/);
+        expect(session.toSessionState()).toEqual(state);
+        expect(session.getCreditsAmount()).toBe(credits);
+        expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
+        expect(session.getWinAmount()).toBe(0);
+        expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+        const rejected = serializer.getRoundData(session);
+        expect(rejected.totalWin).toBe(0);
+        expect(rejected.jackpot?.award).toBeUndefined();
+        // A later preflight failure must preserve invalidation, too: it cannot revive the
+        // jackpot outcome retained for executable-state restoration after the overflow.
+        config.setScreenGeometry(incompatibleGeometry);
+        expect(() => session.play()).toThrow(/does not match configured reels/);
+        expect(serializer.getRoundData(session)).toEqual(rejected);
+        expect(session.toSessionState()).toEqual(state);
+        config.setScreenGeometry(undefined);
+        config.getPaytable().setPayoutForSymbol("B", 5, 1);
+        session.play();
+        expect(session.getWinAmount()).toBeGreaterThan(0);
+        expect(serializer.getRoundData(session).totalWin).toBe(session.getWinAmount());
+        if (feature === "jackpot" || feature === "stacked") {
+            expect(jackpot.getJackpotAwardCount()).toBe(2);
+            expect(serializer.getRoundData(session).jackpot?.award).toBeDefined();
+        }
+    });
+
     it.each(["jackpot", "holdAndWin", "stacked"] as const)("F8 rejects upcoming overscan without changing RNG, credits or settled feature ownership (%s)", feature => {
         const config = overscanConfig();
         config.setScreenGeometry(undefined);
@@ -1249,4 +1306,32 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(sessionStateSchemasMatch(left.getSessionStateSchema(), right.getSessionStateSchema())).toBe(true);
         expect(buildRoundArtifactFromSession(left, {roundId: "identity", provenance})).toEqual(buildRoundArtifactFromSession(right, {roundId: "identity", provenance}));
     });
+});
+
+it.each([false, true])("V2C-13 ignores hidden expansion/sticky triggers and winning multiplier wilds (validation disabled %s)", validateOnEvaluate => {
+    const config = overscanConfig();
+    config.setScreenModifiers({wilds: [{symbol: "W", factor: 100, substitutes: ["B"]}], rules: [
+        {id: "hidden-transform", type: "transform", space: "generated", positions: [[0, 0], [0, 6]], from: "S", to: "W"},
+        {id: "expand", type: "expand", space: "generated", positions: [[0, 1], [0, 5]], symbol: "W"},
+        {id: "sticky", type: "sticky", space: "visible", positions: [[0, 0]], symbol: "W", lifetime: 3},
+    ]});
+    const matrix = adversarialScreen();
+    matrix[0][5] = "W";
+    const generator = {generateSymbolsCombination: () => new SymbolsCombination().fromMatrix(matrix).withCoordinates(overscanGeometry)};
+    const calculator = new VideoSlotWinCalculator(config, undefined, undefined, undefined, undefined, undefined, {validateOnEvaluate});
+    const session = new VideoSlotSession(config, generator, calculator);
+    session.setBet(1);
+    session.setCreditsAmount(100);
+    session.play();
+    expect(session.getWinAmount()).toBe(3); // three B lines × 1; hidden W never participates
+    expect(session.getEvaluatedSymbolsCombination().toMatrix()).toEqual(Array.from({length: 5}, () => ["B", "B", "B"]));
+    expect(session.getModifierObservation()).toEqual({space: "evaluated", rules: [{id: "hidden-transform", positions: []}, {id: "expand", positions: []}, {id: "sticky", positions: []}], sticky: []});
+    expect(session.toSessionState()).toMatchObject({modifierState: {cells: []}});
+    expect(session.isSessionStateRestorable()).toBe(false); // custom RNG remains uncertified
+    const artifact = buildRoundArtifactFromSession(session, {roundId: "hidden", provenance});
+    expect(new RoundArtifactValidator().validate(artifact)).toEqual([]);
+    expect(artifact.totalWin).toBe(3);
+    const publicArtifact = new PublicRoundArtifactProjector().project(artifact);
+    expect(publicArtifact.screen[0]).toEqual(["W", "B", "B"]);
+    expect(publicArtifact.wins.flatMap(win => win.winningPositions).every(([, row]) => row === 1 || row === 2)).toBe(true);
 });

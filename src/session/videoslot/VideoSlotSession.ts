@@ -1,3 +1,5 @@
+import {ScreenModifierEngine} from "./modifiers/ScreenModifierEngine.js";
+import {cloneModifierData, type ScreenModifierObservation, type ScreenModifierState} from "./modifiers/ScreenModifiers.js";
 import {isWeightedSymbolsSequence} from "./combinations/WeightedSymbolsSequence.js";
 import type {ReelSequenceSelection, ReelSequenceStatistics} from "./combinations/WeightedSequenceVariant.js";
 import {ScreenProjection} from "./coordinates/ScreenProjection.js";
@@ -35,6 +37,8 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
     private readonly combinationsGenerator: SymbolsCombinationsGenerating<T>;
     private readonly winCalculator: VideoSlotWinCalculating<T>;
     private winAmount = 0;
+    private modifierState?: ScreenModifierState<T>;
+    private modifierObservation?: ScreenModifierObservation<T>;
     private implicitRound = 0;
     private selectionContext?: string;
     private resultValid = true;
@@ -55,6 +59,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         this.winCalculator = winCalculator;
         this.baseSession = baseSession;
         const contract = this.resolveUpcomingCoordinates();
+        this.modifierState = this.createModifierEngine()?.initialState();
         this.combinationsGenerator.setSelectionContext?.("initialization");
         const generated = this.combinationsGenerator.generateSymbolsCombination();
         const geometry = this.validateGeneratedCoordinates(generated, contract, true);
@@ -212,32 +217,86 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         }
         this.resultValid = false;
         const contract = this.resolveUpcomingCoordinates();
+        const engine = this.createModifierEngine();
+        engine?.validateState(this.modifierState);
+        if (!engine && this.modifierState) throw new Error("Modifier configuration changed; create a fresh session.");
         if (this.selectionContext === undefined && this.implicitRound === Number.MAX_SAFE_INTEGER) throw new Error("Implicit round contexts exhausted.");
-        this.combinationsGenerator.setSelectionContext?.(this.selectionContext ?? `implicit:${++this.implicitRound}`);
-        this.selectionContext = undefined;
-        const generated = this.combinationsGenerator.generateSymbolsCombination();
-        const geometry = this.validateGeneratedCoordinates(generated, contract);
-        const evaluationSource = geometry
-            ? new SymbolsCombination<T>().fromMatrix(generated.toMatrix()).withCoordinates(geometry) : generated;
-        const evaluated = projectEvaluationSymbols(evaluationSource);
-        this.winCalculator.calculateWin(this.getBet(), evaluated);
-        if (geometry) {
-            const result = this.supportsWinEvaluationResult() ? this.winCalculator.getWinEvaluationResult!() : LegacyWinEvaluationResultAdapter.fromWinCalculator(this.winCalculator);
-            assertEvaluationComponents(result.getWinComponents(), geometry);
+        const rollback = this.createStepRollback();
+        const credits = this.getCreditsAmount();
+        try {
+            this.combinationsGenerator.setSelectionContext?.(this.selectionContext ?? `implicit:${++this.implicitRound}`);
+            this.selectionContext = undefined;
+            let generated = this.combinationsGenerator.generateSymbolsCombination();
+            const geometry = this.validateGeneratedCoordinates(generated, contract);
+            const modified = engine?.execute(generated.toMatrix(), this.modifierState!);
+            if (modified) {
+                generated = new SymbolsCombination<T>().fromMatrix(modified.matrix);
+                if (geometry) generated = (generated as SymbolsCombination<T>).withCoordinates(geometry);
+            }
+            const evaluationSource = geometry
+                ? new SymbolsCombination<T>().fromMatrix(generated.toMatrix()).withCoordinates(geometry) : generated;
+            const evaluated = projectEvaluationSymbols(evaluationSource);
+            this.winCalculator.calculateWin(this.getBet(), evaluated);
+            if (geometry) {
+                const result = this.supportsWinEvaluationResult() ? this.winCalculator.getWinEvaluationResult!() : LegacyWinEvaluationResultAdapter.fromWinCalculator(this.winCalculator);
+                assertEvaluationComponents(result.getWinComponents(), geometry);
+            }
+            const payout = this.supportsWinEvaluationResult()
+                ? this.winCalculator.getWinEvaluationResult!().getTotalWin() : this.winCalculator.getWinAmount();
+            const expectedBalance = credits - this.getBet() + payout;
+            if (!Number.isFinite(payout) || !Number.isFinite(expectedBalance)) throw new Error("Win payout or balance overflow.");
+            this.baseSession.play();
+            // Preserve an injected base session's debit semantics, and validate its actual balance too.
+            const balance = this.getCreditsAmount() + payout;
+            if (!Number.isFinite(balance)) throw new Error("Win balance overflow.");
+            this.setCreditsAmount(balance);
+            this.symbolsCombination = generated;
+            this.roundGeometry = geometry;
+            this.roundDimensions = this.captureScreenDimensions(geometry);
+            this.resultValid = true;
+            this.winAmount = payout;
+            this.modifierState = modified?.state;
+            this.modifierObservation = modified?.observation;
+        } catch (error) {
+            rollback();
+            throw error;
         }
-        this.baseSession.play();
-        this.symbolsCombination = generated;
-        this.roundGeometry = geometry;
-        this.roundDimensions = this.captureScreenDimensions(geometry);
-        this.resultValid = true;
-        this.winAmount = this.getWinAmount();
-        this.setCreditsAmount(this.getCreditsAmount() + this.winAmount);
+    }
+
+    public createStepRollback(): () => void {
+        const generator = this.combinationsGenerator instanceof SymbolsCombinationsGenerator && this.combinationsGenerator.isRandomStateRestorable()
+            ? this.combinationsGenerator : undefined;
+        const rngState = generator?.getRandomState();
+        const selectionState = generator?.getSelectionState();
+        const implicitRound = this.implicitRound;
+        const selectionContext = this.selectionContext;
+        const credits = this.getCreditsAmount();
+        const symbols = this.symbolsCombination;
+        const geometry = this.roundGeometry;
+        const dimensions = this.roundDimensions;
+        const modifiers = this.modifierState && cloneModifierData(this.modifierState);
+        return () => {
+            if (this.getCreditsAmount() !== credits) this.setCreditsAmount(credits);
+            if (generator) {
+                generator.setRandomState(rngState);
+                generator.setSelectionState(selectionState);
+            }
+            this.implicitRound = implicitRound;
+            this.selectionContext = selectionContext;
+            this.symbolsCombination = symbols;
+            this.roundGeometry = geometry;
+            this.roundDimensions = dimensions;
+            this.modifierState = modifiers;
+            this.modifierObservation = undefined;
+            this.resultValid = false;
+        };
     }
 
     public getSessionStateSchema(): Extract<SessionStateSchema, {kind: "seeded-video-slot"}> {
         const screenGeometry = this.config.getScreenGeometry?.();
         const weightedReels = this.getSymbolsSequences().flatMap((strip, reelIndex) => isWeightedSymbolsSequence(strip) ? [{reelIndex, variants: strip.getVariants() as unknown as import("./combinations/WeightedSequenceVariant.js").WeightedSequenceVariant<string | number>[]}] : []);
-        return {kind: "seeded-video-slot", ...(weightedReels.length ? {weightedReels} : {}), ...(screenGeometry ? {screenGeometry} : {})};
+        const modifiers = this.config.getScreenModifiers?.();
+        return {kind: "seeded-video-slot", ...(modifiers ? {modifiers: modifiers as unknown as import("./modifiers/ScreenModifiers.js").ScreenModifiers<string | number>, reels: this.config.getReelsNumber(), rows: this.config.getReelsSymbolsNumber(), symbols: this.config.getAvailableSymbols() as (string | number)[], wilds: this.config.getWildSymbols() as (string | number)[]} : {}), ...(weightedReels.length ? {weightedReels} : {}), ...(screenGeometry ? {screenGeometry} : {})};
     }
 
     public isSessionStateRestorable(): boolean {
@@ -253,17 +312,19 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         return (this.combinationsGenerator as {getRandomStateCodec?: () => "seeded" | "opaque"}).getRandomStateCodec?.() ?? "opaque";
     }
 
-    public toSessionState(): {rngState?: unknown; reelStrips?: T[][]; sequenceState?: unknown; implicitRound?: number; selectionContext?: string} {
+    public toSessionState(): {rngState?: unknown; reelStrips?: T[][]; sequenceState?: unknown; implicitRound?: number; selectionContext?: string; modifierState?: ScreenModifierState<T>} {
         const rngState = (this.combinationsGenerator as {getRandomState?: () => unknown}).getRandomState?.();
         const weighted = this.getSymbolsSequences().some(strip => isWeightedSymbolsSequence(strip));
         const generator = this.combinationsGenerator as SymbolsCombinationsGenerator<T>;
-        return rngState === undefined ? {} : {rngState, reelStrips: weighted ? generator.getResolvedReelStrips() : this.getSymbolsSequences().map(strip => strip.getSymbols(0, strip.getSize())),
+        const modifierState = this.modifierState ? {modifierState: cloneModifierData(this.modifierState)} : {};
+        return rngState === undefined ? modifierState : {...modifierState, rngState, reelStrips: weighted ? generator.getResolvedReelStrips() : this.getSymbolsSequences().map(strip => strip.getSymbols(0, strip.getSize())),
             ...(weighted ? {sequenceState: generator.getSelectionState(), implicitRound: this.implicitRound} : {}),
             ...(this.selectionContext !== undefined ? {selectionContext: this.selectionContext} : {})};
     }
 
     public validateSessionState(state: unknown): void {
         if (typeof state !== "object" || state === null || Array.isArray(state)) throw new Error("Video-slot state must be an object.");
+        this.createModifierEngine()?.validateState((state as {modifierState?: unknown}).modifierState);
         const rngState = (state as {rngState?: unknown; reelStrips?: T[][]}).rngState;
         if (rngState === undefined && !this.isSessionStateRestorable()) return;
         validateExecutableState(state, this.getSessionStateSchema());
@@ -284,10 +345,14 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         }
     }
 
-    public fromSessionState(state: {rngState?: unknown; reelStrips?: T[][]; sequenceState?: unknown; implicitRound?: number; selectionContext?: string}): this {
-        if (this.isSessionStateRestorable()) this.validateSessionState(state);
+    public fromSessionState(state: {rngState?: unknown; reelStrips?: T[][]; sequenceState?: unknown; implicitRound?: number; selectionContext?: string; modifierState?: ScreenModifierState<T>}): this {
+        if (this.isSessionStateRestorable() || this.config.getScreenModifiers?.()) this.validateSessionState(state);
         if (typeof state !== "object" || state === null || state.rngState === undefined) {
-            if (!this.isSessionStateRestorable() && typeof state === "object" && state !== null) return this;
+            if (!this.isSessionStateRestorable() && typeof state === "object" && state !== null) {
+                this.modifierState = state.modifierState && cloneModifierData(state.modifierState);
+                this.modifierObservation = undefined;
+                return this;
+            }
             throw new Error("Video-slot state requires an RNG snapshot.");
         }
         if (state.rngState !== undefined) {
@@ -298,6 +363,8 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
                 this.implicitRound = state.implicitRound!;
             }
             this.selectionContext = state.selectionContext;
+            this.modifierState = state.modifierState && cloneModifierData(state.modifierState);
+            this.modifierObservation = undefined;
             if (state.reelStrips !== undefined) this.config.setSymbolsSequences(state.reelStrips.map((strip, index) => isWeightedSymbolsSequence(this.config.getSymbolsSequences()[index]) ? this.config.getSymbolsSequences()[index] : new SymbolsSequence<T>().fromArray(strip)));
             generator.setRandomState(state.rngState);
         }
@@ -328,6 +395,16 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         return this.config.getLinesPatterns();
     }
 
+    public getModifierObservation(): ScreenModifierObservation<T> | undefined {
+        return this.resultValid && this.modifierObservation ? cloneModifierData(this.modifierObservation) : undefined;
+    }
+
+    private createModifierEngine(): ScreenModifierEngine<T> | undefined {
+        const modifiers = this.config.getScreenModifiers?.();
+        if (!modifiers) return undefined;
+        return new ScreenModifierEngine({modifiers, symbols: this.config.getAvailableSymbols(), wilds: this.config.getWildSymbols(), reels: this.config.getReelsNumber(), rows: this.config.getReelsSymbolsNumber(), screenGeometry: this.getConfiguredScreenGeometry()});
+    }
+
     private captureScreenDimensions(geometry?: ScreenGeometry): {reels: number; rows: number} {
         return {reels: geometry?.generated.reels ?? this.config.getReelsNumber(),
             rows: geometry ? new ScreenProjection(geometry).getRows("visible") : this.config.getReelsSymbolsNumber()};
@@ -335,6 +412,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
 
     private resolveUpcomingCoordinates(): {geometry?: ScreenGeometry; authoritative: boolean} {
         const geometry = this.getConfiguredScreenGeometry();
+        this.createModifierEngine();
         const projection = this.validateCoordinateGeometry(geometry);
         // Without a declared evaluation window, upcoming reel heights are unresolved. Do not
         // use viewport rows or the previous ordinary matrix to constrain the next generation.

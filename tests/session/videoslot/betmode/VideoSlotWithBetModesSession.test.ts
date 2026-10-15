@@ -1,6 +1,6 @@
 import {existingMechanicsBlueprint, generatedMechanicsGame, mechanicsSession} from "../../../v2/fixtures/ExistingMechanicsGame.js";
 import {
-    AUTHORED_MECHANIC_CATALOG, observeVideoSlotFeatures,
+    AUTHORED_MECHANIC_CATALOG, observeVideoSlotFeatures, SessionRuntime, VideoSlotSessionSerializer,
     BetModeDefinition,
     BetModesConfig,
     ForcedFeatureEntryHandling,
@@ -69,6 +69,74 @@ const createFreeGamesSessionWithNoNaturalTriggers = (): VideoSlotWithFreeGamesSe
 };
 
 describe("VideoSlotWithBetModesSession", () => {
+    it.each(["hold-flat-modes", "fixed-holdAndWin-modes"])("F1g %s explicit restoration after rejection agrees with fresh restoration", id => {
+        const blueprint = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
+        blueprint.availableBets = [1e-7, 7.5];
+        blueprint.reelStrips = [["C"], ["A"], ["A"]];
+        blueprint.wilds = ["C"];
+        blueprint.paytable = {A: {3: Number.MAX_VALUE / 2}};
+        blueprint.mechanics!.holdAndWin!.symbolEffects = {C: {kind: "value", amount: 3}};
+        const game = generatedMechanicsGame(blueprint);
+        const session = mechanicsSession(game);
+        session.setBet(1e-7);
+        const runtime = new SessionRuntime(session);
+        const entry = {kind: "spin" as const, bet: 1e-7, mode: "ante", delivery: "composite" as const, roundId: "success"};
+        const saved = runtime.execute(entry);
+        expect(saved.status).toBe("played");
+        expect(session.getWinAmount()).toBe(3);
+        const state = JSON.parse(JSON.stringify(session.toSessionState()));
+        const credits = session.getCreditsAmount();
+        const fresh = mechanicsSession(game);
+        fresh.setBet(1e-7);
+        fresh.setCreditsAmount(credits);
+        fresh.fromSessionState(state);
+        const serializer = new VideoSlotSessionSerializer();
+        expect(serializer.getRoundData(fresh).holdAndWin?.payout).toBe(3);
+        expect(fresh.getWinEvaluationResult().getWinComponents()).toHaveLength(1);
+        // The command recovery restores this same successful snapshot, then recursively
+        // invalidates historical observations. Explicit restoration must be distinct.
+        for (let attempt = 0; attempt < 2; attempt++) {
+            expect(() => runtime.execute({kind: "spin", bet: 7.5, mode: "base", roundId: "bad"})).toThrow(/overflow/);
+            expect(session.toSessionState()).toEqual(state);
+            expect(session.getWinAmount()).toBe(0);
+            expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+            expect(serializer.getRoundData(session).holdAndWin?.payout).toBe(0);
+            expect(runtime.execute(entry)).toEqual(saved);
+            expect(session.getWinAmount()).toBe(0);
+            session.fromSessionState(state);
+            expect(session.toSessionState()).toEqual(fresh.toSessionState());
+            expect(session.getWinAmount()).toBe(3);
+            expect(session.getWinEvaluationResult().getWinComponents()).toEqual(fresh.getWinEvaluationResult().getWinComponents());
+            expect(serializer.getRoundData(session)).toEqual(serializer.getRoundData(fresh));
+        }
+    });
+
+    it("restores an explicit purchase when a custom forced-entry handler rejects after granting", () => {
+        const free = createFreeGamesSessionWithNoNaturalTriggers();
+        let reject = true;
+        const session = new VideoSlotWithBetModesSession(free, buyBonusModesConfig(), {
+            canForceFeatureEntry: () => true,
+            forceFeatureEntry: () => {
+                free.setFreeGamesSum(FREE_GAMES_TO_GRANT);
+                if (reject) throw new Error("entry rejected");
+            },
+        });
+        session.setCreditsAmount(10000);
+        session.setBetMode("buy-bonus");
+        const before = session.toSessionState();
+        expect(() => session.play()).toThrow("entry rejected");
+        expect(session.toSessionState()).toEqual(before);
+        expect(session.getCreditsAmount()).toBe(10000);
+        expect(session.getChargedBetModeId()).toBeUndefined();
+        reject = false;
+        session.play();
+        expect(session.getCreditsAmount()).toBe(10000 - 50 * session.getBet());
+        expect(session.getBetModeId()).toBe("base");
+        expect(session.getChargedBetModeId()).toBe("buy-bonus");
+        expect(free.getFreeGamesNum()).toBe(1);
+        expect(free.getFreeGamesSum()).toBe(FREE_GAMES_TO_GRANT);
+    });
+
     it("behaves exactly like the wrapped session when no bet modes are configured", () => {
         const session = new VideoSlotWithBetModesSession(new VideoSlotSession());
         testDefaultBetModeBehavesLikeThePlainSession(session);

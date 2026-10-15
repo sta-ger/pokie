@@ -1,4 +1,5 @@
 import {
+    FreeGamesRoundHandler, VideoSlotSessionSerializer,
     Paytable,
     SeededRandomNumberGenerator,
     SymbolsSequence,
@@ -32,6 +33,32 @@ import {
 } from "./DefaultVideoSlotWithFreeGamesSessionTestCases.js";
 
 describe("VideoSlotWithFreeGamesSession", () => {
+    it("rolls back a rejected custom round handler without requiring persistence certification", () => {
+        const config = new VideoSlotWithFreeGamesConfig();
+        const standard = new FreeGamesRoundHandler();
+        let reject = true;
+        const session = new VideoSlotWithFreeGamesSession(config,
+            new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(31)), undefined, undefined, {
+                beforeRoundPlayed: target => standard.beforeRoundPlayed(target),
+                afterRoundPlayed: (target, credits) => {
+                    standard.afterRoundPlayed(target, credits);
+                    if (reject) throw new Error("custom settlement rejected");
+                },
+            });
+        session.setFreeGamesSum(2);
+        session.setCreditsAmount(0);
+        const before = session.toSessionState();
+        expect(session.isSessionStateRestorable()).toBe(false);
+        expect(() => session.play()).toThrow("custom settlement rejected");
+        expect(session.getCreditsAmount()).toBe(0);
+        expect(session.toSessionState()).toEqual(before);
+        expect(session.getWinAmount()).toBe(0);
+        reject = false;
+        session.play();
+        expect(session.getFreeGamesNum()).toBe(1);
+        expect(session.getCreditsAmount()).toBe(0);
+    });
+
     it.each([undefined, 0])("reports only played-round grants with scatter money %s, preserving no-ops and constructor draws", multiplier => {
         const config = new VideoSlotWithFreeGamesConfig();
         config.setReelsNumber(3);
@@ -85,6 +112,48 @@ describe("VideoSlotWithFreeGamesSession", () => {
         expectThreeDraws();
         expect(session.getWonFreeGamesNumber()).toBe(0);
         expect(session.getFreeGamesSum()).toBe(0);
+    });
+
+    it("F1g explicit restoration recovers the same grant on a previously rejected instance", () => {
+        const config = new VideoSlotWithFreeGamesConfig();
+        config.setReelsNumber(3);
+        config.setReelsSymbolsNumber(1);
+        config.setAvailableBets([1, 2]);
+        config.setBet(1);
+        config.setSymbolsSequences(Array.from({length: 3}, () => new SymbolsSequence().fromArray(["S"])));
+        config.setFreeGamesForScatters("S", 3, 2);
+        const paytable = new Paytable<string>([1, 2]);
+        paytable.setPayoutForSymbol("S", 3, 0);
+        config.setPaytable(paytable);
+        const create = () => new VideoSlotWithFreeGamesSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(31)));
+        const session = create();
+        session.play();
+        expect(session.getWonFreeGamesNumber()).toBe(2);
+        const state = JSON.parse(JSON.stringify(session.toSessionState()));
+        const credits = session.getCreditsAmount();
+        const fresh = create().fromSessionState(state);
+        fresh.setCreditsAmount(credits);
+        const serializer = new VideoSlotSessionSerializer();
+        for (let attempt = 0; attempt < 2; attempt++) {
+            paytable.setPayoutForSymbol("S", 3, Number.MAX_VALUE);
+            session.setBet(2);
+            expect(() => session.play()).toThrow(/overflow/);
+            expect(session.getWonFreeGamesNumber()).toBe(0);
+            expect(session.getWinAmount()).toBe(0);
+            expect(session.toSessionState()).toEqual(state);
+            paytable.setPayoutForSymbol("S", 3, 0);
+            session.setBet(1);
+            session.fromSessionState(state);
+            expect(session.toSessionState()).toEqual(fresh.toSessionState());
+            expect(session.getWonFreeGamesNumber()).toBe(2);
+            expect(session.getWonFreeGamesNumber()).toBe(fresh.getWonFreeGamesNumber());
+            expect(serializer.getRoundData(session)).toEqual(serializer.getRoundData(fresh));
+        }
+        session.play();
+        fresh.play();
+        expect(session.toSessionState()).toEqual(fresh.toSessionState());
+        expect(session.getCreditsAmount()).toBe(fresh.getCreditsAmount());
+        expect(session.getWonFreeGamesNumber()).toBe(fresh.getWonFreeGamesNumber());
     });
 
     it("restores played-round grants and seeded continuation without evaluating a fresh display screen", () => {

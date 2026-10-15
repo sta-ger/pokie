@@ -383,3 +383,14 @@ libraries retain their selection/hash profile; portable WASM retains its current
 runtime replay and compact state, without package audit support.
 
 Standard authored observations now include `holdAndWin` (locks, active flag, remaining respins and completion payout), `jackpot` (pool balances/statistics and award), and `chargedBetMode` events. Live VideoSlot payloads expose corresponding data and `chargedBetModeId` separately from selected `betModeId`. Shared player counters consume both live data and replay artifact events. Symbol-less jackpot wins carry a JSON `null` symbol ID. Seeded replay reconstructs commands; exact audit replay validates retained executable boundaries and outputs, including purchase and continuation commands.
+
+### Screen modifier evidence
+
+Artifacts contain the transformed generated/visible outcome and evaluation-local
+wins, with existing geometry mappings. `screenModifiers` feature events declare
+`space: "evaluated"`, ordered rule IDs and affected coordinates, and applied sticky
+symbol/factor identities with remaining future steps (0 on the last application).
+Win multiplier breakdowns retain unique winning coordinates, factor values and
+the combined product. Public screen/highlight projection preserves the payout
+evidence; modifier event coordinates keep their explicit evaluation tag. Neither
+artifact construction nor Play/Replay presentation re-executes a rule.

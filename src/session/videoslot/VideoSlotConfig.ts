@@ -1,3 +1,5 @@
+import {cloneModifierData, type ScreenModifiers} from "./modifiers/ScreenModifiers.js";
+import {validateScreenModifiers} from "./modifiers/validateScreenModifiers.js";
 import {WeightedSymbolsSequence, validateWeightedReelDefinitions} from "./combinations/WeightedSymbolsSequence.js";
 import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
 import {ScreenProjection} from "./coordinates/ScreenProjection.js";
@@ -34,6 +36,8 @@ export class VideoSlotConfig<T extends string | number | symbol = string> implem
     private linesPatterns: LinesPatternsDescribing;
     private wildSubstitutions: Partial<Record<T, T[]>> = {};
 
+    private screenModifiers?: ScreenModifiers<T>;
+
     constructor(
         baseConfig = new GameSessionConfig(),
         sequencesGenerator: ReelsSymbolsSequencesGenerating<T> = new ReelsSymbolsSequencesGenerator<T>(),
@@ -56,6 +60,17 @@ export class VideoSlotConfig<T extends string | number | symbol = string> implem
         this.linesDefinitions = new HorizontalLines(this.reelsNumber, this.reelsSymbolsNumber);
         this.linesPatterns = new LeftToRightLinesPatterns(this.reelsNumber);
         this.reelsSymbolsSequences = this.createReelsSymbolsSequences();
+    }
+
+    public getScreenModifiers(): ScreenModifiers<T> | undefined {
+        return this.screenModifiers && cloneModifierData(this.screenModifiers);
+    }
+    public setScreenModifiers(modifiers: ScreenModifiers<T> | undefined): void {
+        if (modifiers !== undefined) {
+            const issues = validateScreenModifiers(modifiers, {symbols: this.getAvailableSymbols(), wilds: this.getWildSymbols(), reels: this.getReelsNumber(), rows: this.getReelsSymbolsNumber(), screenGeometry: this.getScreenGeometry()});
+            if (issues.length) throw new Error(issues.map(issue => issue.message).join("; "));
+        }
+        this.screenModifiers = modifiers && cloneModifierData(modifiers);
     }
 
     public getScreenGeometry(): ScreenGeometry | undefined {
@@ -92,7 +107,13 @@ export class VideoSlotConfig<T extends string | number | symbol = string> implem
     }
 
     public getWildSubstitutions(): Partial<Record<T, T[]>> {
-        return this.wildSubstitutions;
+        if (!this.screenModifiers) return this.wildSubstitutions;
+        const substitutions = Object.assign(Object.create(null) as Partial<Record<T, T[]>>, this.wildSubstitutions);
+        for (const wild of this.screenModifiers.wilds) {
+            if (wild.substitutes === undefined) Reflect.deleteProperty(substitutions, wild.symbol);
+            else Reflect.defineProperty(substitutions, wild.symbol, {value: [...wild.substitutes], enumerable: true, configurable: true, writable: true});
+        }
+        return substitutions;
     }
 
     public setWildSubstitutions(value: Partial<Record<T, T[]>>): void {

@@ -469,3 +469,16 @@ available at capacity. Exported recordings remain usable after the session is go
 runtime's retained results; drain work and export evidence before release.
 
 Built-in executable schemas include nested `hold-and-win` and `jackpot` nodes. Hold&Win snapshots retain entry denomination, unique configured locks/effects, respins, payout and the settled outcome. Jackpot snapshots retain configured accumulating balances, per-pool statistics and the settled award. Validation checks nested RNG state before restoration mutates any feature/pool. Certification excludes custom collaborators and shared mutable pools. Public round payloads/artifacts and retained results remain the output authority across restart; restoring state never credits a prior award again. File-session restart still requires compatible wallet/result/recovery ports; the transactional store persists those boundaries atomically. See [V2C-12](v2-completion/V2C-12.md) for evidence scope.
+
+### Modifier state
+
+Built-in seeded video-slot schemas include the finite modifier definition,
+geometry, wild symbols and dimensions. `modifierState` stores a canonical model
+identity and evaluation-local sticky cells (`ruleId`, `position`, `symbol`,
+`factor`, remaining future steps). Invalid identity, coordinates, lifetime or
+symbol/factor fail selected-model validation before restoration or wallet writes.
+The finite built-in product multiplier is restoration-compatible; an explicitly
+injected `MultiplierResolver`, including a custom combine callback, remains
+uncertified. Snapshots preserve state across free games and mode changes; reads
+and duplicate delivery never decrement it. Opaque generators remain custom even
+when their live snapshot retains modifier data. See the [math contract](math-modeling.md#authored-wilds-and-screen-modifiers).

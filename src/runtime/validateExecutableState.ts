@@ -1,3 +1,4 @@
+import {ScreenModifierEngine} from "../session/videoslot/modifiers/ScreenModifierEngine.js";
 import {validateMechanicState} from "./validateMechanicState.js";
 import {WeightedSymbolsSequence} from "../session/videoslot/combinations/WeightedSymbolsSequence.js";
 import {validateSequenceSelections} from "../artifact/validateSequenceSelections.js";
@@ -31,6 +32,10 @@ export function validateExecutableState(value: unknown, schema?: SessionStateSch
             (state.implicitRound !== undefined && Number(state.selectionContext.slice(9)) > (state.implicitRound as number)))))) throw new Error("Invalid pending whole-sequence round context.");
     if (state.featureEntryPending !== undefined && (typeof state.featureEntryPending !== "boolean" ||
         (state.featureEntryPending && !(typeof state.freeGamesSum === "number" && typeof state.freeGamesNum === "number" && state.freeGamesSum > state.freeGamesNum)))) throw new Error("Invalid pending feature entry.");
+    if (schema?.kind === "seeded-video-slot") {
+        if (schema.modifiers) new ScreenModifierEngine({modifiers: schema.modifiers, symbols: schema.symbols ?? [], wilds: schema.wilds ?? [], reels: schema.reels!, rows: schema.rows!, screenGeometry: schema.screenGeometry}).validateState(state.modifierState);
+        else if (state.modifierState !== undefined) throw new Error("Unexpected modifier state.");
+    }
     if (schema?.kind === "base" && Object.keys(state).length !== 0) throw new Error("Base-game state must be empty.");
     if (partial && schema?.kind === "seeded-video-slot" && (state.rngState === undefined) !== (state.reelStrips === undefined)) throw new Error("Partial seeded state must omit RNG and reels together.");
     if (!partial && schema?.kind === "seeded-video-slot" && state.rngState === undefined) throw new Error("Required seeded RNG snapshot is missing.");

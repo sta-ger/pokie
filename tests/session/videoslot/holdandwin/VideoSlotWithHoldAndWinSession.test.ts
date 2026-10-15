@@ -1,6 +1,11 @@
 import {existingMechanicsBlueprint, generatedMechanicsGame, mechanicsSession} from "../../../v2/fixtures/ExistingMechanicsGame.js";
 import {
     AUTHORED_MECHANIC_CATALOG,
+    buildRoundArtifactFromSession,
+    GameBlueprintValidator,
+    observeVideoSlotFeatures,
+    VideoSlotSessionSerializer,
+    type VideoSlotWithHoldAndWinSessionHandling,
     AggregateSimulationRunner,
     MinimumCountHoldAndWinTrigger,
     SumWithMultiplierHoldAndWinPayoutAggregator,
@@ -569,5 +574,221 @@ describe("V2C-12 canonical HoldAndWin continuation", () => {
             expect(() => session.fromSessionState(corrupt)).toThrow();
             expect(session.toSessionState()).toEqual(before);
         }
+    });
+});
+
+
+describe("V2C-13 HoldAndWin synchronous rollback", () => {
+    const compositions = ["hold-flat", "hold-flat-modes", "fixed-holdAndWin", "fixed-holdAndWin-modes"];
+    function fixture(id: string, overflowingBase = false) {
+        const b = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
+        b.reelStrips = [["C"], ["A"], ["A"]];
+        b.availableBets = [0.05, 7.5, 1e-7, 1];
+        if (overflowingBase) {
+            b.rows = 2;
+            b.wilds = ["C"];
+            b.paytable = {A: {3: Number.MAX_VALUE}};
+            b.mechanics!.holdAndWin!.symbolEffects = {C: {kind: "value", amount: 3}};
+        }
+        if (b.mechanics!.jackpot) {
+            b.mechanics!.jackpot.contribution.percentage = 0;
+            b.mechanics!.jackpot.trigger.symbolId = "C";
+            // No award for the nested-base rejection cases.
+            b.mechanics!.jackpot.trigger.minimumCount = overflowingBase ? 3 : 1;
+            b.mechanics!.jackpot.pool = {id: "mini", type: "fixed", amount: Number.MAX_VALUE};
+        }
+        expect(new GameBlueprintValidator().validate(b).filter(issue => issue.severity === "error")).toEqual([]);
+        const game = generatedMechanicsGame(b);
+        const create = () => {
+            const session = mechanicsSession(game) as ReturnType<typeof mechanicsSession> & VideoSlotWithHoldAndWinSessionHandling;
+            if (b.betModes) session.setBetMode!("ante");
+            return session;
+        };
+        return {b, create};
+    }
+    function expectNoPayout(session: VideoSlotWithHoldAndWinSessionHandling, b: ReturnType<typeof existingMechanicsBlueprint>) {
+        expect(session.getWinAmount()).toBe(0);
+        expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+        expect(session.getWinningLines()).toEqual({});
+        expect(session.getWinningScatters()).toEqual({});
+        expect(session.getLinesWinning()).toBe(0);
+        expect(session.getScattersWinning()).toBe(0);
+        expect(session.getHoldAndWinPayout()).toBe(0);
+        expect(session.getHoldAndWinLastRoundOutcome()).toEqual({kind: "ordinary"});
+        const data = new VideoSlotSessionSerializer().getRoundData(session);
+        expect(data.totalWin).toBe(0);
+        expect(data.winningPositions).toEqual([]);
+        expect(data.holdAndWin!.payout).toBe(0);
+        expect(data.jackpot?.award).toBeUndefined();
+        const artifact = buildRoundArtifactFromSession(session, {roundId: "rejected", provenance: {game: b.manifest, pokieVersion: "1.3.0"}});
+        expect(artifact.totalWin).toBe(0);
+        expect(artifact.wins).toEqual([]);
+        expect(artifact.featureEvents).toContainEqual({type: "holdAndWin", data: expect.objectContaining({payout: 0})});
+    }
+
+    it.each(["fixed-holdAndWin", "fixed-holdAndWin-modes"])("F1e %s outer jackpot rejection cannot grant a free continuation", id => {
+        const {b, create} = fixture(id);
+        const session = create();
+        session.setCreditsAmount(Number.MAX_VALUE);
+        const before = JSON.parse(JSON.stringify(session.toSessionState()));
+        const stake = session.getStakeAmount();
+        for (let attempt = 0; attempt < 2; attempt++) {
+            expect(() => session.play()).toThrow("Jackpot payout or balance overflow");
+            expect(session.toSessionState()).toEqual(before);
+            expect(session.getCreditsAmount()).toBe(Number.MAX_VALUE);
+            expect(session.isHoldAndWinActive()).toBe(false);
+            expect(session.getLockedHoldAndWinSymbols()).toEqual([]);
+            expect(session.getHoldAndWinRespinsRemaining()).toBe(0);
+            expect(session.getHoldAndWinEntryBet?.()).toBe(0);
+            expect(session.getStakeAmount()).toBe(stake);
+            expectNoPayout(session, b);
+        }
+        const restored = create();
+        restored.fromSessionState(before);
+        for (const candidate of [session, restored]) {
+            candidate.setCreditsAmount(10000);
+            candidate.play();
+            expect(candidate.isHoldAndWinActive()).toBe(true);
+            expect(candidate.getHoldAndWinEntryBet?.()).toBe(0.05);
+            expect(candidate.getStakeAmount()).toBe(0);
+            expect(observeVideoSlotFeatures(candidate).jackpot!.statistics.mini.awardCount).toBe(1);
+        }
+        expect(session.toSessionState()).toEqual(restored.toSessionState());
+        expect(session.getCreditsAmount()).toBe(restored.getCreditsAmount());
+        expect(session.getWinEvaluationResult()).toEqual(restored.getWinEvaluationResult());
+    });
+
+    it.each(["fixed-holdAndWin", "fixed-holdAndWin-modes"].flatMap(id => ["active", "completed"].map(phase => ({id, phase}))))("F1e $id outer settlement restores a pre-call $phase feature", ({id, phase}) => {
+        const {b, create} = fixture(id);
+        const setupBlueprint = JSON.parse(JSON.stringify(b));
+        Reflect.deleteProperty(setupBlueprint.mechanics, "jackpot");
+        const setup = mechanicsSession(generatedMechanicsGame(setupBlueprint));
+        if (b.betModes) setup.setBetMode!("ante");
+        for (let step = 0; step < (phase === "active" ? 1 : 3); step++) setup.play();
+        const session = create();
+        const initialState = session.toSessionState() as {base: unknown};
+        session.fromSessionState({...initialState, base: setup.toSessionState()});
+        const before = JSON.parse(JSON.stringify(session.toSessionState()));
+        session.setCreditsAmount(Number.MAX_VALUE);
+        expect(() => session.play()).toThrow("Jackpot payout or balance overflow");
+        expect(session.toSessionState()).toEqual(before);
+        expect(session.getCreditsAmount()).toBe(Number.MAX_VALUE);
+        expect(session.isHoldAndWinActive()).toBe(phase === "active");
+        expect(session.getLockedHoldAndWinSymbols()).toEqual(observeVideoSlotFeatures(setup).holdAndWin!.locks);
+        expect(session.getHoldAndWinRespinsRemaining()).toBe(phase === "active" ? 2 : 0);
+        expect(session.getHoldAndWinEntryBet?.()).toBe(0.05);
+        expectNoPayout(session, b);
+        const restored = create();
+        restored.fromSessionState(before);
+        for (const candidate of [session, restored]) {
+            candidate.setCreditsAmount(10000);
+            candidate.play();
+            expect(observeVideoSlotFeatures(candidate).jackpot!.statistics.mini.awardCount).toBe(1);
+        }
+        expect(session.toSessionState()).toEqual(restored.toSessionState());
+        expect(session.getCreditsAmount()).toBe(restored.getCreditsAmount());
+        expect(session.getWinEvaluationResult()).toEqual(restored.getWinEvaluationResult());
+    });
+
+    it.each(compositions)("F1e %s active zero-credit respin rejects without temporary funding or progression", id => {
+        const {b, create} = fixture(id, true);
+        const session = create();
+        session.setBet(1e-7);
+        session.play();
+        expect(session.isHoldAndWinActive()).toBe(true);
+        const before = JSON.parse(JSON.stringify(session.toSessionState()));
+        session.setBet(1);
+        session.setCreditsAmount(0);
+        for (let attempt = 0; attempt < 2; attempt++) {
+            expect(() => session.play()).toThrow(/overflow/);
+            expect(session.getCreditsAmount()).toBe(0);
+            expect(session.toSessionState()).toEqual(before);
+            expect(session.isHoldAndWinActive()).toBe(true);
+            expect(session.getHoldAndWinEntryBet?.()).toBe(1e-7);
+            expect(session.getHoldAndWinRespinsRemaining()).toBe(2);
+            expect(session.getLockedHoldAndWinSymbols()).toHaveLength(2);
+            expect(session.getStakeAmount()).toBe(0);
+            expectNoPayout(session, b);
+        }
+        const restored = create();
+        restored.fromSessionState(before);
+        for (const candidate of [session, restored]) {
+            candidate.setBet(1e-7);
+            candidate.setCreditsAmount(0);
+            candidate.play();
+            expect(candidate.getHoldAndWinRespinsRemaining()).toBe(1);
+            expect(candidate.getCreditsAmount()).toBe(0);
+            candidate.play();
+            expect(candidate.getWinAmount()).toBe(6);
+            expect(candidate.getCreditsAmount()).toBe(6);
+            expect(candidate.isHoldAndWinActive()).toBe(false);
+        }
+        expect(session.toSessionState()).toEqual(restored.toSessionState());
+        expect(session.getWinEvaluationResult()).toEqual(restored.getWinEvaluationResult());
+    });
+
+    it.each(compositions)("F1e %s rejected step after completion hides historical payouts and retries like fresh restoration", id => {
+        const {b, create} = fixture(id, true);
+        const session = create();
+        session.setBet(1e-7);
+        for (let step = 0; step < 3; step++) session.play();
+        expect(session.getWinAmount()).toBe(6);
+        expect(session.getHoldAndWinPayout()).toBe(6);
+        const before = JSON.parse(JSON.stringify(session.toSessionState()));
+        const credits = session.getCreditsAmount();
+        const restored = create();
+        restored.fromSessionState(before);
+        session.setBet(1);
+        expect(() => session.play()).toThrow(/overflow/);
+        expect(session.toSessionState()).toEqual(before);
+        expect(session.getCreditsAmount()).toBe(credits);
+        expect(session.isHoldAndWinActive()).toBe(false);
+        expectNoPayout(session, b);
+        session.setCreditsAmount(0);
+        session.play(); // An unaffordable paid spin cannot revive the retained completion.
+        expectNoPayout(session, b);
+        for (const candidate of [session, restored]) {
+            candidate.setBet(1e-7);
+            candidate.setCreditsAmount(10000);
+            candidate.play();
+            expect(candidate.isHoldAndWinActive()).toBe(true);
+            expect(candidate.getHoldAndWinPayout()).toBe(0);
+        }
+        expect(session.toSessionState()).toEqual(restored.toSessionState());
+        expect(session.getCreditsAmount()).toBe(restored.getCreditsAmount());
+        expect(session.getWinEvaluationResult()).toEqual(restored.getWinEvaluationResult());
+    });
+
+    it("rolls back custom collaborator rejection without requiring a persistence codec", () => {
+        const base = new ScriptedFakeVideoSlotSession([[["C"]]], {credits: 10});
+        let reject = true;
+        const aggregate = jest.fn(() => {
+            if (reject) throw new Error("custom payout rejection");
+            return 6;
+        });
+        const session = new VideoSlotWithHoldAndWinSession(base, 2, new SymbolSetHoldAndWinCollector({C: {kind: "value", amount: 6}}), new MinimumCountHoldAndWinTrigger(1), {aggregate});
+        const before = session.toSessionState();
+        expect(session.isSessionStateRestorable()).toBe(false);
+        expect(() => session.play()).toThrow("custom payout rejection");
+        expect(session.toSessionState()).toEqual(before);
+        expect(session.getCreditsAmount()).toBe(10);
+        expect(session.isHoldAndWinActive()).toBe(false);
+        reject = false;
+        session.play();
+        expect(session.getWinAmount()).toBe(6);
+        expect(session.getCreditsAmount()).toBe(15);
+    });
+
+    it.each(["payout", "balance", "combined-win"])("rejects nonfinite feature %s before completion commits", failure => {
+        const base = new ScriptedFakeVideoSlotSession([[["C"]]], {credits: failure === "balance" ? Number.MAX_VALUE : 10, wins: [failure === "combined-win" ? Number.MAX_VALUE : 0]});
+        if (failure === "combined-win") jest.spyOn(base, "play").mockImplementation(() => base.setCreditsAmount(0));
+        const session = new VideoSlotWithHoldAndWinSession(base, 2, new SymbolSetHoldAndWinCollector({C: {kind: "value", amount: 6}}), new MinimumCountHoldAndWinTrigger(1), {aggregate: () => failure === "payout" ? Infinity : Number.MAX_VALUE});
+        const before = session.toSessionState();
+        const credits = session.getCreditsAmount();
+        expect(() => session.play()).toThrow("HoldAndWin payout or balance overflow");
+        expect(session.toSessionState()).toEqual(before);
+        expect(session.getCreditsAmount()).toBe(credits);
+        expect(session.getHoldAndWinPayout()).toBe(0);
+        expect(session.getWinAmount()).toBe(0);
     });
 });

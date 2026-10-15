@@ -1,3 +1,4 @@
+import type {ScreenModifiers} from "../session/videoslot/modifiers/ScreenModifiers.js";
 import type {WeightedSequenceVariant} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import type {BetMode} from "../gamepackage/BetMode.js";
@@ -49,6 +50,7 @@ export type GameBlueprintJackpot = {
 };
 
 export type GameBlueprintMechanics = {
+    modifiers?: ScreenModifiers;
     freeGames?: GameBlueprintFreeGames;
     holdAndWin?: GameBlueprintHoldAndWin;
     jackpot?: GameBlueprintJackpot;

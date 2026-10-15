@@ -351,3 +351,20 @@ describe("F12 seeded package replay presentation", () => {
         expect(Number(within(screen.getByRole("row", {name: `Stake ${String(stake)}`})).getByRole("cell").textContent)).toBe(downloaded.artifact?.stake);
     });
 });
+
+it("V2C-13 seeded replay shows the transformed outcome, multiplied amount and ordered-rule observations", async () => {
+    const user = userEvent.setup();
+    const blueprint = JSON.parse(readFileSync(path.resolve(__dirname, "../../../../../../examples/blueprints/wild-transform.blueprint.json"), "utf8"));
+    const game = generatedMechanicsGame(blueprint);
+    const descriptor = new ReplayRecorder().record({game, seed: "31", round: 2});
+    const job: StudioReplayJobView = {id: "modifier-replay", status: "completed", round: 2, seed: "31", completedRounds: 2, startedAt: "2026-10-15T00:00:00Z", durationMs: 0, descriptor};
+    const {container} = render(<MantineProvider><ReplayTab progress={describeReplayProgress(job)} result={describeReplayResult(job)} error={undefined} onRun={() => undefined} onCancel={() => undefined} onRetry={() => undefined} listView={{status: "empty"}} listError={undefined} onRefreshList={() => undefined} onInspectStored={() => Promise.resolve()} onCompareStored={() => undefined} expected={{status: "empty"}} onLoadExpectedFromPaste={() => undefined} onClearExpected={() => undefined} comparison={undefined} recentSpins={{status: "empty"}} recentSpinsError={undefined} onRefreshRecentSpins={() => undefined} recentRuns={{status: "empty"}} recentRunsError={undefined} onRefreshRecentRuns={() => undefined} currentGame={descriptor.game} /></MantineProvider>);
+    await user.click(screen.getByRole("button", {name: "Load"}));
+    await user.click(screen.getByRole("button", {name: "Run again"}));
+    expect(descriptor.totalWin).toBe(6); // cumulative across two steps
+    expect(descriptor.artifact!.totalWin).toBe(3);
+    expect(screen.getAllByText(/authored-wild-product ×6/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("screenModifiers").length).toBeGreaterThan(0);
+    for (let reel = 0; reel < 3; reel++) expect(container.querySelector<HTMLElement>(`[data-cell="0:${reel}"]`)?.style.backgroundColor).not.toBe("");
+    expect(screen.getByRole("link", {name: "Download replay JSON"})).toBeEnabled();
+});

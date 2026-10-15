@@ -82,7 +82,29 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
         roundHandler: HoldAndWinRoundHandling<T> = new HoldAndWinRoundHandler<T>(initialRespins, collector, trigger, payoutAggregator),
     ) {
         super(baseSession);
+        let schema = resolveSessionStateSchema(baseSession);
+        while ("base" in schema) schema = schema.base;
+        if (schema.kind === "seeded-video-slot" && schema.modifiers) throw new Error("Authored screen modifiers cannot combine with HoldAndWin.");
         this.roundHandler = roundHandler;
+    }
+
+    public override createStepRollback(): () => void {
+        const rollback = super.createStepRollback();
+        const entryBet = this.entryBet;
+        const active = this.active;
+        const lockedSymbols = this.lockedSymbols;
+        const respinsRemaining = this.respinsRemaining;
+        const payout = this.payout;
+        const lastRoundOutcome = this.lastRoundOutcome;
+        return () => {
+            rollback();
+            this.entryBet = entryBet;
+            this.active = active;
+            this.lockedSymbols = lockedSymbols;
+            this.respinsRemaining = respinsRemaining;
+            this.payout = payout;
+            this.lastRoundOutcome = lastRoundOutcome;
+        };
     }
 
     public getHoldAndWinEntryBet(): number {
@@ -139,7 +161,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     }
 
     public getHoldAndWinPayout(): number {
-        return this.payout;
+        return this.stepResultValid ? this.payout : 0;
     }
 
     public setHoldAndWinPayout(value: number): void {
@@ -147,7 +169,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     }
 
     public getHoldAndWinLastRoundOutcome(): HoldAndWinRoundOutcome<T> {
-        return this.lastRoundOutcome;
+        return this.stepResultValid ? this.lastRoundOutcome : {kind: "ordinary"};
     }
 
     public setHoldAndWinLastRoundOutcome(value: HoldAndWinRoundOutcome<T>): void {
@@ -186,6 +208,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
         this.lockedSymbols = value.lockedSymbols;
         this.respinsRemaining = value.respinsRemaining;
         this.payout = value.payout;
+        this.stepResultValid = true;
         return this;
     }
 
@@ -201,32 +224,35 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
 
     public override play(): void {
         this.validateScreenCoordinates();
-        // Mirrors the insufficient-funds guard in VideoSlotWithFreeGamesSession.play(): a plain paid spin
-        // with insufficient credits must bail out here, before beforeRoundPlayed/afterRoundPlayed ever
-        // run, so stale locked/respin state from a previous feature run can't be reprocessed.
-        if (!this.canPlayNextGame()) {
-            return;
-        }
-        this.roundHandler.beforeRoundPlayed(this);
-        const creditsBeforePlay = this.getCreditsAmount();
-        // baseSession has no notion of Hold & Win — front it with just enough credits to clear its own
-        // canPlayNextGame() for a respin funded by an insufficient real balance; afterRoundPlayed always
-        // restores creditsBeforePlay for an active (zero-stake) round, so this never leaks.
-        if (this.active && !this.baseSession.canPlayNextGame()) {
-            this.baseSession.setCreditsAmount(this.baseSession.getBet());
-        }
-        this.baseSession.play();
-        // Read directly off baseSession, never via this getters overridden below — those answer from
-        // lastRoundOutcome, which roundHandler.afterRoundPlayed() is about to update for *this* round;
-        // reading through them here would see the *previous* round's answer.
-        const baseRoundResult: HoldAndWinBaseRoundResult<T> = {
-            winEvaluationResult: this.baseSession.getWinEvaluationResult(),
-            winningLines: this.baseSession.getWinningLines(),
-            winningScatters: this.baseSession.getWinningScatters(),
-            linesWinning: this.baseSession.getLinesWinning(),
-            scattersWinning: this.baseSession.getScattersWinning(),
-        };
-        this.roundHandler.afterRoundPlayed(this, creditsBeforePlay, baseRoundResult);
+        this.executeStep(() => {
+            // Mirrors the insufficient-funds guard in VideoSlotWithFreeGamesSession.play(): a plain paid spin
+            // with insufficient credits must bail out here, before beforeRoundPlayed/afterRoundPlayed ever
+            // run, so stale locked/respin state from a previous feature run can't be reprocessed.
+            if (!this.canPlayNextGame()) {
+                return false;
+            }
+            this.roundHandler.beforeRoundPlayed(this);
+            const creditsBeforePlay = this.getCreditsAmount();
+            // baseSession has no notion of Hold & Win — front it with just enough credits to clear its own
+            // canPlayNextGame() for a respin funded by an insufficient real balance; afterRoundPlayed always
+            // restores creditsBeforePlay for an active (zero-stake) round; rollback also restores it on rejection.
+            if (this.active && !this.baseSession.canPlayNextGame()) {
+                this.baseSession.setCreditsAmount(this.baseSession.getBet());
+            }
+            this.baseSession.play();
+            // Read directly off baseSession, never via this getters overridden below — those answer from
+            // lastRoundOutcome, which roundHandler.afterRoundPlayed() is about to update for *this* round;
+            // reading through them here would see the *previous* round's answer.
+            const baseRoundResult: HoldAndWinBaseRoundResult<T> = {
+                winEvaluationResult: this.baseSession.getWinEvaluationResult(),
+                winningLines: this.baseSession.getWinningLines(),
+                winningScatters: this.baseSession.getWinningScatters(),
+                linesWinning: this.baseSession.getLinesWinning(),
+                scattersWinning: this.baseSession.getScattersWinning(),
+            };
+            this.roundHandler.afterRoundPlayed(this, creditsBeforePlay, baseRoundResult);
+            return true;
+        });
     }
 
     // StakeAmountDetermining: a respin never charges a real stake — see HoldAndWinRoundHandler, which
@@ -245,6 +271,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     // "completed" reports baseWinAmount + payout — both components genuinely applied to credits this round
     // (see HoldAndWinRoundHandler.complete()).
     public override getWinAmount(): number {
+        if (!this.stepResultValid) return 0;
         const outcome = this.lastRoundOutcome;
         if (outcome.kind === "ordinary") {
             return this.baseSession.getWinAmount();
@@ -260,6 +287,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     // for a discarded respin); "completed" is built by buildCompletedWinEvaluationResult() below, coherent
     // with getWinAmount() above by construction (its own getTotalWin() always equals baseWinAmount + payout).
     public override getWinEvaluationResult(): WinEvaluationResult<T> {
+        if (!this.stepResultValid) return new WinEvaluationResult<T>();
         const outcome = this.lastRoundOutcome;
         if (outcome.kind === "ordinary") {
             return this.baseSession.getWinEvaluationResult();
@@ -278,6 +306,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     // never a "line" or "scatter" win to begin with, it only ever surfaces via getWinningValues()-style
     // value-win vocabulary, i.e. through getWinEvaluationResult() above, not through these).
     public override getWinningLines(): Record<string, WinningLineDescribing<T>> {
+        if (!this.stepResultValid) return {};
         const outcome = this.lastRoundOutcome;
         if (outcome.kind === "ordinary") {
             return this.baseSession.getWinningLines();
@@ -289,6 +318,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     }
 
     public override getWinningScatters(): Record<T, WinningScatterDescribing<T>> {
+        if (!this.stepResultValid) return {} as Record<T, WinningScatterDescribing<T>>;
         const outcome = this.lastRoundOutcome;
         if (outcome.kind === "ordinary") {
             return this.baseSession.getWinningScatters();
@@ -300,6 +330,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     }
 
     public override getLinesWinning(): number {
+        if (!this.stepResultValid) return 0;
         const outcome = this.lastRoundOutcome;
         if (outcome.kind === "ordinary") {
             return this.baseSession.getLinesWinning();
@@ -311,6 +342,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     }
 
     public override getScattersWinning(): number {
+        if (!this.stepResultValid) return 0;
         const outcome = this.lastRoundOutcome;
         if (outcome.kind === "ordinary") {
             return this.baseSession.getScattersWinning();

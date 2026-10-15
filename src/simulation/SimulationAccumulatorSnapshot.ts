@@ -1,3 +1,4 @@
+import type {ModifierStatistics} from "./ModifierStatistics.js";
 import type {ReelSequenceStatistics} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {LogicalRoundStatistics} from "./LogicalRoundStatistics.js";
 // Plain-data mirror of SimulationAccumulator's private running-totals state (see its toSnapshot()/
@@ -6,6 +7,7 @@ import type {LogicalRoundStatistics} from "./LogicalRoundStatistics.js";
 // purely so a merge step (see SimulationStatisticsMerger) can reconstruct a real SimulationAccumulator
 // and reuse its own merge() — the online mean/variance algorithm itself is never duplicated.
 export type SimulationAccumulatorSnapshot = {
+    modifiers?: ModifierStatistics;
     reelSequences?: ReelSequenceStatistics[];
     logicalRounds?: LogicalRoundStatistics;
     rounds: number;

@@ -31,10 +31,22 @@ export class VideoSlotWithResizableGridSession<
         if (!this.canPlayNextGame()) {
             return;
         }
-        this.baseSession.play();
-        this.generator.setReelsHeights(
-            this.gridResizeHandling.getNextReelsHeights(this.baseSession, this.generator.getReelsHeights()),
-        );
+        this.validateScreenCoordinates();
+        this.executeStep(() => {
+            super.play();
+            this.generator.setReelsHeights(
+                this.gridResizeHandling.getNextReelsHeights(this.baseSession, this.generator.getReelsHeights()),
+            );
+        });
+    }
+
+    public override createStepRollback(): () => void {
+        const rollback = super.createStepRollback();
+        const heights = this.generator.getReelsHeights();
+        return () => {
+            rollback();
+            this.generator.setReelsHeights(heights);
+        };
     }
 
     public getReelsHeights(): number[] {

@@ -1,0 +1,82 @@
+{
+    "manifest": {
+        "id": "wild-transform",
+        "name": "Wild transform",
+        "version": "1.0.0"
+    },
+    "reels": 3,
+    "rows": 1,
+    "symbols": [
+        "A",
+        "B",
+        "W2",
+        "W3",
+        "S"
+    ],
+    "wilds": [
+        "W2",
+        "W3"
+    ],
+    "scatters": [
+        "S"
+    ],
+    "availableBets": [
+        0.05,
+        7.5,
+        1e-07
+    ],
+    "paytable": {
+        "A": {
+            "3": 10
+        },
+        "B": {
+            "3": 0
+        }
+    },
+    "reelStrips": [
+        [
+            "B"
+        ],
+        [
+            "W2"
+        ],
+        [
+            "W3"
+        ]
+    ],
+    "mechanics": {
+        "modifiers": {
+            "wilds": [
+                {
+                    "symbol": "W2",
+                    "substitutes": [
+                        "A"
+                    ],
+                    "factor": 2
+                },
+                {
+                    "symbol": "W3",
+                    "substitutes": [
+                        "A"
+                    ],
+                    "factor": 3
+                }
+            ],
+            "rules": [
+                {
+                    "id": "transform",
+                    "type": "transform",
+                    "space": "evaluated",
+                    "positions": [
+                        [
+                            0,
+                            0
+                        ]
+                    ],
+                    "from": "B",
+                    "to": "A"
+                }
+            ]
+        }
+    }
+}

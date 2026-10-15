@@ -1,10 +1,10 @@
 import {
-    AbstractVideoSlotSessionDecorator, SessionRuntime,
+    AbstractVideoSlotSessionDecorator, SessionRuntime, CustomLinesDefinitions, VideoSlotSessionSerializer,
     Paytable, SeededRandomNumberGenerator, LineWinCalculator, ScatterWinCalculator, ClusterWinCalculator, WaysWinCalculator,
     VideoSlotWithBetModesSession, captureInitialPokieSessionState, VideoSlotSessionHandling, SessionStateRestoring,
     ClusterWinCalculating,
     FreeGamesRoundHandling,
-    GameSessionConfig,
+    GameSession, GameSessionConfig,
     LeftToRightLinesPatterns,
     LineWinCalculating,
     ReelsSymbolsSequencesGenerating,
@@ -405,6 +405,62 @@ describe("ExtensionPoints", () => {
         expect(calls).toEqual(["before", "after"]);
     });
 
+    test.each(["inherited", "super"].flatMap(kind => ["direct", "runtime", "prepared"].map(entry => ({kind, entry}))))(
+        "F1g unchanged $kind forwarding extension recovers through $entry execution", ({kind, entry}) => {
+            class InheritedForwarder extends AbstractVideoSlotSessionDecorator {}
+            class SuperForwarder extends AbstractVideoSlotSessionDecorator {
+                public override play(): void {
+                    super.play();
+                }
+            }
+            const config = new VideoSlotConfig();
+            config.setAvailableBets([1]);
+            config.setBet(1);
+            config.setSymbolsSequences(Array.from({length: 5}, () => new SymbolsSequence().fromArray(["A"])));
+            config.setLinesDefinitions(new CustomLinesDefinitions().setLineDefinition("line", [0, 0, 0, 0, 0]));
+            const paytable = new Paytable<string>([1]);
+            paytable.setPayoutForSymbol("A", 5, 9);
+            config.setPaytable(paytable);
+            const base = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(31)));
+            const session = kind === "inherited" ? new InheritedForwarder(base) : new SuperForwarder(base);
+            session.setCreditsAmount(100);
+            const runtime = new SessionRuntime(session);
+            const execute = () => {
+                if (entry === "direct") return session.play();
+                if (entry === "runtime") return runtime.execute({kind: "spin"});
+                const ready = runtime.prepare({kind: "spin"}, session.getCreditsAmount());
+                if (ready.status !== "ready") throw new Error(ready.reason);
+                return ready.execute();
+            };
+            execute();
+            expect(session.getWinAmount()).toBe(9);
+            const before = base.toSessionState();
+            paytable.setPayoutForSymbol("A", 5, Number.MAX_VALUE);
+            session.setCreditsAmount(Number.MAX_VALUE);
+            expect(() => execute()).toThrow(/overflow/);
+            expect(base.toSessionState()).toEqual(before);
+            expect(session.getCreditsAmount()).toBe(Number.MAX_VALUE);
+            expect(session.getWinAmount()).toBe(0);
+            expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+            session.setCreditsAmount(0);
+            session.play();
+            expect(session.getWinAmount()).toBe(0);
+            expect(runtime.execute({kind: "spin", bet: 99})).toMatchObject({status: "invalid-command"});
+            expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+            paytable.setPayoutForSymbol("A", 5, 9);
+            session.setCreditsAmount(108);
+            for (const credits of [116, 124]) {
+                const result = execute();
+                if (entry !== "direct") expect(result).toMatchObject({status: "played", win: 9, credits});
+                expect(session.getCreditsAmount()).toBe(credits);
+                expect(session.getWinAmount()).toBe(9);
+                expect(session.getWinEvaluationResult().getWinComponents()).toHaveLength(1);
+                expect(session.getWinEvaluationResult()).toBe(base.getWinEvaluationResult());
+                expect(new VideoSlotSessionSerializer().getRoundData(session)).toMatchObject({totalWin: 9, credits});
+            }
+        },
+    );
+
     test("AbstractVideoSlotSessionDecorator forwards everything except what a subclass overrides", () => {
         class FixedBetDecorator<
             T extends string | number | symbol = string,
@@ -471,4 +527,18 @@ describe("ExtensionPoints", () => {
         calculator.calculateWin(bet, combinationWithAllowedTarget);
         expect(Object.keys(calculator.getWinningLines())).toHaveLength(1);
     });
+});
+
+
+test("finite settlement preserves the debit semantics of an injected base session", () => {
+    const config = new VideoSlotConfig();
+    class DoubleDebitSession extends GameSession {
+        public override play(): void {
+            this.setCreditsAmount(this.getCreditsAmount() - 2 * this.getBet());
+        }
+    }
+    const session = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(7)), new VideoSlotWinCalculator(config), new DoubleDebitSession(config));
+    const credits = session.getCreditsAmount();
+    session.play();
+    expect(session.getCreditsAmount()).toBe(credits - 2 * session.getBet() + session.getWinAmount());
 });

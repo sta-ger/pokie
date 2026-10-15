@@ -93,6 +93,20 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
         }
     }
 
+    public override createStepRollback(): () => void {
+        const rollback = super.createStepRollback();
+        const outcome = this.lastRoundOutcome;
+        const statistics = this.poolStatistics;
+        const pools = this.pools.flatMap(pool => this.supportsPoolStateCapture(pool) && this.supportsPoolStateRestore(pool)
+            ? [{pool, state: pool.toSessionState()}] : []);
+        return () => {
+            rollback();
+            for (const {pool, state} of pools) pool.fromSessionState(state);
+            this.lastRoundOutcome = outcome;
+            this.poolStatistics = statistics;
+        };
+    }
+
     public getSessionStateSchema(): SessionStateSchema {
         const pools = this.pools.map(pool => pool instanceof FixedJackpotPool || pool instanceof AccumulatingJackpotPool ? pool.getRestorationDescriptor() : undefined);
         return pools.every(pool => pool !== undefined) ? {kind: "jackpot", pools: pools as NonNullable<typeof pools[number]>[], base: resolveSessionStateSchema(this.baseSession)} : {kind: "custom"};
@@ -115,7 +129,7 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
     }
 
     public getJackpotLastRoundOutcome(): JackpotRoundOutcome<T> {
-        return this.lastRoundOutcome;
+        return this.stepResultValid ? this.lastRoundOutcome : {kind: "ordinary"};
     }
 
     public setJackpotLastRoundOutcome(value: JackpotRoundOutcome<T>): void {
@@ -192,6 +206,7 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
                 }
             }
         }
+        this.stepResultValid = true;
         return this;
     }
 
@@ -202,18 +217,19 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
 
     public override play(): void {
         this.validateScreenCoordinates();
-        if (!this.canPlayNextGame()) {
-            return;
-        }
-        // Read before baseSession.play() — the stake a round actually charges is only meaningful as of
-        // right before it plays (same principle VideoSlotWithBetModesSession's own play() relies on for
-        // totalIntendedCharge).
-        const stake = this.supportsStakeAmount(this.baseSession) ? this.baseSession.getStakeAmount() : this.baseSession.getBet();
-        this.baseSession.play();
-        // Read directly off baseSession, never via this.getWinEvaluationResult() — that method is
-        // overridden below to answer from lastRoundOutcome, which roundHandler.afterRoundPlayed() is about
-        // to update for *this* round; reading through it here would see the *previous* round's answer.
-        this.roundHandler.afterRoundPlayed(this, stake, this.baseSession.getWinEvaluationResult());
+        this.executeStep(() => {
+            if (!this.canPlayNextGame()) return false;
+            // Read before baseSession.play() — the stake a round actually charges is only meaningful as of
+            // right before it plays (same principle VideoSlotWithBetModesSession's own play() relies on for
+            // totalIntendedCharge).
+            const stake = this.supportsStakeAmount(this.baseSession) ? this.baseSession.getStakeAmount() : this.baseSession.getBet();
+            this.baseSession.play();
+            // Read directly off baseSession, never via this.getWinEvaluationResult() — that method is
+            // overridden below to answer from lastRoundOutcome, which roundHandler.afterRoundPlayed() is about
+            // to update for *this* round; reading through it here would see the *previous* round's answer.
+            this.roundHandler.afterRoundPlayed(this, stake, this.baseSession.getWinEvaluationResult());
+            return true;
+        });
     }
 
     // StakeAmountDetermining: the jackpot itself never changes what a round costs — always transparently
@@ -228,6 +244,7 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
     // straight to the wrapped session; "awarded" reports baseWinAmount + amount — both components genuinely
     // applied to credits this round (see JackpotRoundHandler.afterRoundPlayed()).
     public override getWinAmount(): number {
+        if (!this.stepResultValid) return 0;
         const outcome = this.lastRoundOutcome;
         if (outcome.kind === "ordinary") {
             return this.baseSession.getWinAmount();
@@ -246,6 +263,7 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
     // never discards or suppresses the wrapped session's own line/scatter result, so the inherited
     // pass-through (see AbstractVideoSlotSessionDecorator) is already correct.
     public override getWinEvaluationResult(): WinEvaluationResult<T> {
+        if (!this.stepResultValid) return new WinEvaluationResult<T>();
         const outcome = this.lastRoundOutcome;
         if (outcome.kind === "ordinary") {
             return this.baseSession.getWinEvaluationResult();

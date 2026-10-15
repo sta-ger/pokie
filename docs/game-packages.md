@@ -371,3 +371,15 @@ Executable modes require every mode's `runtimeType`, exactly one safe default, a
 Generated CJS and TypeScript, exact descriptor extraction and real XLSX interchange retain these fields. The Mechanics workbook sheet uses `Mechanic` and `Configuration JSON` rows for extended configurations, preserving explicit retrigger policies; legacy free-game award sheets remain readable. Structural hashes include all mechanic and executable mode fields. Build conversions retain `build SOURCE --target TARGET`, explicit Save/Apply and new/empty destinations. WASM and paid-grid outcome-library/Stake projections reject Hold&Win/jackpot histories rather than erase them; generated games with these mechanics expose no paid-grid exact-enumeration constructor.
 
 Custom collectors/triggers/aggregators, stake-dependent/random jackpot triggers, custom contributions or entry handlers, multi-tier selection, and shared/distributed progressives remain custom code. A descriptor states representable data; it cannot certify opaque collaborator behavior. Built-in restoration certification requires resolved built-in collaborators and a restorable nested seeded session. Sharing a mutable accumulating pool invalidates built-in certification.
+
+### Authored modifiers
+
+Generated CommonJS and TypeScript modules retain `mechanics.modifiers` verbatim
+and assemble the shared `VideoSlotSession` modifier runtime. The effective-model
+descriptor, extraction and XLSX Mechanics JSON rows preserve rule order, zero
+factors and empty substitution lists. Changing rule order changes configuration
+identity. Build the `examples/blueprints/wild-*.blueprint.json` examples with
+`pokie build SOURCE --target tsPackage --out NEW_DIRECTORY`, then open that
+package with `pokie PACKAGE`. Stateless modifiers retain exact enumeration;
+sticky games explicitly lack independent-spin enumeration. See the
+[math contract](math-modeling.md#authored-wilds-and-screen-modifiers).

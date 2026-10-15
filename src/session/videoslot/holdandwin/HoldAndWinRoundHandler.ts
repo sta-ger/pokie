@@ -142,8 +142,11 @@ export class HoldAndWinRoundHandler<T extends string | number | symbol = string>
     private complete(session: VideoSlotWithHoldAndWinSessionHandling<T>, baseRoundResult: HoldAndWinBaseRoundResult<T>): void {
         const lockedSymbols = session.getLockedHoldAndWinSymbols();
         const payout = this.payoutAggregator.aggregate(lockedSymbols, session.getHoldAndWinEntryBet?.() ?? session.getBet());
+        const balance = session.getCreditsAmount() + payout;
+        const totalWin = baseRoundResult.winEvaluationResult.getTotalWin() + payout;
+        if (!Number.isFinite(payout) || !Number.isFinite(balance) || !Number.isFinite(totalWin)) throw new Error("HoldAndWin payout or balance overflow.");
         session.setHoldAndWinPayout(payout);
-        session.setCreditsAmount(session.getCreditsAmount() + payout);
+        session.setCreditsAmount(balance);
         session.setHoldAndWinActive(false);
         session.setHoldAndWinRespinsRemaining(0);
         session.setHoldAndWinLastRoundOutcome({

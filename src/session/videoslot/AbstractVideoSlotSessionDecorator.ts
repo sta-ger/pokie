@@ -16,25 +16,35 @@ import type {WinningScatterDescribing} from "./WinningScatterDescribing.js";
 
 // A pure passthrough base for classes that wrap a VideoSlotSessionHandling and only need to
 // change a handful of its methods (e.g. VideoSlotWithFreeGamesSession overriding play()).
-// It holds no state and no business logic of its own, so it doesn't reintroduce behavior
-// inheritance between domain classes — it only removes the boilerplate of forwarding every
-// method a decorator doesn't care about.
+// It also composes synchronous rollback boundaries; persistence certification remains separate.
 export abstract class AbstractVideoSlotSessionDecorator<T extends string | number | symbol = string>
 implements VideoSlotSessionHandling<T> {
+    protected stepResultValid = true;
     protected readonly baseSession: VideoSlotSessionHandling<T>;
 
     constructor(baseSession: VideoSlotSessionHandling<T>) {
         this.baseSession = baseSession;
         // Preserve optional capabilities without advertising capabilities absent on the base.
         // A concrete decorator's own implementation always wins.
-        for (const name of ["getBetModeId", "setBetMode", "getAvailableBetModeIds", "validateEntryAction",
+        for (const name of ["getModifierObservation", "getBetModeId", "setBetMode", "getAvailableBetModeIds", "validateEntryAction",
             "getChargedBetModeId", "getSimulationCategory", "getJackpotStatisticsSnapshot", "getJackpotPools",
             "getJackpotLastRoundOutcome", "getJackpotPoolStatistics", "getJackpotAwardCount", "getJackpotTotalAwarded", "getJackpotTotalContributed",
             "isHoldAndWinActive", "getHoldAndWinEntryBet", "getHoldAndWinLastRoundOutcome", "getLockedHoldAndWinSymbols", "getHoldAndWinRespinsRemaining", "getHoldAndWinPayout",
             "getFreeGamesNum", "getFreeGamesSum", "getFreeGamesBank", "getWonFreeGamesNumber"]) {
             const method: unknown = Reflect.get(baseSession, name);
-            if (!(name in this) && typeof method === "function") Reflect.defineProperty(this, name, {value: method.bind(baseSession)});
+            if (!(name in this) && typeof method === "function") Reflect.defineProperty(this, name, {value: name === "getModifierObservation"
+                ? () => this.stepResultValid ? Reflect.apply(method, baseSession, []) : undefined : method.bind(baseSession)});
         }
+    }
+
+    public createStepRollback(): () => void {
+        const credits = this.getCreditsAmount();
+        const rollback = this.baseSession.createStepRollback?.();
+        return () => {
+            rollback?.();
+            if (this.getCreditsAmount() !== credits) this.setCreditsAmount(credits);
+            this.stepResultValid = false;
+        };
     }
 
     public setSelectionContext(context: string): void {
@@ -96,15 +106,15 @@ implements VideoSlotSessionHandling<T> {
     }
 
     public getWinningLines(): Record<string, WinningLineDescribing<T>> {
-        return this.baseSession.getWinningLines();
+        return this.stepResultValid ? this.baseSession.getWinningLines() : {};
     }
 
     public getWinningScatters(): Record<T, WinningScatterDescribing<T>> {
-        return this.baseSession.getWinningScatters();
+        return this.stepResultValid ? this.baseSession.getWinningScatters() : {} as Record<T, WinningScatterDescribing<T>>;
     }
 
     public getWinEvaluationResult(): WinEvaluationResult<T> {
-        return this.baseSession.getWinEvaluationResult();
+        return this.stepResultValid ? this.baseSession.getWinEvaluationResult() : new WinEvaluationResult<T>();
     }
 
     public getSymbolsSequences(): SymbolsSequenceDescribing<T>[] {
@@ -132,15 +142,15 @@ implements VideoSlotSessionHandling<T> {
     }
 
     public getWinAmount(): number {
-        return this.baseSession.getWinAmount();
+        return this.stepResultValid ? this.baseSession.getWinAmount() : 0;
     }
 
     public getLinesWinning(): number {
-        return this.baseSession.getLinesWinning();
+        return this.stepResultValid ? this.baseSession.getLinesWinning() : 0;
     }
 
     public getScattersWinning(): number {
-        return this.baseSession.getScattersWinning();
+        return this.stepResultValid ? this.baseSession.getScattersWinning() : 0;
     }
 
     public getAvailableBets(): number[] {
@@ -160,7 +170,9 @@ implements VideoSlotSessionHandling<T> {
     }
 
     public play(): void {
-        this.baseSession.play();
+        if (!this.canPlayNextGame()) return;
+        this.validateScreenCoordinates();
+        this.executeStep(() => this.baseSession.play());
     }
 
     public isSymbolWild(symbolId: T): boolean {
@@ -186,6 +198,23 @@ implements VideoSlotSessionHandling<T> {
     public getLinesPatterns(): LinesPatternsDescribing {
         return this.baseSession.getLinesPatterns();
     }
+    // Coordinate/composition preflight belongs before this boundary: it leaves the settled
+    // result untouched. Once execution starts, rejection rolls back state and hides its result.
+    protected executeStep(action: () => boolean | void): void {
+        const resultValid = this.stepResultValid;
+        let rollback: (() => void) | undefined;
+        this.stepResultValid = false;
+        try {
+            rollback = this.createStepRollback();
+            this.stepResultValid = true;
+            if (action() === false) this.stepResultValid = resultValid;
+        } catch (error) {
+            rollback?.();
+            this.stepResultValid = false;
+            throw error;
+        }
+    }
+
     protected getCompositionError(kind: SessionStateSchema["kind"]): string | undefined {
         const kinds: string[] = [];
         let schema = resolveSessionStateSchema(this.baseSession);

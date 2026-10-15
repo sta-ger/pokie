@@ -53,3 +53,14 @@ describe("ScreenTable orientation", () => {
         });
     });
 });
+
+it("V2C-13 renders transformed visible cells without inventing highlights or moving reel coordinates", () => {
+    const transformed = [["W2", "A"], ["W2", "W2"], ["W3", "A"]];
+    const before = JSON.stringify(transformed);
+    const {container} = renderWithMantine(<ScreenTable screen={transformed} />);
+    const rows = screen.getAllByRole("row");
+    expect(within(rows[0]).getAllByRole("cell").map(cell => cell.textContent)).toEqual(["W2", "W2", "W3"]);
+    expect(within(rows[1]).getAllByRole("cell").map(cell => cell.textContent)).toEqual(["A", "W2", "A"]);
+    expect(container.querySelector("[data-cell]")).toBeNull(); // canonical player owns payout highlights
+    expect(JSON.stringify(transformed)).toBe(before);
+});

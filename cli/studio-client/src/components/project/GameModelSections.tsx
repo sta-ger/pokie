@@ -656,7 +656,7 @@ function MechanicsSection({section}: {section: GameModelSection<GameModelMechani
     if (section.status === "unavailable") {
         return <UnavailableSection reason={section.reason} />;
     }
-    if (section.data.freeGames === undefined && !section.data.holdAndWin && !section.data.jackpot) {
+    if (section.data.freeGames === undefined && !section.data.holdAndWin && !section.data.jackpot && !section.data.modifiers) {
         return (
             <Text size="sm" c="dimmed">
                 No mechanics/features configured.
@@ -675,6 +675,21 @@ function MechanicsSection({section}: {section: GameModelSection<GameModelMechani
                             .join(", ")
                         : "(none)"}
                 </Text></>}
+            {section.data.modifiers && <>
+                <Text>Screen modifiers: ordered after generation, confined to evaluation. Winning wild factors multiply before aggregation. Sticky lifetime counts executed steps.</Text>
+                <Text>Supported: lines, ways, clusters; exact/weighted reels; free games, modes and jackpot. Value evaluators, Hold & Win and WASM are unsupported; sticky prevents independent-spin enumeration.</Text>
+                {section.data.modifiers.wilds.map(wild => <Text key={wild.symbol}>Wild {wild.symbol}: substitutes {wild.substitutes === undefined ? "any regular symbol" : wild.substitutes.join(", ") || "none"}; factor {wild.factor ?? 1}.</Text>)}
+                {section.data.modifiers.rules.map((rule, index) => {
+                    let detail: string;
+                    if (rule.type === "transform") detail = `${rule.from} → ${rule.to}`;
+                    else {
+                        detail = rule.symbol;
+                        if (rule.type === "sticky") detail += `, lifetime ${rule.lifetime}`;
+                        if (rule.type === "reel") detail += `, reels ${rule.reels.join(", ")}`;
+                    }
+                    return <Text key={rule.id}>Rule {index + 1}: {rule.id}, {rule.type}, {rule.space} {JSON.stringify(rule.positions)}; {detail}.</Text>;
+                })}
+            </>}
             {section.data.holdAndWin && <Text>Hold & Win: {section.data.holdAndWin.minimumCount} locks, {section.data.holdAndWin.initialRespins} respins; reset-on-new-lock.</Text>}
             {section.data.jackpot && <Text>Jackpot: {section.data.jackpot.pool.id} ({section.data.jackpot.pool.type}), contribution {section.data.jackpot.contribution.percentage}; single-tier.</Text>}
         </div>

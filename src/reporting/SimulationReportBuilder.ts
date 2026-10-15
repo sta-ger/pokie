@@ -68,6 +68,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         const warnings = this.buildWarnings(core, breakdown);
         return {
             ...core,
+            ...(statistics.modifiers ? {modifiers: statistics.modifiers} : {}),
             ...(statistics.reelSequences ? {reelSequences: statistics.reelSequences} : {}),
             breakdown,
             jackpot,

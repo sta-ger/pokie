@@ -155,3 +155,66 @@ paying four times stake. Its exact RTP is `1/4 * 4 = 1`. Seeded runtime and samp
 libraries use the same distribution. Positive numeric probability underflow is an
 explicit exact-analysis/export boundary, while runtime selection retains exact
 binary64 weight ratios. See [the reel contract](reels-and-sequences.md#weighted-whole-sequence-reels).
+
+## Authored wilds and screen modifiers
+
+`GameBlueprint.mechanics.modifiers` is finite data with two ordered arrays:
+`wilds` declares `{symbol, substitutes?, factor?}` and `rules` declares the
+catalogue below. Wild symbols must also appear in `blueprint.wilds`. Omitted
+`substitutes` means unrestricted substitution; `[]` forbids it. An omitted
+factor means 1; an explicit 0 suppresses that component's payout.
+
+| Catalogue variant | Rule / declaration | Playable Blueprint |
+| --- | --- | --- |
+| Expanding wild | `expand`, `symbol`, trigger `positions` | `examples/blueprints/wild-expanding.blueprint.json` |
+| Sticky wild | `sticky`, `symbol`, acquisition `positions`, integer `lifetime` | `examples/blueprints/wild-sticky.blueprint.json` |
+| Restricted wild | Wild `substitutes` array | `examples/blueprints/wild-restricted.blueprint.json` |
+| Multiplier wild | Wild nonnegative finite `factor` | `examples/blueprints/wild-multiplier.blueprint.json` |
+| Symbol transform | `transform`, `from`, `to`, target `positions` | `examples/blueprints/wild-transform.blueprint.json` |
+| Reel fill | `reel`, `symbol`, `reels`, empty `positions` | `examples/blueprints/wild-reel.blueprint.json` |
+
+Every rule has a unique nonempty `id`, `space` and explicit `positions` array.
+Positions are integer `[reel,row]` pairs in `generated`, `visible` or `evaluated`
+space. Invalid domain coordinates fail validation. Valid cells outside evaluation
+are ignored: they cannot transform, trigger expansion or acquire sticky state.
+`reel` is unconditional and requires `space: "evaluated"`; its unique `reels`
+indexes select whole evaluated columns. All effects preserve generated dimensions,
+geometry tags and cells outside evaluation.
+
+The execution order is generate → run rules in array order in the evaluated
+window → evaluate → apply wild factors to each component → aggregate → settle.
+A rule sees the screen produced by earlier rules. Expansion tests its listed
+cells and fills each triggered reel's evaluated rows. Later writes win. Duplicate
+positions, identities, wild declarations, unknown fields/symbols and unsupported
+compositions are errors. There is no implicit object-key order or hidden trigger.
+Initialization and result reads do not execute rules or draw modifier randomness.
+
+Each line, ways or cluster component is multiplied by the product of factors at
+its **unique winning coordinates**, once per position. The ways product applies
+to the complete component (including its ways count), not separately to each
+way. Separate winning lines each receive their own factors. Losing cells and
+scatter components contribute no factors. Overflow fails before settlement.
+Existing evaluator target selection is retained: all-wild lines have no regular
+target and pay zero even when a wild has an own paytable entry; ways excludes wild
+paytable targets. A mixed line pays its regular target's entry. For `[A,W2,W3]`,
+restrictions to A, paytable A/3 = 10, factors 2 and 3, and bet 0.05, payout is
+`0.05 × 10 × 2 × 3 = 3`.
+
+Sticky acquisition occurs at its rule's position in the ordered sequence, after
+earlier rules. It retains that rule's wild and factor identity, reapplies it at
+the same point in each subsequent step, then decrements its lifetime. Lifetime
+includes acquisition; a retained cell is not refreshed while retained. Its last
+application has remaining 0 and is then removed; a later step can acquire again.
+Later rules may overwrite the current screen without rewriting the retained
+identity. Counters advance per executed step across paid spins, free continuations
+and mode changes, not per logical round or response. New sessions start empty;
+failed evaluation/settlement and duplicate delivery cannot commit another advance.
+
+All six variants compose with line, ways and cluster win models, exact/weighted
+reel sources, supported geometry, free games, bet modes and jackpots. Hold & Win
+and value evaluators are explicitly unsupported with these declarations. WASM
+rejects all modifiers. Persistent sticky rules block independent-spin exact
+outcome enumeration and its downstream conversions; stateless rules use the same
+session payout path during enumeration. Custom callbacks retain their custom
+capability/extraction boundary. See [serialization](serialization.md) and
+[the implementation evidence record](v2-completion/V2C-13.md).
