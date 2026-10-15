@@ -1395,7 +1395,7 @@ describe("V2C-12 separately loaded package simulation to Replay", () => {
                     if (download.status !== "ok") throw new Error(JSON.stringify(job));
                     const descriptor = JSON.parse(buildReplayDownload(download.descriptor, job.id).body) as ReplayDescriptor;
                     const expectedCommands = stakes.slice(0, round).map(stake => ({kind: "spin", ...(stake > 0 ? {mode: modeName} : {})}));
-                    expect(descriptor).toMatchObject({seed, configHash: game.getConfigHash!(), modePolicy: {betModeId: modeName, selection: "repeat-when-available"}, totalBet: stakes.slice(0, round).reduce<number>((sum, stake) => sum + stake, 0), artifact: {stake: stakes[round - 1], betMode: modeName}});
+                    expect(descriptor).toMatchObject({seed, modePolicy: {betModeId: modeName, selection: "repeat-when-available"}, totalBet: stakes.slice(0, round).reduce<number>((sum, stake) => sum + stake, 0), artifact: {stake: stakes[round - 1], betMode: modeName, provenance: {configHash: game.getConfigHash!()}}});
                     expect(descriptor.commands).toEqual(expectedCommands);
                     expect(descriptor.artifact?.featureEvents).toContainEqual({type: "chargedBetMode", data: {id: modeName}});
                     const view = describeReplayResult(job)!;
