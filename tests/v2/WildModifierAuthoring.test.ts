@@ -227,11 +227,11 @@ describe("V2C-13 finite modifier authoring", () => {
         }
     });
 
-    it("F1d failed generated step after a successful jackpot exposes no prior payout or award", () => {
+    it.each(["fixed", "accumulating"] as const)("F1d failed generated step after a successful %s jackpot exposes no prior payout or award", type => {
         const b = fixture("sticky");
         b.reelStrips = [["A"], ["W2"], ["A"]];
         b.mechanics!.modifiers!.wilds = [{symbol: "W2", factor: Number.MAX_VALUE}];
-        b.mechanics!.jackpot = {pool: {id: "mini", type: "accumulating", seedValue: 10},
+        b.mechanics!.jackpot = {pool: type === "fixed" ? {id: "mini", type, amount: 10} : {id: "mini", type, seedValue: 10},
             contribution: {type: "percentage", percentage: 0.1}, trigger: {type: "symbol-count", symbolId: "A", minimumCount: 1}, award: "single-tier"};
         const game = generatedMechanicsGame(b),
             session = mechanicsSession(game);
