@@ -1,5 +1,36 @@
 # V2C-12 independent workflow receipt
 
+## Ordinary buy target-1 recovery (2026-10-15)
+
+Product identity remains `4951df55907a2863b6e077c290e3f8c468bc5f6e`; this
+clean evidence checkout started this recovery at
+`627d21cd34b501c1d5b04ff9b3c208062046b1cd`. One fresh Studio profile used
+the retained public ordinary package
+`v2c12-ordinary-matrix` (`dist/index.js` SHA-256
+`e2df638307032f1c8c5525576c3154232fa19cb5194a970ff09eea7d9e46400a`),
+opened through Projects intake. The runtime transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-31b3940716a6e35c/run-2026-10-15T03-21-23-852Z/transcript.json`.
+
+Through rendered Simulation and Replay **Recent Simulation** controls, an
+explicit-seed (`v2c12-ordinary-buy-recovery`), one-worker ordinary `buy`
+simulation completed three rounds as job `f2b9fb1e8dc543908d8b21b7a0e79d35`.
+Its target-1 replay then completed as job
+`819c757decaf45a9a60fbda74d699ee1`. The viewport-visible result showed
+Stake `0.5`, Bet mode `buy`, Charged mode `buy`, Credits `999.5`, and Total
+win `0.00`; this distinguishes the final-step stake from other financial
+rows. The rendered download produced the actual 2,996-byte descriptor
+`v2c12-ordinary-matrix-1.0.0-819c757decaf45a9a60fbda74d699ee1.json`, SHA-256
+`e69abccb88bb8fb3f355c8c96b4b4871ada5ddd23b52e04bc21ec5ab77818c95`.
+Its bytes match the visible record: seed, mode `buy`, one `spin` command,
+mode policy `repeat-when-available`, config hash
+`sha256:e07ad42fe08c0c44ad95739fc1c4ff7f81e6111e825d0eb26bd8ffbc15839658`, and
+total/final stake `0.5`.
+
+This addition does not claim ordinary buy targets 2–3, either buy-more
+matrix, weighted buy/buy-more, the remaining downloads, or the ordinary-ante
+financial row; those are still not reached. Runtime output and automation
+remain outside version control.
+
 ## Weighted ante Recovery Replay (2026-10-15)
 
 Product identity remains `4951df55907a2863b6e077c290e3f8c468bc5f6e`; the
