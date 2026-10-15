@@ -448,6 +448,32 @@ legibly shows the same Replay's Bet mode `ante`, Stake
 The screenshots are runtime-only; this bounded receipt retains only their
 checksums and the transcript locator.
 
+## Recent Simulation all-mode producer boundary (2026-10-15)
+
+Candidate product identity remains `cf08dbafb1d3cf6799e5c35526a6beeae8d78e8d`.
+The persistent harness reused the authenticated candidate build (output
+SHA-256 `87b0f47abe27909daeae3eb8dd63224e87cd420201c3a65a4c4f6429ac1673f2`)
+and opened the retained ordinary whole-sequence package through the public
+Projects intake. In the visible Simulation flow it selected **All modes**,
+set five rounds, one worker, and seed `v2c12-ordinary-recent-sim`, then
+activated **Run Simulation** once. That exact action rendered `Simulation
+queued — 0/5 rounds`; its local terminal then rendered `Simulation failed —
+10/20 rounds` and `Bet mode "buy" forces feature entry and cannot be selected
+while a zero-stake feature round is already active`.
+
+The runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-a6452b8c3c3e9238/run-2026-10-15T01-47-16-044Z/transcript.json`
+(SHA-256 `305601ea6b44cbc33c135065c61cec308cba440600dfef5b3b0b7b848e3c0e83`).
+It records no download and no screenshot. The user-visible queued/failed
+states expose no operation id, so this receipt does not invent one or claim a
+Replay descriptor. The narrow source boundary is
+`cli/studio/simulation/StudioSimulationService.ts` (its all-mode loop passes
+each declared mode to `ParallelSimulationRunner`) and
+`src/simulation/FixedBetModeForNextSimulationRoundSetting.ts` (which is
+intended to swallow a forcing-mode selection while a continuation is active).
+The retained package carried its own `@fromstan/pokie` dependency; no package
+contents were modified in this verification.
+
 ## Recent Simulation route probe (2026-10-15)
 
 Candidate product identity is `cf08dbafb1d3cf6799e5c35526a6beeae8d78e8d`.
