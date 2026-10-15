@@ -447,3 +447,34 @@ legibly shows the same Replay's Bet mode `ante`, Stake
 `0.07500000000000001`, charged mode `ante`, and whole-sequence selections.
 The screenshots are runtime-only; this bounded receipt retains only their
 checksums and the transcript locator.
+
+## Recent Simulation route probe (2026-10-15)
+
+Candidate product identity is `cf08dbafb1d3cf6799e5c35526a6beeae8d78e8d`.
+One fresh Studio profile opened the retained weighted generated package through
+the public Projects path, then completed a five-round, one-worker seeded
+simulation and selected it through public **Replay → Recent Simulation**.
+After selecting round 1 and **Load**, one **Run again** created replay job
+`ff9fe367c41f41dcad8ac4423a2ed29a` and completed 1/1 at session
+`7d153320-8931-4f35-a5c4-3147fdd753c8`.
+
+The result visibly reported seed `v2c12-cf08-weighted-recent-sima`, package
+mode `base`, and `repeat-when-available; 1 executed step commands`. Its actual
+public download `v2c12-c480-replay-1.0.0-ff9fe367c41f41dcad8ac4423a2ed29a.json`
+was 4,072 bytes, SHA-256
+`bf6d3d4875446b81be3d65d48f80f60cff1f5737d89db7d9aecdf4e11654fc29`.
+Reading those bytes confirmed the same seed, `modePolicy` selection
+`repeat-when-available`, one base spin command, artifact stake `0.05`, base
+bet mode, config hash
+`sha256:35ad9aeda498b49d0224663491da5d5b32c86d7a0b38e9d9325de19b57f77ba0`,
+and total bet `0.05`.
+
+The runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-a6452b8c3c3e9238/run-2026-10-15T01-34-23-428Z/transcript.json`
+(SHA-256 `fc190c9ccb3caacf2e776461edd970708365bcecdb1757abe1b547504b3b0813`).
+I independently opened `1-observation.png` (SHA-256
+`911421156e1abc3f97b7311151969833c757617634084ad07835306053f873ed`): it
+legibly shows the completed job, seed, requested/actual round, package mode,
+repeat policy, and download control. This is partial evidence only: it is a
+weighted base route probe, not the required ordinary-and-weighted ante/buy/
+buy-more financial matrix.
