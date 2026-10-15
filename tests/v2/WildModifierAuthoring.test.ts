@@ -164,8 +164,12 @@ describe("V2C-13 finite modifier authoring", () => {
             {id: "buy", runtimeType: "buyFeature", costMultiplier: 10, forcedFreeGames: 2}];
         Reflect.deleteProperty(b, "reelStrips");
         b.reelSequences = ["A", "W2", "A"].map(symbol => ({type: "weighted", variants: [
-            {id: "first", symbols: [symbol], weight: 1}, {id: "second", symbols: [symbol, symbol], weight: 2},
+            {id: "first", symbols: [symbol], weight: 1}, {id: "second", symbols: ["B"], weight: 2},
         ]}));
+        b.mechanics!.modifiers!.rules.unshift(
+            {id: "side-transform", type: "transform", space: "evaluated", positions: [[0, 0], [2, 0]], from: "B", to: "A"},
+            {id: "wild-transform", type: "transform", space: "evaluated", positions: [[1, 0]], from: "B", to: "W2"},
+        );
         const game = generatedMechanicsGame(b), 
             session = mechanicsSession(game);
         session.setBet(7.5);
@@ -252,6 +256,10 @@ describe("V2C-13 finite modifier authoring", () => {
         const artifact = api.buildRoundArtifactFromSession(session, {roundId: "rejected", provenance: {game: b.manifest, pokieVersion: "1.3.0"}});
         expect(artifact.totalWin).toBe(0);
         expect(artifact.featureEvents?.find(event => event.type === "jackpot")?.data).not.toHaveProperty("award");
+        session.setCreditsAmount(0);
+        session.play(); // An insufficient-credit no-op must not make a rejected result visible again.
+        expect(session.getWinAmount()).toBe(0);
+        expect(api.observeVideoSlotFeatures(session).jackpot!.award).toBeUndefined();
         for (const candidate of [session, reference]) {
             candidate.setBet(1e-7);
             candidate.setCreditsAmount(10000);

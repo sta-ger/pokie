@@ -130,7 +130,7 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     public override play(): void {
         this.executeStep(() => {
             this.validateScreenCoordinates();
-            if (!this.canPlayNextGame()) return;
+            if (!this.canPlayNextGame()) return false;
             const mode = this.resolveActiveBetMode();
             // getStakeAmount() itself, computed before any forced entry mutates the wrapped session's
             // state -- this is the one true "what does this spin cost" figure, identical to what a caller
@@ -173,6 +173,7 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
                 this.baseSession.setCreditsAmount(this.baseSession.getCreditsAmount() - extraCost);
             }
             this.baseSession.play();
+            return true;
         });
     }
 

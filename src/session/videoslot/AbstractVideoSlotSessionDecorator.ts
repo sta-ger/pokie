@@ -196,13 +196,14 @@ implements VideoSlotSessionHandling<T> {
     public getLinesPatterns(): LinesPatternsDescribing {
         return this.baseSession.getLinesPatterns();
     }
-    protected executeStep(action: () => void): void {
+    protected executeStep(action: () => boolean | void): void {
+        const resultValid = this.stepResultValid;
         let rollback: (() => void) | undefined;
         this.stepResultValid = false;
         try {
             rollback = this.createStepRollback();
             this.stepResultValid = true;
-            action();
+            if (action() === false) this.stepResultValid = resultValid;
         } catch (error) {
             rollback?.();
             this.stepResultValid = false;
