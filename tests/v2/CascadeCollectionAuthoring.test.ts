@@ -424,7 +424,7 @@ describe("V2C-14 authored bounded mechanics", () => {
             expect(() => api.renderBuiltGameModule(blueprint, "1.3.0")).toThrow(/mechanics/);
         }
         const blueprint = boundedBlueprint();
-        blueprint.betModes = [{id: "base", runtimeType: "base"}];
+        blueprint.betModes = [{id: "base", runtimeType: "base", isDefault: true}];
         expect(() => api.renderBuiltGameModule(blueprint, "1.3.0")).toThrow(/betModes/);
         const modifiers: api.ScreenModifiers = {wilds: [], rules: []};
         config.setScreenModifiers(modifiers);
