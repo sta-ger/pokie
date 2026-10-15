@@ -770,3 +770,33 @@ All screenshots and downloads remain runtime-only.
 This continues, but does not complete, the matrix: ordinary buy-more targets
 2/4/5 and the requested ordinary-ante viewport financial row remain
 uncollected. No failure is claimed from those absent observations.
+
+## Restored ordinary-ante financial row (2026-10-15)
+
+Product identity remains `4951df55907a2863b6e077c290e3f8c468bc5f6e`; the
+clean evidence descendant used its authenticated compiled CLI
+(`npm run build-cli`, exit 0; output SHA-256
+`14626822dd28e5025f95dc7375937737d218c009775b4869fefbfe7d0523ea3b`) through
+`node ./dist/cli/pokie.js --no-open`. No simulation or replay was repeated.
+
+The verifier's authenticated profile-restoration adapter copied only the
+completed retained registry and durable-job storage from the accepted ordinary
+ante run into a fresh application profile, then the public Projects → Open →
+Replay path loaded job `055de22609dc4753850c0367422426af`. The new runtime-only
+transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-31b3940716a6e35c/run-2026-10-15T04-24-36-363Z/transcript.json`
+(SHA-256 `09402e882876ffba413e746f4441f4edb5aab24c7d910983dbfa3e2acf00fb3b`).
+
+I independently inspected its `3-observation.png` (SHA-256
+`c2e62d06ef5106a32e5e5323b59dc548cf7c91385489f64b931712700f232db7`). At the
+1440×1200 viewport it legibly shows the completed retained job, seed
+`v2c12-ordinary-ante-recent`, package and Bet mode `ante`, policy
+`repeat-when-available; 1 executed step commands`, Stake
+`0.07500000000000001`, and Charged mode `ante` together. The original public
+download remains 3,033 bytes, SHA-256
+`1f17a9422195baf4fbaf08325a4738cd18dff990c034a5223de5950e87873910`; its
+actual JSON bytes match that seed, configuration hash
+`sha256:e07ad42fe08c0c44ad95739fc1c4ff7f81e6111e825d0eb26bd8ffbc15839658`, one
+`{kind:"spin", mode:"ante"}` command, repeat-when-available policy, and final
+stake/totalBet `0.07500000000000001`. Runtime profiles, screenshots and the
+download remain outside version control.
