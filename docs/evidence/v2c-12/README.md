@@ -504,3 +504,35 @@ legibly shows the completed job, seed, requested/actual round, package mode,
 repeat policy, and download control. This is partial evidence only: it is a
 weighted base route probe, not the required ordinary-and-weighted ante/buy/
 buy-more financial matrix.
+
+## Ordinary ante Recent Simulation Replay (2026-10-15)
+
+Candidate product identity remains `cf08dbafb1d3cf6799e5c35526a6beeae8d78e8d`.
+After correcting the retained collector from aggregate **All modes** to the
+literal concrete-mode route, one fresh Studio profile opened the retained
+ordinary package and publicly ran a one-round, one-worker `ante` Simulation
+with seed `v2c12-ordinary-ante-recent`. Public **Replay → Recent Simulation**
+selected that report and round 1; one **Load** then one **Run again** completed
+replay job `055de22609dc4753850c0367422426af`, session
+`71541696-459d-40e1-b7b7-c3303ef507df`.
+
+The completed Replay rendered package bet mode `ante`, mode policy
+`repeat-when-available; 1 executed step commands`, Stake
+`0.07500000000000001`, and charged mode `ante`. The actual browser download
+`v2c12-ordinary-matrix-1.0.0-055de22609dc4753850c0367422426af.json` was
+3,033 bytes with SHA-256
+`1f17a9422195baf4fbaf08325a4738cd18dff990c034a5223de5950e87873910`.
+Its bytes match the rendered record: the ordinary package identity, seed,
+round 1, `modePolicy.selection: "repeat-when-available"`, command
+`{kind:"spin", mode:"ante"}`, final artifact stake
+`0.07500000000000001`, charged-mode event and `totalBet` of the same value.
+
+The runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-a6452b8c3c3e9238/run-2026-10-15T01-57-02-207Z/transcript.json`
+(SHA-256 `6499888e9d55681880b2a6c85372765e7f9ea40988f699d3235cfc96529023c4`).
+I independently opened its `1-observation.png` (SHA-256
+`b28f826c1dc033b9a2256273c4f476b85b1bbfb4b5ead6be5698b2fb254eac4d`):
+the rendered Replay card and table are legible, with the completed status,
+download, seed, package mode and repeat policy visible. This adds only the
+ordinary ante branch; the required ordinary/weighted buy and buy-more matrix
+remains uncollected.
