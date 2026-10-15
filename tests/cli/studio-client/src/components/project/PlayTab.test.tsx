@@ -303,7 +303,7 @@ it("V2C-13 presents a real transformed multiplier round with payout evidence and
     const {generatedMechanicsGame} = await import("../../../../../v2/fixtures/ExistingMechanicsGame");
     const {StudioPlayService} = await import("../../../../../../cli/studio/runtime/StudioPlayService");
     const blueprint = JSON.parse(readFileSync(path.resolve(__dirname, "../../../../../../examples/blueprints/wild-transform.blueprint.json"), "utf8"));
-    const game = generatedMechanicsGame(blueprint), 
+    const game = generatedMechanicsGame(blueprint),
         service = new StudioPlayService(() => Promise.resolve(game));
     try {
         const created = await service.newSession("/modifier-package", 31);
@@ -317,6 +317,6 @@ it("V2C-13 presents a real transformed multiplier round with payout evidence and
         expect(screen.getAllByText("screenModifiers").length).toBeGreaterThan(0);
         for (let reel = 0; reel < 3; reel++) expect(container.querySelector<HTMLElement>(`[data-cell="0:${reel}"]`)?.style.backgroundColor).not.toBe("");
     } finally {
-        await service.reset(); 
+        await service.reset();
     }
 });

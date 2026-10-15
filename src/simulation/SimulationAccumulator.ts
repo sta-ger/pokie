@@ -54,7 +54,7 @@ export class SimulationAccumulator {
     }
 
     public addModifierStatistics(observation: ModifierStatistics): void {
-        this.modifiers = mergeModifierStatistics(this.modifiers, observation); 
+        this.modifiers = mergeModifierStatistics(this.modifiers, observation);
     }
 
     public setReelSequenceStatistics(statistics: readonly ReelSequenceStatistics[]): void {

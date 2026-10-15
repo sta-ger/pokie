@@ -35,10 +35,10 @@ implements VideoSlotWithFreeGamesConfigRepresenting<T> {
     }
 
     public getScreenModifiers(): ScreenModifiers<T> | undefined {
-        return this.baseConfig.getScreenModifiers(); 
+        return this.baseConfig.getScreenModifiers();
     }
     public setScreenModifiers(modifiers: ScreenModifiers<T> | undefined): void {
-        this.baseConfig.setScreenModifiers(modifiers); 
+        this.baseConfig.setScreenModifiers(modifiers);
     }
 
     public getScreenGeometry(): ScreenGeometry | undefined {
