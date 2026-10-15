@@ -146,7 +146,13 @@ and distributions include completed samples only.
 
 Recent Simulation replay selects an accepted **subround** from 1 through
 `sampling.acceptedSubrounds`; its selector and server guard use this range, while
-the report continues to display completed logical-round metrics. Recorded audit
+the report continues to display completed logical-round metrics. This requires the
+original recorded seed and a single-worker run. Seedless and multiple-worker
+reports remain inspectable/downloadable; Studio explains why they cannot be
+replayed and asks for a new simulation with an explicit seed and one worker.
+Changing the selected report, index or mode requires loading the target again.
+A rejected replay start has no job to cancel; the loaded target can be run again.
+Recorded audit
 replay can verify an interrupted prefix or a completed logical round. A standalone
 collection has no interruptible chain; its audit captures a threshold crossing
 from a previously accumulated partial balance.

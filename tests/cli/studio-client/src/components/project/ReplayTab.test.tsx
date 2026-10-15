@@ -3,13 +3,16 @@ import {useState} from "react";
 import {ReplayRecorder} from "../../../../../../src/replay/ReplayRecorder";
 import {transactionalRoundGame} from "../../../../../v2/fixtures/TransactionalRoundGame";
 import {MantineProvider} from "@mantine/core";
-import {render, screen, within} from "@testing-library/react";
+import {render, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {readFileSync} from "fs";
 import path from "path";
-import type {StudioReplayJobView, StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
+import type {StudioReplayJobView, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../../../../../cli/studio-client/src/api/types";
 import {describeReplayProgress, describeReplayResult} from "../../../../../../cli/studio-client/src/domain/interpret/Replay";
 import {ReplayTab, type ExpectedReplayState} from "../../../../../../cli/studio-client/src/components/project/ReplayTab";
+import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
+import {StudioApiProvider} from "../../../../../../cli/studio-client/src/context/StudioApiProvider";
+import {useReplayPoll} from "../../../../../../cli/studio-client/src/hooks/useReplayPoll";
 import {StudioPlayService} from "../../../../../../cli/studio/runtime/StudioPlayService";
 
 // P5-POLISH-19: proves the real Studio Replay presentation entry point (ReplayTab -> RoundArtifactInspector
@@ -367,4 +370,62 @@ it("V2C-13 seeded replay shows the transformed outcome, multiplied amount and or
     expect(screen.getAllByText("screenModifiers").length).toBeGreaterThan(0);
     for (let reel = 0; reel < 3; reel++) expect(container.querySelector<HTMLElement>(`[data-cell="0:${reel}"]`)?.style.backgroundColor).not.toBe("");
     expect(screen.getByRole("link", {name: "Download replay JSON"})).toBeEnabled();
+});
+
+
+describe("Recent Simulation replay eligibility and rejected-start recovery", () => {
+    function entry(id: string, seed?: string, workers = 1): StudioSimulationReportListEntry {
+        return {id, seed, workers, status: "completed", game: {id, version: "1"}, requestedRounds: 12, actualRounds: 2,
+            sampling: {unit: "completed-logical-round", acceptedSubrounds: 12, carriedSubrounds: 0, excludedSubrounds: 0, trajectories: "independent-session-per-worker"},
+            startedAt: "2026-10-15T13:00:00Z", completedAt: "2026-10-15T13:00:01Z", durationMs: 1, hasWarnings: false};
+    }
+
+    it("blocks seedless and multi-worker reports, runs subround 3, and recovers from a rejected start without a phantom job", async () => {
+        const user = userEvent.setup();
+        const requests: Record<string, unknown>[] = [];
+        const fetchImpl: FetchLike = (_url, init) => {
+            if (init?.method === "POST") {
+                requests.push(JSON.parse(String(init.body)));
+                if (requests.length === 1) return Promise.resolve({ok: false, status: 400, json: () => Promise.resolve({error: "Unknown or incomplete simulation."})});
+            }
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({id: "reused", status: "completed", round: 3, completedRounds: 3, durationMs: 1, startedAt: "2026-10-15T13:00:00Z"})});
+        };
+        function Harness() {
+            const replay = useReplayPoll();
+            return <ReplayTab progress={replay.progress} result={undefined} error={replay.error} onRun={(round, seed, simulationId, _keep, mode) => replay.run(round, seed, simulationId, mode)}
+                onCancel={replay.cancel} onRetry={() => undefined} listView={{status: "empty"}} listError={undefined} onRefreshList={() => undefined}
+                onInspectStored={() => Promise.resolve()} onCompareStored={() => undefined} expected={{status: "empty"}} onLoadExpectedFromPaste={() => undefined}
+                onClearExpected={() => undefined} comparison={undefined} recentSpins={{status: "empty"}} recentSpinsError={undefined} onRefreshRecentSpins={() => undefined}
+                recentRuns={{status: "loaded", entries: [entry("seedless"), entry("seeded", "retained"), entry("parallel", "retained", 2)]}} recentRunsError={undefined}
+                onRefreshRecentRuns={() => undefined} currentGame={{id: "bounded-respins", version: "1"}} />;
+        }
+        render(<MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><Harness /></StudioApiProvider></MantineProvider>);
+        await user.click(screen.getByRole("radio", {name: "Recent Simulation"}));
+        await user.click(screen.getByRole("button", {name: /seedless v1/}));
+        expect(screen.getByText(/This simulation has no recorded seed/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Load"})).toBeDisabled();
+        expect(screen.queryByText("(freshly generated)")).not.toBeInTheDocument();
+        expect(requests).toEqual([]);
+        await user.click(screen.getByRole("button", {name: /parallel v1/}));
+        expect(screen.getByText(/This simulation used multiple workers/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Load"})).toBeDisabled();
+        await user.click(screen.getByRole("button", {name: /seeded v1/}));
+        await user.clear(screen.getByRole("textbox", {name: "Subround"}));
+        await user.type(screen.getByRole("textbox", {name: "Subround"}), "3");
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(screen.getByRole("button", {name: "Run again"}));
+        await waitFor(() => expect(screen.getByText(/This replay request couldn't be completed/)).toBeInTheDocument());
+        expect(screen.queryByText(/queued —/)).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Cancel"})).not.toBeInTheDocument();
+        expect(requests[0]).toMatchObject({round: 3, seed: "retained", simulationId: "seeded"});
+        await user.click(screen.getByRole("button", {name: "Run again"}));
+        await screen.findByText(/completed — 3\/3 rounds/);
+        expect(requests).toHaveLength(2);
+        expect(requests[1]).toEqual(requests[0]);
+        // Selecting another report must retire the loaded target and its completed result.
+        await user.click(screen.getByRole("button", {name: /seedless v1/}));
+        expect(screen.queryByText(/completed —/)).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Run again with the same parameters"})).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Load"})).toBeDisabled();
+    });
 });
