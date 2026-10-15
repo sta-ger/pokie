@@ -54,13 +54,15 @@ describe("buildGameModelProjection", () => {
         expect(buildGameModelProjection(draft)).toEqual(valid);
     });
 
-    it.each(["respins", "collection"] as const)("localizes validation exceptions from malformed %s JSON values", key => {
+    it.each(["respins", "collection"] as const)("returns field diagnostics for malformed %s JSON values", key => {
         const draft = JSON.parse(JSON.stringify(BOUNDED_BLUEPRINT));
         draft.mechanics[key][key === "respins" ? "maxRespins" : "threshold"] = {toString: null, valueOf: null};
         const authored = JSON.stringify(draft);
         const valid = buildGameModelProjection(BOUNDED_BLUEPRINT);
         const projection = buildGameModelProjection(draft);
-        expect(projection.mechanics).toEqual({status: "invalid", reason: "blueprint-mechanics-invalid: mechanics: These rule fields could not be validated. Check their value types."});
+        const field = key === "respins" ? "maxRespins" : "threshold";
+        const message = key === "respins" ? "must be an integer in [1, 90]." : "must be finite and positive.";
+        expect(projection.mechanics).toEqual({status: "invalid", reason: `blueprint-mechanics-invalid: mechanics.${key}.${field}: ${message}`});
         expect(projection).toEqual({...valid, mechanics: projection.mechanics});
         expect(JSON.stringify(draft)).toBe(authored);
         draft.mechanics = BOUNDED_BLUEPRINT.mechanics;

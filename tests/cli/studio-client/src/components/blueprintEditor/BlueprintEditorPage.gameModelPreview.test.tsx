@@ -36,6 +36,8 @@ describe("Guided Design Game: Game Model preview", () => {
         {mechanics: {respins: {grant: 2}}, path: "mechanics.respins.trigger"},
         {mechanics: {cascade: {maxCascades: {invalid: true}}}, path: "mechanics.cascade.maxCascades"},
         {mechanics: {collection: {...boundedExample.mechanics.collection, reset: {invalid: true}}}, path: "mechanics.collection.reset"},
+        {mechanics: {respins: {...boundedExample.mechanics.respins, maxRespins: {toString: null, valueOf: null}}}, path: "mechanics.respins.maxRespins"},
+        {mechanics: {collection: {...boundedExample.mechanics.collection, threshold: {toString: null, valueOf: null}}}, path: "mechanics.collection.threshold"},
     ])("keeps $path recoverable through the real preview service without saving or building", async ({mechanics, path}) => {
         const service = new StudioBlueprintService("1.3.0", process.cwd(), new StudioHomeService("1.3.0", new InMemoryRecentProjectsRepository()));
         const previews: unknown[] = [];
@@ -67,6 +69,17 @@ describe("Guided Design Game: Game Model preview", () => {
                 fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: authored}});
                 fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
             }
+            fireEvent.click(screen.getByLabelText("Form"));
+            fireEvent.click(screen.getByRole("tab", {name: /^Bets/}));
+            if (draft === malformed) {
+                await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeDisabled());
+                expect(screen.getByText(new RegExp(`Correct mechanics.${Object.keys(mechanics)[0]} in JSON`))).toBeVisible();
+            } else {
+                await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
+                expect(screen.getByLabelText("Maximum executed respins")).toBeVisible();
+                expect(screen.getByLabelText("Collection contribution")).toHaveValue("0");
+            }
+            fireEvent.click(screen.getByLabelText("JSON"));
             const preview = screen.getByRole("button", {name: "Preview Game Model"});
             fireEvent.click(preview);
             const panel = screen.getByText("Game Model preview").closest("fieldset")!;

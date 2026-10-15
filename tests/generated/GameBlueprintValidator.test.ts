@@ -1,4 +1,6 @@
 import {GameBlueprint} from "../../src/generated/GameBlueprint.js";
+import {validateAuthoredMechanics} from "../../src/generated/validateAuthoredMechanics.js";
+import boundedExample from "../../examples/blueprints/bounded-cascade-respins-collection.blueprint.json";
 import {GameBlueprintValidator} from "../../src/generated/GameBlueprintValidator.js";
 
 function validBlueprint(): GameBlueprint {
@@ -31,6 +33,48 @@ function codesOf(issues: {code: string}[]): string[] {
 
 describe("GameBlueprintValidator", () => {
     const validator = new GameBlueprintValidator();
+
+    it.each([
+        ["cascade", "maxCascades"], ["respins", "grant"], ["respins", "maxRespins"],
+        ["collection", "contribution"], ["collection", "threshold"], ["collection", "cap"], ["collection", "payout"],
+    ])("rejects malformed %s.%s without coercion or secondary operand errors", (mechanic, field) => {
+        const valid = JSON.parse(JSON.stringify(boundedExample));
+        const sharedValid = validateAuthoredMechanics(valid);
+        const publicValid = validator.validate(valid);
+        expect(sharedValid).toEqual([]);
+        expect(publicValid.filter(issue => issue.severity === "error")).toEqual([]);
+        for (const value of [{toString: null, valueOf: null}, {}, [], [1], "1", true, null]) {
+            const draft = JSON.parse(JSON.stringify(valid));
+            draft.mechanics[mechanic][field] = value;
+            const authored = JSON.stringify(draft);
+            const issues = validateAuthoredMechanics(draft);
+            expect(issues).toEqual([expect.objectContaining({code: "blueprint-mechanics-invalid", severity: "error", path: `mechanics.${mechanic}.${field}`})]);
+            expect(validator.validate(draft).filter(issue => issue.severity === "error")).toEqual(issues);
+            expect(JSON.stringify(draft)).toBe(authored);
+            draft.mechanics = valid.mechanics;
+            for (let repeat = 0; repeat < 2; repeat++) {
+                expect(validateAuthoredMechanics(draft)).toEqual(sharedValid);
+                expect(validator.validate(draft)).toEqual(publicValid);
+            }
+        }
+    });
+
+    it("preserves numeric bounds, relational diagnostics and meaningful zeros", () => {
+        const draft = JSON.parse(JSON.stringify(boundedExample));
+        draft.mechanics.cascade.maxCascades = 100;
+        Object.assign(draft.mechanics.respins, {grant: 90, maxRespins: 90});
+        Object.assign(draft.mechanics.collection, {contribution: 0, payout: 0, threshold: 1e-7, cap: 1e-7});
+        expect(validateAuthoredMechanics(draft)).toEqual([]);
+        expect(validator.validate(draft).filter(issue => issue.severity === "error")).toEqual([]);
+        draft.mechanics.respins.grant = 91;
+        draft.mechanics.collection.cap = 0;
+        expect(validateAuthoredMechanics(draft).map(issue => issue.path)).toEqual(["mechanics.respins.grant", "mechanics.collection.cap"]);
+        draft.mechanics.cascade.maxCascades = 101;
+        draft.mechanics.respins.maxRespins = 91;
+        expect(validateAuthoredMechanics(draft).map(issue => issue.path)).toEqual(["mechanics.cascade.maxCascades", "mechanics.respins.maxRespins", "mechanics.collection.cap"]);
+        draft.mechanics.respins.trigger.minimumCount = {toString: null, valueOf: null};
+        expect(validateAuthoredMechanics(draft).map(issue => issue.path)).toContain("mechanics.respins.trigger");
+    });
 
     it("accepts finite fractional/scientific stakes and keeps duplicate-bet warnings", () => {
         expect(validator.validate({...validBlueprint(), availableBets: [1, 0.01, 0.1, 1.5, 1e-7]})).toEqual([]);

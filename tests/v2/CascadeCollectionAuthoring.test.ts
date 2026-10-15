@@ -230,6 +230,32 @@ describe("V2C-14 authored bounded mechanics", () => {
         expect(tailReport).toMatchObject({rounds: 0, totalBet: 0, sampling: {acceptedSubrounds: 8, excludedSubrounds: 8}});
     });
 
+    it.each(["respins", "collection"] as const)("rejects malformed %s numeric JSON at generation and direct construction without consuming state", mechanic => {
+        const blueprint = constant(mechanic);
+        const validRules = JSON.parse(JSON.stringify(blueprint.mechanics));
+        const field = mechanic === "respins" ? "maxRespins" : "threshold";
+        const expectedPath = `mechanics.${mechanic}.${field}`;
+        const config = new api.VideoSlotConfig();
+        config.setReelsNumber(3);
+        config.setReelsSymbolsNumber(1);
+        config.setAvailableSymbols(blueprint.symbols);
+        const generator = new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(31));
+        const session = new api.BoundedVideoSlotSession(config, generator, validRules);
+        const before = session.toSessionState();
+        (blueprint.mechanics![mechanic] as unknown as Record<string, unknown>)[field] = {toString: null, valueOf: null};
+        expect(() => api.renderBuiltGameModule(blueprint, "1.3.0")).toThrow(expectedPath);
+        expect(() => api.renderBuiltGameModuleSource(blueprint, "1.3.0")).toThrow(expectedPath);
+        expect(() => new api.BoundedVideoSlotSession(config, generator, blueprint.mechanics!)).toThrow(expectedPath);
+        expect(session.toSessionState()).toEqual(before);
+        for (let repeat = 0; repeat < 2; repeat++) {
+            const reused = new api.BoundedVideoSlotSession(config, generator, validRules);
+            expect(reused.toSessionState()).toEqual(before);
+            blueprint.mechanics = validRules;
+            expect(() => api.renderBuiltGameModule(blueprint, "1.3.0")).not.toThrow();
+            expect(() => api.renderBuiltGameModuleSource(blueprint, "1.3.0")).not.toThrow();
+        }
+    });
+
     it.each(["respins", "collection"] as const)("rejects non-string %s policies consistently at every authored boundary", async mechanic => {
         const field = mechanic === "respins" ? "retrigger" : "reset";
         const expectedPath = `mechanics.${mechanic}.${field}`;

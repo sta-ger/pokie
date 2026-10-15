@@ -4,7 +4,7 @@ import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiCli
 import type {GameBlueprint} from "../../../../../../src/generated/GameBlueprint";
 import {GameBlueprintValidator} from "../../../../../../src/generated/GameBlueprintValidator";
 import {buildGameModelProjection} from "../../../../../../src/project/buildGameModelProjection";
-import {GameModelSections} from "../../../../../../cli/studio-client/src/components/project/GameModelSections";
+import {GameModelSections, type GameModelEditController} from "../../../../../../cli/studio-client/src/components/project/GameModelSections";
 import {GameModelPreviewPanel} from "../../../../../../cli/studio-client/src/components/blueprintEditor/GameModelPreviewPanel";
 import collectionExample from "../../../../../../examples/blueprints/bounded-collection.blueprint.json";
 import combinedExample from "../../../../../../examples/blueprints/bounded-cascade-respins-collection.blueprint.json";
@@ -132,4 +132,35 @@ it("previews the same combined rules through the editor API without saving", asy
     await screen.findByText(/^Collection:/);
     expectRules(combined);
     expect(requests.filter(url => url !== "/api/project/symbol-artwork")).toEqual(["/api/home/blueprints/game-model-preview"]);
+});
+
+
+it.each(["respins", "collection"] as const)("disables section Save for malformed %s numeric JSON despite stale validation, then permits repair", mechanic => {
+    const projection = buildGameModelProjection(combined);
+    const save = jest.fn();
+    const controller: GameModelEditController = {
+        activeSection: "mechanics", ready: true, saving: false,
+        onEdit: jest.fn(), onSave: save, onCancel: jest.fn(), mutate: jest.fn(),
+        validationView: {status: "ok", warnings: []}, blueprint: combined as unknown as Record<string, unknown>,
+        drafts: {current: new Map()}, modeDrafts: {current: {}}, revision: 0,
+    };
+    const {rerender} = render(<GameModelSections projection={projection} edit={controller} />, {wrapper: MantineProvider});
+    expect(screen.getByRole("button", {name: "Save"})).toBeEnabled();
+    const malformed = JSON.parse(JSON.stringify(combined));
+    const field = mechanic === "respins" ? "maxRespins" : "threshold";
+    malformed.mechanics[mechanic][field] = {toString: null, valueOf: null};
+    const authored = JSON.stringify(malformed);
+    rerender(<GameModelSections projection={projection} edit={{...controller, blueprint: malformed}} />);
+    expect(screen.getByRole("button", {name: "Save"})).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", {name: "Save"}));
+    expect(save).not.toHaveBeenCalled();
+    expect(screen.getByText(new RegExp(`Correct mechanics.${mechanic} in JSON`))).toBeVisible();
+    expect(JSON.stringify(malformed)).toBe(authored);
+    for (let repeat = 0; repeat < 2; repeat++) {
+        rerender(<GameModelSections projection={projection} edit={{...controller, blueprint: JSON.parse(JSON.stringify(combined)), revision: repeat + 1}} />);
+        expect(screen.getByRole("button", {name: "Save"})).toBeEnabled();
+        expect(screen.getByLabelText("Maximum executed respins")).toBeVisible();
+        expect(screen.getByLabelText("Collection threshold")).toBeVisible();
+    }
+    expect(save).not.toHaveBeenCalled();
 });

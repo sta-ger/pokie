@@ -1,15 +1,22 @@
 import {fireEvent, screen, waitFor} from "@testing-library/react";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
-import {GameBlueprintValidator} from "../../../../../../src/generated/GameBlueprintValidator";
+import {StudioBlueprintService} from "../../../../../../cli/studio/blueprint/StudioBlueprintService";
+import {StudioHomeService} from "../../../../../../cli/studio/home/StudioHomeService";
+import {InMemoryRecentProjectsRepository} from "../../../../../../cli/studio/InMemoryRecentProjectsRepository";
 
 const initial = {manifest: {id: "bounded", name: "Bounded", version: "1.0.0"}, reels: 3, rows: 1, symbols: ["A", "C"], wilds: [], scatters: [], availableBets: [0.05], paytable: {A: {3: 0}}, reelStrips: [["C"], ["C"], ["C"]]};
 function home() {
     const writes = jest.fn();
+    const service = new StudioBlueprintService("1.3.0", process.cwd(), new StudioHomeService("1.3.0", new InMemoryRecentProjectsRepository()));
     const fetchImpl: FetchLike = (url, init) => {
         if (url === "/api/home/blueprints/validate") {
-            const issues = new GameBlueprintValidator().validate(JSON.parse(String(init?.body)).blueprint);
-            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: issues.some(i => i.severity === "error") ? "invalid" : "ok", errors: issues.filter(i => i.severity === "error"), warnings: []})});
+            const result = service.validate(JSON.parse(String(init?.body)).blueprint);
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(result)});
+        }
+        if (url === "/api/home/blueprints/game-model-preview") {
+            const result = service.previewGameModel(JSON.parse(String(init?.body)).blueprint);
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(JSON.parse(JSON.stringify(result)))});
         }
         if (!init?.method || init.method === "GET") return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
         writes(url);
@@ -80,5 +87,44 @@ it.each([{policy: ["reset"]}, {policy: {policy: "reset"}}, {policy: null}, {poli
     expect(screen.queryByRole("combobox", {name: "Collection reset"})).toBeNull();
     await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeDisabled());
     expect(JSON.parse((await jsonEditor()).value)).toEqual(malformed);
+    expect(writes).not.toHaveBeenCalled();
+});
+
+
+it.each(["respins", "collection"] as const)("repairs object-valued %s numeric drafts through Form/JSON and real preview, then reuses the editor", async mechanic => {
+    const writes = home();
+    const valid = {...initial, mechanics: {
+        respins: {trigger: {symbolId: "C", minimumCount: 1}, grant: 2, retrigger: "none", maxRespins: 8},
+        collection: {symbolId: "C", contribution: 0, threshold: 4, cap: 5, reset: "zero", payout: 0},
+    }};
+    const malformed = JSON.parse(JSON.stringify(valid));
+    const field = mechanic === "respins" ? "maxRespins" : "threshold";
+    malformed.mechanics[mechanic][field] = {toString: null, valueOf: null};
+    for (const draft of [valid, malformed, valid, valid]) {
+        fireEvent.change(await jsonEditor(), {target: {value: JSON.stringify(draft)}});
+        fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
+        form();
+        if (draft === malformed) {
+            expect(screen.getByText(new RegExp(`Correct mechanics.${mechanic} in JSON`))).toBeVisible();
+            expect(screen.getByText(new RegExp(`mechanics.${mechanic}.${field}:`))).toBeVisible();
+            await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeDisabled());
+        } else {
+            expect(screen.getByLabelText("Maximum executed respins")).toHaveValue("8");
+            expect(screen.getByLabelText("Collection threshold")).toHaveValue("4");
+            await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
+        }
+        const editor = await jsonEditor();
+        expect(JSON.parse(editor.value)).toEqual(draft);
+        fireEvent.click(screen.getByRole("button", {name: "Preview Game Model"}));
+        await screen.findByText(`Id: ${valid.manifest.id}`);
+        if (draft === malformed) {
+            expect(screen.getByText(/These mechanics can't be previewed yet/)).toBeVisible();
+            expect(screen.queryByText(/^Respins: trigger/)).toBeNull();
+        } else {
+            expect(screen.getByText(/^Respins: trigger/)).toBeVisible();
+            expect(screen.getByText(/^Collection: symbol/)).toHaveTextContent(/contribution 0 per symbol;.*payout 0/);
+        }
+        expect(JSON.parse(editor.value)).toEqual(draft);
+    }
     expect(writes).not.toHaveBeenCalled();
 });

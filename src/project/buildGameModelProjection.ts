@@ -29,8 +29,8 @@ function projectMechanics(blueprint: GameBlueprint): GameModelProjection["mechan
             ? {status: "invalid", reason: issues.map(issue => `${issue.code}: ${issue.message}`).join("\n")}
             : available(JSON.parse(JSON.stringify(blueprint.mechanics ?? {})));
     } catch {
-        // Malformed JSON objects can shadow numeric coercion methods used during validation.
-        // Keep even a validation failure local to mechanics, so other sections remain inspectable.
+        // Keep unexpected validation failures local to mechanics as a defensive boundary,
+        // so unrelated sections remain inspectable even if a future rule validator throws.
         return {status: "invalid", reason: "blueprint-mechanics-invalid: mechanics: These rule fields could not be validated. Check their value types."};
     }
 }
