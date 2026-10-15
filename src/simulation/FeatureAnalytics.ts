@@ -18,8 +18,9 @@ export type AnalyticsFeatureEvent = {
     entryExecuted?: boolean;
     retrigger?: boolean;
     granted?: number;
-    completion?: {duration: number; win: number};
+    completion?: {duration: number; win: number; entryPosition?: number};
     excludedCompletion?: boolean;
+    abandonedEntryPosition?: number;
 };
 export type FeatureAnalyticsObservation = {
     envelope: AnalyticsEnvelope;
@@ -27,6 +28,7 @@ export type FeatureAnalyticsObservation = {
     position?: number;
     activeKnownFeatures?: AnalyticsFeature[];
     activeCarriedFeatures?: AnalyticsFeature[];
+    activeEntryPositions?: Partial<Record<AnalyticsFeature, number>>;
     logicalEntry: boolean;
     logicalCompletion: boolean;
     carriedSubround: boolean;
@@ -66,8 +68,20 @@ export type FeatureAnalyticsSnapshot = {
     components: Record<string, {type: string; id: string; symbol: string | null; occurrences: number; samples: number; amount: number}>;
     hits: {symbol: Record<string, number>; line: Record<string, number>; scatter: Record<string, number>};
     features: Record<AnalyticsFeature, FeatureAnalyticsCounters>;
-    /** At most 64 independent trajectories. No per-round or per-feature identities. */
-    sources: Record<string, Record<AnalyticsFeature, {entries: number; completions: number; lastPosition: number; endKnown: boolean; endCarried: boolean}>>;
+    /** At most 64 trajectories and 64 unmatched chunk boundaries per feature. Matched history is discarded. */
+    sources: Record<string, Record<AnalyticsFeature, {
+        entries: number;
+        completions: number;
+        unpositionedEntries: number;
+        unpositionedCompletions: number;
+        pendingEntries: number[];
+        pendingCompletions: number[];
+        pendingAbandonments: number[];
+        lastPosition: number;
+        endEntryPosition: number | null;
+        endKnown: boolean;
+        endCarried: boolean;
+    }>>;
 };
 export type AnalyticsRatio = {numerator: number; denominator: number; value: number};
 export type FeatureAnalytics = Omit<FeatureAnalyticsSnapshot, "sources"> & {
@@ -208,7 +222,7 @@ export function validateFeatureAnalytics(s: FeatureAnalyticsSnapshot): void {
     for (const [key, source] of Object.entries(s.sources)) {
         boundedKey(key);
         requireKeys(source, FEATURE_NAMES);
-        for (const f of Object.values(source)) requireKeys(f, ["entries", "completions", "lastPosition", "endKnown", "endCarried"]);
+        for (const f of Object.values(source)) requireKeys(f, ["entries", "completions", "unpositionedEntries", "unpositionedCompletions", "pendingEntries", "pendingCompletions", "pendingAbandonments", "lastPosition", "endEntryPosition", "endKnown", "endCarried"]);
     }
     for (const f of Object.values(s.features)) requireKeys(f, [
         "entries",
@@ -222,6 +236,7 @@ export function validateFeatureAnalytics(s: FeatureAnalyticsSnapshot): void {
         "durationHistogram",
         "winHistogram",
     ]);
+    for (const key of Object.keys(s.betModes)) boundedKey(key);
     for (const [key, c] of Object.entries(s.components)) {
         boundedKey(key);
         requireKeys(c, ["type", "id", "symbol", "occurrences", "samples", "amount"]);
@@ -252,7 +267,7 @@ export function validateFeatureAnalytics(s: FeatureAnalyticsSnapshot): void {
         ![s.totalStake, s.totalWin, s.maxWin, ...Object.values(s.partition), ...Object.values(s.betModes)].every(finite)
     ) throw new Error("Invalid analytics counts/totals.");
     if (!Array.isArray(s.topWins)) throw new Error("Invalid analytics top-win array.");
-    if (s.maxWin > 0 && s.maxWinCount > s.subrounds - s.deadSpins) throw new Error("Invalid analytics maximum occurrence count.");
+    if (s.maxWin > 0 && (s.maxWinCount > s.subrounds - s.deadSpins || s.topWins.filter(n => n === s.maxWin).length !== Math.min(10, s.maxWinCount))) throw new Error("Invalid analytics maximum occurrence count.");
     if (
         !close(
             Object.values(s.partition).reduce((a, b) => a + b, 0),
@@ -287,16 +302,23 @@ export function validateFeatureAnalytics(s: FeatureAnalyticsSnapshot): void {
             f.durationHistogram.length !== 4 ||
             f.winHistogram.length !== 4 ||
             f.durationHistogram.reduce((a, b) => a + b, 0) !== f.completions ||
-            f.winHistogram.reduce((a, b) => a + b, 0) !== f.completions
+            f.winHistogram.reduce((a, b) => a + b, 0) !== f.completions ||
+            !histogramSumMatches(f.durationSum, f.durationHistogram, true) ||
+            !histogramSumMatches(f.winSum, f.winHistogram, false)
         ) throw new Error(`Invalid analytics lifecycle counters for ${name}.`);
         for (const field of ["entries", "completions"] as const) if (Object.values(s.sources).reduce((sum, source) => sum + source[name][field], 0) !== f[field]) throw new Error(`Inconsistent analytics source ${field}.`);
     }
     for (const source of Object.values(s.sources)) for (const f of Object.values(source)) if (
-        ![f.entries, f.completions, f.lastPosition].every(count) ||
+        ![f.entries, f.completions, f.unpositionedEntries, f.unpositionedCompletions, f.lastPosition].every(count) ||
+                !validBoundaries(f) ||
+                f.unpositionedEntries + f.pendingEntries.length > f.entries ||
+                f.unpositionedCompletions + f.pendingCompletions.length > f.completions ||
+                f.completions - f.unpositionedCompletions - f.pendingCompletions.length > f.entries - f.unpositionedEntries - f.pendingEntries.length ||
+                (f.endEntryPosition !== null && (!count(f.endEntryPosition) || f.endEntryPosition > f.lastPosition || !f.endKnown)) ||
                 typeof f.endKnown !== "boolean" ||
                 typeof f.endCarried !== "boolean" ||
                 (f.endKnown && f.endCarried)
-    ) throw new Error("Invalid analytics source counters.");
+    ) throw new Error("Invalid analytics source counters/boundaries (at most 64 unmatched boundaries per feature).");
     for (const group of Object.values(s.hits)) for (const [key, n] of Object.entries(group)) {
         boundedKey(key);
         if (!count(n) || n > s.subrounds) throw new Error("Invalid analytics hit count.");
@@ -354,13 +376,18 @@ export function mergeFeatureAnalytics(a: FeatureAnalyticsSnapshot | undefined, b
         const target =
             Reflect.getOwnPropertyDescriptor(s.sources, key) !== undefined
                 ? s.sources[key]
-                : featureRecord(() => ({entries: 0, completions: 0, lastPosition: 0, endKnown: false, endCarried: false}));
+                : featureRecord(() => emptySourceFeature());
         for (const name of FEATURE_NAMES) {
             target[name].entries += source[name].entries;
             target[name].completions += source[name].completions;
+            target[name].unpositionedEntries += source[name].unpositionedEntries;
+            target[name].unpositionedCompletions += source[name].unpositionedCompletions;
+            for (const field of ["pendingEntries", "pendingCompletions", "pendingAbandonments"] as const) target[name][field].push(...source[name][field]);
+            reconcileBoundaries(target[name]);
             if (source[name].lastPosition >= target[name].lastPosition) {
                 target[name].lastPosition = source[name].lastPosition;
                 target[name].endKnown = source[name].endKnown;
+                target[name].endEntryPosition = source[name].endEntryPosition;
                 target[name].endCarried = source[name].endCarried;
             }
         }
@@ -439,7 +466,7 @@ export function observeFeatureAnalytics(stake: number, win: number, observation?
     for (const kind of ["symbol", "line", "scatter"] as const) for (const key of hits[kind]) increment(s.hits[kind], key, 1);
     boundedKey(observation.source);
     Reflect.defineProperty(s.sources, observation.source, {
-        value: featureRecord(() => ({entries: 0, completions: 0, lastPosition: 0, endKnown: false, endCarried: false})),
+        value: featureRecord(() => emptySourceFeature()),
         enumerable: true,
         configurable: true,
         writable: true,
@@ -452,7 +479,10 @@ export function observeFeatureAnalytics(stake: number, win: number, observation?
             [event.entry, event.entryExecuted, event.retrigger, event.excludedCompletion].some((flag) => flag !== undefined && typeof flag !== "boolean") ||
             (event.granted !== undefined && !count(event.granted))
         ) throw new Error("Invalid analytics lifecycle event fields.");
-        if (event.completion !== undefined) requireKeys(event.completion, ["duration", "win"]);
+        if (event.completion !== undefined) {
+            requireKeys(event.completion, ["duration", "win", ...(event.completion.entryPosition === undefined ? [] : ["entryPosition"])]);
+            if (event.completion.entryPosition !== undefined && (!count(event.completion.entryPosition) || event.completion.entryPosition > (observation.position ?? 0))) throw new Error("Invalid analytics completion entry position.");
+        }
 
         if (!s.envelope.supportedFeatures.includes(event.feature) || lifecycleSeen.has(event.feature) || !count(event.granted ?? 0)) throw new Error("Invalid/repeated analytics lifecycle observation.");
         lifecycleSeen.add(event.feature);
@@ -474,16 +504,64 @@ export function observeFeatureAnalytics(stake: number, win: number, observation?
         }
         s.sources[observation.source][event.feature].entries = f.entries;
         s.sources[observation.source][event.feature].completions = f.completions;
+        const sourceFeature = s.sources[observation.source][event.feature];
+        if (event.entry) {
+            if (observation.position) sourceFeature.pendingEntries.push(observation.position);
+            else sourceFeature.unpositionedEntries++;
+        }
+        if (event.completion) {
+            if (event.completion.entryPosition) sourceFeature.pendingCompletions.push(event.completion.entryPosition);
+            else sourceFeature.unpositionedCompletions++;
+        }
+        if (event.abandonedEntryPosition !== undefined) {
+            if (!count(event.abandonedEntryPosition) || event.abandonedEntryPosition === 0 || event.abandonedEntryPosition > (observation.position ?? 0) || event.completion) throw new Error("Invalid analytics abandoned entry position.");
+            sourceFeature.pendingAbandonments.push(event.abandonedEntryPosition);
+        }
+        reconcileBoundaries(sourceFeature);
     }
     if (!count(observation.position ?? 0)) throw new Error("Invalid analytics source position.");
     for (const name of FEATURE_NAMES) {
         const f = s.sources[observation.source][name];
         f.lastPosition = observation.position ?? 0;
+        f.endEntryPosition = observation.activeEntryPositions?.[name] ?? null;
         f.endKnown = observation.activeKnownFeatures?.includes(name) ?? false;
         f.endCarried = observation.activeCarriedFeatures?.includes(name) ?? false;
     }
     validateFeatureAnalytics(s);
     return s;
+}
+type SourceFeature = FeatureAnalyticsSnapshot["sources"][string][AnalyticsFeature];
+function emptySourceFeature(): SourceFeature {
+    return {entries: 0, completions: 0, unpositionedEntries: 0, unpositionedCompletions: 0, pendingEntries: [], pendingCompletions: [], pendingAbandonments: [], lastPosition: 0, endEntryPosition: null, endKnown: false, endCarried: false};
+}
+// Only unmatched chunk boundaries survive. Abandoned entries can never complete.
+function reconcileBoundaries(source: SourceFeature): void {
+    const entries = new Set(source.pendingEntries);
+    const completions = new Set(source.pendingCompletions);
+    const abandonments = new Set(source.pendingAbandonments);
+    if (entries.size !== source.pendingEntries.length || completions.size !== source.pendingCompletions.length || abandonments.size !== source.pendingAbandonments.length) throw new Error("Overlapping analytics lifecycle boundaries.");
+    for (const position of entries) {
+        if (completions.delete(position) || abandonments.delete(position)) entries.delete(position);
+    }
+    source.pendingEntries = [...entries].sort((a, b) => a - b);
+    source.pendingCompletions = [...completions].sort((a, b) => a - b);
+    source.pendingAbandonments = [...abandonments].sort((a, b) => a - b);
+}
+function validBoundaries(source: SourceFeature): boolean {
+    const groups = [source.pendingEntries, source.pendingCompletions, source.pendingAbandonments];
+    return groups.every(group => Array.isArray(group) && group.every((position, i) => count(position) && position > 0 && position <= source.lastPosition && (i === 0 || position > group[i - 1]))) &&
+        groups.reduce((sum, group) => sum + group.length, 0) <= 64 &&
+        new Set(groups.flat()).size === groups.flat().length;
+}
+function carriedCompletions(source: SourceFeature): number {
+    return source.pendingCompletions.length + Math.max(0, source.unpositionedCompletions - source.unpositionedEntries);
+}
+function histogramSumMatches(sum: number, histogram: number[], integer: boolean): boolean {
+    const [, small, medium, large] = histogram;
+    if (small + medium + large === 0) return sum === 0;
+    const lower = (integer ? small : 0) + 10 * medium + 100 * large;
+    const upper = large > 0 ? Infinity : (integer ? 9 : 10) * small + (integer ? 99 : 100) * medium;
+    return sum > 0 && (sum >= lower || close(sum, lower)) && (integer ? sum <= upper : sum < upper || close(sum, upper));
 }
 export function featureAnalyticsStatistics(snapshot: FeatureAnalyticsSnapshot): FeatureAnalytics {
     const {sources, ...s} = clone(snapshot);
@@ -517,15 +595,15 @@ export function featureAnalyticsStatistics(snapshot: FeatureAnalyticsSnapshot): 
                         averageDuration: ratio(f.durationSum, f.completions),
                         averageWin: ratio(f.winSum, f.completions),
                         incomplete: Object.values(sources).reduce(
-                            (sum, source) => sum + Math.max(source[name].endKnown ? 1 : 0, source[name].entries - source[name].completions, 0),
+                            (sum, source) => sum + Math.max(source[name].endKnown ? 1 : 0, source[name].entries - source[name].completions + carriedCompletions(source[name]), 0),
                             0,
                         ),
                         carriedIncomplete: Object.values(sources).reduce(
-                            (sum, source) => sum + (source[name].endCarried || (source[name].endKnown && source[name].entries === 0) ? 1 : 0),
+                            (sum, source) => sum + (source[name].endCarried || (source[name].endKnown && (source[name].endEntryPosition === null ? source[name].entries === 0 : !source[name].pendingEntries.includes(source[name].endEntryPosition!))) ? 1 : 0),
                             0,
                         ),
                         carriedCompletions: Object.values(sources).reduce(
-                            (sum, source) => sum + Math.max(0, source[name].completions - source[name].entries),
+                            (sum, source) => sum + carriedCompletions(source[name]),
                             0,
                         ),
                     },

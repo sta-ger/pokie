@@ -289,3 +289,38 @@ it("rejects incompatible cancellation prefixes after worker cleanup instead of e
     expect(workers.map(worker => worker.terminateCallCount)).toEqual([1, 1]);
     expect(workers.map(worker => worker.listenerCount("message"))).toEqual([0, 0]);
 });
+
+it.each(["progress", "result", "error"] as const)("rejects malformed %s analytics only after awaited worker cleanup", async (type) => {
+    for (const field of ["durationSum", "winSum", "mode", "maximum"] as const) {
+        let release!: (code: number) => void;
+        const worker = new FakeWorker(() => new Promise<number>(resolve => {
+            release = resolve;
+        }));
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
+        const a = new SimulationAccumulator();
+        a.addRound(1, 2);
+        const accumulator = a.toSnapshot();
+        if (field === "mode") accumulator.analytics!.betModes["m".repeat(1000000)] = 0;
+        else if (field === "maximum") accumulator.maxWinCount = 0;
+        else accumulator.analytics!.features.freeGames[field] = 100;
+        const before = JSON.stringify(accumulator);
+        let settled = false;
+        const promise = coordinator.run([makeRequest(0)]);
+        const rejected = expect(promise).rejects.toThrow(/analytics/i);
+        const settlement = promise.then(() => {
+            settled = true;
+        }, () => {
+            settled = true;
+        });
+        worker.emit("message", {type, ...makeResult(0, 1), accumulator, message: "failed"});
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(worker.terminateCallCount).toBe(1);
+        expect(settled).toBe(false);
+        release(0);
+        await rejected;
+        await settlement;
+        expect(worker.listenerCount("message")).toBe(0);
+        expect(JSON.stringify(accumulator)).toBe(before);
+    }
+});

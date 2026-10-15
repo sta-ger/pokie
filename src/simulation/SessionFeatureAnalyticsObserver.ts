@@ -27,7 +27,7 @@ export function setSimulationModelIdentity(session: GameSessionHandling, modelId
         identities.set(session, modelId);
     }
 }
-type Active = {duration: number; win: number; known: boolean};
+type Active = {duration: number; win: number; known: boolean; entryPosition: number};
 type ObserverState = {
     position: number;
     source: string;
@@ -172,8 +172,8 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
         ) => {
             if (!this.envelope.supportedFeatures.includes(feature)) return;
             let retained = this.state.active[feature];
-            if (!retained && wasActive) retained = {duration: 0, win: 0, known: false};
-            if (entry) retained = {duration: 0, win: 0, known: true};
+            if (!retained && wasActive) retained = {duration: 0, win: 0, known: false, entryPosition: 0};
+            if (entry) retained = {duration: 0, win: 0, known: true, entryPosition: this.state.position + 1};
             if (retained) {
                 if (wasActive || entryExecuted) retained.duration++;
                 retained.win += featureWin;
@@ -181,11 +181,12 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             }
             const event: AnalyticsFeatureEvent = {feature, entry, retrigger, granted, entryExecuted};
             if (retained && !active && !exhausted) {
-                if (retained.known) event.completion = {duration: retained.duration, win: retained.win};
+                if (retained.known) event.completion = {duration: retained.duration, win: retained.win, entryPosition: retained.entryPosition};
                 else event.excludedCompletion = true;
                 Reflect.deleteProperty(this.state.active, feature);
             }
-            if (entry || retrigger || granted || event.completion || event.excludedCompletion) events.push(event);
+            if (exhausted && retained?.known) event.abandonedEntryPosition = retained.entryPosition;
+            if (entry || retrigger || granted || event.completion || event.excludedCompletion || event.abandonedEntryPosition) events.push(event);
             // Exhausted observations remain unfinished and cannot be completed by a later base play.
             if (exhausted && retained) Reflect.deleteProperty(this.state.active, feature);
         };
@@ -226,12 +227,13 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             bounded?.weightedBonus?.selectedNow ? bounded.weightedBonus.remaining : 0,
             before.bonus ? win : bounded?.weightedBonus?.payout ?? 0,
         );
-        if (bounded?.collection?.triggered) events.push({feature: "collection", entry: true, completion: {duration: 0, win: bounded.collection.payout}});
-        if ((bounded?.cascade?.winningCascades ?? cascade?.getCascadeSteps().length ?? 0) > 0) events.push({feature: "cascade", entry: true, ...(exhausted ? {} : {completion: {duration: 0, win}})});
-        if (this.envelope.supportedFeatures.includes("modifiers") && observations.modifiers?.rules.some((rule) => rule.positions.length > 0)) events.push({feature: "modifiers", entry: true, completion: {duration: 0, win}});
+        if (bounded?.collection?.triggered) events.push({feature: "collection", entry: true, completion: {duration: 0, win: bounded.collection.payout, entryPosition: this.state.position + 1}});
+        if ((bounded?.cascade?.winningCascades ?? cascade?.getCascadeSteps().length ?? 0) > 0) events.push({feature: "cascade", entry: true, ...(exhausted ? {abandonedEntryPosition: this.state.position + 1} : {completion: {duration: 0, win, entryPosition: this.state.position + 1}})});
+        if (this.envelope.supportedFeatures.includes("modifiers") && observations.modifiers?.rules.some((rule) => rule.positions.length > 0)) events.push({feature: "modifiers", entry: true, completion: {duration: 0, win, entryPosition: this.state.position + 1}});
         this.state.position++;
         return {
             position: this.state.position,
+            activeEntryPositions: Object.fromEntries(FEATURE_NAMES.filter(name => this.state.active[name]?.known).map(name => [name, this.state.active[name]!.entryPosition])),
             activeKnownFeatures: FEATURE_NAMES.filter((name) => this.state.active[name]?.known === true),
             activeCarriedFeatures: FEATURE_NAMES.filter((name) => this.state.active[name]?.known === false),
             envelope: this.getEnvelope(),

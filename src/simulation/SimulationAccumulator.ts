@@ -314,7 +314,7 @@ export class SimulationAccumulator {
 function validateSnapshot(snapshot: SimulationAccumulatorSnapshot): void {
     if (snapshot.analytics) {
         validateFeatureAnalytics(snapshot.analytics);
-        if (snapshot.analytics.subrounds !== snapshot.rounds || snapshot.analytics.totalStake !== snapshot.totalBet || snapshot.analytics.totalWin !== snapshot.totalPayout || snapshot.analytics.deadSpins !== snapshot.rounds - snapshot.hitCount || snapshot.analytics.maxWin !== snapshot.maxWin) throw new Error("Analytics snapshot totals disagree with accumulator.");
+        if (snapshot.analytics.subrounds !== snapshot.rounds || snapshot.analytics.totalStake !== snapshot.totalBet || snapshot.analytics.totalWin !== snapshot.totalPayout || snapshot.analytics.deadSpins !== snapshot.rounds - snapshot.hitCount || snapshot.analytics.maxWin !== snapshot.maxWin || snapshot.maxWin > 0 && snapshot.analytics.maxWinCount !== snapshot.maxWinCount) throw new Error("Analytics snapshot totals disagree with accumulator.");
     }
     if (snapshot.logicalSamplingRanges !== undefined && (!Array.isArray(snapshot.logicalSamplingRanges) || snapshot.logicalSamplingRanges.some(range =>
         !range || range.excluded !== undefined && (!Number.isSafeInteger(range.excluded) || range.excluded < 0) || typeof range.trajectory !== "string" || !range.trajectory ||

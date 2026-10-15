@@ -111,6 +111,7 @@ describe("V2C-16 feature analytics", () => {
         for (const patch of [
             {components: [component(NaN)]},
             {cascadeSteps: -1},
+            {mode: "m".repeat(1025)},
             {features: [{feature: "freeGames" as const, entry: true, retrigger: true}]},
             {features: [{feature: "respins" as const, completion: {duration: -1, win: 0}}]},
         ]) {
@@ -156,6 +157,7 @@ describe("V2C-16 feature analytics", () => {
                     Object.keys(s.sources).length,
                     Object.keys(s.betModes).length,
                     ...Object.values(s.features).map((f) => f.winHistogram.length),
+                    ...Object.values(s.sources).flatMap(source => Object.values(source).flatMap(f => [f.pendingEntries.length, f.pendingCompletions.length, f.pendingAbandonments.length])),
                 ];
                 if (i === 99) cardinalities = sizes;
                 else expect(sizes).toEqual(cardinalities);
@@ -215,6 +217,62 @@ describe("V2C-16 feature analytics", () => {
             expect(Object.values(analytics.partition).reduce((a, b) => a + b, 0)).toBeCloseTo(statistics.totalPayout, 10);
             expect(analytics.envelope.lifecycle).toBe(true);
         }
+    });
+    it("selected chunks preserve carried completions across new entries and reconcile earlier chunks in either order", () => {
+        const blueprint = weightedBonusBlueprint();
+        blueprint.availableBets = [1];
+        blueprint.mechanics!.weightedBonus!.outcomes = [{id: "only", weight: 1, targetId: "bonus-respins", payout: 8, payoutUnits: "currency", duration: 2}];
+        const session = generatedMechanicsGame(blueprint).createSession({seed: "carry"});
+        session.setCreditsAmount(100000);
+        const entry = new api.AggregateSimulationRunner(session, 1).run();
+        const selected = new api.AggregateSimulationRunner(session, 3).run();
+        expect(selected.getStatistics().analytics!.features.weightedBonus).toMatchObject({entries: 1, completions: 1, durationSum: 2, winSum: 12});
+        expect(selected.getStatistics().analytics!.lifecycle.weightedBonus).toMatchObject({carriedCompletions: 1, incomplete: 1, carriedIncomplete: 0});
+        const roundTrip = (a: api.SimulationAccumulator) => api.SimulationAccumulator.fromSnapshot(JSON.parse(JSON.stringify(a.toSnapshot())));
+        expect(roundTrip(selected).getStatistics()).toEqual(selected.getStatistics());
+        for (const parts of [[entry, selected], [selected, entry]]) {
+            const a = roundTrip(parts[0]);
+            a.merge(roundTrip(parts[1]));
+            expect(a.getStatistics().analytics!.lifecycle.weightedBonus).toMatchObject({carriedCompletions: 0, incomplete: 1, carriedIncomplete: 0});
+            expect(a.getStatistics().analytics!.features.weightedBonus).toMatchObject({entries: 2, completions: 1});
+        }
+        // A continuation-only slice remains carried and unfinished until its entry evidence is merged.
+        const continuation = new api.AggregateSimulationRunner(session, 1).run();
+        expect(continuation.getStatistics().analytics!.lifecycle.weightedBonus).toMatchObject({carriedCompletions: 0, incomplete: 1, carriedIncomplete: 1});
+        for (const parts of [[entry, selected, continuation], [continuation, selected, entry], [entry, continuation, selected]]) {
+            const a = roundTrip(parts[0]);
+            for (const part of parts.slice(1)) a.merge(roundTrip(part));
+            expect(a.getStatistics().analytics!.lifecycle.weightedBonus).toMatchObject({carriedCompletions: 0, incomplete: 1, carriedIncomplete: 0});
+        }
+    });
+    it("unrelated entries and sparse chunk merge order cannot cancel a carried completion", () => {
+        const entry = (position: number) => aggregate([[1, 0, observation({position, features: [{feature: "freeGames", entry: true}]})]]);
+        const completion = (entryPosition: number, position: number) => aggregate([[0, 0, observation({position, features: [{feature: "freeGames", completion: {duration: 1, win: 0, entryPosition}}]})]]);
+        const unrelated = entry(1);
+        unrelated.merge(aggregate([[0, 0, observation({position: 2, features: [{feature: "freeGames", abandonedEntryPosition: 1}]})]]));
+        const carried = completion(3, 4);
+        const later = entry(5);
+        for (const parts of [[unrelated, carried, later], [later, carried, unrelated], [unrelated, later, carried]]) {
+            const a = new api.SimulationAccumulator();
+            for (const part of parts) a.merge(api.SimulationAccumulator.fromSnapshot(JSON.parse(JSON.stringify(part.toSnapshot()))));
+            expect(a.getStatistics().analytics!.lifecycle.freeGames).toMatchObject({carriedCompletions: 1, incomplete: 2});
+            a.merge(entry(3));
+            expect(a.getStatistics().analytics!.lifecycle.freeGames).toMatchObject({carriedCompletions: 0, incomplete: 2});
+        }
+    });
+    it("unmatched boundary state is explicitly bounded and rejection preserves the selected aggregate", () => {
+        const a = new api.SimulationAccumulator();
+        for (let i = 1; i <= 64; i++) a.addRound(0, 0, observation({position: i * 2, features: [{feature: "freeGames", completion: {duration: 0, win: 0, entryPosition: i * 2 - 1}}]}));
+        const before = a.toSnapshot();
+        expect(a.getStatistics().analytics!.lifecycle.freeGames.carriedCompletions).toBe(64);
+        expect(() => a.addRound(0, 0, observation({position: 130, features: [{feature: "freeGames", completion: {duration: 0, win: 0, entryPosition: 129}}]}))).toThrow(/analytics/i);
+        expect(a.toSnapshot()).toEqual(before);
+        for (let i = 1; i <= 64; i++) {
+            a.merge(aggregate([[1, 0, observation({position: i * 2 - 1, features: [{feature: "freeGames", entry: true}]})]]));
+        }
+        expect(a.getStatistics().analytics!.lifecycle.freeGames).toMatchObject({carriedCompletions: 0, incomplete: 0});
+        expect(a.toSnapshot().analytics!.sources.one.freeGames.pendingCompletions).toEqual([]);
+        expect(a.toSnapshot().analytics!.sources.one.freeGames.pendingEntries).toEqual([]);
     });
     it("long exhausted cascade runs compact logical ranges, retaining truthful incomplete observations", () => {
         const config = new api.VideoSlotConfig();
