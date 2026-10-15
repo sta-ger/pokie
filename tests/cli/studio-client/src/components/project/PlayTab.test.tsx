@@ -39,7 +39,9 @@ describe("V2C-14 real bounded Play accounting", () => {
         expect(screen.getByText("Step win").nextElementSibling).toHaveTextContent("0.00");
         expect(screen.getByText("Step win / entry bet").nextElementSibling).toHaveTextContent("0.00");
         expect(screen.getByRole("button", {name: "Continue round"})).toBeEnabled();
-        expect(container.querySelectorAll(".player-highlight-button")).toHaveLength(0);
+        expect(container.querySelectorAll(".player-wins .player-highlight-button")).toHaveLength(0);
+        for (const cell of container.querySelectorAll<HTMLElement>("[data-cell]")) expect(cell.style.backgroundColor).toBe("");
+        expect(screen.getByRole("button", {name: "Line: 0"})).toBeVisible();
         // A retained session can also appear in the Start Play summary after its UI id is cleared.
         rerender(<MantineProvider><PlayTab session={{status: "error", message: "session lost", previousSession: terminal}}
             sessionId={undefined} onNewSession={() => undefined} onSpin={() => undefined}
@@ -76,7 +78,8 @@ describe("V2C-14 real bounded Play accounting", () => {
                 expect(screen.getByText("Step win / entry bet").nextElementSibling).toHaveTextContent("0.00");
                 expect(screen.getByText(new RegExp(`Round completed: ${logicalRound.mathematicalCursor} subrounds, ${logicalRound.cursor} deliveries`))).toBeVisible();
                 expect(screen.queryByText(/10 subrounds/)).toBeNull();
-                expect(view.container.querySelectorAll(".player-highlight-button")).toHaveLength(0);
+                expect(view.container.querySelectorAll(".player-wins .player-highlight-button")).toHaveLength(0);
+                for (const cell of view.container.querySelectorAll<HTMLElement>("[data-cell]")) expect(cell.style.backgroundColor).toBe("");
                 if (state.status === "loading") expect(screen.getByRole("button", {name: "Spin"})).toBeDisabled();
             }
             view.unmount();
