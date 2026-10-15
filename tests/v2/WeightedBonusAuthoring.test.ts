@@ -261,10 +261,11 @@ describe("V2C-15 weighted bonus authoring", () => {
 
     it.each([false, true])("retained progress rejects fresh handlers before creation or effects; untampered retries finish two respins (explicit: %s)", async explicit => {
         const game = generatedMechanicsGame(weightedBonusBlueprint());
-        const repository = new api.InMemorySessionRepository(), 
-            wallet = new api.InMemoryWallet(10000);
+        const repository = new api.InMemorySessionRepository(),
+            wallet = new api.InMemoryWallet(10000),
+            results = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>();
         await repository.save("s", api.captureInitialPokieSessionState({seed: 0}, boundedSession(game, 0), game.getSessionSerializer!(), true, game));
-        const handler = () => new api.SpinCommandHandler(game, repository, wallet);
+        const handler = () => new api.SpinCommandHandler(game, repository, wallet, results);
         const command: api.RepositoryCommand = {kind: "spin", sessionId: "s", requestId: "entry", ...(explicit ? {roundId: "round", delivery: "stepwise" as const} : {})};
         const entry = await handler().execute(command);
         if (entry.status !== "played") throw new Error(JSON.stringify(entry));
