@@ -1,4 +1,4 @@
-import {weightedBonusSelectionsEqual} from "../session/videoslot/authored/WeightedBonus.js";
+import {validateWeightedBonusObservation} from "../session/videoslot/authored/WeightedBonus.js";
 import {determineChargedBetMode} from "../session/determineChargedBetMode.js";
 import {isSessionStateRestorable, resolveSessionStateSchema} from "../session/SessionStateRestoring.js";
 import {sequenceSelectionsEqual} from "../artifact/validateSequenceSelections.js";
@@ -59,10 +59,9 @@ export class SessionRuntime implements SessionRuntimeHandling {
         // incidental insertion order of captured versus restored selection objects.
         if (selections?.length && !sequenceSelectionsEqual(selections, retained)) throw new Error("Retained weighted selections differ from the logical round.");
         const schema = resolveSessionStateSchema(session);
-        const bonus = schema.kind === "bounded-mechanics" && schema.rules.weightedBonus ? (session as {toSessionState?: () => {bonus?: {selection: unknown}}}).toSessionState?.()?.bonus?.selection : undefined;
+        const bonusState = schema.kind === "bounded-mechanics" && schema.rules.weightedBonus ? (session as {toSessionState?: () => {bonus?: {selection: unknown}; remaining: number; executed: number}}).toSessionState?.() : undefined;
         const event = artifacts?.[artifacts.length - 1]?.featureEvents?.find(event => event.type === "boundedMechanics");
-        const retainedBonus = (event?.data?.weightedBonus as {selection?: unknown} | undefined)?.selection;
-        if (!weightedBonusSelectionsEqual(bonus, retainedBonus)) throw new Error("Retained weighted bonus identity differs from executable selection.");
+        validateWeightedBonusObservation(bonusState ?? {}, event?.data?.weightedBonus);
         const pending = (session as Partial<LogicalRoundProgressProviding>).hasPendingLogicalRound?.() ?? false;
         // Exhaustion is an unfinished stop, not a claim that every feature counter completed.
         if (round.mathematicalStatus !== "exhausted" && (round.mathematicalStatus === "pending") !== pending) throw new Error("Retained logical progress differs from executable progress.");

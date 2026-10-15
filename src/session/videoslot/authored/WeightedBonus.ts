@@ -177,6 +177,16 @@ export function weightedBonusSelectionsEqual(first: unknown, second: unknown): b
     );
 }
 
+/** Bind executable duration to the last accepted public observation, not just the budget sum. */
+export function validateWeightedBonusObservation(
+    state: {bonus?: {selection?: unknown}; executed?: unknown; remaining?: unknown},
+    observation: unknown,
+): void {
+    const retained = observation as Partial<WeightedBonusObservation> | undefined;
+    if (!weightedBonusSelectionsEqual(state.bonus?.selection, retained?.selection)) throw new Error("Retained weighted bonus identity differs from executable selection.");
+    if (state.bonus?.selection && (state.executed !== retained?.executed || state.remaining !== retained?.remaining)) throw new Error("Retained weighted bonus duration progress differs from executable progress.");
+}
+
 export function describeWeightedBonusCoverage(weight: number, uncovered: boolean): string {
     if (weight === 0) return "zero weight";
     return uncovered ? "unobserved" : "observed";

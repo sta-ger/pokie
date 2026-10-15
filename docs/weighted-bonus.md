@@ -114,3 +114,19 @@ path/code/reason diagnostics. Inspection keeps unrelated sections available and
 does not run a session to guess custom behavior. Existing custom runtime
 capabilities remain usable; resemblance to a built-in class does not certify
 restoration or exact extraction. Lossy Blueprint publication remains blocked.
+
+### Restoration observation and direct context rule
+
+Restoration binds the selected identity **and** `executed`/`remaining` to the
+last accepted observation. Conserving their sum is insufficient: changing
+`0/2` to `1/1` against an unchanged entry observation is corrupt state. Explicit
+logical delivery checks the last mathematical subround's canonical event;
+ordinary delivery checks the retained serialized bounded-mechanic observation
+(or full-capture artifact). Retained copies must agree. These checks precede
+fresh session creation, RNG advancement and repository/wallet effects.
+
+For direct weighted-bonus sessions, a fresh `implicit:N` request must exceed
+the last consumed implicit counter. Thus consuming `implicit:20` then asking
+for `implicit:1` rejects before either nested request or state changes. The
+next automatic entry is `implicit:21`. Active continuations reuse their entry
+context, and pending requests can be captured/restored without drawing.

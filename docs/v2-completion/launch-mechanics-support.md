@@ -4,8 +4,9 @@ This register covers mandatory authored workflows. It does not replace
 `GameMechanicCompatibilityCatalog`, which describes random strategies. The
 machine-readable authority is
 [`AUTHORED_WORKFLOW_SUPPORT_CATALOG`](../../src/generated/AuthoredWorkflowSupportCatalog.ts).
-Each of its 324 cells carries the variant, observable assertion, exact fixture,
-negative fixture and focused test owner. Fixed mandatory-family and 36-ID
+Each of its 324 cells carries the variant, concrete positive and negative
+assertions, data fixture, full exact/negative Jest test titles and focused test
+owner. Additional cases name variant-specific edge, rejection and expiry tests. Fixed mandatory-family and 36-ID
 expectations in `WeightedBonusAuthoring.test.ts` prevent deleting a family/row
 from making completeness pass.
 
@@ -30,13 +31,13 @@ preserved, and are not current-candidate execution evidence.
 | P — PAR | Actual XLSX export/import/rebuild retains effective rules and rejects invalid imported values. |
 | A — replay | Seeded/exact audit preserves canonical feature events and rejects incompatible model/state. |
 
-Fixture/owner groups (the exact fixture anchor is the row ID in the public
-machine-readable cell):
+Fixture/owner groups (references now use complete declared test titles, with
+the row identifying the parameterized case; no generic substring is coverage):
 
 - **M**: `tests/v2/fixtures/ExistingMechanicsGame.ts`,
-  `tests/v2/ExistingMechanicsAuthoring.test.ts`; negative fixture “rejects
-  conflicts and unknown fields” plus F1–F9 continuation, identity and ownership
-  regressions. Editor owner: `BlueprintEditorPage.existingMechanics.test.tsx`.
+  `tests/v2/ExistingMechanicsAuthoring.test.ts`; the exact generated lifecycle case asserts zero and additive
+  grants, lock/reset/exhaustion awards, jackpot resets and base/ante/purchase
+  behavior per applicable row. F1–F9 continuation/ownership regressions remain. Editor owner: `BlueprintEditorPage.existingMechanics.test.tsx`.
 - **W**: `examples/blueprints/wild-<variant>.blueprint.json`,
   `tests/v2/WildModifierAuthoring.test.ts`; negative fields/coordinates/factors,
   custom evaluators/callbacks, Hold&Win conflicts, invalid expiry and overflow.
@@ -118,3 +119,43 @@ family deferrals. See [weighted bonus contracts](../weighted-bonus.md). Arbitrar
 callbacks/dynamic targets remain custom-only with descriptor path/code/reason;
 inspection and supported custom execution remain available, and lossy extraction
 is blocked. These custom-only boundaries do not substitute for a launch row.
+
+## F3 surface reconciliation
+
+The original generic negative anchor did not prove PAR, extraction or replay
+rejection. It has been replaced by per-variant `catalogue surface rejection
+boundaries` cases in the four existing focused suites. Those cases call the
+ordinary public boundaries (shared test fixture helper in
+`tests/v2/fixtures/ExistingMechanicsGame.ts`), with distinct assertions:
+
+| Surface | Exact case in the source register | Negative case assertion |
+| --- | --- | --- |
+| Core | M: `exact grants, locks, awards, reset and mode lifecycle`; W: evaluator workflow with numeric payout/screen/attribution; D: `exact terminal budget and collection awards`; Q: `known-answer` evaluator cases | Invalid mechanics cannot construct the generated game; family-specific unsupported evaluators/compositions remain linked separately. |
+| Schema | The row's existing validation/workflow case | Unknown mechanics is a validation error; modifier/bounded/bonus malformed and composition matrices remain linked. |
+| Editor | M/W/D: each row's `Home JSON retains catalogue rules and blocks invalid publication`; Q: `Home Form/JSON preserves identity, units, zero mass and malformed drafts without saving` | Real validation blocks Create, retains invalid JSON and makes no write; existing Project/Home control tests retain field diagnostics and explicit Save/Apply. |
+| Build | Existing generated CJS/TypeScript workflow (D also identity/delivery equivalence; Q known answers) | Invalid definitions create no output; occupied destination retains original contents. |
+| Runtime/restore | Existing fresh-instance continuation workflow; D now restores all seven compositions after first acceptance; Q fresh ordinary/explicit handlers | Invalid nested RNG leaves the session unchanged. Q additionally rejects coordinated duration, missing identity evidence and descending consumed contexts. |
+| Simulation/report | M actual Studio runner and downloads; W/D existing CLI/Studio workflows; Q snapshot/chunk/legacy/worker statistics | Unfunded sessions accept no requested plays, retain executable/RNG state and report zero actual rounds, stake and payout. |
+| Extraction | Existing complete extraction and seeded rebuild comparison | Malformed descriptor yields no publishable Blueprint, returns diagnostics and creates no session. |
+| PAR | Existing real XLSX import/hash/rebuild comparison | A mutated real workbook returns `parsheet-mechanics-invalid` with error severity; Q also retains field-specific malformed-weight diagnostics. |
+| Replay | Existing seeded/canonical audit workflows (Q and D include real CLI/Studio verification) | Changed paytable/model rejects exact audit replay before session creation; Q also rejects tampered retained selection evidence. |
+
+Every M row now has a generated exact lifecycle fixture. The free-game path
+asserts the explicit zero grant, entry grant 2, additive retrigger 2→4 and bank
+0.3. Hold&Win asserts budget 2/1/2/1/0, locked coordinates, terminal flat 6 or
+entry-bet 0.3 payout and subsequent clearing. Applicable jackpot rows assert
+actual-stake contribution, two awards and pool reset; mode rows assert base,
+ante and one-shot purchases. W cases assert factor 2 or 6 and exact payouts
+for lines/ways/clusters; ordered transform/expansion/sticky expiry cases are
+linked where applicable. D cases assert all seven exact budgets and awards,
+with separate existing cap/carry/zero-reset, no-trigger/no-retrigger and winning
+cascade terminal/exhaustion cases linked explicitly. Q retains both known
+outcomes, no-trigger and zero-effect cases, configured/observed frequency and
+all declared rejection boundaries.
+
+The register test enforces all 36 fixed IDs, ten mandatory families and nine
+surfaces, and resolves full test declarations with the TypeScript parser. This
+checks reference integrity; executed behavioral assertions provide coverage.
+Neither parsed references nor historical receipts establish acceptance.
+Current repair execution and independent/controller decisions remain in
+[V2C-15](V2C-15.md); all acceptance cells are still open.

@@ -55,6 +55,9 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
 
     public override setSelectionContext(context: string): void {
         if (this.bonus && ((this.remaining > 0 && context !== this.bonus.context) || (this.remaining === 0 && context === this.bonus.context))) throw new Error("Weighted bonus context is pending or already consumed; use the runtime to retry a retained request.");
+        // Implicit contexts are a monotonic entry counter. Reject before the nested setter
+        // can change its pending request or counter, so every accepted snapshot restores.
+        if (this.bonus && context.startsWith("implicit:") && this.remaining === 0 && Number(context.slice(9)) <= this.bonus.implicitRound) throw new Error("Weighted bonus implicit context must advance the consumed counter.");
         super.setSelectionContext(context);
         if (this.bonus) {
             this.bonus.requestedContext = context;

@@ -16,7 +16,7 @@ import {StudioPlayService} from "../../cli/studio/runtime/StudioPlayService.js";
 import fs from "node:fs";
 import path from "node:path";
 import * as api from "@fromstan/pokie";
-import {existingMechanicsBlueprint, generatedMechanicsGame, mechanicsSession} from "./fixtures/ExistingMechanicsGame.js";
+import {assertWorkflowRejections, existingMechanicsBlueprint, generatedMechanicsGame, mechanicsSession} from "./fixtures/ExistingMechanicsGame.js";
 
 const catalogue = api.AUTHORED_MECHANIC_CATALOG;
 const errors = (b: unknown) => new api.GameBlueprintValidator().validate(b).filter(issue => issue.severity === "error");
@@ -38,6 +38,83 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         expect(catalogue).toHaveLength(22);
         expect(new Set(catalogue.map(row => row.progression))).toEqual(new Set(["base", "freeGames", "holdAndWin"]));
         for (const row of catalogue) expect(errors(existingMechanicsBlueprint(row))).toEqual([]);
+    });
+
+    it.each(catalogue)("$id: exact grants, locks, awards, reset and mode lifecycle", row => {
+        const blueprint = existingMechanicsBlueprint(row);
+        blueprint.paytable = {A: {3: 2}};
+        let screens = Array.from({length: 6}, () => ["A", "A", "A"]);
+        if (row.progression === "freeGames") screens = [["S", "S", "A"], ["S", "S", "S"], ["S", "S", "S"], ["A", "A", "A"], ["A", "A", "A"], ["A", "A", "A"]];
+        if (row.progression === "holdAndWin") screens = [["C", "A", "A"], ["A", "A", "A"], ["A", "M", "A"], ["A", "A", "A"], ["A", "A", "A"], ["A", "A", "A"]];
+        screens.push(["J", "A", "A"], ["J", "A", "A"], ["A", "A", "A"]);
+        // Seed 31's reel stops after the initialization screen (1024-symbol strips).
+        // This is an authored finite reel fixture; execution still uses the real RNG/generator.
+        const stops = [[50, 426, 353], [77, 953, 831], [679, 328, 747], [586, 431, 736], [48, 731, 778], [864, 290, 900], [853, 790, 823], [979, 670, 650], [35, 177, 183]];
+        blueprint.reelStrips = Array.from({length: 3}, (_, reel) => {
+            const strip = Array<string>(1024).fill("A");
+            screens.forEach((screen, step) => {
+                strip[stops[step][reel]] = screen[reel]; 
+            });
+            return strip;
+        });
+        const game = generatedMechanicsGame(blueprint), 
+            session = mechanicsSession(game);
+        let contribution = 0;
+        for (let step = 0; step < screens.length; step++) {
+            if (row.modes && step === 8) session.setBetMode!("ante");
+            const free = row.progression === "freeGames" ? step >= 2 && step <= 5 : row.progression === "holdAndWin" && step >= 1 && step <= 4;
+            const paidStake = step === 8 && row.modes ? 0.075 : 0.05;
+            const stake = free ? 0 : paidStake;
+            expect(session.getStakeAmount()).toBeCloseTo(stake, 12);
+            contribution += stake * 0.1;
+            session.play();
+            const data = game.getSessionSerializer!().getRoundData(session) as unknown as api.VideoSlotRoundNetworkData & {freeGamesNum?: number; freeGamesSum?: number; freeGamesBank?: number; wonFreeGamesNumber?: number};
+            if (row.progression === "freeGames") {
+                if (step === 0) expect(data).toMatchObject({freeGamesNum: 0, freeGamesSum: 0, wonFreeGamesNumber: 0});
+                if (step === 1) expect(data).toMatchObject({freeGamesNum: 0, freeGamesSum: 2, wonFreeGamesNumber: 2});
+                if (step === 2) expect(data).toMatchObject({freeGamesNum: 1, freeGamesSum: 4, wonFreeGamesNumber: 2});
+                if (step === 5) {
+                    expect(data).toMatchObject({freeGamesNum: 4, freeGamesSum: 4});
+                    expect(data.freeGamesBank).toBeCloseTo(0.3, 12);
+                    expect(session.hasPendingLogicalRound()).toBe(false);
+                }
+            }
+            if (row.progression === "holdAndWin") {
+                if (step <= 4) expect(data.holdAndWin).toMatchObject({active: step !== 4, respinsRemaining: [2, 1, 2, 1, 0][step]});
+                if (step === 2) expect(data.holdAndWin!.locks.map(lock => lock.position)).toEqual([[0, 0], [1, 0]]);
+                if (step === 4) {
+                    const payout = "values" in row && row.values === "bet" ? 0.3 : 6;
+                    expect(session.getWinAmount()).toBeCloseTo(payout, 12);
+                    expect(data.holdAndWin!.payout).toBeCloseTo(payout, 12);
+                }
+                if (step === 5) expect(data.holdAndWin).toMatchObject({active: false, locks: [], payout: 0});
+            }
+            if (row.jackpot) {
+                expect(data.jackpot!.statistics.mini.totalContributed).toBeCloseTo(contribution, 12);
+                if (step === 6 || step === 7) {
+                    expect(data.jackpot!.award!.amount).toBeCloseTo(row.jackpot === "fixed" ? 10 : 10 + (step === 6 ? contribution : 0.005), 12);
+                    expect(data.jackpot!.statistics.mini.awardCount).toBe(step - 5);
+                    expect(data.jackpot!.pools[0].value).toBe(10);
+                }
+            }
+            if (row.modes) expect(data.chargedBetModeId).toBe(step === 8 ? "ante" : "base");
+        }
+        if (row.modes && row.progression === "freeGames") {
+            blueprint.reelStrips = [["A"], ["A"], ["A"]];
+            const purchaseGame = generatedMechanicsGame(blueprint), 
+                purchase = mechanicsSession(purchaseGame);
+            const result = new api.SessionRuntime(purchase).execute({kind: "spin", mode: "buy", roundId: "purchase", delivery: "composite"});
+            expect(result).toMatchObject({status: "played", logicalRound: {status: "completed", cursor: 2, totalStake: 0.5, totalWin: 0.2}});
+            expect(purchase.getBetModeId!()).toBe("base");
+            expect(purchaseGame.getSessionSerializer!().getRoundData(purchase)).toMatchObject({freeGamesNum: 2, freeGamesSum: 2, chargedBetModeId: "buy"});
+            purchase.play();
+            expect(purchase.hasPendingLogicalRound()).toBe(false);
+            expect(purchaseGame.getSessionSerializer!().getRoundData(purchase)).toMatchObject({freeGamesSum: 0, chargedBetModeId: "base"});
+        }
+    });
+
+    it.each(catalogue)("$id: catalogue surface rejection boundaries", async row => {
+        await assertWorkflowRejections(existingMechanicsBlueprint(row), directory);
     });
 
     it.each(catalogue)("$id: unseeded generated CJS/TS owns restorable RNG state through fresh public Spin handlers", async row => {

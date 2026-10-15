@@ -1,3 +1,4 @@
+import ts from "typescript";
 import {StudioJobService} from "../../cli/studio/jobs/StudioJobService.js";
 import {FileStudioJobRepository} from "../../cli/studio/jobs/FileStudioJobRepository.js";
 import ExcelJS from "exceljs";
@@ -10,7 +11,7 @@ import path from "node:path";
 import {execFileSync} from "node:child_process";
 import * as api from "../../src/index.js";
 import {weightedBonusBlueprint} from "./fixtures/WeightedBonusGame.js";
-import {generatedMechanicsGame, mechanicsSession} from "./fixtures/ExistingMechanicsGame.js";
+import {assertWorkflowRejections, generatedMechanicsGame, mechanicsSession} from "./fixtures/ExistingMechanicsGame.js";
 import {emitPublicRuntime} from "./helpers/publicRuntime.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
@@ -58,6 +59,10 @@ describe("V2C-15 weighted bonus authoring", () => {
         directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c15-"));
     });
     afterEach(() => fs.rmSync(directory, {recursive: true, force: true}));
+    it("weighted-bonus: catalogue surface rejection boundaries", async () => {
+        await assertWorkflowRejections(weightedBonusBlueprint(), directory);
+    });
+
     it.each([
         ["missing-weight", "outcomes.0.weight", undefined],
         ["string-weight", "outcomes.0.weight", "1"],
@@ -237,6 +242,77 @@ describe("V2C-15 weighted bonus authoring", () => {
         const changed = weightedBonusBlueprint();
         changed.mechanics!.weightedBonus!.outcomes[0].payout++;
         expect(() => new api.AuditRoundReplay().replay(generatedMechanicsGame(changed), audit.audit!)).toThrow();
+    });
+
+    it("coordinated duration corruption rejects direct logical restoration before another draw", () => {
+        const game = generatedMechanicsGame(weightedBonusBlueprint());
+        const source = boundedSession(game, 0);
+        const entry = played(new api.SessionRuntime(source).execute({kind: "spin", roundId: "progress", delivery: "stepwise"}));
+        const corrupt = source.toSessionState();
+        expect(corrupt).toMatchObject({executed: 0, remaining: 2});
+        corrupt.executed = 1;
+        corrupt.remaining = 1;
+        const restored = boundedSession(game, 91);
+        restored.fromSessionState(corrupt);
+        const before = restored.toSessionState();
+        expect(() => new api.SessionRuntime(restored, entry.logicalRound)).toThrow(/bonus duration progress/);
+        expect(restored.toSessionState()).toEqual(before);
+    });
+
+    it.each([false, true])("retained progress rejects fresh handlers before creation or effects; untampered retries finish two respins (explicit: %s)", async explicit => {
+        const game = generatedMechanicsGame(weightedBonusBlueprint());
+        const repository = new api.InMemorySessionRepository(), 
+            wallet = new api.InMemoryWallet(10000);
+        await repository.save("s", api.captureInitialPokieSessionState({seed: 0}, boundedSession(game, 0), game.getSessionSerializer!(), true, game));
+        const handler = () => new api.SpinCommandHandler(game, repository, wallet);
+        const command: api.RepositoryCommand = {kind: "spin", sessionId: "s", requestId: "entry", ...(explicit ? {roundId: "round", delivery: "stepwise" as const} : {})};
+        const entry = await handler().execute(command);
+        if (entry.status !== "played") throw new Error(JSON.stringify(entry));
+        expect(entry).toMatchObject({stake: 0.05, win: 0.35, state: {featureState: {executed: 0, remaining: 2}}});
+        const continuation = (cursor: number): api.RepositoryCommand => ({kind: "spin", sessionId: "s", requestId: `next-${cursor}`, ...(explicit ? {delivery: "stepwise", continuation: {roundId: "round", cursor}} : {})});
+        for (const patch of ["progress", "identity", "missing-observation"] as const) {
+            const corrupt = JSON.parse(JSON.stringify(entry.state)) as api.PokieSessionState;
+            const feature = corrupt.featureState as api.BoundedSessionState;
+            if (patch === "progress") {
+                feature.executed = 1;
+                feature.remaining = 1; 
+            }
+            if (patch === "identity") feature.bonus!.selection!.context = "logical:foreign";
+            if (patch === "missing-observation") {
+                Reflect.deleteProperty(corrupt, "roundPayload");
+                Reflect.deleteProperty(corrupt, "roundArtifact");
+                if (corrupt.logicalRound) Reflect.set(corrupt.logicalRound.subrounds[0].artifacts![0], "featureEvents", []);
+            }
+            await repository.save("s", corrupt);
+            const save = jest.spyOn(repository, "save"), 
+                create = jest.spyOn(game, "createSession"), 
+                debit = jest.spyOn(wallet, "debit"), 
+                credit = jest.spyOn(wallet, "credit");
+            expect(api.validatePersistedSession(corrupt, game)).toMatchObject({status: "corrupt-state"});
+            expect((await handler().execute(continuation(1))).status).toBe("corrupt-state");
+            for (const spy of [save, create, debit, credit]) {
+                expect(spy).not.toHaveBeenCalled();
+                spy.mockRestore(); 
+            }
+            expect(await repository.load("s")).toEqual(corrupt);
+        }
+        await repository.save("s", entry.state);
+        expect(await handler().execute(command)).toEqual(entry);
+        let totalStake = entry.stake, 
+            totalWin = entry.win;
+        for (const cursor of [1, 2]) {
+            const next = await handler().execute(continuation(cursor));
+            if (next.status !== "played") throw new Error(JSON.stringify(next));
+            expect(next).toMatchObject({stake: 0, win: 0.1, state: {featureState: {executed: cursor, remaining: 2 - cursor}}});
+            expect(await handler().execute(continuation(cursor))).toEqual(next);
+            totalStake += next.stake;
+            totalWin += next.win;
+            expect(api.validatePersistedSession(next.state, game)).toBeUndefined();
+            if (explicit && cursor === 2) expect(next.state.logicalRound).toMatchObject({cursor: 3, totalStake: 0.05, totalWin: 0.55});
+        }
+        expect(totalStake).toBe(0.05);
+        expect(totalWin).toBeCloseTo(0.55, 12);
+        expect(await handler().execute(command)).toEqual(entry);
     });
 
     it("snapshots, chunks, legacy simulation and independent workers retain eligible denominators and unfinished tails", async () => {
@@ -1044,7 +1120,9 @@ it("launch register has all mandatory families and exact/negative cells for ever
     expect(rows.map((row) => row.id).sort()).toEqual(expected.sort());
     expect(new Set(rows.map((row) => row.id)).size).toBe(36);
     expect(new Set(rows.flatMap((row) => row.families))).toEqual(new Set(api.MANDATORY_AUTHORED_FAMILIES));
+    const declarations = new Map<string, string[]>();
     for (const row of rows) {
+        expect(new Set(Object.values(row.cells).map(cell => cell.negativeAssertion)).size).toBe(9);
         expect(Object.keys(row.cells).sort()).toEqual(
             [
                 "core",
@@ -1061,9 +1139,29 @@ it("launch register has all mandatory families and exact/negative cells for ever
         for (const cell of Object.values(row.cells)) {
             expect(cell.variant).toBe(row.id);
             expect(cell.assertion.length).toBeGreaterThan(20);
-            for (const fixture of [cell.exactFixture, cell.negativeFixture, cell.testOwner]) expect(fs.existsSync(path.resolve(fixture.split("#")[0]))).toBe(true);
-            const [owner, assertion] = cell.negativeFixture.split("#");
-            expect(fs.readFileSync(owner, "utf8")).toContain(assertion);
+            expect(cell.negativeAssertion.length).toBeGreaterThan(30);
+            expect(cell.exactFixture.split("#")[0]).toBe(cell.testOwner);
+            expect(cell.dataFixture).not.toContain("#");
+            for (const reference of [cell.exactFixture, cell.negativeFixture, ...(cell.additionalExactFixtures ?? []), ...(cell.additionalNegativeFixtures ?? [])]) {
+                const [owner, title] = reference.split("#");
+                // Referential integrity uses full, actual Jest declarations, never a substring
+                // in a comment or a fixture filename. Behavior is asserted by those executed cases.
+                let declared = declarations.get(owner);
+                if (!declared) {
+                    declared = [];
+                    const source = ts.createSourceFile(owner, fs.readFileSync(owner, "utf8"), ts.ScriptTarget.Latest, true);
+                    const titles = declared;
+                    const visit = (node: ts.Node): void => {
+                        if (ts.isCallExpression(node) && node.arguments.length >= 2 && ts.isStringLiteralLike(node.arguments[0]) &&
+                        (ts.isIdentifier(node.expression) && ["it", "test"].includes(node.expression.text) ||
+                        ts.isCallExpression(node.expression) && ts.isPropertyAccessExpression(node.expression.expression) && node.expression.expression.name.text === "each")) titles.push(node.arguments[0].text);
+                        ts.forEachChild(node, visit);
+                    };
+                    visit(source);
+                    declarations.set(owner, declared);
+                }
+                expect(declared).toContain(title);
+            }
         }
     }
 });
@@ -1151,4 +1249,25 @@ it("an explicit pending direct request restores without consuming its draw or ch
     for (const candidate of [session, restored]) candidate.play();
     expect(restored.toSessionState()).toEqual(session.toSessionState());
     expect(session.toSessionState().bonus!.selection!.context).toBe("implicit:20");
+});
+
+it("descending consumed implicit contexts reject before changing the request, money or next RNG", () => {
+    const blueprint = weightedBonusBlueprint();
+    for (const outcome of blueprint.mechanics!.weightedBonus!.outcomes) outcome.duration = 0;
+    const game = generatedMechanicsGame(blueprint), 
+        session = boundedSession(game, 0);
+    session.setSelectionContext("implicit:20");
+    session.play();
+    const before = session.toSessionState(), 
+        credits = session.getCreditsAmount();
+    expect(() => session.setSelectionContext("implicit:1")).toThrow(/implicit context must advance/);
+    expect(session.toSessionState()).toEqual(before);
+    expect(session.getCreditsAmount()).toBe(credits);
+    const restored = boundedSession(game, 91);
+    restored.fromSessionState(JSON.parse(JSON.stringify(before)));
+    restored.setCreditsAmount(credits);
+    for (const candidate of [session, restored]) candidate.play();
+    expect(session.toSessionState().bonus!.context).toBe("implicit:21");
+    expect(restored.toSessionState()).toEqual(session.toSessionState());
+    expect(restored.getWinAmount()).toBe(session.getWinAmount());
 });

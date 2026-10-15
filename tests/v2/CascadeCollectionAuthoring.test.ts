@@ -9,7 +9,7 @@ import path from "node:path";
 import {execFileSync} from "node:child_process";
 import * as api from "../../src/index.js";
 import {boundedBlueprint} from "./fixtures/BoundedMechanicsGame.js";
-import {generatedMechanicsGame, mechanicsSession} from "./fixtures/ExistingMechanicsGame.js";
+import {assertWorkflowRejections, generatedMechanicsGame, mechanicsSession} from "./fixtures/ExistingMechanicsGame.js";
 import {emitPublicRuntime} from "./helpers/publicRuntime.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
@@ -47,6 +47,31 @@ describe("V2C-14 authored bounded mechanics", () => {
     });
     afterEach(() => fs.rmSync(directory, {recursive: true, force: true}));
 
+    it.each(api.AUTHORED_BOUNDED_MECHANIC_CATALOG)("%s exact terminal budget and collection awards", id => {
+        const session = boundedSession(generatedMechanicsGame(constant(id)));
+        const runtime = new api.SessionRuntime(session);
+        const command: api.SessionCommand = {kind: "spin", roundId: "exact", delivery: "composite"};
+        const result = played(runtime.execute(command));
+        const respins = id.includes("respins"), 
+            collection = id.includes("collection");
+        expect(result.logicalRound).toMatchObject({status: "completed", cursor: respins ? 9 : 1, totalStake: 0.05, totalWin: respins && collection ? 60 : 0});
+        if (respins) expect(session.getBoundedMechanicObservation()!.respins).toEqual({remaining: 0, executed: 8, granted: 0, limit: 8});
+        if (id.includes("cascade")) expect(session.getBoundedMechanicObservation()!.cascade).toEqual({winningCascades: 0, evaluatedSteps: 1});
+        if (collection) expect(session.getBoundedMechanicObservation()!.collection).toMatchObject({value: respins ? 0 : 3, payout: respins ? 10 : 0, cap: 5, threshold: 4, reset: "subtract-threshold"});
+        const before = session.toSessionState();
+        expect(runtime.execute(command)).toEqual(result);
+        expect(session.toSessionState()).toEqual(before);
+        if (collection && !respins) {
+            session.play();
+            expect(session.getWinAmount()).toBe(10);
+            expect(session.getBoundedMechanicObservation()!.collection).toMatchObject({value: 1, payout: 10});
+        }
+    });
+
+    it.each(api.AUTHORED_BOUNDED_MECHANIC_CATALOG)("%s: catalogue surface rejection boundaries", async row => {
+        await assertWorkflowRejections(boundedBlueprint(row), directory);
+    });
+
     it.each(api.AUTHORED_BOUNDED_MECHANIC_CATALOG)("%s CJS/TypeScript identity, initial serialization, stepwise/composite equivalence, next RNG and audit", id => {
         const blueprint = boundedBlueprint(id);
         const game = generatedMechanicsGame(blueprint);
@@ -63,10 +88,17 @@ describe("V2C-14 authored bounded mechanics", () => {
         const first = played(new api.SessionRuntime(composite).execute(command));
         const runtime = new api.SessionRuntime(stepwise);
         let next = played(runtime.execute({...command, delivery: "stepwise"}));
+        const restored = boundedSession(typed, 91);
+        restored.fromSessionState(JSON.parse(JSON.stringify(stepwise.toSessionState())));
+        restored.setCreditsAmount(stepwise.getCreditsAmount());
+        const resumed = new api.SessionRuntime(restored, next.logicalRound);
         let deliveries = 1;
         while (next.logicalRound!.status === "pending") {
             const state = stepwise.toSessionState();
-            next = played(runtime.execute({kind: "spin", delivery: "stepwise", continuation: {roundId: "round", cursor: next.logicalRound!.deliveryCursor}}));
+            const continuation: api.SessionCommand = {kind: "spin", delivery: "stepwise", continuation: {roundId: "round", cursor: next.logicalRound!.deliveryCursor}};
+            next = played(runtime.execute(continuation));
+            expect(played(resumed.execute(continuation))).toEqual(next);
+            expect(restored.toSessionState()).toEqual(stepwise.toSessionState());
             if (next.logicalRound!.cursor === 1) expect(stepwise.toSessionState()).toEqual(state);
             expect(++deliveries).toBeLessThan(1000);
         }
@@ -75,7 +107,8 @@ describe("V2C-14 authored bounded mechanics", () => {
         expect(stepwise.toSessionState()).toEqual(composite.toSessionState());
         expect(stepwise.getCreditsAmount()).toBe(composite.getCreditsAmount());
         expect(stepwise.getBoundedMechanicObservation()).toEqual(composite.getBoundedMechanicObservation());
-        for (const session of [stepwise, composite]) session.play();
+        for (const session of [stepwise, composite, restored]) session.play();
+        expect(restored.toSessionState()).toEqual(composite.toSessionState());
         expect(stepwise.toSessionState()).toEqual(composite.toSessionState());
         const auditSession = boundedSession(game);
         for (const delivery of ["stepwise", "composite"] as const) {
