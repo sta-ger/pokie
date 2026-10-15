@@ -1,5 +1,33 @@
 # V2C-12 independent workflow receipt
 
+## Ordinary buy-more target-1 recovery (2026-10-15)
+
+On the clean evidence descendant `5add17f9cde2a958f1f3980f216cb8ff79bbc689`,
+the persisted harness reused the authenticated candidate build for product
+`4951df55907a2863b6e077c290e3f8c468bc5f6e` and the retained ordinary package
+(`dist/index.js` SHA-256
+`e2df638307032f1c8c5525576c3154232fa19cb5194a970ff09eea7d9e46400a`).
+The fresh runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-31b3940716a6e35c/run-2026-10-15T03-29-55-327Z/transcript.json`.
+
+Through Projects intake, Simulation, and Replay's rendered **Recent
+Simulation** control, an explicit-seed, one-worker `buy-more` simulation ran
+5/5 rounds as job `6458b119cd9545a8af1607701970653b`. Its target-1 replay
+completed as job `c7b567c075d34045a76f8e0761499dd8`. The rendered viewport
+showed Stake `1.25`, Bet mode `buy-more`, Charged mode `buy-more`, Credits
+`998.75`, Total win `0.00`, and `repeat-when-available; 1 executed step
+commands`. The actual browser download was 3,034 bytes, SHA-256
+`5d4a45e26fbf9416e71c2fcd57a49f06e67945e6cb1b53f187c1616a24b8a059`;
+its bytes confirm seed `v2c12-ordinary-buy-more-recovery`, one `spin`
+`buy-more` command, that policy, configuration hash
+`sha256:e07ad42fe08c0c44ad95739fc1c4ff7f81e6111e825d0eb26bd8ffbc15839658`, and
+final stake `1.25`.
+
+This is partial collection only: the remaining target rows, weighted
+buy/buy-more branches, ordinary-ante financial row, and full cross-package
+comparison remain not reached. Runtime artifacts remain outside version
+control.
+
 ## Ordinary buy target-1 recovery (2026-10-15)
 
 Product identity remains `4951df55907a2863b6e077c290e3f8c468bc5f6e`; this
