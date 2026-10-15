@@ -199,3 +199,53 @@ This additional collection still does not establish complete ordinary/weighted
 package execution, XLSX export/import/rebuild, catalogue/report coverage,
 six-capability authoring, explicit reload, worker partition comparison, or
 independent session state. Those acceptance portions remain not reached.
+
+### Public package and final focused collection
+
+The retained public-CLI receipt
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-13-b86253e3a60d58fd/public-packages-2026-10-15T09-25-30.625Z/receipt.json`
+authenticates a clean evidence-only descendant of the candidate before and
+after 37 public `dist/cli/pokie.js` commands. It built the six wild example
+blueprints as TypeScript packages, then used the public `sim`, `replay`, and
+`report` commands with each recorded `v2c13-public-*` seed. Each command has
+return code zero and bounded hashed stdout/stderr. The sticky workers=2
+simulation records 12/12 rounds, total bet 0.60, total win 36.00 and modifier
+totals 12/12/12/12 with config hash
+`sha256:e5e82037d6c83e75b726d37327920f5c72e8ddc0bbf7f42b33c23ef0ffe73584`.
+The separately authenticated partition receipt
+`public-packages-2026-10-15T09-27-00.162Z/receipt.json` compares its two
+derived worker seeds (`::worker0/2`, `::worker1/2`) against that workers=2
+record: rounds, stake, payout, and all four modifier counters agree exactly.
+JSON, Markdown and HTML report files are runtime-only and are not committed.
+
+The final fresh-profile rendered Studio transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-13-b86253e3a60d58fd/run-2026-10-15T09-31-40-754Z/transcript.json`
+(SHA-256 `be57018f97adea671a5c71018da2cf93881328094c8d1e94684ea281175f4fbf`).
+It used the candidate's public `node ./dist/cli/pokie.js --no-open` entry and
+a new application profile. After the advanced disclosure was visibly expanded,
+Home loaded `wild-transform.blueprint.json`; the action rendered disabled
+loading state and then the loaded `wild-transform` identity and validation
+state. `Save game` likewise rendered local pending state before the editable
+Project terminal `project-open-materialization · Completed` (244 ms). The
+Project Game Model rendered ordered mechanics including `Rule 1: transform,
+transform, evaluated [[0,0]]; B → A`, `W2`/`W3` factors and substitution.
+
+The same isolated launch separately loaded and saved `wild-sticky`, then its
+Project Game Model rendered `Rule 1: sticky, sticky, evaluated [[1,0]]; W2,
+lifetime 3`; its own project materialization terminal completed in 21 ms. The
+same browser transcript contains the exact local pending and terminal
+observations for both Save actions, and its owned child drained through the
+file-channel `close`. Independent visual inspection was performed on all five
+captured screens. The Home loaded-form screen, editable transform overview,
+and sticky model screen were readable, coherent, and showed the stated
+identities and controls. Their screenshot SHA-256 values are respectively
+`1459e5c009399787166970e7c431f05ded4e4d8a39128c2429e90d847ea51689`,
+`782b98277316b9bfe50df84eb0470373400afd3179a119a5c9399a241c83564a`, and
+`3906e0bf47cd32395b5f73a4d29e190b03024c85c8f9d446e08b40d0bade8044`.
+
+This is still a partial independent collection, not approval: four rendered
+capabilities, explicit reload, complete malformed/stale recovery, ordinary and
+weighted whole-sequence package executions, XLSX round trip, full catalogue
+sweep, and independent worker-session isolation remain uncollected. The
+controller-owned targeted receipt remains the only test invocation; packaging
+and official full/release gates remain deferred.
