@@ -54,6 +54,19 @@ describe("buildGameModelProjection", () => {
         expect(buildGameModelProjection(draft)).toEqual(valid);
     });
 
+    it.each(["respins", "collection"] as const)("localizes validation exceptions from malformed %s JSON values", key => {
+        const draft = JSON.parse(JSON.stringify(BOUNDED_BLUEPRINT));
+        draft.mechanics[key][key === "respins" ? "maxRespins" : "threshold"] = {toString: null, valueOf: null};
+        const authored = JSON.stringify(draft);
+        const valid = buildGameModelProjection(BOUNDED_BLUEPRINT);
+        const projection = buildGameModelProjection(draft);
+        expect(projection.mechanics).toEqual({status: "invalid", reason: "blueprint-mechanics-invalid: mechanics: These rule fields could not be validated. Check their value types."});
+        expect(projection).toEqual({...valid, mechanics: projection.mechanics});
+        expect(JSON.stringify(draft)).toBe(authored);
+        draft.mechanics = BOUNDED_BLUEPRINT.mechanics;
+        expect(buildGameModelProjection(draft)).toEqual(valid);
+    });
+
     it("projects authored zeros and missing counts without filling entries", () => {
         expect(buildGameModelProjection({...BASE_BLUEPRINT, reels: 5, paytable: {A: {5: 10}, B: {5: 0}}}).paytable).toEqual({
             status: "available", data: [{symbolId: "A", matchCount: 5, payout: 10}, {symbolId: "B", matchCount: 5, payout: 0}],
