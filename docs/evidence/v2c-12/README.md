@@ -722,3 +722,51 @@ I independently inspected `3-observation.png` in that run (SHA-256
 its viewport visibly contains the completed ordinary-buy card, replay id/job,
 seed, package bet mode, repeat policy, Bet mode, and Stake `0.5`. Runtime
 artifacts and downloads remain outside the repository.
+
+## Continued corrected-host Replay collection (2026-10-15)
+
+Candidate product identity remained
+`4951df55907a2863b6e077c290e3f8c468bc5f6e`; the clean evidence checkout
+remained at `fc80a37fa0d202e77a7fa616ed0e7a145c972694` during collection. The
+candidate build receipt was reused and the public Studio session was started
+from this checkout's compiled CLI. A fresh profile imported the retained
+weighted and ordinary generated packages through Projects; no recording input
+was supplied.
+
+The weighted package completed seeded, one-worker `buy` (3/3) and `buy-more`
+(5/5) reports. Recent Simulation Replay completed buy targets 1, 2 and 3 at
+stakes `0.5`, `0`, and `0.5` (jobs
+`a090a3a6aa5745ac9b5c965f523fb3dc`, `129a09066c3b4bc4a62a690231d14322`, and
+`1e6d85c3526840e9838182d956cb0350`) and buy-more targets 1, 2, 4 and 5 at
+`1.25`, `0`, `0`, and `1.25` (jobs
+`08c9b9dce37645ea8d9b7837812d814e`, `d435cc994a2c4717ac1207f30dfd964e`,
+`5c8dbfd18f364cf68e8b186b833b00dd`, and
+`f9fc34ca20824c0aa7a9d19dcdba3a93`).
+
+The rendered target-5 weighted buy-more card showed Bet mode and Charged mode
+`buy-more`, Stake `1.25`, Credits `997.5`, and Total win `0.00`; this final
+stake is distinct from the descriptor's cumulative `totalBet: 2.5`. I
+independently inspected the retained target-1 buy, target-1 buy-more, and
+target-5 buy-more screenshots (`1-observation.png`, `2-observation.png`, and
+`3-observation.png`). Actual browser downloads have SHA-256
+`23711c2058a2ce594a81837259342c6fb7405270c9dde624b046527f664691d1` (buy
+target 1), `8908bf4341ca1b079c26bc2aa089dfa9b646f9f123bfb4a42661785f478d9f2f`
+(buy-more target 1), and
+`725e155d5ca7e464a23577374b90a140ff9ad7485eb0a7a3ddcbc5e322b31c42`
+(buy-more target 5). Their inspected JSON bytes bind displayed seeds, package
+identity, `modePolicy.selection: "repeat-when-available"`, executed spin
+commands, and retained configuration hashes.
+
+The same session then completed ordinary buy targets 2 and 3 through Recent
+Simulation Replay: job `9f4a75b81ff04630bc0b56163689b1cc` visibly rendered
+stake `0` and job `654c3231a29344bba096e590ac9367c4` visibly rendered stake
+`0.5`; both rendered Bet/Charged mode `buy`, seed
+`v2c12-ordinary-buy-matrix`, and repeat-when-available command counts. The
+runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-31b3940716a6e35c/run-2026-10-15T03-43-15-660Z/transcript.json`
+(SHA-256 `fc70d96dc101a52ec0740e0184e623d137e764683c6ea2af5f51844f99b9e580`).
+All screenshots and downloads remain runtime-only.
+
+This continues, but does not complete, the matrix: ordinary buy-more targets
+2/4/5 and the requested ordinary-ante viewport financial row remain
+uncollected. No failure is claimed from those absent observations.
