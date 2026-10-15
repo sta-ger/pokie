@@ -270,6 +270,138 @@ describe("V2C-13 finite modifier authoring", () => {
         expect(session.getWinEvaluationResult()).toEqual(reference.getWinEvaluationResult());
     });
 
+    it.each([undefined, "stepwise", "composite"].flatMap(delivery => [false, true].flatMap(prepared => [false, true].map(jackpot =>
+        ({delivery: delivery as api.SessionCommand["delivery"], prepared, jackpot}))),
+    ))("F1f generated sticky/$delivery prepared=$prepared jackpot=$jackpot recovers selections and hides rejected observations", ({delivery, prepared, jackpot}) => {
+        const b = fixture("sticky");
+        b.mechanics!.modifiers!.wilds = [{symbol: "W2", factor: Number.MAX_VALUE}];
+        b.mechanics!.freeGames = {scatterSymbol: "S", awardsByCount: {3: 0}, retriggerPolicy: "additive"};
+        b.betModes = [{id: "base", runtimeType: "base", isDefault: true}, {id: "ante", runtimeType: "ante", costMultiplier: 2},
+            {id: "buy", runtimeType: "buyFeature", costMultiplier: 10, forcedFreeGames: 2}];
+        Reflect.deleteProperty(b, "reelStrips");
+        b.reelSequences = ["A", "W2", "A"].map(symbol => ({type: "weighted", variants: [
+            {id: "first", symbols: [symbol], weight: 1}, {id: "second", symbols: [symbol], weight: 2},
+        ]}));
+        if (jackpot) b.mechanics!.jackpot = {pool: {id: "mini", type: "fixed", amount: 10}, contribution: {type: "percentage", percentage: 0.1},
+            trigger: {type: "symbol-count", symbolId: "A", minimumCount: 1}, award: "single-tier"};
+        const game = generatedMechanicsGame(b);
+        const session = mechanicsSession(game);
+        const runtime = new api.SessionRuntime(session);
+        const success: api.SessionCommand = {kind: "spin", bet: 1e-7, mode: "ante", roundId: "settled", delivery: "composite"};
+        const saved = runtime.execute(success);
+        expect(saved.status).toBe("played");
+        expect(session.getWinAmount()).toBeGreaterThan(1e302);
+        const serializer = new api.VideoSlotSessionSerializer();
+        const settledData = serializer.getRoundData(session);
+        if (jackpot) expect(settledData.jackpot?.award).toEqual({poolId: "mini", amount: 10});
+        expect(runtime.execute({kind: "spin", mode: "missing"})).toMatchObject({status: "invalid-command"});
+        expect(serializer.getRoundData(session)).toEqual(settledData);
+        if (prepared) session.setSelectionContext!("pending:unchanged");
+        const before = JSON.parse(JSON.stringify(session.toSessionState()));
+        const selections = session.getSequenceSelections!();
+        const statistics = session.getSequenceStatistics!();
+        const credits = session.getCreditsAmount();
+        const reference = mechanicsSession(game);
+        reference.fromSessionState(before);
+        reference.setBet(1e-7);
+        reference.setCreditsAmount(credits);
+        const command: api.SessionCommand = {kind: "spin", bet: 7.5, mode: "buy", roundId: "bad", delivery};
+        for (let attempt = 0; attempt < 2; attempt++) {
+            expect(() => {
+                if (!prepared) return runtime.execute(command);
+                const ready = runtime.prepare(command, credits);
+                if (ready.status !== "ready") throw new Error(ready.reason);
+                return ready.execute();
+            }).toThrow(/overflow/);
+            expect(session.toSessionState()).toEqual(before);
+            expect(session.getBet()).toBe(1e-7);
+            expect(session.getBetModeId!()).toBe("ante");
+            expect(session.getCreditsAmount()).toBe(credits);
+            expect(session.getSequenceSelections!()).toEqual(selections);
+            expect(session.getSequenceStatistics!()).toEqual(statistics);
+            expect(session.getWinAmount()).toBe(0);
+            expect(session.getWinningLines()).toEqual({});
+            expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+            const data = serializer.getRoundData(session);
+            expect(data.totalWin).toBe(0);
+            expect(data.winningPositions).toEqual([]);
+            expect(data.modifiers).toBeUndefined();
+            expect(data.jackpot?.award).toBeUndefined();
+            const artifact = api.buildRoundArtifactFromSession(session, {roundId: "rejected", provenance: {game: b.manifest, pokieVersion: "1.3.0"}});
+            expect(artifact.totalWin).toBe(0);
+            expect(artifact.wins).toEqual([]);
+            expect(artifact.featureEvents?.find(event => event.type === "jackpot")?.data).not.toHaveProperty("award");
+            expect(runtime.execute(success)).toEqual(saved);
+            expect(session.getWinAmount()).toBe(0);
+            expect(session.toSessionState()).toEqual(before);
+        }
+        // Retry the rejected identity with its supported stake and mode. It was never accepted.
+        const retry: api.SessionCommand = {kind: "spin", bet: 1e-7, mode: "ante", roundId: "bad", delivery: "composite"};
+        const expected = new api.SessionRuntime(reference).execute(retry);
+        const actual = runtime.execute(retry);
+        expect(actual).toEqual(expected);
+        expect(session.toSessionState()).toEqual(reference.toSessionState());
+        expect(serializer.getRoundData(session)).toEqual(serializer.getRoundData(reference));
+        const settled = JSON.parse(JSON.stringify(session.toSessionState()));
+        expect(runtime.execute(retry)).toEqual(actual);
+        expect(session.toSessionState()).toEqual(settled);
+    });
+
+    it("F1f generated composite overflow preserves its committed prefix and resumes settlement exactly once", () => {
+        const b = fixture("sticky");
+        b.reelStrips = [["A"], ["W2"], ["A"]];
+        b.mechanics!.modifiers!.wilds = [{symbol: "W2", factor: Number.MAX_VALUE}];
+        b.mechanics!.freeGames = {scatterSymbol: "S", awardsByCount: {3: 0}, retriggerPolicy: "additive"};
+        b.betModes = [{id: "base", runtimeType: "base", isDefault: true}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 10, forcedFreeGames: 2}];
+        const game = generatedMechanicsGame(b);
+        const session = mechanicsSession(game);
+        session.setCreditsAmount(Number.MAX_VALUE / 2);
+        let accepted = 0;
+        let prefixState: unknown;
+        let prefix: Extract<api.SessionCommandResult, {status: "played"}>;
+        const runtime = new api.SessionRuntime(session, undefined, (_command, result) => {
+            accepted++;
+            prefix = result;
+            prefixState = JSON.parse(JSON.stringify(session.toSessionState()));
+        });
+        const command: api.SessionCommand = {kind: "spin", mode: "buy", roundId: "overflow", delivery: "composite"};
+        for (let attempt = 0; attempt < 2; attempt++) {
+            let failure: Error & {committedProgress?: api.SessionCommandProgress};
+            try {
+                runtime.execute(command);
+                throw new Error("Expected terminal balance overflow");
+            } catch (error) {
+                failure = error as typeof failure;
+            }
+            expect(failure.message).toMatch(/overflow/);
+            expect(failure.committedProgress?.committedResult).toEqual(prefix!);
+            expect(runtime.getLogicalRound()).toEqual(prefix!.logicalRound);
+            expect(prefix!.logicalRound).toMatchObject({cursor: 1, status: "pending"});
+            expect(prefix!.win).toBeGreaterThan(8e307);
+            expect(session.toSessionState()).toEqual(prefixState);
+            expect(session.getCreditsAmount()).toBe(prefix!.credits);
+            expect(session.getWinAmount()).toBe(0);
+            expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+            expect(new api.VideoSlotSessionSerializer().getRoundData(session).modifiers).toBeUndefined();
+            expect(accepted).toBe(1);
+        }
+        // Repair the external balance, retaining the already committed feature bank and RNG.
+        session.setCreditsAmount(0);
+        const reference = mechanicsSession(game);
+        reference.fromSessionState(prefixState);
+        reference.setCreditsAmount(0);
+        const expected = new api.SessionRuntime(reference, prefix!.logicalRound).execute({kind: "spin", delivery: "stepwise", continuation: {roundId: "overflow", cursor: 1}});
+        const result = runtime.execute(command);
+        expect(result).toEqual(expected);
+        expect(result).toMatchObject({logicalRound: {status: "completed", cursor: 2, totalStake: 0.5}, credits: Number.MAX_VALUE});
+        expect(session.toSessionState()).toEqual(reference.toSessionState());
+        expect(accepted).toBe(2);
+        const after = JSON.parse(JSON.stringify(session.toSessionState()));
+        expect(runtime.execute(command)).toEqual(result);
+        expect(session.toSessionState()).toEqual(after);
+        expect(accepted).toBe(2);
+    });
+
     it("generated composed overflow leaves public repository/wallet unchanged and a fresh-handler retry audits once", async () => {
         const b = fixture("sticky");
         b.reelStrips = [["A"], ["W2"], ["A"]];

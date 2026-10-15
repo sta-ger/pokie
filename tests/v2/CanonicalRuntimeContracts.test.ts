@@ -891,6 +891,42 @@ describe("V2C-02 canonical runtime contracts", () => {
         }
     });
 
+    it.each([false, true])("F1f unchanged consumer calculator recovery through prepared=%s retains its existing codec", prepared => {
+        const game = extensionGame();
+        const session = game.createSession({seed: "consumer"}) as VideoSlotSession;
+        session.setCreditsAmount(1000);
+        session.setBet(1);
+        const runtime = new SessionRuntime(session);
+        session.play();
+        const before = JSON.parse(JSON.stringify(session.toSessionState()));
+        const credits = session.getCreditsAmount();
+        const reference = game.createSession({seed: "consumer"}) as VideoSlotSession;
+        reference.fromSessionState(before);
+        reference.setCreditsAmount(credits);
+        reference.setBet(1);
+        const play = session.play.bind(session);
+        const failure = new Error("consumer post-play rejection");
+        const rejected = jest.spyOn(session, "play").mockImplementation(() => {
+            play();
+            throw failure;
+        });
+        expect(() => {
+            const command = {kind: "spin" as const, bet: 2, roundId: "bad"};
+            if (!prepared) return runtime.execute(command);
+            const ready = runtime.prepare(command, credits + 100);
+            if (ready.status !== "ready") throw new Error(ready.reason);
+            return ready.execute();
+        }).toThrow(failure);
+        expect(session.toSessionState()).toEqual(before);
+        expect(session.getBet()).toBe(1);
+        expect(session.getCreditsAmount()).toBe(credits);
+        expect(session.getWinAmount()).toBe(0);
+        expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+        rejected.mockRestore();
+        expect(runtime.execute({kind: "spin"})).toEqual(new SessionRuntime(reference).execute({kind: "spin"}));
+        expect(session.toSessionState()).toEqual(reference.toSessionState());
+    });
+
     it("prepared commands execute once and a rollback cannot undo or re-execute a settled round", () => {
         const session = generated(fractionalBetBlueprint([0.05], true)).createSession({seed: 7}) as VideoSlotSession;
         const runtime = new SessionRuntime(session);

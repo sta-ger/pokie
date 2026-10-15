@@ -98,25 +98,9 @@ export class SessionRuntime implements SessionRuntimeHandling {
         if (invalid !== undefined) return {status: "invalid-command", reason: invalid};
         if ((deliveries.get(this.session)?.size ?? 0) >= 10000) return {status: "blocked", reason: "Direct session retry retention limit reached; export evidence and release the session."};
         const session = this.session;
-        const previousRound = logicalRounds.get(session);
-        const before = (command.delivery !== undefined || command.continuation !== undefined) && isSessionStateRestorable(session)
-            ? {state: cloneSessionData((session as GameSessionHandling & {toSessionState(): unknown}).toSessionState()), credits: session.getCreditsAmount(), bet: session.getBet()}
-            : undefined;
         const prepared = this.prepare(command, session.getCreditsAmount());
         if (prepared.status === "blocked") return {status: "blocked", reason: prepared.reason};
-        let result: Extract<SessionCommandResult, {status: "played"}>;
-        try {
-            result = prepared.execute();
-        } catch (error) {
-            if (before) {
-                (session as GameSessionHandling & {fromSessionState(state: unknown): unknown}).fromSessionState(before.state);
-                session.setBet(before.bet);
-                session.setCreditsAmount(before.credits);
-                if (previousRound) logicalRounds.set(session, previousRound);
-                else logicalRounds.delete(session);
-            }
-            throw error;
-        }
+        const result = prepared.execute();
         // Preserve the accepted prefix even if a later composite successor fails.
         if (key) {
             const ledger = deliveries.get(session) ?? new Map();
@@ -213,6 +197,13 @@ export class SessionRuntime implements SessionRuntimeHandling {
             // Setters are allowed to mutate and then throw.  Always restore the snapshot on failure so a
             // partial setCreditsAmount() cannot bypass restoration merely because it never returned.
             (session as {validateScreenCoordinates?: () => void}).validateScreenCoordinates?.();
+            // Capture before command setters and selection context changes. Persistence restores
+            // custom executable fields; synchronous rollback also invalidates every nested result.
+            // Keep this boundary here so wallet adapters and audit replay share direct execution's
+            // recovery, including commands that omit a logical delivery policy.
+            const state = isSessionStateRestorable(session)
+                ? cloneSessionData((session as GameSessionHandling & {toSessionState(): unknown}).toSessionState()) : undefined;
+            const stepRollback = (session as Partial<VideoSlotSessionHandling>).createStepRollback?.();
             session.setCreditsAmount(balance);
             if (bet !== undefined) session.setBet(bet);
             if (mode !== undefined && supportsBetModeSelecting(session)) session.setBetMode(mode);
@@ -221,7 +212,23 @@ export class SessionRuntime implements SessionRuntimeHandling {
                 return {status: "ready", rollback, execute: () => {
                     if (executed || invalidated) throw new Error("Prepared command is no longer executable.");
                     executed = true;
-                    return this.executePrepared(command);
+                    try {
+                        return this.executePrepared(command);
+                    } catch (error) {
+                        try {
+                            if (state !== undefined) (session as GameSessionHandling & {fromSessionState(state: unknown): unknown}).fromSessionState(state);
+                        } finally {
+                            // Snapshot restoration deliberately retains successful feature outcomes.
+                            // Rejection must hide those observations throughout the decorator stack.
+                            stepRollback?.();
+                            if (previousMode !== undefined && supportsBetModeSelecting(session)) session.setBetMode(previousMode);
+                            session.setBet(previousBet);
+                            session.setCreditsAmount(previousCredits);
+                            if (round) logicalRounds.set(session, round);
+                            else logicalRounds.delete(session);
+                        }
+                        throw error;
+                    }
                 }};
             }
             const restored = rollback();

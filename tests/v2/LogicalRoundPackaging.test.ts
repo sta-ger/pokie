@@ -1,3 +1,4 @@
+import {existingMechanicsBlueprint, generatedMechanicsGame, mechanicsSession} from "./fixtures/ExistingMechanicsGame.js";
 import {transactionalRoundGame} from "./fixtures/TransactionalRoundGame.js";
 import {ControllableDurableWallet} from "../server/wallet/fixtures/ControllableDurableWallet.js";
 import fs from "node:fs";
@@ -109,6 +110,92 @@ function snapshot(session: api.GameSessionHandling) {
 }
 
 describe("logical-round delivery and mathematical boundaries", () => {
+    it.each(["hold-flat", "hold-flat-modes", "fixed-holdAndWin", "fixed-holdAndWin-modes"].flatMap(id =>
+        [undefined, "stepwise", "composite"].flatMap(delivery => [false, true].map(prepared => ({id, delivery: delivery as api.SessionCommand["delivery"], prepared}))),
+    ))("F1f $id/$delivery prepared=$prepared restores command state without reviving a completed feature", ({id, delivery, prepared}) => {
+        const b = existingMechanicsBlueprint(api.AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
+        b.rows = 2;
+        b.availableBets = [0.05, 7.5, 1e-7, 1];
+        b.reelStrips = [["C"], ["A"], ["A"]];
+        b.wilds = ["C"];
+        b.paytable = {A: {3: Number.MAX_VALUE}};
+        b.mechanics!.holdAndWin!.symbolEffects = {C: {kind: "value", amount: 3}};
+        if (b.mechanics!.jackpot) {
+            b.mechanics!.jackpot.pool = {id: "mini", type: "fixed", amount: 10};
+            b.mechanics!.jackpot.contribution.percentage = 0;
+            b.mechanics!.jackpot.trigger = {type: "symbol-count", symbolId: "C", minimumCount: 1};
+        }
+        const model = generatedMechanicsGame(b);
+        const session = mechanicsSession(model);
+        const runtime = new api.SessionRuntime(session);
+        const entry: api.SessionCommand = {kind: "spin", delivery: "composite", roundId: "settled", bet: 1e-7, ...(b.betModes ? {mode: "ante"} : {})};
+        const saved = played(runtime.execute(entry));
+        const expectedWin = b.mechanics!.jackpot ? 16 : 6;
+        expect(saved.logicalRound?.status).toBe("completed");
+        expect(session.getWinAmount()).toBe(expectedWin);
+        const serializer = new api.VideoSlotSessionSerializer();
+        const settledData = serializer.getRoundData(session);
+        expect(settledData.holdAndWin?.payout).toBe(6);
+        const before = JSON.parse(JSON.stringify(session.toSessionState()));
+        const credits = session.getCreditsAmount();
+        const reference = mechanicsSession(model);
+        reference.fromSessionState(before);
+        reference.setBet(session.getBet());
+        reference.setCreditsAmount(credits);
+        // Successful snapshot restoration must keep its legitimate feature payout and award.
+        expect(reference.getWinAmount()).toBe(expectedWin);
+        expect(serializer.getRoundData(reference).holdAndWin?.payout).toBe(6);
+        expect(serializer.getRoundData(reference).jackpot?.award).toEqual(settledData.jackpot?.award);
+        expect(runtime.execute({kind: "spin", bet: 99})).toMatchObject({status: "invalid-command"});
+        expect(serializer.getRoundData(session)).toEqual(settledData);
+        session.setCreditsAmount(0);
+        expect(runtime.execute({kind: "spin", bet: 1})).toMatchObject({status: "blocked"});
+        expect(serializer.getRoundData(session)).toEqual(settledData);
+        session.setCreditsAmount(credits);
+        const command: api.SessionCommand = {kind: "spin", bet: 1, roundId: "bad", delivery, ...(b.betModes ? {mode: "base"} : {})};
+        for (let attempt = 0; attempt < 2; attempt++) {
+            expect(() => {
+                if (!prepared) return runtime.execute(command);
+                const ready = runtime.prepare(command, credits);
+                if (ready.status !== "ready") throw new Error(ready.reason);
+                return ready.execute();
+            }).toThrow(/overflow/);
+            expect(session.toSessionState()).toEqual(before);
+            expect(session.getBet()).toBe(1e-7);
+            expect(session.getBetModeId?.()).toBe(reference.getBetModeId?.());
+            expect(session.getCreditsAmount()).toBe(credits);
+            expect(runtime.getLogicalRound()).toEqual(saved.logicalRound);
+            expect(session.getWinAmount()).toBe(0);
+            expect(session.getWinningLines()).toEqual({});
+            expect(session.getWinningScatters()).toEqual({});
+            expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+            const data = serializer.getRoundData(session);
+            expect(data.totalWin).toBe(0);
+            expect(data.winningPositions).toEqual([]);
+            expect(data.holdAndWin?.payout).toBe(0);
+            expect(data.jackpot?.award).toBeUndefined();
+            const artifact = api.buildRoundArtifactFromSession(session, {roundId: "failed", provenance: {game: b.manifest, pokieVersion: "1.3.0"}});
+            expect(artifact.totalWin).toBe(0);
+            expect(artifact.wins).toEqual([]);
+            expect(artifact.featureEvents).toContainEqual({type: "holdAndWin", data: expect.objectContaining({payout: 0})});
+            expect(artifact.featureEvents?.find(event => event.type === "jackpot")?.data).not.toHaveProperty("award");
+            expect(runtime.execute(entry)).toEqual(saved);
+            expect(session.getWinAmount()).toBe(0); // Duplicate output cannot revive live observations.
+            expect(session.toSessionState()).toEqual(before);
+        }
+        // An unrelated execution must not consume the failed command's logical:bad context.
+        const retry = {kind: "spin" as const};
+        expect(runtime.execute(retry)).toEqual(new api.SessionRuntime(reference, saved.logicalRound).execute(retry));
+        expect(session.toSessionState()).toEqual(reference.toSessionState());
+        expect(serializer.getRoundData(session)).toEqual(serializer.getRoundData(reference));
+        // The omitted entry already started a feature; continue it through ordinary public commands.
+        for (let step = 0; step < 2; step++) {
+            expect(runtime.execute(retry)).toEqual(new api.SessionRuntime(reference).execute(retry));
+        }
+        expect(session.getWinAmount()).toBe(expectedWin);
+        expect(session.toSessionState()).toEqual(reference.toSessionState());
+    });
+
     it("a successfully returned bounded composite keeps its detached output after later progress", () => {
         let calculations = 0;
         const session = transactionalRoundGame(() => calculations++).createSession({seed: 7});
