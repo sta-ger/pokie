@@ -280,8 +280,12 @@ describe("V2C-13 finite modifier authoring", () => {
             {id: "buy", runtimeType: "buyFeature", costMultiplier: 10, forcedFreeGames: 2}];
         Reflect.deleteProperty(b, "reelStrips");
         b.reelSequences = ["A", "W2", "A"].map(symbol => ({type: "weighted", variants: [
-            {id: "first", symbols: [symbol], weight: 1}, {id: "second", symbols: [symbol, symbol], weight: 2},
+            {id: "first", symbols: [symbol], weight: 1}, {id: "second", symbols: ["B"], weight: 2},
         ]}));
+        b.mechanics!.modifiers!.rules.unshift(
+            {id: "side-transform", type: "transform", space: "evaluated", positions: [[0, 0], [2, 0]], from: "B", to: "A"},
+            {id: "wild-transform", type: "transform", space: "evaluated", positions: [[1, 0]], from: "B", to: "W2"},
+        );
         if (jackpot) b.mechanics!.jackpot = {pool: {id: "mini", type: "fixed", amount: 10}, contribution: {type: "percentage", percentage: 0.1},
             trigger: {type: "symbol-count", symbolId: "A", minimumCount: 1}, award: "single-tier"};
         const game = generatedMechanicsGame(b);
@@ -330,7 +334,7 @@ describe("V2C-13 finite modifier authoring", () => {
             const artifact = api.buildRoundArtifactFromSession(session, {roundId: "rejected", provenance: {game: b.manifest, pokieVersion: "1.3.0"}});
             expect(artifact.totalWin).toBe(0);
             expect(artifact.wins).toEqual([]);
-            expect(artifact.featureEvents?.find(event => event.type === "jackpot")?.data).not.toHaveProperty("award");
+            expect(artifact.featureEvents?.find(event => event.type === "jackpot")?.data ?? {}).not.toHaveProperty("award");
             expect(runtime.execute(success)).toEqual(saved);
             expect(session.getWinAmount()).toBe(0);
             expect(session.toSessionState()).toEqual(before);

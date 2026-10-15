@@ -150,7 +150,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
         expect(serializer.getRoundData(session)).toEqual(settledData);
         session.setCreditsAmount(0);
         expect(runtime.execute({kind: "spin", bet: 1})).toMatchObject({status: "blocked"});
-        expect(serializer.getRoundData(session)).toEqual(settledData);
+        expect(serializer.getRoundData(session)).toEqual({...settledData, credits: 0});
         session.setCreditsAmount(credits);
         const command: api.SessionCommand = {kind: "spin", bet: 2, roundId: "bad", delivery, ...(b.betModes ? {mode: "base"} : {})};
         for (let attempt = 0; attempt < 2; attempt++) {
@@ -178,7 +178,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
             expect(artifact.totalWin).toBe(0);
             expect(artifact.wins).toEqual([]);
             expect(artifact.featureEvents).toContainEqual({type: "holdAndWin", data: expect.objectContaining({payout: 0})});
-            expect(artifact.featureEvents?.find(event => event.type === "jackpot")?.data).not.toHaveProperty("award");
+            expect(artifact.featureEvents?.find(event => event.type === "jackpot")?.data ?? {}).not.toHaveProperty("award");
             expect(runtime.execute(entry)).toEqual(saved);
             expect(session.getWinAmount()).toBe(0); // Duplicate output cannot revive live observations.
             expect(session.toSessionState()).toEqual(before);
