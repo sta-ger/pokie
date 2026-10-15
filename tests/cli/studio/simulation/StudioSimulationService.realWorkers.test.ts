@@ -1,4 +1,4 @@
-import {loadPokieGame} from "@fromstan/pokie";
+import {isSimulationReportSet, loadPokieGame} from "@fromstan/pokie";
 import path from "path";
 import {InMemoryStudioSimulationRepository} from "../../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {StudioSimulationJobView} from "../../../../cli/studio/simulation/StudioSimulationJobView.js";
@@ -117,6 +117,8 @@ describe("StudioSimulationService (integration, real worker threads via --worker
         expect(job.workers).toBe(2);
         expect(job.roundsCompleted).toBe(1000);
         expect(job.report?.workers).toBe(2);
+        if (!job.report || isSimulationReportSet(job.report)) throw new Error("Expected single report");
+        expect(job.report.analytics).toMatchObject({envelope: {schemaVersion: 1}, subrounds: 1000, paidEntries: 1000, totalStake: job.report.totalBet, totalWin: job.report.totalWin});
     });
 
     it("runs a workers=4 simulation with an uneven round split and still completes every round", async () => {
@@ -204,6 +206,8 @@ describe("StudioSimulationService (integration, real worker threads via --worker
 
         const job = await waitForTerminalRealTime(service, result.job.id);
         expect(job.status).toBe("cancelled");
+        expect(job.observedPrefix?.analytics?.subrounds).toBeGreaterThan(0);
+        expect(job.observedPrefix?.analytics?.envelope.schemaVersion).toBe(1);
         expect(job.report).toBeUndefined();
     });
 

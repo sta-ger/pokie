@@ -34,6 +34,7 @@ describe("SimCommand (integration, real loadPokieGame + --workers, real worker t
         expect(report.workers).toBe(2);
         expect(report.reproducibility?.command).toContain("--workers 2");
         expect(report.reproducibility?.workerSeedStrategy).toBeDefined();
+        expect(report.analytics).toMatchObject({envelope: {schemaVersion: 1}, subrounds: 1000, paidEntries: 1000, totalStake: report.totalBet, totalWin: report.totalWin});
         expect(report.totalBet).toBeGreaterThan(0);
         expect(Number.isFinite(report.rtp)).toBe(true);
     });
@@ -59,6 +60,7 @@ describe("SimCommand (integration, real loadPokieGame + --workers, real worker t
 
         const report = JSON.parse(fs.readFileSync(outFile, "utf-8")) as SimulationReport;
         expect(report.reproducibility?.configHash).toBe("sha256:fixture-config-hash");
+        expect(report.analytics?.envelope.modelId).toBe("sha256:fixture-config-hash");
     });
 
     it("--workers 1 explicitly given still works without a worker entry point (in-process path)", async () => {

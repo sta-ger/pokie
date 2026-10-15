@@ -251,6 +251,8 @@ export function validateFeatureAnalytics(s: FeatureAnalyticsSnapshot): void {
         (s.maxWin === 0 && s.maxWinCount !== s.subrounds) ||
         ![s.totalStake, s.totalWin, s.maxWin, ...Object.values(s.partition), ...Object.values(s.betModes)].every(finite)
     ) throw new Error("Invalid analytics counts/totals.");
+    if (!Array.isArray(s.topWins)) throw new Error("Invalid analytics top-win array.");
+    if (s.maxWin > 0 && s.maxWinCount > s.subrounds - s.deadSpins) throw new Error("Invalid analytics maximum occurrence count.");
     if (
         !close(
             Object.values(s.partition).reduce((a, b) => a + b, 0),
@@ -259,7 +261,7 @@ export function validateFeatureAnalytics(s: FeatureAnalyticsSnapshot): void {
         ) ||
         s.maxWin > s.totalWin ||
         s.topWins.length > 10 ||
-        !s.topWins.every((n, i) => finite(n) && n > 0 && n <= s.maxWin && (i === 0 || n <= s.topWins[i - 1])) ||
+        !Array.from(s.topWins).every((n, i) => finite(n) && n > 0 && n <= s.maxWin && (i === 0 || n <= s.topWins[i - 1])) ||
         s.topWins.length !== Math.min(10, s.subrounds - s.deadSpins) ||
         (s.maxWin > 0 && (s.maxWinCount === 0 || s.topWins[0] !== s.maxWin))
     ) throw new Error("Invalid analytics payout conservation/top-win state.");
@@ -378,9 +380,11 @@ export function observeFeatureAnalytics(stake: number, win: number, observation?
         observation &&
         [observation.activeKnownFeatures, observation.activeCarriedFeatures].some(
             (names) =>
-                names !== undefined && (!Array.isArray(names) || new Set(names).size !== names.length || names.some((name) => !FEATURE_NAMES.includes(name))),
+                names !== undefined &&
+                (!Array.isArray(names) || new Set(names).size !== names.length || Array.from(names).some((name) => !FEATURE_NAMES.includes(name))),
         )
     ) throw new Error("Invalid analytics active feature evidence.");
+    if (observation && observation.components !== undefined && !Array.isArray(observation.components)) throw new Error("Invalid analytics component list.");
     const s = emptyFeatureAnalytics(observation?.envelope);
     s.subrounds = 1;
     s.paidEntries = stake > 0 ? 1 : 0;
@@ -403,6 +407,7 @@ export function observeFeatureAnalytics(stake: number, win: number, observation?
     let componentTotal = 0;
     for (const c of observation.components ?? []) {
         if (
+            !c ||
             typeof c.type !== "string" ||
             typeof c.id !== "string" ||
             !(c.symbol === null || typeof c.symbol === "string") ||
@@ -431,9 +436,22 @@ export function observeFeatureAnalytics(stake: number, win: number, observation?
     if (observation.components === undefined) s.partition.unavailable = win;
     for (const kind of ["symbol", "line", "scatter"] as const) for (const key of hits[kind]) increment(s.hits[kind], key, 1);
     boundedKey(observation.source);
-    s.sources[observation.source] = featureRecord(() => ({entries: 0, completions: 0, lastPosition: 0, endKnown: false, endCarried: false}));
+    Reflect.defineProperty(s.sources, observation.source, {
+        value: featureRecord(() => ({entries: 0, completions: 0, lastPosition: 0, endKnown: false, endCarried: false})),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+    });
+    if (!Array.isArray(observation.features)) throw new Error("Invalid analytics lifecycle event list.");
     const lifecycleSeen = new Set<string>();
     for (const event of observation.features) {
+        if (
+            !event ||
+            [event.entry, event.entryExecuted, event.retrigger, event.excludedCompletion].some((flag) => flag !== undefined && typeof flag !== "boolean") ||
+            (event.granted !== undefined && !count(event.granted))
+        ) throw new Error("Invalid analytics lifecycle event fields.");
+        if (event.completion !== undefined) requireKeys(event.completion, ["duration", "win"]);
+
         if (!s.envelope.supportedFeatures.includes(event.feature) || lifecycleSeen.has(event.feature) || !count(event.granted ?? 0)) throw new Error("Invalid/repeated analytics lifecycle observation.");
         lifecycleSeen.add(event.feature);
         const f = s.features[event.feature];

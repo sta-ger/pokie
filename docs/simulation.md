@@ -644,7 +644,9 @@ analytics remain readable and display **unavailable**, rather than invented zero
 observations. `setSimulationModelIdentity(session, game.getConfigHash?.())` binds
 an executable identity for direct runners; the package/parallel paths do this
 automatically. A custom model without a hash is explicitly unidentified. A null
-identity cannot merge with a known identity. An empty, unconfigured accumulator
+identity cannot merge with a known identity. Two anonymous envelopes may merge
+only with matching metric/capability policy; this is not evidence of the same
+executable model. An empty, unconfigured accumulator
 can adopt an envelope; a configured empty accumulator still enforces its policy.
 
 Every rate retains numerator and denominator. Paid entries count positive

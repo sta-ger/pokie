@@ -5,6 +5,7 @@ import {pathToFileURL} from "node:url";
 import * as api from "../../src/index.js";
 import {analyticsEnvelope, type FeatureAnalyticsObservation} from "../../src/simulation/FeatureAnalytics.js";
 import {runChunkedSimulation} from "../../src/simulation/parallel/internal/runChunkedSimulation.js";
+import {boundedBlueprint} from "./fixtures/BoundedMechanicsGame.js";
 import {weightedBonusBlueprint} from "./fixtures/WeightedBonusGame.js";
 import {generatedMechanicsGame, mechanicsSession, existingMechanicsBlueprint} from "./fixtures/ExistingMechanicsGame.js";
 import {emitPublicRuntime} from "./helpers/publicRuntime.js";
@@ -180,12 +181,22 @@ describe("V2C-16 feature analytics", () => {
             expect(() => a.addRound(1, 0, observation(patch))).toThrow();
             expect(a.toSnapshot()).toEqual(before);
         }
+        expect(() => a.addRound(1, 0, observation({features: [{feature: "freeGames", entry: "yes"} as unknown as api.AnalyticsFeatureEvent]}))).toThrow(
+            /analytics/,
+        );
+        expect(a.toSnapshot()).toEqual(before);
+        const reserved = aggregate([[1, 0, observation({source: "__proto__", features: [{feature: "freeGames", entry: true}]})]]).toSnapshot();
+        expect(Object.keys(reserved.analytics!.sources)).toEqual(["__proto__"]);
+        expect(api.SimulationAccumulator.fromSnapshot(JSON.parse(JSON.stringify(reserved))).getStatistics().analytics!.features.freeGames.entries).toBe(1);
         for (const patch of [{modelId: "other"}, {modelId: null}, {schemaVersion: 2}, {policy: "different"}]) {
             const snapshot = aggregate().toSnapshot();
             Object.assign(snapshot.analytics!.envelope, patch);
             expect(() => a.merge(api.SimulationAccumulator.fromSnapshot(snapshot))).toThrow(/analytics/i);
             expect(a.toSnapshot()).toEqual(before);
         }
+        const sparse = aggregate().toSnapshot();
+        Reflect.deleteProperty(sparse.analytics!.topWins, "1");
+        expect(() => api.SimulationAccumulator.fromSnapshot(sparse)).toThrow(/analytics/);
         for (const corrupt of [
             (s: api.FeatureAnalyticsSnapshot) => s.features.freeGames.completions++,
             (s: api.FeatureAnalyticsSnapshot) => s.partition.base++,
@@ -461,4 +472,18 @@ it("keeps raw fractional totals and makes no arbitrary floating-point associativ
     expect(split.totalStake).toBe(0.6);
     expect(sequential.totalStake).not.toBe(split.totalStake);
     expect(split.subrounds).toBe(sequential.subrounds);
+});
+
+it("nested collection and respin lifecycle totals overlap while canonical payouts remain additive", () => {
+    const blueprint = boundedBlueprint("respins-collection");
+    blueprint.reelStrips = [["C"], ["C"], ["C"]];
+    const statistics = new api.AggregateSimulationRunner(mechanicsSession(generatedMechanicsGame(blueprint)), 9).run().getStatistics();
+    const a = statistics.analytics!;
+    expect(a).toMatchObject({subrounds: 9, paidEntries: 1, logicalEntries: 1, logicalCompletions: 1, totalStake: 0.05, totalWin: 60, partition: {base: 0, feature: 60, jackpot: 0, unavailable: 0}});
+    expect(a.features.respins).toMatchObject({entries: 1, retriggers: 6, grants: 8, completions: 1, durationSum: 8, winSum: 60});
+    expect(a.features.collection).toMatchObject({entries: 6, completions: 6, durationSum: 0, winSum: 60, durationHistogram: [6, 0, 0, 0], winHistogram: [0, 0, 6, 0]});
+    expect(a.lifecycle.respins.averageDuration).toEqual(ratio(8, 1, 8));
+    expect(a.lifecycle.collection.averageWin).toEqual(ratio(60, 6, 10));
+    expect(a.hitRates.symbol.C).toEqual(ratio(6, 9, 2 / 3));
+    expect(a.deadSpinRate).toEqual(ratio(3, 9, 1 / 3));
 });
