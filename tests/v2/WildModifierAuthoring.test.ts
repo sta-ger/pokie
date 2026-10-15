@@ -106,7 +106,7 @@ describe("V2C-13 finite modifier authoring", () => {
         expect(session.toSessionState()).toEqual(before);
         expect(session.getCreditsAmount()).toBe(10000);
         expect(session.getWinAmount()).toBe(0);
-        expect(session.getModifierObservation()).toBeUndefined();
+        expect(session.getModifierObservation!()).toBeUndefined();
     });
 
     it("calculator reuse reads current authored factors and fresh restoration has identical math", () => {
