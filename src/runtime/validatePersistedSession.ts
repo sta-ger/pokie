@@ -122,7 +122,8 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
             try {
                 // Partial capture retains serializer observations; full capture also has an artifact.
                 // A logical envelope was checked above. Every retained copy must agree.
-                if (!state.logicalRound || state.roundPayload) validateWeightedBonusObservation(entryFeature!, payload?.weightedBonus ?? artifact);
+                if (state.roundPayload) validateWeightedBonusObservation(entryFeature!, payload?.weightedBonus);
+                else if (!state.logicalRound) validateWeightedBonusObservation(entryFeature!, artifact);
                 if (state.roundArtifact) validateWeightedBonusObservation(entryFeature!, artifact);
             } catch (error) {
                 return {status: "corrupt-state", reason: (error as Error).message};

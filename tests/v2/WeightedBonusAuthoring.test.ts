@@ -298,14 +298,14 @@ describe("V2C-15 weighted bonus authoring", () => {
         }
         await repository.save("s", entry.state);
         expect(await handler().execute(command)).toEqual(entry);
-        let totalStake = entry.stake, 
+        let totalStake = entry.stake!, 
             totalWin = entry.win;
         for (const cursor of [1, 2]) {
             const next = await handler().execute(continuation(cursor));
             if (next.status !== "played") throw new Error(JSON.stringify(next));
             expect(next).toMatchObject({stake: 0, win: 0.1, state: {featureState: {executed: cursor, remaining: 2 - cursor}}});
             expect(await handler().execute(continuation(cursor))).toEqual(next);
-            totalStake += next.stake;
+            totalStake += next.stake!;
             totalWin += next.win;
             expect(api.validatePersistedSession(next.state, game)).toBeUndefined();
             if (explicit && cursor === 2) expect(next.state.logicalRound).toMatchObject({cursor: 3, totalStake: 0.05, totalWin: 0.55});
