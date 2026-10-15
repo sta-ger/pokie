@@ -170,7 +170,7 @@ describe("V2C-13 finite modifier authoring", () => {
             {id: "side-transform", type: "transform", space: "evaluated", positions: [[0, 0], [2, 0]], from: "B", to: "A"},
             {id: "wild-transform", type: "transform", space: "evaluated", positions: [[1, 0]], from: "B", to: "W2"},
         );
-        const game = generatedMechanicsGame(b), 
+        const game = generatedMechanicsGame(b),
             session = mechanicsSession(game);
         session.setBet(7.5);
         session.setBetMode!(mode);
@@ -208,7 +208,7 @@ describe("V2C-13 finite modifier authoring", () => {
         b.betModes = [{id: "base", runtimeType: "base", isDefault: true}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 10, forcedFreeGames: 1}];
         b.mechanics!.jackpot = {pool: type === "fixed" ? {id: "mini", type, amount: Number.MAX_VALUE} : {id: "mini", type, seedValue: Number.MAX_VALUE},
             contribution: {type: "percentage", percentage: 0.1}, trigger: {type: "symbol-count", symbolId: "A", minimumCount: 1}, award: "single-tier"};
-        const game = generatedMechanicsGame(b), 
+        const game = generatedMechanicsGame(b),
             session = mechanicsSession(game);
         session.setBetMode!(mode);
         const before = JSON.parse(JSON.stringify(session.toSessionState()));
@@ -233,7 +233,7 @@ describe("V2C-13 finite modifier authoring", () => {
         b.mechanics!.modifiers!.wilds = [{symbol: "W2", factor: Number.MAX_VALUE}];
         b.mechanics!.jackpot = {pool: {id: "mini", type: "accumulating", seedValue: 10},
             contribution: {type: "percentage", percentage: 0.1}, trigger: {type: "symbol-count", symbolId: "A", minimumCount: 1}, award: "single-tier"};
-        const game = generatedMechanicsGame(b), 
+        const game = generatedMechanicsGame(b),
             session = mechanicsSession(game);
         session.setBet(1e-7);
         session.play();
@@ -278,8 +278,8 @@ describe("V2C-13 finite modifier authoring", () => {
         b.betModes = [{id: "base", runtimeType: "base", isDefault: true}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 10, forcedFreeGames: 2}];
         b.mechanics!.jackpot = {pool: {id: "mini", type: "accumulating", seedValue: 10},
             contribution: {type: "percentage", percentage: 0.1}, trigger: {type: "symbol-count", symbolId: "A", minimumCount: 1}, award: "single-tier"};
-        const game = generatedMechanicsGame(b), 
-            repository = new api.InMemorySessionRepository(), 
+        const game = generatedMechanicsGame(b),
+            repository = new api.InMemorySessionRepository(),
             wallet = new api.InMemoryWallet(10000);
         const initial = api.captureInitialPokieSessionState({seed: 31}, mechanicsSession(game), game.getSessionSerializer!(), true, game);
         await repository.save("s", initial);

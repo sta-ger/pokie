@@ -189,8 +189,8 @@ describe("JackpotRoundHandler", () => {
         if (failure === "balance") session.setCreditsAmount(Number.MAX_VALUE);
         if (failure === "statistics") session.setJackpotPoolStatistics({mini: {awardCount: 1, totalContributed: 0, totalAwarded: Number.MAX_VALUE}});
         pool.contribute(7);
-        const credits = session.getCreditsAmount(), 
-            statistics = session.getJackpotPoolStatistics(), 
+        const credits = session.getCreditsAmount(),
+            statistics = session.getJackpotPoolStatistics(),
             value = pool.getValue();
         // Use a large award for balance/statistics too; the custom resolver keeps existing
         // collaborator semantics and calls the pool exactly once.
