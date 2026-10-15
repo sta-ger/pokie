@@ -153,8 +153,8 @@ describe("V2C-17 public analytics parity", () => {
 
     it.each(["ordinary", "all-mode", "historical-native"])("preserves tiny exact probabilities and legacy ratio omissions in %s inputs", async kind => {
         const variants = [
-            {id: "tiny-positive", weight: Number.MIN_VALUE, probability: Number.MIN_VALUE, probabilityRatio: {numerator: "1", denominator: (BigInt(2) ** BigInt(1074)).toString()}, count: 0, frequency: 0, uncovered: true},
-            {id: "underflow", weight: Number.MIN_VALUE, probability: 0, probabilityRatio: {numerator: "1", denominator: (BigInt(2) ** BigInt(1200)).toString()}, count: 0, frequency: 0, uncovered: true},
+            {id: "tiny-positive", weight: Number.MIN_VALUE, probability: Number.MIN_VALUE, probabilityRatio: {numerator: "1", denominator: (BigInt(1) << BigInt(1074)).toString()}, count: 0, frequency: 0, uncovered: true},
+            {id: "underflow", weight: Number.MIN_VALUE, probability: 0, probabilityRatio: {numerator: "1", denominator: (BigInt(1) << BigInt(1200)).toString()}, count: 0, frequency: 0, uncovered: true},
             {id: "disabled", weight: 0, probability: 0, probabilityRatio: {numerator: "0", denominator: "2"}, count: 0, frequency: 0, uncovered: false},
             {id: "legacy", weight: 1, probability: 1, count: 1, frequency: 1, uncovered: false},
         ];

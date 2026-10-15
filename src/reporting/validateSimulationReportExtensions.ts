@@ -68,10 +68,12 @@ function selections(value: unknown, field: string, reel: boolean): void {
 /** Optional saved structures must be complete when supplied; missing analytics remains legacy support. */
 export function validateSimulationReportExtensions(value: Record<string, unknown>, prefix = ""): void {
     const path = (key: string) => `${prefix}${key}`;
+    for (const field of ["rounds", "requestedRounds"]) if (value[field] !== undefined) check(value[field], count, path(field));
     if (value.analytics !== undefined) {
         const a = requireObject(value.analytics, path("analytics"));
         const template = featureAnalyticsStatistics(emptyFeatureAnalytics());
         shape(a, template, path("analytics"));
+        counts(a, ["subrounds", "paidEntries", "logicalEntries", "logicalCompletions", "carriedSubrounds", "cascadeSteps", "deadSpins", "maxWinCount"], path("analytics"));
         const envelope = a.envelope as typeof template.envelope;
         if (envelope.schemaVersion !== 1 || envelope.eventVersion !== 1 || envelope.policy !== template.envelope.policy || !envelope.supportedFeatures.every(name => FEATURE_NAMES.includes(name))) fail(path("analytics.envelope provenance"));
         if (a.unit !== template.unit || a.zeroConvention !== template.zeroConvention) fail(path("analytics sample conventions"));

@@ -139,6 +139,9 @@ describe("ReportCommand", () => {
     describe.each(["single", "all-mode", "historical-native"])("saved extensions: %s", kind => {
         const malformed: Array<[string, unknown]> = [
             ["analytics", {}],
+            ["rounds", -1],
+            ["rounds", 0.5],
+            ["analytics.subrounds", 0.5],
             ["analytics.features.extra", null],
             ["analytics.features.freeGames", null],
             ["analytics.features.freeGames.durationHistogram", [0]],
@@ -150,6 +153,10 @@ describe("ReportCommand", () => {
             ["diagnostics.samples", -1],
             ["diagnostics.samples", 0.5],
             ["diagnostics.achievedRtpHalfWidth", -0.1],
+            ["diagnostics.achievedRtpHalfWidth", "0.1"],
+            ["convergence.achievedRtpHalfWidth", -0.1],
+            ["convergence.rtpTolerance", -0.1],
+            ["convergence.checksPerformed", 0.5],
             ["rtpConfidenceInterval95.low", "bad"],
             ["reelSequences.0.variants.0.probabilityRatio", null],
             ["reelSequences.0.variants.0.probabilityRatio", {numerator: "-1", denominator: "2"}],
@@ -164,6 +171,7 @@ describe("ReportCommand", () => {
         ];
         it.each(malformed)("rejects %s = %j before projection/rendering", async (field, invalid) => {
             const saved = JSON.parse(JSON.stringify(featureAnalyticsReport())) as Record<string, unknown>;
+            saved.convergence = {minRounds: 2, checkIntervalRounds: 2, stableChecks: 1, checksPerformed: 0, consecutiveStableChecks: 0, achievedRtpHalfWidth: null, rtpTolerance: 0.01};
             saved.reelSequences = [{reelIndex: 0, context: "logical-round", model: "fixture", selections: 0, variants: [{id: "rare", weight: 1, probability: 0.5, count: 0, frequency: 0, uncovered: true, probabilityRatio: {numerator: "1", denominator: "2"}}]}];
             let target = saved;
             const keys = field.split(".");
