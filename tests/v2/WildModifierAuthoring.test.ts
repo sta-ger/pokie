@@ -727,7 +727,7 @@ describe("V2C-13 finite modifier authoring", () => {
             ),
         );
         const context = new api.WinEvaluationContext(0.05, symbols, config);
-        expect(new api.MultiplierResolver({W2: 2}, {uniquePositions: true}).resolve(component, context)).toEqual({
+        expect(new api.MultiplierResolver<string>({W2: 2}, {uniquePositions: true}).resolve(component, context)).toEqual({
             winAmount: 2,
             breakdown: [{source: "symbol-multipliers", positions: [[1, 0]], values: [2], combinedMultiplier: 2}],
         });
