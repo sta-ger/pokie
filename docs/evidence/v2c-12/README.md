@@ -562,3 +562,36 @@ mode to `ParallelSimulationRunner`; that runner constructs
 `FixedBetModeForNextSimulationRoundSetting`. The latter explicitly intends to
 absorb this exact forcing-mode continuation rejection, whereas the public
 candidate run propagated it and failed before its first round.
+
+## Correlated ordinary buy producer failure (2026-10-15)
+
+The retained driver was repaired in place, with the previous revision archived
+in the assigned harness, and one fresh public Studio profile rechecked only
+the missing action-local correlation. It reused the authenticated candidate
+build (`cf08dbafb1d3cf6799e5c35526a6beeae8d78e8d`, output SHA-256
+`87b0f47abe27909daeae3eb8dd63224e87cd420201c3a65a4c4f6429ac1673f2`) and
+opened the existing ordinary `tsPackage` through Projects → Check game → Add
+to projects → Open. No tests, Play purchases, audit replay, downloads, or
+passing Replay paths were repeated.
+
+At ready state the rendered Simulation form showed `buy`, 3 rounds, one worker
+and seed `v2c12-ordinary-buy-recent`. One rendered **Run Simulation**
+activation transitioned to `Simulation queued — 0/3 rounds`. Its exact local
+terminal was `Simulation failed — 0/3 rounds` with the forcing-mode rejection.
+The terminal lifecycle receipt identifies durable job
+`424e017f31624394856e54717f19c45b` (also its captured job and request id),
+whose retained request is `{rounds:3, seed:"v2c12-ordinary-buy-recent",
+workers:1, modeName:"buy"}`. Consequently no completed Recent Simulation
+report, Replay target, or downloaded descriptor exists for the blocked buy
+branch.
+
+The runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-a6452b8c3c3e9238/run-2026-10-15T02-22-09-152Z/transcript.json`
+(SHA-256 `1d294b056669d6fdf79c9eb1a2cd91a303bddf8198399707ea15676fa5f6696c`).
+The source boundary is `cli/studio/simulation/StudioSimulationService.ts`
+(which passes the public selected `modeName` to the parallel runner),
+`src/simulation/parallel/ParallelSimulationRunner.ts` (which creates the
+fixed selector), and `src/simulation/FixedBetModeForNextSimulationRoundSetting.ts`
+(which documents that this exact forcing-mode rejection must be swallowed).
+The rendered candidate result instead propagates it before round 1. This is a
+product finding; the unproduced buy/buy-more Replay matrix remains not reached.
