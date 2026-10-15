@@ -376,3 +376,51 @@ The file-channel close drained the owned child. This adds one explicit
 Home-to-Project expanding persistence observation, but does not close the
 remaining capability, recovery, generated-package catalogue, report or sticky
 lifecycle coverage.
+
+### Focused malformed-draft recovery and sticky public report
+
+The targeted-test receipt was re-read with its complete stdout/stderr before
+this continuation. It remains the controller-owned clean-candidate execution:
+13 passing suites and 866 passing tests; no test was run here.
+
+Fresh Studio authoring transcript:
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-13-b86253e3a60d58fd/run-2026-10-15T10-17-55-601Z/transcript.json`
+(SHA-256 `75940be7a6e2fb7fb3684d0f3983209afdc3ad974f4f41b09a2552ca1fb9a402`)
+loaded Wild multiplier through the rendered Home form, inspected its restricted
+W2/W3 substitutions and factors 2/3, then made W2's factor negative. Studio
+rendered the exact finite-nonnegative-factor error and disabled both Save game
+and Build Package. The same public Load action restored the valid fixture; Save
+game then rendered pending and materialized editable Wild multiplier Project.
+Its Project Game Model retained W2/W3 substitutes A and factors 2/3. The
+candidate source was briefly formatted by saving its direct fixture path and
+was immediately restored byte-for-byte before any further launch; all later
+saves used neutral copied fixtures. The inspected factor, malformed, and
+Project screenshots have SHA-256 values
+`3e7514bbc0d0ba17820a9324759469ae545ee5d256965b7d144c72758f6566e6`,
+`2b0d6befe2a5cc18d399a676c6b4a39d7848efde2e44a989ed74532afd774ca5`, and
+`e1997abfebe3ccdd9042417c54591cdfce8116afe404ba7d9581f0ccc1982904`.
+
+Fresh Studio sticky transcript:
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-13-b86253e3a60d58fd/run-2026-10-15T10-20-49-721Z/transcript.json`
+(SHA-256 `9e1c85219d097c3a5a92b4e1087824eb90f9146d0f0793b69ae1be8de7d42a13`)
+used an isolated copied sticky fixture. It created seeded Play session
+`v2c13-sticky-lifecycle` and completed two real sequential 0.05-stake rounds,
+each rendering A/W2/W3 and payout 3.00. It then submitted the rendered
+sequential Simulation with seed `v2c13-sticky-sequential`, 12 rounds and one
+worker. Job `64a3210b7f1c4347834cb3155c729850` rendered queued then durable
+completed 12/12. Its full report rendered game/config identity
+`sha256:e5e82037d6c83e75b726d37327920f5c72e8ddc0bbf7f42b33c23ef0ffe73584`,
+total bet 0.60, payout 36.00, and 12 executed/rule/sticky/multiplied steps.
+The public browser download was completed and decoded:
+`wild-sticky-1.0.0-64a3210b7f1c4347834cb3155c729850.json`, 2,018 bytes,
+SHA-256 `44c6f93d7a9f25508b1c359cf0f8d17a3ef57d48d3c25e01392399dd51a4b349`;
+its JSON matches the visible seed, 12 rounds, 0.60/36.00 totals and modifier
+counters. Independent visual inspection found the report screenshot readable
+and coherent (SHA-256
+`0a33e49263806aed6e3a4608f06d459639e3ca54500bd4581f49dd88e4590782`).
+
+This continuation adds truthful malformed recovery and a rendered sticky
+sequential report/download. It still does not demonstrate every six-capability
+ordering/recovery branch, every catalogue example through rendered
+Play/simulation/replay, or a rendered sticky acquire/retain/expire trajectory.
+Those two reviewer rows remain not reached; no product defect was observed.
