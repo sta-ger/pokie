@@ -28,48 +28,68 @@ export function setSimulationModelIdentity(session: GameSessionHandling, modelId
     }
 }
 type Active = {duration: number; win: number; known: boolean};
-type ObserverState = {source: string; active: Partial<Record<AnalyticsFeature, Active>>; logicalKnown?: boolean};
+type ObserverState = {
+    position: number;
+    source: string;
+    active: Partial<Record<AnalyticsFeature, Active>>;
+    logicalKnown?: boolean;
+};
 const states = new WeakMap<GameSessionHandling, ObserverState>();
-export type SessionFeatureAnalyticsBeforePlay = {pending: boolean; freeNum: number; freeSum: number; free: boolean; hold: boolean; locks: number; respins: boolean; bonus: boolean};
+export type SessionFeatureAnalyticsBeforePlay = {
+    pending: boolean;
+    freeNum: number;
+    freeSum: number;
+    free: boolean;
+    hold: boolean;
+    locks: number;
+    respins: boolean;
+    bonus: boolean;
+};
 export interface SessionFeatureAnalyticsObserving {
     getEnvelope(): AnalyticsEnvelope;
     beforePlay(): SessionFeatureAnalyticsBeforePlay;
     afterPlay(before: SessionFeatureAnalyticsBeforePlay, win: number, mode?: string): FeatureAnalyticsObservation;
 }
+function sessionAnalyticsEnvelope(session: GameSessionHandling): AnalyticsEnvelope {
+    const supported = new Set<AnalyticsFeature>();
+    if (typeof (session as Partial<FreeGamesStateDetermining>).getFreeGamesSum === "function") supported.add("freeGames");
+    if (typeof (session as Partial<HoldAndWinStateDetermining>).isHoldAndWinActive === "function") supported.add("holdAndWin");
+    if (typeof (session as Partial<CascadeResultProviding>).getCascadeResult === "function") supported.add("cascade");
+    let schema = resolveSessionStateSchema(session);
+    for (let depth = 0; depth < 32; depth++) {
+        if (schema.kind === "bounded-mechanics") {
+            if (schema.rules.respins) supported.add("respins");
+            if (schema.rules.weightedBonus) supported.add("weightedBonus");
+            if (schema.rules.collection) supported.add("collection");
+        }
+        if (schema.kind === "seeded-video-slot" && schema.modifiers) supported.add("modifiers");
+        if (!("base" in schema)) break;
+        schema = schema.base;
+    }
+    return analyticsEnvelope(
+        identities.get(session) ?? null,
+        SessionRuntime.supportsLogicalRoundDelivery(session),
+        typeof (session as Partial<VideoSlotSessionHandling>).getWinEvaluationResult === "function",
+        FEATURE_NAMES.filter((name) => supported.has(name)),
+    );
+}
+
 export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsObserving {
+    private readonly envelope: AnalyticsEnvelope;
     private readonly session: GameSessionHandling;
     private readonly state: ObserverState;
     constructor(session: GameSessionHandling) {
         this.session = session;
+        this.envelope = sessionAnalyticsEnvelope(session);
         let state = states.get(session);
         if (!state) {
-            state = {source: globalThis.crypto.randomUUID(), active: {}};
+            state = {source: globalThis.crypto.randomUUID(), position: 0, active: {}};
             states.set(session, state);
         }
         this.state = state;
     }
     public getEnvelope(): AnalyticsEnvelope {
-        const supported = new Set<AnalyticsFeature>();
-        if (typeof (this.session as Partial<FreeGamesStateDetermining>).getFreeGamesSum === "function") supported.add("freeGames");
-        if (typeof (this.session as Partial<HoldAndWinStateDetermining>).isHoldAndWinActive === "function") supported.add("holdAndWin");
-        if (typeof (this.session as Partial<CascadeResultProviding>).getCascadeResult === "function") supported.add("cascade");
-        let schema = resolveSessionStateSchema(this.session);
-        for (let depth = 0; depth < 32; depth++) {
-            if (schema.kind === "bounded-mechanics") {
-                if (schema.rules.respins) supported.add("respins");
-                if (schema.rules.weightedBonus) supported.add("weightedBonus");
-                if (schema.rules.collection) supported.add("collection");
-            }
-            if (schema.kind === "seeded-video-slot" && schema.modifiers) supported.add("modifiers");
-            if (!("base" in schema)) break;
-            schema = schema.base;
-        }
-        return analyticsEnvelope(
-            identities.get(this.session) ?? null,
-            SessionRuntime.supportsLogicalRoundDelivery(this.session),
-            typeof (this.session as Partial<VideoSlotSessionHandling>).getWinEvaluationResult === "function",
-            FEATURE_NAMES.filter((name) => supported.has(name)),
-        );
+        return {...this.envelope, supportedFeatures: [...this.envelope.supportedFeatures]};
     }
     public beforePlay(): SessionFeatureAnalyticsBeforePlay {
         const session = this.session;
@@ -102,7 +122,7 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
         const collectionId = rules?.collection?.symbolId;
         const carriedSubround = before.pending && !this.state.logicalKnown;
         if (!before.pending) this.state.logicalKnown = true;
-        const logicalCompletion = this.getEnvelope().lifecycle && !after.pending && !exhausted && this.state.logicalKnown === true;
+        const logicalCompletion = this.envelope.lifecycle && !after.pending && !exhausted && this.state.logicalKnown === true;
         if (!after.pending || exhausted) this.state.logicalKnown = false;
         const holdResult = (session as Partial<HoldAndWinStateDetermining>).getHoldAndWinLastRoundOutcome?.();
         const forcedFreeEntry = !before.free && after.freeNum > 0;
@@ -136,7 +156,7 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             featureWin = win,
             entryExecuted = false,
         ) => {
-            if (!this.getEnvelope().supportedFeatures.includes(feature)) return;
+            if (!this.envelope.supportedFeatures.includes(feature)) return;
             let retained = this.state.active[feature];
             if (!retained && wasActive) retained = {duration: 0, win: 0, known: false};
             if (entry) retained = {duration: 0, win: 0, known: true};
@@ -153,7 +173,7 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             }
             if (entry || retrigger || granted || event.completion || event.excludedCompletion) events.push(event);
             // Exhausted observations remain unfinished and cannot be completed by a later base play.
-            if (exhausted && retained) retained.known = false;
+            if (exhausted && retained) Reflect.deleteProperty(this.state.active, feature);
         };
         const grant = (session as Partial<WonFreeGamesNumberDetermining>).getWonFreeGamesNumber?.() ?? 0;
         update(
@@ -196,11 +216,15 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
         );
         if (bounded?.collection?.triggered) events.push({feature: "collection", entry: true, completion: {duration: 0, win: bounded.collection.payout}});
         if ((bounded?.cascade?.winningCascades ?? cascade?.getCascadeSteps().length ?? 0) > 0) events.push({feature: "cascade", entry: true, ...(exhausted ? {} : {completion: {duration: 0, win}})});
-        if (this.getEnvelope().supportedFeatures.includes("modifiers") && observations.modifiers?.rules.some((rule) => rule.positions.length > 0)) events.push({feature: "modifiers", entry: true, completion: {duration: 0, win}});
+        if (this.envelope.supportedFeatures.includes("modifiers") && observations.modifiers?.rules.some((rule) => rule.positions.length > 0)) events.push({feature: "modifiers", entry: true, completion: {duration: 0, win}});
+        this.state.position++;
         return {
+            position: this.state.position,
+            activeKnownFeatures: FEATURE_NAMES.filter((name) => this.state.active[name]?.known === true),
+            activeCarriedFeatures: FEATURE_NAMES.filter((name) => this.state.active[name]?.known === false),
             envelope: this.getEnvelope(),
             source: this.state.source,
-            logicalEntry: this.getEnvelope().lifecycle && !before.pending,
+            logicalEntry: this.envelope.lifecycle && !before.pending,
             logicalCompletion,
             carriedSubround,
             cascadeSteps: bounded?.cascade?.evaluatedSteps ?? (cascade ? cascade.getCascadeSteps().length + 1 : 0),

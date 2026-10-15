@@ -1172,7 +1172,8 @@ describe("StudioSimulationService (integration, real loadPokieGame + fixture gam
         const job = await waitForTerminal(service, result.job.id);
 
         expect(job.status).toBe("completed");
-        const {base, freeGames} = job.report!.breakdown!.components;
+        if (!job.report || isSimulationReportSet(job.report)) throw new Error("Expected single-mode report");
+        const {base, freeGames} = job.report.breakdown!.components;
         expect(base.rounds).toBeGreaterThan(0);
         expect(freeGames.rounds).toBeGreaterThan(0);
         expect(base.rounds + freeGames.rounds).toBe(job.report!.sampling?.acceptedSubrounds ?? job.report!.rounds);

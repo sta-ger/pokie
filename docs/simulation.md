@@ -649,7 +649,7 @@ can adopt an envelope; a configured empty accumulator still enforces its policy.
 
 Every rate retains numerator and denominator. Paid entries count positive
 **actual charged stake**, including purchases; logical entries count observed
-new session trajectories, including legitimate zero-stake entries. Accepted
+new logical entries on a session, including legitimate zero-stake entries. Accepted
 subrounds count successful plays once and remain the requested-round/progress
 budget. Completed logical rounds exclude incomplete/exhausted and restored tails
 without entry evidence. Mathematical cascade evaluations have a separate count;
@@ -702,7 +702,9 @@ bonuses, modifiers and their already-supported jackpot/bet-mode compositions use
 the same observer. Retained active state is session-local and contains only fixed
 feature counters, duration and win sums. Same-session chunks complete the original
 instance once; a separately restored tail records excluded completion and carried
-subrounds, never a fabricated feature entry. A completion whose known entry was
+subrounds, never a fabricated feature entry. A fixed per-session terminal marker
+keeps a middle-only chunk visibly incomplete, including carried-in incomplete
+features, even when its entry lies outside that chunk. A completion whose known entry was
 outside a selected chunk is labeled carried. Independent worker trajectories
 never reconcile each other's unfinished features. Failure/cancellation prefixes
 are diagnostics, not completed reports.

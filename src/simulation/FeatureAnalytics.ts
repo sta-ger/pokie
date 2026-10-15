@@ -24,6 +24,9 @@ export type AnalyticsFeatureEvent = {
 export type FeatureAnalyticsObservation = {
     envelope: AnalyticsEnvelope;
     source: string;
+    position?: number;
+    activeKnownFeatures?: AnalyticsFeature[];
+    activeCarriedFeatures?: AnalyticsFeature[];
     logicalEntry: boolean;
     logicalCompletion: boolean;
     carriedSubround: boolean;
@@ -64,7 +67,7 @@ export type FeatureAnalyticsSnapshot = {
     hits: {symbol: Record<string, number>; line: Record<string, number>; scatter: Record<string, number>};
     features: Record<AnalyticsFeature, FeatureAnalyticsCounters>;
     /** At most 64 independent trajectories. No per-round or per-feature identities. */
-    sources: Record<string, Record<AnalyticsFeature, {entries: number; completions: number}>>;
+    sources: Record<string, Record<AnalyticsFeature, {entries: number; completions: number; lastPosition: number; endKnown: boolean; endCarried: boolean}>>;
 };
 export type AnalyticsRatio = {numerator: number; denominator: number; value: number};
 export type FeatureAnalytics = Omit<FeatureAnalyticsSnapshot, "sources"> & {
@@ -87,6 +90,7 @@ export type FeatureAnalytics = Omit<FeatureAnalyticsSnapshot, "sources"> & {
             averageWin: AnalyticsRatio;
             incomplete: number;
             carriedCompletions: number;
+            carriedIncomplete: number;
         }
     >;
 };
@@ -138,7 +142,8 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const count = (n: number): boolean => Number.isSafeInteger(n) && n >= 0;
 const finite = (n: number): boolean => Number.isFinite(n) && n >= 0;
 // Validation allows accumulated floating-point addition error; stored amounts are never rounded.
-const close = (a: number, b: number, operations = 1): boolean => Math.abs(a - b) <= Number.EPSILON * Math.max(32, operations * 4) * Math.max(Number.MIN_VALUE, Math.abs(a), Math.abs(b));
+const close = (a: number, b: number, operations = 1): boolean =>
+    Math.abs(a - b) <= Number.EPSILON * Math.max(32, operations * 4) * Math.max(Number.MIN_VALUE, Math.abs(a), Math.abs(b));
 function bucket(n: number): number {
     if (n === 0) return 0;
     if (n < 10) return 1;
@@ -203,7 +208,7 @@ export function validateFeatureAnalytics(s: FeatureAnalyticsSnapshot): void {
     for (const [key, source] of Object.entries(s.sources)) {
         boundedKey(key);
         requireKeys(source, FEATURE_NAMES);
-        for (const f of Object.values(source)) requireKeys(f, ["entries", "completions"]);
+        for (const f of Object.values(source)) requireKeys(f, ["entries", "completions", "lastPosition", "endKnown", "endCarried"]);
     }
     for (const f of Object.values(s.features)) requireKeys(f, [
         "entries",
@@ -282,7 +287,12 @@ export function validateFeatureAnalytics(s: FeatureAnalyticsSnapshot): void {
         ) throw new Error(`Invalid analytics lifecycle counters for ${name}.`);
         for (const field of ["entries", "completions"] as const) if (Object.values(s.sources).reduce((sum, source) => sum + source[name][field], 0) !== f[field]) throw new Error(`Inconsistent analytics source ${field}.`);
     }
-    for (const source of Object.values(s.sources)) for (const f of Object.values(source)) if (![f.entries, f.completions].every(count)) throw new Error("Invalid analytics source counters.");
+    for (const source of Object.values(s.sources)) for (const f of Object.values(source)) if (
+        ![f.entries, f.completions, f.lastPosition].every(count) ||
+                typeof f.endKnown !== "boolean" ||
+                typeof f.endCarried !== "boolean" ||
+                (f.endKnown && f.endCarried)
+    ) throw new Error("Invalid analytics source counters.");
     for (const group of Object.values(s.hits)) for (const [key, n] of Object.entries(group)) {
         boundedKey(key);
         if (!count(n) || n > s.subrounds) throw new Error("Invalid analytics hit count.");
@@ -337,10 +347,18 @@ export function mergeFeatureAnalytics(a: FeatureAnalyticsSnapshot | undefined, b
     }
     for (const [key, source] of Object.entries(b.sources)) {
         boundedKey(key);
-        const target = Reflect.getOwnPropertyDescriptor(s.sources, key) !== undefined ? s.sources[key] : featureRecord(() => ({entries: 0, completions: 0}));
+        const target =
+            Reflect.getOwnPropertyDescriptor(s.sources, key) !== undefined
+                ? s.sources[key]
+                : featureRecord(() => ({entries: 0, completions: 0, lastPosition: 0, endKnown: false, endCarried: false}));
         for (const name of FEATURE_NAMES) {
             target[name].entries += source[name].entries;
             target[name].completions += source[name].completions;
+            if (source[name].lastPosition >= target[name].lastPosition) {
+                target[name].lastPosition = source[name].lastPosition;
+                target[name].endKnown = source[name].endKnown;
+                target[name].endCarried = source[name].endCarried;
+            }
         }
         Reflect.defineProperty(s.sources, key, {value: target, enumerable: true, configurable: true, writable: true});
     }
@@ -356,6 +374,13 @@ export function observeFeatureAnalytics(stake: number, win: number, observation?
             typeof observation.source !== "string" ||
             (observation.mode !== undefined && typeof observation.mode !== "string"))
     ) throw new Error("Invalid analytics observation envelope.");
+    if (
+        observation &&
+        [observation.activeKnownFeatures, observation.activeCarriedFeatures].some(
+            (names) =>
+                names !== undefined && (!Array.isArray(names) || new Set(names).size !== names.length || names.some((name) => !FEATURE_NAMES.includes(name))),
+        )
+    ) throw new Error("Invalid analytics active feature evidence.");
     const s = emptyFeatureAnalytics(observation?.envelope);
     s.subrounds = 1;
     s.paidEntries = stake > 0 ? 1 : 0;
@@ -406,7 +431,7 @@ export function observeFeatureAnalytics(stake: number, win: number, observation?
     if (observation.components === undefined) s.partition.unavailable = win;
     for (const kind of ["symbol", "line", "scatter"] as const) for (const key of hits[kind]) increment(s.hits[kind], key, 1);
     boundedKey(observation.source);
-    s.sources[observation.source] = featureRecord(() => ({entries: 0, completions: 0}));
+    s.sources[observation.source] = featureRecord(() => ({entries: 0, completions: 0, lastPosition: 0, endKnown: false, endCarried: false}));
     const lifecycleSeen = new Set<string>();
     for (const event of observation.features) {
         if (!s.envelope.supportedFeatures.includes(event.feature) || lifecycleSeen.has(event.feature) || !count(event.granted ?? 0)) throw new Error("Invalid/repeated analytics lifecycle observation.");
@@ -427,7 +452,15 @@ export function observeFeatureAnalytics(stake: number, win: number, observation?
             f.durationHistogram[bucket(f.durationSum)]++;
             f.winHistogram[bucket(f.winSum)]++;
         }
-        s.sources[observation.source][event.feature] = {entries: f.entries, completions: f.completions};
+        s.sources[observation.source][event.feature].entries = f.entries;
+        s.sources[observation.source][event.feature].completions = f.completions;
+    }
+    if (!count(observation.position ?? 0)) throw new Error("Invalid analytics source position.");
+    for (const name of FEATURE_NAMES) {
+        const f = s.sources[observation.source][name];
+        f.lastPosition = observation.position ?? 0;
+        f.endKnown = observation.activeKnownFeatures?.includes(name) ?? false;
+        f.endCarried = observation.activeCarriedFeatures?.includes(name) ?? false;
     }
     validateFeatureAnalytics(s);
     return s;
@@ -463,7 +496,14 @@ export function featureAnalyticsStatistics(snapshot: FeatureAnalyticsSnapshot): 
                         retriggerPerEntry: ratio(f.retriggers, f.entries),
                         averageDuration: ratio(f.durationSum, f.completions),
                         averageWin: ratio(f.winSum, f.completions),
-                        incomplete: Object.values(sources).reduce((sum, source) => sum + Math.max(0, source[name].entries - source[name].completions), 0),
+                        incomplete: Object.values(sources).reduce(
+                            (sum, source) => sum + Math.max(source[name].endKnown ? 1 : 0, source[name].entries - source[name].completions, 0),
+                            0,
+                        ),
+                        carriedIncomplete: Object.values(sources).reduce(
+                            (sum, source) => sum + (source[name].endCarried || (source[name].endKnown && source[name].entries === 0) ? 1 : 0),
+                            0,
+                        ),
                         carriedCompletions: Object.values(sources).reduce(
                             (sum, source) => sum + Math.max(0, source[name].completions - source[name].entries),
                             0,

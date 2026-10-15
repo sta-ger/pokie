@@ -102,6 +102,7 @@ describe("V2C-16 feature analytics", () => {
             averageWin: ratio(4, 1, 4),
             incomplete: 0,
             carriedCompletions: 0,
+            carriedIncomplete: 0,
         });
         expect(a.features.freeGames).toEqual({
             entries: 1,
@@ -242,12 +243,20 @@ describe("V2C-16 feature analytics", () => {
         });
         expect(direct.analytics!.features.weightedBonus).toMatchObject({entries: 3, completions: 2, durationSum: 4, winSum: 24});
         expect(direct.analytics!.lifecycle.weightedBonus.incomplete).toBe(1);
+        const middleSession = make();
+        new api.AggregateSimulationRunner(middleSession, 1).run();
+        const middle = new api.AggregateSimulationRunner(middleSession, 1).run().getStatistics().analytics!;
+        expect(middle.lifecycle.weightedBonus).toMatchObject({incomplete: 1, carriedIncomplete: 1});
         const source = make();
         new api.AggregateSimulationRunner(source, 1).run();
         const restored = make() as api.BoundedVideoSlotSession;
         restored.fromSessionState((source as api.BoundedVideoSlotSession).toSessionState());
         const tail = new api.AggregateSimulationRunner(restored, 2).run().getStatistics().analytics!;
         expect(tail.features.weightedBonus).toMatchObject({entries: 0, completions: 0, excludedCompletions: 1});
+        const restoredPending = make() as api.BoundedVideoSlotSession;
+        restoredPending.fromSessionState((source as api.BoundedVideoSlotSession).toSessionState());
+        const pending = new api.AggregateSimulationRunner(restoredPending, 1).run().getStatistics().analytics!;
+        expect(pending.lifecycle.weightedBonus.carriedIncomplete).toBe(1);
         expect(tail.logicalCompletions).toBe(0);
         expect(tail.carriedSubrounds).toBe(2);
         for (const row of api.AUTHORED_MECHANIC_CATALOG.filter((row) => row.progression === "freeGames" || row.progression === "holdAndWin")) {

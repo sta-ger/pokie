@@ -26,7 +26,7 @@ export function describeFeatureAnalytics(a?: FeatureAnalytics): string[] {
                 r.entryPerLogicalRound,
             )}; retriggers / feature entries: ${ratio(r.retriggerPerEntry)}; grants: ${f.grants}; executed feature plays on entry: ${
                 f.entrySubrounds
-            }; completions: ${f.completions}; incomplete: ${r.incomplete}; carried completions: ${r.carriedCompletions}; excluded restored completions: ${
+            }; completions: ${f.completions}; incomplete: ${r.incomplete}; carried-in incomplete: ${r.carriedIncomplete}; carried completions: ${r.carriedCompletions}; excluded restored completions: ${
                 f.excludedCompletions
             }.`,
             `${name}: duration (executed feature subrounds; triggering entry counted only if it executes the feature) / completions: ${ratio(
