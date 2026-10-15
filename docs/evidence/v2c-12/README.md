@@ -345,3 +345,30 @@ weighted buy-more `1.25` purchase was not collected: after the completed
 round the visible mode reset to base, and the two attempted later Spins were
 rendered as base `0.05` rows rather than the requested purchase. No product
 defect is asserted from that unfulfilled collection path.
+
+## Weighted repeated-buy recovery (2026-10-15)
+
+The persistent harness retained one fresh public Studio run at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-75a0b3989d3dd707/run-2026-10-15T00-32-41-132Z/transcript.json`.
+It reused the authenticated candidate build, authored the weighted
+whole-array `reelSequences` fixture `v2c12-weighted-recovery`, built its
+TypeScript package, and opened the package as a read-only `Playable game`.
+With visible seed `v2c12-weighted-recovery-seeded`, its initial buy completed
+at `0.5`.  The completed one-shot feature no longer exposed mode controls;
+the public **Reset Play session** recovery path restored the visible base/buy
+mode selector.  After explicitly selecting `buy`, the later session's entry
+rendered `0.5` with charged mode `buy`, then completed with the final visible
+Replay row `Stake 0`, `Bet mode buy`, and charged-mode event.
+
+The selected public Replay identifies session
+`abe30afa-215b-4670-bc62-c093572a316e`, seed
+`v2c12-weighted-recovery-seeded`, configuration hash
+`sha256:7a76696843d3e539a1afc0c36622a5a23b90f2ccbdfa71ffa1346f25daf345f1`,
+and whole-sequence selections `C/A/C`. Its actual **Download JSON** file was
+`spin-abe30afa-215b-4670-bc62-c093572a316e.json` (46,680 bytes; SHA-256
+`e809c467f94bcf7c58669bb4643e3048bb39c98642e79fd919e413ba7343c0f5`).
+Reading those downloaded bytes confirmed the `buy` command, paid entry stake
+`0.5`, zero-stake continuation, charged mode, and logical-round total `0.5`.
+
+This is still not approval: the required repeated weighted buy-more `1.25`
+purchase and its matching Replay/descriptor are not collected.
