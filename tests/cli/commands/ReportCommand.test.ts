@@ -178,13 +178,13 @@ describe("ReportCommand", () => {
             for (const key of keys.slice(0, -1)) target = target[key] as Record<string, unknown>;
             target[keys[keys.length - 1]] = invalid;
             let payload: unknown = saved;
-            if (kind === "all-mode") payload = {...report, modes: {base: report, buy: saved}};
+            if (kind === "all-mode") payload = {game: report.game, requestedRounds: report.requestedRounds, seed: report.seed, modes: {base: report, buy: saved}};
             if (kind === "historical-native") payload = {
                 libraryId: "native", libraryHash: "hash", modeName: "base", requestedRounds: 10, durationMs: 1,
                 statistics: {...aggregate().getStatistics(), ...saved},
             };
             const render = jest.fn();
-            const command = new ReportCommand(() => JSON.stringify(payload), undefined, {render});
+            const command = new ReportCommand(() => JSON.stringify(payload), undefined, {markdown: {render}, html: {render}});
             const error = await command.run(["malformed.json"]).catch((failure: unknown) => failure);
             expect(error).toBeInstanceOf(Error);
             expect(error).not.toBeInstanceOf(TypeError);

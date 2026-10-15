@@ -161,15 +161,15 @@ describe("V2C-17 public analytics parity", () => {
         const reelSequences = [{reelIndex: 0, context: "logical-round" as const, model: "fixture", selections: 1, variants}];
         const saved = {...featureAnalyticsReport(), reelSequences};
         let payload: unknown = saved;
-        if (kind === "all-mode") payload = {...saved, modes: {base: saved}};
+        if (kind === "all-mode") payload = {game: saved.game, requestedRounds: saved.requestedRounds, seed: saved.seed, modes: {base: saved}};
         if (kind === "historical-native") payload = {
             libraryId: "native", libraryHash: "hash", modeName: "base", requestedRounds: 10, durationMs: 1,
             statistics: {...aggregate().getStatistics(), reelSequences},
         };
         const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
         await new ReportCommand(() => JSON.stringify(payload), undefined, undefined, unresolved).run(["tiny.json", "--format", "json"]);
-        const reopened = JSON.parse(String(log.mock.calls[0][0])) as api.SimulationReport & api.SimulationReportSet;
-        expect((kind === "all-mode" ? reopened.modes.base : reopened).reelSequences).toEqual(reelSequences);
+        const reopened = JSON.parse(String(log.mock.calls[0][0])) as api.SimulationReport | api.SimulationReportSet;
+        expect((api.isSimulationReportSet(reopened) ? reopened.modes.base : reopened).reelSequences).toEqual(reelSequences);
     });
 
     it.each(["ordinary", "historical-native"])("retains legacy missing analytics/sampling/diagnostics in %s inputs", async kind => {

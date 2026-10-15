@@ -75,8 +75,8 @@ describe("DiffCommand", () => {
         try {
             for (const patch of patches) for (const all of [false, true]) {
                 const invalid = {...report, ...patch};
-                const validPayload = all ? {...report, modes: {base: report, buy: report}} : report;
-                const invalidPayload = all ? {...report, modes: {base: report, buy: invalid}} : invalid;
+                const validPayload = all ? {game: report.game, requestedRounds: report.requestedRounds, seed: report.seed, modes: {base: report, buy: report}} : report;
+                const invalidPayload = all ? {game: report.game, requestedRounds: report.requestedRounds, seed: report.seed, modes: {base: report, buy: invalid}} : invalid;
                 const files = {"left.json": JSON.stringify(side === "left" ? invalidPayload : validPayload), "right.json": JSON.stringify(side === "right" ? invalidPayload : validPayload)};
                 const command = new DiffCommand(createStubReadFile(files));
                 await expect(command.run(["left.json", "right.json"])).rejects.toThrow(/Invalid simulation report (analytics|diagnostics.samples|sampling.excludedSubrounds|reelSequences)/);

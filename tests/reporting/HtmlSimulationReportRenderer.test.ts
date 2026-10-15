@@ -284,7 +284,7 @@ it("escapes externally supplied reel context and exact ratio text for direct sin
     const unsafe = {...report, reelSequences: [{reelIndex: 0, context: payload as "logical-round", model: "fixture", selections: 0,
         variants: [{id: "rare", weight: 1, probability: 0, probabilityRatio: {numerator: payload, denominator: payload}, count: 0, frequency: 0, uncovered: true}]}]};
     const renderer = new HtmlSimulationReportRenderer();
-    for (const html of [renderer.render(unsafe), renderer.renderSet({...report, modes: {base: unsafe}})]) {
+    for (const html of [renderer.render(unsafe), renderer.renderSet({game: report.game, requestedRounds: report.requestedRounds, seed: report.seed, modes: {base: unsafe}})]) {
         expect(html).not.toContain("<img");
         expect(html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
         expect(html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;/&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
