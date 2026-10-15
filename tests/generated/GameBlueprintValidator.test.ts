@@ -1,6 +1,6 @@
 import {GameBlueprint} from "../../src/generated/GameBlueprint.js";
 import {validateAuthoredMechanics} from "../../src/generated/validateAuthoredMechanics.js";
-import boundedExample from "../../examples/blueprints/bounded-cascade-respins-collection.blueprint.json";
+import {boundedBlueprint} from "../v2/fixtures/BoundedMechanicsGame.js";
 import {GameBlueprintValidator} from "../../src/generated/GameBlueprintValidator.js";
 
 function validBlueprint(): GameBlueprint {
@@ -38,7 +38,7 @@ describe("GameBlueprintValidator", () => {
         ["cascade", "maxCascades"], ["respins", "grant"], ["respins", "maxRespins"],
         ["collection", "contribution"], ["collection", "threshold"], ["collection", "cap"], ["collection", "payout"],
     ])("rejects malformed %s.%s without coercion or secondary operand errors", (mechanic, field) => {
-        const valid = JSON.parse(JSON.stringify(boundedExample));
+        const valid = JSON.parse(JSON.stringify(boundedBlueprint("cascade-respins-collection")));
         const sharedValid = validateAuthoredMechanics(valid);
         const publicValid = validator.validate(valid);
         expect(sharedValid).toEqual([]);
@@ -60,7 +60,7 @@ describe("GameBlueprintValidator", () => {
     });
 
     it("preserves numeric bounds, relational diagnostics and meaningful zeros", () => {
-        const draft = JSON.parse(JSON.stringify(boundedExample));
+        const draft = JSON.parse(JSON.stringify(boundedBlueprint("cascade-respins-collection")));
         draft.mechanics.cascade.maxCascades = 100;
         Object.assign(draft.mechanics.respins, {grant: 90, maxRespins: 90});
         Object.assign(draft.mechanics.collection, {contribution: 0, payout: 0, threshold: 1e-7, cap: 1e-7});
