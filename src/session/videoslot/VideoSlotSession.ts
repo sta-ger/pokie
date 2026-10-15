@@ -227,6 +227,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         const selectionState = generator?.getSelectionState();
         const implicitRound = this.implicitRound;
         const selectionContext = this.selectionContext;
+        const credits = this.getCreditsAmount();
         try {
             this.combinationsGenerator.setSelectionContext?.(this.selectionContext ?? `implicit:${++this.implicitRound}`);
             this.selectionContext = undefined;
@@ -247,18 +248,22 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
             }
             const payout = this.supportsWinEvaluationResult()
                 ? this.winCalculator.getWinEvaluationResult!().getTotalWin() : this.winCalculator.getWinAmount();
-            const balance = this.getCreditsAmount() - this.getBet() + payout;
-            if (!Number.isFinite(payout) || !Number.isFinite(balance)) throw new Error("Win payout or balance overflow.");
+            const expectedBalance = credits - this.getBet() + payout;
+            if (!Number.isFinite(payout) || !Number.isFinite(expectedBalance)) throw new Error("Win payout or balance overflow.");
             this.baseSession.play();
+            // Preserve an injected base session's debit semantics, and validate its actual balance too.
+            const balance = this.getCreditsAmount() + payout;
+            if (!Number.isFinite(balance)) throw new Error("Win balance overflow.");
+            this.setCreditsAmount(balance);
             this.symbolsCombination = generated;
             this.roundGeometry = geometry;
             this.roundDimensions = this.captureScreenDimensions(geometry);
             this.resultValid = true;
             this.winAmount = payout;
-            this.setCreditsAmount(balance);
             this.modifierState = modified?.state;
             this.modifierObservation = modified?.observation;
         } catch (error) {
+            if (this.getCreditsAmount() !== credits) this.setCreditsAmount(credits);
             if (generator) {
                 generator.setRandomState(rngState);
                 generator.setSelectionState(selectionState);

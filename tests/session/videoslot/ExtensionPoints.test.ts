@@ -4,7 +4,7 @@ import {
     VideoSlotWithBetModesSession, captureInitialPokieSessionState, VideoSlotSessionHandling, SessionStateRestoring,
     ClusterWinCalculating,
     FreeGamesRoundHandling,
-    GameSessionConfig,
+    GameSession, GameSessionConfig,
     LeftToRightLinesPatterns,
     LineWinCalculating,
     ReelsSymbolsSequencesGenerating,
@@ -471,4 +471,18 @@ describe("ExtensionPoints", () => {
         calculator.calculateWin(bet, combinationWithAllowedTarget);
         expect(Object.keys(calculator.getWinningLines())).toHaveLength(1);
     });
+});
+
+
+test("finite settlement preserves the debit semantics of an injected base session", () => {
+    const config = new VideoSlotConfig();
+    class DoubleDebitSession extends GameSession {
+        public override play(): void {
+            this.setCreditsAmount(this.getCreditsAmount() - 2 * this.getBet());
+        }
+    }
+    const session = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(7)), new VideoSlotWinCalculator(config), new DoubleDebitSession(config));
+    const credits = session.getCreditsAmount();
+    session.play();
+    expect(session.getCreditsAmount()).toBe(credits - 2 * session.getBet() + session.getWinAmount());
 });
