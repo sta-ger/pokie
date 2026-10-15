@@ -355,3 +355,24 @@ the complete six-capability ordering matrix, a full malformed/stale/cancel
 recovery sequence, every catalogue item through rendered Play/simulation/replay,
 or the rendered sticky acquire/retain/expire trajectory. Those reviewer rows
 remain not reached; no candidate-owned defect is claimed.
+
+### Expanding Project materialization
+
+A third fresh-profile Studio run continued the new expanding branch through the
+missing Project-side boundary instead of repeating Play, replay, package or
+worker work. Its closed transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-13-b86253e3a60d58fd/run-2026-10-15T10-10-14-470Z/transcript.json`
+(SHA-256 `75914735d37e78b763922ea1a6f174dd89a5421072124e53377580c02eb0b1de`).
+The rendered Home loader accepted `wild-expanding.blueprint.json`; the local
+Save game activation reached editable Project `Wild expanding` and its
+`project-open-materialization · Completed` terminal (240 ms). After the
+follow-up helper’s short selector window elapsed, a direct rendered observation
+confirmed that the Project navigation had nevertheless completed; it is not
+reported as a product error. Project Game Model then rendered the persisted
+identity, literal reel geometry, W2/W3 factors and `Rule 1: expand, expand,
+evaluated [[1,0]]; W2`. The independently inspected Project capture is
+SHA-256 `ecb0dc2dabff1f7e3c383d844576cbb75a25840be246b3bd9f29029e06700400`.
+The file-channel close drained the owned child. This adds one explicit
+Home-to-Project expanding persistence observation, but does not close the
+remaining capability, recovery, generated-package catalogue, report or sticky
+lifecycle coverage.
