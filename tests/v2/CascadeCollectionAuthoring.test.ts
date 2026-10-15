@@ -1,3 +1,5 @@
+import {StudioJobService} from "../../cli/studio/jobs/StudioJobService.js";
+import {FileStudioJobRepository} from "../../cli/studio/jobs/FileStudioJobRepository.js";
 import fs from "node:fs";
 import path from "node:path";
 import {execFileSync} from "node:child_process";
@@ -326,6 +328,8 @@ describe("V2C-14 authored bounded mechanics", () => {
                 const output = simulation.getReport(directory, started.job.id);
                 expect(output).toMatchObject({status: "ok", report: {sampling: {unit: "completed-logical-round", acceptedSubrounds: 18}}});
                 expect(simulation.listReports(directory)[0]).toMatchObject({sampling: {unit: "completed-logical-round", acceptedSubrounds: 18}});
+                if (output.status !== "ok" || "modes" in output.report) throw new Error("Expected one completed simulation report.");
+                expect(output.report.spinsPerSecond).toBe(Math.round(18 / (Math.max(output.report.durationMs, 1) / 1000)));
             } finally {
                 await simulation.cancelAll();
             }
@@ -594,6 +598,33 @@ describe("V2C-14 authored bounded mechanics", () => {
         }
         expect(error).toBeInstanceOf(api.SimulationCancelledError);
         expect((error as api.SimulationCancelledError).observedPrefix).toMatchObject({rounds: 1, totalBet: 0.05, totalPayout: 0, logicalRoundMetrics: {rounds: 0}});
+    });
+
+
+    it("Studio cancelled jobs retain their accepted prefix after reopening durable job storage", async () => {
+        const game = generatedMechanicsGame(constant("respins-collection")),
+            jobDirectory = path.join(directory, "jobs"),
+            jobs = new StudioJobService(new FileStudioJobRepository(jobDirectory), undefined, () => "cancel-prefix");
+        const service: StudioSimulationService = new StudioSimulationService(undefined, () => Promise.resolve(game), undefined, 1, undefined, () => {
+            service.cancelForProject(directory, "cancel-prefix");
+            return Promise.resolve();
+        });
+        service.attachJobService(jobs);
+        try {
+            const started = service.start(directory, {rounds: 100, workers: 1, seed: "31"});
+            if (started.status !== "created") throw new Error(JSON.stringify(started));
+            for (let n = 0; n < 1000 && ["queued", "running", "cancelling"].includes(service.getStatus(started.job.id)!.status); n++) await new Promise<void>(resolve => {
+                setImmediate(resolve);
+            });
+            expect(service.getStatus(started.job.id)).toMatchObject({status: "cancelled", observedPrefix: {rounds: 1, totalBet: 0.05, totalPayout: 0, logicalRoundMetrics: {rounds: 0}}});
+            expect(service.getReport(directory, started.job.id)).toMatchObject({status: "not-ready", jobStatus: "cancelled"});
+            const reopened = new StudioSimulationService();
+            reopened.attachJobService(new StudioJobService(new FileStudioJobRepository(jobDirectory)));
+            expect(reopened.getStatusForProject(directory, started.job.id)).toMatchObject({status: "cancelled", observedPrefix: {rounds: 1, totalBet: 0.05, totalPayout: 0, logicalRoundMetrics: {rounds: 0}}});
+            expect(reopened.getReport(directory, started.job.id)).toMatchObject({status: "not-ready", jobStatus: "cancelled"});
+        } finally {
+            await service.cancelAll();
+        }
     });
 
     it("file session restore uses compatible wallet, result and recovery ports across collection trigger failures", async () => {

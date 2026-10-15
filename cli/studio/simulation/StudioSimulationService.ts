@@ -763,7 +763,7 @@ export class StudioSimulationService {
         if (record.status === "completed" && record.report !== undefined && !isSimulationReportSet(record.report)) {
             // The downloadable report and completion hook consume the drained
             // terminal, including time spent releasing the materialized runtime.
-            record.report = {...record.report, durationMs: record.durationMs, spinsPerSecond: Math.round(record.report.rounds / (Math.max(record.durationMs, 1) / 1000))};
+            record.report = {...record.report, durationMs: record.durationMs, spinsPerSecond: Math.round((record.report.sampling?.acceptedSubrounds ?? record.report.rounds) / (Math.max(record.durationMs, 1) / 1000))};
         }
         this.repository.save(record);
         if (record.status === "completed") {
@@ -774,7 +774,7 @@ export class StudioSimulationService {
                 detail: {simulationId: record.id, rounds: record.roundsCompleted, report: record.report, statistics: record.statistics, observedPrefix: record.observedPrefix},
             });
         } else if (record.status === "cancelled") {
-            this.jobService?.cancelled(record.id, {summary: "Simulation cancelled after the last completed round.", provenance: {simulationId: record.id, projectRoot: record.projectRoot}, detail: {simulationId: record.id, rounds: record.roundsCompleted}}, {action: "retry", reason: "Run the simulation again with the captured parameters."});
+            this.jobService?.cancelled(record.id, {summary: "Simulation cancelled after the observed accepted prefix.", provenance: {simulationId: record.id, projectRoot: record.projectRoot}, detail: {simulationId: record.id, rounds: record.roundsCompleted, observedPrefix: record.observedPrefix}}, {action: "retry", reason: "Run the simulation again with the captured parameters."});
         } else if (record.status === "failed") {
             this.jobService?.fail(record.id, record.error ?? "Simulation failed.", {action: "retry", reason: record.error ?? "Correct the reported problem and run the simulation again."});
         }
