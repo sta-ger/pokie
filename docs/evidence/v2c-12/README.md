@@ -239,3 +239,42 @@ for both mechanisms.
 I independently opened all four screenshots; they are legible and agree with
 the retained transcript.  This is a bounded partial receipt, not an approval
 or a substitute for the missing descriptor and repeated-purchase evidence.
+
+## Ordinary seeded package continuation (2026-10-15)
+
+The persistent harness ran one new, isolated Studio profile for product
+candidate `b669f487ac1881510f02db00afb56ac204282bad`; the complete runtime
+transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-75a0b3989d3dd707/run-2026-10-15T00-07-18-066Z/transcript.json`.
+It reused the authenticated current candidate build receipt (output SHA-256
+`87b0f47abe27909daeae3eb8dd63224e87cd420201c3a65a4c4f6429ac1673f2`),
+created `v2c12-ordinary-followup` through visible JSON authoring, built its
+TypeScript package, and opened the rendered package handoff. Studio reported
+the opened runtime as `Playable game` and `Added from your computer`.
+
+With seed `v2c12-ordinary-seeded-followup`, the package's visible ante Play
+result showed denomination `0.05`, stake `0.07500000000000001`, and charged
+mode `ante`. Its selected public Session Spin Replay showed the same seed,
+mode, stake, full-audit export state and configuration hash
+`sha256:de4219633bf4c1a25c34d71eac6787cbb3f8a6394c896470075bc80a00278a0b`.
+**Download JSON** produced `spin-b1d9ca0a-17fe-4db4-b2c9-982ba71e0f0f.json`
+(14,417 bytes; SHA-256
+`b3bf2af17efaa047188afe2a40286d607c47742dfe8e33f874672478b3e8031e`).
+Reading the actual downloaded bytes confirmed the same seed, ante mode,
+artifact stake, and a recorded `spin` command with bet `0.05`, stepwise
+delivery, and `recorded-commands` mode policy.
+
+The same package separately completed a buy entry at stake `0.5`, then its
+second, visibly zero-stake subround (logical round: two subrounds; credits
+remained `999.5`; charged mode `buy`). A fresh later session then accepted a
+separate buy entry at stake `0.5`. This advances only the ordinary buy path;
+the required weighted seeded run, all buy-more rows, and the complete
+per-step Replay descriptor matrix remain uncollected.
+
+| Screenshot | SHA-256 | independently inspected surface |
+| --- | --- | --- |
+| `1-observation.png` | `f865ebdbbe36e60f6709f53c9c844086b547caef3aa3117bcb38891fa6ef24ed` | Seeded ordinary ante result: 0.05 denomination, 0.07500000000000001 stake, financial rows, and charged ante mode. |
+| `2-observation.png` | `bc908fc74b10bfb97feb47813ebe4f83e18c57510892c2597da7734502f68869` | Completed ordinary buy lifecycle: two subrounds, paid 0.5 entry, charged buy mode, and zero-payout financial surface. |
+
+I independently opened both PNGs. They are legible and show the stated
+rendered rows; the images and transcript are collection evidence only.
