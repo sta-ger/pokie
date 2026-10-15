@@ -1,4 +1,5 @@
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
+import {validateAuthoredMechanics} from "../generated/validateAuthoredMechanics.js";
 import type {PackageBlueprintExtractionResult} from "../generated/PackageBlueprintExtraction.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {buildGameModelReels, type BuildGameModelReelsOptions} from "./buildGameModelReels.js";
@@ -85,6 +86,12 @@ export function buildGameModelProjection(
         isScatter: (blueprint.scatters ?? []).includes(id),
     }));
     const availableBets = blueprint.availableBets ?? [];
+    // Draft previews deliberately bypass whole-blueprint validation. Mechanics must still satisfy
+    // their shared authored contract before a renderer can dereference or display nested fields.
+    // Keep the invalid section separate from unavailable sources and from a valid empty rule set;
+    // neither the draft nor unrelated inspectable sections are discarded or repaired here.
+    const mechanicsIssues = validateAuthoredMechanics(blueprint as unknown as Record<string, unknown>)
+        .filter(issue => issue.severity === "error");
 
     return {
         basics: available({...blueprint.manifest}),
@@ -102,7 +109,9 @@ export function buildGameModelProjection(
             availableBets,
             betModes: (blueprint.betModes ?? []).map((mode) => ({...mode})),
         }),
-        mechanics: available(JSON.parse(JSON.stringify(blueprint.mechanics ?? {}))),
+        mechanics: mechanicsIssues.length > 0
+            ? {status: "invalid", reason: mechanicsIssues.map(issue => `${issue.code}: ${issue.message}`).join("\n")}
+            : available(JSON.parse(JSON.stringify(blueprint.mechanics ?? {}))),
         limits: available(deriveLimits(availableBets)),
     };
 }

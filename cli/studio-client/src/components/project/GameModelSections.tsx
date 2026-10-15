@@ -8,7 +8,6 @@ import type {
     GameModelBetsAndModes,
     GameModelGameWindow,
     GameModelLimits,
-    GameModelMechanics,
     GameModelProjection,
     GameModelReel,
     GameModelReelGenerationMode,
@@ -36,6 +35,7 @@ import {ReelGenerationModeSelector} from "../blueprintEditor/ReelGenerationModeS
 import {AnalysisTable, DiagnosticsList} from "../blueprintEditor/ReelStripGenerationEditor";
 import {SymbolsTable} from "../blueprintEditor/SymbolsTable";
 import {EmptyState} from "../common/EmptyState";
+import {ErrorState} from "../common/ErrorState";
 import {IssueList} from "../common/IssueList";
 import {PageSection} from "../common/PageSection";
 import {SymbolPresentation} from "../common/SymbolPresentation";
@@ -652,7 +652,10 @@ function ReelsSection({section, sampleControls}: {section: GameModelSection<Game
     );
 }
 
-function MechanicsSection({section}: {section: GameModelSection<GameModelMechanics>}) {
+function MechanicsSection({section}: {section: GameModelProjection["mechanics"]}) {
+    if (section.status === "invalid") {
+        return <ErrorState message="These mechanics can't be previewed yet. Correct the rule fields, then preview again. The authored draft is unchanged." detail={section.reason} />;
+    }
     if (section.status === "unavailable") {
         return <UnavailableSection reason={section.reason} />;
     }

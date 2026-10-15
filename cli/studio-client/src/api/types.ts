@@ -284,7 +284,7 @@ export type GameModelProjection = {
     reels: GameModelSection<GameModelReels>;
     paytable: GameModelSection<GameModelPaytableRow[]>;
     betsAndModes: GameModelSection<GameModelBetsAndModes>;
-    mechanics: GameModelSection<GameModelMechanics>;
+    mechanics: GameModelSection<GameModelMechanics> | {status: "invalid"; reason: string};
     limits: GameModelSection<GameModelLimits>;
 };
 

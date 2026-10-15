@@ -117,6 +117,7 @@ export type GameModelProjection = {
     reels: GameModelSection<GameModelReels>;
     paytable: GameModelSection<GameModelPaytableRow[]>;
     betsAndModes: GameModelSection<GameModelBetsAndModes>;
-    mechanics: GameModelSection<GameModelMechanics>;
+    // A present but malformed draft has a recoverable diagnostic, not an empty/unavailable model.
+    mechanics: GameModelSection<GameModelMechanics> | {status: "invalid"; reason: string};
     limits: GameModelSection<GameModelLimits>;
 };

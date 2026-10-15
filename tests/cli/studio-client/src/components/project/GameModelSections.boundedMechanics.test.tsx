@@ -1,5 +1,5 @@
 import {MantineProvider} from "@mantine/core";
-import {fireEvent, render, screen, within} from "@testing-library/react";
+import {fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {GameBlueprint} from "../../../../../../src/generated/GameBlueprint";
 import {GameBlueprintValidator} from "../../../../../../src/generated/GameBlueprintValidator";
@@ -75,6 +75,46 @@ it("shows collection details through the public Project Game Model route", async
     await screen.findByText(/^Collection:/);
     expectRules(collection);
     expect(within(screen.getByText("Mechanics").closest("fieldset")!).getByRole("button", {name: "Edit"})).toBeEnabled();
+});
+
+it("refreshes the Project Game Model through valid, malformed and repaired rules without stale or unsafe rendering", async () => {
+    let source: GameBlueprint = combined;
+    const reads: GameBlueprint[] = [];
+    const {fetchImpl} = createRoutedFakeFetch({
+        "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+        "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/bounded", game: combined.manifest, type: "blueprint", capabilities: ["blueprint.build"]}}),
+        "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/bounded", valid: true}}),
+        "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+        "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+        "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+        "/api/project/gameModel": () => {
+            reads.push(source);
+            return {ok: true, status: 200, body: buildGameModelProjection(source)};
+        },
+    });
+    renderRoutedApp({fetchImpl, initialEntries: ["/project/gameModel"]});
+    await screen.findByText(/^Collection:/);
+    expectRules(combined);
+    const malformedRules = [{respins: {grant: 2}}, {cascade: {maxCascades: {invalid: true}}}, {collection: {...collection.mechanics!.collection, reset: {invalid: true}}}];
+    for (const mechanics of malformedRules) {
+        source = {...combined, mechanics} as GameBlueprint;
+        const before = JSON.stringify(source);
+        fireEvent.click(screen.getByRole("button", {name: "Refresh"}));
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("These mechanics can't be previewed yet.");
+        expect(screen.getByText(`Id: ${combined.manifest.id}`)).toBeVisible();
+        expect(screen.queryByText(empty)).toBeNull();
+        expect(screen.queryByText(/^Collection:/)).toBeNull();
+        expect(JSON.stringify(source)).toBe(before);
+        for (let reuse = 0; reuse < 2; reuse++) {
+            source = combined;
+            await waitFor(() => expect(screen.getByRole("button", {name: "Refresh"})).toBeEnabled());
+            fireEvent.click(screen.getByRole("button", {name: "Refresh"}));
+            await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+            expectRules(combined);
+        }
+    }
+    expect(reads).toHaveLength(10);
 });
 
 it("previews the same combined rules through the editor API without saving", async () => {

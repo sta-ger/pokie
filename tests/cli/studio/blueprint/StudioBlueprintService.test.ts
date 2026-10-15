@@ -477,6 +477,39 @@ describe("StudioBlueprintService", () => {
     });
 
     describe("previewGameModel", () => {
+        it.each([
+            {respins: {grant: 2}},
+            {cascade: {maxCascades: {invalid: true}}},
+            {collection: {symbolId: "A", contribution: 0, threshold: 4, cap: 5, payout: 0, reset: {invalid: true}}},
+        ])("preserves malformed drafts and valid sections, then reuses the same service after repair: %j", mechanics => {
+            const service = createService();
+            const saved = buildBlueprint({reelStrips: [["A", "B"], ["A", "B"], ["A", "B"]], mechanics: {
+                cascade: {maxCascades: 2},
+                respins: {trigger: {symbolId: "A", minimumCount: 1}, grant: 2, retrigger: "none", maxRespins: 8},
+                collection: {symbolId: "A", contribution: 0, threshold: 4, cap: 5, payout: 0, reset: "zero"},
+            }});
+            const source = path.join(tmpDir, "source.blueprint.json");
+            fs.writeFileSync(source, JSON.stringify(saved));
+            const draft = JSON.parse(JSON.stringify(saved));
+            const valid = service.previewGameModel(draft);
+            expect(valid.mechanics).toEqual({status: "available", data: saved.mechanics});
+            draft.mechanics = mechanics;
+            const malformed = JSON.stringify(draft);
+            const invalid = service.previewGameModel(draft);
+            expect(invalid.mechanics).toMatchObject({status: "invalid", reason: expect.stringContaining("mechanics.")});
+            expect(invalid).toEqual({...valid, mechanics: invalid.mechanics});
+            expect(JSON.stringify(draft)).toBe(malformed);
+            // No implicit save, managed artifact, package build or side-effect directory.
+            expect(fs.readFileSync(source, "utf8")).toBe(JSON.stringify(saved));
+            expect(fs.readdirSync(tmpDir)).toEqual(["source.blueprint.json"]);
+            expect(fs.readdirSync(studioRoot)).toEqual([]);
+            draft.mechanics = saved.mechanics;
+            expect(service.previewGameModel(draft)).toEqual(valid);
+            expect(service.previewGameModel(draft)).toEqual(valid);
+            const fresh = createService();
+            expect(fresh.previewGameModel(draft)).toEqual(valid);
+        });
+
         it("re-rolls a symbolWeights blueprint's own dynamic inspection sample given a sharedWeightsSampleSeed, deterministically", () => {
             const service = createService();
             const blueprint = buildBlueprint({symbolWeights: {A: 1, B: 3}});
