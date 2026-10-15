@@ -15,7 +15,14 @@ export function validateMechanicState(state: Record<string, unknown>, schema: Se
     const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0;
     if (schema.kind === "bounded-mechanics") {
         const {collection, respins} = schema.rules;
-        if (Object.keys(state).some(key => !["base", "value", "remaining", "executed", "entryBet"].includes(key)) || !finite(state.value) || (collection ? state.value > collection.cap || (state.value >= collection.threshold && (collection.reset === "zero" || state.value > collection.cap - collection.threshold)) : state.value !== 0) ||
+        const remaining = Number(state.remaining), 
+            executed = Number(state.executed);
+        // A paid entry either grants the full initial budget or does not trigger. Without
+        // retriggers that budget is conserved; resets can only extend it, up to the lifetime cap.
+        const reachable = !respins || (executed === 0 && remaining === 0) ||
+            (respins.retrigger === "none" ? executed + remaining === respins.grant :
+                remaining >= Math.max(0, respins.grant - executed));
+        if (!reachable || Object.keys(state).some(key => !["base", "value", "remaining", "executed", "entryBet"].includes(key)) || !finite(state.value) || (collection ? state.value > collection.cap || (state.value >= collection.threshold && (collection.reset === "zero" || state.value > collection.cap - collection.threshold)) : state.value !== 0) ||
             !Number.isSafeInteger(state.remaining) || Number(state.remaining) < 0 ||
             !Number.isSafeInteger(state.executed) || Number(state.executed) < 0 ||
             (respins ? Number(state.remaining) > respins.grant || Number(state.executed) + Number(state.remaining) > respins.maxRespins : state.remaining !== 0 || state.executed !== 0) ||

@@ -41,7 +41,7 @@ export function validateAuthoredMechanics(blueprint: Record<string, unknown>): V
             if (trigger && (!symbols.includes(trigger.symbolId) || !positive(trigger.minimumCount) || Number(trigger.minimumCount) > Number(blueprint.reels) * Number(blueprint.rows))) error(`${path}.trigger`, "requires a known symbol and positive count within the board.");
             if (!positive(rule.maxRespins) || Number(rule.maxRespins) > 90) error(`${path}.maxRespins`, "must be an integer in [1, 90].");
             if (!positive(rule.grant) || Number(rule.grant) > Number(rule.maxRespins)) error(`${path}.grant`, "must be a positive integer no larger than maxRespins.");
-            if (!["none", "reset"].includes(String(rule.retrigger))) error(`${path}.retrigger`, "must be none or reset; grants are clipped to the remaining lifetime budget.");
+            if ((rule.retrigger !== "none" && rule.retrigger !== "reset")) error(`${path}.retrigger`, "must be none or reset; grants are clipped to the remaining lifetime budget.");
         }
     }
     if (mechanics.collection !== undefined) {
@@ -52,7 +52,7 @@ export function validateAuthoredMechanics(blueprint: Record<string, unknown>): V
             for (const key of ["contribution", "payout"]) if (!finite(rule[key])) error(`${path}.${key}`, "must be finite and nonnegative currency units.");
             if (!finite(rule.threshold) || rule.threshold <= 0) error(`${path}.threshold`, "must be finite and positive.");
             if (!finite(rule.cap) || Number(rule.cap) < Number(rule.threshold)) error(`${path}.cap`, "must be finite and at least threshold.");
-            if (!["zero", "subtract-threshold"].includes(String(rule.reset))) error(`${path}.reset`, "must be zero or subtract-threshold.");
+            if ((rule.reset !== "zero" && rule.reset !== "subtract-threshold")) error(`${path}.reset`, "must be zero or subtract-threshold.");
         }
     }
     if (mechanics.modifiers !== undefined) {

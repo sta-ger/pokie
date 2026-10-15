@@ -1,6 +1,10 @@
 import {StudioJobService} from "../../cli/studio/jobs/StudioJobService.js";
 import {FileStudioJobRepository} from "../../cli/studio/jobs/FileStudioJobRepository.js";
 import fs from "node:fs";
+import ExcelJS from "exceljs";
+import {pathToFileURL} from "node:url";
+import {Worker} from "node:worker_threads";
+import type {SimulationWorkerMessage} from "../../src/simulation/parallel/internal/SimulationWorkerMessage.js";
 import path from "node:path";
 import {execFileSync} from "node:child_process";
 import * as api from "../../src/index.js";
@@ -157,6 +161,51 @@ describe("V2C-14 authored bounded mechanics", () => {
         expect(() => new api.CascadingSpinResolver(pipeline, config, {getRefillSymbols: () => [["A"], ["A"], ["A"]]}, undefined, {maxCascadeSteps: 2}).resolve([["A"], ["A"], ["A"]], 0.05)).toThrow(api.MaxCascadeStepsExceededError);
     });
 
+    it("authored terminal-at-bound cascades complete and replay while exhausted entries roll back and retry", () => {
+        const blueprint = boundedBlueprint("cascade");
+        blueprint.mechanics!.cascade!.maxCascades = 2;
+        blueprint.reelStrips = [["A", "B"], ["A", "B"], ["A", "B"]];
+        const game = generatedMechanicsGame(blueprint);
+        let seed = 0;
+        for (; seed < 10000; seed++) {
+            const probe = boundedSession(game, seed);
+            try {
+                probe.play(); 
+            } catch (error) {
+                if (!(error instanceof api.MaxCascadeStepsExceededError)) throw error;
+                continue;
+            }
+            if (probe.getBoundedMechanicObservation()!.cascade!.winningCascades === 2) break;
+        }
+        expect(seed).toBeLessThan(10000);
+        const session = boundedSession(game, seed), 
+            runtime = new api.SessionRuntime(session);
+        const command: api.SessionCommand = {kind: "spin", roundId: "bound", delivery: "composite"};
+        const result = played(runtime.execute(command));
+        expect(result.logicalRound).toMatchObject({status: "completed", mathematicalStatus: "completed", totalStake: 0.05, totalWin: 0.2});
+        expect(result.logicalRound!.subrounds[0].artifacts).toHaveLength(3);
+        expect(session.getCreditsAmount()).toBeCloseTo(10000 - 0.05 + 0.2);
+        const state = session.toSessionState();
+        expect(runtime.execute(command)).toEqual(result);
+        expect(session.toSessionState()).toEqual(state);
+        const recorder = new api.ReplayRecorder();
+        const recording = recorder.recordAudit(game, boundedSession(game, seed), [command], {status: "calculated", sessionId: "bound", durability: "detached"}, {seed});
+        expect(new api.AuditRoundReplay().replay(game, recording.audit!)).toMatchObject({verification: "verified", completion: "completed"});
+        const exhaustedBlueprint = constant("cascade");
+        exhaustedBlueprint.reelStrips = [["A"], ["A"], ["A"]];
+        exhaustedBlueprint.mechanics!.cascade!.maxCascades = 2;
+        const exhausted = boundedSession(generatedMechanicsGame(exhaustedBlueprint));
+        const before = exhausted.toSessionState(), 
+            credits = exhausted.getCreditsAmount();
+        for (let retry = 0; retry < 2; retry++) {
+            expect(() => new api.SessionRuntime(exhausted).execute(command)).toThrow(api.MaxCascadeStepsExceededError);
+            expect(exhausted.toSessionState()).toEqual(before);
+            expect(exhausted.getCreditsAmount()).toBe(credits);
+            expect(exhausted.getBoundedMechanicObservation()).toBeUndefined();
+            expect(exhausted.getWinAmount()).toBe(0);
+        }
+    });
+
     it("logical samples survive runner chunks, snapshots and merge; unfinished/restored tails are explicit", async () => {
         const blueprint = constant("respins");
         blueprint.paytable = {C: {3: 2}};
@@ -179,6 +228,137 @@ describe("V2C-14 authored bounded mechanics", () => {
         const tail = new api.AggregateSimulationRunner(restored, 8).run().getStatistics();
         const tailReport = new api.SimulationReportBuilder().build({manifest: blueprint.manifest, requestedRounds: 8, statistics: tail, durationMs: 1});
         expect(tailReport).toMatchObject({rounds: 0, totalBet: 0, sampling: {acceptedSubrounds: 8, excludedSubrounds: 8}});
+    });
+
+    it.each(["respins", "collection"] as const)("rejects non-string %s policies consistently at every authored boundary", async mechanic => {
+        const field = mechanic === "respins" ? "retrigger" : "reset";
+        const expectedPath = `mechanics.${mechanic}.${field}`;
+        let policyIndex = 0;
+        for (const policy of [[mechanic === "respins" ? "reset" : "zero"], {value: "reset"}, [], {}, null, 0, true, "unknown"]) {
+            const blueprint = constant(mechanic);
+            (blueprint.mechanics![mechanic] as unknown as Record<string, unknown>)[field] = policy;
+            const errors = new api.GameBlueprintValidator().validate(blueprint).filter(issue => issue.path === expectedPath);
+            expect(errors).toEqual([expect.objectContaining({path: expectedPath, severity: "error", code: "blueprint-mechanics-invalid"})]);
+            expect(() => api.renderBuiltGameModule(blueprint, "1.3.0")).toThrow(expectedPath);
+            expect(() => api.renderBuiltGameModuleSource(blueprint, "1.3.0")).toThrow(expectedPath);
+            const config = new api.VideoSlotConfig();
+            config.setReelsNumber(3);
+            config.setReelsSymbolsNumber(1);
+            config.setAvailableSymbols(blueprint.symbols);
+            expect(() => new api.BoundedVideoSlotSession(config, new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(31)), blueprint.mechanics!)).toThrow(expectedPath);
+            // Inject malformed JSON into an otherwise real, valid XLSX interchange artifact.
+            const filename = path.join(directory, `invalid-policy-${policyIndex++}.xlsx`);
+            await new api.ParSheetExporter().exportToFile(constant(mechanic), filename);
+            const workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.readFile(filename);
+            workbook.getWorksheet("Mechanics")!.getCell("B2").value = JSON.stringify(blueprint.mechanics![mechanic]);
+            await workbook.xlsx.writeFile(filename);
+            const imported = await new api.ParSheetImporter().importFromFile(filename);
+            expect(imported.issues).toEqual(expect.arrayContaining([expect.objectContaining({path: expectedPath, severity: "error"})]));
+        }
+    });
+
+    it.each(["none", "reset"] as const)("restores only reachable %s respin progress before nested mutation or durable effects", async retrigger => {
+        const blueprint = constant("respins");
+        blueprint.mechanics!.respins!.retrigger = retrigger;
+        const game = generatedMechanicsGame(blueprint), 
+            session = boundedSession(game);
+        const initial = api.captureInitialPokieSessionState({seed: 31}, session, game.getSessionSerializer!(), true, game);
+        const before = session.toSessionState(), 
+            credits = session.getCreditsAmount();
+        const repository = new api.InMemorySessionRepository(), 
+            wallet = new api.InMemoryWallet(10000);
+        const debit = jest.spyOn(wallet, "debit"), 
+            credit = jest.spyOn(wallet, "credit");
+        const invalid = [{remaining: 1, executed: 0}, {remaining: 0, executed: 1},
+            ...(retrigger === "none" ? [{remaining: 2, executed: 6}, {remaining: 0, executed: 8}] : [])];
+        for (const counters of invalid) {
+            const featureState = {...before, ...counters, entryBet: 0.05};
+            expect(() => session.fromSessionState(featureState)).toThrow(/bounded/);
+            expect(session.toSessionState()).toEqual(before);
+            expect(session.getCreditsAmount()).toBe(credits);
+            const saved = {...initial, featureState};
+            await repository.save("s", saved);
+            expect(await new api.SpinCommandHandler(game, repository, wallet).execute({kind: "spin", sessionId: "s", requestId: "invalid"})).toMatchObject({status: "corrupt-state"});
+            expect(await repository.load("s")).toEqual(saved);
+            expect(await wallet.getBalance("s")).toBe(10000);
+        }
+        expect(debit).not.toHaveBeenCalled();
+        expect(credit).not.toHaveBeenCalled();
+        // Initial, granted entry, every continuation and completed state all round-trip.
+        for (let n = 0; n <= (retrigger === "none" ? 3 : 9); n++) {
+            const restored = boundedSession(game);
+            restored.fromSessionState(session.toSessionState());
+            restored.setCreditsAmount(session.getCreditsAmount());
+            expect(restored.toSessionState()).toEqual(session.toSessionState());
+            restored.play();
+            session.play();
+            expect(restored.toSessionState()).toEqual(session.toSessionState());
+            expect(restored.getCreditsAmount()).toBe(session.getCreditsAmount());
+        }
+    });
+
+    it("separates a carried prefix and unfinished tail across snapshots, chunk merges and cancellation", async () => {
+        const blueprint = constant("respins"), 
+            game = generatedMechanicsGame(blueprint), 
+            session = boundedSession(game);
+        const prefix = new api.AggregateSimulationRunner(session, 1).run();
+        const middle = await runChunkedSimulation(session, 9, 2);
+        const statistics = api.SimulationAccumulator.fromSnapshot(JSON.parse(JSON.stringify(middle.accumulator.toSnapshot()))).getStatistics();
+        expect(statistics.logicalSampling).toEqual({carriedSubrounds: 1, excludedSubrounds: 1});
+        const report = new api.SimulationReportBuilder().build({manifest: blueprint.manifest, requestedRounds: 9, statistics, durationMs: 1});
+        expect(report).toMatchObject({rounds: 1, sampling: {acceptedSubrounds: 9, carriedSubrounds: 1, excludedSubrounds: 1}});
+        for (const rendered of [new api.MarkdownSimulationReportRenderer().render(report), new api.HtmlSimulationReportRenderer().render(report)]) {
+            expect(rendered).toContain("carried subrounds: 1");
+            expect(rendered).toContain("excluded unfinished/restored subrounds: 1");
+        }
+        prefix.merge(api.SimulationAccumulator.fromSnapshot(middle.accumulator.toSnapshot()));
+        expect(prefix.getStatistics().logicalSampling).toEqual({carriedSubrounds: 0, excludedSubrounds: 1});
+        prefix.merge(new api.AggregateSimulationRunner(session, 8).run());
+        expect(prefix.getStatistics()).toMatchObject({rounds: 18, logicalRoundMetrics: {rounds: 2}, logicalSampling: {carriedSubrounds: 0, excludedSubrounds: 0}});
+        const cancelledSession = boundedSession(game);
+        new api.AggregateSimulationRunner(cancelledSession, 1).run();
+        let stop = false;
+        await expect(runChunkedSimulation(cancelledSession, 100, 9, {shouldStop: () => stop, onChunkComplete: () => {
+            stop = true; 
+        }})).rejects.toMatchObject({observedPrefix: {rounds: 9, logicalSampling: {carriedSubrounds: 1, excludedSubrounds: 1}}});
+    });
+
+    it("legacy Simulation and convergence use completed bounded samples while retaining actual money and tails", () => {
+        const blueprint = constant("respins");
+        blueprint.paytable = {C: {3: 2}};
+        const game = generatedMechanicsGame(blueprint), 
+            session = boundedSession(game), 
+            config = new api.SimulationConfig();
+        config.setNumberOfRounds(10);
+        const simulation = new api.Simulation(session, config);
+        simulation.run();
+        expect(simulation.getCurrentRoundNumber()).toBe(10);
+        expect(simulation.getLogicalRoundStatistics()).toMatchObject({rounds: 1, steps: 9, totalStake: 0.05});
+        expect(simulation.getPayouts()).toHaveLength(1);
+        expect(simulation.getAveragePayout()).toBeCloseTo(0.9);
+        expect(simulation.getHitFrequency()).toBe(1);
+        expect(simulation.getAverageBet()).toBe(0.05);
+        expect(simulation.getTotalBetAmount()).toBe(0.1);
+        expect(simulation.getTotalPayoutAmount()).toBeCloseTo(1);
+        expect(simulation.getPayoutsStandardDeviation()).toBe(0);
+        const checker = new api.SimulationConvergenceChecker({minRounds: 2, rtpTolerance: 0.01, checkIntervalRounds: 1, stableChecks: 1});
+        const other = boundedSession(game), 
+            accumulator = new api.AggregateSimulationRunner(other, 8).run();
+        expect(checker.check(accumulator, 8).converged).toBe(false);
+        accumulator.merge(new api.AggregateSimulationRunner(other, 9).run());
+        expect(accumulator.getStatistics().logicalRoundMetrics!.rounds).toBe(1);
+        expect(checker.check(accumulator, 17).converged).toBe(false);
+        accumulator.merge(new api.AggregateSimulationRunner(other, 1).run());
+        expect(checker.check(accumulator, 18).converged).toBe(true);
+        const incomplete = boundedSession(game);
+        config.setNumberOfRounds(1);
+        const empty = new api.Simulation(incomplete, config);
+        empty.run();
+        expect(empty.getPayouts()).toEqual([]);
+        expect(empty.getAveragePayout()).toBe(0);
+        expect(empty.getHitFrequency()).toBe(0);
+        expect(empty.getPayoutsStandardDeviation()).toBe(0);
     });
 
     it("invalid schemas and tampered progress reject before nested mutation", () => {
@@ -600,6 +780,54 @@ describe("V2C-14 authored bounded mechanics", () => {
         expect((error as api.SimulationCancelledError).observedPrefix).toMatchObject({rounds: 1, totalBet: 0.05, totalPayout: 0, logicalRoundMetrics: {rounds: 0}});
     });
 
+
+    it("real multiple workers isolate collection trajectories and retain cancellation checkpoints", async () => {
+        const runtime = emitPublicRuntime();
+        try {
+            const blueprint = constant("respins-collection"), 
+                game = generatedMechanicsGame(blueprint);
+            const packageRoot = path.join(runtime.directory, "bounded-workers");
+            fs.mkdirSync(packageRoot);
+            fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: "bounded-workers", version: "1.0.0", pokie: {entry: "./index.cjs"}}));
+            fs.writeFileSync(path.join(packageRoot, "index.cjs"), api.renderBuiltGameModule(blueprint, "1.3.0"));
+            const workerEntryUrl = pathToFileURL(path.join(runtime.directory, "node_modules/@fromstan/pokie/dist/esm/simulation/parallel/internal/simulationWorkerEntry.js"));
+            const reference = new api.AggregateSimulationRunner(boundedSession(game), 10).run().getStatistics();
+            for (const chunkSize of [2, 10]) {
+                const results = await new api.SimulationWorkerCoordinator(workerEntryUrl).run([0, 1].map(workerIndex => ({workerIndex, totalWorkers: 2, packageRoot, rounds: 10, seed: String(31 + workerIndex), progressChunkSize: chunkSize})));
+                expect(results).toHaveLength(2);
+                for (const result of results) {
+                    const statistics = api.SimulationAccumulator.fromSnapshot(result.accumulator).getStatistics();
+                    expect(statistics).toEqual(reference);
+                    expect(result.accumulator.logicalSamplingRanges).toHaveLength(1);
+                }
+                const merged = new api.SimulationStatisticsMerger().merge(results).statistics;
+                expect(merged).toMatchObject({rounds: 20, totalPayout: 120, totalBet: 0.2, logicalRoundMetrics: {rounds: 2}, logicalSampling: {carriedSubrounds: 0, excludedSubrounds: 2}});
+                expect(new api.SimulationReportBuilder().build({manifest: blueprint.manifest, requestedRounds: 20, statistics: merged, durationMs: 1, workers: 2})).toMatchObject({rounds: 2, sampling: {acceptedSubrounds: 20, excludedSubrounds: 2, trajectories: "independent-session-per-worker"}});
+            }
+            const controller = new AbortController(), 
+                checkpoints = new Map<number, api.SimulationAccumulatorSnapshot>();
+            const threadIds = new Set<number>();
+            const coordinator = new api.SimulationWorkerCoordinator(workerEntryUrl, request => {
+                const worker = new Worker(workerEntryUrl, {workerData: request});
+                threadIds.add(worker.threadId);
+                worker.on("message", (message: SimulationWorkerMessage) => {
+                    if (!controller.signal.aborted && message.type === "progress" && message.accumulator) checkpoints.set(message.workerIndex, message.accumulator);
+                });
+                return worker;
+            });
+            await expect(new api.ParallelSimulationRunner(packageRoot, 20, {workers: 2, seed: "31", chunkSize: 10, signal: controller.signal,
+                createWorkerCoordinator: () => coordinator,
+                onProgress: () => {
+                    if (checkpoints.size === 2) controller.abort(); 
+                },}).run()).rejects.toMatchObject({observedPrefix: {rounds: 20, totalPayout: 120, logicalRoundMetrics: {rounds: 2}, logicalSampling: {carriedSubrounds: 0, excludedSubrounds: 2}}});
+            expect(threadIds.size).toBe(2);
+            expect(checkpoints.size).toBe(2);
+            const reopened = JSON.parse(JSON.stringify([...checkpoints.values()])) as api.SimulationAccumulatorSnapshot[];
+            expect(new api.SimulationStatisticsMerger().merge(reopened.map(accumulator => ({accumulator}))).statistics).toMatchObject({rounds: 20, totalPayout: 120, logicalSampling: {carriedSubrounds: 0, excludedSubrounds: 2}});
+        } finally {
+            runtime.dispose();
+        }
+    }, 120000);
 
     it("Studio cancelled jobs retain their accepted prefix after reopening durable job storage", async () => {
         const game = generatedMechanicsGame(constant("respins-collection")),

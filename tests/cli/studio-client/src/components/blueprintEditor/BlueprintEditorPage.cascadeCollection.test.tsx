@@ -64,3 +64,21 @@ it("retains malformed rules, exposes field diagnostics, repairs numeric validati
     expect(blueprint.mechanics).toEqual({collection: {...malformed.mechanics.collection, cap: 5}});
     expect(writes).not.toHaveBeenCalled();
 });
+
+it.each([{policy: ["reset"]}, {policy: {policy: "reset"}}, {policy: null}, {policy: 0}, {policy: true}, {policy: "unknown"}])("retains malformed policy drafts safely: %j", async ({policy}) => {
+    const writes = home();
+    const malformed = {...initial, mechanics: {
+        respins: {trigger: {symbolId: "C", minimumCount: 1}, grant: 2, maxRespins: 8, retrigger: policy},
+        collection: {symbolId: "C", contribution: 1, threshold: 4, cap: 5, payout: 0, reset: policy},
+    }};
+    fireEvent.change(await jsonEditor(), {target: {value: JSON.stringify(malformed)}});
+    fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
+    form();
+    expect(screen.getByText(/Correct mechanics.respins in JSON/)).toBeVisible();
+    expect(screen.getByText(/Correct mechanics.collection in JSON/)).toBeVisible();
+    expect(screen.queryByRole("combobox", {name: "Respin retrigger"})).toBeNull();
+    expect(screen.queryByRole("combobox", {name: "Collection reset"})).toBeNull();
+    await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeDisabled());
+    expect(JSON.parse((await jsonEditor()).value)).toEqual(malformed);
+    expect(writes).not.toHaveBeenCalled();
+});

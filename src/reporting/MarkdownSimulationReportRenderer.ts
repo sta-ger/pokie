@@ -40,7 +40,7 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             `- **Workers**: ${report.workers ?? 1}`,
         ];
 
-        if (report.sampling) lines.push("", "## Logical round sampling", `Completed logical rounds: ${report.rounds}; accepted subrounds: ${report.sampling.acceptedSubrounds}; excluded unfinished/restored subrounds: ${report.sampling.excludedSubrounds}. Independent session trajectory per worker. Monetary totals include every observed subround.`);
+        if (report.sampling) lines.push("", "## Logical round sampling", `Completed logical rounds: ${report.rounds}; accepted subrounds: ${report.sampling.acceptedSubrounds}; carried subrounds: ${report.sampling.carriedSubrounds ?? 0}; excluded unfinished/restored subrounds: ${report.sampling.excludedSubrounds}. Independent session trajectory per worker. Monetary totals include every observed subround.`);
         if (report.modifiers) lines.push("", "## Screen modifiers", `Executed steps: ${report.modifiers.steps}; rule applications: ${report.modifiers.ruleApplications}; sticky steps: ${report.modifiers.stickySteps}; multiplied components: ${report.modifiers.multipliedComponents}`);
         for (const reel of report.reelSequences ?? []) {
             lines.push("", `## Weighted reel ${reel.reelIndex + 1} (${reel.context}; ${reel.selections} selections)`, "", "| Variant ID | Weight | Probability | Count | Frequency | Coverage |", "| --- | --- | --- | --- | --- | --- |");

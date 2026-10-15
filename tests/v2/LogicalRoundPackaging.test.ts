@@ -18,7 +18,7 @@ function game(grant = 1, purchased = 3): api.PokieGame {
         betModes: [{id: "base", runtimeType: "base", isDefault: true}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 5, forcedFreeGames: purchased}],
     });
 }
-function cascadeGame(onCalculate: () => void, options: api.CascadeResolverOptions = {}): api.PokieGame {
+function cascadeGame(onCalculate: () => void, options: api.CascadeResolverOptions = {}, terminalWins = false): api.PokieGame {
     const config = new api.VideoSlotConfig();
     config.setReelsNumber(3);
     config.setReelsSymbolsNumber(1);
@@ -31,7 +31,7 @@ function cascadeGame(onCalculate: () => void, options: api.CascadeResolverOption
     config.setLinesDefinitions(new api.CustomLinesDefinitions().fromMap({line: [0, 0, 0]}));
     const paytable = new api.Paytable<string>([1], ["A", "B"]);
     paytable.setPayoutForSymbol("A", 3, 2);
-    paytable.setPayoutForSymbol("B", 3, 0);
+    paytable.setPayoutForSymbol("B", 3, terminalWins ? 2 : 0);
     config.setPaytable(paytable);
     class CascadeSession extends api.AbstractVideoSlotSessionDecorator implements api.CascadeResultProviding {
         private result?: api.CascadeResult;
@@ -80,7 +80,7 @@ function cascadeGame(onCalculate: () => void, options: api.CascadeResolverOption
             return this;
         }
     }
-    return {getManifest: () => ({id: "cascade-delivery", name: "Cascade", version: "1"}), supportsLogicalRoundDelivery: () => true,
+    return {getConfigHash: () => `cascade-model-v1:${JSON.stringify({options, terminalWins})}`, getManifest: () => ({id: "cascade-delivery", name: "Cascade", version: "1"}), supportsLogicalRoundDelivery: () => true,
         getSessionStateSchema: () => ({kind: "custom"}), getSessionCommandCapabilities: () => ({bets: [1]}),
         validateSessionState: value => {
             const state = value as {base: unknown; win: number};
@@ -457,9 +457,31 @@ describe("logical-round delivery and mathematical boundaries", () => {
         expect(calculations).toBe(1);
     });
 
+    it.each(["completed", "exhausted"] as const)("custom cascade at the bound retains %s artifacts, settlement, replay and retry", async status => {
+        let calculations = 0;
+        const model = cascadeGame(() => calculations++, {maxCascadeSteps: 2, onMaxCascadeStepsExceeded: "stop"}, status === "exhausted");
+        const repository = new api.InMemorySessionRepository(), 
+            wallet = new api.InMemoryWallet(100),
+            results = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>();
+        await repository.save("session", api.captureInitialPokieSessionState({seed: 7}, model.createSession({seed: 7}), model.getSessionSerializer?.(), false, model));
+        const handler = new api.SpinCommandHandler(model, repository, wallet, results);
+        const command: api.RepositoryCommand = {kind: "spin", sessionId: "session", requestId: "entry", roundId: "round", delivery: "composite"};
+        const result = settled(await handler.execute(command));
+        expect(result.state.logicalRound).toMatchObject({status, mathematicalStatus: status, totalStake: 1, totalWin: 4});
+        expect(result.state.logicalRound!.subrounds[0].artifacts).toHaveLength(status === "completed" ? 3 : 2);
+        if (status === "completed") expect(result.state.logicalRoundStatistics).toMatchObject({rounds: 1, steps: 1, totalStake: 1, totalWin: 4});
+        else expect(result.state.logicalRoundStatistics).toBeUndefined();
+        expect(await wallet.getBalance("session")).toBe(103);
+        expect(await handler.execute(command)).toEqual(result);
+        expect(calculations).toBe(1);
+        const session = model.createSession({seed: 7});
+        const recording = new api.ReplayRecorder().recordAudit(model, session, [{kind: "spin", roundId: "audit", delivery: "composite"}], {status: "calculated", sessionId: "audit", durability: "detached"}, {seed: 7});
+        expect(new api.AuditRoundReplay().replay(model, recording.audit!)).toMatchObject({verification: "verified", completion: status});
+    });
+
     it("exhaustion preserves an unfinished custom feature instead of declaring it completed", async () => {
         let calculations = 0;
-        const model = cascadeGame(() => calculations++, {maxCascadeSteps: 2, onMaxCascadeStepsExceeded: "stop"});
+        const model = cascadeGame(() => calculations++, {maxCascadeSteps: 2, onMaxCascadeStepsExceeded: "stop"}, true);
         const create = model.createSession.bind(model);
         model.createSession = context => {
             const session = create(context);
@@ -482,7 +504,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
     it.each(["independent", "local", "external"].flatMap(composition => ["partial", "full"].map(mode => ({composition, mode: mode as api.SessionCaptureMode}))))("stopped cascade retains evaluated prefix separately from final refill through $composition/$mode capture and retry", async ({composition, mode}) => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cascade-stop-"));
         let calculations = 0;
-        const model = cascadeGame(() => calculations++, {maxCascadeSteps: 2, onMaxCascadeStepsExceeded: "stop"});
+        const model = cascadeGame(() => calculations++, {maxCascadeSteps: 2, onMaxCascadeStepsExceeded: "stop"}, true);
         const repository = new api.InMemorySessionRepository(),
             wallet = new api.InMemoryWallet(100);
         const results = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>();

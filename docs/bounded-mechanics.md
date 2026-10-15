@@ -37,7 +37,7 @@ collection symbol on the final screen. Intermediate cascade screens do not
 contribute. The increment is `count * contribution`; it is added, checked for
 finite arithmetic, then capped. If the capped value reaches the threshold,
 exactly one configured award is added and the value becomes zero or has one
-threshold subtracted, according to `reset`. A carry may remain at/above threshold
+threshold subtracted, according to `reset` (an exact string enum; arrays, objects and other types are rejected). A carry may remain at/above threshold
 when the cap is large; a subsequent accepted subround can trigger again, even
 with zero new contribution. There is no loop that repeatedly awards within one
 subround. Contribution and payout are nonnegative **wallet currency units**;
@@ -52,6 +52,10 @@ ignores continuation triggers. `reset` resets the remaining count to `grant`,
 clipped by the unused lifetime budget `maxRespins - executed`. At the lifetime
 bound the chain completes successfully with zero remaining respins, even when
 the last screen triggers. Grants and executed respins are distinct observations.
+Restoration accepts only reachable counters: for `none`, a triggered round has
+`remaining + executed = grant`; for `reset`, remaining is at least
+`max(0, grant - executed)` and at most `min(grant, maxRespins - executed)`.
+An untriggered entry has both counters zero. These checks precede nested restore.
 Changing the bet during the chain is rejected. There is no retained-cell or
 banked terminal-payout variant in this contract.
 
@@ -130,7 +134,13 @@ fields with `sampling.unit = completed-logical-round`; `rounds` is completed
 logical rounds, `sampling.acceptedSubrounds` is actual accepted plays, and
 `excludedSubrounds` identifies observed unfinished or restored tails without a
 locally observed paid entry. `carriedSubrounds` identifies a completed sample's
-prefix retained from an earlier runner on the same session. Monetary totals/RTP
+prefix retained from an earlier runner on the same session. These counts are
+independent: observing one entry and then nine plays of a nine-subround fixture
+completes a round with one carried subround and leaves one observed subround
+unfinished. Snapshots retain per-session observed/completed coordinate ranges;
+merging adjacent chunks reconciles the internal tail/prefix overlap, while
+independent workers retain separate trajectories. Coordinates describe sampling
+provenance, not resumable executable state. Monetary totals/RTP
 include all actually observed stakes and payouts, even unfinished tails; means
 and distributions include completed samples only.
 

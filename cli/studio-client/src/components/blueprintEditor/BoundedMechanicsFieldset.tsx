@@ -31,8 +31,8 @@ export function BoundedMechanicsFieldset({blueprint, mutate}: {blueprint: Record
             const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
             const fields = {cascade: ["maxCascades"], respins: ["grant", "maxRespins"], collection: ["contribution", "threshold", "cap", "payout"]}[key];
             const invalid = !object(raw) || fields.some(field => typeof raw[field] !== "number") ||
-                (key === "respins" && (!object(raw.trigger) || typeof raw.trigger.symbolId !== "string" || typeof raw.trigger.minimumCount !== "number")) ||
-                (key === "collection" && typeof raw.symbolId !== "string");
+                (key === "respins" && (!object(raw.trigger) || typeof raw.trigger.symbolId !== "string" || typeof raw.trigger.minimumCount !== "number" || (raw.retrigger !== "none" && raw.retrigger !== "reset"))) ||
+                (key === "collection" && (typeof raw.symbolId !== "string" || (raw.reset !== "zero" && raw.reset !== "subtract-threshold")));
             return <PageSection key={key} legend={`Bounded ${key}`}>
                 {rule === undefined ? <Button onClick={() => set(key, defaults[key])}>Add {key}</Button> : <Stack>
                     {invalid ? <Text>Correct mechanics.{key} in JSON and Apply JSON. The current draft is retained.</Text> : <>

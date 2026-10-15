@@ -89,6 +89,29 @@ describe("SimulationAccumulator", () => {
         expect(accumulator.getStatistics().rounds).toBe(0);
     });
 
+    test("snapshot ranges retain independent prefix/tail provenance, union chunks and reject malformed coordinates", () => {
+        const sample = new SimulationAccumulator();
+        sample.enableLogicalRoundSampling();
+        sample.addLogicalSamplingRanges([{trajectory: "one", observed: [[1, 10]], completed: [[0, 9]]}]);
+        const snapshot = sample.toSnapshot();
+        const restored = SimulationAccumulator.fromSnapshot(snapshot);
+        snapshot.logicalSamplingRanges![0].observed[0][0] = 0;
+        expect(restored.getStatistics().logicalSampling).toEqual({carriedSubrounds: 1, excludedSubrounds: 1});
+        const prefix = new SimulationAccumulator();
+        prefix.addLogicalSamplingRanges([{trajectory: "one", observed: [[0, 1]], completed: []}]);
+        restored.merge(prefix);
+        expect(restored.getStatistics().logicalSampling).toEqual({carriedSubrounds: 0, excludedSubrounds: 1});
+        const independent = new SimulationAccumulator();
+        independent.addLogicalSamplingRanges([{trajectory: "two", observed: [[0, 1]], completed: []}]);
+        restored.merge(independent);
+        expect(restored.getStatistics().logicalSampling).toEqual({carriedSubrounds: 0, excludedSubrounds: 2});
+        for (const coordinates of [[-1, 0], [1, 0], [0, Infinity], [0, 0.5]]) {
+            const invalid = sample.toSnapshot();
+            invalid.logicalSamplingRanges![0].observed = [coordinates as [number, number]];
+            expect(() => SimulationAccumulator.fromSnapshot(invalid)).toThrow(/logical sampling/);
+        }
+    });
+
     test("merging two populated accumulators combines their totals exactly", () => {
         const left = new SimulationAccumulator();
         left.addRound(10, 0);
