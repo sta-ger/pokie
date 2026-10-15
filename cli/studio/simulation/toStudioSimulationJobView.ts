@@ -16,6 +16,7 @@ export function toStudioSimulationJobView(record: StudioSimulationJobRecord): St
         durationMs: record.durationMs,
         report: record.status === "completed" ? record.report : undefined,
         statistics: record.status === "completed" ? record.statistics : undefined,
+        ...(record.observedPrefix ? {observedPrefix: record.observedPrefix} : {}),
         error: record.error,
         modeName: record.modeName,
         lastReplay: record.status === "completed" ? record.lastReplay : undefined,

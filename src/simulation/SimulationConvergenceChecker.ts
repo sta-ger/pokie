@@ -29,11 +29,13 @@ export class SimulationConvergenceChecker {
 
     public check(accumulator: SimulationAccumulator, roundsCompleted: number): SimulationConvergenceCheckResult {
         this.checksPerformed++;
-        const {low, high} = accumulator.getStatistics().rtpConfidenceInterval95;
+        const statistics = accumulator.getStatistics();
+        const samples = statistics.logicalRoundMetrics ?? statistics;
+        const {low, high} = samples.rtpConfidenceInterval95;
         const halfWidth = (high - low) / 2;
         this.lastAchievedRtpHalfWidth = halfWidth;
 
-        const satisfies = roundsCompleted >= this.options.minRounds && halfWidth <= this.options.rtpTolerance;
+        const satisfies = (statistics.logicalRoundMetrics ? samples.rounds : roundsCompleted) >= this.options.minRounds && halfWidth <= this.options.rtpTolerance;
         this.consecutiveStableChecks = satisfies ? this.consecutiveStableChecks + 1 : 0;
 
         const requiredStableChecks = this.options.stableChecks ?? DEFAULT_STABLE_CHECKS;

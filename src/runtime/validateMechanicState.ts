@@ -13,6 +13,14 @@ export function validateMechanicState(state: Record<string, unknown>, schema: Se
     const compositionError = getSessionCompositionError(schema.kind, baseKinds);
     if (compositionError) throw new Error(compositionError);
     const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0;
+    if (schema.kind === "bounded-mechanics") {
+        const {collection, respins} = schema.rules;
+        if (Object.keys(state).some(key => !["base", "value", "remaining", "executed", "entryBet"].includes(key)) || !finite(state.value) || (collection ? state.value > collection.cap || (state.value >= collection.threshold && (collection.reset === "zero" || state.value > collection.cap - collection.threshold)) : state.value !== 0) ||
+            !Number.isSafeInteger(state.remaining) || Number(state.remaining) < 0 ||
+            !Number.isSafeInteger(state.executed) || Number(state.executed) < 0 ||
+            (respins ? Number(state.remaining) > respins.grant || Number(state.executed) + Number(state.remaining) > respins.maxRespins : state.remaining !== 0 || state.executed !== 0) ||
+            !finite(state.entryBet) || (state.entryBet !== 0 && !schema.bets.includes(state.entryBet)) || ((Number(state.remaining) > 0 || Number(state.executed) > 0) && state.entryBet === 0)) throw new Error("Invalid bounded collection/respin state or entry denomination.");
+    }
     if (schema.kind === "hold-and-win" || schema.kind === "jackpot") {
         const outcome = state.lastOutcome as {kind?: string; payout?: number; amount?: number; baseWinAmount?: number; baseEvaluation?: WinEvaluationSnapshot; poolId?: string; linesWinning?: number; scattersWinning?: number} | undefined;
         if (!outcome || typeof outcome !== "object" || !(schema.kind === "hold-and-win" ? ["ordinary", "suppressed", "completed"] : ["ordinary", "awarded"]).includes(outcome.kind ?? "")) throw new Error("Required settled feature outcome is missing or invalid.");

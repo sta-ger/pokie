@@ -1,3 +1,4 @@
+import {SimulationStatisticsMerger} from "../SimulationStatisticsMerger.js";
 import type {Worker} from "worker_threads";
 import {getDefaultWorkerEntryUrl} from "./internal/defaultWorkerEntryUrl.js";
 import type {SimulationWorkerMessage} from "./internal/SimulationWorkerMessage.js";
@@ -73,6 +74,7 @@ export class SimulationWorkerCoordinator {
             // "every result is in" check below resolve prematurely after only the first worker
             // reports in.
             const results = new Array<SimulationWorkerResult | undefined>(requests.length).fill(undefined);
+            const prefixes = new Map<number, import("../SimulationAccumulatorSnapshot.js").SimulationAccumulatorSnapshot>();
             let settled = false;
 
             const terminateAll = async (): Promise<void> => {
@@ -80,7 +82,7 @@ export class SimulationWorkerCoordinator {
             };
 
             const onAbort = (): void => {
-                finish(() => reject(new SimulationCancelledError()));
+                finish(() => reject(new SimulationCancelledError(prefixes.size ? new SimulationStatisticsMerger().merge([...prefixes.values()].map(accumulator => ({accumulator}))).statistics : undefined)));
             };
 
             async function finish(action: () => void): Promise<void> {
@@ -130,6 +132,7 @@ export class SimulationWorkerCoordinator {
                     const message = raw as SimulationWorkerMessage;
                     switch (message.type) {
                         case "progress":
+                            if (message.accumulator) prefixes.set(index, message.accumulator);
                             onProgress?.({workerIndex: message.workerIndex, roundsCompleted: message.roundsCompleted});
                             return;
                         case "error":
@@ -148,6 +151,7 @@ export class SimulationWorkerCoordinator {
                                 convergence: message.convergence,
                             };
                             results[index] = result;
+                            prefixes.set(index, result.accumulator);
                             if (results.every((entry) => entry !== undefined)) {
                                 finish(() => resolve(results as SimulationWorkerResult[]));
                             }

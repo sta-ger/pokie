@@ -25,6 +25,7 @@ export type StudioSimulationJobRecord = {
     durationMs: number;
     report?: SimulationReport | SimulationReportSet;
     statistics?: StudioSimulationStatisticsView;
+    observedPrefix?: import("../../../src/simulation/SimulationStatistics.js").SimulationStatistics;
     error?: string;
     abortController: AbortController;
     // The already-resolved "outcomeLibrary"/"stakeAdapter" project this job samples, when start() was

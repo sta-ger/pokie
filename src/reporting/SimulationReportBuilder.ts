@@ -26,7 +26,8 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         const workers = input.workers ?? 1;
         const spinsPerSecond = Math.round(statistics.rounds / (Math.max(durationMs, 1) / 1000));
 
-        const rounds = statistics.rounds;
+        const metrics = statistics.logicalRoundMetrics ?? statistics;
+        const rounds = metrics.rounds;
         const totalBet = statistics.totalBet;
         const totalWin = statistics.totalPayout;
         const rtp = statistics.rtp;
@@ -39,35 +40,36 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             totalBet,
             totalWin,
             rtp,
-            hitFrequency: rounds > 0 ? statistics.hitCount / rounds : 0,
-            maxWin: statistics.maxWin,
+            hitFrequency: rounds > 0 ? metrics.hitCount / rounds : 0,
+            maxWin: metrics.maxWin,
             durationMs,
             spinsPerSecond,
             workers,
             betMode,
             targetRtp,
             rtpDeviation: targetRtp !== undefined ? rtp - targetRtp : undefined,
-            // Derived from THIS report's own (possibly bet-mode-overridden) totalBet/totalWin, never
-            // statistics.averageBet/averagePayout directly — see SimulationReport.ts's own doc comment
-            // on why those would silently understate a locked ante/buy mode's real average cost.
-            averageBet: rounds > 0 ? totalBet / rounds : 0,
-            averagePayout: rounds > 0 ? totalWin / rounds : 0,
+            // Completed logical samples exclude unfinished tails from means and distributions;
+            // monetary totals and RTP above still include every observed accepted play.
+            averageBet: rounds > 0 ? metrics.totalBet / rounds : 0,
+            averagePayout: rounds > 0 ? metrics.totalPayout / rounds : 0,
             // Payout-based, not bet-based -- unaffected by bet mode locking, so always passed straight
             // through from statistics (see SimulationReport.ts's own doc comment).
-            volatility: statistics.volatility,
-            payoutHistogram: {...statistics.payoutHistogram},
-            maxWinFrequency: statistics.maxWinFrequency ?? 0,
-            averagePayoutConfidenceInterval95: statistics.averagePayoutConfidenceInterval95,
-            rtpConfidenceInterval95: statistics.rtpConfidenceInterval95,
+            volatility: metrics.volatility,
+            payoutHistogram: {...metrics.payoutHistogram},
+            maxWinFrequency: metrics.maxWinFrequency ?? 0,
+            averagePayoutConfidenceInterval95: metrics.averagePayoutConfidenceInterval95,
+            rtpConfidenceInterval95: metrics.rtpConfidenceInterval95,
             stopReason,
             convergence,
         };
 
         const breakdown = this.buildBreakdown(input.breakdown, core.totalBet);
         const jackpot = this.buildJackpot(input.jackpot, core.totalBet);
-        const warnings = this.buildWarnings(core, breakdown);
+        const warnings = this.buildWarnings(core, breakdown, statistics.logicalRoundMetrics ? statistics.rounds : undefined);
         return {
             ...core,
+            ...(statistics.logicalRounds ? {logicalRounds: statistics.logicalRounds} : {}),
+            ...(statistics.logicalRoundMetrics ? {sampling: {unit: "completed-logical-round" as const, acceptedSubrounds: statistics.rounds, carriedSubrounds: Math.max(0, (statistics.logicalRounds?.steps ?? 0) - statistics.rounds), excludedSubrounds: Math.max(0, statistics.rounds - (statistics.logicalRounds?.steps ?? 0)), trajectories: "independent-session-per-worker" as const}} : {}),
             ...(statistics.modifiers ? {modifiers: statistics.modifiers} : {}),
             ...(statistics.reelSequences ? {reelSequences: statistics.reelSequences} : {}),
             breakdown,
@@ -125,7 +127,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         };
     }
 
-    private buildWarnings(core: CoreMetrics, breakdown: SimulationReportBreakdown | undefined): string[] {
+    private buildWarnings(core: CoreMetrics, breakdown: SimulationReportBreakdown | undefined, acceptedSubrounds?: number): string[] {
         const warnings: string[] = [];
 
         if (!this.hasSeed(core)) {
@@ -153,9 +155,10 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         // A "converged" stop is the adaptive-stop feature working as intended, not a problem — only the
         // pre-existing "session stopped itself early" case (stopReason "sessionStopped", or absent on
         // an older report that predates this field) is actually worth flagging here.
-        if (core.rounds < core.requestedRounds && core.stopReason !== "converged") {
+        if ((acceptedSubrounds ?? core.rounds) < core.requestedRounds && core.stopReason !== "converged") {
             warnings.push(
-                `Actual rounds (${core.rounds}) is less than requested rounds (${core.requestedRounds}) — ` +
+                acceptedSubrounds !== undefined ? `Accepted subrounds (${acceptedSubrounds}) is less than requested subrounds (${core.requestedRounds}).` :
+                    `Actual rounds (${core.rounds}) is less than requested rounds (${core.requestedRounds}) — ` +
                     "the game stopped early (canPlayNextGame() returning false).",
             );
         }

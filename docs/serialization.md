@@ -482,3 +482,9 @@ injected `MultiplierResolver`, including a custom combine callback, remains
 uncertified. Snapshots preserve state across free games and mode changes; reads
 and duplicate delivery never decrement it. Opaque generators remain custom even
 when their live snapshot retains modifier data. See the [math contract](math-modeling.md#authored-wilds-and-screen-modifiers).
+
+## Bounded authored mechanics (V2C-14)
+
+See [cascades, respins and collections](bounded-mechanics.md) for the declarative
+contracts, supported compositions, authoring/build/extraction/PAR workflow,
+logical-round accounting, continuation and durability boundaries.

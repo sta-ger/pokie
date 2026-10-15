@@ -11,6 +11,7 @@ import {SimulationCancelledError} from "../SimulationCancelledError.js";
 
 export type ChunkedSimulationChunkInfo = {
     roundsCompleted: number;
+    accumulator?: import("../../SimulationAccumulatorSnapshot.js").SimulationAccumulatorSnapshot;
     // True once there is nothing left to do: either every requested round has been played, or the
     // session stopped itself early (canPlayNextGame() returning false). Lets a caller that yields
     // between chunks (see ParallelSimulationRunner's in-process path) skip a pointless final yield.
@@ -75,7 +76,7 @@ export async function runChunkedSimulation(
 
     while (roundsRemaining > 0) {
         if (callbacks.shouldStop?.()) {
-            throw new SimulationCancelledError();
+            throw new SimulationCancelledError(accumulator.getStatistics());
         }
 
         const chunkRounds = Math.min(chunkSize, roundsRemaining);
@@ -105,9 +106,9 @@ export async function runChunkedSimulation(
         const cancelled = callbacks.shouldStop?.() === true;
         const converged = !cancelled && !stoppedEarly && (callbacks.checkConvergence?.(accumulator, roundsCompleted) ?? false);
 
-        await callbacks.onChunkComplete?.({roundsCompleted, isFinished: cancelled || stoppedEarly || converged || roundsRemaining <= 0});
+        await callbacks.onChunkComplete?.({roundsCompleted, accumulator: accumulator.toSnapshot(), isFinished: cancelled || stoppedEarly || converged || roundsRemaining <= 0});
 
-        if (cancelled || callbacks.shouldStop?.()) throw new SimulationCancelledError();
+        if (cancelled || callbacks.shouldStop?.()) throw new SimulationCancelledError(accumulator.getStatistics());
 
         // The session stopped playing on its own before using every round in this chunk — no point
         // scheduling further chunks once that's happened.

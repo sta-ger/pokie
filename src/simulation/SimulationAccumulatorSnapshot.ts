@@ -10,6 +10,7 @@ export type SimulationAccumulatorSnapshot = {
     modifiers?: ModifierStatistics;
     reelSequences?: ReelSequenceStatistics[];
     logicalRounds?: LogicalRoundStatistics;
+    logicalSamples?: SimulationAccumulatorSnapshot;
     rounds: number;
     hitCount: number;
     totalBet: number;

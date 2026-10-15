@@ -1,3 +1,5 @@
+import {boundedBlueprint} from "../../../v2/fixtures/BoundedMechanicsGame.js";
+import {generatedMechanicsGame, mechanicsSession} from "../../../v2/fixtures/ExistingMechanicsGame.js";
 import {
     SessionRuntime,
     AbstractVideoSlotSessionDecorator,
@@ -180,4 +182,16 @@ it("stepwise cascade delivery reads saved evaluated stages without refilling aga
     captured.stages[0].screen[0][0] = "mutated";
     expect(serializer.getRoundData(a).stages[0].screen[0][0]).toBe("A");
     expect(play).toHaveBeenCalledTimes(1);
+});
+
+
+it("generated cascades serialize an initial zero result before calculation without drawing RNG", () => {
+    const game = generatedMechanicsGame(boundedBlueprint("cascade-collection"));
+    const session = mechanicsSession(game);
+    const initial = session.toSessionState();
+    const serializer = game.getSessionSerializer!();
+    const data = serializer.getInitialData(session);
+    expect(data).toMatchObject({totalWin: 0, totalCascadeWin: 0, stages: [], boundedMechanics: {collection: {value: 0, contribution: 0, triggered: false, payout: 0}, cascade: {winningCascades: 0, evaluatedSteps: 0}}});
+    expect(serializer.getInitialData(session)).toEqual(data);
+    expect(session.toSessionState()).toEqual(initial);
 });

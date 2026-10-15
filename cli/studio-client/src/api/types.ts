@@ -668,6 +668,8 @@ export type SimulationReportReproducibility = {
 // The server's copy of this same type lives in "pokie" itself (src/reporting/SimulationReport.ts) —
 // kept as its own client-side copy here, same convention as every other type in this file.
 export type SimulationReport = {
+    sampling?: import("../../../../src/reporting/SimulationReport.js").SimulationReport["sampling"];
+    logicalRounds?: import("../../../../src/simulation/LogicalRoundStatistics.js").LogicalRoundStatistics;
     modifiers?: import("../../../../src/simulation/ModifierStatistics.js").ModifierStatistics;
     reelSequences?: ReelSequenceStatistics[];
     game: {id: string; name: string; version: string};

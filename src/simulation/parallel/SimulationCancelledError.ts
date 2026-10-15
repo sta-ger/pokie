@@ -3,8 +3,11 @@
 // "the caller asked us to stop" apart from "a worker actually failed" and record the right terminal
 // status (cancelled vs. failed) instead of treating every thrown error the same way.
 export class SimulationCancelledError extends Error {
-    constructor() {
+    /** Observed accepted prefix; never presented as a completed run or resumable worker. */
+    public readonly observedPrefix?: import("../SimulationStatistics.js").SimulationStatistics;
+    constructor(observedPrefix?: import("../SimulationStatistics.js").SimulationStatistics) {
         super("Simulation was cancelled.");
+        this.observedPrefix = observedPrefix;
         this.name = "SimulationCancelledError";
     }
 }

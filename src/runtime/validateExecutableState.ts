@@ -13,7 +13,7 @@ import type {SessionStateSchema} from "../session/SessionStateRestoring.js";
 export function validateExecutableState(value: unknown, schema?: SessionStateSchema, customValidator?: (state: unknown) => void, partial?: boolean, live?: LiveSnapshotPolicy): void {
     partial = live?.partial ?? partial ?? false;
     if (schema !== undefined && (typeof schema !== "object" || schema === null ||
-        !["base", "seeded-video-slot", "free-games", "bet-modes", "hold-and-win", "jackpot", "custom"].includes(schema.kind))) throw new Error("Unknown executable state schema.");
+        !["base", "seeded-video-slot", "free-games", "bet-modes", "hold-and-win", "jackpot", "bounded-mechanics", "custom"].includes(schema.kind))) throw new Error("Unknown executable state schema.");
     if (schema?.kind === "seeded-video-slot" && schema.screenGeometry) new ScreenProjection(schema.screenGeometry).getGeometry();
     if (schema?.kind === "custom") {
         if (live?.opaque === true) {

@@ -10,6 +10,7 @@ import type {NextSessionRoundPlayableDetermining} from "./playstrategy/NextSessi
 import type {SimulationConfigRepresenting} from "./SimulationConfigRepresenting.js";
 
 export class Simulation implements AsyncSimulationHandling {
+    private readonly logicalSampling: boolean;
     private readonly sequenceBefore?: ReelSequenceStatistics[];
     private logicalRounds = emptyLogicalRoundStatistics();
     private readonly session: GameSessionHandling;
@@ -33,6 +34,7 @@ export class Simulation implements AsyncSimulationHandling {
 
     constructor(session: GameSessionHandling, config: SimulationConfigRepresenting) {
         this.session = session;
+        this.logicalSampling = typeof (session as {getBoundedMechanicObservation?: unknown}).getBoundedMechanicObservation === "function";
         this.sequenceBefore = (session as Partial<VideoSlotSessionHandling>).getSequenceStatistics?.();
         this.numberOfRounds = config.getNumberOfRounds();
         this.changeBetStrategy = config.getChangeBetStrategy();
@@ -110,11 +112,12 @@ export class Simulation implements AsyncSimulationHandling {
     }
 
     public getHitFrequency(): number {
-        return this.numberOfWiningRounds / this.currentRoundNumber;
+        return this.numberOfWiningRounds / (this.logicalSampling ? this.allPayouts.length || 1 : this.currentRoundNumber);
     }
 
     public getPayoutsStandardDeviation(includeZeroPayouts = true): number {
         const payouts = includeZeroPayouts ? this.allPayouts : this.nonZeroPayouts;
+        if (this.logicalSampling && payouts.length === 0) return 0;
         const averagePayout = this.getAveragePayout(includeZeroPayouts);
         const squaredDifferences = payouts.map((payout) => (payout - averagePayout) ** 2);
         const variance = squaredDifferences.reduce((acc, val) => acc + val, 0) / payouts.length;
@@ -178,11 +181,12 @@ export class Simulation implements AsyncSimulationHandling {
     }
 
     public getAveragePayout(includeZeroPayouts = true): number {
-        return this.totalPayoutAmount / (includeZeroPayouts ? this.currentRoundNumber : this.numberOfWiningRounds);
+        if (!this.logicalSampling) return this.totalPayoutAmount / (includeZeroPayouts ? this.currentRoundNumber : this.numberOfWiningRounds);
+        return this.allPayouts.reduce((sum, value) => sum + value, 0) / ((includeZeroPayouts ? this.allPayouts.length : this.numberOfWiningRounds) || 1);
     }
 
     public getAverageBet(): number {
-        return this.totalBetAmount / this.currentRoundNumber;
+        return this.logicalSampling ? this.betsPerRound.reduce((sum, value) => sum + value, 0) / (this.betsPerRound.length || 1) : this.totalBetAmount / this.currentRoundNumber;
     }
 
     private onFinished(): void {
@@ -215,12 +219,15 @@ export class Simulation implements AsyncSimulationHandling {
         const observation = observeLogicalSubround(this.session, result.stake, result.win);
         if (observation) this.logicalRounds = mergeLogicalRoundStatistics(this.logicalRounds, observation);
         this.totalBetAmount += result.stake;
-        this.betsPerRound.push(result.stake);
         this.totalPayoutAmount += result.win;
-        this.allPayouts.push(result.win);
-        if (result.win) {
-            this.numberOfWiningRounds++;
-            this.nonZeroPayouts.push(result.win);
+        const sample = this.logicalSampling ? observation && {stake: observation.totalStake, win: observation.totalWin} : result;
+        if (sample) {
+            this.betsPerRound.push(sample.stake);
+            this.allPayouts.push(sample.win);
+            if (sample.win) {
+                this.numberOfWiningRounds++;
+                this.nonZeroPayouts.push(sample.win);
+            }
         }
         this.rtpPerRound.push(this.totalPayoutAmount / this.totalBetAmount);
         if (this.afterPlayCallback) {

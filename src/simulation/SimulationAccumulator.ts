@@ -7,6 +7,7 @@ import type {SimulationAccumulatorSnapshot} from "./SimulationAccumulatorSnapsho
 import type {SimulationStatistics} from "./SimulationStatistics.js";
 
 export class SimulationAccumulator {
+    private logicalSamples?: SimulationAccumulator;
     private modifiers?: ModifierStatistics;
     private reelSequences?: ReelSequenceStatistics[];
     private logicalRounds: LogicalRoundStatistics | undefined;
@@ -34,6 +35,7 @@ export class SimulationAccumulator {
         if (snapshot.reelSequences) accumulator.setReelSequenceStatistics(snapshot.reelSequences);
         accumulator.modifiers = snapshot.modifiers && {...snapshot.modifiers};
         accumulator.logicalRounds = snapshot.logicalRounds ? {...snapshot.logicalRounds} : undefined;
+        if (snapshot.logicalSamples) accumulator.logicalSamples = SimulationAccumulator.fromSnapshot(snapshot.logicalSamples);
         accumulator.rounds = snapshot.rounds;
         accumulator.hitCount = snapshot.hitCount;
         accumulator.totalBet = snapshot.totalBet;
@@ -62,7 +64,13 @@ export class SimulationAccumulator {
     }
 
 
+    public enableLogicalRoundSampling(): void {
+        this.logicalSamples ??= new SimulationAccumulator();
+        this.logicalRounds ??= emptyLogicalRoundStatistics();
+    }
+
     public addLogicalRound(observation: LogicalRoundStatistics): void {
+        if (observation.rounds === 1) this.logicalSamples?.addRound(observation.totalStake, observation.totalWin);
         this.logicalRounds = mergeLogicalRoundStatistics(this.logicalRounds ?? emptyLogicalRoundStatistics(), observation);
     }
 
@@ -112,7 +120,11 @@ export class SimulationAccumulator {
     public merge(other: SimulationAccumulator): void {
         this.modifiers = mergeModifierStatistics(this.modifiers, other.modifiers);
         if (other.reelSequences) this.reelSequences = mergeReelSequenceStatistics(this.reelSequences, other.reelSequences);
-        if (other.logicalRounds) this.addLogicalRound(other.logicalRounds);
+        if (other.logicalRounds) this.logicalRounds = mergeLogicalRoundStatistics(this.logicalRounds ?? emptyLogicalRoundStatistics(), other.logicalRounds);
+        if (other.logicalSamples) {
+            this.logicalSamples ??= new SimulationAccumulator();
+            this.logicalSamples.merge(other.logicalSamples);
+        }
         if (other.rounds === 0) {
             return;
         }
@@ -189,6 +201,7 @@ export class SimulationAccumulator {
             ...(this.modifiers ? {modifiers: {...this.modifiers}} : {}),
             ...(this.reelSequences ? {reelSequences: mergeReelSequenceStatistics([], this.reelSequences)} : {}),
             ...(this.logicalRounds ? {logicalRounds: {...this.logicalRounds}} : {}),
+            ...(this.logicalSamples ? {logicalRoundMetrics: this.logicalSamples.getStatistics()} : {}),
             rounds: this.rounds,
             hitCount: this.hitCount,
             totalBet: this.totalBet,
@@ -219,6 +232,7 @@ export class SimulationAccumulator {
             ...(this.modifiers ? {modifiers: {...this.modifiers}} : {}),
             ...(this.reelSequences ? {reelSequences: mergeReelSequenceStatistics([], this.reelSequences)} : {}),
             ...(this.logicalRounds ? {logicalRounds: {...this.logicalRounds}} : {}),
+            ...(this.logicalSamples ? {logicalSamples: this.logicalSamples.toSnapshot()} : {}),
             rounds: this.rounds,
             hitCount: this.hitCount,
             totalBet: this.totalBet,
@@ -251,6 +265,7 @@ export class SimulationAccumulator {
 }
 
 function validateSnapshot(snapshot: SimulationAccumulatorSnapshot): void {
+    if (snapshot.logicalSamples && (snapshot.logicalSamples.logicalSamples || snapshot.logicalSamples.rounds !== snapshot.logicalRounds?.rounds)) throw new Error("Invalid logical sample snapshot envelope.");
     if (snapshot.modifiers && Object.values(snapshot.modifiers).some(value => !Number.isSafeInteger(value) || value < 0)) throw new Error("Invalid modifier statistics.");
     const nonNegativeIntegers: Array<[string, number]> = [
         ["rounds", snapshot.rounds],

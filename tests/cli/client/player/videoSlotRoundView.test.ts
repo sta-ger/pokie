@@ -349,3 +349,14 @@ it("projects authored mechanic observations and original purchase attribution fr
     expect(deriveFeatureCounters(data)).toEqual([{label: "Charged mode", value: "buy"}, {label: "Locked symbols", value: 1}, {label: "Respins", value: 0}, {label: "Hold & Win payout", value: 3}, {label: "Jackpot mini", value: 10}, {label: "Jackpot award", value: 12}]);
     expect(deriveFeatureCountersFromEvents([{type: "holdAndWin", data: data.holdAndWin}, {type: "jackpot", data: data.jackpot}, {type: "chargedBetMode", data: {id: "buy"}}])).toEqual(deriveFeatureCounters(data));
 });
+
+
+it("live and artifact-only bounded observations retain meaningful zero counters", () => {
+    const data = {collection: {value: 0, cap: 5, threshold: 4, contribution: 0, triggered: false, reset: "zero", payout: 0}, respins: {remaining: 0, executed: 8, granted: 0, limit: 8}, cascade: {winningCascades: 0, evaluatedSteps: 1}};
+    const live = deriveFeatureCounters({boundedMechanics: data});
+    expect(live).toContainEqual({label: "collection value", value: 0});
+    expect(live).toContainEqual({label: "collection triggered", value: "false"});
+    expect(live).toContainEqual({label: "respins remaining", value: 0});
+    expect(live).toContainEqual({label: "cascade evaluatedSteps", value: 1});
+    expect(deriveFeatureCountersFromEvents([{type: "boundedMechanics", data}])).toEqual(live);
+});

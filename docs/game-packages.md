@@ -383,3 +383,9 @@ identity. Build the `examples/blueprints/wild-*.blueprint.json` examples with
 package with `pokie PACKAGE`. Stateless modifiers retain exact enumeration;
 sticky games explicitly lack independent-spin enumeration. See the
 [math contract](math-modeling.md#authored-wilds-and-screen-modifiers).
+
+## Bounded authored mechanics (V2C-14)
+
+See [cascades, respins and collections](bounded-mechanics.md) for the declarative
+contracts, supported compositions, authoring/build/extraction/PAR workflow,
+logical-round accounting, continuation and durability boundaries.

@@ -68,6 +68,7 @@ export class AggregateSimulationRunner {
 
     public run(shouldStop?: () => boolean): SimulationAccumulator {
         const accumulator = new SimulationAccumulator();
+        if (typeof (this.session as {getBoundedMechanicObservation?: unknown}).getBoundedMechanicObservation === "function") accumulator.enableLogicalRoundSampling();
         const slot = this.session as Partial<VideoSlotSessionHandling>;
         const sequenceBefore = slot.getSequenceStatistics?.();
         const categoryTotals = new Map<string, CategoryTotals>();

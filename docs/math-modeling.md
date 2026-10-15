@@ -218,3 +218,9 @@ outcome enumeration and its downstream conversions; stateless rules use the same
 session payout path during enumeration. Custom callbacks retain their custom
 capability/extraction boundary. See [serialization](serialization.md) and
 [the implementation evidence record](v2-completion/V2C-13.md).
+
+## Bounded authored mechanics (V2C-14)
+
+See [cascades, respins and collections](bounded-mechanics.md) for the declarative
+contracts, supported compositions, authoring/build/extraction/PAR workflow,
+logical-round accounting, continuation and durability boundaries.

@@ -221,3 +221,9 @@ Blueprint `mechanics.modifiers` is outside the canonical WASM boundary. Prefligh
 rejects it before publishing a reduced model or artifact; use a TypeScript package.
 No modifier calculation engine is added to WASM. Sticky combinations likewise
 cannot be flattened into independent-spin outcome libraries or Stake routes.
+
+## Bounded authored mechanics (V2C-14)
+
+See [cascades, respins and collections](bounded-mechanics.md) for the declarative
+contracts, supported compositions, authoring/build/extraction/PAR workflow,
+logical-round accounting, continuation and durability boundaries.

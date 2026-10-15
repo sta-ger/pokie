@@ -5,6 +5,7 @@ export type SimulationStatistics = {
     modifiers?: ModifierStatistics;
     reelSequences?: ReelSequenceStatistics[];
     logicalRounds?: LogicalRoundStatistics;
+    logicalRoundMetrics?: SimulationStatistics;
     rounds: number;
     hitCount: number;
     totalBet: number;
