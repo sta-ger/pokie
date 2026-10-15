@@ -192,3 +192,50 @@ recorded operation` and `Match -- recorded and recreated results agree`.
 This is partial collection only.  It does not claim the required weighted
 whole-sequence package or the buy/buy-more continuation matrix; those rows
 remain uncollected for the next candidate-bound run.
+
+## Weighted whole-sequence package recovery (2026-10-15)
+
+This continuation remains bound to product candidate
+`b669f487ac1881510f02db00afb56ac204282bad`; the clean evidence descendant
+was `a0f1a53b1d006caa22c365640b1b405e8bcb1b5b` when collection began.  It
+reused the authenticated `npm run build-cli` receipt (exit 0; output SHA-256
+`87b0f47abe27909daeae3eb8dd63224e87cd420201c3a65a4c4f6429ac1673f2`) and
+launched `node ./dist/cli/pokie.js --no-open` in a fresh application and
+browser profile.  The retained transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-75a0b3989d3dd707/run-2026-10-14T23-52-38-285Z/transcript.json`
+(SHA-256 `d65fe1334bd47bab2514c6295fc3c77a66df67f2143cc1cbb21d089b50a93378`).
+
+Using the rendered Studio authoring and Build/Export controls, this run
+created `v2c12-weighted-whole-sequence` from the fixture's weighted
+`reelSequences` whole-array shape (three reels, `first: ["A"]` weight 1 and
+`second: ["C"]` weight 3), built a TypeScript Game Package, and opened that
+package through the visible **Open as Project** handoff.  The package runtime
+reported the weighted omitted-seed ante record with configuration hash
+`sha256:4e5e217ae84ecd8fb4dbfa3e8883dbbc7b6af85cf4c70d9e1bb24b708e133f73`.
+Its public Replay **Download JSON** produced
+`spin-410838ec-ae9b-4a85-81aa-dee2272f26e9.json` (22,077 bytes; SHA-256
+`61be0280fce56d8f8b59f4a6e7aefb4642d98002c1d72ac49d409aa0554de552`).  The
+actual bytes contain `seed: null`, recorded commands, audit state, and an
+ante stake of `0.07500000000000001`.  Public **Load for audit replay** then
+**Reproduce** rendered `Package bet mode ante`, `Audit verified -- complete
+recorded operation`, and `Match -- recorded and recreated results agree`.
+
+The same weighted package visibly completed a buy entry at stake `0.5` with
+one accepted zero-charge continuation, and a buy-more entry at stake `1.25`.
+The latter progressed through rendered pending subrounds 1, 2, and 3, then
+completed at subround 4 with `Charged mode buy-more`, credits `998.75`, and
+zero payout.  These are useful lifecycle observations, but they do not close
+the financial matrix: this run did not retain the required per-step
+buy/buy-more descriptor rows, subsequent purchases, or seeded observations
+for both mechanisms.
+
+| Screenshot | SHA-256 | independently inspected surface |
+| --- | --- | --- |
+| `1-observation.png` | `83126052106ae1cc6a2bf9614b296786626a140daef6f715eda64b200093c00d` | Weighted whole-sequence Replay record and selections. |
+| `2-observation.png` | `f8f493e1562030c1759f4245fd3ff365b7a23b98b6857b5b02eb029a37eb05d4` | Package audit Replay completion, mode, audit verification, and match. |
+| `3-observation.png` | `1d237ae8025962e543e19cefc5194cd9f11252ed43cc449cfa097fc2f8f689f7` | Weighted package buy pending/completion surface. |
+| `4-observation.png` | `3f6455ae048a23ba98b5bdfc128a72fe5bb1de0ad65d88de93b19cb28effdf67` | Weighted package buy-more final four-subround surface. |
+
+I independently opened all four screenshots; they are legible and agree with
+the retained transcript.  This is a bounded partial receipt, not an approval
+or a substitute for the missing descriptor and repeated-purchase evidence.
