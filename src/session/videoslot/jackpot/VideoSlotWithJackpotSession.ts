@@ -216,8 +216,8 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
     }
 
     public override play(): void {
+        this.validateScreenCoordinates();
         this.executeStep(() => {
-            this.validateScreenCoordinates();
             if (!this.canPlayNextGame()) return false;
             // Read before baseSession.play() — the stake a round actually charges is only meaningful as of
             // right before it plays (same principle VideoSlotWithBetModesSession's own play() relies on for

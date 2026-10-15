@@ -167,8 +167,8 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         if (!this.canPlayNextGame()) {
             return;
         }
+        this.validateScreenCoordinates();
         this.executeStep(() => {
-            this.validateScreenCoordinates();
             this.wonFreeGamesNumber = 0;
             if (this.hasUnfinishedFreeGames() && !this.featureEntryPending) {
                 const context = this.getSequenceSelections()[0]?.context;

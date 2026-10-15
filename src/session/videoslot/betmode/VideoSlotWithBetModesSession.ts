@@ -128,8 +128,8 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     }
 
     public override play(): void {
+        this.validateScreenCoordinates();
         this.executeStep(() => {
-            this.validateScreenCoordinates();
             if (!this.canPlayNextGame()) return false;
             const mode = this.resolveActiveBetMode();
             // getStakeAmount() itself, computed before any forced entry mutates the wrapped session's

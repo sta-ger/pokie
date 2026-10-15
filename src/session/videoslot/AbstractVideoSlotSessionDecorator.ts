@@ -196,6 +196,8 @@ implements VideoSlotSessionHandling<T> {
     public getLinesPatterns(): LinesPatternsDescribing {
         return this.baseSession.getLinesPatterns();
     }
+    // Coordinate/composition preflight belongs before this boundary: it leaves the settled
+    // result untouched. Once execution starts, rejection rolls back state and hides its result.
     protected executeStep(action: () => boolean | void): void {
         const resultValid = this.stepResultValid;
         let rollback: (() => void) | undefined;

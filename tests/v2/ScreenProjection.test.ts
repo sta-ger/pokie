@@ -277,6 +277,63 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(() => pipeline.evaluate(new WinEvaluationContext(1, combination(), config))).toThrow(/only 15/);
     });
 
+    it.each(["freeGames", "ante", "jackpot", "stacked"] as const)("F1/F8 distinguishes preflight rejection from executed overflow and recovers (%s)", feature => {
+        const config = overscanConfig();
+        config.setScreenGeometry(undefined);
+        config.setCreditsAmount(10000);
+        config.setSymbolsSequences(Array.from({length: 5}, () => new SymbolsSequence().fromArray(["B"])));
+        const base = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(31)));
+        const free = new VideoSlotWithFreeGamesSession(new VideoSlotWithFreeGamesConfig(config, {}), undefined, undefined, base);
+        const modes = new VideoSlotWithBetModesSession(feature === "stacked" ? free : base,
+            new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2})]));
+        modes.setBetMode("ante");
+        const pool = new AccumulatingJackpotPool("preflight", 20);
+        const jackpot = new VideoSlotWithJackpotSession(feature === "stacked" ? modes : base, [pool],
+            new PercentageOfBetJackpotContributor(0.1), new SymbolCountJackpotTrigger("B", 3));
+        const session = {freeGames: free, ante: modes, jackpot, stacked: jackpot}[feature];
+        session.play();
+        expect(session.getWinAmount()).toBeGreaterThan(0);
+        const state = session.toSessionState();
+        const credits = session.getCreditsAmount();
+        const screen = session.getSymbolsCombination().toMatrix();
+        const serializer = new VideoSlotSessionSerializer();
+        const settled = serializer.getRoundData(session);
+        const incompatibleGeometry = {...overscanGeometry, generated: {reels: 4, rows: 7}};
+        for (let attempt = 0; attempt < 2; attempt++) {
+            config.setScreenGeometry(incompatibleGeometry);
+            expect(() => session.play()).toThrow(/does not match configured reels/);
+            expect(session.toSessionState()).toEqual(state);
+            expect(session.getCreditsAmount()).toBe(credits);
+            expect(serializer.getRoundData(session)).toEqual(settled);
+        }
+        config.setScreenGeometry(undefined);
+        config.getPaytable().setPayoutForSymbol("B", 5, Number.MAX_VALUE);
+        expect(() => session.play()).toThrow(/overflow/);
+        expect(session.toSessionState()).toEqual(state);
+        expect(session.getCreditsAmount()).toBe(credits);
+        expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
+        expect(session.getWinAmount()).toBe(0);
+        expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+        const rejected = serializer.getRoundData(session);
+        expect(rejected.totalWin).toBe(0);
+        expect(rejected.jackpot?.award).toBeUndefined();
+        // A later preflight failure must preserve invalidation, too: it cannot revive the
+        // jackpot outcome retained for executable-state restoration after the overflow.
+        config.setScreenGeometry(incompatibleGeometry);
+        expect(() => session.play()).toThrow(/does not match configured reels/);
+        expect(serializer.getRoundData(session)).toEqual(rejected);
+        expect(session.toSessionState()).toEqual(state);
+        config.setScreenGeometry(undefined);
+        config.getPaytable().setPayoutForSymbol("B", 5, 1);
+        session.play();
+        expect(session.getWinAmount()).toBeGreaterThan(0);
+        expect(serializer.getRoundData(session).totalWin).toBe(session.getWinAmount());
+        if (feature === "jackpot" || feature === "stacked") {
+            expect(jackpot.getJackpotAwardCount()).toBe(2);
+            expect(serializer.getRoundData(session).jackpot?.award).toBeDefined();
+        }
+    });
+
     it.each(["jackpot", "holdAndWin", "stacked"] as const)("F8 rejects upcoming overscan without changing RNG, credits or settled feature ownership (%s)", feature => {
         const config = overscanConfig();
         config.setScreenGeometry(undefined);
