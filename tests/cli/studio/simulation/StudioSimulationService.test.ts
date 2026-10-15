@@ -1271,7 +1271,10 @@ describe("V2C-12 authored Studio simulation mode/report policy", () => {
         expect(job.report.modes["buy-more"].totalBet).toBeCloseTo(2.5);
         expect(job.roundsCompleted).toBe(24);
         expect(job.report).not.toHaveProperty("rtp");
-        expect(service.listReports("/purchases")[0]).toMatchObject({modeName: "all", modes: {buy: {rounds: 6, betMode: "buy"}}});
+        Object.values(job.report.modes).forEach(report => expect(report.analytics?.subrounds).toBe(6));
+        expect(job.report.modes.buy.analytics?.logicalCompletions).toBe(3);
+        expect(job.report.modes["buy-more"].analytics?.lifecycle.freeGames.incomplete).toBe(1);
+        expect(service.listReports("/purchases")[0]).toMatchObject({modeName: "all", modes: {buy: {rounds: 3, betMode: "buy"}}});
         await service.cancelAll();
     });
 

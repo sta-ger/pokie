@@ -1,4 +1,4 @@
-import {analyticsEnvelope, emptyFeatureAnalytics, featureAnalyticsStatistics} from "../../../../src/simulation/FeatureAnalytics.js";
+import {featureAnalyticsReport} from "../../../v2/fixtures/FeatureAnalyticsFixture.js";
 import type {SimulationReport} from "@fromstan/pokie";
 import {
     buildSimulationReportDownload,
@@ -111,14 +111,13 @@ it("retains sequence denominators, zero coverage and exact underflow ratios in e
 });
 
 it("retains analytics schema, identity and denominators in every durable download format", () => {
-    const analytics = featureAnalyticsStatistics(emptyFeatureAnalytics(analyticsEnvelope("saved-model", true, true)));
-    const report = createReport({analytics});
+    const report = featureAnalyticsReport();
     const json = buildSimulationReportDownload(report, "analytics", "json");
-    expect(JSON.parse(json.body).analytics).toEqual(analytics);
+    expect(JSON.parse(json.body).analytics).toEqual(report.analytics);
     for (const format of ["markdown", "html"] as const) {
         const download = buildSimulationReportDownload(report, "analytics", format);
-        expect(download.body).toContain("saved-model");
-        expect(download.body).toContain("entries / logical entries: 0 / 0 = 0");
-        expect(download.body).toContain("bonus win / completions: 0 / 0 = 0");
+        expect(download.body).toContain("known-answer");
+        expect(download.body).toContain("entries / logical entries: 1 / 3");
+        expect(download.body).toContain("bonus win / completions: 4 / 1 = 4");
     }
 });

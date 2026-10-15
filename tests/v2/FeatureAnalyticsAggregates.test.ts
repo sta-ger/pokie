@@ -3,83 +3,19 @@ import path from "node:path";
 import {Worker} from "node:worker_threads";
 import {pathToFileURL} from "node:url";
 import * as api from "../../src/index.js";
-import {analyticsEnvelope, type FeatureAnalyticsObservation} from "../../src/simulation/FeatureAnalytics.js";
+import {envelope, component, observation, corpus, aggregate, ratio, featureAnalyticsReport} from "./fixtures/FeatureAnalyticsFixture.js";
 import {runChunkedSimulation} from "../../src/simulation/parallel/internal/runChunkedSimulation.js";
 import {boundedBlueprint} from "./fixtures/BoundedMechanicsGame.js";
 import {weightedBonusBlueprint} from "./fixtures/WeightedBonusGame.js";
 import {generatedMechanicsGame, mechanicsSession, existingMechanicsBlueprint} from "./fixtures/ExistingMechanicsGame.js";
 import {emitPublicRuntime} from "./helpers/publicRuntime.js";
 
-const envelope = analyticsEnvelope("known-answer", true, true);
-const component = (amount: number, type = "line", id = "L", symbol: string | null = "A", partition: "base" | "feature" | "jackpot" = "base") => ({
-    amount,
-    type,
-    id,
-    symbol,
-    partition,
-});
-const observation = (overrides: Partial<FeatureAnalyticsObservation> = {}): FeatureAnalyticsObservation => ({
-    envelope,
-    source: "one",
-    logicalEntry: true,
-    logicalCompletion: true,
-    carriedSubround: false,
-    cascadeSteps: 0,
-    mode: "base",
-    components: [],
-    features: [],
-    ...overrides,
-});
-const corpus: Array<[number, number, FeatureAnalyticsObservation]> = [
-    [
-        8,
-        6,
-        observation({
-            logicalCompletion: false,
-            components: [component(2), component(2, "scatter", "S", "S"), component(2, "jackpot", "mini", null, "jackpot")],
-            features: [{feature: "freeGames", entry: true, granted: 2}],
-        }),
-    ],
-    [
-        0,
-        4,
-        observation({
-            logicalEntry: false,
-            logicalCompletion: false,
-            cascadeSteps: 3,
-            components: [component(2, "line", "L", "A", "feature"), component(2, "line", "L", "A", "feature")],
-            features: [{feature: "freeGames", retrigger: true, granted: 1}],
-        }),
-    ],
-    [0, 0, observation({logicalEntry: false, features: [{feature: "freeGames", completion: {duration: 2, win: 4}}]})],
-    [
-        8,
-        10,
-        observation({
-            mode: "buy",
-            components: [component(10, "value", "bonus", "bonus", "feature")],
-            features: [{feature: "weightedBonus", entry: true, completion: {duration: 0, win: 10}}],
-        }),
-    ],
-    [
-        8,
-        10,
-        observation({
-            components: [component(10), component(0, "value", "bonus", "bonus", "feature")],
-            features: [{feature: "weightedBonus", entry: true, completion: {duration: 0, win: 0}}],
-        }),
-    ],
-];
-function aggregate(rows = corpus) {
-    const a = new api.SimulationAccumulator();
-    for (const row of rows) a.addRound(...row);
-    return a;
-}
-const ratio = (numerator: number, denominator: number, value: number) => ({numerator, denominator, value});
-
 describe("V2C-16 feature analytics", () => {
     it("known answers retain every numerator, denominator, distribution and conserved attribution", () => {
         const a = aggregate().getStatistics().analytics!;
+        const report = featureAnalyticsReport();
+        expect(report).toMatchObject({rounds: 3, totalBet: 24, totalWin: 30, sampling: {acceptedSubrounds: 5}});
+        expect(report.analytics).toEqual(a);
         expect(a).toMatchObject({
             subrounds: 5,
             paidEntries: 3,
@@ -109,7 +45,7 @@ describe("V2C-16 feature analytics", () => {
             entries: 1,
             entrySubrounds: 0,
             retriggers: 1,
-            grants: 3,
+            grants: 2,
             completions: 1,
             excludedCompletions: 0,
             durationSum: 2,
