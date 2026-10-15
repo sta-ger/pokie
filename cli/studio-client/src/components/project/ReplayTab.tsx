@@ -1094,6 +1094,7 @@ export function ReplayTab({
                                 )}
                             </QuickActions>
 
+                            {jobLoaded && error && <ErrorState message={describeReplayActionError("This replay request", error)} />}
                             {jobLoaded && progress !== undefined && (
                                 <div>
                                     {progress.status === "failed" && error === undefined && (
@@ -1114,7 +1115,6 @@ export function ReplayTab({
                                             </AdvancedDisclosure>
                                         </Alert>
                                     )}
-                                    {error && <ErrorState message={describeReplayActionError("This replay request", error)} />}
                                     <div
                                         role="status"
                                         aria-live="polite"
