@@ -424,3 +424,51 @@ sequential report/download. It still does not demonstrate every six-capability
 ordering/recovery branch, every catalogue example through rendered
 Play/simulation/replay, or a rendered sticky acquire/retain/expire trajectory.
 Those two reviewer rows remain not reached; no product defect was observed.
+
+### Final bounded reconciliation: cancellation persistence and catalogue Play
+
+The persistent harness was repaired in place before one more fresh-profile
+Studio run; it did not rerun tests, packaging, or a full/release gate. Its
+closed transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-13-b86253e3a60d58fd/run-2026-10-15T10-32-18-617Z/transcript.json`
+(SHA-256 `0faa71bca073919b4d23474c24fe6fedafb7b5afa96012f4f1cf35b25a16c4af`).
+Using the rendered Home loader, it opened and saved the isolated sticky
+fixture, then used Project → Game Model → Mechanics → Edit. The editable
+surface rendered the restricted W2/W3 substitution policies, empty target
+restrictions, factors 2/3, the sticky W2 rule at evaluated `[1,0]`, and
+lifetime 3. It changed W2 only in the draft to factor 9, chose Cancel, and
+accepted the visible “Discard your unsaved changes to this section?”
+confirmation. Studio returned to the persisted mechanics summary with W2
+factor 2, then the project was closed, reopened from the rendered Projects
+list, and its Game Model again showed factor 2, W3 factor 3, coordinate
+`[1,0]`, and lifetime 3. Thus the cancelled change was not published. The
+independently inspected screenshot
+`1-observation.png` has SHA-256
+`41b3acc6de0afcfc6ca7897ccec9a11d02434ea7435fa56da02446abac84e7ed`; it
+is readable and clearly shows the restored factor, sticky rule and lifetime.
+Owned Studio/browser children drained on close.
+
+The final remaining catalogue Play comparison was independently authenticated
+from the retained public runtime receipt
+`public-packages-2026-10-15T10-28-58.128Z/receipt.json`. All six candidate
+runtime observations (transform, reel, expanding, multiplier, restricted and
+sticky) exist and match their recorded SHA-256 values; each used its recorded
+`v2c13-public-*` seed, package/configuration identity, 0.05 stake and 12 real
+`createSession().play()` rounds. The previous clean 37-command public CLI
+receipt `public-packages-2026-10-15T09-25-30.625Z/receipt.json` was also
+rechecked: every stdout/stderr checksum matches, all commands returned zero,
+and its six generated packages each have sequential simulation, seeded replay,
+and JSON/Markdown/HTML report output. Those public observations join the
+earlier rendered A/W2/W3 0.05 → 3.00 Play/replay, sticky report/download, and
+the authenticated ordinary/weighted XLSX and multi-worker records above.
+
+After independent review, the six rendered authoring capabilities and their
+ordering/coordinates/factors/restrictions/lifetime, explicit save/reopen,
+malformed recovery and cancellation non-publication are covered across the
+candidate-bound fresh-profile transcripts. The six-package public Play,
+simulation and replay catalogue coverage, report formats, and sticky
+acquire/retain/expiry trajectory are covered across the authenticated public
+runtime/CLI/Studio receipts. This closes the two previously open reviewer
+rows; no product finding was observed. The target-test receipt remains the
+controller-issued clean-candidate 13-suite/866-test result, and packaging and
+official full/release gates remain deferred.
