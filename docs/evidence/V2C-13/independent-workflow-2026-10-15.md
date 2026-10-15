@@ -113,3 +113,47 @@ sweep, HTML/Markdown reports, ordinary/weighted comparison, XLSX round-trip,
 state isolation, or cancellation cleanup. Those rows remain not reached. No
 candidate-owned product failure was observed. Packaging and official
 full/release gates remain deferred; no runtime payload is committed.
+
+### Continued fresh-profile recovery
+
+Three additional fresh-profile Studio launches reused the same authenticated
+candidate build and added no product-code changes. The first,
+`run-2026-10-15T08-57-48-285Z`, exercised the rendered generated-reels
+Whole-sequence editor. Selecting that mode rendered the expected malformed
+empty-variant validation surface; adding a variant rendered its required ID,
+relative-weight and ordered-symbol inputs. A single `Cancel sequence changes`
+activation did not itself render a terminal recovery state, so it is not claimed
+as a successful cancellation. Selecting the visible Per-reel mode once restored
+the valid original model without Save or Build. The transcript SHA-256 is
+`812a37660a5a61947d4827dacdd8cd4bfaf5efb0204acd19e21c99e16b38d4c3`.
+Independent visual inspection found the malformed-editor capture readable
+(`1-observation.png`, SHA-256
+`e39a3ccfbcf47581567a07b8cd7f08cf82c919316c6e80c60477be8d65ea7aa4`)
+and the restored per-reel view readable (`2-observation.png`, SHA-256
+`4ae26e849b2ed828375d94c84086af2dd91e406ec1c45edf1d8a42c92baf311f`).
+
+The second launch used a mistakenly inferred application-profile directory.
+Its public Load action rendered its own exact missing-path error; no fixture
+observation from that run is claimed. The corrected harness records that
+driver repair and its closed transcript SHA-256 is
+`7e74675e63b754031c8b24398a541336bd6ddbfb9eca3641ad37b8aa275763fd`.
+
+The third launch used the actual launcher-provisioned path, loaded
+`wild-transform.blueprint.json` through rendered Home, awaited its local
+valid-with-warnings state, and activated the public `Save game` action. The
+action rendered its pending state then navigated to the editable `Wild
+transform` Project overview. That screen identifies `wild-transform` v1.0.0,
+the isolated fixture location, and the public Play/Simulation/Replay/Build
+entries. Visual inspection found the overview and its four visible validation
+warnings readable and coherent; it is still only partial authoring evidence.
+Its transcript SHA-256 is
+`78029bd4081beb8f78a99318c945596adede9a9817cc8823bf0c878920930711`;
+the screenshot SHA-256 is
+`74c6236ef22ca21cadc3bb9e3db2ffaa6ea86703cd15fb177b20759236a900c9`.
+
+These recovery observations do not complete the six-capability matrix, reload,
+stale-build protection, ordinary/weighted package execution, XLSX round trip,
+catalogue/report sweep, worker partition comparison, state isolation, or
+cancellation cleanup. They therefore do not change the incomplete disposition
+above. The controller-owned 13-suite/866-test receipt remains the sole test
+execution used here; packaging and official full/release gates remain deferred.
