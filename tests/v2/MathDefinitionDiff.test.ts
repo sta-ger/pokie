@@ -592,3 +592,19 @@ it("uses the empty JSON Pointer for a root change and classifies equal-value aut
         after: {present: true, value: null},
     });
 });
+
+it("does not trust a direct snapshot's complete label when model data or policy is absent", async () => {
+    const opaque: api.MathDefinitionSnapshot = {
+        identity: {kind: "custom", revision: "equal-hash"},
+        support: "complete",
+        fields: [],
+        diagnostics: [],
+        limits: [],
+    };
+    const differ = new api.MathDefinitionDiffer();
+    expect(differ.diff(opaque, opaque).status).toBe("partial");
+    expect(opaque.support).toBe("complete");
+    const model = await new api.MathDefinitionSourceReader().read(source(base()));
+    Reflect.deleteProperty(model.effective as object, "maxWinPolicy");
+    expect(differ.diff(model, model).status).toBe("partial");
+});

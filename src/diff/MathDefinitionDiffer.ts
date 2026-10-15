@@ -1,3 +1,5 @@
+import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
+import {validateMathDefinitionMaxWinPolicy} from "./validateMathDefinitionMaxWinPolicy.js";
 import {detachPackageModelData} from "../generated/PackageBlueprintExtraction.js";
 import type {
     DefinitionJson,
@@ -78,11 +80,67 @@ function isRecord(value: unknown): value is Record<string, DefinitionJson> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function verifyCompleteness(snapshot: MathDefinitionSnapshot): void {
+    if (snapshot.support !== "complete") return;
+    const model = snapshot.effective;
+    const missing =
+        !isRecord(model) ||
+        ["manifest", "reels", "rows", "symbols", "paytable"].some((key) => !(key in model)) ||
+        (model.reelStrips === undefined && model.reelSequences === undefined) ||
+        model.maxWinPolicy === undefined;
+    if (missing || snapshot.fields.some((field) => field.status === "unsupported")) {
+        snapshot.support = "partial";
+        snapshot.diagnostics.push({
+            code: "definition-snapshot-incomplete",
+            severity: "warning",
+            path: "",
+            message:
+                "Complete support requires an effective model, resolved reels, declared policy and no unsupported fields.",
+        });
+        return;
+    }
+    const typedModel = model as Record<string, DefinitionJson>;
+    try {
+        const policy = validateMathDefinitionMaxWinPolicy(typedModel.maxWinPolicy);
+        if (policy.type === "unknown") {
+            snapshot.support = "partial";
+            snapshot.diagnostics.push({
+                code: "max-win-policy-unknown",
+                severity: "warning",
+                path: "/maxWinPolicy",
+                message: policy.authority,
+            });
+        }
+        const errors = new GameBlueprintValidator().validate(model).filter((issue) => issue.severity === "error");
+        if (errors.length) {
+            snapshot.support = "invalid";
+            snapshot.diagnostics.push(
+                ...errors.map((issue) => ({
+                    code: issue.code,
+                    severity: issue.severity,
+                    path: issue.path ?? "",
+                    message: issue.message,
+                })),
+            );
+        }
+    } catch (error) {
+        snapshot.support = "invalid";
+        snapshot.diagnostics.push({
+            code: "definition-snapshot-invalid",
+            severity: "error",
+            path: "",
+            message: (error instanceof Error ? error.message : String(error)).slice(0, 2000),
+        });
+    }
+}
+
 /** Pure comparison: no loaders, sessions, RNG or runtime configuration writes. */
 export class MathDefinitionDiffer implements MathDefinitionDiffing {
     public diff(leftInput: MathDefinitionSnapshot, rightInput: MathDefinitionSnapshot): MathDefinitionDiff {
         const left = detachPackageModelData(leftInput) as MathDefinitionSnapshot;
         const right = detachPackageModelData(rightInput) as MathDefinitionSnapshot;
+        verifyCompleteness(left);
+        verifyCompleteness(right);
         const changes: MathDefinitionChange[] = [];
         const walk = (a: unknown, b: unknown, keys: string[], representation = false): void => {
             if (canonicalDefinitionJson(a) === canonicalDefinitionJson(b)) return;
