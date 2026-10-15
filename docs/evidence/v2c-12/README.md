@@ -1,0 +1,874 @@
+# V2C-12 independent workflow receipt
+
+## Ordinary buy-more target-1 recovery (2026-10-15)
+
+On the clean evidence descendant `5add17f9cde2a958f1f3980f216cb8ff79bbc689`,
+the persisted harness reused the authenticated candidate build for product
+`4951df55907a2863b6e077c290e3f8c468bc5f6e` and the retained ordinary package
+(`dist/index.js` SHA-256
+`e2df638307032f1c8c5525576c3154232fa19cb5194a970ff09eea7d9e46400a`).
+The fresh runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-31b3940716a6e35c/run-2026-10-15T03-29-55-327Z/transcript.json`.
+
+Through Projects intake, Simulation, and Replay's rendered **Recent
+Simulation** control, an explicit-seed, one-worker `buy-more` simulation ran
+5/5 rounds as job `6458b119cd9545a8af1607701970653b`. Its target-1 replay
+completed as job `c7b567c075d34045a76f8e0761499dd8`. The rendered viewport
+showed Stake `1.25`, Bet mode `buy-more`, Charged mode `buy-more`, Credits
+`998.75`, Total win `0.00`, and `repeat-when-available; 1 executed step
+commands`. The actual browser download was 3,034 bytes, SHA-256
+`5d4a45e26fbf9416e71c2fcd57a49f06e67945e6cb1b53f187c1616a24b8a059`;
+its bytes confirm seed `v2c12-ordinary-buy-more-recovery`, one `spin`
+`buy-more` command, that policy, configuration hash
+`sha256:e07ad42fe08c0c44ad95739fc1c4ff7f81e6111e825d0eb26bd8ffbc15839658`, and
+final stake `1.25`.
+
+This is partial collection only: the remaining target rows, weighted
+buy/buy-more branches, ordinary-ante financial row, and full cross-package
+comparison remain not reached. Runtime artifacts remain outside version
+control.
+
+## Ordinary buy target-1 recovery (2026-10-15)
+
+Product identity remains `4951df55907a2863b6e077c290e3f8c468bc5f6e`; this
+clean evidence checkout started this recovery at
+`627d21cd34b501c1d5b04ff9b3c208062046b1cd`. One fresh Studio profile used
+the retained public ordinary package
+`v2c12-ordinary-matrix` (`dist/index.js` SHA-256
+`e2df638307032f1c8c5525576c3154232fa19cb5194a970ff09eea7d9e46400a`),
+opened through Projects intake. The runtime transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-31b3940716a6e35c/run-2026-10-15T03-21-23-852Z/transcript.json`.
+
+Through rendered Simulation and Replay **Recent Simulation** controls, an
+explicit-seed (`v2c12-ordinary-buy-recovery`), one-worker ordinary `buy`
+simulation completed three rounds as job `f2b9fb1e8dc543908d8b21b7a0e79d35`.
+Its target-1 replay then completed as job
+`819c757decaf45a9a60fbda74d699ee1`. The viewport-visible result showed
+Stake `0.5`, Bet mode `buy`, Charged mode `buy`, Credits `999.5`, and Total
+win `0.00`; this distinguishes the final-step stake from other financial
+rows. The rendered download produced the actual 2,996-byte descriptor
+`v2c12-ordinary-matrix-1.0.0-819c757decaf45a9a60fbda74d699ee1.json`, SHA-256
+`e69abccb88bb8fb3f355c8c96b4b4871ada5ddd23b52e04bc21ec5ab77818c95`.
+Its bytes match the visible record: seed, mode `buy`, one `spin` command,
+mode policy `repeat-when-available`, config hash
+`sha256:e07ad42fe08c0c44ad95739fc1c4ff7f81e6111e825d0eb26bd8ffbc15839658`, and
+total/final stake `0.5`.
+
+This addition does not claim ordinary buy targets 2–3, either buy-more
+matrix, weighted buy/buy-more, the remaining downloads, or the ordinary-ante
+financial row; those are still not reached. Runtime output and automation
+remain outside version control.
+
+## Weighted ante Recovery Replay (2026-10-15)
+
+Product identity remains `4951df55907a2863b6e077c290e3f8c468bc5f6e`; the
+clean evidence checkout began at `c00ab17f13f3e8cba4439f57ef4860f9b1117f1a`.
+One fresh Studio profile opened the retained public weighted `tsPackage`
+(`dist/index.js` SHA-256
+`51139fcf34c0b8d1b2168d81b347f0f42d0284e9c16c0c6da8481409afc11bff`).
+The runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-31b3940716a6e35c/run-2026-10-15T03-11-24-918Z/transcript.json`.
+
+Through Simulation then Replay's rendered **Recent Simulation** control, an
+explicit-seed, one-worker ante report completed and its round-1 replay
+completed as job `9824005d44124182b239008e256ff889`. Its visible financial
+rows showed package/charged mode `ante` and stake
+`0.07500000000000001`. I independently inspected the retained viewport
+screenshot `2-observation.png`; it is legible and shows those rows. The
+visible download produced the actual 4,067-byte descriptor
+`v2c12-weighted-matrix-1.0.0-9824005d44124182b239008e256ff889.json`, SHA-256
+`9be02f62aa8c98da73bedb1ed4d0dad5bc2da00e608fe5c14a25125a127db80c`.
+Its bytes match the rendered record: seed `v2c12-weighted-ante-recovery`,
+mode policy `repeat-when-available`, one `spin` command in mode `ante`,
+configuration hash `sha256:b207eb595cfccd894daace2a218722b3d468740aa66b14eb45b8a605b79c984e`,
+and both total/final stake `0.07500000000000001`.
+
+This bounded addition does not claim the remaining weighted buy/buy-more,
+ordinary target, cross-package download, or ordinary-ante financial-row
+branches; they remain not reached. Runtime artifacts and generated packages
+remain outside version control.
+
+Candidate product identity: `b02f4b4edf02b43f8ff7e2a2aec43e6438fa024f`.
+This directory retains a bounded independent-verifier evidence set; runtime
+profiles, generated package output, full logs, and automation are deliberately
+not committed.
+
+## Controller-owned targeted result
+
+The controller receipt at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-targeted-results/d86b9aee184f4e4b90baec5e/result.json`
+records a clean candidate before and after the sole required command, exit 0,
+no timeout, and these five paths:
+
+- `tests/cli/commands/BuildCommand.test.ts`
+- `tests/cli/commands/ParCommand.test.ts`
+- `tests/cli/commands/ReportCommand.test.ts`
+- `tests/cli/studio/runtime/StudioPlayService.test.ts`
+- `tests/cli/studio-client/src/hooks/usePlaySession.test.tsx`
+
+Its complete streams are the authorized runtime references `stdout.log`
+(`1a078e0cf270a3534d85ae6bdd7440d04691b519def1b32e5a407bdbfa164b3b`)
+and `stderr.log` (`8e23c86c88c5f600f3cee7ac8bbe59f9448eb50d3a4e5a47713e40dc7138c132`).
+The terminal Jest summary in stderr is **5 passed suites, 157 passed tests,
+0 snapshots**, in 34.944 s. `result.json` SHA-256:
+`59a4b86d3c15ee0ae9574486b9b9d805e3e913d3abf6e507a6f6a56ef294aebd`.
+No verifier test command was rerun.
+
+## Fresh Studio collection
+
+Fresh isolated application and browser storage was used by the persistent
+candidate-bound harness from 2026-10-14T19:16:15.186Z to
+2026-10-14T19:21:31.145Z. The transcript is retained only at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-67d2bfbec82708b0/run-2026-10-14T19-16-15-185Z/transcript.json`
+(SHA-256 `cb99e7392f2e5a29cee873cc9a1642301e4eb6c4facd592d0d49ea32ea120ab3`).
+It authenticates the current checkout, candidate SHA, fresh config/documents
+paths, 1439×956 viewport, 92 rendered observations, and child cleanup.
+
+The harness built this exact candidate once with `npm run build-cli`; its
+receipt records exit 0, output digest
+`0f1b523149d2df0d2ca6735405e8f4d855604718eb2420c130a830eb24289f1b`,
+8,731 output files, and build-log digest
+`edef081d2cbd070e28bd462f6858f2b23f3ca4a31e0b540401ed8384ec3bbb5f`.
+After the rendered closeout, Studio diagnostics contained only its listening
+line and the owned children drained.
+
+### Rendered itinerary and observations
+
+1. Home JSON authoring drafted and explicitly applied `V2C12 Fixed Hold Ante
+   Current` (`v2c12-fixed-hold-ante-current`, Hold&Win, fixed `mini` jackpot,
+   base/ante executable modes), then **Create game** saved it. The draft was
+   visibly distinct from the saved state; the Project Game basics editor was
+   opened and cancelled without changing its persisted source.
+2. The saved project built a TypeScript Game Package through the public
+   **Build** control; the local terminal surface stated `Build completed`.
+3. A fresh Play session selected ante and spun once. Its local completed result
+   showed stake `0.07500000000000001`, payout `10.000000000000068`, charged
+   mode `ante`, Hold&Win fields, fixed jackpot balance 10 and jackpot award 10.
+4. Session Spin Replay loaded that exact recorded Play spin. It displayed the
+   same ante attribution, stake, award, feature-event names and exportability.
+5. A selected ante simulation ran 50/50 rounds, followed by a separate all-mode
+   50-per-mode run. The all-mode result visibly separated base and ante cards;
+   history listed the mode as `all` and the public report-download controls.
+
+The Home malformed-JSON receipt and accumulating buy/continuation fixture,
+including its one charge from 1000 to 999.5, continuation without a second
+charge, are truthful same-candidate retained observations in the prior runtime
+transcripts listed by the controller. The requested later-purchase and reload
+paths, a seeded simulation rerun, and a Project-form conflict were not
+collected in this fresh run; no result below treats them as passed.
+
+## Screenshots and independent visual review
+
+The three retained screenshots are representative rather than generated output:
+
+| File | SHA-256 | independently inspected surface |
+| --- | --- | --- |
+| `1-observation.png` | `7b41af3f7cb2d3df2e106d70dfebf2fce75f94168fe874e92b9bd990a78d3315` | Completed ante Play result: Spin, payout, charged mode, Hold&Win and jackpot award. |
+| `2-observation.png` | `e12f985288d445425526e4cc17f97d3f3cec65599c4fc51b813a7c3157e81d22` | Session Spin Replay identity, recorded source and availability state. |
+| `4-observation.png` | `26e4ea7496608f01fd5b4923a2b8eb51533e51e4ab287700693cd4b4a0bb54fb` | All-mode Simulation review, visibly separate base/ante cards and warnings. |
+
+I independently opened all three PNGs after capture. They are legible,
+consistent with the transcript, and show the stated controls/results; this is
+an observation only, not image-based approval.
+
+## Recovery collection and finding (2026-10-14)
+
+The persistent harness was repaired in place and used one further fresh
+application/browser profile from 19:28:00.143Z to 19:29:34.997Z. Its complete
+runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-67d2bfbec82708b0/run-2026-10-14T19-28-00-143Z/transcript.json`
+(SHA-256 `8991a53520d535480b21f3739b2cdfe235ca19ad72b8f5e8ada47d09b45a9f7e`).
+It binds the candidate, current checkout, fresh config/documents paths,
+1439x956 viewport, 3 captured surfaces, action sequence, and post-close child
+diagnostic. It reused the authenticated candidate build receipt above; no test,
+pack, install, or second build was run.
+
+The run explicitly applied and created `v2c12-accum-recovery` with a
+three-reel accumulating `mini` jackpot, free-games and base/ante/buy/buy-more
+modes. Its Project Game basics form then accepted a blank-equivalent Game name
+draft for Save. The exact Save transitioned to loading and back to an editable
+draft with Save disabled, but displayed no validation issue or field error;
+the saved project was subsequently recovered intact through Cancel/Confirm.
+This is a reproducible finding: `GameBlueprintValidator.validateManifest`
+requires `trim().length > 0` in
+`src/generated/GameBlueprintValidator.ts`, while the rendered Project form
+does not expose that invalid result on this path. The recovered view again
+rendered `Name: V2C12 Accumulating Recovery`.
+
+The same run recorded an initial explicit `buy` Spin from Credits 1000, its
+accepted pending state, `Charged mode buy`, stake 0.5, and a payout-affected
+Credits balance of 1009.55. Its uncharged `Continue round` completed a
+two-subround lifecycle. A real browser `Ctrl+R` returned the public
+no-active-session Play recovery surface. A newly created post-reload session
+required a fresh `buy` selection and a later explicit Spin; that separate
+purchase again rendered Credits 999.5. No rendered Retry action was offered
+for either completed lifecycle, so no retry was fabricated.
+
+| File | SHA-256 | independently inspected surface |
+| --- | --- | --- |
+| `5-project-form-validation-missing.png` | `2da5996ac49cae5b05a12169a644edabdc284206bc4e1075e33def9d8b93f219` | Blank visible Game name, disabled Save and no rendered actionable validation. |
+| `6-purchase-continuation.png` | `59776c0c947d843d4708dae466d16af2c0af474799c35d13bf761ffe3ad7bd80` | First accepted buy purchase: pending continuation, Credits 1009.55 after award, charged mode and jackpot award. |
+| `7-later-purchase.png` | `6adba3b95527a178cf501fb35093c4d3b48db41ec8040b6474d481cf44fc35fe` | Later explicit post-reload buy purchase: Credits 999.5, charged mode and continuation. |
+
+I independently opened these three PNGs. They are legible and match the
+transcript; the first documents the finding and the latter two document the
+purchase lifecycle. This remains visual evidence, not approval.
+
+## Package Replay completion (2026-10-14)
+
+Candidate product identity is
+`f84c3e4822ceeb4cbad4ea45c4a32c42d14da5e6`. The persistent harness reused
+its authenticated candidate build (`npm run build-cli`, exit 0; output digest
+`cf8bda590c5ab274695037493a388e31ab0b6b1818702896f7284d41110a0752`) and
+ran one new isolated Studio profile at 1439×956. The runtime-only transcript
+is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-2d828f3a7c8a1b91/run-2026-10-14T22-47-58-710Z/transcript.json`
+(SHA-256 `3af2021c030d4259c7c5cbf019e65b2678206574db57887fb896e1ecdffa449b`).
+
+Through rendered Studio controls, the verifier authored the deterministic
+0.05 fixture, generated an ordinary exact base library (125 outcomes), then a
+weighted ante bounded-coverage library (seed `v2c12-weighted-seed`, sample
+size 12, 10 outcomes). It drew one ordinary artifact with seed
+`v2c12-ordinary-seed` and one weighted artifact with seed
+`v2c12-weighted-draw`, selected each through **Replay Artifact**, and ran one
+reproduction. Both rendered result surfaces completed 1/1 round and reported
+that the recreated result matched the recorded one.
+
+| Variant | Rendered/replay provenance | Download SHA-256 |
+| --- | --- | --- |
+| ordinary | base; stake 0.05; library `v2c12-replay-current-base`; charged mode base; seed `v2c12-ordinary-seed` | recorded `248adb75b54f4420c554cd41bbde5e42e7b37e7a39b842b7140ffb02d2514e9c`; recreated `6f90565f6247fa8e8ec9306032efc4c14569da4150b9a4fc7b3c1575a60657a3` |
+| weighted | ante; stake 0.07500000000000001; library `v2c12-replay-current-ante`; charged mode ante; seed `v2c12-weighted-draw` | recorded `e157f849b2c656fdd88edddbe36f4f6c21ad3df5368482609f1bdec08e2fcb35`; recreated `e53b260e826d135ba5d5ca063367a924436e1dc442a576a6127e9ac16038c840` |
+
+The four runtime-only screenshots are `1-observation.png` through
+`4-observation.png` in that run (SHA-256 respectively
+`e8ecbd7c82403e6f0e72ab15d093b2c66299f978bc7eb895e64ad7da9018713f`,
+`7228f092d6ac2351879ed96019892fff1ee2f749e0eaf4d6a8521079b900b65d`,
+`20ac4738e999f80da659fea81878475b574b40f7ae4eb11ca795e2ef5e157520`, and
+`a5432527967e7ee3c561f89843488874bc2b07e1598edf69f61e2742ab224b8e`). I
+independently opened all four: the draw images visibly show each seed,
+library, mode and stake; the replay images visibly show completed 1/1,
+matching result, mode and seed. Runtime artifacts are intentionally not
+committed. This receipt reuses the prior ante/purchase/simulation/native-draw
+observations and does not claim controller approval.
+
+## Current package handoff and omitted-seed audit observation (2026-10-14)
+
+This bounded follow-up is bound to product candidate
+`b669f487ac1881510f02db00afb56ac204282bad`.  One fresh Studio run used
+separate application and browser profiles; its retained runtime transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-75a0b3989d3dd707/run-2026-10-14T23-46-17-733Z/transcript.json`
+(SHA-256 `29034bef45891f74c7720199f7913d898f231cc54cd6673b8ba0733bbb64e4b3`).
+
+Through Studio JSON authoring, the run created the literal-reel
+`v2c12-ordinary-whole-sequence` fixture from
+`tests/v2/fixtures/ExistingMechanicsGame.ts`, built the current TypeScript
+Game Package, and used the rendered **Open as Project** handoff.  The opened
+runtime reported `Game format Playable game`, `Added from your computer`, and
+the package `tsPackage` location; no source-project runtime was substituted.
+
+An omitted-seed package Play session selected ante and completed with visible
+stake `0.07500000000000001` and charged mode `ante`.  Public Replay selected
+that Session Spin, whose screen stated `Full audit export`; **Download JSON**
+produced `spin-d6f931b8-b1e4-44b8-8438-aa795c391c2a.json` (14,372 bytes,
+SHA-256 `a890224692e2dc4f2bb1d02e8b50e9766c00ac558834457695b5963e035095a9`).
+Reading the actual downloaded bytes confirmed `seed: null`, audit delivery
+count 1, `artifact.stake: 0.07500000000000001`, and
+`artifact.betMode: "ante"`.  The visible **Load for audit replay** followed
+by **Reproduce** completed 1/1 and rendered `Audit verified -- complete
+recorded operation` and `Match -- recorded and recreated results agree`.
+
+This is partial collection only.  It does not claim the required weighted
+whole-sequence package or the buy/buy-more continuation matrix; those rows
+remain uncollected for the next candidate-bound run.
+
+## Weighted whole-sequence package recovery (2026-10-15)
+
+This continuation remains bound to product candidate
+`b669f487ac1881510f02db00afb56ac204282bad`; the clean evidence descendant
+was `a0f1a53b1d006caa22c365640b1b405e8bcb1b5b` when collection began.  It
+reused the authenticated `npm run build-cli` receipt (exit 0; output SHA-256
+`87b0f47abe27909daeae3eb8dd63224e87cd420201c3a65a4c4f6429ac1673f2`) and
+launched `node ./dist/cli/pokie.js --no-open` in a fresh application and
+browser profile.  The retained transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-75a0b3989d3dd707/run-2026-10-14T23-52-38-285Z/transcript.json`
+(SHA-256 `d65fe1334bd47bab2514c6295fc3c77a66df67f2143cc1cbb21d089b50a93378`).
+
+Using the rendered Studio authoring and Build/Export controls, this run
+created `v2c12-weighted-whole-sequence` from the fixture's weighted
+`reelSequences` whole-array shape (three reels, `first: ["A"]` weight 1 and
+`second: ["C"]` weight 3), built a TypeScript Game Package, and opened that
+package through the visible **Open as Project** handoff.  The package runtime
+reported the weighted omitted-seed ante record with configuration hash
+`sha256:4e5e217ae84ecd8fb4dbfa3e8883dbbc7b6af85cf4c70d9e1bb24b708e133f73`.
+Its public Replay **Download JSON** produced
+`spin-410838ec-ae9b-4a85-81aa-dee2272f26e9.json` (22,077 bytes; SHA-256
+`61be0280fce56d8f8b59f4a6e7aefb4642d98002c1d72ac49d409aa0554de552`).  The
+actual bytes contain `seed: null`, recorded commands, audit state, and an
+ante stake of `0.07500000000000001`.  Public **Load for audit replay** then
+**Reproduce** rendered `Package bet mode ante`, `Audit verified -- complete
+recorded operation`, and `Match -- recorded and recreated results agree`.
+
+The same weighted package visibly completed a buy entry at stake `0.5` with
+one accepted zero-charge continuation, and a buy-more entry at stake `1.25`.
+The latter progressed through rendered pending subrounds 1, 2, and 3, then
+completed at subround 4 with `Charged mode buy-more`, credits `998.75`, and
+zero payout.  These are useful lifecycle observations, but they do not close
+the financial matrix: this run did not retain the required per-step
+buy/buy-more descriptor rows, subsequent purchases, or seeded observations
+for both mechanisms.
+
+| Screenshot | SHA-256 | independently inspected surface |
+| --- | --- | --- |
+| `1-observation.png` | `83126052106ae1cc6a2bf9614b296786626a140daef6f715eda64b200093c00d` | Weighted whole-sequence Replay record and selections. |
+| `2-observation.png` | `f8f493e1562030c1759f4245fd3ff365b7a23b98b6857b5b02eb029a37eb05d4` | Package audit Replay completion, mode, audit verification, and match. |
+| `3-observation.png` | `1d237ae8025962e543e19cefc5194cd9f11252ed43cc449cfa097fc2f8f689f7` | Weighted package buy pending/completion surface. |
+| `4-observation.png` | `3f6455ae048a23ba98b5bdfc128a72fe5bb1de0ad65d88de93b19cb28effdf67` | Weighted package buy-more final four-subround surface. |
+
+I independently opened all four screenshots; they are legible and agree with
+the retained transcript.  This is a bounded partial receipt, not an approval
+or a substitute for the missing descriptor and repeated-purchase evidence.
+
+## Ordinary seeded package continuation (2026-10-15)
+
+The persistent harness ran one new, isolated Studio profile for product
+candidate `b669f487ac1881510f02db00afb56ac204282bad`; the complete runtime
+transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-75a0b3989d3dd707/run-2026-10-15T00-07-18-066Z/transcript.json`.
+It reused the authenticated current candidate build receipt (output SHA-256
+`87b0f47abe27909daeae3eb8dd63224e87cd420201c3a65a4c4f6429ac1673f2`),
+created `v2c12-ordinary-followup` through visible JSON authoring, built its
+TypeScript package, and opened the rendered package handoff. Studio reported
+the opened runtime as `Playable game` and `Added from your computer`.
+
+With seed `v2c12-ordinary-seeded-followup`, the package's visible ante Play
+result showed denomination `0.05`, stake `0.07500000000000001`, and charged
+mode `ante`. Its selected public Session Spin Replay showed the same seed,
+mode, stake, full-audit export state and configuration hash
+`sha256:de4219633bf4c1a25c34d71eac6787cbb3f8a6394c896470075bc80a00278a0b`.
+**Download JSON** produced `spin-b1d9ca0a-17fe-4db4-b2c9-982ba71e0f0f.json`
+(14,417 bytes; SHA-256
+`b3bf2af17efaa047188afe2a40286d607c47742dfe8e33f874672478b3e8031e`).
+Reading the actual downloaded bytes confirmed the same seed, ante mode,
+artifact stake, and a recorded `spin` command with bet `0.05`, stepwise
+delivery, and `recorded-commands` mode policy.
+
+The same package separately completed a buy entry at stake `0.5`, then its
+second, visibly zero-stake subround (logical round: two subrounds; credits
+remained `999.5`; charged mode `buy`). A fresh later session then accepted a
+separate buy entry at stake `0.5`. This advances only the ordinary buy path;
+the required weighted seeded run, all buy-more rows, and the complete
+per-step Replay descriptor matrix remain uncollected.
+
+| Screenshot | SHA-256 | independently inspected surface |
+| --- | --- | --- |
+| `1-observation.png` | `f865ebdbbe36e60f6709f53c9c844086b547caef3aa3117bcb38891fa6ef24ed` | Seeded ordinary ante result: 0.05 denomination, 0.07500000000000001 stake, financial rows, and charged ante mode. |
+| `2-observation.png` | `bc908fc74b10bfb97feb47813ebe4f83e18c57510892c2597da7734502f68869` | Completed ordinary buy lifecycle: two subrounds, paid 0.5 entry, charged buy mode, and zero-payout financial surface. |
+
+I independently opened both PNGs. They are legible and show the stated
+rendered rows; the images and transcript are collection evidence only.
+
+## Weighted seeded package continuation (2026-10-15)
+
+One additional fresh isolated Studio profile is retained at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-75a0b3989d3dd707/run-2026-10-15T00-11-59-396Z/transcript.json`.
+It reused the same authenticated current-candidate build, authored the
+weighted `reelSequences` whole-array fixture `v2c12-weighted-followup`, built
+its TypeScript package, and opened the visible package handoff. With seed
+`v2c12-weighted-seeded-followup`, its completed ante result visibly showed
+denomination `0.05`, stake `0.07500000000000001`, weighted symbols `A C C`,
+and charged mode `ante`.
+
+The selected public Session Spin Replay identified the seed, ante mode, full
+audit export state and configuration hash
+`sha256:870029342b7c1d0700c1d45a45a4d137d4cfaf2ccd97ae384e748eb656233478`.
+Its **Download JSON** produced
+`spin-0c11f8c6-f598-42e1-b0c0-630a08dae8c4.json` (22,120 bytes; SHA-256
+`b7880515ef09f7b136e7c541396083fa7dd16f06e058963498f3175ebb9e5d49`).
+The actual bytes agree with the visible record: the same seed, ante mode,
+artifact stake, recorded `spin` command at bet `0.05`, stepwise delivery, and
+`recorded-commands` mode policy. Screenshot `1-observation.png` (SHA-256
+`2729419a978d2714e87f1a4f3035d1ee8f53aba310c97c18c23947685b819935`) was
+independently opened; it is legible and shows the stated Play result.
+
+This closes the missing seeded-ante observation for both package mechanisms,
+but is still not approval: the complete ordinary/weighted repeated
+buy/buy-more continuation rows and corresponding per-step Replay descriptors
+remain uncollected.
+
+## Package continuation follow-up (2026-10-15)
+
+The isolated public-Studio runs
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-75a0b3989d3dd707/run-2026-10-15T00-16-47-670Z/transcript.json`
+and `run-2026-10-15T00-23-26-843Z/transcript.json` reused the authenticated
+candidate build and exercised newly authored ordinary and weighted
+`reelSequences` package fixtures through visible JSON authoring, TypeScript
+package Build, and Open as Project.  The weighted package was visibly a
+read-only `Playable game` added from the local package; its Replay showed
+whole-sequence selections and configuration hash
+`sha256:b207eb595cfccd894daace2a218722b3d468740aa66b14eb45b8a605b79c984e`.
+
+The ordinary package completed buy (entry `0.5`, final visible Replay stake
+`0`) and buy-more (entry `1.25`, three zero-stake continuations, final Replay
+stake `0`); its actual public downloads were respectively 30,806 bytes,
+SHA-256 `2e128c7ba1eaa39b748c179be30e4d290bff3a1815655576b91473039ad1c9d7`,
+and 82,058 bytes, SHA-256
+`6b798345d2f755d1a1f3fed196a248ce6809c90848dfd97cea4cf0b6bb908277`.
+Both descriptors retain their paid entry, zero-stake continuation(s), mode,
+charged-mode event, and logical-round total (`0.5` or `1.25`).
+
+The weighted package visibly completed buy (`0.5`) and buy-more (`1.25`, four
+subrounds) with charged modes, including the displayed final buy-more Replay
+row `stake 0`, `mode buy-more`, and whole-sequence selections.  Its downloaded
+buy and buy-more descriptors were 46,654 bytes,
+SHA-256 `a5448b31bea2eb90ce23a8c7c3dfa7fef4ca1faeffcafe224e1f8ca359c75de8`,
+and 122,388 bytes, SHA-256
+`5bdfe85aeee0d16fcec43ea547e87ad37e07c7dee5e72c23777dc8568def67d3`.
+Their delivery stakes are `[0.5,0]` and `[1.25,0,0,0]` and their logical-round
+totals are `0.5` and `1.25`, respectively. I independently opened the retained
+ordinary and weighted financial/Replay screenshots; they were legible and
+agree with these observations.
+
+This remains bounded partial evidence, not approval. The required subsequent
+weighted buy-more `1.25` purchase was not collected: after the completed
+round the visible mode reset to base, and the two attempted later Spins were
+rendered as base `0.05` rows rather than the requested purchase. No product
+defect is asserted from that unfulfilled collection path.
+
+## Weighted repeated-buy recovery (2026-10-15)
+
+The persistent harness retained one fresh public Studio run at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-75a0b3989d3dd707/run-2026-10-15T00-32-41-132Z/transcript.json`.
+It reused the authenticated candidate build, authored the weighted
+whole-array `reelSequences` fixture `v2c12-weighted-recovery`, built its
+TypeScript package, and opened the package as a read-only `Playable game`.
+With visible seed `v2c12-weighted-recovery-seeded`, its initial buy completed
+at `0.5`.  The completed one-shot feature no longer exposed mode controls;
+the public **Reset Play session** recovery path restored the visible base/buy
+mode selector.  After explicitly selecting `buy`, the later session's entry
+rendered `0.5` with charged mode `buy`, then completed with the final visible
+Replay row `Stake 0`, `Bet mode buy`, and charged-mode event.
+
+The selected public Replay identifies session
+`abe30afa-215b-4670-bc62-c093572a316e`, seed
+`v2c12-weighted-recovery-seeded`, configuration hash
+`sha256:7a76696843d3e539a1afc0c36622a5a23b90f2ccbdfa71ffa1346f25daf345f1`,
+and whole-sequence selections `C/A/C`. Its actual **Download JSON** file was
+`spin-abe30afa-215b-4670-bc62-c093572a316e.json` (46,680 bytes; SHA-256
+`e809c467f94bcf7c58669bb4643e3048bb39c98642e79fd919e413ba7343c0f5`).
+Reading those downloaded bytes confirmed the `buy` command, paid entry stake
+`0.5`, zero-stake continuation, charged mode, and logical-round total `0.5`.
+
+This is still not approval: the required repeated weighted buy-more `1.25`
+purchase and its matching Replay/descriptor are not collected.
+
+## Weighted repeated buy-more completion (2026-10-15)
+
+The remaining branch was collected in the fresh isolated public-Studio run at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-75a0b3989d3dd707/run-2026-10-15T00-43-51-410Z/transcript.json`.
+It publicly authored weighted whole-array `reelSequences` fixture
+`v2c12-weighted-later-buymore`, built its TypeScript package, and opened the
+result as a read-only `Playable game`. The generated package used config hash
+`sha256:8f27f079fbdb5f1d025925c6dce0b4dea63ef14bc1296b87253293d6c0e2f5e6`.
+
+With seed `v2c12-weighted-later-buymore-seeded`, the first completed public
+buy-more round was used only to reach the recovery boundary. The visible
+**Reset Play session** path reset the selection to base; the collector then
+explicitly reselected `buy-more` at denomination `0.05` and submitted the
+later purchase. Its rendered entry and continuations showed charged mode
+`buy-more`, paid stake `1.25`, then three zero-stake continuations, completing
+four subrounds. The selected public Replay record identifies session
+`095f90cc-4a80-485e-bea8-3dd348e7ac3b`, round/request
+`84f53b02-8df0-42df-99a3-dbf25487c1c6`, the same seed and config hash; its
+final visible row shows `Stake 0`, `Bet mode buy-more`, `Charged mode
+buy-more`, and whole-sequence `C/C/C` selections.
+
+The actual public **Download JSON** file is
+`spin-095f90cc-4a80-485e-bea8-3dd348e7ac3b.json` (122,611 bytes; SHA-256
+`e6256c62a7a03c9332672025ef0c75b8710313fdb765abc1905a8538f22674de`).
+Reading its bytes confirmed the recorded `spin` command at bet `0.05` and
+mode `buy-more`, stepwise continuation cursors 1–3, per-step stakes
+`[1.25, 0, 0, 0]`, logical-round total `1.25`, recorded-command mode policy,
+and charged-mode events. The screenshots were independently opened: the Play
+terminal image is legible with the completed four-subround financial surface
+(`1-observation.png`, SHA-256
+`b5aab27b8a07476570fa4be6578e20baa30327108e826f26fda85d353d9d073a`), and
+the Replay image is legible with the selected public record, seed, package
+identity and exportability (`2-observation.png`, SHA-256
+`24b521b6e35c53729c26e7c36e11f640149d2767350b00f339eda58af1c8f021`).
+
+Together with the retained ordinary/weighted antecedent, buy, omitted-seed,
+and initial buy-more evidence above, this completes the previously missing
+weighted later buy-more Replay/descriptor branch. Runtime artifacts remain in
+the assigned harness and are not committed.
+
+## Seeded package Replay financial viewport (2026-10-15)
+
+Candidate product identity remains `c480a805286ea4a93ed141b8e1cebf36ac9a308f`.
+The fresh public Studio run at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-23105d651b032fb6/run-2026-10-15T01-14-32-143Z/transcript.json`
+(SHA-256 `50e4794f340aaf90efe87de3edf54bc6adbcf1305b57d72245f0c25eb2e2f6ad`)
+reused the authenticated current build (output SHA-256
+`87b0f47abe27909daeae3eb8dd63224e87cd420201c3a65a4c4f6429ac1673f2`).
+It publicly built and opened a weighted whole-sequence TypeScript package, then
+ran its `ante` 0.05 session with seed `v2c12-c480-replay-seeded`.
+
+The selected-spin descriptor (`spin-e03daa1e-de60-44dc-8442-76514dc1bfc9.json`,
+22,057 bytes, SHA-256
+`1662d04f2ea65c3ab397c53967b2418489db10bd5736f8fbdd84fcd6389916ca`) and
+the completed public **Replay Artifact → Reproduce** descriptor
+(`v2c12-c480-replay-1.0.0-998820d763534329b92619d2e0a177e0.json`, 32,299
+bytes, SHA-256 `03cd2b7bb589afad5635c067c44c19f2f8823efbccf0e810f409ec92b75ff538`)
+both contain `artifact.stake: 0.07500000000000001`, `artifact.betMode: "ante"`,
+the charged-mode event, `recorded-commands` mode policy, and the one executed
+0.05 ante spin command. The Replay result itself rendered job
+`998820d763534329b92619d2e0a177e0`, session
+`07cf581a-55df-4be8-b010-a47e34d9f6a9`, package bet mode `ante`, and policy
+`recorded-commands; 1 executed step commands`, followed by completed 1/1 and
+an audit-verified match.
+
+I independently opened both retained captures. `1-observation.png` (SHA-256
+`43dc8d2476b53718c5e59939e60f2a44d8859eb3d61dcc64c6e39b0f44e51756`)
+legibly shows the completed Replay job, package bet mode and policy.
+`2-observation.png` (SHA-256
+`5dd85c08479b52582b7a8906eea7d2d15cd9ffac170337a6096a9bb60ae5f1ab`)
+legibly shows the same Replay's Bet mode `ante`, Stake
+`0.07500000000000001`, charged mode `ante`, and whole-sequence selections.
+The screenshots are runtime-only; this bounded receipt retains only their
+checksums and the transcript locator.
+
+## Recent Simulation all-mode producer boundary (2026-10-15)
+
+Candidate product identity remains `cf08dbafb1d3cf6799e5c35526a6beeae8d78e8d`.
+The persistent harness reused the authenticated candidate build (output
+SHA-256 `87b0f47abe27909daeae3eb8dd63224e87cd420201c3a65a4c4f6429ac1673f2`)
+and opened the retained ordinary whole-sequence package through the public
+Projects intake. In the visible Simulation flow it selected **All modes**,
+set five rounds, one worker, and seed `v2c12-ordinary-recent-sim`, then
+activated **Run Simulation** once. That exact action rendered `Simulation
+queued — 0/5 rounds`; its local terminal then rendered `Simulation failed —
+10/20 rounds` and `Bet mode "buy" forces feature entry and cannot be selected
+while a zero-stake feature round is already active`.
+
+The runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-a6452b8c3c3e9238/run-2026-10-15T01-47-16-044Z/transcript.json`
+(SHA-256 `305601ea6b44cbc33c135065c61cec308cba440600dfef5b3b0b7b848e3c0e83`).
+It records no download and no screenshot. The user-visible queued/failed
+states expose no operation id, so this receipt does not invent one or claim a
+Replay descriptor. The narrow source boundary is
+`cli/studio/simulation/StudioSimulationService.ts` (its all-mode loop passes
+each declared mode to `ParallelSimulationRunner`) and
+`src/simulation/FixedBetModeForNextSimulationRoundSetting.ts` (which is
+intended to swallow a forcing-mode selection while a continuation is active).
+The retained package carried its own `@fromstan/pokie` dependency; no package
+contents were modified in this verification.
+
+## Recent Simulation route probe (2026-10-15)
+
+Candidate product identity is `cf08dbafb1d3cf6799e5c35526a6beeae8d78e8d`.
+One fresh Studio profile opened the retained weighted generated package through
+the public Projects path, then completed a five-round, one-worker seeded
+simulation and selected it through public **Replay → Recent Simulation**.
+After selecting round 1 and **Load**, one **Run again** created replay job
+`ff9fe367c41f41dcad8ac4423a2ed29a` and completed 1/1 at session
+`7d153320-8931-4f35-a5c4-3147fdd753c8`.
+
+The result visibly reported seed `v2c12-cf08-weighted-recent-sima`, package
+mode `base`, and `repeat-when-available; 1 executed step commands`. Its actual
+public download `v2c12-c480-replay-1.0.0-ff9fe367c41f41dcad8ac4423a2ed29a.json`
+was 4,072 bytes, SHA-256
+`bf6d3d4875446b81be3d65d48f80f60cff1f5737d89db7d9aecdf4e11654fc29`.
+Reading those bytes confirmed the same seed, `modePolicy` selection
+`repeat-when-available`, one base spin command, artifact stake `0.05`, base
+bet mode, config hash
+`sha256:35ad9aeda498b49d0224663491da5d5b32c86d7a0b38e9d9325de19b57f77ba0`,
+and total bet `0.05`.
+
+The runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-a6452b8c3c3e9238/run-2026-10-15T01-34-23-428Z/transcript.json`
+(SHA-256 `fc190c9ccb3caacf2e776461edd970708365bcecdb1757abe1b547504b3b0813`).
+I independently opened `1-observation.png` (SHA-256
+`911421156e1abc3f97b7311151969833c757617634084ad07835306053f873ed`): it
+legibly shows the completed job, seed, requested/actual round, package mode,
+repeat policy, and download control. This is partial evidence only: it is a
+weighted base route probe, not the required ordinary-and-weighted ante/buy/
+buy-more financial matrix.
+
+## Ordinary ante Recent Simulation Replay (2026-10-15)
+
+Candidate product identity remains `cf08dbafb1d3cf6799e5c35526a6beeae8d78e8d`.
+After correcting the retained collector from aggregate **All modes** to the
+literal concrete-mode route, one fresh Studio profile opened the retained
+ordinary package and publicly ran a one-round, one-worker `ante` Simulation
+with seed `v2c12-ordinary-ante-recent`. Public **Replay → Recent Simulation**
+selected that report and round 1; one **Load** then one **Run again** completed
+replay job `055de22609dc4753850c0367422426af`, session
+`71541696-459d-40e1-b7b7-c3303ef507df`.
+
+The completed Replay rendered package bet mode `ante`, mode policy
+`repeat-when-available; 1 executed step commands`, Stake
+`0.07500000000000001`, and charged mode `ante`. The actual browser download
+`v2c12-ordinary-matrix-1.0.0-055de22609dc4753850c0367422426af.json` was
+3,033 bytes with SHA-256
+`1f17a9422195baf4fbaf08325a4738cd18dff990c034a5223de5950e87873910`.
+Its bytes match the rendered record: the ordinary package identity, seed,
+round 1, `modePolicy.selection: "repeat-when-available"`, command
+`{kind:"spin", mode:"ante"}`, final artifact stake
+`0.07500000000000001`, charged-mode event and `totalBet` of the same value.
+
+The runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-a6452b8c3c3e9238/run-2026-10-15T01-57-02-207Z/transcript.json`
+(SHA-256 `6499888e9d55681880b2a6c85372765e7f9ea40988f699d3235cfc96529023c4`).
+I independently opened its `1-observation.png` (SHA-256
+`b28f826c1dc033b9a2256273c4f476b85b1bbfb4b5ead6be5698b2fb254eac4d`):
+the rendered Replay card and table are legible, with the completed status,
+download, seed, package mode and repeat policy visible. This adds only the
+ordinary ante branch; the required ordinary/weighted buy and buy-more matrix
+remains uncollected.
+
+## Ordinary buy Recent Simulation producer failure (2026-10-15)
+
+Candidate product identity remains `cf08dbafb1d3cf6799e5c35526a6beeae8d78e8d`.
+One fresh Studio profile opened the retained ordinary generated package through
+the public Projects path. In visible Simulation configuration it selected
+`buy`, rounds `3`, one worker, and seed `v2c12-ordinary-buy-recent`, then
+activated **Run Simulation** once. That action first rendered `Simulation
+queued — 0/3 rounds`; its own local terminal rendered `Simulation failed —
+0/3 rounds` and `Bet mode "buy" forces feature entry and cannot be selected
+while a zero-stake feature round is already active`. No Recent Simulation
+report or Replay target was produced, and the action was not retried.
+
+The runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-a6452b8c3c3e9238/run-2026-10-15T02-03-04-790Z/transcript.json`
+(SHA-256 `0d82d78033f36e5b820f6ee848525c0de7f55dae45884285db609a618dc918f8`).
+The corresponding transient job receipt was
+`8968a8327824427a8e2c327665db2d6b`, with the same `rounds: 3`, seed, and
+`modeName: "buy"`, and SHA-256
+`6bb22cc31aae4b3d4e63911606bc216955f3a8ea374be2f5c97190ca0feaf9ce`.
+These runtime artifacts are not committed. The source boundary is
+`cli/studio/simulation/StudioSimulationService.ts`, which supplies the chosen
+mode to `ParallelSimulationRunner`; that runner constructs
+`FixedBetModeForNextSimulationRoundSetting`. The latter explicitly intends to
+absorb this exact forcing-mode continuation rejection, whereas the public
+candidate run propagated it and failed before its first round.
+
+## Correlated ordinary buy producer failure (2026-10-15)
+
+The retained driver was repaired in place, with the previous revision archived
+in the assigned harness, and one fresh public Studio profile rechecked only
+the missing action-local correlation. It reused the authenticated candidate
+build (`cf08dbafb1d3cf6799e5c35526a6beeae8d78e8d`, output SHA-256
+`87b0f47abe27909daeae3eb8dd63224e87cd420201c3a65a4c4f6429ac1673f2`) and
+opened the existing ordinary `tsPackage` through Projects → Check game → Add
+to projects → Open. No tests, Play purchases, audit replay, downloads, or
+passing Replay paths were repeated.
+
+At ready state the rendered Simulation form showed `buy`, 3 rounds, one worker
+and seed `v2c12-ordinary-buy-recent`. One rendered **Run Simulation**
+activation transitioned to `Simulation queued — 0/3 rounds`. Its exact local
+terminal was `Simulation failed — 0/3 rounds` with the forcing-mode rejection.
+The terminal lifecycle receipt identifies durable job
+`424e017f31624394856e54717f19c45b` (also its captured job and request id),
+whose retained request is `{rounds:3, seed:"v2c12-ordinary-buy-recent",
+workers:1, modeName:"buy"}`. Consequently no completed Recent Simulation
+report, Replay target, or downloaded descriptor exists for the blocked buy
+branch.
+
+The runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-a6452b8c3c3e9238/run-2026-10-15T02-22-09-152Z/transcript.json`
+(SHA-256 `1d294b056669d6fdf79c9eb1a2cd91a303bddf8198399707ea15676fa5f6696c`).
+The source boundary is `cli/studio/simulation/StudioSimulationService.ts`
+(which passes the public selected `modeName` to the parallel runner),
+`src/simulation/parallel/ParallelSimulationRunner.ts` (which creates the
+fixed selector), and `src/simulation/FixedBetModeForNextSimulationRoundSetting.ts`
+(which documents that this exact forcing-mode rejection must be swallowed).
+The rendered candidate result instead propagates it before round 1. This is a
+product finding; the unproduced buy/buy-more Replay matrix remains not reached.
+
+## Corrected-host partial Replay collection (2026-10-15)
+
+Candidate product identity was `4951df55907a2863b6e077c290e3f8c468bc5f6e`.
+The checkout was clean before collection. One fresh, isolated Studio launch
+opened the retained ordinary generated package through the public Projects UI;
+the launch used the candidate checkout's compiled CLI. No recording input was
+used. The prior forcing-mode failure is historical only: on this candidate the
+public Simulation action completed the seeded, one-worker `buy` report (3/3)
+and seeded, one-worker `buy-more` report (5/5).
+
+From Recent Simulation, the completed ordinary `buy` report was replayed once
+at target 1. Its rendered terminal receipt is replay job
+`da6ab83965f948dd9e1480512502461f`, with seed
+`v2c12-ordinary-buy-corrected`, package/Bet/charged mode `buy`,
+`repeat-when-available; 1 executed step commands`, and stake `0.5`. The
+browser download was
+`v2c12-ordinary-matrix-1.0.0-da6ab83965f948dd9e1480512502461f.json`
+(2,998 bytes; SHA-256
+`a3811d72f43388f3d55d40b72300751a21b1dd0ddad9068634dc7a8f2181a275`).
+Its actual JSON bytes match the rendered seed, ordinary package identity,
+`modePolicy.selection: "repeat-when-available"`, command `{kind:"spin",
+mode:"buy"}`, and artifact stake `0.5`.
+
+The same public path completed ordinary `buy-more` target 1, replay job
+`763efff2042a4c53bacce67a96bc33e5`, with seed
+`v2c12-ordinary-buymore-corrected`, package/Bet/charged mode `buy-more`,
+repeat policy, and stake `1.25`; its target-2 replay also completed (record
+`af2e710a27a94115a47effceae88c3d0`). The remaining ordinary targets,
+weighted ante/buy/buy-more reports, their downloads, and the required ordinary
+ante visual row were deliberately not claimed by this partial collection.
+
+Runtime-only transcript:
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-31b3940716a6e35c/run-2026-10-15T02-53-07-734Z/transcript.json`.
+I independently inspected `3-observation.png` in that run (SHA-256
+`04c09fc84d3c853d0dbf8b9c3f605fc07c80cbdfca80bf06e292eeeaeb793698`):
+its viewport visibly contains the completed ordinary-buy card, replay id/job,
+seed, package bet mode, repeat policy, Bet mode, and Stake `0.5`. Runtime
+artifacts and downloads remain outside the repository.
+
+## Continued corrected-host Replay collection (2026-10-15)
+
+Candidate product identity remained
+`4951df55907a2863b6e077c290e3f8c468bc5f6e`; the clean evidence checkout
+remained at `fc80a37fa0d202e77a7fa616ed0e7a145c972694` during collection. The
+candidate build receipt was reused and the public Studio session was started
+from this checkout's compiled CLI. A fresh profile imported the retained
+weighted and ordinary generated packages through Projects; no recording input
+was supplied.
+
+The weighted package completed seeded, one-worker `buy` (3/3) and `buy-more`
+(5/5) reports. Recent Simulation Replay completed buy targets 1, 2 and 3 at
+stakes `0.5`, `0`, and `0.5` (jobs
+`a090a3a6aa5745ac9b5c965f523fb3dc`, `129a09066c3b4bc4a62a690231d14322`, and
+`1e6d85c3526840e9838182d956cb0350`) and buy-more targets 1, 2, 4 and 5 at
+`1.25`, `0`, `0`, and `1.25` (jobs
+`08c9b9dce37645ea8d9b7837812d814e`, `d435cc994a2c4717ac1207f30dfd964e`,
+`5c8dbfd18f364cf68e8b186b833b00dd`, and
+`f9fc34ca20824c0aa7a9d19dcdba3a93`).
+
+The rendered target-5 weighted buy-more card showed Bet mode and Charged mode
+`buy-more`, Stake `1.25`, Credits `997.5`, and Total win `0.00`; this final
+stake is distinct from the descriptor's cumulative `totalBet: 2.5`. I
+independently inspected the retained target-1 buy, target-1 buy-more, and
+target-5 buy-more screenshots (`1-observation.png`, `2-observation.png`, and
+`3-observation.png`). Actual browser downloads have SHA-256
+`23711c2058a2ce594a81837259342c6fb7405270c9dde624b046527f664691d1` (buy
+target 1), `8908bf4341ca1b079c26bc2aa089dfa9b646f9f123bfb4a42661785f478d9f2f`
+(buy-more target 1), and
+`725e155d5ca7e464a23577374b90a140ff9ad7485eb0a7a3ddcbc5e322b31c42`
+(buy-more target 5). Their inspected JSON bytes bind displayed seeds, package
+identity, `modePolicy.selection: "repeat-when-available"`, executed spin
+commands, and retained configuration hashes.
+
+The same session then completed ordinary buy targets 2 and 3 through Recent
+Simulation Replay: job `9f4a75b81ff04630bc0b56163689b1cc` visibly rendered
+stake `0` and job `654c3231a29344bba096e590ac9367c4` visibly rendered stake
+`0.5`; both rendered Bet/Charged mode `buy`, seed
+`v2c12-ordinary-buy-matrix`, and repeat-when-available command counts. The
+runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-31b3940716a6e35c/run-2026-10-15T03-43-15-660Z/transcript.json`
+(SHA-256 `fc70d96dc101a52ec0740e0184e623d137e764683c6ea2af5f51844f99b9e580`).
+All screenshots and downloads remain runtime-only.
+
+This continues, but does not complete, the matrix: ordinary buy-more targets
+2/4/5 and the requested ordinary-ante viewport financial row remain
+uncollected. No failure is claimed from those absent observations.
+
+## Restored ordinary-ante financial row (2026-10-15)
+
+Product identity remains `4951df55907a2863b6e077c290e3f8c468bc5f6e`; the
+clean evidence descendant used its authenticated compiled CLI
+(`npm run build-cli`, exit 0; output SHA-256
+`14626822dd28e5025f95dc7375937737d218c009775b4869fefbfe7d0523ea3b`) through
+`node ./dist/cli/pokie.js --no-open`. No simulation or replay was repeated.
+
+The verifier's authenticated profile-restoration adapter copied only the
+completed retained registry and durable-job storage from the accepted ordinary
+ante run into a fresh application profile, then the public Projects → Open →
+Replay path loaded job `055de22609dc4753850c0367422426af`. The new runtime-only
+transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-31b3940716a6e35c/run-2026-10-15T04-24-36-363Z/transcript.json`
+(SHA-256 `09402e882876ffba413e746f4441f4edb5aab24c7d910983dbfa3e2acf00fb3b`).
+
+I independently inspected its `3-observation.png` (SHA-256
+`c2e62d06ef5106a32e5e5323b59dc548cf7c91385489f64b931712700f232db7`). At the
+1440×1200 viewport it legibly shows the completed retained job, seed
+`v2c12-ordinary-ante-recent`, package and Bet mode `ante`, policy
+`repeat-when-available; 1 executed step commands`, Stake
+`0.07500000000000001`, and Charged mode `ante` together. The original public
+download remains 3,033 bytes, SHA-256
+`1f17a9422195baf4fbaf08325a4738cd18dff990c034a5223de5950e87873910`; its
+actual JSON bytes match that seed, configuration hash
+`sha256:e07ad42fe08c0c44ad95739fc1c4ff7f81e6111e825d0eb26bd8ffbc15839658`, one
+`{kind:"spin", mode:"ante"}` command, repeat-when-available policy, and final
+stake/totalBet `0.07500000000000001`. Runtime profiles, screenshots and the
+download remain outside version control.
+
+## Bounded retained-result continuation (2026-10-15)
+
+Product identity is `025f2ebf32f77faeecf3d10762e9868336f53cf7`. Its delta from
+the pre-review evidence commit changes this README only. Two fresh, isolated
+Studio sessions restored completed Replay storage and used only public
+`Inspect record` and `Download replay JSON` controls; no Replay, simulation,
+or `Run again` command was activated. Their runtime-only transcripts are
+`run-2026-10-15T04-36-38-322Z/transcript.json` (SHA-256
+`a348f0fa2fa33bdfe1d59dcb2f62636e7c46690b0a2f0e4ccbccd3da78c690c7`) and
+`run-2026-10-15T04-40-35-183Z/transcript.json` (SHA-256
+`fc27914988e6cd9643a7ba4a3959090e3d80e74b224d5d5ab73714d6369d9461`) beneath
+the assigned verifier harness.
+
+| retained record / target | checked public result | descriptor retained |
+| --- | --- | --- |
+| weighted buy 2 `129a09066c3b4bc4a62a690231d14322` | seed `v2c12-weighted-buy-matrix`; policy `repeat-when-available`; two commands; descriptor total `0.5` | 4,068 bytes, `b3c96e2a17a6ba97ab42bc04aeb30a8a96dd47bb18c53b01df349f7ebfbdcd1c` |
+| weighted buy 3 `1e6d85c3526840e9838182d956cb0350` | same seed/policy; three commands ending in `spin` mode `buy`; descriptor total `1` | 4,141 bytes, `aa68f1db31efcf3198814a34bba3cf45aabe3de792ec2fa3bd0f6d9c44adf7d9` |
+| weighted buy-more 2 `d435cc994a2c4717ac1207f30dfd964e` | seed `v2c12-weighted-buy-more-matrix`; policy `repeat-when-available`; two commands | 4,105 bytes, `eb5848252bf9f9128172e1f10845d749a7893436e04aad9dddafe8b3095a61e1` |
+| weighted buy-more 4 `5c8dbfd18f364cf68e8b186b833b00dd` | same seed/policy; four commands | 4,201 bytes, `50d1e060ce53b38baa803980dda19cb4c115dc3f120b68feb43756e143a46e79` |
+| ordinary buy-more 4 `195572d1cb0f4c12afd9458facfca98b` | seed `v2c12-ordinary-buy-more-final`; policy `repeat-when-available`; four commands | 3,169 bytes, `7512cd1071fd223c167f36f820f8388603a0655340dd0c0ea0f4adc081a8c11c` |
+| ordinary buy-more 5 `8254801483a84b82aa9dbc2e61b9131c` | rendered target 5: config `sha256:e07ad42fe08c0c44ad95739fc1c4ff7f81e6111e825d0eb26bd8ffbc15839658`, five commands, Bet/Charged mode `buy-more`, final Stake `1.25` | 3,250 bytes, `5e3fbffa92887f7d56b2073a6d159b2a0e45393c670425f06e637c95ab54bf44` |
+
+I independently opened the rendered weighted buy-more target-5 screenshot
+(`2-observation.png`, SHA-256
+`dfa7745780ac892f784aa534f83f009e4525874e864178dba42f3f1cc5eb84ff`): it
+shows the weighted config `sha256:b207eb595cfccd894daace2a218722b3d468740aa66b14eb45b8a605b79c984e`,
+seed, five-command policy, Bet/Charged `buy-more`, and final Stake `1.25`.
+I independently opened the ordinary buy-more target-5 screenshot
+(`1-observation.png`, SHA-256
+`7a85bd7890f76f20ace3d65411eeb0bc95dc5d5b1dc575072744d4dce2a06ad2`) with
+the corresponding values. A descriptor's `totalBet` is cumulative (for
+example target-5 ordinary is `2.5`), so it was not treated as a final-step
+stake.
+
+This is deliberately partial: the current retained sessions exposed no
+ordinary-buy target 2/3 descriptor, and the financial-row captures for the
+remaining required targets were not obtained. The missing rows/downloads are
+not product findings; a later bounded collection must restore the exact
+retained profiles and complete those observations without rerunning Replay.
+
+## Completed retained Replay matrix (2026-10-15)
+
+Product identity remains `025f2ebf32f77faeecf3d10762e9868336f53cf7`; the
+clean evidence descendant used the authenticated candidate build recorded in
+the assigned harness. Five isolated Studio launches restored only the
+reviewer-named completed-job profiles and used public Projects → Replay →
+**Inspect record**. No **Load**, **Run again**, **Reproduce**, Simulation, or
+Replay execution was activated, and no descriptor was downloaded again.
+
+The following runtime-only captures were independently opened and inspected:
+
+| retained result | runtime screenshot / SHA-256 | visible final-step result |
+| --- | --- | --- |
+| ordinary buy-more target 1, `c7b567c075d34045a76f8e0761499dd8` | `run-2026-10-15T05-18-50-655Z/1-observation.png` — `064c0dc661406959b11c174c21b20efb175db2871edf3543036f1fd37e94df8f` | seed `v2c12-ordinary-buy-more-recovery`; one repeat-when-available command; Bet/Charged `buy-more`; Stake `1.25` |
+| ordinary buy-more target 2, `70269d4b7e1948c8a772129b74b21951` | `run-2026-10-15T05-13-09-308Z/1-observation.png` — `ed2256151e25d2476d12a97f54ace5cf565821f8cd477589cfe58de953d38da4` | seed `v2c12-ordinary-buy-more-final`; two commands; Bet/Charged `buy-more`; Stake `0` |
+| ordinary buy-more target 4, `195572d1cb0f4c12afd9458facfca98b` | `run-2026-10-15T05-13-09-308Z/2-observation.png` — `becab78895074dccdba917980b8c49fee5fdbfec88a5a8c8ad115c89c1995d32` | same seed; four commands; Bet/Charged `buy-more`; Stake `0` |
+| ordinary buy-more target 5, `8254801483a84b82aa9dbc2e61b9131c` | `run-2026-10-15T05-15-42-066Z/1-observation.png` — `c0c2f3d740bce3951bf62d44c2bac9f3350e4e530fe896ee63abb831bdb56415` | same seed; five commands; Bet/Charged `buy-more`; Stake `1.25` |
+| weighted buy target 2, `129a09066c3b4bc4a62a690231d14322` | `run-2026-10-15T05-17-16-753Z/1-observation.png` — `ed35e535d0d7d3ac6a13268957c6621ef4d20e091b57993b6ec42dbb98b13187` | seed `v2c12-weighted-buy-matrix`; two commands; Bet/Charged `buy`; Stake `0` |
+
+Together with the already inspected retained captures in
+`run-2026-10-15T05-03-24-011Z` (ordinary buy targets 2/3; weighted buy
+targets 1/3; weighted buy-more targets 1/2/4) and the retained weighted
+buy-more target-5 capture, this completes the requested viewport matrix.
+Every displayed result identifies its job, target, seed, package hash and
+`modePolicy.selection=repeat-when-available`; its command count and final
+Stake agree with the descriptor. The eight existing descriptor receipts cover
+ordinary buy 2/3, ordinary buy-more 4/5, weighted buy 2/3 and weighted
+buy-more 2/4. Descriptor `totalBet` is cumulative; the displayed artifact
+`Stake` is the authoritative final-step amount used above.
+
+Runtime profiles, downloads, transcripts and screenshots remain outside Git.

@@ -260,6 +260,7 @@ export function ReplayTab({
     const [pending, setPending] = useState<ReplayLoadTarget>();
     const [artifactText, setArtifactText] = useState("");
     const [selectedSpin, setSelectedSpin] = useState<StudioRuntimeSessionView>();
+    const [selectedSimulationMode, setSelectedSimulationMode] = useState<string>();
     const [selectedSimEntry, setSelectedSimEntry] = useState<StudioSimulationReportListEntry>();
     const [simRound, setSimRound] = useState(1);
     // Recent spins can span several distinct Play sessions (a new session created by "New session"/
@@ -681,11 +682,12 @@ export function ReplayTab({
                                         type="button"
                                         onClick={() => {
                                             setSelectedSimEntry(entry);
+                                            setSelectedSimulationMode(undefined);
                                             setSimRound(1);
                                         }}
                                         style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
                                     >
-                                        {entry.game.id} v{entry.game.version} — seed {entry.seed ?? "(none)"}, {entry.actualRounds} rounds
+                                        {entry.game.id} v{entry.game.version} — seed {entry.seed ?? "(none)"}, {entry.actualRounds ?? "per-mode"} rounds
                                         {entry.modeName ? `, mode ${entry.modeName}` : ""}, {new Date(entry.startedAt).toLocaleString()}
                                     </Anchor>
                                 </List.Item>
@@ -697,16 +699,14 @@ export function ReplayTab({
                             <NumberInput
                                 label="Round"
                                 min={1}
-                                max={selectedSimEntry.actualRounds}
+                                max={selectedSimEntry.modes?.[selectedSimulationMode ?? ""]?.rounds ?? selectedSimEntry.actualRounds}
                                 step={1}
                                 value={simRound}
                                 onChange={(value) => setSimRound(typeof value === "number" ? value : 1)}
                             />
-                            {/* Reuses the picked simulation's own already-recorded modeName -- never a
-                                separately-selected mode -- so this reproduction genuinely samples against the
-                                same mode that run did, preserving that run's own provenance rather than
-                                defaulting back to the manifest's first mode. */}
-                            <Button onClick={() => loadTarget(simRound, selectedSimEntry.seed, selectedSimEntry.modeName)}>Load</Button>
+                            {/* A bundle needs a concrete mode; single-mode runs retain their recorded selection. */}
+                            {selectedSimEntry.modes && <Select label="Simulation bet mode" data={Object.keys(selectedSimEntry.modes)} value={selectedSimulationMode ?? null} onChange={value => setSelectedSimulationMode(value ?? undefined)} allowDeselect={false} />}
+                            <Button disabled={selectedSimEntry.modes !== undefined && (selectedSimulationMode === undefined || selectedSimEntry.modes[selectedSimulationMode] === undefined)} onClick={() => loadTarget(simRound, selectedSimEntry.seed, selectedSimEntry.modes ? selectedSimulationMode : selectedSimEntry.modeName)}>Load</Button>
                         </QuickActions>
                     )}
                 </div>
@@ -1012,7 +1012,7 @@ export function ReplayTab({
                         <div>
                             <Text size="sm" mb={4}>
                                 Round {target.round}, seed {target.seed ?? "(none)"}
-                                {target.modeName ? `, outcome library mode "${target.modeName}"` : ""}.
+                                {target.modeName ? `, mode "${target.modeName}"` : ""}.
                             </Text>
                             {/* The pre-run summary: honest about what Reproduce below actually does (confirmed
                                 against StudioReplayExecutionService.run()) -- a brand-new game session, played
@@ -1155,6 +1155,8 @@ export function ReplayTab({
                                             <Table.Th>Seed</Table.Th>
                                             <Table.Td>{result.seed ?? "(none)"}</Table.Td>
                                         </Table.Tr>
+                                        {result.modePolicy && <Table.Tr><Table.Th>Package bet mode</Table.Th><Table.Td>{result.modePolicy.betModeId}</Table.Td></Table.Tr>}
+                                        {result.modePolicy && <Table.Tr><Table.Th>Mode policy</Table.Th><Table.Td>{result.modePolicy.selection}; {result.commands?.length ?? 0} executed step commands</Table.Td></Table.Tr>}
                                         {result.modeName && (
                                             <Table.Tr>
                                                 <Table.Th>Outcome library mode</Table.Th>

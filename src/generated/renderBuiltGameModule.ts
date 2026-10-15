@@ -1,3 +1,4 @@
+import {GameBlueprintValidator} from "./GameBlueprintValidator.js";
 import {validateBlueprintReelSequences} from "./validateBlueprintReelSequences.js";
 import type {GameBlueprint} from "./GameBlueprint.js";
 import {materializeReelStrips} from "./materializeReelStrips.js";
@@ -22,6 +23,11 @@ import {resolveReelStripGeneration} from "./resolveReelStripGeneration.js";
 // rather than a precomputed literal, so re-running "pokie build" on an unchanged blueprint still
 // regenerates byte-identical files.
 function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: string, format: "cjs" | "ts"): string {
+    // Validate direct library callers with the same authored rules as CLI and Studio.
+    const issues = new GameBlueprintValidator().validate(blueprint).filter(issue => issue.severity === "error");
+    if (issues.some(issue => ["blueprint-betmode-invalid-id", "blueprint-betmode-invalid-entry"].includes(issue.code))) throw new Error(issues.map(issue => `${issue.path ?? "$"}: ${issue.message}`).join("; "));
+    const betModeWiring = Array.isArray(blueprint.betModes) && blueprint.betModes.every(mode => mode && typeof mode === "object") ? resolveBetModeCodegenWiring(blueprint) : undefined;
+    if (issues.length) throw new Error(issues.map(issue => `${issue.path ?? "$"}: ${issue.message}`).join("; "));
     const variantErrors = validateBlueprintReelSequences(blueprint as unknown as Record<string, unknown>);
     if (variantErrors.length) throw new Error(variantErrors.join("; "));
     const resolution = resolveReelStripGeneration(blueprint);
@@ -37,8 +43,9 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     // calculator) — every existing blueprint keeps generating byte-identical output.
     const winModel = blueprint.winModel ?? {type: "lines" as const};
     const freeGames = blueprint.mechanics?.freeGames;
+    const holdAndWin = blueprint.mechanics?.holdAndWin;
+    const jackpot = blueprint.mechanics?.jackpot;
     const hasBetModes = (blueprint.betModes?.length ?? 0) > 0;
-    const betModeWiring = resolveBetModeCodegenWiring(blueprint);
 
     const requireNames = [
         "computeGameBlueprintHash",
@@ -67,6 +74,8 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
             requireNames.push("FreeGamesForcedFeatureEntryHandler", "PerModeForcedFeatureEntryHandler");
         }
     }
+    if (holdAndWin) requireNames.push("VideoSlotWithHoldAndWinSession", "SymbolSetHoldAndWinCollector", "MinimumCountHoldAndWinTrigger", "SumWithMultiplierHoldAndWinPayoutAggregator");
+    if (jackpot) requireNames.push("VideoSlotWithJackpotSession", "FixedJackpotPool", "AccumulatingJackpotPool", "PercentageOfBetJackpotContributor", "SymbolCountJackpotTrigger", "SingleTierJackpotAwarding");
     requireNames.sort();
 
     // Built once here (not inline in createConfig/createSession) since both the config-wrapping and
@@ -85,7 +94,13 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     }
     const winCalculatorArgs = winModel.type === "lines" ? "" : ", winCalculator";
     const sessionClassName = freeGames ? "VideoSlotWithFreeGamesSession" : "VideoSlotSession";
-    const sessionConstructionExpression = `new ${sessionClassName}(config, combinationsGenerator${winCalculatorArgs})`;
+    const baseConstruction = `new ${sessionClassName}(config, combinationsGenerator${winCalculatorArgs})`;
+    const sessionConstructionExpression = holdAndWin
+        ? `new VideoSlotWithHoldAndWinSession(${baseConstruction}, ${holdAndWin.initialRespins}, new SymbolSetHoldAndWinCollector(blueprint.mechanics?.holdAndWin?.symbolEffects), new MinimumCountHoldAndWinTrigger(${holdAndWin.minimumCount}), new SumWithMultiplierHoldAndWinPayoutAggregator(${holdAndWin.payout.amountsAreBetMultiples}))`
+        : baseConstruction;
+    const wrapJackpot = (expression: string): string => jackpot
+        ? `new VideoSlotWithJackpotSession(${expression}, [new ${jackpot.pool.type === "fixed" ? "FixedJackpotPool" : "AccumulatingJackpotPool"}(${JSON.stringify(jackpot.pool.id)}, ${jackpot.pool.type === "fixed" ? jackpot.pool.amount : jackpot.pool.seedValue})], new PercentageOfBetJackpotContributor(${jackpot.contribution.percentage}), new SymbolCountJackpotTrigger(${JSON.stringify(jackpot.trigger.symbolId)}, ${jackpot.trigger.minimumCount}), new SingleTierJackpotAwarding())`
+        : expression;
     // "config" and "combinationsGenerator" locals are always introduced (not just when a winCalculator
     // needs to reference "config"): createSession(context) must thread a caller-supplied context.seed
     // into the same SymbolsCombinationsGenerator/SeededRandomNumberGenerator pairing
@@ -93,9 +108,10 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     // reproduces the same round across fresh processes -- see PokieGameContext.seed and ReplayRecorder,
     // which already threads context.seed through every game.createSession() call and only needed the
     // generated package itself to stop ignoring it.
-    const combinationsGeneratorDeclaration = `        const combinationsGenerator = context && context.seed !== undefined
-            ? new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(context.seed))
-            : new SymbolsCombinationsGenerator(config);
+    // An omitted seed still needs an owned executable RNG state for restore/exact audit.
+    // Randomize only its initial state; explicit seeds retain their existing draw sequence.
+    const combinationsGeneratorDeclaration = `        const combinationsGenerator = new SymbolsCombinationsGenerator(config,
+            new SeededRandomNumberGenerator(context && context.seed !== undefined ? context.seed : Math.floor(Math.random() * 0x100000000)));
 `;
     const configDeclaration = `        const config = createConfig(context);\n${combinationsGeneratorDeclaration}${winCalculatorDeclaration}`;
     // Only wraps the session in VideoSlotWithBetModesSession when resolveBetModeCodegenWiring()
@@ -118,11 +134,11 @@ ${betModeWiring.buyFeatureModes
             forcesFeatureEntry: mode.runtimeType === "buyFeature",
             targetRtp: mode.targetRtp,
         }));
-${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesSession(session, new BetModesConfig(betModes, ${JSON.stringify(betModeWiring.defaultModeId)})${
+${forcedFeatureEntryHandlerDeclaration}        return ${wrapJackpot(`new VideoSlotWithBetModesSession(session, new BetModesConfig(betModes, ${JSON.stringify(betModeWiring.defaultModeId)})${
     betModeWiring.buyFeatureModes.length > 0 ? ", forcedFeatureEntryHandler" : ""
-});
+})`)};
 `
-        : `        return ${sessionConstructionExpression};
+        : `        return ${wrapJackpot(sessionConstructionExpression)};
 `;
     const createSessionBody = `${configDeclaration}${betModesWrapCode}`;
 
@@ -176,17 +192,19 @@ ${winCalculatorDeclaration}        const session = ${sessionConstructionExpressi
             forcesFeatureEntry: mode.runtimeType === "buyFeature",
             targetRtp: mode.targetRtp,
         }));
-${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesSession(session, new BetModesConfig(betModes, ${JSON.stringify(betModeWiring.defaultModeId)})${
+${forcedFeatureEntryHandlerDeclaration}        return ${wrapJackpot(`new VideoSlotWithBetModesSession(session, new BetModesConfig(betModes, ${JSON.stringify(betModeWiring.defaultModeId)})${
     betModeWiring.buyFeatureModes.length > 0 ? ", forcedFeatureEntryHandler" : ""
-});
+})`)};
     },`;
     } else {
         exactEnumerationSessionExport = `
     createExactEnumerationSession(${combinationsGeneratorParam}) {
         const config = createConfig();
-${winCalculatorDeclaration}        return ${sessionConstructionExpression};
+${winCalculatorDeclaration}        return ${wrapJackpot(sessionConstructionExpression)};
     },`;
     }
+
+    if (holdAndWin || jackpot) exactEnumerationSessionExport = "";
 
     // The only two lines that differ between "dist/index.js" (format "cjs") and "src/index.ts"
     // (format "ts"): a type-only "GameBlueprint" import (erased at compile time -- adds nothing to
@@ -206,7 +224,9 @@ ${winCalculatorDeclaration}        return ${sessionConstructionExpression};
     const weightedReels = blueprint.reelSequences?.flatMap((reel, reelIndex) => reel.type === "weighted" ? [{reelIndex, variants: reel.variants}] : []);
     const baseStateSchema = {kind: "seeded-video-slot", ...(weightedReels?.length ? {weightedReels} : {}), reels: blueprint.reels, symbols: blueprint.symbols, ...(blueprint.screenGeometry ? {screenGeometry: blueprint.screenGeometry} : {})};
     const featureStateSchema = blueprint.mechanics?.freeGames !== undefined ? {kind: "free-games", base: baseStateSchema} : baseStateSchema;
-    const stateSchema = betModeWiring !== undefined ? {kind: "bet-modes", base: featureStateSchema} : featureStateSchema;
+    const holdStateSchema = holdAndWin ? {kind: "hold-and-win", reels: blueprint.reels, rows: blueprint.rows, bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], symbolEffects: holdAndWin.symbolEffects, initialRespins: holdAndWin.initialRespins, base: featureStateSchema} : featureStateSchema;
+    const modeStateSchema = betModeWiring ? {kind: "bet-modes", ...(blueprint.betModes!.some(mode => (mode.costMultiplier ?? 1) !== 1 || mode.runtimeType === "buyFeature") ? {stakeModifying: true} : {}), base: holdStateSchema} : holdStateSchema;
+    const stateSchema = jackpot ? {kind: "jackpot", pools: [jackpot.pool], base: modeStateSchema} : modeStateSchema;
     const blueprintDeclaration =
         format === "ts"
             ? `const blueprint: GameBlueprint = ${JSON.stringify(blueprint, null, 4)};`
@@ -312,7 +332,7 @@ module.exports = {
         return ${JSON.stringify(stateSchema)};
     },
     getSessionCommandCapabilities() {
-        return ${JSON.stringify({bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], ...(stateSchema.kind === "bet-modes" ? {modes: blueprint.betModes!.map(mode => mode.id)} : {})})};
+        return ${JSON.stringify({bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], ...(betModeWiring !== undefined ? {modes: blueprint.betModes!.map(mode => mode.id)} : {})})};
     },
     validateLiveSessionState(${format === "ts" ? "state: unknown" : "state"}, ${contextParam}) {
         validateExecutableState(state, ${JSON.stringify(stateSchema)}, undefined, context?.seed === undefined);

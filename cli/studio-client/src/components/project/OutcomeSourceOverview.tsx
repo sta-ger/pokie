@@ -102,7 +102,7 @@ export function OutcomeSourceOverview({header, onRoundRecorded}: {header: Outcom
                                 {canSample && (
                                     <Table.Td>
                                         <Button size="xs" loading={drawing} onClick={() => onDraw(mode.modeName)}>
-                                            Draw an outcome
+                                            {`Draw an outcome (${mode.modeName})`}
                                         </Button>
                                     </Table.Td>
                                 )}

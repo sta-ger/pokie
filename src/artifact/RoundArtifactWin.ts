@@ -18,7 +18,7 @@ export type RoundArtifactMultiplierBreakdown = {
 export type RoundArtifactWin<T extends string | number = string> = {
     readonly type: string;
     readonly id: string;
-    readonly symbolId: T;
+    readonly symbolId: T | null;
     readonly winAmount: number;
     readonly winningPositions: readonly (readonly number[])[];
     readonly multiplierBreakdown: readonly RoundArtifactMultiplierBreakdown[];

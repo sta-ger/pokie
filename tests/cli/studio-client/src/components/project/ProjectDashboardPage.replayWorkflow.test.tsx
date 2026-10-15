@@ -1576,18 +1576,19 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.queryByText("reports index is corrupted on disk")).not.toBeInTheDocument();
     }, 60000);
 
-    // A replay job that fails mid-run (StudioReplayExecutionService.fail()) carries the underlying game's
-    // own thrown error text -- internal enough (a stack-trace-flavored message, possibly naming an
-    // internal method) that it shouldn't be the first thing a user sees. The hand-authored explanation is
-    // the primary message; the raw text stays reachable, not discarded, behind the same AdvancedDisclosure
-    // convention the Runtime tab's own blocked/conflict fix uses.
-    it("shows a hand-authored explanation for a replay job that fails mid-run, with the raw server message tucked behind a disclosure", async () => {
+    // Computation and terminal publication failures share this notice. It must explain the incomplete
+    // result without guessing the cause; the exact diagnostic remains reachable behind the disclosure.
+    it.each([
+        "TypeError: Cannot read properties of undefined (reading 'reelStrips')",
+        "Replay terminal publication failed: replay repository unavailable",
+    ])("shows recovery guidance and a disclosed server message for a failed replay: %s", async (serverMessage) => {
         const user = userEvent.setup();
         let pollCount = 0;
-        const {fetchImpl} = createRoutedFakeFetch({
+        const {fetchImpl, calls} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/project/replays": (call: FakeCall) => {
                 if (call.init?.method === "POST") {
+                    pollCount = 0;
                     return {ok: true, status: 200, body: jobFor("job-crash", {status: "queued", completedRounds: 0})};
                 }
                 return {ok: true, status: 200, body: []};
@@ -1603,7 +1604,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
                     body: jobFor("job-crash", {
                         status: "failed",
                         descriptor: undefined,
-                        error: "TypeError: Cannot read properties of undefined (reading 'reelStrips')",
+                        error: serverMessage,
                     }),
                 };
             },
@@ -1618,16 +1619,31 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         const alert = await screen.findByRole("alert", undefined, {timeout: 15000});
         expect(alert).toHaveTextContent("Run failed");
-        expect(alert).toHaveTextContent(/bug in the game's own logic/);
+        expect(alert).toHaveTextContent("Replay stopped before a completed result could be published.");
+        expect(alert).toHaveTextContent("Inspect the server message and any retained execution prefix before retrying with the same parameters.");
+        expect(alert).not.toHaveTextContent(/bug in the game's own logic/);
 
         // The raw message is present in the DOM (not dropped) but hidden until Advanced details opens --
         // same "mounted but hidden via the `hidden` attribute" convention AdvancedDisclosure always uses.
-        expect(screen.getByText(/Cannot read properties of undefined/)).not.toBeVisible();
-        await user.click(screen.getByText(/Show advanced details/));
-        expect(screen.getByText(/Cannot read properties of undefined/)).toBeVisible();
+        const diagnostic = within(alert).getByText(serverMessage);
+        const disclosure = within(alert).getByRole("button", {name: "Show advanced details (server message)"});
+        expect(diagnostic).not.toBeVisible();
+        expect(disclosure).toHaveAttribute("aria-expanded", "false");
+        await user.click(disclosure);
+        expect(diagnostic).toBeVisible();
+        expect(disclosure).toHaveAttribute("aria-expanded", "true");
 
-        // Retry is still offered right below -- the recovery action this notice's own copy points to.
-        expect(screen.getByRole("button", {name: "Run again with the same parameters"})).toBeInTheDocument();
+        // The recovery control submits the same seed/round through the public replay API.
+        const retry = screen.getByRole("button", {name: "Run again with the same parameters"});
+        expect(retry).toBeEnabled();
+        await user.click(retry);
+        await screen.findByRole("alert", undefined, {timeout: 15000});
+        const submissions = calls.filter((call) => call.url === "/api/project/replays" && call.init?.method === "POST");
+        expect(submissions).toHaveLength(2);
+        expect(submissions.map((call) => JSON.parse(call.init?.body ?? "{}"))).toEqual([
+            {round: 1, seed: "demo-seed"},
+            {round: 1, seed: "demo-seed"},
+        ]);
     }, 60000);
 
     it("shows a subject-specific recovery message, not the raw network error, when starting a replay itself fails outright", async () => {
@@ -1826,7 +1842,7 @@ describe("P9-07 production native descriptors", () => {
         let rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         try {
             await user.type(await screen.findByLabelText("Seed (optional)"), "closure-library-a");
-            await user.click(screen.getByRole("button", {name: "Draw an outcome"}));
+            await user.click(screen.getByRole("button", {name: "Draw an outcome (base)"}));
             const download = await screen.findByRole("link", {name: "Download draw replay JSON"});
             const url = download.getAttribute("href")!;
             const recorded = await request<ReplayDescriptor>(url);
@@ -1840,7 +1856,7 @@ describe("P9-07 production native descriptors", () => {
             // A second draw makes the actual saved finding observable: round/status alone
             // cannot identify the first draw after reopening.
             fireEvent.change(screen.getByLabelText("Seed (optional)"), {target: {value: "closure-library-b"}});
-            await user.click(screen.getByRole("button", {name: "Draw an outcome"}));
+            await user.click(screen.getByRole("button", {name: "Draw an outcome (base)"}));
             await waitFor(() => expect(screen.getByRole("link", {name: "Download draw replay JSON"}).getAttribute("href")).not.toBe(url));
             const liveEntries = await request<StudioReplayListEntry[]>("/api/project/replays");
             const savedEntry = liveEntries.find((entry) => entry.seed === "closure-library-a")!;
@@ -1921,7 +1937,7 @@ describe("P9-07 production native descriptors", () => {
         const user = userEvent.setup();
         let rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         try {
-            await user.click(await screen.findByRole("button", {name: "Draw an outcome"}));
+            await user.click(await screen.findByRole("button", {name: "Draw an outcome (base)"}));
             const url = (await screen.findByRole("link", {name: "Download draw replay JSON"})).getAttribute("href")!;
             expect(screen.getByText(/No seed was recorded, so exact reproduction is unavailable/)).toBeInTheDocument();
             const recorded = await request<ReplayDescriptor>(url);

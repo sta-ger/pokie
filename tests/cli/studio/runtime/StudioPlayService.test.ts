@@ -1,8 +1,11 @@
 import {transactionalRoundGame} from "../../../v2/fixtures/TransactionalRoundGame.js";
 import {createOverscanGame, overscanBlueprint, overscanGeometry} from "../../../v2/fixtures/OverscanGame.js";
 import {emitPublicRuntime} from "../../../v2/helpers/publicRuntime.js";
+import {replayModesBlueprint} from "../../../v2/fixtures/ExistingMechanicsGame.js";
+import {createRequire} from "node:module";
+import ts from "typescript";
 import {
-    ReplayRecorder, buildRoundArtifact, InMemorySessionRepository, InMemoryWallet, SpinCommandHandler,
+    ReplayRecorder, AuditRoundReplay, buildRoundArtifact, InMemorySessionRepository, InMemoryWallet, SpinCommandHandler,
     GameSessionHandling,
     GameWithFreeGamesSessionHandling,
     GamePackageGenerator,
@@ -320,6 +323,69 @@ describe("StudioPlayService", () => {
         publicRuntime = emitPublicRuntime();
     }, 60000);
     afterAll(() => publicRuntime?.dispose());
+    it.each([false, true].flatMap(weighted => [false, true].flatMap(typed => [undefined, "review-fixed"].map(seed => ({weighted, typed, seed})))))("records executable package steps through Play, history and replay import (weighted=$weighted, typed=$typed, seed=$seed)", async ({weighted, typed, seed}) => {
+        const root = path.join(publicRuntime.directory, `audit-${weighted}-${typed}-${seed ?? "unseeded"}`);
+        const blueprint = replayModesBlueprint(weighted);
+        blueprint.availableBets = [0.05];
+        blueprint.manifest = {id: `v2c12-package-${weighted ? "weighted" : "ordinary"}`, name: `V2C12 Package ${weighted ? "Weighted" : "Ordinary"}`, version: "1.0.0"};
+        const built = new GamePackageGenerator("1.3.0").generate(blueprint, root);
+        const entry = path.join(built.projectRoot, "dist", "index.js");
+        if (typed) fs.writeFileSync(entry, ts.transpileModule(fs.readFileSync(path.join(built.projectRoot, "src", "index.ts"), "utf8"), {
+            compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
+        }).outputText);
+        const game = createRequire(path.join(publicRuntime.directory, "consumer.cjs"))(entry) as PokieGame;
+        if (!weighted) expect(game.getConfigHash!()).toBe("sha256:7246985256df82890e2ebfcec0f81e6b7be5b5f5459a4a22b4c7a90b2554c124");
+        const recorder = new StudioRoundRecorder();
+        const service = new StudioPlayService(() => Promise.resolve(game), undefined, undefined, undefined, undefined, undefined, recorder);
+        try {
+            for (const [mode, stakes] of Object.entries({ante: [0.05 * 1.5, 0.05 * 1.5], buy: [0.5, 0, 0.5, 0], "buy-more": [1.25, 0, 0, 0, 1.25, 0, 0, 0]})) {
+                recorder.clearAll();
+                const created = await service.newSession(built.projectRoot, seed);
+                if (created.status !== "ok") throw new Error("No generated Play session");
+                expect(created.session.debug?.stateAfter).toMatchObject({executionState: "durably-restorable"});
+                const id = created.session.sessionId;
+                expect(await service.spin(id, "spin", undefined, "missing", {requestId: "invalid"})).toMatchObject({status: "error", code: "invalid-command"});
+                let continuation: {roundId: string; cursor: number} | undefined;
+                for (const [index, stake] of stakes.entries()) {
+                    const intent = continuation ? {requestId: `${mode}-${index}`, delivery: "stepwise" as const, continuation}
+                        : {requestId: `${mode}-${index}`, roundId: `${mode}-${index}`, delivery: "stepwise" as const};
+                    const result = await service.spin(id, "spin", undefined, continuation ? undefined : mode, intent);
+                    if (result.status !== "ok") throw new Error(JSON.stringify(result));
+                    const descriptor = result.session.debug?.recording;
+                    expect(result.session.debug?.auditUnavailableReason).toBeUndefined();
+                    expect(descriptor).toMatchObject({unit: "step", seed: seed ?? null, modePolicy: {betModeId: mode, selection: "recorded-commands"}, artifact: {stake, betMode: mode}});
+                    expect(result.session.debug?.artifact).toEqual(descriptor!.artifact);
+                    expect(descriptor!.artifact?.steps).toHaveLength(1);
+                    expect(descriptor!.artifact?.featureEvents).toContainEqual({type: "chargedBetMode", data: {id: mode}});
+                    expect(Boolean(descriptor!.artifact?.sequenceSelections?.length)).toBe(weighted);
+                    const deliveries = descriptor!.audit!.deliveries;
+                    expect(deliveries[deliveries.length - 1].result).toMatchObject({stake, mode});
+                    expect(descriptor!.commands![descriptor!.commands!.length - 1]).toEqual(expect.objectContaining(intent));
+                    const download = JSON.parse(buildReplayDownload(descriptor!, "step").body);
+                    const imported = validateReplayRequest({recording: download}).recording!;
+                    expect(imported).toEqual(descriptor);
+                    expect(new AuditRoundReplay().replay(game, imported.audit).verification).toBe("verified");
+                    expect(recorder.list()[0].debug?.recording).toEqual(descriptor);
+                    const logical = result.session.logicalRound!;
+                    continuation = logical.status === "pending" ? {roundId: logical.roundId, cursor: logical.cursor} : undefined;
+                    if (continuation) expect(await service.spin(id, "spin", undefined, "buy", {requestId: `forbidden-${index}`, delivery: "stepwise", continuation})).toMatchObject({status: "error", code: "invalid-command"});
+                }
+                expect(continuation).toBeUndefined();
+                expect(recorder.list()).toHaveLength(2);
+            }
+            // The independently observed public Spin drives composite delivery to completion.
+            const created = await service.newSession(built.projectRoot);
+            if (created.status !== "ok") throw new Error("No composite session");
+            const intent = {requestId: "composite-buy", roundId: "composite-buy", delivery: "composite" as const};
+            const result = await service.spin(created.session.sessionId, "spin", undefined, "buy", intent);
+            if (result.status !== "ok") throw new Error(JSON.stringify(result));
+            expect(result.session.logicalRound).toMatchObject({status: "completed", totalStake: 0.5});
+            expect(result.session.debug?.recording).toMatchObject({artifact: {stake: 0, betMode: "buy"}, commands: [{mode: "buy"}, {continuation: {roundId: "composite-buy"}}]});
+            expect(await service.spin(created.session.sessionId, "spin", undefined, "buy", intent)).toEqual(result);
+        } finally {
+            await service.reset();
+        }
+    });
     it("rejects a CJS selected mode excluded by retained capabilities in Play and scenario callers", async () => {
         const game = publicRuntime.legacyGame("bet-free", true);
         const service = new StudioPlayService(() => Promise.resolve(game));

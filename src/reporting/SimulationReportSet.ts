@@ -16,4 +16,13 @@ export type SimulationReportSet = {
     workers?: number;
     // Keyed by bet mode id, in the same order PokieGame.getBetModes() declared them.
     modes: Record<string, SimulationReport>;
+    // No combined metrics: these values only exist on each individual mode report.
+    rounds?: never;
+    totalBet?: never;
+    totalWin?: never;
+    rtp?: never;
+    hitFrequency?: never;
+    maxWin?: never;
+    breakdown?: never;
+    stopReason?: never;
 };

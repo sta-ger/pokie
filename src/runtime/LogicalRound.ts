@@ -108,7 +108,7 @@ function validPositions(value: unknown): boolean {
 function validWin(value: unknown): boolean {
     const win = value as import("../artifact/RoundArtifactWin.js").RoundArtifactWin | undefined;
     return !!win && typeof win.type === "string" && !!win.type && typeof win.id === "string" && !!win.id &&
-        (typeof win.symbolId === "string" || (typeof win.symbolId === "number" && Number.isFinite(win.symbolId))) &&
+        ((win.type === "jackpot" && win.symbolId === null) || typeof win.symbolId === "string" || (typeof win.symbolId === "number" && Number.isFinite(win.symbolId))) &&
         validPositions(win.winningPositions) && Array.isArray(win.multiplierBreakdown) && win.multiplierBreakdown.every(item =>
         item && typeof item.source === "string" && !!item.source && validPositions(item.positions) && Array.isArray(item.values) &&
         item.values.every(Number.isFinite) && Number.isFinite(item.combinedMultiplier)) &&

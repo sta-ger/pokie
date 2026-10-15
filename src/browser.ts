@@ -87,3 +87,7 @@ export * from "./artifact/buildLogicalRoundArtifact.js";
 export * from "./runtime/projectLogicalRound.js";
 
 export type {AuditRoundRecording, AuditBoundary, AuditDelivery, AuditDisposition} from "./replay/AuditRoundRecording.js";
+
+export type {GameBlueprint, GameBlueprintMechanics, GameBlueprintHoldAndWin, GameBlueprintJackpot} from "./generated/GameBlueprint.js";
+export * from "./generated/AuthoredMechanicCatalog.js";
+export * from "./net/videoslot/observeVideoSlotFeatures.js";

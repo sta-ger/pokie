@@ -1,3 +1,4 @@
+import {existingMechanicsBlueprint, generatedMechanicsGame, mechanicsSession} from "./fixtures/ExistingMechanicsGame.js";
 import fs from "node:fs";
 import path from "node:path";
 import * as api from "../../src/index.js";
@@ -11,7 +12,7 @@ describe("public transactional runtime compositions", () => {
     const wallets: ControllableDurableWallet[] = [];
     const servers: api.PokieDevServer[] = [];
     beforeEach(() => {
-        directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c05-")); 
+        directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c05-"));
     });
     afterEach(async () => {
         for (const server of servers.splice(0)) await server.stop();
@@ -31,8 +32,8 @@ describe("public transactional runtime compositions", () => {
         return store;
     }
     async function initialize(store: api.TransactionalRoundStore | api.ExternalRoundStore, id = "s", balance = 1000): Promise<void> {
-        const game = transactionalRoundGame(), 
-            context = {seed: 1}, 
+        const game = transactionalRoundGame(),
+            context = {seed: 1},
             session = game.createSession(context);
         session.setCreditsAmount(balance);
         await store.initialize(id, api.captureInitialPokieSessionState(context, session, game.getSessionSerializer!(), true, game), game);
@@ -56,7 +57,7 @@ describe("public transactional runtime compositions", () => {
         const game = transactionalRoundGame();
         const first = await new api.SpinCommandHandler(game, store).execute({kind: "spin", sessionId: "s", requestId: "entry", roundId: "round", delivery: "stepwise"});
         expect(first.status).toBe("played");
-        const before = await store.readSession("s"), 
+        const before = await store.readSession("s"),
             balance = await store.getBalance("s");
         const next: api.RepositoryCommand = {kind: "spin", sessionId: "s", requestId: "next", delivery: "stepwise", continuation: {roundId: "round", cursor: 1}};
         const failed = await new api.SpinCommandHandler(transactionalRoundGame(undefined, failure), store).execute(next);
@@ -71,11 +72,11 @@ describe("public transactional runtime compositions", () => {
     it("local cancellation before commit rolls back only the uncommitted subround", async () => {
         const store = await open();
         await initialize(store);
-        const game = transactionalRoundGame(), 
+        const game = transactionalRoundGame(),
             handler = new api.SpinCommandHandler(game, store);
         await handler.execute({kind: "spin", sessionId: "s", requestId: "entry", roundId: "round", delivery: "stepwise"});
-        const before = await store.readSession("s"), 
-            balance = await store.getBalance("s"), 
+        const before = await store.readSession("s"),
+            balance = await store.getBalance("s"),
             abort = new AbortController();
         setTransactionBoundaryHook(store, boundary => {
             if (boundary === "after:operation-committed") abort.abort();
@@ -110,7 +111,7 @@ describe("public transactional runtime compositions", () => {
         if (second.status !== "played") throw new Error("Missing owner");
         const last = await new api.SpinCommandHandler(game, store).execute({kind: "spin", sessionId: "s", requestId: "final", continuation: {roundId: "logical", cursor: 2}, delivery: "stepwise", expectedVersion: second.version});
         expect(last).toMatchObject({status: "played", state: {logicalRound: {status: "completed", cursor: 3}, logicalRoundStatistics: {rounds: 1, steps: 3}}});
-        const before = await store.readSession("s"), 
+        const before = await store.readSession("s"),
             balance = await store.getBalance("s");
         expect(await new api.SpinCommandHandler(game, store).execute(entry)).toEqual(first);
         const saved = await store.lookupResult("s", "final");
@@ -161,7 +162,7 @@ describe("public transactional runtime compositions", () => {
         expect(await post(fresh, sessionId, body, true)).toEqual(debug);
         const saved = await reopened.lookupResult(sessionId, "round");
         const handler = new api.SpinCommandHandler(transactionalRoundGame(() => {
-            throw new Error("Replay constructed/calculated again"); 
+            throw new Error("Replay constructed/calculated again");
         }), reopened);
         expect(await handler.handle(sessionId, "round", 1, 0.05, "base")).toEqual(saved);
         expect(await handler.execute({...intent, sessionId})).toEqual(saved);
@@ -169,11 +170,11 @@ describe("public transactional runtime compositions", () => {
         if (provider) expect(provider.counts(sessionId)).toEqual({debit: 2, credit: 2});
     });
     it.each([0.05, 7.5, 1e-7])("separate handlers/stores preserve fractional %s, stale loser and original result", async bet => {
-        const provider = await wallet(), 
+        const provider = await wallet(),
             first = await open(provider);
         await initialize(first);
         const second = await open(provider);
-        const one = new api.SpinCommandHandler(transactionalRoundGame(), first), 
+        const one = new api.SpinCommandHandler(transactionalRoundGame(), first),
             two = new api.SpinCommandHandler(transactionalRoundGame(), second);
         const command = {...intent, bet};
         const [a, b] = await Promise.all([one.execute(command), two.execute(command)]);
@@ -187,7 +188,7 @@ describe("public transactional runtime compositions", () => {
         expect(await two.execute(command)).toEqual(await first.lookupResult("s", "round"));
     });
     it.each(["before-debit", "after-debit", "before-credit", "after-credit", "hang-debit", "hang-credit"] as const)("retains original intent/candidate across %s and reopening", async fault => {
-        const provider = await wallet(), 
+        const provider = await wallet(),
             store = await open(provider);
         await initialize(store);
         const before = await store.readSession("s");
@@ -199,7 +200,7 @@ describe("public transactional runtime compositions", () => {
         await store.close();
         const reopened = await open(provider);
         const recovery = new api.SpinCommandHandler(transactionalRoundGame(() => {
-            throw new Error("Recovery played again"); 
+            throw new Error("Recovery played again");
         }), reopened);
         const outcome = await recovery.getReconciliationService().reconcileOne("s", "round");
         expect(outcome.status).toBe("resumed");
@@ -212,7 +213,7 @@ describe("public transactional runtime compositions", () => {
         expect(await recovery.handle("s", "round", 1, 0.05, "base")).toEqual(result);
     });
     it.each(["unknown", "pending", "compensated", "malformed", "throw", "hang"])("blocks unsafe dispatch for inspected %s with a retained session claim", async status => {
-        const provider = await wallet(), 
+        const provider = await wallet(),
             store = await open(provider);
         await initialize(store);
         provider.inspection = (status === "throw" || status === "hang") ? status : {status} as api.DurableWalletTransaction;
@@ -233,7 +234,7 @@ describe("public transactional runtime compositions", () => {
         await expect(api.SqliteExternalRoundStore.open(path.join(directory, "bad.sqlite"), {...provider, capabilities: provider.capabilities} as api.DurableWalletPort)).rejects.toThrow("capabilities");
     });
     it("does not advance on insufficient funds, capture failure or invalid/nonfinite commands", async () => {
-        const provider = await wallet(), 
+        const provider = await wallet(),
             store = await open(provider);
         await initialize(store);
         await provider.setBalance("s", 0);
@@ -248,7 +249,7 @@ describe("public transactional runtime compositions", () => {
         expect(provider.counts("s")).toEqual({debit: 0, credit: 0});
     });
     it("retains settlement across response publication loss through HTTP and restart", async () => {
-        const provider = await wallet(), 
+        const provider = await wallet(),
             store = await open(provider);
         await initialize(store);
         setTransactionBoundaryHook(store, name => {
@@ -265,7 +266,7 @@ describe("public transactional runtime compositions", () => {
         expect(provider.counts("s")).toEqual({debit: 1, credit: 1});
     });
     it.each(["after-debit", "after-credit"] as const)("HTTP disconnect %s survives BOTH provider and local reopen", async fault => {
-        const provider = await wallet(), 
+        const provider = await wallet(),
             store = await open(provider);
         await initialize(store);
         const base = await server(store);
@@ -276,14 +277,14 @@ describe("public transactional runtime compositions", () => {
         await servers[0].stop();
         provider.close();
         wallets.splice(wallets.indexOf(provider), 1);
-        const freshProvider = await wallet(), 
+        const freshProvider = await wallet(),
             freshStore = await open(freshProvider);
         const fresh = await server(freshStore);
         expect((await post(fresh, "s", body, true)).body).toMatchObject({internal: {requestId: "round", sessionVersion: 2}});
         expect(freshProvider.counts("s")).toEqual({debit: 1, credit: 1});
     });
     it("bounds a late committed debit, drains shutdown and fences its late acknowledgement", async () => {
-        const provider = await wallet(), 
+        const provider = await wallet(),
             store = await open(provider);
         await initialize(store);
         let acknowledge!: (balance: number) => void;
@@ -291,7 +292,7 @@ describe("public transactional runtime compositions", () => {
         provider.debit = async (session, id, amount) => {
             const balance = await original(session, id, amount);
             return new Promise<number>(resolve => {
-                acknowledge = () => resolve(balance); 
+                acknowledge = () => resolve(balance);
             });
         };
         const handler = new api.SpinCommandHandler(transactionalRoundGame(), store);
@@ -309,7 +310,7 @@ describe("public transactional runtime compositions", () => {
         expect(provider.counts("s")).toEqual({debit: 1, credit: 1});
     });
     it("cancellation before dispatch has no effect and after dispatch retains ambiguity", async () => {
-        const provider = await wallet(), 
+        const provider = await wallet(),
             store = await open(provider);
         await initialize(store);
         const handler = new api.SpinCommandHandler(transactionalRoundGame(), store);
@@ -326,7 +327,7 @@ describe("public transactional runtime compositions", () => {
     });
 
     it.each(["bet", "mode", "version"])("binds pending and committed external identity to original %s", async field => {
-        const provider = await wallet(), 
+        const provider = await wallet(),
             store = await open(provider);
         await initialize(store);
         await initialize(store, "other-session");
@@ -341,7 +342,7 @@ describe("public transactional runtime compositions", () => {
         expect(provider.counts("s")).toEqual({debit: 1, credit: 1});
     });
     it("rejects corrupt candidate/accounting before further settlement and exposes raw handle versus classified execute failures", async () => {
-        const provider = await wallet(), 
+        const provider = await wallet(),
             store = await open(provider);
         await initialize(store);
         const broken = new api.SpinCommandHandler(transactionalRoundGame(undefined, "capture"), store);
@@ -387,11 +388,11 @@ describe("public transactional runtime compositions", () => {
     });
 
     it("serializes separate-instance different keys, rejects stale revisions and consumes successive omitted revisions", async () => {
-        const provider = await wallet(), 
+        const provider = await wallet(),
             first = await open(provider);
         await initialize(first);
         const second = await open(provider);
-        const a = new api.SpinCommandHandler(transactionalRoundGame(), first), 
+        const a = new api.SpinCommandHandler(transactionalRoundGame(), first),
             b = new api.SpinCommandHandler(transactionalRoundGame(), second);
         const [winner, loser] = await Promise.all([a.execute(intent), b.execute({...intent, requestId: "loser"})]);
         expect(winner).toMatchObject({status: "played", version: 2});
@@ -401,7 +402,7 @@ describe("public transactional runtime compositions", () => {
         expect(provider.counts("s")).toEqual({debit: 3, credit: 3});
     });
     it("serialization failure preserves the old state and performs no remote action", async () => {
-        const provider = await wallet(), 
+        const provider = await wallet(),
             store = await open(provider);
         await initialize(store);
         const handler = new api.SpinCommandHandler(transactionalRoundGame(undefined, "serialization"), store);
@@ -758,4 +759,82 @@ describe("public transactional runtime compositions", () => {
         expect(provider.counts("s")).toEqual({debit: 0, credit: 0});
     });
 
+});
+
+describe("V2C-12 authored mechanics durable restart", () => {
+    it.each(["hold-flat-modes", "accumulating-holdAndWin-modes", "fixed-freeGames-modes", "accumulating-freeGames-modes"])("retains %s prefix, results and financial state in file and transactional stores", async id => {
+        const row = api.AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!;
+        const blueprint = existingMechanicsBlueprint(row);
+        blueprint.reelStrips = row.progression === "holdAndWin" ? [["C"], ["A"], ["J"]] : [["A"], ["A"], ["J"]];
+        const game = generatedMechanicsGame(blueprint);
+        for (const kind of ["file", "transactional"] as const) {
+            const directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c12-restart-"));
+            const activeStores: api.TransactionalRoundStore[] = [];
+            const store = () => activeStores[0];
+            const wallet = new api.InMemoryWallet(10000);
+            const results = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>();
+            const operations = new api.InMemorySpinOperationLog();
+            const file = () => new api.FileSessionRepository(path.join(directory, "sessions"));
+            const open = () => api.SqliteTransactionalRoundStore.open(path.join(directory, "rounds.sqlite"));
+            const reopen = async () => {
+                const closing = activeStores.shift();
+                await closing?.close();
+                if (kind === "transactional") activeStores.push(await open());
+            };
+            try {
+                const session = mechanicsSession(game);
+                const initial = api.captureInitialPokieSessionState({seed: 31}, session, game.getSessionSerializer!(), true, game);
+                if (kind === "transactional") {
+                    activeStores.push(await open());
+                    await store().initialize("s", initial, game);
+                } else await file().save("s", initial);
+                const handler = (model = game) => store() ? new api.SpinCommandHandler(model, store()) : new api.SpinCommandHandler(model, file(), wallet, results, operations, true);
+                const entry: api.RepositoryCommand = {kind: "spin", sessionId: "s", requestId: "entry", roundId: "round", delivery: "stepwise", bet: 0.05, mode: row.progression === "freeGames" ? "buy-more" : "ante"};
+                const first = await handler().execute(entry);
+                if (first.status !== "played") throw new Error(kind + JSON.stringify(first));
+                expect(first).toMatchObject({status: "played", state: {logicalRound: {status: "pending", cursor: 1}}});
+                const getState = () => store() ? store().readSession("s").then(value => value!.state) : file().load("s");
+                const prefix = await getState();
+                await reopen();
+                const continuation: api.RepositoryCommand = {kind: "spin", sessionId: "s", requestId: "next", delivery: "stepwise", continuation: {roundId: "round", cursor: 1}};
+                const abort = new AbortController();
+                abort.abort();
+                expect((await handler().execute(continuation, abort.signal)).status).toBe("blocked");
+                expect(await getState()).toEqual(prefix);
+                const serializer = game.getSessionSerializer!();
+                const failing = {...game, getSessionSerializer: () => ({...serializer, getInitialData: serializer.getInitialData.bind(serializer), getRoundData: () => {
+                    throw new Error("injected serialization failure");
+                }})};
+                expect((await handler(failing).execute({...continuation, requestId: "failed"})).status).not.toBe("played");
+                expect(await getState()).toEqual(prefix);
+                let result = first;
+                while (result.state.logicalRound?.status === "pending") {
+                    const cursor = result.state.logicalRound.deliveryCursor;
+                    const next = await handler().execute({kind: "spin", sessionId: "s", requestId: `continue-${cursor}`, delivery: "stepwise", continuation: {roundId: "round", cursor}});
+                    if (next.status !== "played") throw new Error(JSON.stringify(next));
+                    expect(next.stake).toBe(0);
+                    expect(next.state.logicalRound?.mode).toBe(entry.mode);
+                    result = next;
+                    await reopen();
+                }
+                const oracle = mechanicsSession(game);
+                const expected = new api.SessionRuntime(oracle).execute({...entry, delivery: "composite"});
+                if (expected.status !== "played") throw new Error(JSON.stringify(expected));
+                expect(result.state.logicalRound?.totalStake).toBe(expected.logicalRound?.totalStake);
+                expect(result.state.logicalRound?.totalPayout).toBe(expected.logicalRound?.totalPayout);
+                expect(result.state.credits).toBe(expected.credits);
+                const nextRound = await handler().execute({kind: "spin", sessionId: "s", requestId: "later", roundId: "later", delivery: "composite"});
+                expect(nextRound.status).toBe("played");
+                const later = await getState();
+                expect(await handler().execute(entry)).toEqual(first);
+                expect(await getState()).toEqual(later);
+                const unknown = await handler().execute({kind: "spin", sessionId: "s", requestId: "unknown", mode: "typo", roundId: "unknown", delivery: "composite"});
+                expect(unknown.status).not.toBe("played");
+                expect(await getState()).toEqual(later);
+            } finally {
+                await store()?.close();
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        }
+    });
 });

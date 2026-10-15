@@ -1,3 +1,4 @@
+import {FixedBetModeForNextSimulationRoundSetting} from "../simulation/FixedBetModeForNextSimulationRoundSetting.js";
 import {AuditRoundReplay, buildAuditRoundRecording, captureAuditBoundary, captureAuditDelivery, validateAuditRoundRecording} from "./AuditRoundReplay.js";
 import type {AuditDelivery, AuditDisposition, AuditRoundRecording} from "./AuditRoundRecording.js";
 import {deepFreeze} from "../internal/deepFreeze.js";
@@ -12,7 +13,6 @@ import {executeLogicalReplayCommand} from "./internal/executeLogicalReplayComman
 import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
 import {buildLogicalRoundArtifact} from "../artifact/buildLogicalRoundArtifact.js";
 import type {LogicalRound} from "../runtime/LogicalRound.js";
-import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import {buildRoundArtifactFromSession} from "../artifact/buildRoundArtifactFromSession.js";
 import {PokieJsonRoundArtifactProjector} from "../artifact/PokieJsonRoundArtifactProjector.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
@@ -139,15 +139,36 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         new SessionRuntime(session).release();
     }
 
-    public describeAudit(audit: AuditRoundRecording): ReplayDescriptor {
+    public describeAudit(audit: AuditRoundRecording, unit: "step" | "logical-round" = "step"): ReplayDescriptor {
         validateAuditRoundRecording(audit);
         const last = audit.deliveries[audit.deliveries.length - 1];
-        const artifact = [...audit.deliveries].reverse().find(delivery => delivery.artifact)?.artifact;
+        const evaluated = [...audit.deliveries].reverse().find(delivery => delivery.artifact);
+        let artifact = evaluated?.artifact;
+        // v1 audit deliveries retain their original logical aggregates. The export's artifact
+        // describes the final calculation, while logicalRound and totals retain the whole history.
+        // Display-only deliveries reuse the last calculation rather than inventing a zero-charge spin.
+        if (unit === "step" && artifact && evaluated?.execution === "accepted-boundary" && evaluated.result.logicalRound) {
+            const executed = evaluated.result;
+            const subround = executed.logicalRound!.subrounds[executed.logicalRound!.cursor - 1];
+            const steps = subround.artifacts?.map((step, index) => ({...step, index}));
+            if (!steps?.length) throw new AuditReplayError("audit-artifact", "artifact.steps", "Final executed subround has no retained evaluated steps.");
+            const final = steps[steps.length - 1];
+            const {hash: _hash, ...template} = artifact;
+            const totalWin = steps.reduce((sum, step) => sum + step.totalWin, 0);
+            artifact = new PokieJsonRoundArtifactProjector().project({...template,
+                stake: executed.stake, betMode: executed.mode ?? template.betMode, totalWin,
+                payoutMultiplier: executed.stake > 0 ? totalWin / executed.stake : 0,
+                steps, screen: final.screen, wins: steps.flatMap(step => step.wins),
+                featureEvents: steps.flatMap(step => step.featureEvents ?? []),
+                ...(final.sequenceSelections ? {sequenceSelections: final.sequenceSelections} : {}),
+                ...(final.geometry ? {geometry: final.geometry, generatedScreen: final.generatedScreen} : {})});
+        }
         const round = last.result.logicalRound;
         return {audit, auditStatus: "recorded", auditCompletion: audit.captureUnavailable ? "pending" : round?.status ?? "completed",
             ...(audit.captureUnavailable ? {auditUnavailableReason: "An accepted delivery could not be captured; only the preceding executable prefix is available."} : {}), sessionId: last.disposition.sessionId, game: audit.game,
             seed: audit.context?.seed === undefined ? null : String(audit.context.seed), round: 1,
-            commands: audit.deliveries.map(delivery => delivery.command), ...(round ? {logicalRound: round, unit: "logical-round"} : {}),
+            commands: audit.deliveries.map(delivery => delivery.command), ...(round ? {logicalRound: round, unit} : {}),
+            ...(unit === "step" && evaluated?.result.mode ? {modePolicy: {betModeId: evaluated.result.mode, selection: "recorded-commands" as const}} : {}),
             totalBet: round?.totalStake ?? audit.deliveries.reduce((sum, delivery) => sum + delivery.result.stake, 0),
             totalWin: round?.totalWin ?? audit.deliveries.reduce((sum, delivery) => sum + delivery.result.win, 0), credits: last.result.credits,
             screen: (artifact?.screen ?? round?.subrounds[round.cursor - 1].screen)?.map(reel => [...reel]) ?? null,
@@ -194,18 +215,28 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         // enough that reaching `round` is never cut short by running out of credits mid-replay.
         if (!existingSession) session.setCreditsAmount(options.unit === "logical-round" ? session.getBet() : Number.MAX_SAFE_INTEGER);
 
+        if (options.betModeId !== undefined && (options.entryCommands !== undefined || options.unit === "logical-round")) throw new Error("Simulation mode policy requires step replay without overriding entry commands.");
+        const selector = options.betModeId === undefined ? undefined : new FixedBetModeForNextSimulationRoundSetting(options.betModeId);
+        const executedCommands: SessionCommand[] = [];
         const startedAt = Date.now();
         let logicalRound: LogicalRound | undefined;
+        let finalResult: ReturnType<typeof executeSessionCommand> | undefined;
         let totalBet = 0;
         let totalWin = 0;
         for (let played = 0; played < round; played++) {
             if (options.unit !== "logical-round" && !session.canPlayNextGame()) {
                 throw new Error(`Replay target round ${round} is unreachable: session stopped after ${played} round(s).`);
             }
+            selector?.setBetModeForNextRound(session);
+            // Record paid entries and zero-stake continuations separately. A consumed purchase is
+            // not re-armed during its continuation; the shared simulation selector owns that policy.
+            const selected = session as GameSessionHandling & {getStakeAmount?(): number; getBetModeId?(): string};
             const command = options.unit === "logical-round"
                 ? {...options.entryCommands?.[played], kind: "spin" as const, delivery: "composite" as const, roundId: `replay:${played + 1}`}
-                : options.entryCommands?.[played];
+                : options.entryCommands?.[played] ?? (selector ? {kind: "spin" as const, ...(selected.getStakeAmount?.() === 0 ? {} : {mode: selected.getBetModeId?.()})} : undefined);
+            if (selector && command) executedCommands.push(command);
             const result = options.unit === "logical-round" ? executeLogicalReplayCommand(session, command!, signal) : executeSessionCommand(session, command, signal);
+            finalResult = result;
             logicalRound = result.logicalRound;
             if ((logicalRound && logicalRound.status !== "completed") || (session as Partial<CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded === true) throw new Error("Replay logical round exceeded the delivery bound; result is incomplete or exhausted.");
             totalBet += logicalRound?.totalStake ?? result.stake;
@@ -214,17 +245,19 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         }
         const durationMs = Date.now() - startedAt;
         const slot = session as Partial<VideoSlotSessionHandling>;
-        const geometry = slot.getScreenGeometry?.();
-        let artifact = (slot.getSequenceSelections?.().length || logicalRound || (geometry && !new ScreenProjection(geometry).isIdentity())) && slot.getWinEvaluationResult
+        // The live session now describes the next play; only the accepted result owns this step's charge.
+        let artifact = finalResult && slot.getSymbolsCombination && slot.getWinEvaluationResult
             ? new PokieJsonRoundArtifactProjector().project(buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {
-                roundId: logicalRound?.id ?? `replay:${seed ?? "no-seed"}:${round}`, provenance: {game: manifest, pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})},
+                roundId: logicalRound?.id ?? `replay:${seed ?? "no-seed"}:${round}`, stake: finalResult.stake, betMode: finalResult.mode, provenance: {game: manifest, pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})},
             })) : undefined;
 
         if (logicalRound && slot.getWinEvaluationResult) artifact = new PokieJsonRoundArtifactProjector().project(buildLogicalRoundArtifact(logicalRound,
             buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}})));
+        const unit = selector ? "step" : options.unit;
+        const commands = selector ? executedCommands : options.entryCommands;
         return {
             auditStatus: "legacy-best-effort",
-            ...(options.unit ? {unit: options.unit} : {}), ...(options.entryCommands ? {commands: options.entryCommands} : {}), ...(logicalRound ? {logicalRound} : {}),
+            ...(unit ? {unit} : {}), ...(commands ? {commands} : {}), ...(selector ? {modePolicy: {betModeId: options.betModeId!, selection: "repeat-when-available" as const}} : {}), ...(logicalRound ? {logicalRound} : {}),
             sessionId: crypto.randomUUID(),
             game: {id: manifest.id, name: manifest.name, version: manifest.version},
             seed: seed ?? null,

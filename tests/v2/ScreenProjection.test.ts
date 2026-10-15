@@ -315,14 +315,15 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(session.getScreenGeometry()).toBeUndefined();
     });
 
-    it.each(["jackpot", "holdAndWin"] as const)("F8 forwards unsupported upcoming geometry preflight through an outer ante decorator (%s)", feature => {
+    it.each(["jackpot", "holdAndWin"] as const)("F8 forwards unsupported upcoming geometry preflight through supported ante composition (%s)", feature => {
         const config = overscanConfig();
         config.setScreenGeometry(undefined);
         const rng = {getRandomInt: jest.fn(() => 2)};
         const base = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, rng));
-        const decorated = feature === "jackpot" ? new VideoSlotWithJackpotSession(base) : new VideoSlotWithHoldAndWinSession(base);
-        const session = new VideoSlotWithBetModesSession(decorated, new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2})]));
-        session.setBetMode("ante");
+        const decorated = feature === "holdAndWin" ? new VideoSlotWithHoldAndWinSession(base) : base;
+        const modes = new VideoSlotWithBetModesSession(decorated, new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2})]));
+        const session = feature === "jackpot" ? new VideoSlotWithJackpotSession(modes) : modes;
+        modes.setBetMode("ante");
         session.play();
         const credits = session.getCreditsAmount();
         const settledWin = session.getWinAmount();
@@ -380,8 +381,9 @@ describe("Generated / visible / evaluated screen contracts", () => {
         let screen = adversarialScreen();
         const base = new VideoSlotSession(config, {generateSymbolsCombination: () => new SymbolsCombination().fromMatrix(screen)});
         base.play();
-        const decorated = feature === "jackpot" ? new VideoSlotWithJackpotSession(base) : new VideoSlotWithHoldAndWinSession(base);
-        const session = new VideoSlotWithBetModesSession(decorated);
+        const decorated = feature === "holdAndWin" ? new VideoSlotWithHoldAndWinSession(base) : base;
+        const modes = new VideoSlotWithBetModesSession(decorated);
+        const session = feature === "jackpot" ? new VideoSlotWithJackpotSession(modes) : modes;
         config.setScreenGeometry(undefined);
         screen = Array.from({length: 5}, () => ["B", "B", "B"]);
         expect(session.getScreenGeometry()).toEqual(overscanGeometry);
@@ -425,7 +427,7 @@ describe("Generated / visible / evaluated screen contracts", () => {
         }
     });
 
-    it.each(["direct", "jackpot", "holdAndWin", "jackpotOutsideHold", "holdOutsideJackpot"] as const)("F8 built-in upcoming geometry returns to ordinary through composition (%s)", feature => {
+    it.each(["direct", "jackpot", "holdAndWin", "jackpotOutsideHold", "holdOutsideJackpot"] as const)("F8 ordinary upcoming geometry accepts supported stacks and rejects reversed decorators (%s)", feature => {
         for (const ante of [false, true]) {
             const config = overscanConfig();
             const rng = {getRandomInt: jest.fn(() => 2)};
@@ -440,9 +442,28 @@ describe("Generated / visible / evaluated screen contracts", () => {
             if (session instanceof VideoSlotWithBetModesSession) session.setBetMode("ante");
             const screen = session.getSymbolsCombination().toMatrix();
             const credits = session.getCreditsAmount();
+            const settledWin = session.getWinAmount();
             config.setScreenGeometry(undefined);
             rng.getRandomInt.mockClear();
             expect(session.getConfiguredScreenGeometry?.()).toBeUndefined();
+            if (feature === "holdOutsideJackpot" || (ante && ["jackpot", "jackpotOutsideHold"].includes(feature))) {
+                const state = session.toSessionState();
+                const rejected = session as VideoSlotWithHoldAndWinSession | VideoSlotWithBetModesSession;
+                expect(rejected.isSessionStateRestorable()).toBe(false);
+                const error = feature === "holdOutsideJackpot" ? /inside bet modes and jackpot/ : /Bet modes must be inside jackpot/;
+                expect(() => session.validateScreenCoordinates?.()).toThrow(error);
+                expect(() => session.play()).toThrow(error);
+                expect(() => rejected.validateSessionState(rejected.toSessionState())).toThrow(/inside bet modes and jackpot|Bet modes must be inside jackpot/);
+                if (feature === "holdOutsideJackpot") expect(() => hold.fromSessionState(hold.toSessionState())).toThrow(error);
+                else expect(() => (session as VideoSlotWithBetModesSession).fromSessionState((session as VideoSlotWithBetModesSession).toSessionState())).toThrow(error);
+                expect(rng.getRandomInt).not.toHaveBeenCalled();
+                expect(session.toSessionState()).toEqual(state);
+                expect(session.getCreditsAmount()).toBe(credits);
+                expect(session.getScreenGeometry?.()).toEqual(overscanGeometry);
+                expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
+                expect(session.getWinAmount()).toBe(settledWin);
+                continue;
+            }
             expect(() => session.validateScreenCoordinates?.()).not.toThrow();
             expect(session.getScreenGeometry?.()).toEqual(overscanGeometry);
             expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
@@ -691,29 +712,49 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(session.getSymbolsCombination().toMatrix()).toEqual(snapshot.screen);
     });
 
-    it.each(["jackpot", "holdAndWin", "jackpotOutsideHold", "holdOutsideJackpot"] as const)("F8 shared free-games upcoming contracts reach stacked feature and ante preflight (%s)", feature => {
+    it.each(["jackpot", "holdAndWin", "jackpotOutsideHold", "holdOutsideJackpot"] as const)("F8 shared free-games and ante preflight preserve geometry and composition boundaries (%s)", feature => {
         const config = new VideoSlotWithFreeGamesConfig(overscanConfig(), {});
         config.setScreenGeometry(undefined);
         const rng = {getRandomInt: jest.fn(() => 2)};
         const free = new VideoSlotWithFreeGamesSession(config, new SymbolsCombinationsGenerator(config, rng));
+        // Settle the ordinary screen through its supported engine before testing stack preflight.
+        free.play();
         const jackpot = (session: VideoSlotSessionHandling) => new VideoSlotWithJackpotSession(session);
         const hold = new VideoSlotWithHoldAndWinSession(feature === "holdOutsideJackpot" ? jackpot(free) : free);
         const decorated = feature === "holdAndWin" || feature === "holdOutsideJackpot" ? hold : jackpot(feature === "jackpotOutsideHold" ? hold : free);
-        const session = new VideoSlotWithBetModesSession(decorated, new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2})]));
-        session.setBetMode("ante");
-        session.play();
+        const modes = new VideoSlotWithBetModesSession(feature === "jackpot" ? free : decorated, new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2})]));
+        const session = feature === "jackpot" ? jackpot(modes) : modes;
+        modes.setBetMode("ante");
+        if (feature === "jackpot") session.play();
         free.setFreeGamesSum(3);
-        const snapshot = {credits: session.getCreditsAmount(), state: session.toSessionState(), win: session.getWinAmount()};
+        const snapshot = {credits: session.getCreditsAmount(), state: session.toSessionState(), win: session.getWinAmount(), screen: session.getSymbolsCombination().toMatrix()};
         config.setScreenGeometry(overscanGeometry);
         rng.getRandomInt.mockClear();
-        expect(() => session.play()).toThrow(/does not support overscan/);
+        expect(() => session.play()).toThrow(feature === "jackpot" || feature === "holdOutsideJackpot" ? /does not support overscan/ : /cannot compete with free games/);
         expect(rng.getRandomInt).not.toHaveBeenCalled();
         expect(session.getCreditsAmount()).toBe(snapshot.credits);
         expect(session.toSessionState()).toEqual(snapshot.state);
         expect(session.getWinAmount()).toBe(snapshot.win);
+        expect(session.getSymbolsCombination().toMatrix()).toEqual(snapshot.screen);
         config.setScreenGeometry(undefined);
-        expect(() => session.play()).not.toThrow();
-        expect(free.getFreeGamesNum()).toBe(1);
+        if (feature === "jackpot") {
+            expect(() => session.play()).not.toThrow();
+            expect(rng.getRandomInt).toHaveBeenCalledTimes(5);
+            expect(free.getFreeGamesNum()).toBe(1);
+        } else {
+            // Removing overscan does not make competing progression or reversed jackpot order safe.
+            expect(hold.isSessionStateRestorable()).toBe(false);
+            expect(() => session.validateScreenCoordinates?.()).toThrow(/cannot compete with free games/);
+            expect(() => session.play()).toThrow(/cannot compete with free games/);
+            expect(() => hold.validateSessionState(hold.toSessionState())).toThrow(/cannot compete with free games/);
+            expect(() => hold.fromSessionState(hold.toSessionState())).toThrow(/cannot compete with free games/);
+            expect(rng.getRandomInt).not.toHaveBeenCalled();
+            expect(session.getCreditsAmount()).toBe(snapshot.credits);
+            expect(session.toSessionState()).toEqual(snapshot.state);
+            expect(session.getWinAmount()).toBe(snapshot.win);
+            expect(session.getSymbolsCombination().toMatrix()).toEqual(snapshot.screen);
+            expect(free.getFreeGamesNum()).toBe(0);
+        }
     });
 
     it("F8 detects a built-in generator's independent upcoming configuration before generation", () => {
@@ -1147,17 +1188,43 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
     });
 
-    it("preserves the legacy replay shape with explicit identity coordinates", () => {
+    it("preserves replay screens, totals and step artifacts with explicit identity coordinates", () => {
         const blueprint = {...overscanBlueprint, screenGeometry: undefined};
         const identity: ScreenGeometry = {generated: {reels: 5, rows: 3}, visible: {rowOffset: 0, rows: 3}, evaluated: {rowOffset: 0, rows: 3}, paylineSpace: "evaluated"};
         const recorder = new ReplayRecorder();
-        const ordinary = recorder.record({game: createOverscanGame(blueprint), seed: "7", round: 6});
-        const explicit = recorder.record({game: createOverscanGame({...blueprint, screenGeometry: identity}), seed: "7", round: 6});
+        const ordinaryGame = createOverscanGame(blueprint);
+        const explicitGame = createOverscanGame({...blueprint, screenGeometry: identity});
+        const ordinary = recorder.record({game: ordinaryGame, seed: "7", round: 6});
+        const explicit = recorder.record({game: explicitGame, seed: "7", round: 6});
         expect(explicit.screen).toEqual(ordinary.screen);
         expect(explicit.totalWin).toBe(ordinary.totalWin);
         expect(explicit.totalBet).toBe(ordinary.totalBet);
-        expect(explicit).not.toHaveProperty("artifact");
         expect(Object.keys(explicit).sort()).toEqual(Object.keys(ordinary).sort());
+        for (const {descriptor, game} of [{descriptor: ordinary, game: ordinaryGame}, {descriptor: explicit, game: explicitGame}]) {
+            const artifact = descriptor.artifact;
+            if (!artifact) throw new Error("Video-slot replay must retain its executed step artifact.");
+            const session = game.createSession({seed: "7"});
+            session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
+            const runtime = new SessionRuntime(session);
+            const results = Array.from({length: descriptor.round}, () => runtime.execute({kind: "spin"}));
+            const finalResult = results[results.length - 1];
+            if (finalResult.status !== "played") throw new Error("Seeded fixture must reach its final replay step.");
+            expect(new RoundArtifactValidator().validate(artifact)).toEqual([]);
+            expect(artifact).toMatchObject({roundId: "replay:7:6", stake: 0.05, betMode: "base", screen: descriptor.screen,
+                provenance: {game: blueprint.manifest, pokieVersion: "1.3.0", configHash: game.getConfigHash!()}});
+            expect(artifact).toMatchObject({stake: finalResult.stake, betMode: finalResult.mode ?? "base", totalWin: finalResult.win});
+            expect(artifact.steps).toHaveLength(1);
+            expect(artifact.steps[0].screen).toEqual(descriptor.screen);
+            expect(artifact.totalWin).toBe(artifact.steps[0].totalWin);
+            expect(artifact.wins).toEqual(artifact.steps[0].wins);
+            for (const source of [artifact, ...artifact.steps]) {
+                expect(source).not.toHaveProperty("geometry");
+                expect(source).not.toHaveProperty("generatedScreen");
+                expect(source).not.toHaveProperty("sequenceSelections");
+            }
+        }
+        // Explicit geometry changes model provenance, while the executed step remains identical.
+        expect({...explicit.artifact, hash: undefined, provenance: undefined}).toEqual({...ordinary.artifact, hash: undefined, provenance: undefined});
     });
 
     it("preserves zero-overscan screen, stops, initialization consumption, payout and public shapes", () => {

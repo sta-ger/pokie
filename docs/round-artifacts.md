@@ -304,6 +304,16 @@ its owning result publication boundary. Its retained result exposes `audit`, or
 `auditUnavailableReason` when the model/codec cannot support exact reconstruction.
 Full history belongs to retained operation/results, not recursive session snapshots.
 
+New audit descriptors expose the final executed step as `artifact`, with its
+actual charge and charged bet mode. `logicalRound`, totals and the unchanged v1
+audit deliveries retain aggregate accounting separately. Package mode attribution
+uses `modePolicy.selection: "recorded-commands"`; those commands describe the
+actual explicit entries and zero-stake continuations, rather than a repeat-mode
+selector. Studio Session Spin displays and downloads this same step artifact.
+Previously exported v1 logical-round descriptors remain accepted against their
+original aggregate projection. Display-only deliveries reuse the last evaluated
+artifact and do not manufacture a new spin.
+
 Direct retries require a request identity or explicit logical delivery identity. Identical
 unkeyed calls execute separately. A retry returns its immutable original descriptor and
 digest; changed commands, construction context, disposition or model are rejected before
@@ -371,3 +381,5 @@ Root ESM/CJS exports provide recording and replay. The browser entry exports the
 recording types only; Studio uses the server verifier's verdict. Native outcome
 libraries retain their selection/hash profile; portable WASM retains its current
 runtime replay and compact state, without package audit support.
+
+Standard authored observations now include `holdAndWin` (locks, active flag, remaining respins and completion payout), `jackpot` (pool balances/statistics and award), and `chargedBetMode` events. Live VideoSlot payloads expose corresponding data and `chargedBetModeId` separately from selected `betModeId`. Shared player counters consume both live data and replay artifact events. Symbol-less jackpot wins carry a JSON `null` symbol ID. Seeded replay reconstructs commands; exact audit replay validates retained executable boundaries and outputs, including purchase and continuation commands.

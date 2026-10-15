@@ -209,8 +209,13 @@ Blueprint screenGeometry, generated packages and conversion support: see [the co
 
 ### Exact audit capability
 
-A generated seeded game declares its model hash, compatible executable schema and
-command capabilities. A hand-authored game must supply the same authorities for
+A generated game declares its model hash, compatible executable schema and
+command capabilities. Its sessions use the existing seeded RNG codec even when
+the caller omits a seed: that session randomly initializes its own RNG state,
+which is retained for restoration and exact audit. An omitted seed remains
+absent from request provenance; exact replay restores the captured state rather
+than recreating it from an invented caller seed. Explicit seeds keep their
+existing deterministic draw sequence. A hand-authored game must supply the same authorities for
 exact audit replay, including a `getConfigHash` covering effective math configuration
 and all custom collaborators. Manifest id/version alone cannot prove model equality.
 `createSession` must return a detached executable instance, never a live serving
@@ -334,3 +339,35 @@ extraction record, not a description of subsequent edits.
 Descriptors establish declared structural fidelity. Finite seeded comparisons cover exercised traces
 only; they cannot prove arbitrary custom executable-code equivalence. Missing/zero authored payouts
 and grants are preserved, never padded into equivalent-looking defaults.
+
+## Authored Hold&Win, jackpot and bet modes
+
+Blueprint `mechanics` accepts `freeGames`, `holdAndWin` and `jackpot`. Unknown fields and unsupported policies fail validation, including direct generator/render calls. Free games use `retriggerPolicy: "additive"` (also the legacy omitted default). Award counts start at one and awards may be zero. Hold&Win requires the explicit `reset-on-new-lock` policy:
+
+```json
+{
+  "holdAndWin": {
+    "minimumCount": 3,
+    "initialRespins": 3,
+    "retriggerPolicy": "reset-on-new-lock",
+    "symbolEffects": {"C": {"kind": "value", "amount": 2}, "M": {"kind": "multiplier", "factor": 3}},
+    "payout": {"type": "sum-with-multiplier", "amountsAreBetMultiples": true}
+  },
+  "jackpot": {
+    "pool": {"id": "mini", "type": "accumulating", "seedValue": 10},
+    "contribution": {"type": "percentage", "percentage": 0.01},
+    "trigger": {"type": "symbol-count", "symbolId": "J", "minimumCount": 3},
+    "award": "single-tier"
+  }
+}
+```
+
+All symbol references must be declared. A fixed pool uses `{"id":"mini","type":"fixed","amount":10}`. The percentage is a fraction in [0,1] of the actual charged stake, including ante/purchase multiplication. Zero-stake continuations contribute nothing. Fixed pools record contributions in statistics but their balance never grows. Accumulating pools are constructed fresh per session; each award pays the pre-reset value and resets to the configured seed.
+
+Assembly order is base (optionally free games), Hold&Win if present, executable bet modes if present, then jackpot. Jackpot remains outside suppression and mode multiplication. Free games and Hold&Win cannot coexist: their competing continuation/banking rules are rejected. Existing geometry restrictions remain. The [authored catalogue](v2-completion/V2C-12.md) records each supported variant/composition separately from the random-strategy compatibility catalogue.
+
+Executable modes require every mode's `runtimeType`, exactly one safe default, and compatible free games for purchases. `costMultiplier`/labels/`isDefault` without runtime semantics remain metadata; `forcedFreeGames` without runtime opt-in is invalid. Base/ante selections persist. Buy-feature selection is consumed once at entry and resets to the default; another purchase requires a fresh action after feature completion. Original charged mode attribution remains available separately from current selection.
+
+Generated CJS and TypeScript, exact descriptor extraction and real XLSX interchange retain these fields. The Mechanics workbook sheet uses `Mechanic` and `Configuration JSON` rows for extended configurations, preserving explicit retrigger policies; legacy free-game award sheets remain readable. Structural hashes include all mechanic and executable mode fields. Build conversions retain `build SOURCE --target TARGET`, explicit Save/Apply and new/empty destinations. WASM and paid-grid outcome-library/Stake projections reject Hold&Win/jackpot histories rather than erase them; generated games with these mechanics expose no paid-grid exact-enumeration constructor.
+
+Custom collectors/triggers/aggregators, stake-dependent/random jackpot triggers, custom contributions or entry handlers, multi-tier selection, and shared/distributed progressives remain custom code. A descriptor states representable data; it cannot certify opaque collaborator behavior. Built-in restoration certification requires resolved built-in collaborators and a restorable nested seeded session. Sharing a mutable accumulating pool invalidates built-in certification.

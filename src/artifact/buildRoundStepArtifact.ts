@@ -39,7 +39,8 @@ export function buildRoundStepArtifact<T extends string | number = string>(
         return {
             type: component.getType(),
             id: component.getId(),
-            symbolId: component.getSymbolId(),
+            // Symbol-less awards use the same null representation as the public projector.
+            symbolId: component.getSymbolId() ?? null,
             winAmount,
             winningPositions: component.getWinningPositions().map((position) => [...position]),
             multiplierBreakdown: component.getMultiplierBreakdown().map((breakdown) => ({

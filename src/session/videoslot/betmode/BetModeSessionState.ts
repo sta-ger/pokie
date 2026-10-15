@@ -5,5 +5,6 @@
 // through the same single featureState blob PokieDevServer captures (see captureBaseSessionState).
 export interface BetModeSessionState {
     betModeId: string;
+    chargedBetModeId?: string;
     base?: unknown;
 }

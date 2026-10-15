@@ -9,13 +9,12 @@ export function applyJackpotPoolStatisticsDelta(
     poolId: string,
     delta: Partial<JackpotPoolStatisticsSnapshot>,
 ): Readonly<Record<string, JackpotPoolStatisticsSnapshot>> {
-    const existing: JackpotPoolStatisticsSnapshot = current[poolId] ?? {awardCount: 0, totalAwarded: 0, totalContributed: 0};
-    return {
-        ...current,
-        [poolId]: {
-            awardCount: existing.awardCount + (delta.awardCount ?? 0),
-            totalAwarded: existing.totalAwarded + (delta.totalAwarded ?? 0),
-            totalContributed: existing.totalContributed + (delta.totalContributed ?? 0),
-        },
-    };
+    const existing: JackpotPoolStatisticsSnapshot = (Reflect.apply(Object.prototype.hasOwnProperty, current, [poolId]) ? current[poolId] : undefined) ?? {awardCount: 0, totalAwarded: 0, totalContributed: 0};
+    const next = Object.fromEntries(Object.entries(current));
+    Reflect.defineProperty(next, poolId, {value: {
+        awardCount: existing.awardCount + (delta.awardCount ?? 0),
+        totalAwarded: existing.totalAwarded + (delta.totalAwarded ?? 0),
+        totalContributed: existing.totalContributed + (delta.totalContributed ?? 0),
+    }, enumerable: true, configurable: true, writable: true});
+    return next;
 }

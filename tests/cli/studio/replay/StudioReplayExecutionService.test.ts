@@ -1,6 +1,8 @@
+import {existingMechanicsBlueprint, generatedMechanicsGame, replayModesBlueprint} from "../../../v2/fixtures/ExistingMechanicsGame.js";
 import {transactionalRoundGame} from "../../../v2/fixtures/TransactionalRoundGame.js";
 import {createOverscanGame} from "../../../v2/fixtures/OverscanGame.js";
 import {
+    AUTHORED_MECHANIC_CATALOG,
     CascadeResult,
     computeAuditRoundHash,
     ConvertableToSessionState,
@@ -1581,21 +1583,21 @@ describe("StudioReplayExecutionService (integration, real loadPokieGame + fixtur
         const game = await loadPokieGame(fixtureRoot);
         const directDescriptor = new ReplayRecorder().record({game, round: 37, seed: "compare-me"});
 
-        // ReplayRecorder (the CLI's own `pokie replay`) never builds an `artifact` or captures
-        // stateBefore/stateAfter -- only Studio's own execution path does (see
-        // StudioReplayExecutionService.buildArtifact()/captureBoundaryState()) -- so those fields are
-        // compared separately below rather than expected to match directDescriptor exactly.
+        // Both paths retain artifacts; Studio additionally captures session state/debug and
+        // records its injected host version. Compare financial fields independently of that evidence.
+        const {artifact: directArtifact, ...directWithoutArtifact} = directDescriptor;
         const {artifact, stateBefore, stateAfter, credits, ...descriptorWithoutExtras} = job.descriptor ?? {};
         // sessionId is excluded too: both StudioReplayExecutionService and ReplayRecorder each mint
         // their own fresh session identity independently (see each one's own doc comment on
         // `sessionId`), so two separate replays of the same seed/round never share one.
         expect(descriptorWithoutExtras).toEqual({
-            ...directDescriptor,
+            ...directWithoutArtifact,
             sessionId: job.descriptor?.sessionId,
             timestamp: job.descriptor?.timestamp,
             durationMs: job.descriptor?.durationMs,
         });
         expect(artifact?.screen).toEqual(job.descriptor?.screen);
+        expect(artifact).toMatchObject({stake: directArtifact!.stake, betMode: directArtifact!.betMode, totalWin: directArtifact!.totalWin});
         expect(stateAfter?.screen).toEqual(job.descriptor?.screen);
         expect(credits).toBeDefined();
         expect(stateBefore).toBeDefined();
@@ -1955,4 +1957,101 @@ it.each(["compatibility", "durable"] as const)("terminal %s save failure never p
         fs.rmSync(directory, {recursive: true, force: true});
         recorder.releaseAuditSession(session);
     }
+});
+
+describe("V2C-12 package simulation replay mode policy", () => {
+    function authoredGame(id: string) {
+        const blueprint = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
+        blueprint.reelStrips = [["A"], ["A"], ["A"]];
+        return generatedMechanicsGame(blueprint);
+    }
+
+    it.each(["ante", "buy", "buy-more"])("replays %s with the shared repeat selector and retains executed commands", async modeName => {
+        const game = authoredGame("modes");
+        const service = new StudioReplayExecutionService(undefined, () => Promise.resolve(game), 1);
+        const started = service.start("/simulation-modes", {round: 6, seed: "sample", simulationId: "retained-run", modeName});
+        if (started.status !== "created") throw new Error("Not created");
+        const job = await waitForTerminal(service, "/simulation-modes", started.job.id);
+        expect(job.status).toBe("completed");
+        expect(job.descriptor).toMatchObject({totalBet: expect.closeTo(({ante: 0.45, buy: 1.5, "buy-more": 2.5}[modeName]!)), modePolicy: {betModeId: modeName, selection: "repeat-when-available"}});
+        expect(job.descriptor?.commands).toHaveLength(6);
+        expect(job.descriptor?.commands?.filter(command => command.mode === modeName)).toHaveLength({ante: 6, buy: 3, "buy-more": 2}[modeName]!);
+        expect(job.descriptor?.commands?.filter(command => command.mode === undefined)).toHaveLength({ante: 0, buy: 3, "buy-more": 4}[modeName]!);
+        const repeated = new ReplayRecorder().record({game, seed: "sample", round: 6, betModeId: modeName});
+        expect(repeated.totalBet).toBe(job.descriptor!.totalBet);
+        expect(repeated.commands).toEqual(job.descriptor!.commands);
+        await service.cancelAll();
+    });
+
+    it("rejects unknown modes and changed simulation models without retained descriptors", async () => {
+        const game = authoredGame("accumulating-base-modes");
+        const service = new StudioReplayExecutionService(undefined, () => Promise.resolve(game));
+        for (const request of [{round: 2, modeName: "missing"}, {round: 2, modeName: "ante", expectedConfigHash: "changed"}]) {
+            const started = service.start("/invalid-mode", request);
+            if (started.status !== "created") throw new Error("Not created");
+            const job = await waitForTerminal(service, "/invalid-mode", started.job.id);
+            expect(job.status).toBe("failed");
+            expect(job.descriptor).toBeUndefined();
+        }
+        await service.cancelAll();
+    });
+});
+
+it.each([false, true])("replays and downloads an unseeded generated-package purchase audit (weighted=%s)", async weighted => {
+    const game = generatedMechanicsGame(replayModesBlueprint(weighted));
+    const recorder = new ReplayRecorder();
+    const session = game.createSession();
+    const descriptor = recorder.recordAudit(game, session, [{kind: "spin", mode: "buy", delivery: "composite", roundId: "unseeded-purchase"}],
+        {status: "calculated", sessionId: "recorded-play", durability: "detached"});
+    const service = new StudioReplayExecutionService(undefined, () => Promise.resolve(game), 1);
+    try {
+        const started = service.start("/unseeded-purchase", {round: 1, recording: JSON.parse(JSON.stringify(descriptor))});
+        if (started.status !== "created") throw new Error("Audit not created");
+        const job = await waitForTerminal(service, "/unseeded-purchase", started.job.id);
+        expect(job).toMatchObject({status: "completed", descriptor: {auditStatus: "verified", auditCompletion: "completed",
+            seed: null, artifact: {stake: 0, betMode: "buy"}, modePolicy: {betModeId: "buy", selection: "recorded-commands"}}});
+        expect(job.descriptor?.audit).toEqual(descriptor.audit);
+        expect(job.descriptor?.commands).toEqual(descriptor.commands);
+        expect(job.descriptor?.artifact).toEqual(descriptor.artifact);
+        const download = service.getDownload("/unseeded-purchase", started.job.id);
+        if (download.status !== "ok") throw new Error("Audit download unavailable");
+        expect(JSON.parse(JSON.stringify(download.descriptor))).toEqual(job.descriptor);
+    } finally {
+        await service.cancelAll();
+        recorder.releaseAuditSession(session);
+    }
+});
+
+describe.each([false, true])("F12 Studio replay attribution (weighted: %s)", weighted => {
+    it.each([
+        {mode: "base", stakes: Array<number>(8).fill(0.05)},
+        {mode: "ante", stakes: Array<number>(8).fill(0.05 * 1.5)},
+        {mode: "buy", stakes: [0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0]},
+        {mode: "buy-more", stakes: [1.25, 0, 0, 0, 1.25, 0, 0, 0]},
+    ])("publishes and downloads authoritative $mode steps, including completed continuations", async ({mode, stakes}) => {
+        const game = generatedMechanicsGame(replayModesBlueprint(weighted));
+        const service = new StudioReplayExecutionService(undefined, () => Promise.resolve(game), 1, undefined, undefined, undefined, "1.3.0");
+        try {
+            for (let round = 1; round <= stakes.length; round++) {
+                const started = service.start("/f12", {round, seed: "review-fixed", modeName: mode});
+                if (started.status !== "created") throw new Error("Not created");
+                const job = await waitForTerminal(service, "/f12", started.job.id);
+                expect(job.status).toBe("completed");
+                const descriptor = job.descriptor!;
+                expect(descriptor.totalBet).toBeCloseTo(stakes.slice(0, round).reduce((sum, stake) => sum + stake, 0), 12);
+                expect(descriptor.totalWin).toBe(0);
+                expect(descriptor.commands).toEqual(stakes.slice(0, round).map(stake => ({kind: "spin", ...(stake > 0 ? {mode} : {})})));
+                expect(descriptor.artifact).toMatchObject({stake: stakes[round - 1], betMode: mode});
+                expect(descriptor.artifact?.featureEvents).toContainEqual(expect.objectContaining({type: "chargedBetMode", data: {id: mode}}));
+                const shared = new ReplayRecorder().record({game, seed: "review-fixed", round, betModeId: mode});
+                expect(descriptor.artifact).toEqual(shared.artifact);
+                expect(descriptor.commands).toEqual(shared.commands);
+                const download = service.getDownload("/f12", started.job.id);
+                if (download.status !== "ok") throw new Error("Download unavailable");
+                expect(JSON.parse(JSON.stringify(download.descriptor))).toEqual(JSON.parse(JSON.stringify(descriptor)));
+            }
+        } finally {
+            await service.cancelAll();
+        }
+    });
 });

@@ -1,10 +1,10 @@
+import type {WinEvaluationSnapshot} from "../winevaluation/WinEvaluationSnapshot.js";
 import type {JackpotPoolStatisticsSnapshot} from "../../JackpotStatisticsSnapshot.js";
 
 // Deterministic serialization/replay shape for VideoSlotWithJackpotSession. "poolStatistics" is the
 // cumulative per-pool contribution/award-count/total-awarded map (see JackpotStateDetermining's own doc
-// comment on it being the single source of truth) — real, durable session state, unlike the transient "last
-// round outcome" (deliberately not part of this type at all, same reasoning as
-// VideoSlotWithHoldAndWinSessionState). Optional here, not because a freshly-captured state ever omits it
+// comment on it being the single source of truth) — real, durable session state. The settled lastOutcome is retained as plain data too, so restoring
+// observable output does not depend on a live WinEvaluationResult instance. Optional here, not because a freshly-captured state ever omits it
 // (toSessionState() always sets it), but so this type can also describe state captured by the *previous*
 // shape of this decorator, before poolStatistics existed — see "awardCount"/"totalAwarded" below.
 // "pools", when present, maps each configured pool's own getId() to whatever *that* pool's own
@@ -23,6 +23,7 @@ import type {JackpotPoolStatisticsSnapshot} from "../../JackpotStatisticsSnapsho
 // when poolStatistics itself is absent (see its own doc comment on the exact migration rule). Never read or
 // written as an independently authoritative representation alongside poolStatistics.
 export type VideoSlotWithJackpotSessionState = {
+    lastOutcome?: {kind: "ordinary"} | {kind: "awarded"; poolId: string; amount: number; symbolId?: string | number | symbol; baseWinAmount: number; baseEvaluation: WinEvaluationSnapshot<string | number | symbol>};
     poolStatistics?: Readonly<Record<string, JackpotPoolStatisticsSnapshot>>;
     /** @deprecated Legacy pre-poolStatistics shape; see this type's own doc comment. */
     awardCount?: number;

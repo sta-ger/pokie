@@ -153,3 +153,5 @@ and postpones bank release. The bank settles when the extended feature truly
 ends. Logical `totalWin` sums evaluated step wins; `totalPayout` sums actual
 settlement awards. Both delivery policies preserve this timing, including
 fractional entry stakes and zero continuation stake.
+
+Authored free games explicitly support additive retriggers (`retriggerPolicy: "additive"`; omission preserves this default), including one-scatter triggers and zero grants. Hold&Win instead resets its configured respin count on a new lock and decrements on misses, completing immediately on a full board or at exhaustion. Bet-multiple values use the triggering denomination across later bet changes and restart. Free games and Hold&Win are rejected together because they compete for progression/banking. See [authored mechanics](game-packages.md#authored-holdwin-jackpot-and-bet-modes) for configuration and composition.

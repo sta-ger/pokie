@@ -1,3 +1,4 @@
+import {observeVideoSlotFeatures} from "./observeVideoSlotFeatures.js";
 import {projectVideoSlotNetworkData} from "./projectVideoSlotNetworkData.js";
 import {ScreenProjection} from "../../session/videoslot/coordinates/ScreenProjection.js";
 import {projectVisiblePayline} from "../../session/videoslot/coordinates/projectVisibleWinData.js";
@@ -74,6 +75,7 @@ implements VideoSlotSessionSerializing<T> {
         const winningWays = this.getDerivedWinningWays(session, winEvaluationResult);
         const r: VideoSlotRoundNetworkData<T> = {
             ...this.baseSerializer.getRoundData(session),
+            ...observeVideoSlotFeatures<T>(session),
             reelsSymbols: visibleScreen,
             availableBets: session.getAvailableBets(),
             totalWin: session.getWinAmount(),
@@ -165,6 +167,11 @@ implements VideoSlotSessionSerializing<T> {
         }
         if (supportsBetModeSelecting(session)) {
             r.betModeId = session.getBetModeId();
+        }
+        for (const field of ["freeGamesNum", "freeGamesSum", "freeGamesBank"] as const) {
+            const getter = `get${field[0].toUpperCase()}${field.slice(1)}`;
+            const method: unknown = Reflect.get(session, getter);
+            if (typeof method === "function") Object.assign(r, {[field]: Reflect.apply(method, session, [])});
         }
         return geometry ? projectVideoSlotNetworkData(r, geometry) : r;
     }

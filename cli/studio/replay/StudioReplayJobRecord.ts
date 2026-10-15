@@ -35,6 +35,7 @@ export type StudioReplayJobRecord = {
     // This is the replay's configuration provenance even after the Blueprint Project is later saved
     // with different content.
     configHash?: string;
+    expectedConfigHash?: string;
     descriptor?: ReplayDescriptor;
     error?: string;
     abortController: AbortController;
@@ -42,11 +43,7 @@ export type StudioReplayJobRecord = {
     // given one -- see StudioReplayExecutionService.start()'s own doc comment. Undefined for an ordinary
     // "tsPackage"/"blueprint" replay, which run() drives through loadGame/GameSessionHandling.play() instead.
     outcomeSourceProject?: PokieProject;
-    // The real outcome-library mode this job replays/replayed -- undefined at start() time when the
-    // caller didn't request one explicitly, then overwritten with the actual resolved value (via
-    // resolveOutcomeLibraryModeName) once runOutcomeSourceReplay reads the manifest, mirroring
-    // StudioSimulationJobRecord's own modeName field. Always undefined for an ordinary
-    // "tsPackage"/"blueprint" replay.
+    // Package repeat-mode policy, or the concrete native outcome-library mode.
     modeName?: string;
     // This is a retained settled draw, rather than a newly executed reproduction.
     source?: "outcome-source-sample";

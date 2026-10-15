@@ -1,14 +1,16 @@
+import {generatedMechanicsGame, replayModesBlueprint} from "../../../../../v2/fixtures/ExistingMechanicsGame";
 import {useState} from "react";
 import {ReplayRecorder} from "../../../../../../src/replay/ReplayRecorder";
 import {transactionalRoundGame} from "../../../../../v2/fixtures/TransactionalRoundGame";
 import {MantineProvider} from "@mantine/core";
-import {render, screen} from "@testing-library/react";
+import {render, screen, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {readFileSync} from "fs";
 import path from "path";
-import type {StudioReplayJobView} from "../../../../../../cli/studio-client/src/api/types";
+import type {StudioReplayJobView, StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
 import {describeReplayProgress, describeReplayResult} from "../../../../../../cli/studio-client/src/domain/interpret/Replay";
 import {ReplayTab, type ExpectedReplayState} from "../../../../../../cli/studio-client/src/components/project/ReplayTab";
+import {StudioPlayService} from "../../../../../../cli/studio/runtime/StudioPlayService";
 
 // P5-POLISH-19: proves the real Studio Replay presentation entry point (ReplayTab -> RoundArtifactInspector
 // -> GameScreenView -> CanonicalPlayerView -> cli/client/player's own DOM functions) actually renders the
@@ -267,5 +269,85 @@ describe("ReplayTab audit wiring", () => {
         expect(screen.getByText(/Verified prefix: 1 deliveries.*Replay remains incomplete/)).toBeInTheDocument();
         expect(screen.getByText(/Next continuation: component-round, cursor 1/)).toBeInTheDocument();
         expect(screen.queryByRole("link", {name: "Download replay JSON"})).not.toBeInTheDocument();
+    });
+});
+
+describe("F12 seeded package replay presentation", () => {
+    it.each([false, true].flatMap(weighted => [
+        {mode: "ante", round: 1, stake: 0.05 * 1.5},
+        {mode: "buy", round: 1, stake: 0.5},
+        {mode: "buy", round: 2, stake: 0},
+        {mode: "buy", round: 3, stake: 0.5},
+        {mode: "buy-more", round: 3, stake: 0},
+        {mode: "buy-more", round: 4, stake: 0},
+        {mode: "buy-more", round: 5, stake: 1.25},
+    ].flatMap(input => [false, true].map(audit => ({...input, weighted, audit})))))("renders $mode step $round from the real producer (weighted=$weighted, audit=$audit)", async ({mode, round, stake, weighted, audit}) => {
+        const user = userEvent.setup();
+        const game = generatedMechanicsGame(replayModesBlueprint(weighted));
+        let descriptor = new ReplayRecorder().record({game, seed: "review-fixed", round, betModeId: mode});
+        let recordedSpin: StudioRuntimeSessionView | undefined;
+        if (audit) {
+            const service = new StudioPlayService(() => Promise.resolve(game));
+            try {
+                const created = await service.newSession("/audited-package");
+                if (created.status !== "ok") throw new Error("No public Play session");
+                let continuation: {roundId: string; cursor: number} | undefined;
+                for (let index = 0; index < round; index++) {
+                    const intent = continuation ? {requestId: `step-${index}`, delivery: "stepwise" as const, continuation}
+                        : {requestId: `step-${index}`, roundId: `step-${index}`, delivery: "stepwise" as const};
+                    const played = await service.spin(created.session.sessionId, "spin", undefined, continuation ? undefined : mode, intent);
+                    if (played.status !== "ok") throw new Error(JSON.stringify(played));
+                    recordedSpin = played.session;
+                    const logical = played.session.logicalRound!;
+                    continuation = logical.status === "pending" ? {roundId: logical.roundId, cursor: logical.cursor} : undefined;
+                }
+                descriptor = recordedSpin!.debug!.recording!;
+            } finally {
+                await service.reset();
+            }
+        }
+        const job: StudioReplayJobView = {id: "f12-replay", status: "completed", round, seed: "review-fixed", modeName: mode,
+            completedRounds: round, startedAt: "2026-10-14T00:00:00Z", durationMs: 0, descriptor};
+        const result = describeReplayResult(job);
+        expect(result?.artifact).toMatchObject({stake, betMode: mode});
+        expect(result?.artifact?.canonicalArtifact).toEqual(descriptor.artifact);
+        const downloaded = JSON.parse(JSON.stringify(descriptor)) as NonNullable<StudioReplayJobView["descriptor"]>;
+        const spin: StudioRuntimeSessionView = recordedSpin ?? {
+            sessionId: descriptor.sessionId, game: descriptor.game, credits: descriptor.credits, bet: 0.05,
+            win: descriptor.artifact?.totalWin, studioRound: round, studioSource: "play", studioOperation: "spin",
+            debug: {artifact: downloaded.artifact, recording: downloaded, stateBefore: descriptor.stateBefore, stateAfter: descriptor.stateAfter},
+        };
+        render(<MantineProvider><ReplayTab progress={describeReplayProgress(job)} result={result} error={undefined}
+            onRun={() => undefined} onCancel={() => undefined} onRetry={() => undefined}
+            listView={{status: "empty"}} listError={undefined} onRefreshList={() => undefined}
+            onInspectStored={() => Promise.resolve()} onCompareStored={() => undefined}
+            expected={{status: "empty"}} onLoadExpectedFromPaste={() => undefined} onClearExpected={() => undefined} comparison={undefined}
+            recentSpins={{status: "loaded", entries: [spin]}} recentSpinsError={undefined} onRefreshRecentSpins={() => undefined}
+            recentRuns={{status: "empty"}} recentRunsError={undefined} onRefreshRecentRuns={() => undefined} currentGame={descriptor.game} /></MantineProvider>);
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(screen.getByRole("button", {name: "Run again"}));
+        expect(screen.queryByText("Outcome library mode")).not.toBeInTheDocument();
+        expect(screen.getByRole("row", {name: `Package bet mode ${mode}`})).toBeInTheDocument();
+        if (audit) expect(screen.getByRole("row", {name: /Mode policy recorded-commands/})).toBeInTheDocument();
+        expect(screen.getByRole("row", {name: `Bet mode ${mode}`})).toBeInTheDocument();
+        const stakeRow = screen.getByRole("row", {name: `Stake ${String(stake)}`});
+        expect(Number(within(stakeRow).getByRole("cell").textContent)).toBe(downloaded.artifact?.stake);
+        const charged = screen.getByText("Charged mode").parentElement!;
+        expect(within(charged).getByText(mode)).toBeInTheDocument();
+        expect(screen.getByRole("link", {name: "Download replay JSON"})).toHaveAttribute("href", "/api/project/replays/f12-replay/download");
+        expect(downloaded.artifact?.featureEvents).toContainEqual({type: "chargedBetMode", data: {id: mode}});
+
+        await user.click(screen.getByRole("radio", {name: "Session Spin"}));
+        await user.click(screen.getByRole("button", {name: new RegExp(`Session 1.*Round ${spin.studioRound}.*Spin`)}));
+        if (audit) {
+            expect(screen.getByText(/Full audit export/)).toBeInTheDocument();
+            expect(screen.getByRole("button", {name: "Load for audit replay"})).toBeEnabled();
+            expect(screen.queryByText(/Audit unavailable --/)).not.toBeInTheDocument();
+        }
+        expect(screen.getByRole("row", {name: `Stake ${String(stake)}`})).toBeInTheDocument();
+        expect(screen.getByRole("row", {name: `Bet mode ${mode}`})).toBeInTheDocument();
+        expect(within(screen.getByText("Charged mode").parentElement!).getByText(mode)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Download JSON"})).toBeEnabled();
+        expect(Number(within(screen.getByRole("row", {name: `Stake ${String(stake)}`})).getByRole("cell").textContent)).toBe(downloaded.artifact?.stake);
     });
 });

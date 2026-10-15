@@ -594,7 +594,7 @@ describe("StudioArtifactBuildService", () => {
         const target = targets.find((candidate) => candidate.target === "wasm");
         expect(target?.unsupportedNotes.join(" ")).toMatch(/separate JavaScript evaluateWinMultiplier/);
         expect(target?.unsupportedNotes.join(" ")).toMatch(/30 total stop bits across all reels/);
-        expect(target?.unsupportedNotes.join(" ")).toMatch(/Rejects ways, clusters, mechanics.freeGames, and nonempty betModes/);
+        expect(target?.unsupportedNotes.join(" ")).toMatch(/Rejects ways, clusters, mechanics.freeGames, mechanics.holdAndWin, mechanics.jackpot, and nonempty betModes/);
     });
 
     it.each([

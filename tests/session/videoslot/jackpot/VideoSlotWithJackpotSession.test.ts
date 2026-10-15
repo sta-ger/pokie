@@ -1,4 +1,6 @@
+import {existingMechanicsBlueprint, generatedMechanicsGame, mechanicsSession} from "../../../v2/fixtures/ExistingMechanicsGame.js";
 import {
+    AUTHORED_MECHANIC_CATALOG, observeVideoSlotFeatures,
     AccumulatingJackpotPool,
     AggregateSimulationRunner,
     FixedJackpotPool,
@@ -486,5 +488,41 @@ describe("VideoSlotWithJackpotSession", () => {
             const base = new ScriptedFakeVideoSlotSession([allBlank()]);
             expect(() => new VideoSlotWithJackpotSession<string>(base)).not.toThrow();
         });
+    });
+});
+
+describe("V2C-12 canonical session-local jackpot", () => {
+    it.each(["fixed", "accumulating"] as const)("conserves %s actual ante contribution, zero-stake awards and isolated restore", kind => {
+        const b = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === `${kind}-holdAndWin-modes`)!);
+        b.reelStrips = [["C"], ["A"], ["J"]];
+        const game = generatedMechanicsGame(b),
+            first = mechanicsSession(game),
+            other = mechanicsSession(game);
+        first.setBetMode!("ante");
+        first.play();
+        const observed = observeVideoSlotFeatures(first);
+        expect(observed.jackpot?.statistics.mini.totalContributed).toBeCloseTo(0.05 * 1.5 * 0.1, 15);
+        expect(observed.jackpot?.award?.amount).toBeCloseTo(kind === "fixed" ? 10 : 10.0075, 12);
+        const restored = mechanicsSession(game);
+        restored.setCreditsAmount(first.getCreditsAmount());
+        restored.fromSessionState(JSON.parse(JSON.stringify(first.toSessionState())));
+        expect(observeVideoSlotFeatures(other).jackpot?.statistics).toEqual({});
+        first.play();
+        restored.play();
+        expect(first.toSessionState()).toEqual(restored.toSessionState());
+        expect(first.getWinAmount()).toBe(restored.getWinAmount());
+        expect(observeVideoSlotFeatures(restored).jackpot?.statistics.mini).toMatchObject({awardCount: 2, totalContributed: observed.jackpot!.statistics.mini.totalContributed});
+        expect(first.getCreditsAmount()).toBe(restored.getCreditsAmount());
+    });
+
+    it("rejects corrupt pool identity/balance/statistics and nested state before mutation", () => {
+        const b = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === "accumulating-base")!);
+        const session = mechanicsSession(generatedMechanicsGame(b));
+        session.play();
+        const before = JSON.parse(JSON.stringify(session.toSessionState()));
+        for (const corrupt of [{...before, pools: {mini: {value: -1}}}, {...before, pools: {unknown: {value: 20}}}, {...before, poolStatistics: {unknown: {awardCount: 1, totalAwarded: 1, totalContributed: 0}}}, {...before, poolStatistics: {mini: {awardCount: 1.5, totalAwarded: 1, totalContributed: 0}}}, {...before, base: {}}]) {
+            expect(() => session.fromSessionState(corrupt)).toThrow();
+            expect(session.toSessionState()).toEqual(before);
+        }
     });
 });

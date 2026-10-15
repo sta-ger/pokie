@@ -118,7 +118,7 @@ export function canonicalWinKind(kind: WinHighlightKind): WinHighlightKind {
 export function canonicalWinLabel(
     kind: WinHighlightKind,
     id: string,
-    symbolId: string | number,
+    symbolId: string | number | null,
     winAmount: number,
     positions: readonly (readonly number[])[],
 ): string {
@@ -210,7 +210,7 @@ export function deriveTotalWin(response: VideoSlotRoundResponse): number | undef
 export type GenericRoundArtifactWin = {
     type: string;
     id: string;
-    symbolId: string | number;
+    symbolId: string | number | null;
     winAmount: number;
     winningPositions: readonly (readonly number[])[];
     metadata?: Record<string, unknown>;
@@ -255,7 +255,7 @@ export function deriveWinHighlightsFromRoundArtifactWins(wins: readonly GenericR
     });
 }
 
-export type FeatureCounter = {label: string; value: number};
+export type FeatureCounter = {label: string; value: number | string};
 
 // Free games is the one feature pokie-examples' own shared UI (data.ts/utils.ts's setCountersValues)
 // rendered generically across every game that has it -- carried through as-is rather than generalized
@@ -271,6 +271,18 @@ export function deriveFeatureCounters(response: VideoSlotRoundResponse): Feature
     if (typeof response.freeGamesBank === "number") {
         counters.push({label: "FG bank", value: response.freeGamesBank});
     }
+    if (typeof response.chargedBetModeId === "string") counters.push({label: "Charged mode", value: response.chargedBetModeId});
+    const hold = asRecord(response.holdAndWin);
+    if (Array.isArray(hold.locks)) counters.push({label: "Locked symbols", value: hold.locks.length});
+    if (typeof hold.respinsRemaining === "number") counters.push({label: "Respins", value: hold.respinsRemaining});
+    if (typeof hold.payout === "number") counters.push({label: "Hold & Win payout", value: hold.payout});
+    const jackpot = asRecord(response.jackpot);
+    if (Array.isArray(jackpot.pools)) for (const pool of jackpot.pools) {
+        const data = asRecord(pool);
+        if (typeof data.value === "number") counters.push({label: `Jackpot ${String(data.id)}`, value: data.value});
+    }
+    const award = asRecord(jackpot.award);
+    if (typeof award.amount === "number") counters.push({label: "Jackpot award", value: award.amount});
     return counters;
 }
 
@@ -333,4 +345,14 @@ export function deriveAvailableBetModeIds(availableBetModeIds: unknown): string[
 
 export function deriveBetModeId(betModeId: unknown): string | undefined {
     return typeof betModeId === "string" ? betModeId : undefined;
+}
+
+/** Artifact observations use the same counters as live responses, including replay without a session. */
+export function deriveFeatureCountersFromEvents(events: readonly {type: string; data?: Record<string, unknown>}[]): FeatureCounter[] {
+    const response: VideoSlotRoundResponse = {};
+    for (const event of events) {
+        if (event.type === "holdAndWin" || event.type === "jackpot") response[event.type] = event.data;
+        if (event.type === "chargedBetMode") response.chargedBetModeId = event.data?.id;
+    }
+    return deriveFeatureCounters(response);
 }

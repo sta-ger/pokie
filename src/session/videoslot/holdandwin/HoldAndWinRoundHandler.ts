@@ -1,3 +1,6 @@
+import {SymbolSetHoldAndWinCollector} from "./SymbolSetHoldAndWinCollector.js";
+import {MinimumCountHoldAndWinTrigger} from "./MinimumCountHoldAndWinTrigger.js";
+import {SumWithMultiplierHoldAndWinPayoutAggregator} from "./SumWithMultiplierHoldAndWinPayoutAggregator.js";
 import {rejectScreenGeometry} from "../coordinates/projectSymbolsCombination.js";
 import {emptyHoldAndWinBaseRoundResult, type HoldAndWinBaseRoundResult} from "./HoldAndWinBaseRoundResult.js";
 import type {HoldAndWinCollecting} from "./HoldAndWinCollecting.js";
@@ -62,6 +65,14 @@ export class HoldAndWinRoundHandler<T extends string | number | symbol = string>
         this.payoutAggregator = payoutAggregator;
     }
 
+    public getRestorationConfig() {
+        if (this.constructor !== HoldAndWinRoundHandler || !(this.collector instanceof SymbolSetHoldAndWinCollector) ||
+            !(this.trigger instanceof MinimumCountHoldAndWinTrigger) || !this.trigger.isStatelessForSessionRestoration() ||
+            !(this.payoutAggregator instanceof SumWithMultiplierHoldAndWinPayoutAggregator) || !this.payoutAggregator.isStatelessForSessionRestoration()) return undefined;
+        const symbolEffects = this.collector.getRestorationEffects();
+        return symbolEffects ? {initialRespins: this.initialRespins, symbolEffects} : undefined;
+    }
+
     // A completed feature leaves its own payout/locked set visible for the round that just finished it to
     // report — clear both before a fresh, unrelated round starts, mirroring FreeGamesRoundHandler's own
     // "clear stale state before a new round" reset. A no-op on every round except the one right after a
@@ -89,6 +100,7 @@ export class HoldAndWinRoundHandler<T extends string | number | symbol = string>
                 session.setHoldAndWinLastRoundOutcome({kind: "ordinary"});
                 return;
             }
+            session.setHoldAndWinEntryBet?.(session.getBet());
             session.setHoldAndWinActive(true);
             session.setLockedHoldAndWinSymbols(candidates);
             session.setHoldAndWinRespinsRemaining(this.initialRespins);
@@ -129,7 +141,7 @@ export class HoldAndWinRoundHandler<T extends string | number | symbol = string>
 
     private complete(session: VideoSlotWithHoldAndWinSessionHandling<T>, baseRoundResult: HoldAndWinBaseRoundResult<T>): void {
         const lockedSymbols = session.getLockedHoldAndWinSymbols();
-        const payout = this.payoutAggregator.aggregate(lockedSymbols, session.getBet());
+        const payout = this.payoutAggregator.aggregate(lockedSymbols, session.getHoldAndWinEntryBet?.() ?? session.getBet());
         session.setHoldAndWinPayout(payout);
         session.setCreditsAmount(session.getCreditsAmount() + payout);
         session.setHoldAndWinActive(false);

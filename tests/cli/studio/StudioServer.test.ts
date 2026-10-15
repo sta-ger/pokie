@@ -5603,7 +5603,7 @@ describe("StudioServer", () => {
             const {status, body} = await pollUntilTerminal(`${baseUrl}/api/project/replays/${replayBody.id}`);
             expect(status).toBe(200);
             expect(body.status).toBe("completed");
-            const descriptor = body.descriptor as {sessionId: string; totalBet: number; totalWin: number};
+            const descriptor = body.descriptor as import("@fromstan/pokie").ReplayDescriptor;
 
             const {status: spinsStatus, body: spinsBody} = await get(`${baseUrl}/api/project/rounds`);
             expect(spinsStatus).toBe(200);
@@ -5611,7 +5611,7 @@ describe("StudioServer", () => {
                 sessionId: string;
                 bet?: number;
                 win?: number;
-                debug?: {artifact?: unknown};
+                debug?: {artifact?: unknown; recording?: import("@fromstan/pokie").ReplayDescriptor};
                 studioSource?: string;
                 studioOperation?: string;
                 studioProjectRoot?: string;
@@ -5624,14 +5624,24 @@ describe("StudioServer", () => {
             expect(entries[0].win).toBe(descriptor.totalWin);
             // createSeedAwareFakeGame has no getWinEvaluationResult(), so it isn't video-slot-shaped
             // enough to build a real RoundArtifact from (see StudioReplayExecutionService.hasVideoSlotShape)
-            // -- `debug` must stay genuinely absent here, never fabricated, matching descriptor.artifact
-            // itself also being undefined for this exact fake game.
+            // -- retain the real replay recording without fabricating an artifact for this fake game.
             expect(descriptor).not.toHaveProperty("artifact");
-            expect(entries[0].debug).toBeUndefined();
+            expect(entries[0].debug).not.toHaveProperty("artifact");
+            expect(entries[0].debug?.recording).toEqual(descriptor);
+            expect(entries[0].debug?.recording).toMatchObject({
+                seed: "sim-seed", round: 3, auditStatus: "legacy-best-effort",
+                stateBefore: descriptor.stateBefore, stateAfter: descriptor.stateAfter,
+            });
+            expect(descriptor.stateBefore).toBeDefined();
+            expect(descriptor.stateAfter).toBeDefined();
+            const download = await fetch(`${baseUrl}/api/project/replays/${replayBody.id}/download`);
+            expect(download.status).toBe(200);
+            expect(await download.json()).toEqual(entries[0].debug?.recording);
             expect(entries[0].studioSource).toBe("simulation-sample");
             expect(entries[0].studioOperation).toBe("simulation-sample");
             expect(entries[0].studioProjectRoot).toBe(projectRoot.projectRoot);
             expect(entries[0].studioSeed).toBe("sim-seed");
+            // The history ordinal is independent of the executed replay round retained above.
             expect(entries[0].studioRound).toBe(1);
         });
 

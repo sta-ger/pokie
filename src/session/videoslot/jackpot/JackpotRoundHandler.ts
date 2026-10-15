@@ -1,3 +1,7 @@
+import {PercentageOfBetJackpotContributor} from "./PercentageOfBetJackpotContributor.js";
+import {SymbolCountJackpotTrigger} from "./SymbolCountJackpotTrigger.js";
+import {NoJackpotTrigger} from "./NoJackpotTrigger.js";
+import {SingleTierJackpotAwarding} from "./SingleTierJackpotAwarding.js";
 import {rejectScreenGeometry} from "../coordinates/projectSymbolsCombination.js";
 import {WinEvaluationResult} from "../winevaluation/WinEvaluationResult.js";
 import {applyJackpotPoolStatisticsDelta} from "./applyJackpotPoolStatisticsDelta.js";
@@ -39,6 +43,12 @@ export class JackpotRoundHandler<T extends string | number | symbol = string> im
         this.contributor = contributor;
         this.trigger = trigger;
         this.awarding = awarding;
+    }
+
+    public isStatelessForSessionRestoration(): boolean {
+        return this.constructor === JackpotRoundHandler && this.contributor instanceof PercentageOfBetJackpotContributor && this.contributor.isStatelessForSessionRestoration() &&
+            (this.trigger instanceof SymbolCountJackpotTrigger || this.trigger instanceof NoJackpotTrigger) && this.trigger.isStatelessForSessionRestoration() &&
+            this.awarding instanceof SingleTierJackpotAwarding && this.awarding.isStatelessForSessionRestoration();
     }
 
     public afterRoundPlayed(

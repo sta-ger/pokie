@@ -15,8 +15,18 @@ export function formatConfidenceInterval(interval: {low: number; high: number} |
 // view -- one formatting implementation, not duplicated, same reasoning as the old dom.ts's
 // renderSimulationReport (which both call sites shared via SimulationReportElements/prefix).
 export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
+    if ("modes" in view) return <div><Text>All modes — independent results per mode</Text>{Object.entries(view.modes).map(([id, mode]) => <PageSection key={id} legend={`Mode: ${id}`}><SimulationReportDisplay view={mode} /></PageSection>)}</div>;
     return (
         <div>
+            {view.betMode !== undefined && <Text>Bet mode: {view.betMode} · selected before each available entry</Text>}
+            {view.targetRtp !== undefined && <Text>Target RTP: {(view.targetRtp * 100).toFixed(2)}% · deviation: {((view.rtpDeviation ?? 0) * 100).toFixed(2)} pp</Text>}
+            {view.jackpot && <PageSection legend="Jackpots">
+                <Text>Awards: {view.jackpot.awardCount}; awarded: {view.jackpot.totalAwarded}; contributed: {view.jackpot.totalContributed}</Text>
+                <Text>Jackpot RTP contribution: {(view.jackpot.contribution * 100).toFixed(4)}% of actual stake {view.totalBet}</Text>
+                <Text size="sm">Authored accumulating pools are local to each simulation session/worker. Fixed-pool contributions are statistics, not balance growth.</Text>
+                <Table><Table.Thead><Table.Tr>{["Pool", "Awards", "Awarded", "Contributed", "RTP contribution"].map(label => <Table.Th key={label}>{label}</Table.Th>)}</Table.Tr></Table.Thead>
+                    <Table.Tbody>{Object.entries(view.jackpot.pools).map(([id, pool]) => <Table.Tr key={id}><Table.Td>{id}</Table.Td><Table.Td>{pool.awardCount}</Table.Td><Table.Td>{pool.totalAwarded}</Table.Td><Table.Td>{pool.totalContributed}</Table.Td><Table.Td>{(pool.contribution * 100).toFixed(4)}%</Table.Td></Table.Tr>)}</Table.Tbody></Table>
+            </PageSection>}
             {view.reelSequences?.map(reel => <PageSection key={reel.reelIndex} legend={`Weighted reel ${reel.reelIndex + 1}`}>
                 <Text>{reel.context}: {reel.selections} selections</Text>
                 <Text size="sm">Observed frequency = count / selections.</Text>

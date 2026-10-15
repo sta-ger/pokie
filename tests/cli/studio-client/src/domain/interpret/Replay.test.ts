@@ -1154,3 +1154,18 @@ it("labels an unavailable accepted delivery as an incomplete audit export and wi
     expect(comparison.status).toBe("unavailable");
     expect(comparison.unavailableReason).toBe("Verified executable prefix; operation remains pending.");
 });
+
+describe("F12 replay source mode interpretation", () => {
+    it("keeps package mode policy separate from native outcome-library provenance", () => {
+        const descriptor = createDescriptor({modePolicy: {betModeId: "ante", selection: "repeat-when-available"},
+            artifact: createArtifact({betMode: "ante", stake: 0.05 * 1.5, featureEvents: [{type: "chargedBetMode", data: {id: "ante"}}]})});
+        const view = describeReplayResult(createJob({status: "completed", modeName: "ante", descriptor}));
+        expect(view?.modeName).toBeUndefined();
+        expect(view?.modePolicy?.betModeId).toBe("ante");
+        expect(view?.artifact).toMatchObject({betMode: "ante", stake: 0.05 * 1.5});
+        expect(view?.artifact?.featureEvents).toEqual(descriptor.artifact?.featureEvents);
+        const native = createDescriptor({outcomeSource: {libraryId: "library", libraryHash: "hash", modeName: "native-ante", seed: "seed", round: 1,
+            selectionAlgorithm: "derived-round-seed-v1", outcomeId: "1", weight: 1, totalWin: 0, payoutMultiplier: 0, timestamp: 0, durationMs: 0}});
+        expect(describeReplayResult(createJob({status: "completed", modeName: "stale-mode", descriptor: native}))).toMatchObject({modeName: "native-ante"});
+    });
+});

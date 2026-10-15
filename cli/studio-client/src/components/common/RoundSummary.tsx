@@ -60,7 +60,7 @@ export function RoundSummary({
     const [artifactInspectorOpen, setArtifactInspectorOpen] = useState(false);
     if (session.debug?.artifact) {
         const artifact = describeRoundArtifact(session.debug.artifact);
-        const presentation = describeRoundPresentation(session.debug.stateBefore, session.debug.stateAfter, artifact.betMode);
+        const presentation = describeRoundPresentation(session.debug.stateBefore, session.debug.stateAfter, artifact.betMode, artifact.steps[artifact.steps.length - 1]?.featureEvents);
         return (
             <div>
                 {artifact.totalWin > 0 ? (

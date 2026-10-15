@@ -1,6 +1,7 @@
+import {generatedMechanicsGame, replayModesBlueprint} from "../v2/fixtures/ExistingMechanicsGame.js";
 import {transactionalRoundGame} from "../v2/fixtures/TransactionalRoundGame.js";
 import {createOverscanGame} from "../v2/fixtures/OverscanGame.js";
-import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameContext, PokieGameManifest, ReplayRecorder, ReplayDescriptor, SessionRuntime, AuditRoundReplay, AuditReplayError, ConvertableToSessionState, captureAuditBoundary, SessionCommand} from "@fromstan/pokie";
+import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameContext, PokieGameManifest, ReplayRecorder, ReplayDescriptor, SessionRuntime, AuditRoundReplay, AuditReplayError, ConvertableToSessionState, captureAuditBoundary, SessionCommand, validateAuditReplayDescriptor} from "@fromstan/pokie";
 import path from "path";
 
 function createFakeSession(): GameSessionHandling & {getSymbolsCombination(): {toMatrix(): string[][]}} {
@@ -465,6 +466,65 @@ describe("direct audit operation identity and retention", () => {
         expect(() => recorder.recordAudit(game, session, [{kind: "spin"}], disposition)).toThrow(failure!);
         expect(() => recorder.recordAudit(game, session, [{kind: "spin", bet: 7.5}], disposition)).toThrow("audit-identity at operation");
         expect(play).toHaveBeenCalledTimes(1);
+        recorder.releaseAuditSession(session);
+    });
+});
+
+describe("F12 seeded step artifact attribution", () => {
+    describe.each([false, true])("weighted sequences: %s", weighted => {
+        it.each([
+            {mode: "base", stakes: [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]},
+            {mode: "ante", stakes: Array<number>(8).fill(0.05 * 1.5)},
+            {mode: "buy", stakes: [0.5, 0, 0.5, 0, 0.5, 0, 0.5, 0]},
+            {mode: "buy-more", stakes: [1.25, 0, 0, 0, 1.25, 0, 0, 0]},
+        ])("retains executed $mode stake/mode at entry, continuation, completion and repurchase", ({mode, stakes}) => {
+            const game = generatedMechanicsGame(replayModesBlueprint(weighted));
+            for (let round = 1; round <= stakes.length; round++) {
+                const execution = new ReplayRecorder().execute({game, seed: "review-fixed", round, betModeId: mode});
+                const results: ReturnType<SessionRuntime["execute"]>[] = [];
+                let next = execution.next();
+                while (!next.done) {
+                    results.push(next.value.result);
+                    next = execution.next();
+                }
+                const descriptor = next.value;
+                const result = results[results.length - 1];
+                expect(results.map(result => result.status === "played" ? result.stake : undefined)).toEqual(stakes.slice(0, round));
+                expect(result).toMatchObject({status: "played", mode, stake: stakes[round - 1]});
+                expect(descriptor.totalBet).toBeCloseTo(stakes.slice(0, round).reduce((sum, stake) => sum + stake, 0), 12);
+                expect(descriptor.totalWin).toBe(0);
+                expect(descriptor.commands).toEqual(stakes.slice(0, round).map(stake => ({kind: "spin", ...(stake > 0 ? {mode} : {})})));
+                expect(descriptor.artifact).toMatchObject({betMode: mode, stake: stakes[round - 1]});
+                expect(descriptor.artifact?.featureEvents).toContainEqual(expect.objectContaining({type: "chargedBetMode", data: {id: mode}}));
+                expect(Boolean(descriptor.artifact?.sequenceSelections?.length)).toBe(weighted);
+            }
+        });
+    });
+});
+
+describe("generated package audit step exports", () => {
+    it.each([false, true])("retains executed steps and v1 aggregate evidence without a caller seed (weighted=%s)", weighted => {
+        const game = generatedMechanicsGame(replayModesBlueprint(weighted));
+        const session = game.createSession();
+        const recorder = new ReplayRecorder();
+        const descriptor = recorder.recordAudit(game, session, [{kind: "spin", mode: "buy", roundId: "purchase", delivery: "composite"}],
+            {status: "calculated", sessionId: "unseeded", durability: "detached"});
+        expect(descriptor).toMatchObject({seed: null, unit: "step", totalBet: 0.5, logicalRound: {status: "completed"},
+            artifact: {stake: 0, betMode: "buy"}, modePolicy: {betModeId: "buy", selection: "recorded-commands"}});
+        expect(descriptor.audit?.deliveries.map(delivery => delivery.result.stake)).toEqual([0.5, 0]);
+        const deliveries = descriptor.audit!.deliveries;
+        expect(deliveries[deliveries.length - 1].artifact?.stake).toBe(0.5);
+        expect(descriptor.artifact?.steps).toHaveLength(1);
+        expect(() => validateAuditReplayDescriptor(JSON.parse(JSON.stringify(descriptor)), game)).not.toThrow();
+        expect(recorder.replay(game, descriptor.audit!)).toMatchObject({auditStatus: "verified", artifact: descriptor.artifact, modePolicy: descriptor.modePolicy});
+        const legacy = recorder.describeAudit(descriptor.audit!, "logical-round");
+        expect(legacy).toMatchObject({unit: "logical-round", artifact: {stake: 0.5}});
+        expect(legacy.modePolicy).toBeUndefined();
+        expect(() => validateAuditReplayDescriptor(JSON.parse(JSON.stringify(legacy)), game)).not.toThrow();
+        for (const forged of [{...descriptor, modePolicy: {betModeId: "base", selection: "recorded-commands"}},
+            {...descriptor, modePolicy: {betModeId: "buy", selection: "repeat-when-available"}}, {...descriptor, artifact: legacy.artifact}]) {
+            expect(() => validateAuditReplayDescriptor(forged, game)).toThrow(/Outer descriptor contradicts/);
+        }
         recorder.releaseAuditSession(session);
     });
 });

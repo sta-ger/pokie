@@ -5,6 +5,9 @@ import {
     isWasmComponentFile,
     loadPokieWasmFileRuntime,
     loadPokieGame,
+    releasePokieGame,
+    isSimulationReportSet,
+    SimulationReportSet,
     OUTCOME_SOURCE_SIMULATE_OPERATION,
     OutcomeLibraryBundleOutcomeSource,
     OutcomeLibraryBundleReader,
@@ -48,7 +51,7 @@ export type StudioSimulationStartResult =
     | {status: "unsupported"; message: string};
 
 export type GetSimulationReportResult =
-    | {status: "ok"; report: SimulationReport; statistics?: StudioSimulationStatisticsView}
+    | {status: "ok"; report: SimulationReport | SimulationReportSet; statistics?: StudioSimulationStatisticsView}
     | {status: "not-found"}
     // Either not terminal yet (queued/running) or terminal without a report (failed/cancelled) —
     // `jobStatus` tells the caller which, so it can phrase a precise message either way.
@@ -332,16 +335,17 @@ export class StudioSimulationService {
             status: "completed",
             game: {id: report.game.id, version: report.game.version},
             requestedRounds: report.requestedRounds,
-            actualRounds: report.rounds,
+            modes: isSimulationReportSet(report) ? Object.fromEntries(Object.entries(report.modes).map(([id, mode]) => [id, {rounds: mode.rounds, betMode: mode.betMode}])) : undefined,
+            actualRounds: isSimulationReportSet(report) ? undefined : report.rounds,
             seed: record.seed,
             workers: report.workers ?? record.workers,
-            rtp: report.rtp,
-            hitFrequency: report.hitFrequency,
-            maxWin: report.maxWin,
+            rtp: isSimulationReportSet(report) ? undefined : report.rtp,
+            hitFrequency: isSimulationReportSet(report) ? undefined : report.hitFrequency,
+            maxWin: isSimulationReportSet(report) ? undefined : report.maxWin,
             startedAt: new Date(record.startedAt).toISOString(),
             completedAt: new Date(record.completedAt ?? record.startedAt).toISOString(),
             durationMs: record.durationMs,
-            hasWarnings: (report.warnings?.length ?? 0) > 0,
+            hasWarnings: (isSimulationReportSet(report) ? Object.values(report.modes).some(mode => (mode.warnings?.length ?? 0) > 0) : (report.warnings?.length ?? 0) > 0),
             modeName: record.modeName,
         };
     }
@@ -373,57 +377,87 @@ export class StudioSimulationService {
         }
 
         try {
-            const runner = this.createParallelSimulationRunner(runtime.runtimePath, record.rounds, {
-                seed: record.seed,
-                workers: record.workers,
-                loadGame: this.loadGame,
-                chunkSize: this.chunkSize,
-                yieldToEventLoop: this.yieldToEventLoop,
-                signal: record.abortController.signal,
-                workerEntryUrl: this.workerEntryUrl,
-                onProgress: (roundsCompleted) => {
-                    record.roundsCompleted = roundsCompleted;
-                    record.durationMs = this.now() - record.startedAt;
-                    this.jobService?.progress(record.id, {stage: "simulation", unit: "rounds", current: roundsCompleted, total: record.rounds});
-                },
-            });
-            const result = await runner.run();
+            let declaredModes;
+            if (record.modeName !== undefined) {
+                const game = await this.loadGame(runtime.runtimePath);
+                try {
+                    declaredModes = game.getBetModes?.();
+                } finally {
+                    await releasePokieGame(game);
+                }
+                if (record.modeName === "all" && !declaredModes?.length) throw new Error('All-mode simulation requires declared executable bet modes.');
+                if (record.modeName !== "all" && !declaredModes?.some(mode => mode.id === record.modeName)) throw new Error(`Unknown bet mode "${record.modeName}".`);
+            }
+            const modeIds = record.modeName === "all" ? declaredModes!.map(mode => mode.id) : [record.modeName];
+            const reports: Record<string, SimulationReport> = {};
+            let completedRounds = 0;
+            record.modeCount = modeIds.length;
+            for (const modeId of modeIds) {
+                if (record.abortController.signal.aborted) throw new SimulationCancelledError();
+                const modeStartedAt = record.modeName === "all" ? this.now() : record.startedAt;
+                const runner = this.createParallelSimulationRunner(runtime.runtimePath, record.rounds, {
+                    seed: record.seed,
+                    betModeId: modeId,
+                    workers: record.workers,
+                    loadGame: this.loadGame,
+                    chunkSize: this.chunkSize,
+                    yieldToEventLoop: this.yieldToEventLoop,
+                    signal: record.abortController.signal,
+                    workerEntryUrl: this.workerEntryUrl,
+                    onProgress: (roundsCompleted) => {
+                        record.roundsCompleted = completedRounds + roundsCompleted;
+                        record.durationMs = this.now() - record.startedAt;
+                        this.jobService?.progress(record.id, {stage: "simulation", unit: "rounds", current: record.roundsCompleted, total: modeIds.length * record.rounds});
+                    },
+                });
+                const result = await runner.run();
 
-            // The runner is the authority on both the final number of rounds and why it stopped.
-            // Capture its final duration before building the immutable report: the last progress
-            // callback can precede runner cleanup, so using its older value made a completed
-            // one-chunk run look instantaneous and dropped adaptive-stop metadata in Studio.
-            const finalRoundsCompleted = result.statistics.rounds;
-            const finalDurationMs = this.now() - record.startedAt;
-            record.roundsCompleted = finalRoundsCompleted;
-            record.durationMs = finalDurationMs;
+                // The runner is the authority on both the final number of rounds and why it stopped.
+                // Capture its final duration before building the immutable report: the last progress
+                // callback can precede runner cleanup, so using its older value made a completed
+                // one-chunk run look instantaneous and dropped adaptive-stop metadata in Studio.
+                const finalRoundsCompleted = result.statistics.rounds;
+                const finalDurationMs = this.now() - modeStartedAt;
+                Object.assign(record, {roundsCompleted: completedRounds + finalRoundsCompleted, durationMs: finalDurationMs});
 
-            const report: SimulationReport = this.reportBuilder.build({
-                manifest: result.manifest,
-                requestedRounds: record.rounds,
-                seed: record.seed,
-                statistics: result.statistics,
-                durationMs: record.durationMs,
-                packageRoot: record.projectRoot,
-                configHash: result.configHash,
-                pokieVersion: this.pokieVersion,
-                breakdown: result.breakdown,
-                workers: result.workers,
-                workerSeedStrategy: result.workerSeedStrategy,
-                stopReason: result.stopReason,
-                convergence: result.convergence,
-            });
+                const report: SimulationReport = this.reportBuilder.build({
+                    manifest: result.manifest,
+                    requestedRounds: record.rounds,
+                    seed: record.seed,
+                    statistics: result.statistics,
+                    durationMs: finalDurationMs,
+                    packageRoot: record.projectRoot,
+                    configHash: result.configHash,
+                    pokieVersion: this.pokieVersion,
+                    breakdown: result.breakdown,
+                    jackpot: result.jackpot,
+                    betMode: result.betMode,
+                    targetRtp: declaredModes?.find(mode => mode.id === modeId)?.targetRtp,
+                    workers: result.workers,
+                    workerSeedStrategy: result.workerSeedStrategy,
+                    stopReason: result.stopReason,
+                    convergence: result.convergence,
+                });
 
+                if (record.abortController.signal.aborted) throw new SimulationCancelledError();
+                if (modeId !== undefined) Reflect.defineProperty(reports, modeId, {value: report, enumerable: true});
+                record.report = report;
+                record.statistics = {
+                    volatility: result.statistics.volatility,
+                    payoutStandardDeviation: result.statistics.payoutStandardDeviation,
+                    returnStandardDeviation: result.statistics.returnStandardDeviation,
+                    averagePayoutConfidenceInterval95: result.statistics.averagePayoutConfidenceInterval95,
+                    rtpConfidenceInterval95: result.statistics.rtpConfidenceInterval95,
+                    payoutHistogram: result.statistics.payoutHistogram,
+                };
+                completedRounds += result.statistics.rounds;
+            }
+            if (record.modeName === "all") {
+                const first = Object.values(reports)[0];
+                record.report = {game: first.game, requestedRounds: record.rounds, seed: first.seed, workers: first.workers, modes: reports};
+                Reflect.deleteProperty(record, "statistics");
+            }
             record.status = "completed";
-            record.report = report;
-            record.statistics = {
-                volatility: result.statistics.volatility,
-                payoutStandardDeviation: result.statistics.payoutStandardDeviation,
-                returnStandardDeviation: result.statistics.returnStandardDeviation,
-                averagePayoutConfidenceInterval95: result.statistics.averagePayoutConfidenceInterval95,
-                rtpConfidenceInterval95: result.statistics.rtpConfidenceInterval95,
-                payoutHistogram: result.statistics.payoutHistogram,
-            };
             this.markTerminal(record);
         } catch (error) {
             if (error instanceof SimulationCancelledError) {
@@ -438,6 +472,10 @@ export class StudioSimulationService {
 
     /** Runs canonical WASM in-process: portable components have no Node worker loader. */
     private async runWasmSimulation(record: StudioSimulationJobRecord): Promise<void> {
+        if (record.modeName !== undefined) {
+            this.fail(record, new Error("WASM does not support package bet-mode selection."));
+            return;
+        }
         if (record.abortController.signal.aborted) {
             this.cancelRecord(record);
             return;
@@ -719,7 +757,7 @@ export class StudioSimulationService {
         }
         record.durationMs = this.now() - record.startedAt;
         record.completedAt = record.startedAt + record.durationMs;
-        if (record.status === "completed" && record.report !== undefined) {
+        if (record.status === "completed" && record.report !== undefined && !isSimulationReportSet(record.report)) {
             // The downloadable report and completion hook consume the drained
             // terminal, including time spent releasing the materialized runtime.
             record.report = {...record.report, durationMs: record.durationMs, spinsPerSecond: Math.round(record.report.rounds / (Math.max(record.durationMs, 1) / 1000))};
@@ -782,7 +820,7 @@ export class StudioSimulationService {
         return {
             id: job.id,
             status: job.status,
-            rounds: typeof job.request.rounds === "number" ? job.request.rounds : 0,
+            rounds: (typeof job.progress?.total === "number" ? job.progress.total : undefined) ?? (typeof job.request.rounds === "number" ? job.request.rounds : 0),
             ...(typeof job.request.seed === "string" ? {seed: job.request.seed} : {}),
             workers: typeof job.request.workers === "number" ? job.request.workers : 1,
             ...(typeof job.request.modeName === "string" ? {modeName: job.request.modeName} : {}),
@@ -805,16 +843,17 @@ export class StudioSimulationService {
             status: "completed",
             game: {id: report.game.id, version: report.game.version},
             requestedRounds: report.requestedRounds,
-            actualRounds: report.rounds,
+            modes: isSimulationReportSet(report) ? Object.fromEntries(Object.entries(report.modes).map(([id, mode]) => [id, {rounds: mode.rounds, betMode: mode.betMode}])) : undefined,
+            actualRounds: isSimulationReportSet(report) ? undefined : report.rounds,
             ...(typeof job.request.seed === "string" ? {seed: job.request.seed} : {}),
             workers: report.workers ?? (typeof job.request.workers === "number" ? job.request.workers : 1),
-            rtp: report.rtp,
-            hitFrequency: report.hitFrequency,
-            maxWin: report.maxWin,
+            rtp: isSimulationReportSet(report) ? undefined : report.rtp,
+            hitFrequency: isSimulationReportSet(report) ? undefined : report.hitFrequency,
+            maxWin: isSimulationReportSet(report) ? undefined : report.maxWin,
             startedAt: new Date(job.startedAt ?? job.createdAt).toISOString(),
             completedAt: new Date(job.completedAt ?? job.createdAt).toISOString(),
             durationMs: job.durationMs ?? 0,
-            hasWarnings: (report.warnings?.length ?? 0) > 0,
+            hasWarnings: (isSimulationReportSet(report) ? Object.values(report.modes).some(mode => (mode.warnings?.length ?? 0) > 0) : (report.warnings?.length ?? 0) > 0),
             ...(typeof job.request.modeName === "string" ? {modeName: job.request.modeName} : {}),
         };
     }
@@ -824,10 +863,10 @@ function durableDetail(job: StudioJobView): Readonly<Record<string, unknown>> | 
     return job.result?.detail !== undefined && typeof job.result.detail === "object" ? job.result.detail : undefined;
 }
 
-function reportFromDurableDetail(job: StudioJobView): SimulationReport | undefined {
+function reportFromDurableDetail(job: StudioJobView): SimulationReport | SimulationReportSet | undefined {
     if (job.status !== "completed") return undefined;
     const report = durableDetail(job)?.report;
-    return typeof report === "object" && report !== null && "game" in report && "rounds" in report ? report as SimulationReport : undefined;
+    return typeof report === "object" && report !== null && "game" in report && ("rounds" in report || "modes" in report) ? report as SimulationReport | SimulationReportSet : undefined;
 }
 
 function statisticsFromDurableDetail(job: StudioJobView): StudioSimulationStatisticsView | undefined {

@@ -19,10 +19,10 @@ export function mergeJackpotStatisticsSnapshots(
     if (base === undefined) {
         return addition;
     }
-    const pools: Record<string, JackpotPoolStatisticsSnapshot> = {...base.pools};
+    const pools: Record<string, JackpotPoolStatisticsSnapshot> = Object.fromEntries(Object.entries(base.pools));
     for (const [poolId, stats] of Object.entries(addition.pools)) {
-        const existing = pools[poolId];
-        pools[poolId] = existing === undefined ? stats : mergePoolStatistics(existing, stats);
+        const existing = Reflect.apply(Object.prototype.hasOwnProperty, pools, [poolId]) ? pools[poolId] : undefined;
+        Reflect.defineProperty(pools, poolId, {value: existing === undefined ? stats : mergePoolStatistics(existing, stats), enumerable: true, configurable: true, writable: true});
     }
     return {
         awardCount: base.awardCount + addition.awardCount,
@@ -67,7 +67,7 @@ export function subtractJackpotStatisticsSnapshots(
     }
 
     for (const poolId of Object.keys(before.pools)) {
-        if (!(poolId in after.pools)) {
+        if (!Reflect.apply(Object.prototype.hasOwnProperty, after.pools, [poolId])) {
             throw new Error(
                 `subtractJackpotStatisticsSnapshots: "before" has pool "${poolId}" that is missing from "after" — ` +
                     "these snapshots are not a valid before/after pair for the same session's run.",
@@ -80,9 +80,9 @@ export function subtractJackpotStatisticsSnapshots(
     let totalAwarded = 0;
     let totalContributed = 0;
     for (const [poolId, afterStats] of Object.entries(after.pools)) {
-        const beforeStats = before.pools[poolId] ?? ZERO_POOL_STATISTICS;
+        const beforeStats = (Reflect.apply(Object.prototype.hasOwnProperty, before.pools, [poolId]) ? before.pools[poolId] : undefined) ?? ZERO_POOL_STATISTICS;
         const delta = subtractPoolStatistics(afterStats, beforeStats, poolId);
-        pools[poolId] = delta;
+        Reflect.defineProperty(pools, poolId, {value: delta, enumerable: true, configurable: true, writable: true});
         awardCount += delta.awardCount;
         totalAwarded += delta.totalAwarded;
         totalContributed += delta.totalContributed;

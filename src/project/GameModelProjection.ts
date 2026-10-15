@@ -101,7 +101,7 @@ export type GameModelBetsAndModes = {availableBets: number[]; betModes: GameMode
 
 export type GameModelFreeGames = {scatterSymbol: string; awardsByCount: Record<string, number>};
 
-export type GameModelMechanics = {freeGames?: GameModelFreeGames};
+export type GameModelMechanics = import("../generated/GameBlueprint.js").GameBlueprintMechanics;
 
 // The bet range this project's own blueprint actually declares -- both fields are the plain min/max of
 // `betsAndModes.data.availableBets`, never a separately-authored/invented limit; omitted (not 0) when

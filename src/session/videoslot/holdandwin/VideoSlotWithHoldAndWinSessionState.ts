@@ -1,3 +1,4 @@
+import type {WinEvaluationSnapshot} from "../winevaluation/WinEvaluationSnapshot.js";
 import type {LockedHoldAndWinSymbol} from "./LockedHoldAndWinSymbol.js";
 
 // Deterministic serialization/replay shape for VideoSlotWithHoldAndWinSession — every field needed to
@@ -8,6 +9,8 @@ import type {LockedHoldAndWinSymbol} from "./LockedHoldAndWinSymbol.js";
 // so this decorator composes correctly whether it wraps a plain VideoSlotSession, a
 // VideoSlotWithFreeGamesSession, a VideoSlotWithBetModesSession, or a stack of several.
 export type VideoSlotWithHoldAndWinSessionState<T extends string | number | symbol = string> = {
+    lastOutcome?: {kind: "ordinary" | "suppressed"} | {kind: "completed"; baseWinAmount: number; payout: number; baseEvaluation: WinEvaluationSnapshot<T>; linesWinning: number; scattersWinning: number};
+    entryBet?: number;
     active: boolean;
     lockedSymbols: readonly LockedHoldAndWinSymbol<T>[];
     respinsRemaining: number;

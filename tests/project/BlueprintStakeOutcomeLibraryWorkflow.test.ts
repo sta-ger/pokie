@@ -1,3 +1,5 @@
+import {AUTHORED_MECHANIC_CATALOG} from "@fromstan/pokie";
+import {existingMechanicsBlueprint} from "../v2/fixtures/ExistingMechanicsGame.js";
 import {authoritativePaytableBlueprint, expectAuthoritativeEightOutcomes} from "../fixtures/math/AuthoritativePaytableFixture.js";
 import fs from "fs";
 import os from "os";
@@ -388,4 +390,18 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
+});
+
+it.each(["hold-flat", "fixed-base", "accumulating-base"])("rejects lossy paid-grid projection of %s and retains source bytes", async id => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-v2c12-projection-"));
+    try {
+        const source = path.join(directory, "source.json");
+        fs.writeFileSync(source, JSON.stringify(existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!)));
+        const before = fs.readFileSync(source);
+        await expect(new BlueprintStakeOutcomeLibraryWorkflow("1.3.0", loadGameBlueprint).resolveOrGenerate({type: "blueprint", rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, path.join(directory, "outcomes"))).rejects.toThrow(/cannot preserve HoldAndWin progression or jackpot history/);
+        expect(fs.readdirSync(directory)).toEqual(["source.json"]);
+        expect(fs.readFileSync(source)).toEqual(before);
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
 });

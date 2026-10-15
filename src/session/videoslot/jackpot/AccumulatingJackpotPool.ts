@@ -25,6 +25,8 @@ export class AccumulatingJackpotPool implements JackpotPoolRepresenting, Convert
     private readonly id: string;
     private readonly seedValue: number;
     private value: number;
+    private owner?: object;
+    private shared = false;
 
     constructor(id: string, seedValue: number) {
         if (!Number.isFinite(seedValue) || seedValue < 0) {
@@ -33,6 +35,15 @@ export class AccumulatingJackpotPool implements JackpotPoolRepresenting, Convert
         this.id = id;
         this.seedValue = seedValue;
         this.value = seedValue;
+    }
+
+    public claimSessionOwnership(owner: object): void {
+        if (this.owner && this.owner !== owner) this.shared = true;
+        this.owner = owner;
+    }
+
+    public getRestorationDescriptor(): {id: string; type: "accumulating"; seedValue: number} | undefined {
+        return this.constructor === AccumulatingJackpotPool && !this.shared ? {id: this.id, type: "accumulating", seedValue: this.seedValue} : undefined;
     }
 
     public getId(): string {
@@ -60,6 +71,7 @@ export class AccumulatingJackpotPool implements JackpotPoolRepresenting, Convert
     }
 
     public fromSessionState(value: {value: number}): this {
+        if (!value || !Number.isFinite(value.value) || value.value < this.seedValue) throw new Error("Invalid accumulating jackpot balance.");
         this.value = value.value;
         return this;
     }

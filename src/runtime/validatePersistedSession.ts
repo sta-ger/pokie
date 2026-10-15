@@ -74,19 +74,37 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
         const last = state.logicalRound.subrounds[state.logicalRound.cursor - 1];
         if (last.win !== state.win || last.credits !== state.credits || ((last.finalScreen ?? last.screen) !== undefined && JSON.stringify(last.finalScreen ?? last.screen) !== JSON.stringify(state.screen))) return {status: "corrupt-state", reason: "Retained logical output differs from executable capture."};
         let schema = state.stateSchema;
-        let feature = state.featureState as {base?: unknown; freeGamesNum?: number; freeGamesSum?: number} | undefined;
+        let feature = state.featureState as {base?: unknown; freeGamesNum?: number; freeGamesSum?: number; active?: boolean; entryBet?: number; lastOutcome?: {kind?: string}} | undefined;
         let pending = false;
         let known = schema?.kind !== "custom";
-        while (schema && (schema.kind === "free-games" || schema.kind === "bet-modes")) {
+        while (schema && "base" in schema) {
             if (schema.kind === "free-games") pending ||= (feature?.freeGamesNum ?? 0) < (feature?.freeGamesSum ?? 0);
+            if (schema.kind === "hold-and-win") {
+                pending ||= feature?.active === true;
+            }
             feature = feature?.base as typeof feature;
             schema = schema.base;
             if (schema.kind === "custom") known = false;
         }
         const selections = (feature as {sequenceState?: {context?: string; selections?: ReelSequenceSelection[]}} | undefined)?.sequenceState;
         if (selections && (selections.context !== `logical:${state.logicalRound.id}` || !sequenceSelectionsEqual(selections.selections, last.artifacts?.[last.artifacts.length - 1]?.sequenceSelections))) return {status: "corrupt-state", reason: "Weighted selections differ from retained logical round."};
-        if (known && (state.logicalRound.mathematicalStatus === "pending") !== pending) return {status: "corrupt-state", reason: "Logical progress differs from executable feature progress."};
+        if (known && state.logicalRound.mathematicalStatus !== "exhausted" && (state.logicalRound.mathematicalStatus === "pending") !== pending) return {status: "corrupt-state", reason: "Logical progress differs from executable feature progress."};
         if (state.logicalRound.bet !== state.bet) return {status: "corrupt-state", reason: "Logical entry bet differs from executable selection."};
+    }
+    if (state.chargedEntry !== undefined && (!state.chargedEntry || typeof state.chargedEntry !== "object" || Array.isArray(state.chargedEntry) ||
+        !Number.isFinite(state.chargedEntry.bet) || state.chargedEntry.bet <= 0 ||
+        (state.chargedEntry.mode !== undefined && (typeof state.chargedEntry.mode !== "string" || !state.chargedEntry.mode)))) return {status: "corrupt-state", reason: "Invalid charged entry."};
+    if (state.logicalRound && state.chargedEntry && (state.chargedEntry.bet !== state.logicalRound.bet || state.chargedEntry.mode !== state.logicalRound.mode)) return {status: "corrupt-state", reason: "Charged entry differs from retained logical entry."};
+    // Ordinary delivery has no LogicalRound envelope. Its charged entry is equally authoritative;
+    // current selection can change without changing the denomination or attribution of a feature.
+    const entry = state.logicalRound ?? state.chargedEntry;
+    let entrySchema = state.stateSchema;
+    let entryFeature = state.featureState as {base?: unknown; active?: boolean; entryBet?: number; chargedBetModeId?: string; lastOutcome?: {kind?: string}} | undefined;
+    while (entrySchema && "base" in entrySchema) {
+        if (entrySchema.kind === "hold-and-win" && (entryFeature?.active || entryFeature?.lastOutcome?.kind === "completed") && entryFeature.entryBet !== (entry?.bet ?? state.bet)) return {status: "corrupt-state", reason: "HoldAndWin entry denomination differs from retained charged entry."};
+        if (entrySchema.kind === "bet-modes" && entry?.mode !== undefined && entryFeature?.chargedBetModeId !== entry.mode) return {status: "corrupt-state", reason: "Charged bet mode differs from retained entry attribution."};
+        entryFeature = entryFeature?.base as typeof entryFeature;
+        entrySchema = entrySchema.base;
     }
     if (state.logicalRoundIds !== undefined && (!Array.isArray(state.logicalRoundIds) || new Set(state.logicalRoundIds).size !== state.logicalRoundIds.length || state.logicalRoundIds.some(id => typeof id !== "string" || !id.trim() || id.includes("\0")) || (state.logicalRound !== undefined && !state.logicalRoundIds.includes(state.logicalRound.id)))) return {status: "corrupt-state", reason: "Invalid retained logical entry identities."};
     if (state.logicalRoundDeliverySupported !== undefined && typeof state.logicalRoundDeliverySupported !== "boolean") return {status: "corrupt-state", reason: "Invalid logical delivery capability."};
@@ -131,6 +149,7 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
         if (!supportsSelections(authority.bets, capabilities.bets) || !supportsSelections(authority.modes, capabilities.modes)) {
             throw new Error("Stored command capabilities do not match the selected game model.");
         }
+        if (state.chargedEntry && (!authority.bets.includes(state.chargedEntry.bet) || (state.chargedEntry.mode !== undefined && !authority.modes?.includes(state.chargedEntry.mode)))) throw new Error("Charged entry selection is not supported by the resolved model.");
         validateSelectedModes(state.featureState, schema ?? live?.schema, authority.modes, capabilities.modes, schema === undefined ? live?.snapshotPolicy : undefined);
         let leaf = schema;
         while (leaf && "base" in leaf) leaf = leaf.base;
@@ -179,8 +198,8 @@ function supportsSelections<T extends string | number>(expected: readonly T[] | 
 // Declared authority applies throughout its codec and its observable-only retry fallback.
 // Trusted live compositions validate each node against its own captured construction policy.
 function validateSelectedModes(value: unknown, schema: SessionStateSchema | undefined, modes: readonly string[] | undefined, restrictions?: readonly string[], live?: LiveSnapshotPolicy): void {
-    if ((schema !== undefined && schema.kind !== "free-games" && schema.kind !== "bet-modes") || value === undefined) return;
+    if ((schema !== undefined && !("base" in schema)) || value === undefined) return;
     const state = value as {betModeId?: string; base?: unknown};
     if ((schema?.kind === "bet-modes" || (schema === undefined && state.betModeId !== undefined)) && (!(live?.modes ?? modes)?.includes(state.betModeId as string) || (restrictions !== undefined && !restrictions.includes(state.betModeId as string)))) throw new Error("Persisted bet mode is not supported by the resolved model.");
-    validateSelectedModes(state.base, schema?.base, modes, restrictions, live?.base);
+    validateSelectedModes(state.base, schema && "base" in schema ? schema.base : undefined, modes, restrictions, live?.base);
 }

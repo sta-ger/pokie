@@ -1,3 +1,6 @@
+import {ExistingMechanicsFieldset} from "./ExistingMechanicsFieldset";
+import {FreeGamesFieldset} from "./FreeGamesFieldset";
+import {BetModesEditor} from "./BetModesEditor";
 import {Tabs} from "@mantine/core";
 import {useEffect, useRef, useState} from "react";
 import type {ValidationIssue} from "../../api/types";
@@ -182,6 +185,9 @@ export function SectionedFormEditor({
                         <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.bets)} />
                         <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.bets)} />
                         <BetsList blueprint={blueprint} mutate={mutate} />
+                        <BetModesEditor blueprint={blueprint} mutate={mutate} />
+                        <FreeGamesFieldset blueprint={blueprint} mutate={mutate} issues={errors.filter(issue => issue.code.startsWith("blueprint-mechanics-"))} />
+                        <ExistingMechanicsFieldset blueprint={blueprint} mutate={mutate} />
                     </>}
                 </Tabs.Panel>
             </Tabs>

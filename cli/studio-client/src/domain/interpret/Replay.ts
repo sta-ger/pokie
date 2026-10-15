@@ -9,7 +9,7 @@ import type {
     StudioReplayListEntry,
     StudioReplayStatus,
     StudioRuntimeSessionView,
-} from "../../api/types";
+} from "../../api/types.js";
 
 // Pure view-model transforms for the Replay tab — same role as interpretSimulation.ts: main.ts/dom.ts
 // consume these instead of branching on the raw job/list shapes themselves, and (being pure) these are
@@ -79,6 +79,7 @@ export function describeRoundArtifact(artifact: RoundArtifact & {hash?: string})
         ...details,
         canonicalArtifact: artifact,
         wins: visible.wins,
+        featureEvents: visible.featureEvents,
         screen: formatScreenGrid(visible.screen),
         steps: visible.steps.map((step) => ({...step, screen: formatScreenGrid(step.screen)})),
     };
@@ -126,6 +127,8 @@ export type ReplayResultView = {
     // The real outcome-library mode this reproduction replayed against -- see StudioReplayJobView's own
     // doc comment. Undefined for an ordinary "tsPackage"/"blueprint" replay.
     modeName?: string;
+    modePolicy?: ReplayDescriptor["modePolicy"];
+    commands?: ReplayDescriptor["commands"];
 };
 
 // Only meaningful for a completed job (job.descriptor is defined) — callers only call this once
@@ -153,7 +156,9 @@ export function describeReplayResult(job: StudioReplayJobView): ReplayResultView
         artifact: descriptor.artifact ? describeRoundArtifact(descriptor.artifact) : undefined,
         stateBefore: descriptor.stateBefore,
         stateAfter: descriptor.stateAfter,
-        modeName: job.modeName,
+        modeName: descriptor.outcomeSource?.modeName,
+        modePolicy: descriptor.modePolicy,
+        commands: descriptor.commands,
     };
 }
 

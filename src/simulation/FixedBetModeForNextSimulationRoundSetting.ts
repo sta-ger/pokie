@@ -1,7 +1,8 @@
 import {BetModeSimulationUnsupportedError} from "./BetModeSimulationUnsupportedError.js";
 import type {BetModeForNextSimulationRoundSetting} from "./BetModeForNextSimulationRoundSetting.js";
 import type {BetModeSelecting} from "../session/videoslot/betmode/BetModeSelecting.js";
-import {ForcingBetModeSelectionRejectedError} from "../session/videoslot/betmode/ForcingBetModeSelectionRejectedError.js";
+import type {ForcingBetModeSelectionRejectedError} from "../session/videoslot/betmode/ForcingBetModeSelectionRejectedError.js";
+import type {StakeAmountDetermining} from "../session/StakeAmountDetermining.js";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 
 // Locks a simulation run to one bet mode: (re-)selects it before every round, which is what actually
@@ -12,6 +13,8 @@ import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 // ForcingBetModeSelectionRejectedError) -- that specific, expected rejection is swallowed here (this
 // round simply continues the round the mode already bought), while any other error (e.g.
 // UnknownBetModeError for a typo'd mode id) still propagates, surfacing as a clear simulation failure.
+// A loaded game may own another ESM/CJS copy of POKIE, so constructor identity cannot recognize its
+// error. Match the public error contract, requested mode and live zero stake before continuing.
 //
 // A session that doesn't support BetModeSelecting at all makes this throw BetModeSimulationUnsupportedError
 // instead of silently running the plain base game: every caller of this class exists specifically
@@ -33,10 +36,18 @@ export class FixedBetModeForNextSimulationRoundSetting implements BetModeForNext
         try {
             session.setBetMode(this.modeId);
         } catch (error) {
-            if (!(error instanceof ForcingBetModeSelectionRejectedError)) {
+            if (!this.isContinuationRejection(error, session)) {
                 throw error;
             }
         }
+    }
+
+    private isContinuationRejection(error: unknown, session: GameSessionHandling): boolean {
+        if (typeof error !== "object" || error === null) return false;
+        const rejection = error as Partial<ForcingBetModeSelectionRejectedError>;
+        const stake = session as Partial<StakeAmountDetermining>;
+        return rejection.name === "ForcingBetModeSelectionRejectedError" && typeof rejection.getModeId === "function" &&
+            rejection.getModeId() === this.modeId && typeof stake.getStakeAmount === "function" && stake.getStakeAmount() === 0;
     }
 
     private supportsBetModeSelecting(session: GameSessionHandling): session is GameSessionHandling & BetModeSelecting {

@@ -1,4 +1,4 @@
-import type {PreGeneratedRoundReplayDescriptor, SimulationReport} from "@fromstan/pokie";
+import type {PreGeneratedRoundReplayDescriptor, SimulationReport, SimulationReportSet} from "@fromstan/pokie";
 import type {StudioSimulationStatus} from "./StudioSimulationStatus.js";
 import type {StudioJobRecoveryView} from "../jobs/StudioJobView.js";
 
@@ -30,11 +30,10 @@ export type StudioSimulationJobView = {
     startedAt: string;
     roundsCompleted: number;
     durationMs: number;
-    report?: SimulationReport;
+    report?: SimulationReport | SimulationReportSet;
     statistics?: StudioSimulationStatisticsView;
     error?: string;
-    // The real outcome-library mode this job samples/sampled -- see StudioSimulationJobRecord's own
-    // doc comment. Undefined for an ordinary "tsPackage"/"blueprint" simulation.
+    // Package selected mode/all policy, or the concrete native outcome-library mode.
     modeName?: string;
     lastReplay?: PreGeneratedRoundReplayDescriptor;
     /** Durable restart guidance when no private executor record survives. */
@@ -46,6 +45,6 @@ export type StudioSimulationJobView = {
 // history (Recent Runs' "Open") renders identically to one just watched to completion instead of silently
 // losing volatility/confidence-interval/payout-histogram the moment it's re-fetched by id.
 export type StudioSimulationReportDetail = {
-    report: SimulationReport;
+    report: SimulationReport | SimulationReportSet;
     statistics?: StudioSimulationStatisticsView;
 };

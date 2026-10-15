@@ -1,3 +1,4 @@
+import {getSessionCompositionError, resolveSessionStateSchema, type SessionStateSchema} from "../SessionStateRestoring.js";
 import type {ReelSequenceSelection, ReelSequenceStatistics} from "./combinations/WeightedSequenceVariant.js";
 import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
 import {projectEvaluationSymbols} from "./coordinates/projectSymbolsCombination.js";
@@ -24,6 +25,16 @@ implements VideoSlotSessionHandling<T> {
 
     constructor(baseSession: VideoSlotSessionHandling<T>) {
         this.baseSession = baseSession;
+        // Preserve optional capabilities without advertising capabilities absent on the base.
+        // A concrete decorator's own implementation always wins.
+        for (const name of ["getBetModeId", "setBetMode", "getAvailableBetModeIds", "validateEntryAction",
+            "getChargedBetModeId", "getSimulationCategory", "getJackpotStatisticsSnapshot", "getJackpotPools",
+            "getJackpotLastRoundOutcome", "getJackpotPoolStatistics", "getJackpotAwardCount", "getJackpotTotalAwarded", "getJackpotTotalContributed",
+            "isHoldAndWinActive", "getHoldAndWinEntryBet", "getHoldAndWinLastRoundOutcome", "getLockedHoldAndWinSymbols", "getHoldAndWinRespinsRemaining", "getHoldAndWinPayout",
+            "getFreeGamesNum", "getFreeGamesSum", "getFreeGamesBank", "getWonFreeGamesNumber"]) {
+            const method: unknown = Reflect.get(baseSession, name);
+            if (!(name in this) && typeof method === "function") Reflect.defineProperty(this, name, {value: method.bind(baseSession)});
+        }
     }
 
     public setSelectionContext(context: string): void {
@@ -175,4 +186,19 @@ implements VideoSlotSessionHandling<T> {
     public getLinesPatterns(): LinesPatternsDescribing {
         return this.baseSession.getLinesPatterns();
     }
+    protected getCompositionError(kind: SessionStateSchema["kind"]): string | undefined {
+        const kinds: string[] = [];
+        let schema = resolveSessionStateSchema(this.baseSession);
+        while ("base" in schema) {
+            kinds.push(schema.kind);
+            if (schema.kind === "bet-modes" && schema.stakeModifying) kinds.push("stake-modifying-bet-modes");
+            schema = schema.base;
+        }
+        // Optional capabilities also identify legacy/custom wrappers with no built-in schema.
+        for (const [method, baseKind] of [["getJackpotPools", "jackpot"], ["getBetModeId", "bet-modes"], ["getFreeGamesSum", "free-games"], ["isHoldAndWinActive", "hold-and-win"]]) {
+            if (typeof Reflect.get(this.baseSession, method) === "function") kinds.push(baseKind);
+        }
+        return getSessionCompositionError(kind, kinds);
+    }
+
 }

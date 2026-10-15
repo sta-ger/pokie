@@ -1,6 +1,7 @@
 import {PokieJsonRoundArtifactProjector, RoundArtifactValidator, computeRoundArtifactHash} from "@fromstan/pokie";
 import {MantineProvider} from "@mantine/core";
 import {fireEvent, render, within} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type {RoundArtifact, RoundArtifactJson, StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
 import {RoundArtifactInspector} from "../../../../../../cli/studio-client/src/components/common/RoundArtifactInspector";
 import {RoundSummary} from "../../../../../../cli/studio-client/src/components/common/RoundSummary";
@@ -36,6 +37,29 @@ function artifactFor(overrides: Partial<RoundArtifact> = {}): RoundArtifactJson 
 function renderWithMantine(ui: React.ReactElement) {
     return render(<MantineProvider>{ui}</MantineProvider>);
 }
+
+describe("recorded stake precision across shared inspection surfaces", () => {
+    it.each([0.075, 0.05 * 1.5, 0.05, 7.5, 1e-7, 0.5, 0, 1.25, 1.2345678901234567])("preserves stake %p in Replay and expanded Play inspection", async stake => {
+        const captured = artifactFor({stake});
+        const {hash: _hash, ...raw} = captured;
+        const canonical = {...raw, hash: computeRoundArtifactHash(raw)};
+        const serialized = JSON.stringify(canonical);
+        const downloaded = JSON.parse(serialized) as RoundArtifactJson;
+        const artifact = describeRoundArtifact(downloaded);
+        const replay = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+        const play = renderWithMantine(<RoundSummary session={{sessionId: "fractional-stake", game: GAME, bet: 0.05, debug: {artifact: downloaded}}} />);
+        await userEvent.setup().click(within(play.container).getByText("Inspect round artifact"));
+
+        for (const view of [replay, play]) {
+            const row = await within(view.container).findByRole("row", {name: `Stake ${String(stake)}`});
+            const displayed = within(row).getByRole("cell").textContent;
+            expect(Number(displayed)).toBe(downloaded.stake);
+        }
+        expect(artifact.stake).toBe(stake);
+        expect(artifact.canonicalArtifact).toBe(downloaded);
+        expect(JSON.stringify(downloaded)).toBe(serialized);
+    });
+});
 
 describe("RoundArtifactInspector screen orientation", () => {
     it("renders the round-level canonical player grid so cells are addressable by their own [reelIndex, rowIndex], using the same describeRoundArtifact view-model the Inspect step actually consumes", () => {
@@ -851,4 +875,28 @@ describe("whole-sequence replay inspection", () => {
         const result = renderWithMantine(<RoundArtifactInspector artifact={describeRoundArtifact(artifact)} />);
         expect(result.getByText("Reel 1: all-B (implicit:1)")).toBeInTheDocument();
     });
+});
+
+it("F2 presents allowed zero-valued mechanic observations after the actual Replay projection", () => {
+    const events = [
+        {type: "holdAndWin", data: {active: false, locks: [{position: [0, 0], symbolId: "C", effect: {kind: "value", amount: 0, secret: 9}, secret: 9}], respinsRemaining: 0, payout: 0, secret: 9}},
+        {type: "jackpot", data: {pools: [{id: "mini", value: 0, secret: 9}], statistics: {mini: {awardCount: 0, totalAwarded: 0, totalContributed: 0, secret: 9}}, award: {poolId: "mini", amount: 0, secret: 9}, secret: 9}},
+        {type: "chargedBetMode", data: {id: "ante", secret: 9}},
+        {type: "internal", data: {rngState: 42, secret: 9}},
+    ];
+    const canonical = artifactFor({featureEvents: events, steps: [{index: 0, screen: [["C"]], wins: [], totalWin: 0, featureEvents: events}]});
+    const displayed = describeRoundArtifact(canonical);
+    expect(displayed.featureEvents).toEqual(displayed.steps[0].featureEvents);
+    expect(JSON.stringify(displayed.steps[0].featureEvents)).not.toMatch(/secret|rngState/);
+    expect(displayed.steps[0].featureEvents).toEqual([
+        {type: "holdAndWin", data: {active: false, locks: [{position: [0, 0], symbolId: "C", effect: {kind: "value", amount: 0}}], respinsRemaining: 0, payout: 0}},
+        {type: "jackpot", data: {pools: [{id: "mini", value: 0}], statistics: {mini: {awardCount: 0, totalAwarded: 0, totalContributed: 0}}, award: {poolId: "mini", amount: 0}}},
+        {type: "chargedBetMode", data: {id: "ante"}},
+        {type: "internal"},
+    ]);
+    expect(displayed.canonicalArtifact).toBe(canonical);
+    const view = renderWithMantine(<RoundArtifactInspector artifact={displayed} />);
+    const counters = view.container.querySelector(".player-feature-counters") ?? view.container;
+    for (const label of ["Locked symbols", "Respins", "Hold & Win payout", "Jackpot mini", "Jackpot award", "Charged mode"]) expect(within(counters as HTMLElement).getByText(label)).toBeVisible();
+    expect(within(counters as HTMLElement).getByText("ante")).toBeVisible();
 });

@@ -40,7 +40,7 @@ type ReplayOptions = {
 type ReplayOutcomeSourceFn = (project: PokieProject, modeName: string, seed: string, round: number) => Promise<OutcomeSourceReplayResult>;
 
 const USAGE =
-    "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+    "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--mode <betModeId>] [--out <file>] [--format json]\n" +
     "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
     "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]";
 
@@ -138,7 +138,7 @@ export class ReplayCommand implements CliCommandHandling {
                 const recording: unknown = JSON.parse(fs.readFileSync(options.recording, "utf-8"));
                 validateAuditReplayDescriptor(recording, game);
                 descriptor = new ReplayRecorder().replay(game, recording.audit);
-            } else descriptor = this.recorder.record({game, seed: options.seed, round: options.round, unit: options.unit});
+            } else descriptor = this.recorder.record({game, seed: options.seed, round: options.round, unit: options.unit, betModeId: options.mode});
         } finally {
             await releasePokieGame(game);
         }
@@ -241,10 +241,8 @@ export class ReplayCommand implements CliCommandHandling {
                 }
                 return value;
             })
-            // Only meaningful when packageRoot resolves to an "outcomeLibrary" project -- see
-            // runOutcomeSourceReplay -- but declared/validated here alongside every other option rather
-            // than a bespoke second parse, same as OutcomeSourceCommand's own "sample" verb.
-            .option("--mode <modeName>", "outcome-library mode to replay (required when <packageRoot> is a native outcome-library bundle)")
+            .option("--mode <modeName>", "package bet mode to select repeatedly at available entries (step replay only); required for native outcome-library replay")
+            .addHelpText("after", "\nPackage --mode uses the shared simulation policy: repeat selection at available entries, leaving zero-stake purchase continuations uncharged. The descriptor retains modePolicy and executed commands. It cannot be combined with --unit logical-round or --recording.\n")
             .addHelpText("after", "\nCanonical WASM: --round N replays N rounds and reports cumulative totalBet/totalWin.\nUse the same explicit --seed as run/sim; --mode is unavailable.\nExample: pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json\n         pokie replay game.wasm --round 6 --seed demo\n")
             .action(
                 (packageRoot: string, excess: string[], options: {seed?: string; round?: number; out?: string; format?: string; mode?: string; unit?: "step" | "logical-round"; recording?: string}) => {

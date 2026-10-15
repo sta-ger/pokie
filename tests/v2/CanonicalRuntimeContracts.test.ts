@@ -727,7 +727,18 @@ describe("V2C-02 canonical runtime contracts", () => {
             b = new SpinCommandHandler(generated(blueprint), repository, wallet);
         const reference = new SpinCommandHandler(generated(blueprint), referenceRepository, referenceWallet);
         for (let round = 0; round < 8; round++) {
-            expect(await (round % 2 ? b : a).execute({kind: "spin", sessionId: "session"})).toEqual(await reference.execute({kind: "spin", sessionId: "session"}));
+            const actual = await (round % 2 ? b : a).execute({kind: "spin", sessionId: "session"});
+            const expected = await reference.execute({kind: "spin", sessionId: "session"});
+            if (actual.status !== "played" || expected.status !== "played") throw new Error(JSON.stringify({actual, expected}));
+            const {audit: actualAudit, ...actualResult} = actual;
+            const {audit: expectedAudit, ...expectedResult} = expected;
+            expect(actualResult).toEqual(expectedResult);
+            if (actualAudit && expectedAudit) {
+                publicApi.validateAuditRoundRecording(actualAudit, generated(blueprint));
+                publicApi.validateAuditRoundRecording(expectedAudit, generated(blueprint));
+                const math = (audit: publicApi.AuditRoundRecording) => audit.deliveries.map(({disposition: _disposition, ...delivery}) => delivery);
+                expect(math(actualAudit)).toEqual(math(expectedAudit));
+            } else expect(actualAudit).toEqual(expectedAudit);
         }
     });
 
@@ -1226,7 +1237,20 @@ describe("V2C-02 canonical runtime contracts", () => {
     });
 
     it("supports unseeded partial snapshots and construction-free completed retries under declared authority", async () => {
-        const game = generated(fractionalBetBlueprint([0.05], true));
+        const blueprint = fractionalBetBlueprint([0.05], true);
+        // Generated packages own restorable RNG state even without a caller seed. This
+        // custom package deliberately retains the default, snapshot-free RNG instead.
+        const game: PokieGame = {
+            getManifest: () => blueprint.manifest,
+            getSessionCommandCapabilities: () => ({bets: [0.05]}),
+            getSessionStateSchema: () => ({kind: "seeded-video-slot", reels: blueprint.reels, symbols: blueprint.symbols}),
+            validateLiveSessionState: state => publicApi.validateExecutableState(state, game.getSessionStateSchema!(), undefined, true),
+            createSession: () => {
+                const config = fractionalBetConfig([0.05]);
+                config.setSymbolsSequences(blueprint.reelStrips!.map(strip => new SymbolsSequence().fromArray(strip)));
+                return new VideoSlotSession(config);
+            },
+        };
         const repository = new InMemorySessionRepository(),
             wallet = new InMemoryWallet(),
             operations = new InMemorySpinOperationLog();
@@ -1247,6 +1271,38 @@ describe("V2C-02 canonical runtime contracts", () => {
             expect(spy).not.toHaveBeenCalled();
             spy.mockRestore();
         });
+    });
+
+    it.each([false, true])("restores generated omitted-seed sessions and retries without another charge (typed=%s)", async typed => {
+        const blueprint = fractionalBetBlueprint([0.05], true),
+            game = generated(blueprint, typed),
+            session = game.createSession();
+        const initial = captureInitialPokieSessionState(undefined, session, undefined, false, game);
+        expect(initial).toMatchObject({executionState: "durably-restorable", featureState: {rngState: expect.any(Number), reelStrips: blueprint.reelStrips}});
+        expect(initial.context).toBeUndefined();
+        const repository = new InMemorySessionRepository(),
+            wallet = new InMemoryWallet(),
+            operations = new InMemorySpinOperationLog();
+        await repository.save("session", JSON.parse(JSON.stringify(initial)));
+        await wallet.setBalance("session", initial.credits!);
+        const reference = new SessionRuntime(session);
+        for (let round = 0; round < 3; round++) {
+            const expected = reference.execute({kind: "spin"}),
+                selected = generated(blueprint, typed),
+                command: RepositoryCommand = {kind: "spin", sessionId: "session", requestId: `round-${round}`};
+            const result = await new SpinCommandHandler(selected, repository, wallet, undefined, operations).execute(command);
+            expect(result.status).toBe("played");
+            if (result.status !== "played" || expected.status !== "played") throw new Error("Omitted-seed continuation rejected");
+            expect({win: result.win, stake: result.stake, credits: result.credits}).toEqual({win: expected.win, stake: expected.stake, credits: expected.credits});
+            expect(result.state.featureState).toEqual((session as VideoSlotSession).toSessionState());
+            expect(result.state.screen).toEqual((session as VideoSlotSession).getSymbolsCombination().toMatrix());
+            const spies = [jest.spyOn(selected, "createSession"), jest.spyOn(wallet, "debit"), jest.spyOn(wallet, "credit"), jest.spyOn(repository, "saveVersioned")];
+            expect(await new SpinCommandHandler(selected, repository, wallet, undefined, operations, true).execute(command)).toEqual(result);
+            spies.forEach(spy => {
+                expect(spy).not.toHaveBeenCalled();
+                spy.mockRestore();
+            });
+        }
     });
 
     it.each(["missing-schema", "missing-validator", "permissive-validator", "missing-capabilities"])("requires an authoritative codec before constructor RNG consumption (%s)", async kind => {

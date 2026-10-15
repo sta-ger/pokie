@@ -93,6 +93,11 @@ export function renameSymbol(blueprint: Record<string, unknown>, from: string, t
         mechanics.freeGames = {...freeGames, scatterSymbol: to};
         blueprint.mechanics = mechanics;
     }
+    const hold = mechanics.holdAndWin;
+    if (isRecord(hold) && isRecord(hold.symbolEffects)) renameRecordKey(hold, "symbolEffects", from, to);
+    const jackpot = mechanics.jackpot;
+    if (isRecord(jackpot) && isRecord(jackpot.trigger) && jackpot.trigger.symbolId === from) jackpot.trigger.symbolId = to;
+    blueprint.mechanics = mechanics;
     return undefined;
 }
 
@@ -123,6 +128,9 @@ export function getSymbolDeletionBlockers(blueprint: Record<string, unknown>, id
     });
     const freeGames = asFreeGames(asMechanics(blueprint.mechanics).freeGames);
     if (freeGames?.scatterSymbol === id) blockers.push("mechanics.freeGames.scatterSymbol");
+    const mechanics = asMechanics(blueprint.mechanics);
+    if (isRecord(mechanics.holdAndWin) && isRecord(mechanics.holdAndWin.symbolEffects) && id in mechanics.holdAndWin.symbolEffects) blockers.push("mechanics.holdAndWin.symbolEffects");
+    if (isRecord(mechanics.jackpot) && isRecord(mechanics.jackpot.trigger) && mechanics.jackpot.trigger.symbolId === id) blockers.push("mechanics.jackpot.trigger.symbolId");
     return blockers;
 }
 

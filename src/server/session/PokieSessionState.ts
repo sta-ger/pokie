@@ -9,6 +9,8 @@ import type {SessionCapturePolicy} from "./SessionCapturePolicy.js";
 
 export type PokieSessionState = {
     logicalRound?: LogicalRound;
+    /** Last charged entry, retained across ordinary zero-stake continuations independently of selection. */
+    chargedEntry?: {readonly bet: number; readonly mode?: string};
     /** Compact permanent entry identities; full historical outputs belong to result storage. */
     logicalRoundIds?: readonly string[];
     logicalRoundDeliverySupported?: boolean;

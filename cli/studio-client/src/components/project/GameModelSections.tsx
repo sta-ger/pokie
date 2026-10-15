@@ -1,3 +1,5 @@
+import {validateAuthoredMechanics} from "../../../../../src/generated/validateAuthoredMechanics";
+import {ExistingMechanicsFieldset} from "../blueprintEditor/ExistingMechanicsFieldset";
 import {PackageExtractionDiagnostics} from "./PackageExtractionDiagnostics";
 import {Badge, Button, Group, NumberInput, Table, Tabs, Text} from "@mantine/core";
 import {getReelGenerationMode} from "../../domain/blueprintFormOps";
@@ -116,7 +118,7 @@ function SectionEditAction({id, edit}: {id: GameModelSectionId; edit: GameModelE
         }
         return (
             <Group gap="xs" wrap="nowrap">
-                <Button id={`game-model-${id}-save`} data-pokie-game-model-action="save" data-pokie-game-model-section={id} size="xs" onClick={edit.onSave} loading={edit.saving} disabled={edit.sequenceDraftDirty}>
+                <Button id={`game-model-${id}-save`} data-pokie-game-model-action="save" data-pokie-game-model-section={id} size="xs" onClick={edit.onSave} loading={edit.saving} disabled={edit.sequenceDraftDirty || validateAuthoredMechanics(edit.blueprint).some(issue => issue.severity === "error") || edit.validationView.status === "invalid"}>
                     Save
                 </Button>
                 <Button id={`game-model-${id}-cancel`} data-pokie-game-model-action="cancel" data-pokie-game-model-section={id} size="xs" variant="default" onClick={edit.onCancel} disabled={edit.saving}>
@@ -147,6 +149,13 @@ function SectionValidationIssues({id, edit}: {id: BlueprintSectionId; edit: Game
             <IssueList title="Warnings" issues={crossFieldOnly(warningsBySection[id])} />
         </>
     );
+}
+
+function sectionFieldIssues(id: BlueprintSectionId, edit: GameModelEditController): ValidationIssue[] {
+    const view = edit.validationView;
+    const errors = view.status === "invalid" ? view.errors : [];
+    const warnings = view.status === "invalid" || view.status === "ok" ? view.warnings : [];
+    return classifyIssuesBySection([...errors, ...warnings]).bySection[id];
 }
 
 // Mechanics' own slice of GameModelTab's own last validateBlueprint() result -- "mechanics" isn't one of
@@ -647,7 +656,7 @@ function MechanicsSection({section}: {section: GameModelSection<GameModelMechani
     if (section.status === "unavailable") {
         return <UnavailableSection reason={section.reason} />;
     }
-    if (section.data.freeGames === undefined) {
+    if (section.data.freeGames === undefined && !section.data.holdAndWin && !section.data.jackpot) {
         return (
             <Text size="sm" c="dimmed">
                 No mechanics/features configured.
@@ -657,15 +666,17 @@ function MechanicsSection({section}: {section: GameModelSection<GameModelMechani
     const {freeGames} = section.data;
     return (
         <div>
-            <Text size="sm">Scatter-triggered free games — scatter symbol: {freeGames.scatterSymbol || "(none)"}</Text>
-            <Text size="sm">
+            {freeGames && <><Text size="sm">Scatter-triggered free games — scatter symbol: {freeGames.scatterSymbol || "(none)"}</Text>
+                <Text size="sm">
                 Awards:{" "}
-                {Object.entries(freeGames.awardsByCount).length > 0
-                    ? Object.entries(freeGames.awardsByCount)
-                        .map(([count, awarded]) => `${count}x → ${awarded} free games`)
-                        .join(", ")
-                    : "(none)"}
-            </Text>
+                    {Object.entries(freeGames.awardsByCount).length > 0
+                        ? Object.entries(freeGames.awardsByCount)
+                            .map(([count, awarded]) => `${count}x → ${awarded} free games`)
+                            .join(", ")
+                        : "(none)"}
+                </Text></>}
+            {section.data.holdAndWin && <Text>Hold & Win: {section.data.holdAndWin.minimumCount} locks, {section.data.holdAndWin.initialRespins} respins; reset-on-new-lock.</Text>}
+            {section.data.jackpot && <Text>Jackpot: {section.data.jackpot.pool.id} ({section.data.jackpot.pool.type}), contribution {section.data.jackpot.contribution.percentage}; single-tier.</Text>}
         </div>
     );
 }
@@ -796,7 +807,7 @@ export function GameModelSections({
                 {editingBasics && edit ? (
                     <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="basics" edit={edit} />
-                        <MetadataFieldset blueprint={edit.blueprint} mutate={edit.mutate} legend="Game basics" />
+                        <MetadataFieldset blueprint={edit.blueprint} mutate={edit.mutate} legend="Game basics" issues={sectionFieldIssues("basics", edit)} />
                     </fieldset>
                 ) : (
                     <BasicsSection section={projection.basics} />
@@ -807,7 +818,7 @@ export function GameModelSections({
                 {editingLayout && edit ? (
                     <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="layout" edit={edit} />
-                        <LayoutFieldset blueprint={edit.blueprint} mutate={edit.mutate} />
+                        <LayoutFieldset blueprint={edit.blueprint} mutate={edit.mutate} issues={sectionFieldIssues("layout", edit)} />
                         <PaylinesEditor blueprint={edit.blueprint} mutate={edit.mutate} />
                     </fieldset>
                 ) : (
@@ -864,6 +875,7 @@ export function GameModelSections({
                 {editingMechanics && edit ? (
                     <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <FreeGamesFieldset blueprint={edit.blueprint} mutate={edit.mutate} issues={mechanicsIssues(edit)} />
+                        <ExistingMechanicsFieldset blueprint={edit.blueprint} mutate={edit.mutate} />
                     </fieldset>
                 ) : (
                     <MechanicsSection section={projection.mechanics} />

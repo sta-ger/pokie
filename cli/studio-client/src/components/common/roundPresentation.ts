@@ -3,6 +3,7 @@ import {
     deriveAvailableBets,
     deriveBetModeId,
     deriveFeatureCounters,
+    deriveFeatureCountersFromEvents,
     deriveLineDefinitions,
     derivePaytableView,
     type FeatureCounter,
@@ -44,11 +45,12 @@ function currentBet(round: Record<string, unknown> | undefined, initial: Record<
 // Prefer the pre-round snapshot: it identifies the exact configured session that evaluated the
 // displayed round.  `stateAfter` is the equivalent fallback for Play's live view, whose state capture
 // starts after a round has completed but retains the same immutable initial payload.
-export function describeRoundPresentation(stateBefore: unknown, stateAfter: unknown, artifactBetMode?: string): RoundPresentation {
+export function describeRoundPresentation(stateBefore: unknown, stateAfter: unknown, artifactBetMode?: string, events: readonly {type: string; data?: Record<string, unknown>}[] = []): RoundPresentation {
     const initial = initialPayload(stateBefore) ?? initialPayload(stateAfter);
     const round = asRecord(stateAfter);
     if (initial === undefined) {
-        return {};
+        const featureCounters = deriveFeatureCountersFromEvents(events);
+        return featureCounters.length > 0 ? {featureCounters} : {};
     }
 
     return {

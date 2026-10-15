@@ -18,6 +18,10 @@ export class SingleTierJackpotAwarding<T extends string | number | symbol = stri
         this.symbolId = symbolId;
     }
 
+    public isStatelessForSessionRestoration(): boolean {
+        return this.constructor === SingleTierJackpotAwarding;
+    }
+
     public resolveAward(pools: readonly JackpotPoolRepresenting[], _context: JackpotTriggerContext<T>): JackpotAwardResult<T> {
         const pool = pools[0];
         return {poolId: pool.getId(), amount: pool.award(), symbolId: this.symbolId};

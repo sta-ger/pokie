@@ -63,21 +63,15 @@ function canonicalizeWinModel(winModel: GameBlueprintWinModel): Record<string, u
     return {type: winModel.type};
 }
 
-// mechanics.freeGames is the only sub-field GameBlueprintMechanics declares today — see its own doc
-// comment — so an empty-vs-omitted "mechanics" object (`{}` vs. omitted entirely) hashes identically,
-// the same "present but empty means omitted" rule the array fields above already follow.
+// All authored mechanic fields participate in structural XLSX identity.
 function canonicalizeMechanics(mechanics: GameBlueprintMechanics | undefined): Record<string, unknown> | undefined {
-    const freeGames = mechanics?.freeGames;
-    if (freeGames === undefined) {
-        return undefined;
-    }
-    const awardsByCount: Record<string, number> = {};
-    for (const matches of Object.keys(freeGames.awardsByCount)
-        .map(Number)
-        .sort((a, b) => a - b)) {
-        awardsByCount[String(matches)] = freeGames.awardsByCount[String(matches)];
-    }
-    return {freeGames: {scatterSymbol: freeGames.scatterSymbol, awardsByCount}};
+    if (!mechanics || !Object.keys(mechanics).length) return undefined;
+    const canonical = (value: unknown): unknown => {
+        if (Array.isArray(value)) return value.map(canonical);
+        if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)]));
+        return value;
+    };
+    return canonical(mechanics) as Record<string, unknown>;
 }
 
 function canonicalizeBetModes(betModes: BetMode[] | undefined): Record<string, unknown>[] | undefined {

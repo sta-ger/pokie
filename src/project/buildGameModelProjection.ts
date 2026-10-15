@@ -102,7 +102,7 @@ export function buildGameModelProjection(
             availableBets,
             betModes: (blueprint.betModes ?? []).map((mode) => ({...mode})),
         }),
-        mechanics: available({freeGames: blueprint.mechanics?.freeGames}),
+        mechanics: available(JSON.parse(JSON.stringify(blueprint.mechanics ?? {}))),
         limits: available(deriveLimits(availableBets)),
     };
 }
@@ -112,7 +112,13 @@ export function buildGameModelProjection(
 export function buildPackageGameModelProjection(extraction: PackageBlueprintExtractionResult): GameModelProjection {
     const reason = extraction.diagnostics.map(issue => `${issue.path}: ${issue.code}: ${issue.message}`).join("; ") || "No complete public package model is available.";
     const model = extraction.model;
-    const valid = model && !new GameBlueprintValidator().validate(model).some(issue => issue.severity === "error");
+    // An explicitly unsupported custom mechanic blocks generation, but not inspection of unrelated
+    // representable sections. Its diagnostics still make the mechanics section unavailable below.
+    const valid = model && !new GameBlueprintValidator().validate(model).some(issue => issue.severity === "error" && !(
+        issue.code === "blueprint-mechanics-unknown-field" && extraction.diagnostics.some(diagnostic =>
+            diagnostic.code === "unsupported-model-field" && diagnostic.path === issue.path,
+        )
+    ));
     const effective = valid ? {...model, availableBets: model!.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100],
         paylines: model!.paylines ?? Array.from({length: model!.screenGeometry?.evaluated.rows ?? model!.rows!}, (_, row) => Array.from({length: model!.reels!}, () => row)),} as GameBlueprint : undefined;
     const projection = valid ? buildGameModelProjection(effective!) : buildGameModelProjection(undefined, {manifest: model?.manifest, reason});
@@ -135,9 +141,17 @@ export function buildPackageGameModelProjection(extraction: PackageBlueprintExtr
         symbols: "symbols", wilds: "symbols", scatters: "symbols", reelStrips: "reels", reelSequences: "reels", paytable: "paytable",
         availableBets: "betsAndModes", betModes: "betsAndModes", mechanics: "mechanics",
     };
+    const sectionDiagnostics = new Map<keyof Omit<GameModelProjection, "packageExtraction">, string[]>();
     for (const diagnostic of extraction.diagnostics.filter(issue => issue.severity === undefined || issue.severity === "error")) {
         const section = sections[diagnostic.path.split(".")[0]];
-        if (section) projection[section] = unavailable(`${diagnostic.code}: ${diagnostic.message}`);
+        if (section) {
+            const diagnostics = sectionDiagnostics.get(section) ?? [];
+            diagnostics.push(`${diagnostic.path}: ${diagnostic.code}: ${diagnostic.message}`);
+            sectionDiagnostics.set(section, diagnostics);
+        }
+    }
+    for (const [section, diagnostics] of sectionDiagnostics) {
+        projection[section] = unavailable(diagnostics.join("; "));
     }
     return projection;
 }

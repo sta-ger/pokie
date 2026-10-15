@@ -1,3 +1,4 @@
+import type {SessionCommandResult} from "../../../src/runtime/SessionRuntimeHandling.js";
 import {deepFreeze} from "../../../src/internal/deepFreeze.js";
 import {
     ReplayRecorder, computeAuditRoundHash, validateAuditReplayDescriptor, toCanonicalJson,
@@ -207,7 +208,7 @@ export class StudioReplayExecutionService {
         const common = this.jobService?.start({
             projectId: projectRoot,
             operation: "replay",
-            request: {round: request.round, ...(request.recording ? {recording: request.recording} : {}), ...(request.unit ? {unit: request.unit} : {}), ...(request.entryCommands ? {entryCommands: request.entryCommands} : {}), ...(request.seed === undefined ? {} : {seed: request.seed}), ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
+            request: {round: request.round, ...(request.expectedConfigHash === undefined ? {} : {expectedConfigHash: request.expectedConfigHash}), ...(request.recording ? {recording: request.recording} : {}), ...(request.unit ? {unit: request.unit} : {}), ...(request.entryCommands ? {entryCommands: request.entryCommands} : {}), ...(request.seed === undefined ? {} : {seed: request.seed}), ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
             conflictKey: `replay:${projectRoot}`,
             recoveryOnRestart: {action: "retry", reason: "A replay cannot safely resume after Studio restarts. Run it again with these captured parameters."},
         });
@@ -231,6 +232,7 @@ export class StudioReplayExecutionService {
             unit: request.unit, entryCommands: request.entryCommands,
             seed: request.seed,
             simulationId: request.simulationId,
+            expectedConfigHash: request.expectedConfigHash,
             startedAt: this.now(),
             completedRounds: 0,
             durationMs: 0,
@@ -434,6 +436,7 @@ export class StudioReplayExecutionService {
                 return;
             }
 
+            if (record.expectedConfigHash !== undefined && game.getConfigHash?.() !== record.expectedConfigHash) throw new Error("The project model changed since this simulation; run a new simulation before sampling it.");
             const context: PokieGameContext | undefined = record.seed === undefined ? undefined : {seed: record.seed};
             // Minted here, at the exact moment the brand-new session is created -- never reused from
             // `record.id` (the job id, minted in start() before this session exists at all). Two runs of
@@ -443,6 +446,7 @@ export class StudioReplayExecutionService {
             const sessionId = this.createId();
             let session: GameSessionHandling;
             let logicalRound: LogicalRound | undefined;
+            let finalResult: Extract<SessionCommandResult, {status: "played"}> | undefined;
             let playerCredits: number;
             try {
                 session = game.createSession(context);
@@ -456,7 +460,7 @@ export class StudioReplayExecutionService {
                 return;
             }
 
-            const execution = new ReplayRecorder().execute({game, seed: record.seed, round: record.round, unit: record.unit, entryCommands: record.entryCommands}, record.abortController.signal, session);
+            const execution = new ReplayRecorder().execute({game, seed: record.seed, round: record.round, unit: record.unit, entryCommands: record.entryCommands, betModeId: record.modeName}, record.abortController.signal, session);
             const serializer = resolveGameSessionSerializer(game);
             // Best-effort: a throwing custom game/serializer must never fail the whole replay over a state
             // snapshot — see captureStateSafely()'s own doc comment. Captured once, right after the session
@@ -502,6 +506,7 @@ export class StudioReplayExecutionService {
                         const next = execution.next();
                         if (next.done || next.value.result.status !== "played") throw new Error("Package replay did not return an accepted command.");
                         const result = next.value.result;
+                        finalResult = result;
                         logicalRound = result.logicalRound;
                         if (record.abortController.signal.aborted) {
                             record.completedRounds += played + (record.unit !== "logical-round" || logicalRound?.status === "completed" ? 1 : 0);
@@ -534,7 +539,7 @@ export class StudioReplayExecutionService {
             }
 
             const final = execution.next();
-            if (!final.done) throw new Error("Package replay did not complete.");
+            if (!final.done || !finalResult) throw new Error("Package replay did not complete.");
             const descriptor: ReplayDescriptor = {
                 ...final.value,
                 sessionId,
@@ -550,7 +555,7 @@ export class StudioReplayExecutionService {
                 ...(record.unit ? {unit: record.unit} : {}), ...(record.entryCommands ? {commands: record.entryCommands} : {}), ...(logicalRound ? {logicalRound} : {}),
                 artifact: logicalRound && this.hasVideoSlotShape(session)
                     ? new PokieJsonRoundArtifactProjector().project(buildLogicalRoundArtifact(logicalRound, buildRoundArtifactFromSession(session, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: this.pokieVersion, ...(record.configHash ? {configHash: record.configHash} : {})}})))
-                    : this.buildArtifact(session, manifest, record, this.mergeDebugPayloads(stateAfterFinal)),
+                    : this.buildArtifact(session, manifest, record, finalResult, this.mergeDebugPayloads(stateAfterFinal)),
                 ...(stateBeforeFinal !== undefined ? {stateBefore: this.toPublicSessionState(stateBeforeFinal)} : {}),
                 ...(stateAfterFinal !== undefined ? {stateAfter: this.toPublicSessionState(stateAfterFinal)} : {}),
             };
@@ -574,6 +579,10 @@ export class StudioReplayExecutionService {
         let runtime;
         try {
             runtime = await this.loadWasmRuntime(record.projectRoot, new SeededPokieWasmHost(record.seed));
+            if (record.modeName !== undefined) {
+                this.fail(record, new Error("WASM does not support package bet-mode selection."));
+                return;
+            }
             if (record.abortController.signal.aborted) {
                 this.cancelRecord(record);
                 return;
@@ -840,6 +849,7 @@ export class StudioReplayExecutionService {
         session: ReturnType<PokieGame["createSession"]>,
         manifest: ReturnType<PokieGame["getManifest"]>,
         record: StudioReplayJobRecord,
+        result: Extract<SessionCommandResult, {status: "played"}>,
         debug: Record<string, unknown> | undefined,
     ): ReplayDescriptor["artifact"] {
         if (!this.hasVideoSlotShape(session)) {
@@ -847,6 +857,8 @@ export class StudioReplayExecutionService {
         }
         const artifact = buildRoundArtifactFromSession(session, {
             roundId: `replay:${record.seed ?? "no-seed"}:${record.round}`,
+            stake: result.stake,
+            betMode: result.mode,
             provenance: {game: manifest, pokieVersion: this.pokieVersion, ...(record.configHash !== undefined ? {configHash: record.configHash} : {})},
             ...(debug !== undefined ? {debug} : {}),
         });

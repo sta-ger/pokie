@@ -16,10 +16,7 @@ export type ValidatedSimulationRequest = {
     // validator) doesn't need to specify it just to get the default — StudioSimulationService.start()
     // treats a missing value the same as 1, same as validateSimulationRequest() does below.
     workers?: number;
-    // Only meaningful for a resolved "outcomeLibrary" project (see
-    // StudioSimulationService.runOutcomeSourceSampling's own doc comment) -- undefined means "no explicit
-    // choice", resolved to the manifest's own first mode by resolveOutcomeLibraryModeName, same as before
-    // this field existed; harmlessly ignored for an ordinary "tsPackage"/"blueprint" simulation.
+    // Package mode id (or "all"), or a native outcome-library mode name.
     modeName?: string;
 };
 

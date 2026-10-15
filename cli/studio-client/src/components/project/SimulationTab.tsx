@@ -60,6 +60,8 @@ export function SimulationTab({
     onClearCompare,
     downloadUrls,
     availableModes,
+    packageModes = false,
+    modeDiscoveryError,
     recoveryRequest,
 }: {
     progress: SimulationProgressView | undefined;
@@ -86,9 +88,10 @@ export function SimulationTab({
     onCompare: (entry: StudioSimulationReportListEntry) => void;
     onClearCompare: () => void;
     downloadUrls: {json: string; markdown: string; html: string} | undefined;
-    // The current project's own real outcome-library modes -- see ProjectDashboardPage's own
-    // outcomeLibraryModes doc comment. Undefined for an ordinary game-backed project.
+    // Authored executable package modes or native library modes, discovered by the dashboard.
     availableModes?: string[];
+    packageModes?: boolean;
+    modeDiscoveryError?: string;
     /** Immutable request retained by a terminal common job, restored for an explicit Run. */
     recoveryRequest?: Readonly<Record<string, unknown>>;
 }) {
@@ -304,11 +307,12 @@ export function SimulationTab({
                             Run Simulation
                         </Button>
                     </QuickActions>
+                    {modeDiscoveryError && <ErrorState message={`Cannot discover bet modes: ${modeDiscoveryError}`} />}
                     {availableModes !== undefined && availableModes.length > 0 && (
                         <Select
-                            label="Outcome library mode"
-                            description="Which real mode of this outcome library this run samples."
-                            data={availableModes}
+                            label={packageModes ? "Bet mode" : "Outcome library mode"}
+                            description={packageModes ? "Select a mode for every available entry, or run each mode independently." : "Which real mode of this outcome library this run samples."}
+                            data={packageModes ? [...availableModes.map(value => ({value, label: value})), {value: "all", label: "All modes"}] : availableModes}
                             allowDeselect={false}
                             mb="sm"
                             style={{maxWidth: 320}}
@@ -554,8 +558,8 @@ export function SimulationTab({
                                     <List.Item key={entry.id}>
                                         <Group gap="xs" wrap="wrap" align="baseline">
                                             <Text size="sm" style={{overflowWrap: "anywhere"}}>
-                                                {entry.game.id} v{entry.game.version} — {entry.actualRounds}/{entry.requestedRounds} rounds, RTP{" "}
-                                                {(entry.rtp * 100).toFixed(2)}%, {new Date(entry.startedAt).toLocaleString()}
+                                                {entry.game.id} v{entry.game.version} — {entry.modeName ? `mode ${entry.modeName}, ` : ""}{entry.actualRounds ?? "per-mode"}/{entry.requestedRounds} rounds, RTP{" "}
+                                                {entry.rtp === undefined ? "per-mode" : `${(entry.rtp * 100).toFixed(2)}%`}, {new Date(entry.startedAt).toLocaleString()}
                                                 {entry.hasWarnings ? " (has warnings)" : ""}
                                             </Text>
                                             <Button

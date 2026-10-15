@@ -3,6 +3,7 @@ import {
     BetModeSimulationUnsupportedError,
     BetModesConfig,
     FixedBetModeForNextSimulationRoundSetting,
+    ForcingBetModeSelectionRejectedError,
     GameSessionHandling,
     UnknownBetModeError,
     VideoSlotSession,
@@ -78,5 +79,39 @@ describe("FixedBetModeForNextSimulationRoundSetting", () => {
         expect(() => new FixedBetModeForNextSimulationRoundSetting("typo-mode").setBetModeForNextRound(session)).toThrow(
             UnknownBetModeError,
         );
+    });
+
+    it("retains persistent selections and rejects unknown modes even during zero-stake continuations", () => {
+        const inner = new VideoSlotWithFreeGamesSession();
+        inner.setFreeGamesSum(3);
+        inner.setFreeGamesNum(1);
+        const session = new VideoSlotWithBetModesSession(inner, new BetModesConfig([
+            new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 1.5}),
+        ], "base"));
+        new FixedBetModeForNextSimulationRoundSetting("ante").setBetModeForNextRound(session);
+        expect(session.getBetModeId()).toBe("ante");
+        expect(() => new FixedBetModeForNextSimulationRoundSetting("missing").setBetModeForNextRound(session)).toThrow(UnknownBetModeError);
+        expect(session.getBetModeId()).toBe("ante");
+    });
+
+    it.each([
+        {error: new Error("unrelated failure"), stake: 0},
+        {error: Object.assign(new Error("same name only"), {name: "ForcingBetModeSelectionRejectedError"}), stake: 0},
+        {error: new ForcingBetModeSelectionRejectedError("another-mode"), stake: 0},
+        {error: new ForcingBetModeSelectionRejectedError("buy-bonus"), stake: 1},
+        {error: new ForcingBetModeSelectionRejectedError("buy-bonus"), stake: undefined},
+        {error: null, stake: 0},
+    ])("propagates errors without the requested-mode and live zero-stake contract (%#)", ({error, stake}) => {
+        const session = {...createPlainFakeSession(), ...(stake === undefined ? {} : {getStakeAmount: () => stake}), setBetMode: jest.fn(() => {
+            throw error;
+        })};
+        let caught: unknown = "not thrown";
+        try {
+            new FixedBetModeForNextSimulationRoundSetting("buy-bonus").setBetModeForNextRound(session);
+        } catch (failure) {
+            caught = failure;
+        }
+        expect(caught).toBe(error);
+        expect(session.setBetMode).toHaveBeenCalledTimes(1);
     });
 });

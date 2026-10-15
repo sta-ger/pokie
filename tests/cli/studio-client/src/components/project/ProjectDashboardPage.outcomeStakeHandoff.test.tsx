@@ -139,7 +139,7 @@ it("submits the original Blueprint refreshed Stake operation once and borrows it
         releaseRefreshedPreview();
         await waitFor(() => expect(within(card("Stake Engine export")).getByRole("button", {name: "Build"})).toBeEnabled());
         expect(screen.queryByRole("heading", {name: "Outcome Source"})).not.toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Draw an outcome"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: /^Draw an outcome/})).not.toBeInTheDocument();
         await user.click(within(card("Stake Engine export")).getByRole("button", {name: "Build"}));
         await waitFor(() => expect(
             card("Stake Engine export").querySelector('[data-pokie-lifecycle-terminal="completed"]')

@@ -272,7 +272,7 @@ export type GameModelBetsAndModes = {availableBets: number[]; betModes: GameMode
 
 export type GameModelFreeGames = {scatterSymbol: string; awardsByCount: Record<string, number>};
 
-export type GameModelMechanics = {freeGames?: GameModelFreeGames};
+export type GameModelMechanics = import("../../../../src/generated/GameBlueprint.js").GameBlueprintMechanics;
 
 export type GameModelLimits = {minBet?: number; maxBet?: number};
 
@@ -685,6 +685,16 @@ export type SimulationReport = {
     warnings?: string[];
     recommendations?: string[];
     breakdown?: {components: Record<string, SimulationReportBreakdownComponent>};
+    betMode?: string;
+    targetRtp?: number;
+    rtpDeviation?: number;
+    jackpot?: {
+        awardCount: number;
+        totalAwarded: number;
+        totalContributed: number;
+        contribution: number;
+        pools: Record<string, {awardCount: number; totalAwarded: number; totalContributed: number; contribution: number}>;
+    };
     averageBet?: number;
     averagePayout?: number;
     volatility?: number;
@@ -704,6 +714,14 @@ export type SimulationReport = {
     };
 };
 
+export type SimulationReportSet = {
+    game: SimulationReport["game"];
+    requestedRounds: number;
+    seed: string | null;
+    workers?: number;
+    modes: Record<string, SimulationReport>;
+};
+
 // The extra volatility/standard-deviation/confidence-interval fields Studio surfaces alongside the
 // standard SimulationReport — see cli/studio/simulation/StudioSimulationJobView.ts's own doc comment
 // for why these live here rather than as a change to SimulationReport itself.
@@ -721,7 +739,7 @@ export type StudioSimulationStatisticsView = {
 // persisted SimulationReport with the same statistics a live job's own poll response carries, so a
 // historical report renders identically to a just-completed one.
 export type StudioSimulationReportDetail = {
-    report: SimulationReport;
+    report: SimulationReport | SimulationReportSet;
     statistics?: StudioSimulationStatisticsView;
 };
 
@@ -736,7 +754,7 @@ export type StudioSimulationJobView = {
     startedAt: string;
     roundsCompleted: number;
     durationMs: number;
-    report?: SimulationReport;
+    report?: SimulationReport | SimulationReportSet;
     statistics?: StudioSimulationStatisticsView;
     error?: string;
     recovery?: StudioJobView["recovery"];
@@ -754,17 +772,18 @@ export type StudioSimulationReportListEntry = {
     status: "completed";
     game: {id: string; version: string};
     requestedRounds: number;
-    actualRounds: number;
+    actualRounds?: number;
     seed?: string;
     workers: number;
-    rtp: number;
-    hitFrequency: number;
-    maxWin: number;
+    rtp?: number;
+    hitFrequency?: number;
+    maxWin?: number;
     startedAt: string;
     completedAt: string;
     durationMs: number;
     hasWarnings: boolean;
     modeName?: string;
+    modes?: Record<string, {rounds: number; betMode?: string}>;
 };
 
 // The server's copies of this whole RoundArtifact family live in "pokie" itself (src/artifact/*.ts) —
@@ -786,7 +805,7 @@ export type RoundArtifactMultiplierBreakdown = {
 export type RoundArtifactWin = {
     readonly type: string;
     readonly id: string;
-    readonly symbolId: string | number;
+    readonly symbolId: string | number | null;
     readonly winAmount: number;
     readonly winningPositions: readonly (readonly number[])[];
     readonly multiplierBreakdown: readonly RoundArtifactMultiplierBreakdown[];
@@ -856,6 +875,9 @@ export type OutcomeSourceReplayDescriptorView = {
 // The server's copy of this same type lives in "pokie" itself (src/replay/ReplayDescriptor.ts) —
 // kept as its own client-side copy here, same convention as every other type in this file.
 export type ReplayDescriptor = {
+    unit?: "step" | "logical-round";
+    commands?: readonly import("../../../../src/runtime/SessionCommand.js").SessionCommand[];
+    modePolicy?: {betModeId: string; selection: "repeat-when-available" | "recorded-commands"};
     audit?: import("../../../../src/replay/AuditRoundRecording.js").AuditRoundRecording;
     auditStatus?: "verified" | "recorded" | "legacy-best-effort" | "unsupported";
     auditCompletion?: "completed" | "pending" | "exhausted";
