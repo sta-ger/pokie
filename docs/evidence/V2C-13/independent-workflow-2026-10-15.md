@@ -59,3 +59,57 @@ claimed from those uncollected branches. Both Studio children were closed by
 the neutral launcher; no runtime artifact, profile, generated package, or raw
 log is committed here. Packaging and official full/release gates remain
 deferred.
+
+## Recovery collection revision
+
+This revision reused the authenticated candidate build and did not rerun tests.
+Two further fresh-profile Studio launches completed and their owned children
+drained before this record was written.
+
+The first transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-13-b86253e3a60d58fd/run-2026-10-15T08-38-18-862Z/transcript.json`
+(SHA-256 `788bee3aa38f94edef2c6f4cb3b531ae3ff2cb7680812d2c6790ee68139329e9`).
+Rendered Home and Project screens loaded and saved `wild-sticky.blueprint.json`,
+then submitted a Simulation with 200 rounds, seed `v2c13-sticky-workers`, and
+`workers=2`. Its queued and terminal receipts identify job
+`191065c54c8d40d08e6ca6bc7bc78921`; the full report records 200 executed,
+sticky, rule-application and multiplied-component steps, total bet 10.00,
+total payout 600.00, config hash
+`sha256:e5e82037d6c83e75b726d37327920f5c72e8ddc0bbf7f42b33c23ef0ffe73584`,
+and a public reproduction command with `--workers 2`.
+
+The same launch completed TypeScript package job
+`6580e02cfeab4d9aa38dbc752b31df14` through rendered Build/Export and then
+opened it with the visible `Open as Project` action. Studio rendered a
+read-only `Playable game`. A seeded public Play session
+(`v2c13-generated-sticky-play`) rendered one completed A/W2/W3 round: stake
+0.05 and payout 3.00 (unrounded transport payout `3.0000000000000453`).
+Independently inspected screenshots: saved authoring view `1-observation.png`
+(SHA-256 `9730995703582790fd0d6bfe5fcb8e67654a57abb38cf8f33c4db95290d9b3d3`),
+multi-worker report `2-observation.png` (SHA-256
+`eaa263f108905ab6a731321d06ff09a4bd61d15ca20b2a0f40d3bbecf3f005df`), and
+Play result `3-observation.png` (SHA-256
+`a0f5928a46afdd9e28b135f8d92b7de9068775058d62d895ea72195a9ef4b02a`).
+
+The distinct retry job `d0e56a14d9a34991aa735fc2f5578832` completed 200
+rounds before the driver could dispatch Cancel. It is not cancellation-cleanup
+evidence and no cancellation result is claimed.
+
+The second transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-13-b86253e3a60d58fd/run-2026-10-15T08-48-16-845Z/transcript.json`
+(SHA-256 `56945558723136ef60013e51ef221cd4884b080ade1cef268cdb0d99b7c382b8`).
+It loaded and saved `generated-reels.blueprint.json` through Home/Project and
+opened its public Outcome Library generator. Its rendered preflight states that
+exact enumeration has 12,337,920 raw combinations. This is a mechanism
+preflight only, not completed ordinary/weighted execution or an XLSX round trip.
+
+### Current independent disposition
+
+This adds public save/materialization, a generated package loader, seeded
+generated-package Play with the known payout, and sticky multi-worker
+accounting. It does not prove all six authoring capabilities and their
+ordering/coordinates/restrictions/lifetime, malformed/stale recovery, catalogue
+sweep, HTML/Markdown reports, ordinary/weighted comparison, XLSX round-trip,
+state isolation, or cancellation cleanup. Those rows remain not reached. No
+candidate-owned product failure was observed. Packaging and official
+full/release gates remain deferred; no runtime payload is committed.
