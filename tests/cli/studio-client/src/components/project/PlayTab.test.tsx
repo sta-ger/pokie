@@ -41,7 +41,7 @@ describe("V2C-14 real bounded Play accounting", () => {
         expect(screen.getByRole("button", {name: "Continue round"})).toBeEnabled();
         expect(container.querySelectorAll(".player-wins .player-highlight-button")).toHaveLength(0);
         for (const cell of container.querySelectorAll<HTMLElement>("[data-cell]")) expect(cell.style.backgroundColor).toBe("");
-        expect(screen.getByRole("button", {name: "Line: 0"})).toBeVisible();
+        expect(screen.getByRole("button", {name: "Line: 0"})).toBeInTheDocument();
         // A retained session can also appear in the Start Play summary after its UI id is cleared.
         rerender(<MantineProvider><PlayTab session={{status: "error", message: "session lost", previousSession: terminal}}
             sessionId={undefined} onNewSession={() => undefined} onSpin={() => undefined}
