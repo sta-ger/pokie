@@ -32,7 +32,7 @@ it.each([1, 2, 3, 4, 5, 6, 7])("renders the authored rules for bounded combinati
     const blueprint: GameBlueprint = {...combined, mechanics: Object.fromEntries(keys.filter((_, i) => mask & (1 << i)).map(key => [key, combined.mechanics![key]]))};
     expect(new GameBlueprintValidator().validate(blueprint).filter(issue => issue.severity === "error")).toEqual([]);
     const before = JSON.stringify(blueprint);
-    renderWithProviders(<GameModelSections projection={buildGameModelProjection(blueprint)} />);
+    render(<GameModelSections projection={buildGameModelProjection(blueprint)} />, {wrapper: MantineProvider});
     expectRules(blueprint);
     expect(JSON.stringify(blueprint)).toBe(before);
 });
@@ -45,6 +45,7 @@ it("keeps empty, unavailable and populated projections distinct through repeated
     rerender(<GameModelSections projection={projection} />);
     expectRules(collection);
     rerender(<GameModelSections projection={{...projection, mechanics: {status: "unavailable", reason: "Unsupported package mechanic"}}} />);
+    fireEvent.click(screen.getByText("Technical details"));
     expect(screen.getByText("Unsupported package mechanic")).toBeVisible();
     expect(screen.queryByText(/^Collection:/)).toBeNull();
     expect(screen.queryByText(empty)).toBeNull();
@@ -80,6 +81,7 @@ it("previews the same combined rules through the editor API without saving", asy
     const requests: string[] = [];
     const fetchImpl: FetchLike = (url, init) => {
         requests.push(url);
+        if (url === "/api/project/symbol-artwork") return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({artwork: {}})});
         if (url !== "/api/home/blueprints/game-model-preview") throw new Error(`Unexpected request: ${url}`);
         const blueprint = JSON.parse(init!.body!).blueprint as GameBlueprint;
         expect(blueprint).toEqual(combined);
@@ -89,5 +91,5 @@ it("previews the same combined rules through the editor API without saving", asy
     fireEvent.click(screen.getByRole("button", {name: "Preview Game Model"}));
     await screen.findByText(/^Collection:/);
     expectRules(combined);
-    expect(requests).toEqual(["/api/home/blueprints/game-model-preview"]);
+    expect(requests.filter(url => url !== "/api/project/symbol-artwork")).toEqual(["/api/home/blueprints/game-model-preview"]);
 });
