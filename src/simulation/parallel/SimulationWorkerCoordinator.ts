@@ -31,6 +31,7 @@ export type SimulationWorkerProgress = {workerIndex: number; roundsCompleted: nu
 export type SimulationWorkerCoordinatorRunOptions = {
     signal?: AbortSignal;
     onProgress?: (progress: SimulationWorkerProgress) => void;
+    onPhase?: (phase: "simulation" | "finalizing / cleanup") => void;
 };
 
 // Owns the actual worker_threads lifecycle for one simulation run: spawns one real Worker per
@@ -58,7 +59,7 @@ export class SimulationWorkerCoordinator {
         requests: SimulationWorkerRequest[],
         options: SimulationWorkerCoordinatorRunOptions = {},
     ): Promise<SimulationWorkerResult[]> {
-        const {signal, onProgress} = options;
+        const {signal, onProgress, onPhase} = options;
         if (signal?.aborted) {
             throw new SimulationCancelledError();
         }
@@ -77,6 +78,7 @@ export class SimulationWorkerCoordinator {
             const results = new Array<SimulationWorkerResult | undefined>(requests.length).fill(undefined);
             const prefixes = new Map<number, import("../SimulationAccumulatorSnapshot.js").SimulationAccumulatorSnapshot>();
             let settled = false;
+            const finalizing = new Set<number>();
 
             const terminateAll = async (): Promise<void> => {
                 await Promise.allSettled(workers.map((worker) => Promise.resolve().then(() => worker.terminate())));
@@ -92,8 +94,18 @@ export class SimulationWorkerCoordinator {
                 }
                 settled = true;
                 signal?.removeEventListener("abort", onAbort);
+                let phaseError: unknown;
+                try {
+                    onPhase?.("finalizing / cleanup");
+                } catch (error) {
+                    phaseError = error;
+                }
                 await terminateAll();
                 for (const worker of workers) worker.removeAllListeners();
+                if (phaseError !== undefined) {
+                    reject(phaseError);
+                    return;
+                }
                 try {
                     action();
                 } catch (error) {
@@ -137,7 +149,7 @@ export class SimulationWorkerCoordinator {
 
                     const message = raw as SimulationWorkerMessage;
                     try {
-                        if (["progress", "result", "error"].includes(message.type) && message.workerIndex !== request.workerIndex) throw new SimulationWorkerFailureError(request.workerIndex, "message identity does not match its request.");
+                        if (["progress", "result", "error", "phase"].includes(message.type) && message.workerIndex !== request.workerIndex) throw new SimulationWorkerFailureError(request.workerIndex, "message identity does not match its request.");
                         if ((message.type === "progress" || message.type === "result") && message.accumulator) {
                             SimulationAccumulator.fromSnapshot(message.accumulator);
                             if (message.roundsCompleted !== message.accumulator.rounds) throw new Error("Simulation worker progress disagrees with accepted subrounds.");
@@ -146,6 +158,12 @@ export class SimulationWorkerCoordinator {
                             new SimulationStatisticsMerger().merge([...prefixes.values()].map(accumulator => ({accumulator})));
                         }
                         switch (message.type) {
+                            case "phase":
+                                if (message.phase === "finalizing / cleanup") finalizing.add(index);
+                                else if (message.phase === "simulation") onPhase?.("simulation");
+                                else throw new SimulationWorkerFailureError(request.workerIndex, "invalid worker phase.");
+                                if (finalizing.size === requests.length) onPhase?.("finalizing / cleanup");
+                                return;
                             case "progress":
                                 if (message.accumulator) prefixes.set(index, message.accumulator);
                                 onProgress?.({workerIndex: message.workerIndex, roundsCompleted: message.roundsCompleted});

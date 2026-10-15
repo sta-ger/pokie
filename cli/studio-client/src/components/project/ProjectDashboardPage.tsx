@@ -745,7 +745,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // reads. Only an accepted configuration clears the previous run-again notice.
     // Retry uses the hook's retained request and its same rounds preflight.
     const startRun = useCallback(
-        (rounds: number, seed: string | undefined, workers: number, modeName?: string) => {
+        (rounds: number, seed: string | undefined, workers: number, modeName?: string, convergence?: StudioSimulationReportListEntry["convergence"]) => {
             const roundsError = getSimulationRoundsError(rounds);
             if (roundsError !== null) {
                 setRunAgainNotice(roundsError);
@@ -757,7 +757,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             setSelectedReportId(undefined);
             setCompareDetail({status: "empty"});
             setRunAgainNotice(undefined);
-            simulation.run(rounds, seed, workers, modeName);
+            simulation.run(rounds, seed, workers, modeName, "simulation", convergence);
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [simulation.run],
@@ -813,7 +813,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 return;
             }
             // No explicit clear here -- startRun() itself always clears runAgainNotice.
-            startRun(entry.requestedRounds, entry.seed, entry.workers, entry.modeName);
+            startRun(entry.requestedRounds, entry.seed, entry.workers, entry.modeName, entry.convergence);
         },
         [simulation.job, startRun],
     );

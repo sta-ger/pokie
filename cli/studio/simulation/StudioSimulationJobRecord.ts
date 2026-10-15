@@ -15,6 +15,8 @@ export type StudioSimulationJobRecord = {
     modeCount?: number;
     seed?: string;
     workers: number;
+    convergence?: import("../../../src/simulation/SimulationConvergenceOptions.js").SimulationConvergenceOptions;
+    phase?: string;
     startedAt: number;
     // Set exactly once, the moment status first becomes terminal (completed/failed/cancelled) — see
     // StudioSimulationService's fail()/cancelRecord()/completion path. Undefined while queued/running.

@@ -42,7 +42,7 @@ import type {StudioSimulationRepository} from "./StudioSimulationRepository.js";
 import type {StudioSimulationReportListEntry} from "./StudioSimulationReportListEntry.js";
 import type {StudioSimulationStatus} from "./StudioSimulationStatus.js";
 import {toStudioSimulationJobView} from "./toStudioSimulationJobView.js";
-import type {ValidatedSimulationRequest} from "./validateSimulationRequest.js";
+import {validateSimulationConvergence, type ValidatedSimulationRequest} from "./validateSimulationRequest.js";
 import {StudioJobService} from "../jobs/StudioJobService.js";
 import type {StudioJobView} from "../jobs/StudioJobView.js";
 
@@ -159,6 +159,7 @@ export class StudioSimulationService {
     // "run the ordinary ParallelSimulationRunner path" (see run()), exactly as before this parameter existed.
     public start(projectRoot: string, request: ValidatedSimulationRequest, outcomeSourceProject?: PokieProject): StudioSimulationStartResult {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
+        request = {...request, convergence: validateSimulationConvergence(request.convergence)};
         // This service is also used directly, outside StudioServer's HTTP
         // guard. A resolved component, or an actual unresolved WASM file, has
         // no runnable branch. A package directory named `game.wasm` remains a
@@ -166,10 +167,13 @@ export class StudioSimulationService {
         if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmArtifact(projectRoot)) {
             return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "simulate game rounds")};
         }
+        if (request.convergence && (outcomeSourceProject !== undefined || isWasmComponentFile(projectRoot))) {
+            return {status: "unsupported", message: "Adaptive stopping is supported only for executable package simulations; outcome-library and WASM samplers use fixed budgets."};
+        }
         const common = this.jobService?.start({
             projectId: projectRoot,
             operation: "simulation",
-            request: {rounds: request.rounds, ...(request.seed === undefined ? {} : {seed: request.seed}), workers: request.workers ?? 1, ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
+            request: {rounds: request.rounds, ...(request.seed === undefined ? {} : {seed: request.seed}), workers: request.workers ?? 1, ...(request.convergence ? {convergence: request.convergence} : {}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
             conflictKey: `simulation:${projectRoot}`,
             recoveryOnRestart: {action: "retry", reason: "A simulation cannot safely resume after Studio restarts. Run it again with these captured parameters."},
         });
@@ -191,6 +195,8 @@ export class StudioSimulationService {
             rounds: request.rounds,
             seed: request.seed,
             workers: request.workers ?? 1,
+            convergence: request.convergence,
+            phase: "queued",
             startedAt: this.now(),
             roundsCompleted: 0,
             durationMs: 0,
@@ -338,6 +344,7 @@ export class StudioSimulationService {
             status: "completed",
             game: {id: report.game.id, version: report.game.version},
             requestedRounds: report.requestedRounds,
+            convergence: record.convergence,
             modes: isSimulationReportSet(report) ? Object.fromEntries(Object.entries(report.modes).map(([id, mode]) => [id, {rounds: mode.rounds, betMode: mode.betMode}])) : undefined,
             actualRounds: isSimulationReportSet(report) ? undefined : report.rounds,
             ...(!isSimulationReportSet(report) && report.sampling ? {sampling: report.sampling} : {}),
@@ -355,6 +362,7 @@ export class StudioSimulationService {
     }
 
     private async run(record: StudioSimulationJobRecord): Promise<void> {
+        this.setPhase(record, "preparing");
         if (record.outcomeSourceProject !== undefined) {
             await this.runOutcomeSourceSampling(record, record.outcomeSourceProject);
             return;
@@ -401,6 +409,8 @@ export class StudioSimulationService {
                 const modeStartedAt = record.modeName === "all" ? this.now() : record.startedAt;
                 const runner = this.createParallelSimulationRunner(runtime.runtimePath, record.rounds, {
                     seed: record.seed,
+                    convergence: record.convergence,
+                    onPhase: phase => this.setPhase(record, phase),
                     betModeId: modeId,
                     workers: record.workers,
                     loadGame: this.loadGame,
@@ -411,7 +421,7 @@ export class StudioSimulationService {
                     onProgress: (roundsCompleted) => {
                         record.roundsCompleted = completedRounds + roundsCompleted;
                         record.durationMs = this.now() - record.startedAt;
-                        this.jobService?.progress(record.id, {stage: "simulation", unit: "rounds", current: record.roundsCompleted, total: modeIds.length * record.rounds});
+                        this.setPhase(record, "simulation");
                     },
                 });
                 const result = await runner.run();
@@ -474,7 +484,11 @@ export class StudioSimulationService {
             }
             this.fail(record, error);
         } finally {
-            await runtime.release();
+            try {
+                this.setPhase(record, "finalizing / cleanup");
+            } finally {
+                await runtime.release();
+            }
         }
     }
 
@@ -518,7 +532,7 @@ export class StudioSimulationService {
                 }
                 record.roundsCompleted += chunk;
                 record.durationMs = this.now() - record.startedAt;
-                this.jobService?.progress(record.id, {stage: "simulation", unit: "rounds", current: record.roundsCompleted, total: record.rounds});
+                this.setPhase(record, "simulation");
                 remaining -= chunk;
                 if (remaining > 0) await this.yieldToEventLoop();
             }
@@ -559,9 +573,13 @@ export class StudioSimulationService {
             else this.fail(record, error);
         } finally {
             try {
-                await disposeSession?.();
+                this.setPhase(record, "finalizing / cleanup");
             } finally {
-                await runtime?.dispose();
+                try {
+                    await disposeSession?.();
+                } finally {
+                    await runtime?.dispose();
+                }
             }
         }
     }
@@ -663,7 +681,7 @@ export class StudioSimulationService {
 
                 record.roundsCompleted += chunkRounds;
                 record.durationMs = this.now() - record.startedAt;
-                this.jobService?.progress(record.id, {stage: "simulation", unit: "rounds", current: record.roundsCompleted, total: record.rounds});
+                this.setPhase(record, "simulation");
                 roundsRemaining -= chunkRounds;
                 if (roundsRemaining > 0) {
                     await this.yieldToEventLoop();
@@ -691,6 +709,8 @@ export class StudioSimulationService {
             packageRoot: record.projectRoot,
             workers: 1,
             workerSeedStrategy: describeOutcomeSourceSeedPolicy(record.seed),
+            betMode: modeName,
+            stopReason: "maxRounds",
             configHash: statistics.analytics?.envelope.modelId ?? undefined,
             pokieVersion: this.pokieVersion,
         });
@@ -762,7 +782,7 @@ export class StudioSimulationService {
     // terminal immediately. Other project kinds may own temporary materialization stages while
     // queued; their run path continues to publish cancellation after it has cleaned those stages.
     private cancelActiveRecord(record: StudioSimulationJobRecord): void {
-        if (record.status !== "queued" && record.status !== "running") return;
+        if (record.status !== "queued" && record.status !== "running" && record.status !== "cancelling") return;
         // Persist cancelling before asking the compatibility executor to
         // release its runtime/worker resources. The terminal state is written
         // only by markTerminal() after that cleanup has completed.
@@ -771,8 +791,10 @@ export class StudioSimulationService {
         // process exits. Its run promise owns terminal cancellation after
         // cleanup; keeping the local record cancellable preserves the existing cleanup
         // and Retry contracts.
+        const wasQueued = record.status === "queued";
         record.abortController.abort();
-        if (record.status === "queued" && isWasmComponentFile(record.projectRoot)) this.cancelRecord(record);
+        record.status = "cancelling";
+        if (wasQueued && isWasmComponentFile(record.projectRoot)) this.cancelRecord(record);
     }
 
     // Common tail for every path that lands a record in a terminal status: stamps durationMs/
@@ -785,9 +807,11 @@ export class StudioSimulationService {
             // The repository retains this object by reference. Keep both its
             // public status and durable terminal pending through runtime release.
             this.pendingTerminals.set(record.id, record.status);
-            record.status = "running";
+            record.status = record.abortController.signal.aborted ? "cancelling" : "running";
+            this.setPhase(record, "finalizing / cleanup");
             return;
         }
+        this.setPhase(record, record.status);
         record.durationMs = this.now() - record.startedAt;
         record.completedAt = record.startedAt + record.durationMs;
         if (record.status === "completed" && record.report !== undefined && !isSimulationReportSet(record.report)) {
@@ -831,17 +855,25 @@ export class StudioSimulationService {
     private markRunning(record: StudioSimulationJobRecord): void {
         record.status = "running";
         this.jobService?.markRunning(record.id);
-        this.jobService?.progress(record.id, {stage: "preparing", unit: "rounds", current: record.roundsCompleted, total: record.rounds});
+        this.setPhase(record, "preparing");
+    }
+
+    private setPhase(record: StudioSimulationJobRecord, stage: string): void {
+        record.phase = stage;
+        record.durationMs = this.now() - record.startedAt;
+        this.jobService?.progress(record.id, {stage, unit: "accepted plays", current: record.roundsCompleted, total: record.rounds * (record.modeCount ?? 1)});
     }
 
     /** Compatibility DTO projection of the durable lifecycle authority. */
     private toJobView(record: StudioSimulationJobRecord): StudioSimulationJobView {
+        if (record.completedAt === undefined) record.durationMs = this.now() - record.startedAt;
         const view = toStudioSimulationJobView(record);
         const common = this.jobService?.get(record.projectRoot, record.id);
         if (common?.operation !== "simulation") return view;
         return {
             ...view,
             status: common.status,
+            progress: common.progress ?? view.progress,
             ...(common.startedAt === undefined ? {} : {startedAt: new Date(common.startedAt).toISOString()}),
             ...(common.durationMs === undefined ? {} : {durationMs: common.durationMs}),
             ...(common.error === undefined ? {} : {error: common.error}),
@@ -853,6 +885,9 @@ export class StudioSimulationService {
         return {
             id: job.id,
             status: job.status,
+            progress: job.progress,
+            ...(job.request.convergence ? {convergence: job.request.convergence as StudioSimulationJobView["convergence"]} : {}),
+            requestedRounds: typeof job.request.rounds === "number" ? job.request.rounds : 0,
             rounds: (typeof job.progress?.total === "number" ? job.progress.total : undefined) ?? (typeof job.request.rounds === "number" ? job.request.rounds : 0),
             ...(typeof job.request.seed === "string" ? {seed: job.request.seed} : {}),
             workers: typeof job.request.workers === "number" ? job.request.workers : 1,
@@ -877,6 +912,7 @@ export class StudioSimulationService {
             status: "completed",
             game: {id: report.game.id, version: report.game.version},
             requestedRounds: report.requestedRounds,
+            ...(job.request.convergence ? {convergence: job.request.convergence as StudioSimulationJobView["convergence"]} : {}),
             modes: isSimulationReportSet(report) ? Object.fromEntries(Object.entries(report.modes).map(([id, mode]) => [id, {rounds: mode.rounds, betMode: mode.betMode}])) : undefined,
             actualRounds: isSimulationReportSet(report) ? undefined : report.rounds,
             ...(!isSimulationReportSet(report) && report.sampling ? {sampling: report.sampling} : {}),

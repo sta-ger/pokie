@@ -166,3 +166,5 @@ feature subrounds; cascade delivery stages remain separate. Parent/child lifecyc
 summaries may overlap, while the canonical base/feature/jackpot monetary partition
 is additive. Native outcome events do not prove lifecycle; WASM lacks canonical
 component/lifecycle evidence. See [formulas and support boundaries](../simulation.md#feature-analytics-aggregates-v2c-16).
+
+V2C-17 report projection: canonical lifecycle evidence supports entry/retrigger/completion distributions; arbitrary custom event names and flattened artifact categories do not. Native outcome artifacts support observed components but no canonical lifecycle. Canonical WASM remains amount-only. Supported configured features with no entries are displayed as unobserved, separately from unsupported attribution and legacy missing analytics. Empirical confidence/adaptive precision is not exact RTP or proof of rare-event coverage; low-evidence diagnostics use completed usable samples rather than the requested budget.

@@ -1,3 +1,4 @@
+import {describeSimulationDiagnostics} from "../../../../../src/reporting/describeSimulationDiagnostics";
 import {List, Table, Text} from "@mantine/core";
 import {EmptyState} from "./EmptyState";
 import {ErrorState} from "./ErrorState";
@@ -48,6 +49,7 @@ export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
     const mainRecommendation = report.recommendations[0];
     return (
         <div>
+            {describeSimulationDiagnostics(report, false).slice(0, report.diagnostics ? 5 + report.diagnostics.coverageLimitations.length : 4).map((line, index) => <Text size="sm" key={index}>{line}</Text>)}
             {report.betMode !== undefined && <Text>Bet mode: {report.betMode}</Text>}
             <Table withRowBorders={false}>
                 <Table.Tbody>

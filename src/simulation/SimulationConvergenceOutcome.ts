@@ -16,5 +16,5 @@ export type SimulationConvergenceOutcome = {
     consecutiveStableChecks: number;
     // The RTP confidence interval half-width at the last check performed -- lower is more precise. When
     // workers > 1, the maximum across workers -- the least-precise worker's estimate.
-    achievedRtpHalfWidth: number;
+    achievedRtpHalfWidth: number | null; // null when no check ran (e.g. sessionStopped before the first boundary)
 };

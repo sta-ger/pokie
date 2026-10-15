@@ -1,3 +1,4 @@
+import {featureAnalyticsReport} from "../../v2/fixtures/FeatureAnalyticsFixture.js";
 import {
     OutcomeLibraryBundleWriter,
     OutcomeSourceDiffResult,
@@ -65,6 +66,27 @@ function createStubReadFile(files: Record<string, string>): (file: string) => st
 }
 
 describe("DiffCommand", () => {
+    it.each(["left", "right"])("validates single and every all-mode %s input before comparison", async side => {
+        const report = featureAnalyticsReport();
+        const patches = [{analytics: {}}, {analytics: {...report.analytics, features: {...report.analytics!.features, extra: null}}},
+            {diagnostics: {...report.diagnostics, samples: -1}}, {sampling: {...report.sampling, excludedSubrounds: -1}},
+            {reelSequences: [{reelIndex: 0, context: "logical-round", model: "fixture", selections: 0, variants: [{id: "rare", weight: 1, probability: 0, probabilityRatio: {numerator: "<img>", denominator: "1"}, count: 0, frequency: 0, uncovered: true}]}]}];
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            for (const patch of patches) for (const all of [false, true]) {
+                const invalid = {...report, ...patch};
+                const validPayload = all ? {game: report.game, requestedRounds: report.requestedRounds, seed: report.seed, modes: {base: report, buy: report}} : report;
+                const invalidPayload = all ? {game: report.game, requestedRounds: report.requestedRounds, seed: report.seed, modes: {base: report, buy: invalid}} : invalid;
+                const files = {"left.json": JSON.stringify(side === "left" ? invalidPayload : validPayload), "right.json": JSON.stringify(side === "right" ? invalidPayload : validPayload)};
+                const command = new DiffCommand(createStubReadFile(files));
+                await expect(command.run(["left.json", "right.json"])).rejects.toThrow(/Invalid simulation report (analytics|diagnostics.samples|sampling.excludedSubrounds|reelSequences)/);
+            }
+            expect(log).not.toHaveBeenCalled();
+        } finally {
+            log.mockRestore();
+        }
+    });
+
     it("has the expected name and description", () => {
         const command = new DiffCommand();
 

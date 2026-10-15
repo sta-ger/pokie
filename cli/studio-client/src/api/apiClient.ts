@@ -680,6 +680,7 @@ export async function startSimulation(
     seed?: string,
     workers?: number,
     modeName?: string,
+    convergence?: StudioSimulationJobView["convergence"],
 ): Promise<StartSimulationResult> {
     const response = await fetchImpl("/api/project/simulations", {
         method: "POST",
@@ -689,6 +690,7 @@ export async function startSimulation(
             ...(seed === undefined ? {} : {seed}),
             ...(workers === undefined ? {} : {workers}),
             ...(modeName === undefined ? {} : {modeName}),
+            ...(convergence === undefined ? {} : {convergence}),
         }),
     });
 

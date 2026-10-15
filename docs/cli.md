@@ -3907,3 +3907,5 @@ and payout share uses total observed win. An all-mode report keeps each mode's
 analytics separate. `pokie diff` flags analytics-only changes. Unavailable source
 evidence and incomplete features display explicitly. See [analytics formulas,
 capabilities, bounds and worker seed policy](simulation.md#feature-analytics-aggregates-v2c-16).
+
+Simulation console output includes the saved report's sampling, empirical precision, bounded payout distribution, feature attribution and weighted-selection coverage diagnostics. JSON and `pokie report --format markdown|html` preserve those same populations. Native outcome-library sampling also emits an ordinary renderable simulation projection while retaining its library identity and raw statistics. Older native sampled JSON is accepted explicitly; this is distinct from `pokie report <outcome-library>` static analysis. A short, zero-win or noisy run cannot establish exact or target RTP.

@@ -50,7 +50,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
     async function waitForTerminalRealTime(service: StudioSimulationService, id: string): Promise<StudioSimulationJobView> {
         for (let i = 0; i < 5000; i++) {
             const job = service.getStatus(id);
-            if (job && job.status !== "queued" && job.status !== "running") {
+            if (job && job.status !== "queued" && job.status !== "running" && job.status !== "cancelling") {
                 return job;
             }
             await new Promise((resolve) => {
@@ -70,7 +70,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             if (job && job.roundsCompleted > 0) {
                 return job;
             }
-            if (job && job.status !== "queued" && job.status !== "running") {
+            if (job && job.status !== "queued" && job.status !== "running" && job.status !== "cancelling") {
                 throw new Error(job.error ?? `Simulation became ${job.status} before reporting progress.`);
             }
             await new Promise((resolve) => {
@@ -227,10 +227,19 @@ describe("StudioSimulationService (integration, real worker threads via --worker
         // cancellation rather than a job that raced to completion — or was cancelled before either
         // worker even started — first.
         await waitForProgressRealTime(service, result.job.id);
-        service.cancel(result.job.id);
+        const cancelling = service.cancel(result.job.id);
+        expect(cancelling?.status).toBe("cancelling");
+        expect(cancelling?.report).toBeUndefined();
+        expect(service.listReports(fixtureRoot)).toEqual([]);
+        expect(service.getReport(fixtureRoot, result.job.id).status).not.toBe("ok");
 
         const job = await waitForTerminalRealTime(service, result.job.id);
         expect(job.status).toBe("cancelled");
+        // Terminal cancellation is published only after the owned executor and workers drain.
+        await service.cancelAll();
+        expect(service.getStatus(result.job.id)?.status).toBe("cancelled");
+        expect(service.listReports(fixtureRoot)).toEqual([]);
+        expect(service.getReport(fixtureRoot, result.job.id).status).not.toBe("ok");
         expect(job.observedPrefix?.analytics?.subrounds).toBeGreaterThan(0);
         expect(job.observedPrefix?.analytics?.envelope.schemaVersion).toBe(1);
         expect(job.report).toBeUndefined();

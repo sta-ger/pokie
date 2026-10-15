@@ -375,9 +375,9 @@ describe("SimCommand", () => {
         const report = JSON.parse(contents) as SimulationReport;
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
 
-        expect(report.warnings).toEqual(expect.arrayContaining([expect.stringContaining("Requested rounds (1) is low")]));
+        expect(report.warnings).toEqual(expect.arrayContaining([expect.stringContaining("Usable samples (1) is low")]));
         expect(printed).toContain("Warnings:");
-        expect(printed).toContain("Requested rounds (1) is low");
+        expect(printed).toContain("Usable samples (1) is low");
 
         logSpy.mockRestore();
     });
@@ -548,7 +548,7 @@ describe("SimCommand --mode", () => {
         await command.run(["./sample-slot", "--rounds", "20"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).not.toContain("bet mode");
+        expect(printed).not.toMatch(/(?:^|\n)\s+bet mode\s{2,}/);
 
         logSpy.mockRestore();
     });
@@ -1405,10 +1405,17 @@ describe("SimCommand outcome-source routing (integration, real outcome-library b
         const report = JSON.parse(logSpy.mock.calls[0][0]) as {libraryId: string; workerSeedStrategy: string; statistics: {rounds: number; rtp: number; totalBet: number}};
         expect(report.libraryId).toBe("base-lib");
         expect(report.statistics.rounds).toBe(200);
+        expect(report).toMatchObject({rounds: 200, analytics: {envelope: {lifecycle: false, components: true}}, diagnostics: {sampleUnit: "accepted-subround", samples: 200}});
+        expect((report as unknown as SimulationReport).diagnostics?.coverageLimitations.join("\n")).toContain("Feature lifecycle attribution unsupported");
         expect(report.workerSeedStrategy).toContain("derived-round-seed-v1");
         expect(report.statistics.totalBet).toBe(200);
         expect(report.statistics.rtp).toBeGreaterThanOrEqual(0);
 
         logSpy.mockRestore();
     });
+});
+
+it("rejects adaptive flags for native outcome sampling instead of silently ignoring them", async () => {
+    const command = new SimCommand(undefined, undefined, undefined, undefined, undefined, undefined, stubProjectResolver(outcomeLibraryProject));
+    await expect(command.run(["/libraries/base", "--mode", "base", "--rounds", "20", "--min-rounds", "2", "--rtp-tolerance", "0.01", "--check-interval", "2"])).rejects.toThrow("does not support adaptive convergence");
 });

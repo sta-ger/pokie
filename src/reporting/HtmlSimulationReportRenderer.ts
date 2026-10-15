@@ -1,3 +1,4 @@
+import {describeSimulationDiagnostics} from "./describeSimulationDiagnostics.js";
 import {describeFeatureAnalytics} from "../simulation/describeFeatureAnalytics.js";
 import {describeWeightedBonusCoverage} from "../session/videoslot/authored/WeightedBonus.js";
 import {describeSequenceVariantCoverage} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
@@ -102,11 +103,12 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             tableRows,
             "            </tbody>",
             "        </table>",
+            "<h2>Sampling and precision diagnostics</h2>", ...describeSimulationDiagnostics(report).map(line => `<p>${this.escapeHtml(line)}</p>`),
             ...(report.sampling ? [`<h2>Logical round sampling</h2><p>Completed logical rounds: ${report.rounds}; accepted subrounds: ${report.sampling.acceptedSubrounds}; carried subrounds: ${report.sampling.carriedSubrounds ?? 0}; excluded unfinished/restored subrounds: ${report.sampling.excludedSubrounds}. Independent session trajectory per worker. Monetary totals include every observed subround.</p>`] : []),
             ...(report.modifiers ? [`<h2>Screen modifiers</h2><p>Executed steps: ${this.escapeHtml(String(report.modifiers.steps))}; rule applications: ${this.escapeHtml(String(report.modifiers.ruleApplications))}; sticky steps: ${this.escapeHtml(String(report.modifiers.stickySteps))}; multiplied components: ${this.escapeHtml(String(report.modifiers.multipliedComponents))}</p>`] : []),
             ...(report.weightedBonus ? [`<h2>Weighted bonus ${this.escapeHtml(report.weightedBonus.tableId)}</h2><p>${report.weightedBonus.selections} eligible selections; ${report.weightedBonus.completed} completed; ${report.weightedBonus.incomplete} incomplete net of carried tails</p>`, "<table><tr><th>Outcome ID</th><th>Weight</th><th>Configured probability</th><th>Count</th><th>Actual frequency</th><th>Coverage</th></tr>", ...report.weightedBonus.outcomes.map(o => `<tr><td>${this.escapeHtml(o.id)}</td><td>${o.weight}</td><td>${o.probability}</td><td>${o.count}</td><td>${o.frequency}</td><td>${describeWeightedBonusCoverage(o.weight, o.uncovered)}</td></tr>`), "</table>"] : []),
-            ...(report.reelSequences ?? []).flatMap(reel => [`<h2>Weighted reel ${reel.reelIndex + 1} (${reel.context}; ${reel.selections} selections)</h2>`, "<table><tr><th>Variant ID</th><th>Weight</th><th>Probability</th><th>Count</th><th>Frequency</th><th>Coverage</th></tr>",
-                ...reel.variants.map(variant => `<tr><td>${this.escapeHtml(variant.id)}</td><td>${variant.weight}</td><td>${variant.probability === 0 && variant.weight > 0 ? `${variant.probabilityRatio?.numerator}/${variant.probabilityRatio?.denominator}` : variant.probability}</td><td>${variant.count}</td><td>${variant.frequency}</td><td>${describeSequenceVariantCoverage(variant.weight, variant.uncovered)}</td></tr>`), "</table>"]),
+            ...(report.reelSequences ?? []).flatMap(reel => [`<h2>Weighted reel ${reel.reelIndex + 1} (${this.escapeHtml(reel.context)}; ${reel.selections} selections)</h2>`, "<table><tr><th>Variant ID</th><th>Weight</th><th>Probability</th><th>Count</th><th>Frequency</th><th>Coverage</th></tr>",
+                ...reel.variants.map(variant => `<tr><td>${this.escapeHtml(variant.id)}</td><td>${variant.weight}</td><td>${variant.probability === 0 && variant.weight > 0 ? `${this.escapeHtml(String(variant.probabilityRatio?.numerator))}/${this.escapeHtml(String(variant.probabilityRatio?.denominator))}` : variant.probability}</td><td>${variant.count}</td><td>${variant.frequency}</td><td>${describeSequenceVariantCoverage(variant.weight, variant.uncovered)}</td></tr>`), "</table>"]),
             "<h2>Feature analytics</h2>",
             ...describeFeatureAnalytics(report.analytics).map(line => `<p>${this.escapeHtml(line)}</p>`),
             ...this.renderBreakdownSection(report),
@@ -259,7 +261,7 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             `Stable checks required: ${convergence.stableChecks}`,
             `Checks performed: ${convergence.checksPerformed}`,
             `Consecutive stable checks: ${convergence.consecutiveStableChecks}`,
-            `Achieved RTP half-width: ${(convergence.achievedRtpHalfWidth * 100).toFixed(3)} pp`,
+            `Achieved RTP half-width: ${convergence.achievedRtpHalfWidth === null ? "unavailable" : (convergence.achievedRtpHalfWidth * 100).toFixed(3)} pp`,
         ];
 
         return [

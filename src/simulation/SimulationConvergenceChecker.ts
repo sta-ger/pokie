@@ -21,7 +21,7 @@ export class SimulationConvergenceChecker {
     private readonly options: SimulationConvergenceOptions;
     private consecutiveStableChecks = 0;
     private checksPerformed = 0;
-    private lastAchievedRtpHalfWidth = Number.POSITIVE_INFINITY;
+    private lastAchievedRtpHalfWidth: number | null = null;
 
     constructor(options: SimulationConvergenceOptions) {
         this.options = options;
@@ -35,7 +35,13 @@ export class SimulationConvergenceChecker {
         const halfWidth = (high - low) / 2;
         this.lastAchievedRtpHalfWidth = halfWidth;
 
-        const satisfies = (statistics.logicalRoundMetrics ? samples.rounds : roundsCompleted) >= this.options.minRounds && halfWidth <= this.options.rtpTolerance;
+        // A losing prefix has no information about rare payouts even when its empirical variance is zero.
+        // Configured positive-weight selections must be seen before adaptive stopping can claim precision.
+        const uncovered = statistics.weightedBonus?.outcomes.some(o => o.weight > 0 && o.uncovered) ||
+            statistics.reelSequences?.some(reel => reel.variants.some(v => v.weight > 0 && v.uncovered));
+        const satisfies = samples.rounds >= 2 && samples.totalBet > 0 && samples.hitCount > 0 && !uncovered &&
+            (statistics.logicalRoundMetrics ? samples.rounds : Math.min(samples.rounds, roundsCompleted)) >= this.options.minRounds &&
+            Number.isFinite(halfWidth) && halfWidth <= this.options.rtpTolerance;
         this.consecutiveStableChecks = satisfies ? this.consecutiveStableChecks + 1 : 0;
 
         const requiredStableChecks = this.options.stableChecks ?? DEFAULT_STABLE_CHECKS;

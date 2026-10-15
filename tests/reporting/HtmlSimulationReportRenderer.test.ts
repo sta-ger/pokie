@@ -278,3 +278,15 @@ it("renders zero, unavailable, incomplete and populated feature analytics with d
     expect(incomplete).toContain("duration (executed feature subrounds; triggering entry counted only if it executes the feature)");
     expect(renderer.render(featureAnalyticsReport())).toContain("bonus win / completions: 4 / 1 = 4");
 });
+
+it("escapes externally supplied reel context and exact ratio text for direct single/set rendering", () => {
+    const payload = '<img src=x onerror="alert(1)">';
+    const unsafe = {...report, reelSequences: [{reelIndex: 0, context: payload as "logical-round", model: "fixture", selections: 0,
+        variants: [{id: "rare", weight: 1, probability: 0, probabilityRatio: {numerator: payload, denominator: payload}, count: 0, frequency: 0, uncovered: true}]}]};
+    const renderer = new HtmlSimulationReportRenderer();
+    for (const html of [renderer.render(unsafe), renderer.renderSet({game: report.game, requestedRounds: report.requestedRounds, seed: report.seed, modes: {base: unsafe}})]) {
+        expect(html).not.toContain("<img");
+        expect(html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
+        expect(html).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;/&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
+    }
+});

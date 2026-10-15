@@ -121,7 +121,7 @@ async function waitForTerminal(service: StudioSimulationService, id: string): Pr
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline) {
         const job = service.getStatus(id);
-        if (job && job.status !== "queued" && job.status !== "running") {
+        if (job && job.status !== "queued" && job.status !== "running" && job.status !== "cancelling") {
             return job;
         }
         await new Promise<void>((resolve) => {
@@ -176,6 +176,7 @@ describe("StudioSimulationService", () => {
                 });
             }
             expect(release).toHaveBeenCalledTimes(1);
+            expect(service.getStatusForProject("/a", result.job.id)?.progress?.stage).toBe("finalizing / cleanup");
             expect(service.getReport("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "running"});
             expect(service.getStatusForProject("/a", result.job.id)?.report).toBeUndefined();
             expect(durableJobs.get("/a", result.job.id)?.result).toBeUndefined();
@@ -276,7 +277,7 @@ describe("StudioSimulationService", () => {
             gate.release();
             for (let attempt = 0; attempt < 20 && disposeRuntime.mock.calls.length === 0; attempt++) await flushMacrotask();
             expect(service.getActiveCount()).toBe(1);
-            expect(service.getReport(wasmPath, started.job.id)).toEqual({status: "not-ready", jobStatus: "running"});
+            expect(service.getReport(wasmPath, started.job.id)).toEqual({status: "not-ready", jobStatus: "cancelling"});
             if (rejectDisposal) failDisposal(new Error("WASM release rejected"));
             else finishDisposal();
             await expect(waitForTerminal(service, started.job.id)).resolves.toMatchObject({status: rejectDisposal ? "failed" : "cancelled"});
@@ -1464,6 +1465,37 @@ it.each(["cancelled", "failed"] as const)("persists %s analytics prefixes throug
         expect(restarted.listReports(directory)).toEqual([]);
         await restarted.cancelAll();
     } finally {
+        await service.cancelAll();
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
+it("retains adaptive request identity, phase and completed report through reattachment and repository reconstruction", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-v2c17-adaptive-"));
+    const manifest: PokieGameManifest = {id: "adaptive", name: "Adaptive", version: "1"};
+    const gate = createControlledYield();
+    const jobs = new StudioJobService(new FileStudioJobRepository(directory));
+    const service = new StudioSimulationService(undefined, () => Promise.resolve(createFakeGame(manifest)), undefined, 5, undefined, gate.yieldToEventLoop);
+    service.attachJobService(jobs);
+    const request = validateSimulationRequest({rounds: 100, seed: "adaptive", convergence: {minRounds: 10, rtpTolerance: 10, checkIntervalRounds: 5, stableChecks: 1}});
+    const started = service.start(directory, request);
+    if (started.status !== "created") throw new Error("Expected simulation");
+    try {
+        while (!gate.pendingCount()) await flushMacrotask();
+        expect(service.getStatusForProject(directory, started.job.id)).toMatchObject({status: "running", roundsCompleted: 5, progress: {stage: "simulation", current: 5, total: 100}});
+        const attached = service.start(directory, request);
+        expect(attached).toMatchObject({status: "created", job: {id: started.job.id}});
+        expect(service.start(directory, {...request, convergence: {...request.convergence!, rtpTolerance: 1}})).toEqual({status: "conflict", activeJobId: started.job.id});
+        expect(jobs.get(directory, started.job.id)?.request.convergence).toEqual(request.convergence);
+        gate.release();
+        const terminal = await waitForTerminal(service, started.job.id);
+        expect(terminal).toMatchObject({status: "completed", roundsCompleted: 10, progress: {stage: "completed"}, report: {stopReason: "converged", convergence: request.convergence, diagnostics: {precision: "empiricalPrecision"}}});
+        const restarted = new StudioSimulationService();
+        restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(directory)));
+        expect(restarted.getReport(directory, started.job.id)).toEqual(service.getReport(directory, started.job.id));
+        expect(restarted.getStatusForProject(directory, started.job.id)?.convergence).toEqual(request.convergence);
+    } finally {
+        gate.release();
         await service.cancelAll();
         fs.rmSync(directory, {recursive: true, force: true});
     }

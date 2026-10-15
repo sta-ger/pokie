@@ -442,3 +442,27 @@ it("observes analytics-only changes and availability even when all legacy totals
     expect(differ.diff({...original, analytics: undefined}, original)).toMatchObject({changed: true, analytics: {changed: true}});
     expect(differ.diff(original, original)).toMatchObject({changed: false, analytics: {changed: false}});
 });
+
+it("detects sampling and diagnostic changes independently of headline monetary metrics", () => {
+    const report = featureAnalyticsReport();
+    const diff = new SimulationReportDiffer().diff(report, {...report, sampling: {...report.sampling!, excludedSubrounds: 1}});
+    expect(diff.changed).toBe(true);
+    expect(diff.warnings.join("\n")).toContain("sample populations");
+    expect(new SimulationReportDiffer().diff(report, {...report, diagnostics: undefined}).warnings.join("\n")).toContain("precision or support diagnostics");
+});
+
+it("ignores persisted object key order while retaining value and array changes", () => {
+    const report = featureAnalyticsReport();
+    report.diagnostics!.coverageLimitations = ["first", "second"];
+    const reverse = <T extends object>(value: T): T => Object.fromEntries(Object.entries(value).reverse()) as T;
+    const reordered = {...report, sampling: reverse(report.sampling!), logicalRounds: reverse(report.logicalRounds!), diagnostics: reverse(report.diagnostics!)};
+    const differ = new SimulationReportDiffer();
+    expect(differ.diff(report, reordered)).toMatchObject({changed: false, warnings: []});
+    for (const patch of [
+        {sampling: {...report.sampling!, carriedSubrounds: report.sampling!.carriedSubrounds! + 1}},
+        {logicalRounds: {...report.logicalRounds!, totalStake: report.logicalRounds!.totalStake + 0.05}},
+        {diagnostics: {...report.diagnostics!, samples: report.diagnostics!.samples + 1}},
+        {diagnostics: {...report.diagnostics!, coverageLimitations: ["second", "first"]}},
+        {diagnostics: {...report.diagnostics!, coverageLimitations: ["first", "second", "third"]}},
+    ]) expect(differ.diff(report, {...reordered, ...patch}).changed).toBe(true);
+});

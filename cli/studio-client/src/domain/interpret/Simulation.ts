@@ -9,6 +9,7 @@ import type {SimulationReport, SimulationReportSet, SimulationReportBreakdownCom
 export type SimulationProgressView = {
     /** Undefined only during the local queued state before Studio receives a durable job id. */
     jobId?: string;
+    phase?: string;
     status: StudioSimulationJobView["status"];
     roundsCompleted: number;
     rounds: number;
@@ -25,6 +26,7 @@ export function describeSimulationProgress(job: StudioSimulationJobView): Simula
     const percent = job.rounds > 0 ? Math.min(100, Math.round((job.roundsCompleted / job.rounds) * 100)) : 0;
     return {
         jobId: job.id,
+        phase: job.progress?.stage,
         status: job.status,
         roundsCompleted: job.roundsCompleted,
         rounds: job.rounds,
@@ -61,6 +63,7 @@ export type SingleSimulationReportView = {
     rtpDeviation?: number;
     jackpot?: SimulationReport["jackpot"];
     sampling?: SimulationReport["sampling"];
+    diagnostics?: SimulationReport["diagnostics"];
     analytics?: SimulationReport["analytics"];
     workerSeedStrategy?: string;
     logicalRounds?: SimulationReport["logicalRounds"];
@@ -87,7 +90,7 @@ export type SingleSimulationReportView = {
         stableChecks: number;
         checksPerformed: number;
         consecutiveStableChecks: number;
-        achievedRtpHalfWidth: number;
+        achievedRtpHalfWidth: number | null;
     };
     durationMs: number;
     spinsPerSecond: number;
@@ -129,6 +132,7 @@ export function describeSimulationReport(
         jackpot: report.jackpot,
         game: report.game,
         sampling: report.sampling,
+        diagnostics: report.diagnostics,
         analytics: report.analytics,
         workerSeedStrategy: report.reproducibility?.workerSeedStrategy,
         logicalRounds: report.logicalRounds,
@@ -151,14 +155,14 @@ export function describeSimulationReport(
         durationMs: report.durationMs,
         spinsPerSecond: report.spinsPerSecond,
         workers: report.workers ?? 1,
-        volatility: statistics?.volatility ?? report.volatility,
-        payoutStandardDeviation: statistics?.payoutStandardDeviation,
-        rtpConfidenceInterval95: statistics?.rtpConfidenceInterval95 ?? report.rtpConfidenceInterval95,
-        averagePayoutConfidenceInterval95: statistics?.averagePayoutConfidenceInterval95 ?? report.averagePayoutConfidenceInterval95,
+        volatility: report.volatility ?? statistics?.volatility,
+        payoutStandardDeviation: report.volatility ?? statistics?.payoutStandardDeviation,
+        rtpConfidenceInterval95: report.rtpConfidenceInterval95 ?? statistics?.rtpConfidenceInterval95,
+        averagePayoutConfidenceInterval95: report.averagePayoutConfidenceInterval95 ?? statistics?.averagePayoutConfidenceInterval95,
         breakdown: describeBreakdown(report),
         warnings: report.warnings ?? [],
         recommendations: report.recommendations ?? [],
-        payoutHistogram: statistics?.payoutHistogram ?? report.payoutHistogram,
+        payoutHistogram: report.payoutHistogram ?? statistics?.payoutHistogram,
         reproducibilityCommand: report.reproducibility?.command,
         configHash: report.reproducibility?.configHash,
         pokieVersion: report.reproducibility?.pokieVersion,

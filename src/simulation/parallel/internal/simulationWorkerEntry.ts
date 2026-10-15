@@ -35,6 +35,7 @@ async function main(): Promise<void> {
             request.betModeId !== undefined ? new FixedBetModeForNextSimulationRoundSetting(request.betModeId) : undefined;
         const convergenceChecker = request.convergence ? new SimulationConvergenceChecker(request.convergence) : undefined;
 
+        port.postMessage({type: "phase", workerIndex: request.workerIndex, phase: "simulation"} satisfies SimulationWorkerMessage);
         const {accumulator, breakdown, jackpot, roundsCompleted, stopReason} = await runChunkedSimulation(
             session,
             request.rounds,
@@ -71,6 +72,7 @@ async function main(): Promise<void> {
             accumulator: (error as {accumulatorSnapshot?: import("../../SimulationAccumulatorSnapshot.js").SimulationAccumulatorSnapshot}).accumulatorSnapshot,
         };
     } finally {
+        port.postMessage({type: "phase", workerIndex: request.workerIndex, phase: "finalizing / cleanup"} satisfies SimulationWorkerMessage);
         if (game !== undefined) {
             try {
                 await releasePokieGame(game);
@@ -79,7 +81,7 @@ async function main(): Promise<void> {
                     type: "error",
                     workerIndex: request.workerIndex,
                     message: `could not release game runtime: ${error instanceof Error ? error.message : String(error)}`,
-                    accumulator: terminal!.accumulator,
+                    accumulator: "accumulator" in terminal! ? terminal!.accumulator : undefined,
                 };
             }
         }

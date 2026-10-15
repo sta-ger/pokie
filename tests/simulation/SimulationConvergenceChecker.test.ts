@@ -102,3 +102,18 @@ describe("SimulationConvergenceChecker", () => {
         expect(checker.buildOutcome().stableChecks).toBe(3);
     });
 });
+
+it("rejects zero or one usable observation, zero charged stake and an all-zero prefix despite zero width", () => {
+    for (const [count, stake, win] of [[0, 1, 1], [1, 1, 1], [100, 1, 0], [100, 0, 1]]) {
+        const accumulator = new SimulationAccumulator();
+        for (let i = 0; i < count; i++) accumulator.addRound(stake, win);
+        const checker = new SimulationConvergenceChecker({minRounds: 0, rtpTolerance: 1, checkIntervalRounds: 1, stableChecks: 1});
+        expect(checker.check(accumulator, count).converged).toBe(false);
+    }
+});
+
+it("keeps an unperformed adaptive check explicitly unavailable and JSON-safe", () => {
+    const outcome = new SimulationConvergenceChecker({minRounds: 10, rtpTolerance: 0.01, checkIntervalRounds: 10}).buildOutcome();
+    expect(outcome).toMatchObject({checksPerformed: 0, achievedRtpHalfWidth: null});
+    expect(JSON.parse(JSON.stringify(outcome))).toEqual(outcome);
+});

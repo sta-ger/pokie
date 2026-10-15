@@ -1,3 +1,4 @@
+import {validateSimulationReportExtensions} from "../../src/reporting/validateSimulationReportExtensions.js";
 import {Command} from "commander";
 import {
     diffOutcomeSourceProjects,
@@ -355,7 +356,7 @@ export class DiffCommand implements CliCommandHandling {
             throw new Error(`"${reportPath}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
         }
 
-        if (isSimulationReportSet(parsed)) {
+        if (isSimulationReportSet(parsed) && Object.values(parsed.modes).every(report => this.isSimulationReport(report))) {
             return parsed;
         }
 
@@ -374,6 +375,7 @@ export class DiffCommand implements CliCommandHandling {
             return false;
         }
 
+        validateSimulationReportExtensions(value as Record<string, unknown>);
         const candidate = value as Partial<SimulationReport>;
         const game = candidate.game as Partial<SimulationReport["game"]> | undefined;
 

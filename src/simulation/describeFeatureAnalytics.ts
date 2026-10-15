@@ -10,7 +10,7 @@ export function describeFeatureAnalytics(a?: FeatureAnalytics): string[] {
         }; policy ${a.envelope.policy}.`,
         `Paid entries: ${a.paidEntries}; all logical entries: ${a.logicalEntries}; completed logical rounds: ${a.logicalCompletions}; accepted subrounds: ${a.subrounds}; mathematical cascade steps: ${a.cascadeSteps}; carried-in subrounds: ${a.carriedSubrounds}.`,
         `Dead spins (zero-win subrounds): ${ratio(a.deadSpinRate)}.`,
-        `Exact maximum win: ${a.maxWin}; occurrence / subrounds: ${ratio(a.maxWinRate)}; maximum payout share: ${ratio(a.maxWinContribution)}.`,
+        `Exact maximum observed win (currency amount; not theoretical game maximum): ${a.maxWin}; occurrence / subrounds: ${ratio(a.maxWinRate)}; maximum payout share: ${ratio(a.maxWinContribution)}.`,
         `Top 10 positive subround wins (descending, ties occupy slots): [${a.topWins.join(", ")}]; payout share: ${ratio(a.topWinContribution)}.`,
     ];
     if (!a.envelope.lifecycle) lines.push("Feature lifecycle unavailable: canonical entry/exit evidence absent; event presence is not duration.");
@@ -21,21 +21,23 @@ export function describeFeatureAnalytics(a?: FeatureAnalytics): string[] {
         }
         const f = a.features[name],
             r = a.lifecycle[name];
+        if (f.entries === 0) lines.push(`${name}: configured and supported, no entries observed; zero is not evidence of absence or precise feature RTP.`);
         lines.push(
             `${name}: entries / paid rounds: ${ratio(r.entryPerPaidRound)}; entries / logical entries: ${ratio(
                 r.entryPerLogicalRound,
             )}; retriggers / feature entries: ${ratio(r.retriggerPerEntry)}; grants: ${f.grants}; executed feature plays on entry: ${
                 f.entrySubrounds
-            }; completions: ${f.completions}; incomplete: ${r.incomplete}; carried-in incomplete: ${r.carriedIncomplete}; carried completions: ${r.carriedCompletions}; excluded restored completions: ${
+            }; executed plays in completed features: ${f.durationSum}; completions: ${f.completions}; incomplete: ${r.incomplete}; carried-in incomplete: ${r.carriedIncomplete}; carried completions: ${r.carriedCompletions}; excluded restored completions: ${
                 f.excludedCompletions
             }.`,
             `${name}: duration (executed feature subrounds; triggering entry counted only if it executes the feature) / completions: ${ratio(
                 r.averageDuration,
             )}; bonus win / completions: ${ratio(r.averageWin)}; duration distribution [0,(0,10),[10,100),100+]: [${
                 f.durationHistogram
-            }]; win distribution: [${f.winHistogram}].`,
+            }]; win distribution (currency amounts; bins [0,(0,10),[10,100),100+]; completed features only): [${f.winHistogram}].`,
         );
     }
+    lines.push("Feature lifecycle wins can overlap; do not sum them as additive payouts. Base/feature/jackpot/unavailable partitions are additive; bet modes are a separate dimension.");
     for (const [name, c] of Object.entries(a.contribution)) lines.push(`${name}: RTP contribution / actual charged stake: ${ratio(c.rtp)}; payout share / total win: ${ratio(c.payoutShare)}.`);
     for (const [name, c] of Object.entries(a.betModeContribution)) lines.push(
         `Bet mode ${name} (separate attribution dimension): RTP contribution / actual charged stake: ${ratio(c.rtp)}; payout share / total win: ${ratio(

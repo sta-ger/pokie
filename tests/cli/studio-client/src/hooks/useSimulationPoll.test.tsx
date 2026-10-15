@@ -574,3 +574,20 @@ describe("useSimulationPoll - resetForProjectSwitch", () => {
         expect(result.current.progress).toBeUndefined();
     });
 });
+
+it("retains per-mode budgets and adaptive settings when retrying an all-mode job after reload", async () => {
+    const convergence = {minRounds: 2, rtpTolerance: 0.01, checkIntervalRounds: 2, stableChecks: 1};
+    const submitted: unknown[] = [];
+    const retained = {...job("failed", 7), requestedRounds: 10, rounds: 20, modeName: "all", seed: "saved", convergence};
+    const fetchImpl: FetchLike = (_url, init) => {
+        if (init?.method === "POST") submitted.push(JSON.parse(init.body ?? "{}"));
+        return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(retained)});
+    };
+    const {result, unmount} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+    act(() => result.current.restore("job-1"));
+    await waitFor(() => expect(result.current.progress?.status).toBe("failed"));
+    act(() => result.current.retry());
+    await waitFor(() => expect(submitted).toEqual([{rounds: 10, seed: "saved", workers: 1, modeName: "all", convergence}]));
+    await waitFor(() => expect(result.current.progress?.status).toBe("failed"));
+    unmount();
+});

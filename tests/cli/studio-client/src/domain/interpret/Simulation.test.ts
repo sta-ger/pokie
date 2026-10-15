@@ -242,3 +242,9 @@ it("retains per-mode jackpot data, targets and report statistics through histori
     expect(all).toMatchObject({modes: {ante: {betMode: "ante", jackpot}}});
     expect(all).not.toHaveProperty("rtp");
 });
+
+it("gives saved metrics authority over conflicting compatibility statistics", () => {
+    const report = createReport({volatility: 0, payoutHistogram: {"0": 3}, rtpConfidenceInterval95: {low: 0, high: 0}, averagePayoutConfidenceInterval95: {low: 0, high: 0}});
+    const view = describeSimulationReport(report, {volatility: 999, payoutStandardDeviation: 999, returnStandardDeviation: 999, payoutHistogram: {stale: 999}, rtpConfidenceInterval95: {low: -999, high: 999}, averagePayoutConfidenceInterval95: {low: -999, high: 999}});
+    expect(view).toMatchObject({volatility: 0, payoutStandardDeviation: 0, payoutHistogram: {"0": 3}, rtpConfidenceInterval95: {low: 0, high: 0}, averagePayoutConfidenceInterval95: {low: 0, high: 0}});
+});

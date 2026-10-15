@@ -1,3 +1,4 @@
+import {aggregate, featureAnalyticsReport} from "../../v2/fixtures/FeatureAnalyticsFixture.js";
 import {withRareStakeDirectory, expectRareMetrics} from "../../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 import {
     OutcomeLibraryBundleWriter,
@@ -133,6 +134,71 @@ describe("ReportCommand", () => {
         const command = new ReportCommand(createStubReadFile({"broken-report.json": JSON.stringify(malformed)}));
 
         await expect(command.run(["broken-report.json"])).rejects.toThrow(/does not look like a pokie sim report/);
+    });
+
+    describe.each(["single", "all-mode", "historical-native"])("saved extensions: %s", kind => {
+        const malformed: Array<[string, unknown]> = [
+            ["analytics", {}],
+            ["rounds", -1],
+            ["rounds", 0.5],
+            ["analytics.subrounds", 0.5],
+            ["analytics.features.extra", null],
+            ["analytics.features.freeGames", null],
+            ["analytics.features.freeGames.durationHistogram", [0]],
+            ["sampling.acceptedSubrounds", -1],
+            ["sampling.excludedSubrounds", 0.5],
+            ["sampling.carriedSubrounds", "1"],
+            ["logicalRounds.rounds", -1],
+            ["logicalRounds.steps", 0.5],
+            ["diagnostics.samples", -1],
+            ["diagnostics.samples", 0.5],
+            ["diagnostics.achievedRtpHalfWidth", -0.1],
+            ["diagnostics.achievedRtpHalfWidth", "0.1"],
+            ["convergence.achievedRtpHalfWidth", -0.1],
+            ["convergence.rtpTolerance", -0.1],
+            ["convergence.checksPerformed", 0.5],
+            ["rtpConfidenceInterval95.low", "bad"],
+            ["reelSequences.0.variants.0.probabilityRatio", null],
+            ["reelSequences.0.variants.0.probabilityRatio", {numerator: "-1", denominator: "2"}],
+            ["reelSequences.0.variants.0.probabilityRatio", {numerator: "0", denominator: "2"}],
+            ["reelSequences.0.variants.0.probabilityRatio", {numerator: "1", denominator: "0.5"}],
+            ["reelSequences.0.variants.0.probabilityRatio", {numerator: "1", denominator: "0"}],
+            ["reelSequences.0.variants.0.probabilityRatio", {numerator: "2", denominator: "1"}],
+            ["reelSequences.0.variants.0.probabilityRatio", {numerator: "<img src=x onerror=alert(1)>", denominator: "1"}],
+            ["reelSequences.0.variants.0.probabilityRatio", {numerator: 1, denominator: "2"}],
+            ["reelSequences.0.variants.0.probabilityRatio", {numerator: "1e-7", denominator: "2"}],
+            ["reelSequences.0.variants.0.probabilityRatio", {numerator: "1", denominator: "2", extra: true}],
+        ];
+        it.each(malformed)("rejects %s = %j before projection/rendering", async (field, invalid) => {
+            const saved = JSON.parse(JSON.stringify(featureAnalyticsReport())) as Record<string, unknown>;
+            saved.convergence = {minRounds: 2, checkIntervalRounds: 2, stableChecks: 1, checksPerformed: 0, consecutiveStableChecks: 0, achievedRtpHalfWidth: null, rtpTolerance: 0.01};
+            saved.reelSequences = [{reelIndex: 0, context: "logical-round", model: "fixture", selections: 0, variants: [{id: "rare", weight: 1, probability: 0.5, count: 0, frequency: 0, uncovered: true, probabilityRatio: {numerator: "1", denominator: "2"}}]}];
+            let target = saved;
+            const keys = field.split(".");
+            for (const key of keys.slice(0, -1)) target = target[key] as Record<string, unknown>;
+            target[keys[keys.length - 1]] = invalid;
+            let payload: unknown = saved;
+            if (kind === "all-mode") payload = {game: report.game, requestedRounds: report.requestedRounds, seed: report.seed, modes: {base: report, buy: saved}};
+            if (kind === "historical-native") payload = {
+                libraryId: "native", libraryHash: "hash", modeName: "base", requestedRounds: 10, durationMs: 1,
+                statistics: {...aggregate().getStatistics(), ...saved},
+            };
+            const render = jest.fn();
+            const command = new ReportCommand(() => JSON.stringify(payload), undefined, {markdown: {render}, html: {render}});
+            const error = await command.run(["malformed.json"]).catch((failure: unknown) => failure);
+            expect(error).toBeInstanceOf(Error);
+            expect(error).not.toBeInstanceOf(TypeError);
+            expect((error as Error).message).toContain("Invalid simulation report");
+            expect((error as Error).message).toContain(field.replace(/\.(\d+)\./g, "[$1]."));
+            expect(render).not.toHaveBeenCalled();
+        });
+    });
+
+    it.each([-1, 0.5, "1"])("rejects historical native logical sample counts %j before building", async invalid => {
+        const statistics = aggregate().getStatistics();
+        const source = {libraryId: "native", libraryHash: "hash", modeName: "base", requestedRounds: 10, durationMs: 1,
+            statistics: {...statistics, logicalRoundMetrics: {...statistics, rounds: invalid, logicalRoundMetrics: undefined}}};
+        await expect(new ReportCommand(() => JSON.stringify(source)).run(["native.json"])).rejects.toThrow("statistics.logicalRoundMetrics.rounds");
     });
 
     it("prints Markdown to the console by default", async () => {

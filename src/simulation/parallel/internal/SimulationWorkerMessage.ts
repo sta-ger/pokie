@@ -27,4 +27,4 @@ export type SimulationWorkerErrorMessage = {
     accumulator?: import("../../SimulationAccumulatorSnapshot.js").SimulationAccumulatorSnapshot;
 };
 
-export type SimulationWorkerMessage = SimulationWorkerProgressMessage | SimulationWorkerResultMessage | SimulationWorkerErrorMessage;
+export type SimulationWorkerMessage = SimulationWorkerProgressMessage | SimulationWorkerResultMessage | SimulationWorkerErrorMessage | {type: "phase"; workerIndex: number; phase: "simulation" | "finalizing / cleanup"};

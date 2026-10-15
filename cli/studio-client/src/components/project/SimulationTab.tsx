@@ -73,7 +73,7 @@ export function SimulationTab({
     operation: "simulation" | "simulation-retry";
     /** A terminal durable job receipt, retained across the control's React replacement. */
     terminalReceipt: SimulationTerminalReceipt | undefined;
-    onRun: (rounds: number, seed: string | undefined, workers: number, modeName?: string) => void;
+    onRun: (rounds: number, seed: string | undefined, workers: number, modeName?: string, convergence?: StudioSimulationReportListEntry["convergence"]) => void;
     onCancel: () => void;
     onRetry: () => void;
     recentRuns: ReportListView;
@@ -96,6 +96,7 @@ export function SimulationTab({
     recoveryRequest?: Readonly<Record<string, unknown>>;
 }) {
     const confirm = useConfirm();
+    const [capturedConvergence, setCapturedConvergence] = useState<StudioSimulationReportListEntry["convergence"]>();
     const form = useForm<FormValues>({
         mode: "uncontrolled",
         initialValues: {rounds: DEFAULT_ROUNDS, seed: "", workers: 1, modeName: ""},
@@ -116,6 +117,7 @@ export function SimulationTab({
             ...(workers === undefined ? {} : {workers}),
             ...(modeName === undefined ? {} : {modeName}),
         });
+        setCapturedConvergence(recoveryRequest.convergence as StudioSimulationReportListEntry["convergence"]);
         form.validateField("rounds");
         // Mantine's uncontrolled form object is intentionally stable.
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -283,7 +285,7 @@ export function SimulationTab({
                 <form
                     data-pokie-lifecycle-form="simulation"
                     onSubmit={form.onSubmit((values) =>
-                        onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined),
+                        onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined, capturedConvergence),
                     )}
                 >
                     <Text size="sm" c="dimmed" mb="sm">
@@ -320,6 +322,7 @@ export function SimulationTab({
                             key={form.key("modeName")}
                         />
                     )}
+                    {capturedConvergence && <Text size="sm">Captured adaptive stopping: minimum {capturedConvergence?.minRounds} usable samples per worker; tolerance {capturedConvergence?.rtpTolerance} RTP units; check every {capturedConvergence?.checkIntervalRounds} accepted plays; stable checks {capturedConvergence?.stableChecks ?? 3}. These settings will be retained on retry. <Button variant="subtle" size="xs" onClick={() => setCapturedConvergence(undefined)}>Use fixed budget</Button></Text>}
                     <AdvancedDisclosure detail="seed, workers">
                         <QuickActions>
                             <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
@@ -334,6 +337,7 @@ export function SimulationTab({
                     {progress === undefined && <EmptyState message="No simulation has been run yet." />}
                     {progress !== undefined && (
                         <div>
+                            <Text role="status">Phase: {progress.phase ?? progress.status}{progress.percent === 100 && active ? " — accepted-play budget reached; awaiting cleanup and report publication." : ""}</Text>
                             <Progress value={progress.percent} mb="sm" />
                             <QuickActions>
                                 {active && !cancellationPending && (

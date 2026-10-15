@@ -669,6 +669,7 @@ export type SimulationReportReproducibility = {
 // The server's copy of this same type lives in "pokie" itself (src/reporting/SimulationReport.ts) —
 // kept as its own client-side copy here, same convention as every other type in this file.
 export type SimulationReport = {
+    diagnostics?: import("../../../../src/reporting/SimulationReport.js").SimulationReport["diagnostics"];
     sampling?: import("../../../../src/reporting/SimulationReport.js").SimulationReport["sampling"];
     analytics?: import("../../../../src/simulation/FeatureAnalytics.js").FeatureAnalytics;
     logicalRounds?: import("../../../../src/simulation/LogicalRoundStatistics.js").LogicalRoundStatistics;
@@ -716,7 +717,7 @@ export type SimulationReport = {
         stableChecks: number;
         checksPerformed: number;
         consecutiveStableChecks: number;
-        achievedRtpHalfWidth: number;
+        achievedRtpHalfWidth: number | null;
     };
 };
 
@@ -753,6 +754,9 @@ export type StudioSimulationReportDetail = {
 export type StudioSimulationStatus = "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
 
 export type StudioSimulationJobView = {
+    requestedRounds?: number;
+    convergence?: import("../../../../src/simulation/SimulationConvergenceOptions.js").SimulationConvergenceOptions;
+    progress?: StudioJobView["progress"];
     id: string;
     status: StudioSimulationStatus;
     rounds: number;
@@ -775,6 +779,7 @@ export type StudioSimulationJobView = {
 // One row of GET /api/project/reports — only ever built from a "completed" job, see
 // cli/studio/simulation/StudioSimulationReportListEntry.ts's own doc comment.
 export type StudioSimulationReportListEntry = {
+    convergence?: StudioSimulationJobView["convergence"];
     id: string;
     status: "completed";
     game: {id: string; version: string};
