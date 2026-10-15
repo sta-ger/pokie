@@ -1,12 +1,47 @@
 import {MantineProvider} from "@mantine/core";
 import {fireEvent, render, within} from "@testing-library/react";
 import {CanonicalPlayerView} from "../../../../../../cli/studio-client/src/components/common/CanonicalPlayerView";
+import {boundedPlayChain} from "../../../../studio/runtime/fixtures/boundedPlayChain";
 
 function renderPlayer(view: React.ComponentProps<typeof CanonicalPlayerView>) {
     return render(<MantineProvider><CanonicalPlayerView {...view} /></MantineProvider>);
 }
 
 describe("CanonicalPlayerView", () => {
+    it.each(["cascade", "cascade-respins-collection"] as const)("uses the real %s step screen, highlights and win basis without mixing in aggregate multipliers", async variant => {
+        const chain = await boundedPlayChain(variant, 26);
+        const {rerender, container} = renderPlayer({reelsSymbols: []});
+        for (const view of chain) {
+            const round = view.logicalRound!;
+            const step = round.currentStep!;
+            const artifact = view.debug!.artifact!;
+            rerender(<MantineProvider><CanonicalPlayerView
+                logicalRound={round} reelsSymbols={artifact.screen as string[][]} wins={artifact.wins}
+                credits={view.credits} totalWin={artifact.totalWin} payoutMultiplier={artifact.payoutMultiplier}
+            /></MantineProvider>);
+            expect(within(container).getByText("Step win").nextElementSibling).toHaveTextContent(step.totalWin.toFixed(2));
+            expect(within(container).getByText("Step win / entry bet").nextElementSibling).toHaveTextContent((step.totalWin / round.entry.bet).toFixed(2));
+            expect(Array.from(container.querySelectorAll("[data-cell]")).map(cell => cell.textContent)).toEqual(step.screen[0].map((_, row) => step.screen.map(reel => reel[row])).flat());
+            if (round.cursor === 1) {
+                expect(container.querySelectorAll(".player-highlight-button").length).toBeGreaterThan(0);
+                for (let reel = 0; reel < 3; reel++) expect(container.querySelector<HTMLElement>(`[data-cell="0:${reel}"]`)!.style.backgroundColor).not.toBe("");
+            }
+            if (step.totalWin === 0) {
+                expect(container.querySelectorAll(".player-highlight-button")).toHaveLength(0);
+                for (const cell of container.querySelectorAll<HTMLElement>("[data-cell]")) expect(cell.style.backgroundColor).toBe("");
+            }
+        }
+        const terminal = chain[chain.length - 1].logicalRound!;
+        expect(terminal.status).toBe("completed");
+        expect(terminal.totalWin).toBeGreaterThan(0);
+        expect(terminal.currentStep!.totalWin).toBe(0);
+        // Reusing the mount for an ordinary round restores the canonical labels and supplied basis.
+        rerender(<MantineProvider><CanonicalPlayerView reelsSymbols={[["B"]]} totalWin={0} payoutMultiplier={0} /></MantineProvider>);
+        expect(within(container).getByText("Total win").nextElementSibling).toHaveTextContent("0.00");
+        expect(within(container).getByText("Payout multiplier").nextElementSibling).toHaveTextContent("0.00");
+        expect(within(container).queryByText("Step win")).toBeNull();
+    });
+
     it("mounts the package player contract with the same controls, highlights and player region semantics as external DOM hosts", () => {
         const onSelectBet = jest.fn();
         const onSelectMode = jest.fn();

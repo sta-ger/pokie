@@ -5,6 +5,84 @@ import path from "path";
 import type {StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
 import type {PlaySessionView} from "../../../../../../cli/studio-client/src/hooks/usePlaySession";
 import {PlayTab} from "../../../../../../cli/studio-client/src/components/project/PlayTab";
+import {boundedPlayChain} from "../../../../studio/runtime/fixtures/boundedPlayChain";
+
+describe("V2C-14 real bounded Play accounting", () => {
+    let combined: StudioRuntimeSessionView[];
+    let cascade: StudioRuntimeSessionView[];
+    beforeAll(async () => {
+        // The public example at seed 26 reproduces the retained 20.10 award: one paid entry,
+        // a delivery-only terminal cascade evaluation, and eight respins ending on a losing step.
+        combined = await boundedPlayChain("cascade-respins-collection", 26);
+        cascade = await boundedPlayChain("cascade", 26);
+    });
+
+    function page(session: PlaySessionView, sessionId = combined[0].sessionId) {
+        return <MantineProvider><PlayTab session={session} sessionId={sessionId}
+            onNewSession={() => undefined} onSpin={() => undefined} onFindAnyWin={() => undefined}
+            onFindSymbolWin={() => undefined} onFindFreeGames={() => undefined} /></MantineProvider>;
+    }
+
+    it("keeps one mathematical subround across two cascade deliveries in both summaries", () => {
+        const [winning, terminal] = combined;
+        expect(winning.logicalRound).toMatchObject({cursor: 1, mathematicalCursor: 1, currentStep: {totalWin: 0.1}});
+        expect(terminal.logicalRound).toMatchObject({cursor: 2, mathematicalCursor: 1, status: "pending", currentStep: {totalWin: 0}});
+        expect(terminal.credits).toBe(winning.credits);
+        expect(terminal.logicalRound!.subrounds).toEqual(winning.logicalRound!.subrounds);
+        const {rerender, container} = render(page({status: "ok", session: winning}));
+        expect(screen.getByText(/Round pending: 1 subrounds, 1 deliveries/)).toBeVisible();
+        expect(screen.getByText("Step win").nextElementSibling).toHaveTextContent("0.10");
+        expect(container.querySelector<HTMLElement>('[data-cell="0:0"]')!.style.backgroundColor).not.toBe("");
+        rerender(page({status: "ok", session: terminal}));
+        expect(screen.getByText(/Round pending: 1 subrounds, 2 deliveries/)).toBeVisible();
+        expect(screen.getByText("Logical-round win 0.10. Payout 0.10.")).toBeVisible();
+        expect(screen.getByText("Step win").nextElementSibling).toHaveTextContent("0.00");
+        expect(screen.getByText("Step win / entry bet").nextElementSibling).toHaveTextContent("0.00");
+        expect(screen.getByRole("button", {name: "Continue round"})).toBeEnabled();
+        expect(container.querySelectorAll(".player-highlight-button")).toHaveLength(0);
+        // A retained session can also appear in the Start Play summary after its UI id is cleared.
+        rerender(<MantineProvider><PlayTab session={{status: "error", message: "session lost", previousSession: terminal}}
+            sessionId={undefined} onNewSession={() => undefined} onSpin={() => undefined}
+            onFindAnyWin={() => undefined} onFindSymbolWin={() => undefined} onFindFreeGames={() => undefined} /></MantineProvider>);
+        expect(screen.getByText(/Round pending: 1 subrounds, 2 deliveries/)).toBeVisible();
+    });
+
+    it.each(["artifact", "public response"])("retains the completed aggregate win after a losing step through the %s branch and recovery states", branch => {
+        for (const chain of [cascade, combined]) {
+            const final = chain[chain.length - 1];
+            const logicalRound = final.logicalRound!;
+            expect(logicalRound).toMatchObject({status: "completed", currentStep: {totalWin: 0}});
+            expect(logicalRound.totalWin).toBeGreaterThan(0);
+            expect(logicalRound.totalPayout).toBeCloseTo(logicalRound.totalWin, 10);
+            if (chain === combined) {
+                expect(logicalRound).toMatchObject({mathematicalCursor: 9, cursor: 10, totalWin: 20.1});
+                expect(final.win).toBe(0);
+                expect(final.debug!.artifact!.totalWin).toBe(0);
+            } else {
+                expect(logicalRound).toMatchObject({mathematicalCursor: 1, cursor: 2, totalWin: 0.1});
+            }
+            const displayed = branch === "artifact" ? final : {...final, debug: {artifactUnavailableReason: "No debug capture"}};
+            const view = render(page({status: "ok", session: displayed}));
+            for (const state of [
+                {status: "error" as const, message: "response lost", previousSession: displayed},
+                {status: "loading" as const, previousSession: displayed},
+                {status: "ok" as const, session: displayed},
+            ]) {
+                view.rerender(page(state));
+                expect(screen.getByText("Round complete")).toBeVisible();
+                expect(screen.getByText(`Logical-round win ${logicalRound.totalWin.toFixed(2)}. Payout ${logicalRound.totalPayout.toFixed(2)}.`)).toBeVisible();
+                expect(screen.queryByText(/no win .*round/)).toBeNull();
+                expect(screen.getByText("Step win").nextElementSibling).toHaveTextContent("0.00");
+                expect(screen.getByText("Step win / entry bet").nextElementSibling).toHaveTextContent("0.00");
+                expect(screen.getByText(new RegExp(`Round completed: ${logicalRound.mathematicalCursor} subrounds, ${logicalRound.cursor} deliveries`))).toBeVisible();
+                expect(screen.queryByText(/10 subrounds/)).toBeNull();
+                expect(view.container.querySelectorAll(".player-highlight-button")).toHaveLength(0);
+                if (state.status === "loading") expect(screen.getByRole("button", {name: "Spin"})).toBeDisabled();
+            }
+            view.unmount();
+        }
+    });
+});
 
 // P5-POLISH-19: proves the real Studio Play presentation entry point (PlayTab -> RoundSummary ->
 // RoundArtifactInspector -> GameScreenView -> CanonicalPlayerView -> cli/client/player's own DOM

@@ -58,20 +58,22 @@ export function RoundSummary({
     if (session.logicalRound?.status === "pending") roundTitle = "Subround committed";
     if (session.logicalRound?.status === "exhausted") roundTitle = "Round stopped at its bound";
     const [artifactInspectorOpen, setArtifactInspectorOpen] = useState(false);
+    const roundWin = session.logicalRound?.totalWin ?? session.debug?.artifact?.totalWin ?? session.win;
+    const roundOutcome = roundWin !== undefined && roundWin > 0 ? (
+        <Alert color="green" variant="light" icon={<IconCircleCheck size={16} />} title={roundTitle} mb="md">
+            {session.logicalRound ? `Logical-round win ${roundWin.toFixed(2)}. Payout ${session.logicalRound.totalPayout.toFixed(2)}.` : `You won ${roundWin.toFixed(2)}.`}
+        </Alert>
+    ) : (
+        <Text size="sm" c="dimmed" mb="md">
+            {roundTitle} — {session.logicalRound ? `no win ${session.logicalRound.status === "completed" ? "in" : "so far in"} this logical round. Payout ${session.logicalRound.totalPayout.toFixed(2)}.` : "no win this round."}
+        </Text>
+    );
     if (session.debug?.artifact) {
         const artifact = describeRoundArtifact(session.debug.artifact);
         const presentation = describeRoundPresentation(session.debug.stateBefore, session.debug.stateAfter, artifact.betMode, artifact.steps[artifact.steps.length - 1]?.featureEvents);
         return (
             <div>
-                {artifact.totalWin > 0 ? (
-                    <Alert color="green" variant="light" icon={<IconCircleCheck size={16} />} title={roundTitle} mb="md">
-                        You won {artifact.totalWin.toFixed(2)}.
-                    </Alert>
-                ) : (
-                    <Text size="sm" c="dimmed" mb="md">
-                        {roundTitle} — no win this round.
-                    </Text>
-                )}
+                {roundOutcome}
 
                 {/* The player-facing result is first: static configuration comes from the captured
                     session/Game Model, balance from the session, and this round's screen/wins/mode from
@@ -134,15 +136,7 @@ export function RoundSummary({
 
     return (
         <div>
-            {session.win !== undefined && session.win > 0 ? (
-                <Alert color="green" variant="light" icon={<IconCircleCheck size={16} />} title={roundTitle} mb="md">
-                    You won {session.win.toFixed(2)}.
-                </Alert>
-            ) : (
-                <Text size="sm" c="dimmed" mb="md">
-                    {roundTitle} — no win this round.
-                </Text>
-            )}
+            {roundOutcome}
 
             <Table withRowBorders={false} mb="sm">
                 <Table.Tbody>

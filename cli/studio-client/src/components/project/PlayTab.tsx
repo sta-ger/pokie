@@ -145,7 +145,7 @@ export function PlayTab({
                 <Text size="sm" c="dimmed" mb="sm">
                     Play prepares this game for a real round and creates a session in Studio. Nothing else needs to be set up.
                 </Text>
-                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {activeSession.logicalRound.cursor} subrounds, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
+                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {activeSession.logicalRound.mathematicalCursor} subrounds, {activeSession.logicalRound.cursor} deliveries, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
                 {loading && <LoadingState label="Starting…" />}
                 {errorNotice}
                 <PageSection legend="Start Play">
@@ -217,7 +217,7 @@ export function PlayTab({
                     </Button>
                 </QuickActions>
                 {errorNotice}
-                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {activeSession.logicalRound.cursor} subrounds, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
+                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {activeSession.logicalRound.mathematicalCursor} subrounds, {activeSession.logicalRound.cursor} deliveries, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
                 {loading && <LoadingState label="Spinning…" />}
                 {(!loading || playedRound !== undefined) && roundResult}
             </PageSection>
