@@ -1,9 +1,11 @@
-import {isSimulationReportSet, loadPokieGame} from "@fromstan/pokie";
+import {isSimulationReportSet, loadPokieGame, SimulationAccumulator} from "@fromstan/pokie";
+import fs from "fs";
 import path from "path";
+import {pathToFileURL} from "url";
 import {InMemoryStudioSimulationRepository} from "../../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {StudioSimulationJobView} from "../../../../cli/studio/simulation/StudioSimulationJobView.js";
 import {StudioSimulationService} from "../../../../cli/studio/simulation/StudioSimulationService.js";
-import {TEST_WORKER_ENTRY_URL} from "../../../simulation/parallel/testWorkerEntryUrl.js";
+import {emitPublicRuntime} from "../../../v2/helpers/publicRuntime.js";
 
 // Extracted from StudioSimulationService.test.ts: this describe spins up real worker_threads,
 // which is why it lives in the "pokie-integration" lane instead of the default fast "pokie" lane
@@ -17,8 +19,21 @@ describe("StudioSimulationService (integration, real worker threads via --worker
     // for the same reasoning applied to other lanes) -- it only ever bites a job that genuinely never
     // makes progress, which still fails well inside it.
     jest.setTimeout(120000);
-    const fixtureRoot = path.join(__dirname, "..", "..", "fixtures", "playable-game");
+    let runtime: ReturnType<typeof emitPublicRuntime>;
+    let fixtureRoot: string;
+    let workerEntryUrl: URL;
     const services: StudioSimulationService[] = [];
+
+    beforeAll(() => {
+        // Both the worker entry and the fixture's bare package require must use
+        // the current emitted runtime, regardless of a pre-existing root dist.
+        runtime = emitPublicRuntime();
+        fixtureRoot = path.join(runtime.directory, "playable-game");
+        fs.cpSync(path.join(__dirname, "..", "..", "fixtures", "playable-game"), fixtureRoot, {recursive: true});
+        workerEntryUrl = pathToFileURL(path.join(runtime.directory, "node_modules/@fromstan/pokie/dist/esm/simulation/parallel/internal/simulationWorkerEntry.js"));
+    }, 120000);
+
+    afterAll(() => runtime?.dispose());
 
     afterEach(async () => {
         // Also drain after a failed assertion or polling timeout: no executor
@@ -77,7 +92,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
                 const {SimulationWorkerCoordinator} = jest.requireActual<typeof import("../../../../src/simulation/parallel/SimulationWorkerCoordinator.js")>(
                     "../../../../src/simulation/parallel/SimulationWorkerCoordinator.js",
                 );
-                coordinator = new SimulationWorkerCoordinator(TEST_WORKER_ENTRY_URL);
+                coordinator = new SimulationWorkerCoordinator(workerEntryUrl);
             });
         } finally {
             functionSpy.mockRestore();
@@ -87,6 +102,16 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             workerIndex, totalWorkers: 2, packageRoot: fixtureRoot, rounds: 10, progressChunkSize: 10,
         })));
         expect(results.map((result) => result.accumulator.rounds)).toEqual([10, 10]);
+        for (const result of results) {
+            const snapshot = JSON.parse(JSON.stringify(result.accumulator));
+            expect(SimulationAccumulator.fromSnapshot(snapshot).toSnapshot()).toEqual(result.accumulator);
+            const sources = Object.values(result.accumulator.analytics!.sources);
+            expect(sources).toHaveLength(1);
+            expect(sources[0].freeGames).toMatchObject({
+                unpositionedEntries: 0, unpositionedCompletions: 0,
+                pendingEntries: [], pendingCompletions: [], pendingAbandonments: [], endEntryPosition: null,
+            });
+        }
         expect(nativeImport).not.toHaveBeenCalled();
     });
 
@@ -99,7 +124,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             undefined,
             undefined,
             undefined,
-            TEST_WORKER_ENTRY_URL,
+            workerEntryUrl,
         );
         services.push(service);
 
@@ -130,7 +155,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             undefined,
             undefined,
             undefined,
-            TEST_WORKER_ENTRY_URL,
+            workerEntryUrl,
         );
         services.push(service);
 
@@ -155,7 +180,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             undefined,
             undefined,
             undefined,
-            TEST_WORKER_ENTRY_URL,
+            workerEntryUrl,
         );
         services.push(service);
 
@@ -187,7 +212,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             undefined,
             undefined,
             undefined,
-            TEST_WORKER_ENTRY_URL,
+            workerEntryUrl,
         );
         services.push(service);
 
@@ -220,7 +245,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             undefined,
             undefined,
             undefined,
-            TEST_WORKER_ENTRY_URL,
+            workerEntryUrl,
         );
         services.push(service);
 

@@ -2,16 +2,33 @@ import {loadPokieGame, SimulationReport} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {pathToFileURL} from "url";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
-import {TEST_WORKER_ENTRY_URL} from "../../simulation/parallel/testWorkerEntryUrl.js";
+import {emitPublicRuntime} from "../../v2/helpers/publicRuntime.js";
 
 // Extracted from SimCommand.test.ts: this describe spawns real worker_threads (17 spawns across
 // its 6 tests), which is why it lives in the "pokie-integration" lane instead of the default fast
 // "pokie" lane -- see jest.config.mjs.
 describe("SimCommand (integration, real loadPokieGame + --workers, real worker threads)", () => {
     jest.setTimeout(30000);
-    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
+    let runtime: ReturnType<typeof emitPublicRuntime>;
+    let fixtureRoot: string;
+    let configFixture: string;
+    let workerEntryUrl: URL;
     let outDir: string;
+
+    beforeAll(() => {
+        // Emit the current source into a private package. Existing root dist may
+        // predate the snapshot schema; existence alone cannot establish compatibility.
+        runtime = emitPublicRuntime();
+        fixtureRoot = path.join(runtime.directory, "playable-game");
+        configFixture = path.join(runtime.directory, "playable-game-with-config-hash");
+        fs.cpSync(path.join(__dirname, "..", "fixtures", "playable-game"), fixtureRoot, {recursive: true});
+        fs.cpSync(path.join(__dirname, "..", "fixtures", "playable-game-with-config-hash"), configFixture, {recursive: true});
+        workerEntryUrl = pathToFileURL(path.join(runtime.directory, "node_modules/@fromstan/pokie/dist/esm/simulation/parallel/internal/simulationWorkerEntry.js"));
+    }, 120000);
+
+    afterAll(() => runtime?.dispose());
 
     beforeEach(() => {
         outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-sim-workers-test-"));
@@ -24,7 +41,7 @@ describe("SimCommand (integration, real loadPokieGame + --workers, real worker t
     });
 
     it("runs with --workers 2 across real worker threads and produces a full report", async () => {
-        const command = new SimCommand(loadPokieGame, undefined, undefined, TEST_WORKER_ENTRY_URL);
+        const command = new SimCommand(loadPokieGame, undefined, undefined, workerEntryUrl);
         const outFile = path.join(outDir, "report.json");
 
         await command.run([fixtureRoot, "--rounds", "1000", "--seed", "demo", "--workers", "2", "--out", outFile]);
@@ -40,7 +57,7 @@ describe("SimCommand (integration, real loadPokieGame + --workers, real worker t
     });
 
     it("runs with --workers 4, splitting rounds unevenly across workers, and rounds still add up exactly", async () => {
-        const command = new SimCommand(loadPokieGame, undefined, undefined, TEST_WORKER_ENTRY_URL);
+        const command = new SimCommand(loadPokieGame, undefined, undefined, workerEntryUrl);
         const outFile = path.join(outDir, "report.json");
 
         // 1001 rounds across 4 workers forces an uneven split (251/250/250/250).
@@ -52,9 +69,8 @@ describe("SimCommand (integration, real loadPokieGame + --workers, real worker t
     });
 
     it("carries the resolved model config hash from real workers into the canonical report", async () => {
-        const command = new SimCommand(loadPokieGame, undefined, undefined, TEST_WORKER_ENTRY_URL);
+        const command = new SimCommand(loadPokieGame, undefined, undefined, workerEntryUrl);
         const outFile = path.join(outDir, "config-hash-report.json");
-        const configFixture = path.join(__dirname, "..", "fixtures", "playable-game-with-config-hash");
 
         await command.run([configFixture, "--rounds", "100", "--seed", "model-identity", "--workers", "2", "--out", outFile]);
 
@@ -75,7 +91,7 @@ describe("SimCommand (integration, real loadPokieGame + --workers, real worker t
     });
 
     it("produces a reproducible report for the same seed and workers count", async () => {
-        const command = new SimCommand(loadPokieGame, undefined, undefined, TEST_WORKER_ENTRY_URL);
+        const command = new SimCommand(loadPokieGame, undefined, undefined, workerEntryUrl);
         const firstFile = path.join(outDir, "first.json");
         const secondFile = path.join(outDir, "second.json");
 
@@ -94,7 +110,7 @@ describe("SimCommand (integration, real loadPokieGame + --workers, real worker t
 
     it("a smoke comparison of workers=1 vs workers=4 timing — both complete and produce valid reports (no asserted speedup)", async () => {
         const singleWorkerCommand = new SimCommand(loadPokieGame);
-        const multiWorkerCommand = new SimCommand(loadPokieGame, undefined, undefined, TEST_WORKER_ENTRY_URL);
+        const multiWorkerCommand = new SimCommand(loadPokieGame, undefined, undefined, workerEntryUrl);
         const singleFile = path.join(outDir, "single.json");
         const multiFile = path.join(outDir, "multi.json");
 
