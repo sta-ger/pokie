@@ -1,6 +1,7 @@
 import {analyticsEnvelope} from "../../../src/simulation/FeatureAnalytics.js";
 import {artifactAnalyticsObservation} from "../../../src/simulation/artifactAnalyticsObservation.js";
 import {
+    describeOutcomeSourceSeedPolicy,
     describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
     hasDeclaredCanonicalWasmArtifact,
@@ -536,6 +537,7 @@ export class StudioSimulationService {
                 packageRoot: record.projectRoot,
                 configHash: runtime.manifest.artifact?.configurationHash,
                 workers: 1,
+                workerSeedStrategy: "portable seeded host stream (single in-process WASM runtime)",
                 pokieVersion: this.pokieVersion,
             });
             record.status = "completed";
@@ -688,6 +690,8 @@ export class StudioSimulationService {
             durationMs: record.durationMs,
             packageRoot: record.projectRoot,
             workers: 1,
+            workerSeedStrategy: describeOutcomeSourceSeedPolicy(record.seed),
+            configHash: statistics.analytics?.envelope.modelId ?? undefined,
             pokieVersion: this.pokieVersion,
         });
 

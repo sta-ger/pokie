@@ -455,10 +455,11 @@ export class SimCommand implements CliCommandHandling {
         if (report.seed !== undefined) {
             console.log(`  seed            ${report.seed}`);
         }
+        if (report.workerSeedStrategy) console.log(`  seed policy     ${report.workerSeedStrategy}`);
         console.log(`  total bet       ${statistics.totalBet.toFixed(2)}`);
         console.log(`  total win       ${statistics.totalPayout.toFixed(2)}`);
         console.log(`  rtp             ${(statistics.rtp * 100).toFixed(2)}%`);
-        console.log(`  hit frequency   ${((statistics.hitCount / statistics.rounds) * 100).toFixed(2)}%`);
+        console.log(`  hit frequency   ${((statistics.rounds > 0 ? statistics.hitCount / statistics.rounds : 0) * 100).toFixed(2)}%`);
         console.log(`  max win         ${statistics.maxWin.toFixed(2)}`);
         console.log(`  duration        ${report.durationMs}ms`);
     }

@@ -79,6 +79,7 @@ async function main(): Promise<void> {
                     type: "error",
                     workerIndex: request.workerIndex,
                     message: `could not release game runtime: ${error instanceof Error ? error.message : String(error)}`,
+                    accumulator: terminal!.accumulator,
                 };
             }
         }

@@ -1,3 +1,4 @@
+import {analyticsEnvelope} from "../../src/simulation/FeatureAnalytics.js";
 import {AggregateSimulationRunner, GameSession, GameSessionConfig, SimulationAccumulator} from "@fromstan/pokie";
 
 describe("SimulationAccumulator", () => {
@@ -304,4 +305,30 @@ it("rejects unbounded imported histogram dimensions without changing the source"
     snapshot.payoutHistogram["custom-round-1"] = 1;
     expect(() => SimulationAccumulator.fromSnapshot(snapshot)).toThrow(/fixed buckets/);
     expect(Object.keys(accumulator.toSnapshot().payoutHistogram)).toEqual(["0"]);
+});
+
+it("keeps older amount-only history readable and appendable without fabricating current provenance", () => {
+    const original = new SimulationAccumulator();
+    original.addRound(1, 0);
+    const snapshot = original.toSnapshot();
+    Reflect.deleteProperty(snapshot, "analytics");
+    const legacy = SimulationAccumulator.fromSnapshot(snapshot);
+    legacy.addRound(1, 0);
+    expect(legacy.getStatistics()).toMatchObject({rounds: 2, totalBet: 2});
+    expect(legacy.getStatistics().analytics).toBeUndefined();
+    const before = legacy.toSnapshot();
+    expect(() => legacy.configureAnalytics(analyticsEnvelope("known"))).toThrow(/historical/);
+    expect(legacy.toSnapshot()).toEqual(before);
+});
+
+it("validates direct merge invariants and modifier observations before mutation", () => {
+    const target = new SimulationAccumulator();
+    target.addRound(1, 0);
+    const before = target.toSnapshot();
+    expect(() => target.addModifierStatistics({steps: NaN, ruleApplications: 0, stickySteps: 0, multipliedComponents: 0})).toThrow(/modifier/);
+    expect(() => target.addModifierStatistics({} as Parameters<SimulationAccumulator["addModifierStatistics"]>[0])).toThrow(/modifier/);
+    const malformed = new SimulationAccumulator();
+    Reflect.set(malformed, "totalPayout", Infinity);
+    expect(() => target.merge(malformed)).toThrow(/totalPayout/);
+    expect(target.toSnapshot()).toEqual(before);
 });

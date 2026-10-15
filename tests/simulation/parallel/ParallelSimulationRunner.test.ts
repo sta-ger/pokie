@@ -835,3 +835,15 @@ describe("ParallelSimulationRunner convergence (workers>1, via injected coordina
         expect(result.convergence!.achievedRtpHalfWidth).toBeCloseTo(0.006, 10);
     });
 });
+
+it("keeps the accepted analytics prefix when runtime release rejects after execution", async () => {
+    const loader = jest.requireActual<typeof import("../../../src/gamepackage/loadPokieGame.js")>("../../../src/gamepackage/loadPokieGame.js");
+    const release = jest.spyOn(loader, "releasePokieGame").mockRejectedValue(new Error("cleanup failure"));
+    try {
+        const runner = new ParallelSimulationRunner("/weighted", 2, {seed: "prefix", loadGame: () => Promise.resolve(weightedGame())});
+        await expect(runner.run()).rejects.toMatchObject({message: "cleanup failure", observedPrefix: {rounds: 2, analytics: {subrounds: 2}}});
+        expect(release).toHaveBeenCalledTimes(1);
+    } finally {
+        release.mockRestore();
+    }
+});

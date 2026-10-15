@@ -487,3 +487,13 @@ it("nested collection and respin lifecycle totals overlap while canonical payout
     expect(a.hitRates.symbol.C).toEqual(ratio(6, 9, 2 / 3));
     expect(a.deadSpinRate).toEqual(ratio(3, 9, 1 / 3));
 });
+
+it("instant Hold&Win completion separates granted respins from executed duration and attributes its components once", () => {
+    const blueprint = existingMechanicsBlueprint(api.AUTHORED_MECHANIC_CATALOG.find(row => row.id === "hold-flat")!);
+    blueprint.reelStrips = [["C"], ["C"], ["C"]];
+    const a = new api.AggregateSimulationRunner(mechanicsSession(generatedMechanicsGame(blueprint)), 1).run().getStatistics().analytics!;
+    expect(a.features.holdAndWin).toMatchObject({entries: 1, grants: 2, completions: 1, durationSum: 0, winSum: 6, durationHistogram: [1, 0, 0, 0], winHistogram: [0, 1, 0, 0]});
+    expect(a.partition).toEqual({base: 0, feature: 6, jackpot: 0, unavailable: 0});
+    expect(a.hitRates.symbol.C).toEqual(ratio(1, 1, 1));
+    expect(Object.values(a.components)[0]).toMatchObject({samples: 1, occurrences: 3, amount: 6});
+});

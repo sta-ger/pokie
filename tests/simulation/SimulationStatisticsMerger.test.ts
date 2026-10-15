@@ -198,10 +198,12 @@ describe("SimulationStatisticsMerger", () => {
 
 it("bounds category unions and handles a category named constructor as plain data", () => {
     const accumulator = new SimulationAccumulator();
+    accumulator.addRound(1, 0);
     const component = {rounds: 1, totalBet: 1, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0};
     const merger = new SimulationStatisticsMerger();
     const result = merger.merge([{accumulator: accumulator.toSnapshot(), breakdown: {constructor: component}}]);
     expect(result.breakdown!.constructor).toEqual(component);
-    const breakdown = Object.fromEntries(Array.from({length: 129}, (_, i) => [`category-${i}`, component]));
-    expect(() => merger.merge([{accumulator: accumulator.toSnapshot(), breakdown}])).toThrow(/category dimension bound/);
+    expect(() => merger.merge([{accumulator: accumulator.toSnapshot(), breakdown: Object.fromEntries([["__proto__", component]])}])).toThrow(/category key/);
+    const breakdown = Object.fromEntries(Array.from({length: 129}, (_, i) => [`category-${i}`, {...component, rounds: 0, totalBet: 0}]));
+    expect(() => merger.merge([{accumulator: new SimulationAccumulator().toSnapshot(), breakdown}])).toThrow(/category dimension bound/);
 });

@@ -140,6 +140,7 @@ export class ParallelSimulationRunner {
     private async runInProcess(workers = 1): Promise<ParallelSimulationResult> {
         const loadGame = this.options.loadGame ?? loadPokieGame;
         const game = await loadGame(this.packageRoot);
+        let observedPrefix: SimulationStatistics | undefined;
         try {
             const session = game.createSession(this.options.seed === undefined ? undefined : {seed: this.options.seed});
             setSimulationModelIdentity(session, game.getConfigHash?.());
@@ -174,10 +175,11 @@ export class ParallelSimulationRunner {
                 betModeSelector,
             );
 
+            observedPrefix = accumulator.getStatistics();
             return {
                 manifest: game.getManifest(),
                 configHash: game.getConfigHash?.(),
-                statistics: accumulator.getStatistics(),
+                statistics: observedPrefix,
                 breakdown,
                 jackpot,
                 workers,
@@ -186,8 +188,14 @@ export class ParallelSimulationRunner {
                 stopReason,
                 convergence: convergenceChecker?.buildOutcome(),
             };
+        } catch (error) {
+            observedPrefix = (error as {observedPrefix?: SimulationStatistics} | null)?.observedPrefix ?? observedPrefix;
+            throw error;
         } finally {
-            await releasePokieGame(game);
+            await releasePokieGame(game).catch((error: unknown) => {
+                if (error instanceof Error && observedPrefix) Object.assign(error, {observedPrefix});
+                return Promise.reject(error);
+            });
         }
     }
 

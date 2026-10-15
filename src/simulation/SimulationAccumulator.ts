@@ -65,6 +65,7 @@ export class SimulationAccumulator {
     }
 
     public addModifierStatistics(observation: ModifierStatistics): void {
+        validateModifierObservation(observation);
         this.modifiers = mergeModifierStatistics(this.modifiers, observation);
     }
 
@@ -94,6 +95,7 @@ export class SimulationAccumulator {
     }
 
     public configureAnalytics(envelope: AnalyticsEnvelope): void {
+        if (this.rounds > 0 && !this.analytics) throw new Error("Cannot attach current analytics provenance to unidentified historical rounds.");
         this.analytics = mergeFeatureAnalytics(this.analytics, emptyFeatureAnalytics(envelope));
     }
 
@@ -107,7 +109,9 @@ export class SimulationAccumulator {
         if (!Number.isFinite(payout) || payout < 0) {
             throw new Error(`SimulationAccumulator requires a finite payout >= 0, got ${payout}`);
         }
-        const analytics = mergeFeatureAnalytics(this.analytics, observeFeatureAnalytics(bet, payout, observation));
+        const historical = this.rounds > 0 && !this.analytics;
+        if (historical && observation) throw new Error("Cannot append identified analytics to unidentified historical rounds; start an empty accumulator.");
+        const analytics = historical ? undefined : mergeFeatureAnalytics(this.analytics, observeFeatureAnalytics(bet, payout, observation));
         this.analytics = analytics;
         this.rounds++;
         this.totalBet += bet;
@@ -143,6 +147,8 @@ export class SimulationAccumulator {
     }
 
     public merge(other: SimulationAccumulator): void {
+        validateSnapshot(this.toSnapshot());
+        validateSnapshot(other.toSnapshot());
         const analytics = mergeFeatureAnalytics(this.analytics, other.analytics);
         if (this.rounds > 0 && !this.analytics && other.analytics || other.rounds > 0 && !other.analytics && this.analytics) throw new Error("Cannot merge missing analytics provenance with current observations.");
         const ranges = other.logicalSamplingRanges ? mergeLogicalSamplingRanges(this.logicalSamplingRanges ?? [], other.logicalSamplingRanges) : this.logicalSamplingRanges;
@@ -314,7 +320,7 @@ function validateSnapshot(snapshot: SimulationAccumulatorSnapshot): void {
         !range || range.excluded !== undefined && (!Number.isSafeInteger(range.excluded) || range.excluded < 0) || typeof range.trajectory !== "string" || !range.trajectory ||
         ![range.observed, range.completed, range.abandoned ?? []].every(ranges => Array.isArray(ranges) && ranges.every(pair => Array.isArray(pair) && pair.length === 2 && pair.every(n => Number.isSafeInteger(n) && n >= 0) && pair[1] >= pair[0]))))) throw new Error("Invalid logical sampling ranges.");
     if (snapshot.logicalSamples && (snapshot.logicalSamples.logicalSamples || snapshot.logicalSamples.rounds !== snapshot.logicalRounds?.rounds)) throw new Error("Invalid logical sample snapshot envelope.");
-    if (snapshot.modifiers && Object.values(snapshot.modifiers).some(value => !Number.isSafeInteger(value) || value < 0)) throw new Error("Invalid modifier statistics.");
+    if (snapshot.modifiers !== undefined) validateModifierObservation(snapshot.modifiers);
     const nonNegativeIntegers: Array<[string, number]> = [
         ["rounds", snapshot.rounds],
         ["hitCount", snapshot.hitCount],
@@ -357,4 +363,9 @@ function validateSnapshot(snapshot: SimulationAccumulatorSnapshot): void {
             throw new Error(`SimulationAccumulator snapshot has invalid payoutHistogram count for ${JSON.stringify(bucket)}: ${count}.`);
         }
     }
+}
+
+function validateModifierObservation(observation: ModifierStatistics): void {
+    const fields: Array<keyof ModifierStatistics> = ["steps", "ruleApplications", "stickySteps", "multipliedComponents"];
+    if (!observation || Object.keys(observation).length !== fields.length || fields.some(key => !Number.isSafeInteger(observation[key]) || observation[key] < 0)) throw new Error("Invalid modifier statistics observation.");
 }

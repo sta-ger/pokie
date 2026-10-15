@@ -15,6 +15,7 @@ export function mergeSimulationBreakdowns(
 ): Record<string, SimulationBreakdownComponent> {
     const categories = new Set([...Object.keys(base ?? {}), ...Object.keys(addition)]);
     if (categories.size > SimulationCategoryNameNormalizer.MAX_CATEGORIES || [...categories].some(key => !key || key.length > SimulationCategoryNameNormalizer.MAX_LENGTH)) throw new Error("Simulation category dimension bound exceeded (128 categories, 64-character names).");
+    if ([...categories].some(key => SimulationCategoryNameNormalizer.normalize(key) !== key)) throw new Error("Invalid simulation category key; expected a normalized category name.");
     const merged: Record<string, SimulationBreakdownComponent> = {...base};
     for (const [category, component] of Object.entries(addition)) {
         const existing = Reflect.getOwnPropertyDescriptor(merged, category) === undefined ? undefined : merged[category];

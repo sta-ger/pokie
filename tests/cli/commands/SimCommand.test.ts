@@ -1391,9 +1391,10 @@ describe("SimCommand outcome-source routing (integration, real outcome-library b
         await command.run([bundleDir, "--rounds", "200", "--seed", "sim-seed", "--mode", "base", "--format", "json"]);
 
         expect(loadGame).not.toHaveBeenCalled();
-        const report = JSON.parse(logSpy.mock.calls[0][0]) as {libraryId: string; statistics: {rounds: number; rtp: number; totalBet: number}};
+        const report = JSON.parse(logSpy.mock.calls[0][0]) as {libraryId: string; workerSeedStrategy: string; statistics: {rounds: number; rtp: number; totalBet: number}};
         expect(report.libraryId).toBe("base-lib");
         expect(report.statistics.rounds).toBe(200);
+        expect(report.workerSeedStrategy).toContain("derived-round-seed-v1");
         expect(report.statistics.totalBet).toBe(200);
         expect(report.statistics.rtp).toBeGreaterThanOrEqual(0);
 

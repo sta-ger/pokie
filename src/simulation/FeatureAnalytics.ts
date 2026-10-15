@@ -282,6 +282,8 @@ export function validateFeatureAnalytics(s: FeatureAnalyticsSnapshot): void {
             ].every(count) ||
             !finite(f.winSum) ||
             f.entrySubrounds > f.entries ||
+            f.entries + f.retriggers > s.subrounds ||
+            f.completions + f.excludedCompletions > s.subrounds ||
             f.durationHistogram.length !== 4 ||
             f.winHistogram.length !== 4 ||
             f.durationHistogram.reduce((a, b) => a + b, 0) !== f.completions ||

@@ -42,6 +42,7 @@ export type SessionFeatureAnalyticsBeforePlay = {
     free: boolean;
     hold: boolean;
     locks: number;
+    holdRemaining: number;
     respins: boolean;
     bonus: boolean;
 };
@@ -74,13 +75,24 @@ function sessionAnalyticsEnvelope(session: GameSessionHandling): AnalyticsEnvelo
     );
 }
 
+function initialHoldGrant(session: GameSessionHandling): number | undefined {
+    let schema = resolveSessionStateSchema(session);
+    for (let depth = 0; depth < 32; depth++) {
+        if (schema.kind === "hold-and-win") return schema.initialRespins;
+        if (!("base" in schema)) break;
+        schema = schema.base;
+    }
+    return undefined;
+}
 export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsObserving {
+    private readonly holdGrant: number | undefined;
     private readonly envelope: AnalyticsEnvelope;
     private readonly session: GameSessionHandling;
     private readonly state: ObserverState;
     constructor(session: GameSessionHandling) {
         this.session = session;
         this.envelope = sessionAnalyticsEnvelope(session);
+        this.holdGrant = initialHoldGrant(session);
         let state = states.get(session);
         if (!state) {
             state = {source: globalThis.crypto.randomUUID(), position: 0, active: {}};
@@ -104,6 +116,7 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             free: (free.getFreeGamesSum?.() ?? 0) > (free.getFreeGamesNum?.() ?? 0),
             hold: hold.isHoldAndWinActive?.() ?? false,
             locks: hold.getLockedHoldAndWinSymbols?.().length ?? 0,
+            holdRemaining: hold.getHoldAndWinRespinsRemaining?.() ?? 0,
             respins: bounded?.respins ? bounded.respins.remaining > 0 : pending && this.envelope.supportedFeatures.includes("respins"),
             bonus: bounded?.weightedBonus ? bounded.weightedBonus.remaining > 0 : pending && this.envelope.supportedFeatures.includes("weightedBonus"),
         };
@@ -188,15 +201,13 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             forcedFreeEntry,
         );
         const holdOutcome = (session as Partial<HoldAndWinStateDetermining>).getHoldAndWinLastRoundOutcome?.();
-        update(
-            "holdAndWin",
-            before.hold,
-            after.hold,
-            !before.hold && (after.hold || holdOutcome?.kind === "completed"),
-            before.hold && after.locks > before.locks,
-            0,
-            holdOutcome?.kind === "completed" ? holdOutcome.payout : 0,
-        );
+        const holdEntry = !before.hold && (after.hold || holdOutcome?.kind === "completed");
+        const holdRetrigger = before.hold && after.locks > before.locks;
+        const holdReset = this.holdGrant ?? after.holdRemaining;
+        let holdGrants = 0;
+        if (holdEntry) holdGrants = holdReset;
+        else if (holdRetrigger) holdGrants = Math.max(0, holdReset - Math.max(0, before.holdRemaining - 1));
+        update("holdAndWin", before.hold, after.hold, holdEntry, holdRetrigger, holdGrants, holdOutcome?.kind === "completed" ? holdOutcome.payout : 0);
         update(
             "respins",
             before.respins,
@@ -212,7 +223,7 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             after.bonus,
             bounded?.weightedBonus?.selectedNow === true,
             false,
-            0,
+            bounded?.weightedBonus?.selectedNow ? bounded.weightedBonus.remaining : 0,
             before.bonus ? win : bounded?.weightedBonus?.payout ?? 0,
         );
         if (bounded?.collection?.triggered) events.push({feature: "collection", entry: true, completion: {duration: 0, win: bounded.collection.payout}});
