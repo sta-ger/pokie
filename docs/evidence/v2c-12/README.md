@@ -595,3 +595,42 @@ fixed selector), and `src/simulation/FixedBetModeForNextSimulationRoundSetting.t
 (which documents that this exact forcing-mode rejection must be swallowed).
 The rendered candidate result instead propagates it before round 1. This is a
 product finding; the unproduced buy/buy-more Replay matrix remains not reached.
+
+## Corrected-host partial Replay collection (2026-10-15)
+
+Candidate product identity was `4951df55907a2863b6e077c290e3f8c468bc5f6e`.
+The checkout was clean before collection. One fresh, isolated Studio launch
+opened the retained ordinary generated package through the public Projects UI;
+the launch used the candidate checkout's compiled CLI. No recording input was
+used. The prior forcing-mode failure is historical only: on this candidate the
+public Simulation action completed the seeded, one-worker `buy` report (3/3)
+and seeded, one-worker `buy-more` report (5/5).
+
+From Recent Simulation, the completed ordinary `buy` report was replayed once
+at target 1. Its rendered terminal receipt is replay job
+`da6ab83965f948dd9e1480512502461f`, with seed
+`v2c12-ordinary-buy-corrected`, package/Bet/charged mode `buy`,
+`repeat-when-available; 1 executed step commands`, and stake `0.5`. The
+browser download was
+`v2c12-ordinary-matrix-1.0.0-da6ab83965f948dd9e1480512502461f.json`
+(2,998 bytes; SHA-256
+`a3811d72f43388f3d55d40b72300751a21b1dd0ddad9068634dc7a8f2181a275`).
+Its actual JSON bytes match the rendered seed, ordinary package identity,
+`modePolicy.selection: "repeat-when-available"`, command `{kind:"spin",
+mode:"buy"}`, and artifact stake `0.5`.
+
+The same public path completed ordinary `buy-more` target 1, replay job
+`763efff2042a4c53bacce67a96bc33e5`, with seed
+`v2c12-ordinary-buymore-corrected`, package/Bet/charged mode `buy-more`,
+repeat policy, and stake `1.25`; its target-2 replay also completed (record
+`af2e710a27a94115a47effceae88c3d0`). The remaining ordinary targets,
+weighted ante/buy/buy-more reports, their downloads, and the required ordinary
+ante visual row were deliberately not claimed by this partial collection.
+
+Runtime-only transcript:
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-31b3940716a6e35c/run-2026-10-15T02-53-07-734Z/transcript.json`.
+I independently inspected `3-observation.png` in that run (SHA-256
+`04c09fc84d3c853d0dbf8b9c3f605fc07c80cbdfca80bf06e292eeeaeb793698`):
+its viewport visibly contains the completed ordinary-buy card, replay id/job,
+seed, package bet mode, repeat policy, Bet mode, and Stake `0.5`. Runtime
+artifacts and downloads remain outside the repository.
