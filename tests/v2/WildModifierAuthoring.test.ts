@@ -117,7 +117,8 @@ describe("V2C-13 finite modifier authoring", () => {
         const game = generatedMechanicsGame(b);
         const session = mechanicsSession(game) as ReturnType<typeof mechanicsSession> & api.VideoSlotWithFreeGamesSessionHandling;
         session.setFreeGamesSum(failure === "terminal-balance" ? 1 : 3);
-        session.setCreditsAmount(failure === "terminal-balance" ? Number.MAX_VALUE : 0);
+        session.setCreditsAmount(failure === "terminal-balance" ? Number.MAX_VALUE / 2 : 0);
+        if (failure === "terminal-balance") session.setFreeGamesBank(Number.MAX_VALUE / 2);
         session.setBet(failure === "funding" ? 7.5 : 0.05);
         if (failure === "bank") {
             session.play();
@@ -163,7 +164,7 @@ describe("V2C-13 finite modifier authoring", () => {
             {id: "buy", runtimeType: "buyFeature", costMultiplier: 10, forcedFreeGames: 2}];
         Reflect.deleteProperty(b, "reelStrips");
         b.reelSequences = ["A", "W2", "A"].map(symbol => ({type: "weighted", variants: [
-            {id: "first", symbols: [symbol], weight: 1}, {id: "second", symbols: [symbol], weight: 2},
+            {id: "first", symbols: [symbol], weight: 1}, {id: "second", symbols: [symbol, symbol], weight: 2},
         ]}));
         const game = generatedMechanicsGame(b), 
             session = mechanicsSession(game);
@@ -195,7 +196,7 @@ describe("V2C-13 finite modifier authoring", () => {
         expect(session.getWinEvaluationResult()).toEqual(reference.getWinEvaluationResult());
     });
 
-    it.each(["fixed", "accumulating"] as const)("F1d generated %s jackpot overflow rolls back nested free games, modes, pools and statistics", type => {
+    it.each((["fixed", "accumulating"] as const).flatMap(type => ["base", "buy"].map(mode => ({type, mode}))))("F1d generated $type/$mode jackpot overflow rolls back nested free games, modes, pools and statistics", ({type, mode}) => {
         const b = fixture("sticky");
         b.reelStrips = [["A"], ["W2"], ["A"]];
         b.mechanics!.modifiers!.wilds = [{symbol: "W2", factor: Number.MAX_VALUE}];
@@ -205,7 +206,7 @@ describe("V2C-13 finite modifier authoring", () => {
             contribution: {type: "percentage", percentage: 0.1}, trigger: {type: "symbol-count", symbolId: "A", minimumCount: 1}, award: "single-tier"};
         const game = generatedMechanicsGame(b), 
             session = mechanicsSession(game);
-        session.setBetMode!("buy");
+        session.setBetMode!(mode);
         const before = JSON.parse(JSON.stringify(session.toSessionState()));
         const reference = mechanicsSession(game);
         reference.fromSessionState(before);
