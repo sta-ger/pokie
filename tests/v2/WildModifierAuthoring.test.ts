@@ -109,6 +109,185 @@ describe("V2C-13 finite modifier authoring", () => {
         expect(session.getModifierObservation!()).toBeUndefined();
     });
 
+    it.each(["bank", "terminal-balance", "funding"] as const)("F1a/F1b generated free-game %s rejection restores the complete continuation", failure => {
+        const b = fixture("sticky");
+        b.reelStrips = [["A"], ["W2"], ["A"]];
+        b.mechanics!.modifiers!.wilds = [{symbol: "W2", factor: Number.MAX_VALUE}];
+        b.mechanics!.freeGames = {scatterSymbol: "S", awardsByCount: {3: 0}, retriggerPolicy: "additive"};
+        const game = generatedMechanicsGame(b);
+        const session = mechanicsSession(game) as ReturnType<typeof mechanicsSession> & api.VideoSlotWithFreeGamesSessionHandling;
+        session.setFreeGamesSum(failure === "terminal-balance" ? 1 : 3);
+        session.setCreditsAmount(failure === "terminal-balance" ? Number.MAX_VALUE : 0);
+        session.setBet(failure === "funding" ? 7.5 : 0.05);
+        if (failure === "bank") {
+            session.play();
+            expect(session.getFreeGamesBank()).toBe(8.988465674311579e307);
+            session.play();
+            expect(session.getFreeGamesBank()).toBe(Number.MAX_VALUE);
+            expect(session.getFreeGamesNum()).toBe(2);
+        }
+        const before = JSON.parse(JSON.stringify(session.toSessionState()));
+        const credits = session.getCreditsAmount();
+        const screen = session.getSymbolsCombination().toMatrix();
+        const reference = mechanicsSession(game) as ReturnType<typeof mechanicsSession> & api.VideoSlotWithFreeGamesSessionHandling;
+        reference.fromSessionState(before);
+        for (let attempt = 0; attempt < 2; attempt++) {
+            expect(() => session.play()).toThrow(/overflow/);
+            expect(session.getCreditsAmount()).toBe(credits);
+            expect(session.toSessionState()).toEqual(before);
+            expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
+            expect(session.getWinAmount()).toBe(0);
+            expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+            expect(session.getModifierObservation!()).toBeUndefined();
+            expect(new api.VideoSlotSessionSerializer().getRoundData(session).totalWin).toBe(0);
+        }
+        // Clear only the already-tested bank/final-balance obstacle; retry consumes the same
+        // seeded screen and retained lifetime as a fresh restoration of the pre-call state.
+        for (const candidate of [session, reference]) {
+            candidate.setFreeGamesBank(0);
+            candidate.setBet(1e-7);
+            candidate.setCreditsAmount(0);
+            candidate.play();
+        }
+        expect(session.toSessionState()).toEqual(reference.toSessionState());
+        expect(session.getCreditsAmount()).toBe(reference.getCreditsAmount());
+        expect(session.getModifierObservation!()).toEqual(reference.getModifierObservation!());
+    });
+
+    it.each(["ante", "buy"])("F1c generated rejected %s preserves mode intent, charges, grants and weighted selections", mode => {
+        const b = fixture("sticky");
+        b.mechanics!.modifiers!.wilds = [{symbol: "W2", factor: Number.MAX_VALUE}];
+        b.mechanics!.freeGames = {scatterSymbol: "S", awardsByCount: {3: 0}, retriggerPolicy: "additive"};
+        b.betModes = [{id: "base", runtimeType: "base", isDefault: true},
+            {id: "ante", runtimeType: "ante", costMultiplier: 2},
+            {id: "buy", runtimeType: "buyFeature", costMultiplier: 10, forcedFreeGames: 2}];
+        Reflect.deleteProperty(b, "reelStrips");
+        b.reelSequences = ["A", "W2", "A"].map(symbol => ({type: "weighted", variants: [
+            {id: "first", symbols: [symbol], weight: 1}, {id: "second", symbols: [symbol], weight: 2},
+        ]}));
+        const game = generatedMechanicsGame(b), 
+            session = mechanicsSession(game);
+        session.setBet(7.5);
+        session.setBetMode!(mode);
+        const before = JSON.parse(JSON.stringify(session.toSessionState()));
+        const selections = session.getSequenceSelections!();
+        const statistics = session.getSequenceStatistics!();
+        const reference = mechanicsSession(game);
+        reference.fromSessionState(before);
+        for (let attempt = 0; attempt < 2; attempt++) {
+            expect(() => session.play()).toThrow(/overflow/);
+            expect(session.getCreditsAmount()).toBe(10000);
+            expect(session.toSessionState()).toEqual(before);
+            expect(session.getBetModeId!()).toBe(mode);
+            expect(api.observeVideoSlotFeatures(session).chargedBetModeId).toBeUndefined();
+            expect(session.getSequenceSelections!()).toEqual(selections);
+            expect(session.getSequenceStatistics!()).toEqual(statistics);
+        }
+        for (const candidate of [session, reference]) {
+            candidate.setBet(1e-7);
+            candidate.play();
+        }
+        expect(session.toSessionState()).toEqual(reference.toSessionState());
+        expect(session.getCreditsAmount()).toBe(reference.getCreditsAmount());
+        expect(api.observeVideoSlotFeatures(session).chargedBetModeId).toBe(mode);
+        expect(session.getBetModeId!()).toBe(mode === "buy" ? "base" : "ante");
+        if (mode === "buy") expect(session.getCreditsAmount()).toBe(10000 - 10e-7);
+        expect(session.getWinEvaluationResult()).toEqual(reference.getWinEvaluationResult());
+    });
+
+    it.each(["fixed", "accumulating"] as const)("F1d generated %s jackpot overflow rolls back nested free games, modes, pools and statistics", type => {
+        const b = fixture("sticky");
+        b.reelStrips = [["A"], ["W2"], ["A"]];
+        b.mechanics!.modifiers!.wilds = [{symbol: "W2", factor: Number.MAX_VALUE}];
+        b.mechanics!.freeGames = {scatterSymbol: "S", awardsByCount: {3: 0}, retriggerPolicy: "additive"};
+        b.betModes = [{id: "base", runtimeType: "base", isDefault: true}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 10, forcedFreeGames: 1}];
+        b.mechanics!.jackpot = {pool: type === "fixed" ? {id: "mini", type, amount: Number.MAX_VALUE} : {id: "mini", type, seedValue: Number.MAX_VALUE},
+            contribution: {type: "percentage", percentage: 0.1}, trigger: {type: "symbol-count", symbolId: "A", minimumCount: 1}, award: "single-tier"};
+        const game = generatedMechanicsGame(b), 
+            session = mechanicsSession(game);
+        session.setBetMode!("buy");
+        const before = JSON.parse(JSON.stringify(session.toSessionState()));
+        const reference = mechanicsSession(game);
+        reference.fromSessionState(before);
+        for (const candidate of [session, reference]) {
+            expect(() => candidate.play()).toThrow(/overflow/);
+            expect(candidate.toSessionState()).toEqual(before);
+            expect(candidate.getCreditsAmount()).toBe(10000);
+            expect(candidate.getWinAmount()).toBe(0);
+            expect(candidate.getWinEvaluationResult().getWinComponents()).toEqual([]);
+            const observation = api.observeVideoSlotFeatures(candidate);
+            expect(observation.modifiers).toBeUndefined();
+            expect(observation.jackpot).toMatchObject({pools: [{id: "mini", value: Number.MAX_VALUE}], statistics: {}});
+            expect(observation.jackpot!.award).toBeUndefined();
+        }
+    });
+
+    it("F1d failed generated step after a successful jackpot exposes no prior payout or award", () => {
+        const b = fixture("sticky");
+        b.reelStrips = [["A"], ["W2"], ["A"]];
+        b.mechanics!.modifiers!.wilds = [{symbol: "W2", factor: Number.MAX_VALUE}];
+        b.mechanics!.jackpot = {pool: {id: "mini", type: "accumulating", seedValue: 10},
+            contribution: {type: "percentage", percentage: 0.1}, trigger: {type: "symbol-count", symbolId: "A", minimumCount: 1}, award: "single-tier"};
+        const game = generatedMechanicsGame(b), 
+            session = mechanicsSession(game);
+        session.setBet(1e-7);
+        session.play();
+        expect(api.observeVideoSlotFeatures(session).jackpot!.award).toBeDefined();
+        const before = JSON.parse(JSON.stringify(session.toSessionState()));
+        const credits = session.getCreditsAmount();
+        const reference = mechanicsSession(game);
+        reference.fromSessionState(before);
+        session.setBet(7.5);
+        expect(() => session.play()).toThrow(/overflow/);
+        expect(session.toSessionState()).toEqual(before);
+        expect(session.getCreditsAmount()).toBe(credits);
+        expect(session.getWinAmount()).toBe(0);
+        expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+        const data = new api.VideoSlotSessionSerializer().getRoundData(session);
+        expect(data.totalWin).toBe(0);
+        expect(data.winningPositions).toEqual([]);
+        expect(data.jackpot!.award).toBeUndefined();
+        expect(data.modifiers).toBeUndefined();
+        const artifact = api.buildRoundArtifactFromSession(session, {roundId: "rejected", provenance: {game: b.manifest, pokieVersion: "1.3.0"}});
+        expect(artifact.totalWin).toBe(0);
+        expect(artifact.featureEvents?.find(event => event.type === "jackpot")?.data).not.toHaveProperty("award");
+        for (const candidate of [session, reference]) {
+            candidate.setBet(1e-7);
+            candidate.setCreditsAmount(10000);
+            candidate.play();
+        }
+        expect(session.toSessionState()).toEqual(reference.toSessionState());
+        expect(session.getCreditsAmount()).toBe(reference.getCreditsAmount());
+        expect(session.getWinEvaluationResult()).toEqual(reference.getWinEvaluationResult());
+    });
+
+    it("generated composed overflow leaves public repository/wallet unchanged and a fresh-handler retry audits once", async () => {
+        const b = fixture("sticky");
+        b.reelStrips = [["A"], ["W2"], ["A"]];
+        b.mechanics!.modifiers!.wilds = [{symbol: "W2", factor: Number.MAX_VALUE}];
+        b.mechanics!.freeGames = {scatterSymbol: "S", awardsByCount: {3: 0}, retriggerPolicy: "additive"};
+        b.betModes = [{id: "base", runtimeType: "base", isDefault: true}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 10, forcedFreeGames: 2}];
+        b.mechanics!.jackpot = {pool: {id: "mini", type: "accumulating", seedValue: 10},
+            contribution: {type: "percentage", percentage: 0.1}, trigger: {type: "symbol-count", symbolId: "A", minimumCount: 1}, award: "single-tier"};
+        const game = generatedMechanicsGame(b), 
+            repository = new api.InMemorySessionRepository(), 
+            wallet = new api.InMemoryWallet(10000);
+        const initial = api.captureInitialPokieSessionState({seed: 31}, mechanicsSession(game), game.getSessionSerializer!(), true, game);
+        await repository.save("s", initial);
+        const handler = () => new api.SpinCommandHandler(game, repository, wallet);
+        const command = {kind: "spin" as const, sessionId: "s", requestId: "overflow", mode: "buy", bet: 7.5};
+        for (let attempt = 0; attempt < 2; attempt++) {
+            expect((await handler().execute(command)).status).toBe("execution-error");
+            expect(await repository.load("s")).toEqual(initial);
+            expect(await wallet.getBalance("s")).toBe(10000);
+        }
+        const result = await handler().execute({...command, requestId: "retry", bet: 1e-7});
+        if (result.status !== "played") throw new Error(JSON.stringify(result));
+        expect(result.stake).toBe(10e-7);
+        expect(new api.AuditRoundReplay().replay(game, JSON.parse(JSON.stringify(result.audit))).verification).toBe("verified");
+        expect(api.validatePersistedSession(result.state, game)).toBeUndefined();
+    });
+
     it("calculator reuse reads current authored factors and fresh restoration has identical math", () => {
         const b = fixture("sticky");
         b.reelStrips = [["A"], ["W2"], ["A"]];

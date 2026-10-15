@@ -1,4 +1,5 @@
 import {
+    FreeGamesRoundHandler,
     Paytable,
     SeededRandomNumberGenerator,
     SymbolsSequence,
@@ -32,6 +33,32 @@ import {
 } from "./DefaultVideoSlotWithFreeGamesSessionTestCases.js";
 
 describe("VideoSlotWithFreeGamesSession", () => {
+    it("rolls back a rejected custom round handler without requiring persistence certification", () => {
+        const config = new VideoSlotWithFreeGamesConfig();
+        const standard = new FreeGamesRoundHandler();
+        let reject = true;
+        const session = new VideoSlotWithFreeGamesSession(config,
+            new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(31)), undefined, undefined, {
+                beforeRoundPlayed: target => standard.beforeRoundPlayed(target),
+                afterRoundPlayed: (target, credits) => {
+                    standard.afterRoundPlayed(target, credits);
+                    if (reject) throw new Error("custom settlement rejected");
+                },
+            });
+        session.setFreeGamesSum(2);
+        session.setCreditsAmount(0);
+        const before = session.toSessionState();
+        expect(session.isSessionStateRestorable()).toBe(false);
+        expect(() => session.play()).toThrow("custom settlement rejected");
+        expect(session.getCreditsAmount()).toBe(0);
+        expect(session.toSessionState()).toEqual(before);
+        expect(session.getWinAmount()).toBe(0);
+        reject = false;
+        session.play();
+        expect(session.getFreeGamesNum()).toBe(1);
+        expect(session.getCreditsAmount()).toBe(0);
+    });
+
     it.each([undefined, 0])("reports only played-round grants with scatter money %s, preserving no-ops and constructor draws", multiplier => {
         const config = new VideoSlotWithFreeGamesConfig();
         config.setReelsNumber(3);

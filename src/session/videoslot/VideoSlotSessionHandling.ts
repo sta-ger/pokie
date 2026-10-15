@@ -10,6 +10,9 @@ export interface VideoSlotSessionHandling<T extends string | number | symbol = s
     extends VideoSlotConfigDescribing<T>,
         GameSessionHandling,
         VideoSlotRoundStateDetermining<T> {
+    /** Capture a synchronous step rollback, including nested executable state and result invalidation.
+     * Optional for existing custom sessions; it does not certify persistence or custom collaborators. */
+    createStepRollback?(): () => void;
     getModifierObservation?(): import("./modifiers/ScreenModifiers.js").ScreenModifierObservation<T> | undefined;
     setSelectionContext?(context: string): void;
     getSequenceSelections?(): ReelSequenceSelection[];

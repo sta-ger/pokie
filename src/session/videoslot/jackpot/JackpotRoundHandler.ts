@@ -58,44 +58,74 @@ export class JackpotRoundHandler<T extends string | number | symbol = string> im
     ): void {
         rejectScreenGeometry(session, "Jackpot");
         const pools = session.getJackpotPools();
-        let poolStatistics = session.getJackpotPoolStatistics();
+        const credits = session.getCreditsAmount();
+        const statistics = session.getJackpotPoolStatistics();
+        const rollbacks = pools.flatMap(pool => {
+            const codec = pool as typeof pool & {toSessionState?: () => unknown; fromSessionState?: (state: unknown) => unknown};
+            if (!codec.toSessionState || !codec.fromSessionState) return [];
+            const state = codec.toSessionState();
+            return [() => codec.fromSessionState!(state)];
+        });
+        try {
+            let poolStatistics = session.getJackpotPoolStatistics();
 
-        if (stake > 0) {
-            for (const pool of pools) {
-                const contribution = this.contributor.computeContribution(pool.getId(), stake);
-                if (contribution > 0) {
-                    pool.contribute(contribution);
-                    poolStatistics = applyJackpotPoolStatisticsDelta(poolStatistics, pool.getId(), {totalContributed: contribution});
+            if (stake > 0) {
+                for (const pool of pools) {
+                    const contribution = this.contributor.computeContribution(pool.getId(), stake);
+                    if (!Number.isFinite(contribution)) throw new Error("Jackpot contribution overflow.");
+                    if (contribution > 0) {
+                        pool.contribute(contribution);
+                        if (!Number.isFinite(pool.getValue())) throw new Error("Jackpot pool overflow.");
+                        poolStatistics = applyJackpotPoolStatisticsDelta(poolStatistics, pool.getId(), {totalContributed: contribution});
+                    }
                 }
             }
-        }
-        session.setJackpotPoolStatistics(poolStatistics);
+            this.validateStatistics(poolStatistics);
+            session.setJackpotPoolStatistics(poolStatistics);
 
-        if (pools.length === 0) {
+            if (pools.length === 0) {
+                session.setJackpotLastRoundOutcome({kind: "ordinary"});
+                return;
+            }
+
+            const context: JackpotTriggerContext<T> = {
+                bet: session.getBet(),
+                stake,
+                symbols: session.getSymbolsCombination().toMatrix(),
+            };
+            if (!this.trigger.isTriggered(context)) {
+                session.setJackpotLastRoundOutcome({kind: "ordinary"});
+                return;
+            }
+
+            const award = this.awarding.resolveAward(pools, context);
+            const payout = baseWinEvaluationResult.getTotalWin() + award.amount;
+            const balance = session.getCreditsAmount() + award.amount;
+            if (!Number.isFinite(award.amount) || !Number.isFinite(payout) || !Number.isFinite(balance)) throw new Error("Jackpot payout or balance overflow.");
+            const nextStatistics = applyJackpotPoolStatisticsDelta(poolStatistics, award.poolId, {awardCount: 1, totalAwarded: award.amount});
+            this.validateStatistics(nextStatistics);
+            session.setCreditsAmount(balance);
+            session.setJackpotPoolStatistics(nextStatistics);
+            session.setJackpotLastRoundOutcome({
+                kind: "awarded",
+                poolId: award.poolId,
+                amount: award.amount,
+                symbolId: award.symbolId,
+                baseWinAmount: baseWinEvaluationResult.getTotalWin(),
+                baseWinEvaluationResult,
+            });
+        } catch (error) {
+            for (const rollback of rollbacks) rollback();
+            session.setCreditsAmount(credits);
+            session.setJackpotPoolStatistics(statistics);
             session.setJackpotLastRoundOutcome({kind: "ordinary"});
-            return;
+            throw error;
         }
-
-        const context: JackpotTriggerContext<T> = {
-            bet: session.getBet(),
-            stake,
-            symbols: session.getSymbolsCombination().toMatrix(),
-        };
-        if (!this.trigger.isTriggered(context)) {
-            session.setJackpotLastRoundOutcome({kind: "ordinary"});
-            return;
-        }
-
-        const award = this.awarding.resolveAward(pools, context);
-        session.setCreditsAmount(session.getCreditsAmount() + award.amount);
-        session.setJackpotPoolStatistics(applyJackpotPoolStatisticsDelta(poolStatistics, award.poolId, {awardCount: 1, totalAwarded: award.amount}));
-        session.setJackpotLastRoundOutcome({
-            kind: "awarded",
-            poolId: award.poolId,
-            amount: award.amount,
-            symbolId: award.symbolId,
-            baseWinAmount: baseWinEvaluationResult.getTotalWin(),
-            baseWinEvaluationResult,
-        });
     }
+    private validateStatistics(statistics: ReturnType<VideoSlotWithJackpotSessionHandling<T>["getJackpotPoolStatistics"]>): void {
+        for (const field of ["awardCount", "totalAwarded", "totalContributed"] as const) {
+            if (!Number.isFinite(Object.values(statistics).reduce((sum, value) => sum + value[field], 0))) throw new Error("Jackpot statistics overflow.");
+        }
+    }
+
 }

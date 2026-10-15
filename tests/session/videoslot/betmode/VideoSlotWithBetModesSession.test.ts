@@ -69,6 +69,32 @@ const createFreeGamesSessionWithNoNaturalTriggers = (): VideoSlotWithFreeGamesSe
 };
 
 describe("VideoSlotWithBetModesSession", () => {
+    it("restores an explicit purchase when a custom forced-entry handler rejects after granting", () => {
+        const free = createFreeGamesSessionWithNoNaturalTriggers();
+        let reject = true;
+        const session = new VideoSlotWithBetModesSession(free, buyBonusModesConfig(), {
+            canForceFeatureEntry: () => true,
+            forceFeatureEntry: () => {
+                free.setFreeGamesSum(FREE_GAMES_TO_GRANT);
+                if (reject) throw new Error("entry rejected");
+            },
+        });
+        session.setCreditsAmount(10000);
+        session.setBetMode("buy-bonus");
+        const before = session.toSessionState();
+        expect(() => session.play()).toThrow("entry rejected");
+        expect(session.toSessionState()).toEqual(before);
+        expect(session.getCreditsAmount()).toBe(10000);
+        expect(session.getChargedBetModeId()).toBeUndefined();
+        reject = false;
+        session.play();
+        expect(session.getCreditsAmount()).toBe(10000 - 50 * session.getBet());
+        expect(session.getBetModeId()).toBe("base");
+        expect(session.getChargedBetModeId()).toBe("buy-bonus");
+        expect(free.getFreeGamesNum()).toBe(1);
+        expect(free.getFreeGamesSum()).toBe(FREE_GAMES_TO_GRANT);
+    });
+
     it("behaves exactly like the wrapped session when no bet modes are configured", () => {
         const session = new VideoSlotWithBetModesSession(new VideoSlotSession());
         testDefaultBetModeBehavesLikeThePlainSession(session);

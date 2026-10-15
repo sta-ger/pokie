@@ -59,7 +59,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     }
 
     public getWonFreeGamesNumber(): number {
-        return this.wonFreeGamesNumber;
+        return this.stepResultValid ? this.wonFreeGamesNumber : 0;
     }
 
     public getFreeGamesNum(): number {
@@ -85,6 +85,23 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
 
     public setFreeGamesBank(value: number): void {
         this.freeBank = value;
+    }
+
+    public override createStepRollback(): () => void {
+        const rollback = super.createStepRollback();
+        const freeGamesNum = this.freeGamesNum;
+        const freeGamesSum = this.freeGamesSum;
+        const freeBank = this.freeBank;
+        const wonFreeGamesNumber = this.wonFreeGamesNumber;
+        const featureEntryPending = this.featureEntryPending;
+        return () => {
+            rollback();
+            this.freeGamesNum = freeGamesNum;
+            this.freeGamesSum = freeGamesSum;
+            this.freeBank = freeBank;
+            this.wonFreeGamesNumber = wonFreeGamesNumber;
+            this.featureEntryPending = featureEntryPending;
+        };
     }
 
     public getSessionStateSchema(): SessionStateSchema {
@@ -150,29 +167,31 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         if (!this.canPlayNextGame()) {
             return;
         }
-        this.validateScreenCoordinates();
-        this.wonFreeGamesNumber = 0;
-        if (this.hasUnfinishedFreeGames() && !this.featureEntryPending) {
-            const context = this.getSequenceSelections()[0]?.context;
-            if (context && context !== "initialization") this.baseSession.setSelectionContext?.(context);
-        }
-        this.freeGamesRoundHandler.beforeRoundPlayed(this);
-        const creditsBeforePlay = this.getCreditsAmount();
-        // baseSession is a plain VideoSlotSession/GameSession with no notion of free rounds, so its
-        // own canPlayNextGame() would refuse to play a free spin funded by an insufficient real
-        // balance. Front it with just enough credits to clear that check; afterRoundPlayed always
-        // restores the real creditsBeforePlay for an unfinished free round, so this never leaks.
-        if (this.hasUnfinishedFreeGames() && !this.baseSession.canPlayNextGame()) {
-            this.baseSession.setCreditsAmount(this.baseSession.getBet());
-        }
-        this.baseSession.play();
-        // Capture the played screen before round bookkeeping consumes its award. The constructor's
-        // display screen and insufficient-credit no-ops never create or reprocess a grant.
-        this.wonFreeGamesNumber = this.determineWonFreeGamesNumber();
-        this.freeGamesRoundHandler.afterRoundPlayed(this, creditsBeforePlay);
-        // Natural grants already belong to the just-selected round. A forced grant before play
-        // starts a fresh selection context, then its subsequent free spins retain that choice.
-        this.featureEntryPending = false;
+        this.executeStep(() => {
+            this.validateScreenCoordinates();
+            this.wonFreeGamesNumber = 0;
+            if (this.hasUnfinishedFreeGames() && !this.featureEntryPending) {
+                const context = this.getSequenceSelections()[0]?.context;
+                if (context && context !== "initialization") this.baseSession.setSelectionContext?.(context);
+            }
+            this.freeGamesRoundHandler.beforeRoundPlayed(this);
+            const creditsBeforePlay = this.getCreditsAmount();
+            // baseSession is a plain VideoSlotSession/GameSession with no notion of free rounds, so its
+            // own canPlayNextGame() would refuse to play a free spin funded by an insufficient real
+            // balance. Front it with just enough credits to clear that check; afterRoundPlayed always
+            // restores the real creditsBeforePlay for an unfinished free round, so this never leaks.
+            if (this.hasUnfinishedFreeGames() && !this.baseSession.canPlayNextGame()) {
+                this.baseSession.setCreditsAmount(this.baseSession.getBet());
+            }
+            this.baseSession.play();
+            // Capture the played screen before round bookkeeping consumes its award. The constructor's
+            // display screen and insufficient-credit no-ops never create or reprocess a grant.
+            this.wonFreeGamesNumber = this.determineWonFreeGamesNumber();
+            this.freeGamesRoundHandler.afterRoundPlayed(this, creditsBeforePlay);
+            // Natural grants already belong to the just-selected round. A forced grant before play
+            // starts a fresh selection context, then its subsequent free spins retain that choice.
+            this.featureEntryPending = false;
+        });
     }
 
     // StakeAmountDetermining: a spin consuming an unfinished free-games round never charges a real

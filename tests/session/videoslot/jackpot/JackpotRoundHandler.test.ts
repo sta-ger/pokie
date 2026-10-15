@@ -178,6 +178,38 @@ function winOf(amount: number): WinEvaluationResult<string> {
 }
 
 describe("JackpotRoundHandler", () => {
+    it.each(["payout", "balance", "statistics", "contribution"])("rejects %s overflow without committing pool, credits, statistics or an award", failure => {
+        const pool = new AccumulatingJackpotPool("mini", failure === "payout" ? Number.MAX_VALUE : 10);
+        const session = new FakeJackpotSession([["J"]], [pool]);
+        const handler = new JackpotRoundHandler<string>(
+            {computeContribution: () => failure === "contribution" ? Number.MAX_VALUE : 5},
+            {isTriggered: () => true},
+            new SingleTierJackpotAwarding<string>(),
+        );
+        if (failure === "balance") session.setCreditsAmount(Number.MAX_VALUE);
+        if (failure === "statistics") session.setJackpotPoolStatistics({mini: {awardCount: 1, totalContributed: 0, totalAwarded: Number.MAX_VALUE}});
+        pool.contribute(7);
+        const credits = session.getCreditsAmount(), 
+            statistics = session.getJackpotPoolStatistics(), 
+            value = pool.getValue();
+        // Use a large award for balance/statistics too; the custom resolver keeps existing
+        // collaborator semantics and calls the pool exactly once.
+        const awarding = failure === "balance" || failure === "statistics"
+            ? new JackpotRoundHandler<string>({computeContribution: () => 5}, {isTriggered: () => true}, {
+                resolveAward: pools => {
+                    pools[0].award();
+                    return {poolId: "mini", amount: Number.MAX_VALUE};
+                },
+            }) : handler;
+        if (failure === "contribution") pool.contribute(Number.MAX_VALUE / 2);
+        const poolBefore = pool.getValue();
+        expect(() => awarding.afterRoundPlayed(session, 1, winOf(failure === "payout" ? Number.MAX_VALUE / 2 : 0))).toThrow(/overflow/);
+        expect(pool.getValue()).toBe(failure === "contribution" ? poolBefore : value);
+        expect(session.getCreditsAmount()).toBe(credits);
+        expect(session.getJackpotPoolStatistics()).toEqual(statistics);
+        expect(session.getJackpotLastRoundOutcome()).toEqual({kind: "ordinary"});
+    });
+
     it("contribution: every configured pool grows by the contributor's own amount for a real-stake round, whether or not it triggers", () => {
         const mini = new AccumulatingJackpotPool("mini", 100);
         const grand = new AccumulatingJackpotPool("grand", 1000);

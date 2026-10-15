@@ -11,16 +11,22 @@ export class FreeGamesRoundHandler<T extends string | number | symbol = string> 
     }
 
     public afterRoundPlayed(session: VideoSlotWithFreeGamesSessionHandling<T>, creditsBeforePlay: number): void {
-        if (session.getFreeGamesSum() > 0 && session.getFreeGamesNum() < session.getFreeGamesSum()) {
-            session.setFreeGamesNum(session.getFreeGamesNum() + 1);
-            session.setFreeGamesBank(session.getFreeGamesBank() + session.getWinAmount());
-            session.setCreditsAmount(creditsBeforePlay);
+        let cursor = session.getFreeGamesNum();
+        let bank = session.getFreeGamesBank();
+        let credits = session.getCreditsAmount();
+        let sum = session.getFreeGamesSum();
+        if (sum > 0 && cursor < sum) {
+            cursor++;
+            bank += session.getWinAmount();
+            credits = creditsBeforePlay;
         }
         const wonFreeGames = session.getWonFreeGamesNumber();
-        if (wonFreeGames > 0) {
-            session.setFreeGamesSum(session.getFreeGamesSum() + wonFreeGames);
-        } else if (session.getFreeGamesSum() > 0 && session.getFreeGamesNum() === session.getFreeGamesSum()) {
-            session.setCreditsAmount(session.getCreditsAmount() + session.getFreeGamesBank());
-        }
+        if (wonFreeGames > 0) sum += wonFreeGames;
+        else if (sum > 0 && cursor === sum) credits += bank;
+        if (!Number.isFinite(bank) || !Number.isFinite(credits)) throw new Error("Free-games bank or balance overflow.");
+        session.setFreeGamesNum(cursor);
+        session.setFreeGamesBank(bank);
+        session.setFreeGamesSum(sum);
+        session.setCreditsAmount(credits);
     }
 }

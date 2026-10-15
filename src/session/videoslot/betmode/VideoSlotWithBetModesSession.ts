@@ -73,7 +73,7 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     }
 
     public getChargedBetModeId(): string | undefined {
-        return this.chargedBetModeId;
+        return this.stepResultValid ? this.chargedBetModeId : undefined;
     }
 
     public getBetModeId(): string {
@@ -128,52 +128,63 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     }
 
     public override play(): void {
-        this.validateScreenCoordinates();
-        if (!this.canPlayNextGame()) {
-            return;
-        }
-        const mode = this.resolveActiveBetMode();
-        // getStakeAmount() itself, computed before any forced entry mutates the wrapped session's
-        // state -- this is the one true "what does this spin cost" figure, identical to what a caller
-        // (or SpinCommandHandler, via determineStakeAmount()) already read before calling play(). A
-        // positive value here means this is a genuinely new, chargeable spin; 0 means we're already
-        // mid a zero-stake feature round (e.g. an unfinished free-games round granted by an earlier
-        // forced entry, or a naturally triggered one) -- forcing entry only ever happens on the
-        // former, which is what makes it one-shot per purchase rather than repeated on every
-        // subsequent free spin, and what stops a "buy" attempted mid an already-active round from
-        // granting extra free spins on top.
-        const totalIntendedCharge = this.getStakeAmount();
+        this.executeStep(() => {
+            this.validateScreenCoordinates();
+            if (!this.canPlayNextGame()) return;
+            const mode = this.resolveActiveBetMode();
+            // getStakeAmount() itself, computed before any forced entry mutates the wrapped session's
+            // state -- this is the one true "what does this spin cost" figure, identical to what a caller
+            // (or SpinCommandHandler, via determineStakeAmount()) already read before calling play(). A
+            // positive value here means this is a genuinely new, chargeable spin; 0 means we're already
+            // mid a zero-stake feature round (e.g. an unfinished free-games round granted by an earlier
+            // forced entry, or a naturally triggered one) -- forcing entry only ever happens on the
+            // former, which is what makes it one-shot per purchase rather than repeated on every
+            // subsequent free spin, and what stops a "buy" attempted mid an already-active round from
+            // granting extra free spins on top.
+            const totalIntendedCharge = this.getStakeAmount();
 
-        this.validateEntryAction();
-        if (totalIntendedCharge > 0) this.chargedBetModeId = mode.getId();
+            this.validateEntryAction();
+            if (totalIntendedCharge > 0) this.chargedBetModeId = mode.getId();
 
-        if (mode.forcesFeatureEntry() && totalIntendedCharge > 0) {
-            if (!this.canForceFeatureEntry(mode)) {
-                throw new ForcedFeatureEntryUnsupportedError(mode.getId());
+            if (mode.forcesFeatureEntry() && totalIntendedCharge > 0) {
+                if (!this.canForceFeatureEntry(mode)) {
+                    throw new ForcedFeatureEntryUnsupportedError(mode.getId());
+                }
+                this.forceFeatureEntry(mode);
+                // A forcing mode is a one-shot purchase intent, not a persistent one like ante: revert to
+                // the default mode the instant the purchase actually succeeds, before the bonus round's
+                // own first spin even plays out. Without this, the mode (and its stakeMultiplier) would
+                // stay selected past the round it just bought, so the very next ordinary spin once that
+                // round finishes -- with no fresh setBetMode() call from the player -- would still read
+                // forcesFeatureEntry() true and a positive stake, silently forcing (and charging for) an
+                // unrequested second purchase. Reverting here, not merely refusing to re-fire, is also what
+                // keeps a state snapshot taken any time after this point (including mid the bought round)
+                // from ever carrying a "consumed" forcing selection to restore in the first place.
+                this.currentBetModeId = this.betModesConfig.getDefaultBetModeId();
             }
-            this.forceFeatureEntry(mode);
-            // A forcing mode is a one-shot purchase intent, not a persistent one like ante: revert to
-            // the default mode the instant the purchase actually succeeds, before the bonus round's
-            // own first spin even plays out. Without this, the mode (and its stakeMultiplier) would
-            // stay selected past the round it just bought, so the very next ordinary spin once that
-            // round finishes -- with no fresh setBetMode() call from the player -- would still read
-            // forcesFeatureEntry() true and a positive stake, silently forcing (and charging for) an
-            // unrequested second purchase. Reverting here, not merely refusing to re-fire, is also what
-            // keeps a state snapshot taken any time after this point (including mid the bought round)
-            // from ever carrying a "consumed" forcing selection to restore in the first place.
-            this.currentBetModeId = this.betModesConfig.getDefaultBetModeId();
-        }
 
-        // Whatever the wrapped session's own play() is now about to net-charge for this spin (0, for
-        // instance, if forceFeatureEntry() just put it mid a free round it banks/reverts instead of
-        // charging for) is topped up to exactly totalIntendedCharge -- never assumed to already equal
-        // the base bet, which is what let a buy-bonus's first (forced, free) spin silently go
-        // undercharged by a full base bet before this fix.
-        const extraCost = totalIntendedCharge - this.computeBaseStakeAmount();
-        if (extraCost !== 0) {
-            this.baseSession.setCreditsAmount(this.baseSession.getCreditsAmount() - extraCost);
-        }
-        this.baseSession.play();
+            // Whatever the wrapped session's own play() is now about to net-charge for this spin (0, for
+            // instance, if forceFeatureEntry() just put it mid a free round it banks/reverts instead of
+            // charging for) is topped up to exactly totalIntendedCharge -- never assumed to already equal
+            // the base bet, which is what let a buy-bonus's first (forced, free) spin silently go
+            // undercharged by a full base bet before this fix.
+            const extraCost = totalIntendedCharge - this.computeBaseStakeAmount();
+            if (extraCost !== 0) {
+                this.baseSession.setCreditsAmount(this.baseSession.getCreditsAmount() - extraCost);
+            }
+            this.baseSession.play();
+        });
+    }
+
+    public override createStepRollback(): () => void {
+        const rollback = super.createStepRollback();
+        const currentBetModeId = this.currentBetModeId;
+        const chargedBetModeId = this.chargedBetModeId;
+        return () => {
+            rollback();
+            this.currentBetModeId = currentBetModeId;
+            this.chargedBetModeId = chargedBetModeId;
+        };
     }
 
     public getSessionStateSchema(): SessionStateSchema {

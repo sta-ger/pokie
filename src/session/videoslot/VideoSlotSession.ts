@@ -221,12 +221,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         engine?.validateState(this.modifierState);
         if (!engine && this.modifierState) throw new Error("Modifier configuration changed; create a fresh session.");
         if (this.selectionContext === undefined && this.implicitRound === Number.MAX_SAFE_INTEGER) throw new Error("Implicit round contexts exhausted.");
-        const generator = this.combinationsGenerator instanceof SymbolsCombinationsGenerator && this.combinationsGenerator.isRandomStateRestorable()
-            ? this.combinationsGenerator : undefined;
-        const rngState = generator?.getRandomState();
-        const selectionState = generator?.getSelectionState();
-        const implicitRound = this.implicitRound;
-        const selectionContext = this.selectionContext;
+        const rollback = this.createStepRollback();
         const credits = this.getCreditsAmount();
         try {
             this.combinationsGenerator.setSelectionContext?.(this.selectionContext ?? `implicit:${++this.implicitRound}`);
@@ -263,6 +258,24 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
             this.modifierState = modified?.state;
             this.modifierObservation = modified?.observation;
         } catch (error) {
+            rollback();
+            throw error;
+        }
+    }
+
+    public createStepRollback(): () => void {
+        const generator = this.combinationsGenerator instanceof SymbolsCombinationsGenerator && this.combinationsGenerator.isRandomStateRestorable()
+            ? this.combinationsGenerator : undefined;
+        const rngState = generator?.getRandomState();
+        const selectionState = generator?.getSelectionState();
+        const implicitRound = this.implicitRound;
+        const selectionContext = this.selectionContext;
+        const credits = this.getCreditsAmount();
+        const symbols = this.symbolsCombination;
+        const geometry = this.roundGeometry;
+        const dimensions = this.roundDimensions;
+        const modifiers = this.modifierState && cloneModifierData(this.modifierState);
+        return () => {
             if (this.getCreditsAmount() !== credits) this.setCreditsAmount(credits);
             if (generator) {
                 generator.setRandomState(rngState);
@@ -270,9 +283,13 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
             }
             this.implicitRound = implicitRound;
             this.selectionContext = selectionContext;
+            this.symbolsCombination = symbols;
+            this.roundGeometry = geometry;
+            this.roundDimensions = dimensions;
+            this.modifierState = modifiers;
+            this.modifierObservation = undefined;
             this.resultValid = false;
-            throw error;
-        }
+        };
     }
 
     public getSessionStateSchema(): Extract<SessionStateSchema, {kind: "seeded-video-slot"}> {
