@@ -142,6 +142,7 @@ it.each(AUTHORED_BOUNDED_MECHANIC_CATALOG)("%s: Home JSON retains catalogue rule
     fireEvent.change(await jsonEditor(), {target: {value: JSON.stringify(invalid)}});
     fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
     form();
+    expect((await screen.findAllByText(/mechanics\.unknown: unknown field/)).length).toBeGreaterThan(0);
     await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeDisabled());
     expect(JSON.parse((await jsonEditor()).value).mechanics).toEqual(invalid.mechanics);
     expect(writes).not.toHaveBeenCalled();

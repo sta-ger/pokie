@@ -310,6 +310,7 @@ it.each(AUTHORED_MODIFIER_CATALOG)("%s: Home JSON retains catalogue rules and bl
     fireEvent.change(await jsonEditor(), {target: {value: JSON.stringify(invalid)}});
     fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
     showControls();
+    expect((await screen.findAllByText(/mechanics\.unknown: unknown field/)).length).toBeGreaterThan(0);
     await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeDisabled());
     expect(JSON.parse((await jsonEditor()).value).mechanics).toEqual(invalid.mechanics);
     expect(writes).not.toHaveBeenCalled();

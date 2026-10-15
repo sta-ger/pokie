@@ -278,6 +278,7 @@ it.each(AUTHORED_MECHANIC_CATALOG)("$id: Home JSON retains catalogue rules and b
     fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: JSON.stringify(retained)}});
     fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
     fireEvent.click(screen.getByLabelText("Form"));
+    expect((await screen.findAllByText(/mechanics\.unknown: unknown field/)).length).toBeGreaterThan(0);
     await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeDisabled());
     fireEvent.click(screen.getByLabelText("JSON"));
     expect(JSON.parse((screen.getByLabelText("Blueprint JSON") as HTMLTextAreaElement).value).mechanics).toEqual(retained.mechanics);
