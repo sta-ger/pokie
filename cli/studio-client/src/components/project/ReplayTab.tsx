@@ -263,6 +263,14 @@ export function ReplayTab({
     const [selectedSimulationMode, setSelectedSimulationMode] = useState<string>();
     const [selectedSimEntry, setSelectedSimEntry] = useState<StudioSimulationReportListEntry>();
     const [simRound, setSimRound] = useState(1);
+    const simulationRoundLimit = selectedSimEntry?.sampling?.acceptedSubrounds ?? selectedSimEntry?.modes?.[selectedSimulationMode ?? ""]?.rounds ?? selectedSimEntry?.actualRounds;
+    let simulationUnavailableReason: string | undefined;
+    if (selectedSimEntry !== undefined) {
+        if (!selectedSimEntry.seed?.trim()) simulationUnavailableReason = "This simulation has no recorded seed. Run a new simulation with an explicit seed and one worker to replay its subrounds.";
+        else if (selectedSimEntry.workers !== 1) simulationUnavailableReason = "This simulation used multiple workers with independent sessions. Run a new simulation with an explicit seed and one worker to replay its subrounds.";
+        else if (selectedSimEntry.modes !== undefined && selectedSimEntry.modes[selectedSimulationMode ?? ""] === undefined) simulationUnavailableReason = "Select a concrete simulation bet mode to replay.";
+        else if (!Number.isInteger(simRound) || simRound < 1 || simulationRoundLimit === undefined || simRound > simulationRoundLimit) simulationUnavailableReason = "Select an accepted subround within this simulation's range.";
+    }
     // Recent spins can span several distinct Play sessions (a new session created by "New session"/
     // "Reset", etc.) all interleaved newest-first in one list -- this narrows that
     // list down to one session at a time so picking a round from a specific session isn't a matter of
@@ -382,7 +390,8 @@ export function ReplayTab({
     } else if (findMethod === "seedRound" || findMethod === "simulation") {
         reproduceTarget = target ? {round: target.round, seed: target.seed, modeName: target.modeName} : undefined;
     }
-    const reproduceDisabled = findMethod === "artifact" && artifactReproducibility?.status === "blocked";
+    const reproduceDisabled = (findMethod === "artifact" && artifactReproducibility?.status === "blocked") ||
+        (findMethod === "simulation" && (selectedSimEntry === undefined || simulationUnavailableReason !== undefined));
     // What the run result's own "Reproducibility" row (below) reports -- only "Replay Artifact" ever
     // has a known prior result loaded to actually compare a fresh run against (`comparison`, built from
     // `expected`); Recreate from seed/Recent Simulation are always a fresh forward replay with nothing to
@@ -681,13 +690,16 @@ export function ReplayTab({
                                         component="button"
                                         type="button"
                                         onClick={() => {
+                                            setLoadedForMethod(undefined);
+                                            setJobLoaded(false);
+                                            setPending(undefined);
                                             setSelectedSimEntry(entry);
                                             setSelectedSimulationMode(undefined);
                                             setSimRound(1);
                                         }}
                                         style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
                                     >
-                                        {entry.game.id} v{entry.game.version} — seed {entry.seed ?? "(none)"}, {entry.actualRounds ?? "per-mode"} rounds
+                                        {entry.game.id} v{entry.game.version} — seed {entry.seed ?? "(none)"}, {entry.actualRounds ?? "per-mode"} {entry.sampling ? `logical rounds, ${entry.sampling.acceptedSubrounds} subrounds` : "rounds"}
                                         {entry.modeName ? `, mode ${entry.modeName}` : ""}, {new Date(entry.startedAt).toLocaleString()}
                                     </Anchor>
                                 </List.Item>
@@ -695,19 +707,30 @@ export function ReplayTab({
                         </List>
                     )}
                     {selectedSimEntry && (
-                        <QuickActions>
-                            <NumberInput
-                                label="Round"
-                                min={1}
-                                max={selectedSimEntry.modes?.[selectedSimulationMode ?? ""]?.rounds ?? selectedSimEntry.actualRounds}
-                                step={1}
-                                value={simRound}
-                                onChange={(value) => setSimRound(typeof value === "number" ? value : 1)}
-                            />
-                            {/* A bundle needs a concrete mode; single-mode runs retain their recorded selection. */}
-                            {selectedSimEntry.modes && <Select label="Simulation bet mode" data={Object.keys(selectedSimEntry.modes)} value={selectedSimulationMode ?? null} onChange={value => setSelectedSimulationMode(value ?? undefined)} allowDeselect={false} />}
-                            <Button disabled={selectedSimEntry.modes !== undefined && (selectedSimulationMode === undefined || selectedSimEntry.modes[selectedSimulationMode] === undefined)} onClick={() => loadTarget(simRound, selectedSimEntry.seed, selectedSimEntry.modes ? selectedSimulationMode : selectedSimEntry.modeName)}>Load</Button>
-                        </QuickActions>
+                        <div>
+                            {simulationUnavailableReason && <Alert color="yellow" title="Simulation replay unavailable" mb="sm">{simulationUnavailableReason}</Alert>}
+                            <QuickActions>
+                                <NumberInput
+                                    label={selectedSimEntry.sampling ? "Subround" : "Round"}
+                                    min={1}
+                                    max={simulationRoundLimit}
+                                    step={1}
+                                    value={simRound}
+                                    onChange={(value) => {
+                                        setLoadedForMethod(undefined);
+                                        setJobLoaded(false);
+                                        setSimRound(typeof value === "number" ? value : 1);
+                                    }}
+                                />
+                                {/* A bundle needs a concrete mode; single-mode runs retain their recorded selection. */}
+                                {selectedSimEntry.modes && <Select label="Simulation bet mode" data={Object.keys(selectedSimEntry.modes)} value={selectedSimulationMode ?? null} onChange={value => {
+                                    setLoadedForMethod(undefined);
+                                    setJobLoaded(false);
+                                    setSelectedSimulationMode(value ?? undefined);
+                                }} allowDeselect={false} />}
+                                <Button disabled={simulationUnavailableReason !== undefined} onClick={() => loadTarget(simRound, selectedSimEntry.seed, selectedSimEntry.modes ? selectedSimulationMode : selectedSimEntry.modeName)}>Load</Button>
+                            </QuickActions>
+                        </div>
                     )}
                 </div>
             )}
@@ -1031,7 +1054,7 @@ export function ReplayTab({
                     {findMethod !== "spin" && reproduceTarget && (
                         <div>
                             <QuickActions>
-                                {!jobLoaded && (
+                                {(!jobLoaded || progress === undefined) && (
                                     <Button
                                         id="replay-run"
                                         data-pokie-lifecycle="operation"
@@ -1071,6 +1094,7 @@ export function ReplayTab({
                                 )}
                             </QuickActions>
 
+                            {jobLoaded && error && <ErrorState message={describeReplayActionError("This replay request", error)} />}
                             {jobLoaded && progress !== undefined && (
                                 <div>
                                     {progress.status === "failed" && error === undefined && (
@@ -1091,7 +1115,6 @@ export function ReplayTab({
                                             </AdvancedDisclosure>
                                         </Alert>
                                     )}
-                                    {error && <ErrorState message={describeReplayActionError("This replay request", error)} />}
                                     <div
                                         role="status"
                                         aria-live="polite"

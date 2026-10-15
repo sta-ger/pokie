@@ -8,7 +8,6 @@ import type {
     GameModelBetsAndModes,
     GameModelGameWindow,
     GameModelLimits,
-    GameModelMechanics,
     GameModelProjection,
     GameModelReel,
     GameModelReelGenerationMode,
@@ -36,6 +35,7 @@ import {ReelGenerationModeSelector} from "../blueprintEditor/ReelGenerationModeS
 import {AnalysisTable, DiagnosticsList} from "../blueprintEditor/ReelStripGenerationEditor";
 import {SymbolsTable} from "../blueprintEditor/SymbolsTable";
 import {EmptyState} from "../common/EmptyState";
+import {ErrorState} from "../common/ErrorState";
 import {IssueList} from "../common/IssueList";
 import {PageSection} from "../common/PageSection";
 import {SymbolPresentation} from "../common/SymbolPresentation";
@@ -652,20 +652,32 @@ function ReelsSection({section, sampleControls}: {section: GameModelSection<Game
     );
 }
 
-function MechanicsSection({section}: {section: GameModelSection<GameModelMechanics>}) {
+function MechanicsSection({section}: {section: GameModelProjection["mechanics"]}) {
+    if (section.status === "invalid") {
+        return <ErrorState message="These mechanics can't be previewed yet. Correct the rule fields, then preview again. The authored draft is unchanged." detail={section.reason} />;
+    }
     if (section.status === "unavailable") {
         return <UnavailableSection reason={section.reason} />;
     }
-    if (section.data.freeGames === undefined && !section.data.holdAndWin && !section.data.jackpot && !section.data.modifiers) {
+    const {freeGames, holdAndWin, jackpot, modifiers, cascade, respins, collection} = section.data;
+    if ([freeGames, holdAndWin, jackpot, modifiers, cascade, respins, collection].every(rule => rule === undefined)) {
         return (
             <Text size="sm" c="dimmed">
                 No mechanics/features configured.
             </Text>
         );
     }
-    const {freeGames} = section.data;
     return (
         <div>
+            {cascade && <Text size="sm">Cascade: maximum {cascade.maxCascades} winning removals; a terminal losing evaluation completes the cascade. A further win rejects and rolls back the subround.</Text>}
+            {respins && <>
+                <Text size="sm">Respins: trigger symbol {respins.trigger.symbolId}, minimum count {respins.trigger.minimumCount}; grant {respins.grant}; retrigger {respins.retrigger}; maximum executed respins {respins.maxRespins}.</Text>
+                <Text size="sm">Continuation stake is zero. Each accepted subround pays its own win; retrigger grants are clipped to the remaining lifetime budget.</Text>
+            </>}
+            {collection && <>
+                <Text size="sm">Collection: symbol {collection.symbolId}; contribution {collection.contribution} per symbol; threshold {collection.threshold}; cap {collection.cap}; reset {collection.reset}; payout {collection.payout}.</Text>
+                <Text size="sm">Currency units; collect once per accepted subround from its final screen. Cap before threshold; at most one award per subround.</Text>
+            </>}
             {freeGames && <><Text size="sm">Scatter-triggered free games — scatter symbol: {freeGames.scatterSymbol || "(none)"}</Text>
                 <Text size="sm">
                 Awards:{" "}

@@ -21,6 +21,8 @@ export type SimulationReportReproducibility = {
 };
 
 export type SimulationReport = {
+    logicalRounds?: import("../simulation/LogicalRoundStatistics.js").LogicalRoundStatistics;
+    sampling?: {unit: "completed-logical-round"; acceptedSubrounds: number; carriedSubrounds?: number; excludedSubrounds: number; trajectories: "independent-session-per-worker"};
     modifiers?: ModifierStatistics;
     reelSequences?: ReelSequenceStatistics[];
     game: {id: string; name: string; version: string};

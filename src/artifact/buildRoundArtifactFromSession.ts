@@ -46,6 +46,7 @@ export function buildRoundArtifactFromSession<T extends string | number = string
     let sources: RoundArtifactStepSource<T>[] | undefined;
     if (cascade && terminal) sources = [...(cascadeSteps ?? []).map(step => ({screen: step.getScreen(), winEvaluationResult: step.getWinEvaluationResult(), ...selectionEvidence})), {screen: cascade.getFinalScreen(), winEvaluationResult: terminal, ...selectionEvidence}];
     else if (cascadeSteps?.length) sources = cascadeSteps.map(step => ({screen: step.getScreen(), winEvaluationResult: step.getWinEvaluationResult(), ...selectionEvidence}));
+    if (sources?.length && featureEvents.length) sources[sources.length - 1] = {...sources[sources.length - 1], featureEvents};
     const artifact = buildRoundArtifact({
         roundId: options.roundId,
         provenance: options.provenance,
@@ -69,6 +70,7 @@ function deriveStandardFeatureEvents(session: unknown): RoundArtifactFeatureEven
     const observations = observeVideoSlotFeatures(session);
     const events: RoundArtifactFeatureEventInput[] = [];
     if (supportsWonFreeGamesNumberDetermining(session) && session.getWonFreeGamesNumber() > 0) events.push({type: "freeGamesTriggered", data: {count: session.getWonFreeGamesNumber()}});
+    if (observations.boundedMechanics) events.push({type: "boundedMechanics", data: observations.boundedMechanics});
     if (observations.modifiers) events.push({type: "screenModifiers", data: observations.modifiers});
     if (observations.holdAndWin) events.push({type: "holdAndWin", data: observations.holdAndWin});
     if (observations.jackpot) events.push({type: "jackpot", data: observations.jackpot});

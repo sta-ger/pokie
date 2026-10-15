@@ -1,3 +1,4 @@
+import {BoundedMechanicsFieldset} from "./BoundedMechanicsFieldset";
 import {WildModifiersFieldset} from "./WildModifiersFieldset";
 import {validateAuthoredMechanics} from "../../../../../src/generated/validateAuthoredMechanics";
 import {IssueList} from "../common/IssueList";
@@ -30,6 +31,7 @@ export function ExistingMechanicsFieldset({blueprint, mutate}: {blueprint: Recor
     });
     return <Stack>
         <IssueList title="Mechanic validation" issues={issues} />
+        <BoundedMechanicsFieldset blueprint={blueprint} mutate={mutate} />
         <WildModifiersFieldset blueprint={blueprint} mutate={mutate} />
         <PageSection legend="Hold & Win">
             {hold === undefined && <Button onClick={() => set("holdAndWin", {minimumCount: 1, initialRespins: 3, retriggerPolicy: "reset-on-new-lock", symbolEffects: {[symbols[0] ?? ""]: {kind: "value", amount: 1}}, payout: {type: "sum-with-multiplier", amountsAreBetMultiples: false}})}>Add Hold & Win</Button>}

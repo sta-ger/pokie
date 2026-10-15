@@ -81,6 +81,12 @@ export function useReplayPoll(onTerminal?: () => void) {
         const generation = generationRef.current + 1;
         generationRef.current = generation;
         runGuardGenerationRef.current = generation;
+        currentJobId.current = undefined;
+        if (timeoutRef.current !== undefined) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = undefined;
+        }
+        setJob(undefined);
         setError(undefined);
         setProgress({status: "queued", completedRounds: 0, round, percent: 0, durationMs: 0});
         runReplay(fetchImpl, round, seed, simulationId, modeName, outcomeSource, recording)
@@ -98,6 +104,8 @@ export function useReplayPoll(onTerminal?: () => void) {
             })
             .catch((err: unknown) => {
                 if (isCurrent(generation)) {
+                    // A rejected start has no server job to poll, cancel or retry by id.
+                    setProgress(undefined);
                     setError(errorMessage(err));
                 }
             })
@@ -141,6 +149,11 @@ export function useReplayPoll(onTerminal?: () => void) {
         const generation = generationRef.current + 1;
         generationRef.current = generation;
         currentJobId.current = selectedJob.id;
+        if (timeoutRef.current !== undefined) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = undefined;
+        }
+        setError(undefined);
         setJob(selectedJob);
         setProgress(describeReplayProgress(selectedJob));
         if (isReplayActive(selectedJob)) {

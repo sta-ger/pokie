@@ -1,7 +1,7 @@
 import {observeModifierStatistics} from "./ModifierStatistics.js";
 import {mergeReelSequenceStatistics} from "./ReelSequenceStatisticsMerging.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
-import {observeLogicalSubround} from "./LogicalRoundStatistics.js";
+import {observeLogicalSubround, logicalSamplingPosition} from "./LogicalRoundStatistics.js";
 import {executeSessionCommand} from "../runtime/SessionRuntime.js";
 import type {JackpotStatisticsProviding} from "../session/JackpotStatisticsProviding.js";
 import type {JackpotStatisticsSnapshot} from "../session/JackpotStatisticsSnapshot.js";
@@ -68,6 +68,9 @@ export class AggregateSimulationRunner {
 
     public run(shouldStop?: () => boolean): SimulationAccumulator {
         const accumulator = new SimulationAccumulator();
+        const sampling = typeof (this.session as {getBoundedMechanicObservation?: unknown}).getBoundedMechanicObservation === "function";
+        if (sampling) accumulator.enableLogicalRoundSampling();
+        const start = sampling ? logicalSamplingPosition(this.session) : undefined;
         const slot = this.session as Partial<VideoSlotSessionHandling>;
         const sequenceBefore = slot.getSequenceStatistics?.();
         const categoryTotals = new Map<string, CategoryTotals>();
@@ -110,6 +113,10 @@ export class AggregateSimulationRunner {
             if (modifiers) accumulator.addModifierStatistics(modifiers);
             const logical = observeLogicalSubround(this.session, stakeAmount, payout);
             if (logical) accumulator.addLogicalRound(logical);
+            if (start) {
+                const end = logicalSamplingPosition(this.session).position;
+                accumulator.addLogicalSamplingRanges([{trajectory: start.id, observed: [[end - 1, end]], completed: logical ? [[end - logical.steps, end]] : []}]);
+            }
 
             if (category !== undefined) {
                 categorizationSupported = true;

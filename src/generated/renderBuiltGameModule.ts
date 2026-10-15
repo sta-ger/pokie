@@ -45,6 +45,8 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     const freeGames = blueprint.mechanics?.freeGames;
     const holdAndWin = blueprint.mechanics?.holdAndWin;
     const jackpot = blueprint.mechanics?.jackpot;
+    const bounded = blueprint.mechanics && Object.fromEntries(Object.entries(blueprint.mechanics).filter(([key]) => ["cascade", "respins", "collection"].includes(key)));
+    const hasBounded = bounded !== undefined && Object.keys(bounded).length > 0;
     const hasBetModes = (blueprint.betModes?.length ?? 0) > 0;
 
     const requireNames = [
@@ -76,6 +78,11 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     }
     if (holdAndWin) requireNames.push("VideoSlotWithHoldAndWinSession", "SymbolSetHoldAndWinCollector", "MinimumCountHoldAndWinTrigger", "SumWithMultiplierHoldAndWinPayoutAggregator");
     if (jackpot) requireNames.push("VideoSlotWithJackpotSession", "FixedJackpotPool", "AccumulatingJackpotPool", "PercentageOfBetJackpotContributor", "SymbolCountJackpotTrigger", "SingleTierJackpotAwarding");
+    if (hasBounded) {
+        requireNames.push("BoundedVideoSlotSession");
+        if (!requireNames.includes("VideoSlotWinCalculator")) requireNames.push("VideoSlotWinCalculator");
+    }
+    if (bounded?.cascade) requireNames.push("CascadeSessionSerializer");
     requireNames.sort();
 
     // Built once here (not inline in createConfig/createSession) since both the config-wrapping and
@@ -95,7 +102,9 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     }
     const winCalculatorArgs = winModel.type === "lines" ? "" : ", winCalculator";
     const sessionClassName = freeGames ? "VideoSlotWithFreeGamesSession" : "VideoSlotSession";
-    const baseConstruction = `new ${sessionClassName}(config, combinationsGenerator${winCalculatorArgs})`;
+    const baseConstruction = hasBounded
+        ? `new BoundedVideoSlotSession(config, combinationsGenerator, ${JSON.stringify(bounded)}, ${winModel.type === "lines" ? "new VideoSlotWinCalculator(config)" : "winCalculator"})`
+        : `new ${sessionClassName}(config, combinationsGenerator${winCalculatorArgs})`;
     const sessionConstructionExpression = holdAndWin
         ? `new VideoSlotWithHoldAndWinSession(${baseConstruction}, ${holdAndWin.initialRespins}, new SymbolSetHoldAndWinCollector(blueprint.mechanics?.holdAndWin?.symbolEffects), new MinimumCountHoldAndWinTrigger(${holdAndWin.minimumCount}), new SumWithMultiplierHoldAndWinPayoutAggregator(${holdAndWin.payout.amountsAreBetMultiples}))`
         : baseConstruction;
@@ -205,7 +214,7 @@ ${winCalculatorDeclaration}        return ${wrapJackpot(sessionConstructionExpre
     },`;
     }
 
-    if (holdAndWin || jackpot || blueprint.mechanics?.modifiers?.rules.some(rule => rule.type === "sticky")) exactEnumerationSessionExport = "";
+    if (hasBounded || holdAndWin || jackpot || blueprint.mechanics?.modifiers?.rules.some(rule => rule.type === "sticky")) exactEnumerationSessionExport = "";
 
     // The only two lines that differ between "dist/index.js" (format "cjs") and "src/index.ts"
     // (format "ts"): a type-only "GameBlueprint" import (erased at compile time -- adds nothing to
@@ -224,7 +233,8 @@ ${winCalculatorDeclaration}        return ${wrapJackpot(sessionConstructionExpre
     const typeImport = format === "ts" ? `import type {GameBlueprint, PokieGameContext} from "@fromstan/pokie" with { "resolution-mode": "require" };\n\n` : "";
     const weightedReels = blueprint.reelSequences?.flatMap((reel, reelIndex) => reel.type === "weighted" ? [{reelIndex, variants: reel.variants}] : []);
     const baseStateSchema = {kind: "seeded-video-slot", ...(weightedReels?.length ? {weightedReels} : {}), reels: blueprint.reels, symbols: blueprint.symbols, ...(blueprint.mechanics?.modifiers ? {modifiers: blueprint.mechanics.modifiers, rows: blueprint.rows, wilds: blueprint.wilds ?? []} : {}), ...(blueprint.screenGeometry ? {screenGeometry: blueprint.screenGeometry} : {})};
-    const featureStateSchema = blueprint.mechanics?.freeGames !== undefined ? {kind: "free-games", base: baseStateSchema} : baseStateSchema;
+    const progressionStateSchema = blueprint.mechanics?.freeGames !== undefined ? {kind: "free-games", base: baseStateSchema} : baseStateSchema;
+    const featureStateSchema = hasBounded ? {kind: "bounded-mechanics", rules: bounded, bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], base: baseStateSchema} : progressionStateSchema;
     const holdStateSchema = holdAndWin ? {kind: "hold-and-win", reels: blueprint.reels, rows: blueprint.rows, bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], symbolEffects: holdAndWin.symbolEffects, initialRespins: holdAndWin.initialRespins, base: featureStateSchema} : featureStateSchema;
     const modeStateSchema = betModeWiring ? {kind: "bet-modes", ...(blueprint.betModes!.some(mode => (mode.costMultiplier ?? 1) !== 1 || mode.runtimeType === "buyFeature") ? {stakeModifying: true} : {}), base: holdStateSchema} : holdStateSchema;
     const stateSchema = jackpot ? {kind: "jackpot", pools: [jackpot.pool], base: modeStateSchema} : modeStateSchema;
@@ -342,7 +352,7 @@ module.exports = {
     createSession(${contextParam}) {
 ${createSessionBody}    },
     getSessionSerializer() {
-        return new VideoSlotSessionSerializer();
+        return new ${bounded?.cascade ? "CascadeSessionSerializer" : "VideoSlotSessionSerializer"}();
     },
     getConfigHash() {
         return computeGameBlueprintHash(blueprint);

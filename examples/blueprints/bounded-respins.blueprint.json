@@ -1,0 +1,57 @@
+{
+    "manifest": {
+        "id": "bounded-respins",
+        "name": "Bounded respins",
+        "version": "1.0.0"
+    },
+    "reels": 3,
+    "rows": 1,
+    "symbols": [
+        "A",
+        "B",
+        "C"
+    ],
+    "wilds": [],
+    "scatters": [],
+    "availableBets": [
+        0.05,
+        7.5,
+        1e-07
+    ],
+    "reelStrips": [
+        [
+            "A",
+            "B",
+            "C"
+        ],
+        [
+            "B",
+            "C",
+            "A"
+        ],
+        [
+            "C",
+            "A",
+            "B"
+        ]
+    ],
+    "paytable": {
+        "A": {
+            "3": 2
+        },
+        "B": {
+            "3": 0
+        }
+    },
+    "mechanics": {
+        "respins": {
+            "trigger": {
+                "symbolId": "C",
+                "minimumCount": 1
+            },
+            "grant": 2,
+            "retrigger": "reset",
+            "maxRespins": 8
+        }
+    }
+}

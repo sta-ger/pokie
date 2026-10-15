@@ -272,6 +272,11 @@ export function deriveFeatureCounters(response: VideoSlotRoundResponse): Feature
         counters.push({label: "FG bank", value: response.freeGamesBank});
     }
     if (typeof response.chargedBetModeId === "string") counters.push({label: "Charged mode", value: response.chargedBetModeId});
+    const bounded = asRecord(response.boundedMechanics);
+    for (const [feature, fields] of [["collection", ["value", "cap", "threshold", "contribution", "triggered", "reset", "payout"]], ["respins", ["remaining", "executed", "granted", "limit"]], ["cascade", ["winningCascades", "evaluatedSteps"]]] as const) {
+        const data = asRecord(bounded[feature]);
+        for (const field of fields) if (typeof data[field] === "number" || typeof data[field] === "string" || typeof data[field] === "boolean") counters.push({label: `${feature} ${field}`, value: typeof data[field] === "boolean" ? String(data[field]) : data[field] as number | string});
+    }
     const hold = asRecord(response.holdAndWin);
     if (Array.isArray(hold.locks)) counters.push({label: "Locked symbols", value: hold.locks.length});
     if (typeof hold.respinsRemaining === "number") counters.push({label: "Respins", value: hold.respinsRemaining});
@@ -351,7 +356,7 @@ export function deriveBetModeId(betModeId: unknown): string | undefined {
 export function deriveFeatureCountersFromEvents(events: readonly {type: string; data?: Record<string, unknown>}[]): FeatureCounter[] {
     const response: VideoSlotRoundResponse = {};
     for (const event of events) {
-        if (event.type === "holdAndWin" || event.type === "jackpot") response[event.type] = event.data;
+        if (event.type === "holdAndWin" || event.type === "jackpot" || event.type === "boundedMechanics") response[event.type] = event.data;
         if (event.type === "chargedBetMode") response.chargedBetModeId = event.data?.id;
     }
     return deriveFeatureCounters(response);

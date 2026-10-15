@@ -96,3 +96,7 @@ export * from "./session/videoslot/modifiers/ScreenModifiers.js";
 export * from "./session/videoslot/modifiers/ScreenModifierEngine.js";
 export * from "./session/videoslot/modifiers/validateScreenModifiers.js";
 export * from "./session/videoslot/modifiers/ScreenModifierHandling.js";
+
+export * from "./session/videoslot/authored/BoundedMechanics.js";
+export * from "./session/videoslot/authored/BoundedVideoSlotSession.js";
+export * from "./net/videoslot/cascade/CascadeSessionSerializer.js";

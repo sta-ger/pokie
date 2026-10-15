@@ -1,3 +1,4 @@
+import type {BoundedMechanics} from "../session/videoslot/authored/BoundedMechanics.js";
 import type {ScreenModifiers} from "../session/videoslot/modifiers/ScreenModifiers.js";
 import type {WeightedSequenceVariant} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
@@ -49,7 +50,7 @@ export type GameBlueprintJackpot = {
     award: "single-tier";
 };
 
-export type GameBlueprintMechanics = {
+export type GameBlueprintMechanics = BoundedMechanics & {
     modifiers?: ScreenModifiers;
     freeGames?: GameBlueprintFreeGames;
     holdAndWin?: GameBlueprintHoldAndWin;

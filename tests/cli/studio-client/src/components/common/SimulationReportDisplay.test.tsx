@@ -46,3 +46,10 @@ it("renders each mode's actual stake and jackpot pool observations without blend
     expect(result.getByText(/Bet mode: ante/)).toBeInTheDocument();
     expect(result.getAllByText("pokie sim jackpot --mode ante --seed ante")).toHaveLength(2);
 });
+
+it("displays completed logical rounds separately from accepted and unfinished subrounds", () => {
+    const report: SimulationReport = {game: {id: "bounded", name: "Bounded", version: "1"}, rounds: 2, requestedRounds: 9, seed: "1", totalBet: 0.15, totalWin: 1, rtp: 1 / 0.15, hitFrequency: 1, maxWin: 0.5, durationMs: 1, spinsPerSecond: 9, sampling: {unit: "completed-logical-round", acceptedSubrounds: 9, carriedSubrounds: 1, excludedSubrounds: 1, trajectories: "independent-session-per-worker"}, logicalRounds: {rounds: 2, steps: 8, totalStake: 0.1, totalWin: 1}};
+    const view = describeSimulationReport(report);
+    const result = render(<MantineProvider><SimulationReportDisplay view={view} /></MantineProvider>);
+    expect(result.getByText(/Completed logical rounds: 2; accepted subrounds: 9; carried subrounds: 1; excluded unfinished\/restored subrounds: 1/)).toBeInTheDocument();
+});

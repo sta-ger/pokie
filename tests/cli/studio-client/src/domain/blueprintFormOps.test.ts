@@ -791,3 +791,12 @@ it.each([null, "broken", {wilds: null, rules: "broken"}, {wilds: [null, {symbol:
     expect(renameSymbol(b, "W", "W4")).toBeUndefined();
     expect(b.mechanics).toEqual({modifiers: expected});
 });
+
+it("renames and protects collection and respin symbol references without changing rule semantics", () => {
+    const blueprint = {symbols: ["C", "A"], mechanics: {collection: {symbolId: "C", contribution: 0, threshold: 4, cap: 5, reset: "subtract-threshold", payout: 0}, respins: {trigger: {symbolId: "C", minimumCount: 1}, grant: 2, retrigger: "reset", maxRespins: 8}, cascade: {maxCascades: 10}}};
+    expect(getSymbolDeletionBlockers(blueprint, "C")).toEqual(["mechanics.collection.symbolId", "mechanics.respins.trigger.symbolId"]);
+    expect(renameSymbol(blueprint, "C", "coin")).toBeUndefined();
+    expect(blueprint.mechanics.collection).toEqual({symbolId: "coin", contribution: 0, threshold: 4, cap: 5, reset: "subtract-threshold", payout: 0});
+    expect(blueprint.mechanics.respins.trigger.symbolId).toBe("coin");
+    expect(blueprint.mechanics.cascade).toEqual({maxCascades: 10});
+});

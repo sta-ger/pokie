@@ -98,9 +98,11 @@ describe("usePlaySession - canonical runtime failures", () => {
     });
 });
 
-it("keeps the same entry identity after response loss and then sends only the saved successor", async () => {
+it("keeps the same entry identity after response loss and then sends the saved delivery token, not its mathematical cursor", async () => {
     const bodies: Record<string, unknown>[] = [];
-    const pending = {roundId: "round", cursor: 1, mathematicalCursor: 1, mathematicalStatus: "pending" as const, stageCursor: 1, status: "pending" as const, entry: {bet: 1}, totalStake: 1, totalWin: 0, totalPayout: 0, subrounds: []};
+    const {boundedPlayChain} = await import("../../../studio/runtime/fixtures/boundedPlayChain");
+    const pending = (await boundedPlayChain("cascade-respins-collection", 26))[1].logicalRound!;
+    expect(pending).toMatchObject({cursor: 2, mathematicalCursor: 1, status: "pending"});
     const fetchImpl: FetchLike = (url, init) => {
         if (url === "/api/project/play/session") return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: session("stable", {logicalRoundDeliverySupported: true})})});
         bodies.push(JSON.parse(String(init?.body)));
@@ -117,7 +119,7 @@ it("keeps the same entry identity after response loss and then sends only the sa
     expect(bodies[1]).toEqual(bodies[0]);
     act(() => result.current.spin(7.5, "buy"));
     await waitFor(() => expect(bodies).toHaveLength(3));
-    expect(bodies[2]).toMatchObject({delivery: "stepwise", continuation: {roundId: "round", cursor: 1}});
+    expect(bodies[2]).toMatchObject({delivery: "stepwise", continuation: {roundId: pending.roundId, cursor: 2}});
     expect(bodies[2]).not.toHaveProperty("bet");
     expect(bodies[2]).not.toHaveProperty("mode");
     await waitFor(() => expect(result.current.session.status).toBe("ok"));

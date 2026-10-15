@@ -337,6 +337,7 @@ export class StudioSimulationService {
             requestedRounds: report.requestedRounds,
             modes: isSimulationReportSet(report) ? Object.fromEntries(Object.entries(report.modes).map(([id, mode]) => [id, {rounds: mode.rounds, betMode: mode.betMode}])) : undefined,
             actualRounds: isSimulationReportSet(report) ? undefined : report.rounds,
+            ...(!isSimulationReportSet(report) && report.sampling ? {sampling: report.sampling} : {}),
             seed: record.seed,
             workers: report.workers ?? record.workers,
             rtp: isSimulationReportSet(report) ? undefined : report.rtp,
@@ -442,13 +443,14 @@ export class StudioSimulationService {
                 if (record.abortController.signal.aborted) throw new SimulationCancelledError();
                 if (modeId !== undefined) Reflect.defineProperty(reports, modeId, {value: report, enumerable: true});
                 record.report = report;
+                const metrics = result.statistics.logicalRoundMetrics ?? result.statistics;
                 record.statistics = {
-                    volatility: result.statistics.volatility,
-                    payoutStandardDeviation: result.statistics.payoutStandardDeviation,
-                    returnStandardDeviation: result.statistics.returnStandardDeviation,
-                    averagePayoutConfidenceInterval95: result.statistics.averagePayoutConfidenceInterval95,
-                    rtpConfidenceInterval95: result.statistics.rtpConfidenceInterval95,
-                    payoutHistogram: result.statistics.payoutHistogram,
+                    volatility: metrics.volatility,
+                    payoutStandardDeviation: metrics.payoutStandardDeviation,
+                    returnStandardDeviation: metrics.returnStandardDeviation,
+                    averagePayoutConfidenceInterval95: metrics.averagePayoutConfidenceInterval95,
+                    rtpConfidenceInterval95: metrics.rtpConfidenceInterval95,
+                    payoutHistogram: metrics.payoutHistogram,
                 };
                 completedRounds += result.statistics.rounds;
             }
@@ -461,6 +463,7 @@ export class StudioSimulationService {
             this.markTerminal(record);
         } catch (error) {
             if (error instanceof SimulationCancelledError) {
+                Object.assign(record, {observedPrefix: error.observedPrefix});
                 this.cancelRecord(record);
                 return;
             }
@@ -760,7 +763,7 @@ export class StudioSimulationService {
         if (record.status === "completed" && record.report !== undefined && !isSimulationReportSet(record.report)) {
             // The downloadable report and completion hook consume the drained
             // terminal, including time spent releasing the materialized runtime.
-            record.report = {...record.report, durationMs: record.durationMs, spinsPerSecond: Math.round(record.report.rounds / (Math.max(record.durationMs, 1) / 1000))};
+            record.report = {...record.report, durationMs: record.durationMs, spinsPerSecond: Math.round((record.report.sampling?.acceptedSubrounds ?? record.report.rounds) / (Math.max(record.durationMs, 1) / 1000))};
         }
         this.repository.save(record);
         if (record.status === "completed") {
@@ -768,10 +771,10 @@ export class StudioSimulationService {
                 summary: "Simulation completed.",
                 outputs: [{label: "Simulation report", downloadPath: `/api/project/reports/${encodeURIComponent(record.id)}/download?format=json`}],
                 provenance: {simulationId: record.id, projectRoot: record.projectRoot},
-                detail: {simulationId: record.id, rounds: record.roundsCompleted, report: record.report, statistics: record.statistics},
+                detail: {simulationId: record.id, rounds: record.roundsCompleted, report: record.report, statistics: record.statistics, observedPrefix: record.observedPrefix},
             });
         } else if (record.status === "cancelled") {
-            this.jobService?.cancelled(record.id, {summary: "Simulation cancelled after the last completed round.", provenance: {simulationId: record.id, projectRoot: record.projectRoot}, detail: {simulationId: record.id, rounds: record.roundsCompleted}}, {action: "retry", reason: "Run the simulation again with the captured parameters."});
+            this.jobService?.cancelled(record.id, {summary: "Simulation cancelled after the observed accepted prefix.", provenance: {simulationId: record.id, projectRoot: record.projectRoot}, detail: {simulationId: record.id, rounds: record.roundsCompleted, observedPrefix: record.observedPrefix}}, {action: "retry", reason: "Run the simulation again with the captured parameters."});
         } else if (record.status === "failed") {
             this.jobService?.fail(record.id, record.error ?? "Simulation failed.", {action: "retry", reason: record.error ?? "Correct the reported problem and run the simulation again."});
         }
@@ -829,6 +832,7 @@ export class StudioSimulationService {
             durationMs: job.durationMs ?? 0,
             ...(reportFromDurableDetail(job) === undefined ? {} : {report: reportFromDurableDetail(job)}),
             ...(statisticsFromDurableDetail(job) === undefined ? {} : {statistics: statisticsFromDurableDetail(job)}),
+            ...(durableDetail(job)?.observedPrefix ? {observedPrefix: durableDetail(job)!.observedPrefix as import("../../../src/simulation/SimulationStatistics.js").SimulationStatistics} : {}),
             ...(job.error === undefined ? {} : {error: job.error}),
             ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
         };
@@ -845,6 +849,7 @@ export class StudioSimulationService {
             requestedRounds: report.requestedRounds,
             modes: isSimulationReportSet(report) ? Object.fromEntries(Object.entries(report.modes).map(([id, mode]) => [id, {rounds: mode.rounds, betMode: mode.betMode}])) : undefined,
             actualRounds: isSimulationReportSet(report) ? undefined : report.rounds,
+            ...(!isSimulationReportSet(report) && report.sampling ? {sampling: report.sampling} : {}),
             ...(typeof job.request.seed === "string" ? {seed: job.request.seed} : {}),
             workers: report.workers ?? (typeof job.request.workers === "number" ? job.request.workers : 1),
             rtp: isSimulationReportSet(report) ? undefined : report.rtp,

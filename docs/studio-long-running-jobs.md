@@ -68,3 +68,9 @@ a committed prefix or uncertain external settlement owner. Play scenario searche
 continue an active logical round with its returned cursor. Project changes drain
 accepted Play work before releasing its runtime; retained history remains
 inspectable and late responses cannot repopulate the active project view.
+
+## Bounded authored mechanics (V2C-14)
+
+See [cascades, respins and collections](bounded-mechanics.md) for the declarative
+contracts, supported compositions, authoring/build/extraction/PAR workflow,
+logical-round accounting, continuation and durability boundaries.

@@ -1,6 +1,6 @@
 import type {ModifierStatistics} from "./ModifierStatistics.js";
 import type {ReelSequenceStatistics} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
-import type {LogicalRoundStatistics} from "./LogicalRoundStatistics.js";
+import type {LogicalRoundStatistics, LogicalSamplingRange} from "./LogicalRoundStatistics.js";
 // Plain-data mirror of SimulationAccumulator's private running-totals state (see its toSnapshot()/
 // fromSnapshot()) — the one thing that's safe to pass across a worker_threads boundary (a live
 // SimulationAccumulator instance is not structured-cloneable in a meaningful way; this is). Exists
@@ -9,7 +9,9 @@ import type {LogicalRoundStatistics} from "./LogicalRoundStatistics.js";
 export type SimulationAccumulatorSnapshot = {
     modifiers?: ModifierStatistics;
     reelSequences?: ReelSequenceStatistics[];
+    logicalSamplingRanges?: LogicalSamplingRange[];
     logicalRounds?: LogicalRoundStatistics;
+    logicalSamples?: SimulationAccumulatorSnapshot;
     rounds: number;
     hitCount: number;
     totalBet: number;

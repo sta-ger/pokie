@@ -288,3 +288,86 @@ describe("useReplayPoll - resetForProjectSwitch", () => {
         expect(result.current.progress).toBeUndefined();
     });
 });
+
+
+describe("useReplayPoll rejected starts and reuse", () => {
+    it("clears the prior job on rejection and permits two successful reuses and explicit selection", async () => {
+        let starts = 0;
+        const deletes: string[] = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            if (init?.method === "DELETE") {
+                deletes.push(url);
+                return Promise.reject(new Error("No cancellation expected"));
+            }
+            if (url === "/api/project/replays" && init?.method === "POST") {
+                starts++;
+                if (starts === 2) return Promise.resolve({ok: false, status: 400, json: () => Promise.resolve({error: "Simulation replay requires the retained seed."})});
+                return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({...job("queued", 0), id: `job-${starts}`})});
+            }
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({...job("completed", 5), id: url.split("/").pop()!})});
+        };
+        const onTerminal = jest.fn();
+        const {result} = renderHook(() => useReplayPoll(onTerminal), {wrapper: strictModeWrapper(fetchImpl)});
+        act(() => result.current.cancel()); // No-op before execution.
+        act(() => result.current.run(5, "original"));
+        await waitFor(() => expect(result.current.job?.id).toBe("job-1"));
+        await waitFor(() => expect(result.current.progress?.status).toBe("completed"));
+        const saved = result.current.job!;
+        act(() => result.current.run(5, undefined, "seedless"));
+        await waitFor(() => expect(result.current.error).toContain("retained seed"));
+        expect(result.current.progress).toBeUndefined();
+        expect(result.current.job).toBeUndefined();
+        act(() => result.current.cancel()); // Rejection must not cancel the prior successful job.
+        expect(deletes).toEqual([]);
+        // Explicit selection is distinct from internal rejected-start recovery.
+        act(() => result.current.selectExisting(saved));
+        expect(result.current.error).toBeUndefined();
+        expect(result.current.job).toEqual(saved);
+        for (const id of ["job-3", "job-4"]) {
+            act(() => result.current.run(5, "original"));
+            await waitFor(() => expect(result.current.job?.id).toBe(id));
+            await waitFor(() => expect(result.current.progress?.status).toBe("completed"));
+            expect(result.current.error).toBeUndefined();
+        }
+        expect(onTerminal).toHaveBeenCalledTimes(3);
+    });
+
+    it("allows a first successful start after a preflight rejection in a fresh instance", async () => {
+        let reject = true;
+        const fetchImpl: FetchLike = (_url, init) => {
+            if (init?.method === "POST" && reject) return Promise.reject(new Error("Failed to fetch"));
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("completed", 5))});
+        };
+        const {result} = renderHook(() => useReplayPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+        act(() => result.current.run(5, "seed"));
+        await waitFor(() => expect(result.current.error).toBe("Failed to fetch"));
+        expect(result.current.progress).toBeUndefined();
+        reject = false;
+        act(() => result.current.run(5, "seed"));
+        await waitFor(() => expect(result.current.progress?.status).toBe("completed"));
+        expect(result.current.error).toBeUndefined();
+    });
+});
+
+
+it("reuses the replay controller after an executed failure and selects a saved job in a fresh instance", async () => {
+    let starts = 0;
+    const fetchImpl: FetchLike = (_url, init) => {
+        if (init?.method === "POST") starts++;
+        return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({...job(starts === 2 ? "failed" : "completed", 5), id: `executed-${starts}`})});
+    };
+    const {result, unmount} = renderHook(() => useReplayPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+    let saved: StudioReplayJobView | undefined;
+    for (const expected of ["completed", "failed", "completed", "completed"]) {
+        act(() => result.current.run(5, "seed"));
+        await waitFor(() => expect(result.current.progress?.status).toBe(expected));
+        if (starts === 1) saved = result.current.job;
+    }
+    act(() => result.current.selectExisting(saved!));
+    expect(result.current.job).toEqual(saved);
+    unmount();
+    const fresh = renderHook(() => useReplayPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+    act(() => fresh.result.current.selectExisting(saved!));
+    expect(fresh.result.current.job).toEqual(saved);
+    expect(fresh.result.current.progress?.status).toBe("completed");
+});

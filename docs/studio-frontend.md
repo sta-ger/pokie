@@ -409,3 +409,9 @@ Play and Replay use the transformed outcome, existing visible win highlights and
 multiplier breakdown; “Inspect round artifact” exposes `screenModifiers` events.
 Simulation/report downloads include executed-step, applied-rule, sticky-step and
 multiplied-component counts from the runtime observations.
+
+## Bounded authored mechanics (V2C-14)
+
+See [cascades, respins and collections](bounded-mechanics.md) for the declarative
+contracts, supported compositions, authoring/build/extraction/PAR workflow,
+logical-round accounting, continuation and durability boundaries.

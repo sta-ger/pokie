@@ -618,3 +618,9 @@ Counters are collected after execution, carried through accumulator snapshots,
 then summed across chunks/workers. Sticky state stays with each session across
 chunks and starts empty in each worker/job. Existing worker seed partitioning
 still applies: serial and parallel sticky trajectories are not promised identical.
+
+## Bounded authored mechanics (V2C-14)
+
+See [cascades, respins and collections](bounded-mechanics.md) for the declarative
+contracts, supported compositions, authoring/build/extraction/PAR workflow,
+logical-round accounting, continuation and durability boundaries.

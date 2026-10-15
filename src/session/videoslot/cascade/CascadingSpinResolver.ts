@@ -47,6 +47,17 @@ export class CascadingSpinResolver<T extends string | number | symbol = string> 
         let stepIndex = 0;
         let terminalEvaluation: WinEvaluationResult<T> | undefined;
         for (;;) {
+            const combination = new SymbolsCombination<T>().fromMatrix(currentScreen);
+            const result = this.pipeline.evaluate(
+                new WinEvaluationContext<T>(bet, combination, this.config, {cascadeStepIndex: stepIndex}),
+            );
+            const total = steps.reduce((sum, step) => sum + step.getWinEvaluationResult().getTotalWin(), 0) + result.getTotalWin();
+            if (!Number.isFinite(total)) throw new Error("Cascade payout overflow.");
+            const removedPositions = result.getWinningPositions();
+            if (removedPositions.length === 0) {
+                terminalEvaluation = result;
+                break;
+            }
             if (stepIndex >= this.options.maxCascadeSteps) {
                 if (this.options.onMaxCascadeStepsExceeded === "stop") {
                     return new CascadeResult<T>(
@@ -67,15 +78,6 @@ export class CascadingSpinResolver<T extends string | number | symbol = string> 
                     );
                 }
                 throw new MaxCascadeStepsExceededError(this.options.maxCascadeSteps, stepIndex);
-            }
-            const combination = new SymbolsCombination<T>().fromMatrix(currentScreen);
-            const result = this.pipeline.evaluate(
-                new WinEvaluationContext<T>(bet, combination, this.config, {cascadeStepIndex: stepIndex}),
-            );
-            const removedPositions = result.getWinningPositions();
-            if (removedPositions.length === 0) {
-                terminalEvaluation = result;
-                break;
             }
             const refillResult = this.normalizeRefillResult(
                 this.refillProvider.getRefillSymbols(currentScreen, removedPositions, stepIndex),

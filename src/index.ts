@@ -518,6 +518,8 @@ export * from "./session/videoslot/WinningValue.js";
 export * from "./session/videoslot/WinningValueDescribing.js";
 export * from "./session/videoslot/WinningWay.js";
 export * from "./session/videoslot/WinningWayDescribing.js";
+export * from "./session/videoslot/authored/BoundedMechanics.js";
+export * from "./session/videoslot/authored/BoundedVideoSlotSession.js";
 export * from "./session/videoslot/betmode/BetModeDefinition.js";
 export * from "./session/videoslot/betmode/BetModeDescribing.js";
 export * from "./session/videoslot/betmode/BetModeSelecting.js";

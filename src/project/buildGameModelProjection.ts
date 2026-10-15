@@ -1,4 +1,5 @@
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
+import {validateAuthoredMechanics} from "../generated/validateAuthoredMechanics.js";
 import type {PackageBlueprintExtractionResult} from "../generated/PackageBlueprintExtraction.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {buildGameModelReels, type BuildGameModelReelsOptions} from "./buildGameModelReels.js";
@@ -18,6 +19,20 @@ function available<T>(data: T): GameModelSection<T> {
 
 function unavailable<T>(reason: string): GameModelSection<T> {
     return {status: "unavailable", reason};
+}
+
+function projectMechanics(blueprint: GameBlueprint): GameModelProjection["mechanics"] {
+    try {
+        const issues = validateAuthoredMechanics(blueprint as unknown as Record<string, unknown>)
+            .filter(issue => issue.severity === "error");
+        return issues.length > 0
+            ? {status: "invalid", reason: issues.map(issue => `${issue.code}: ${issue.message}`).join("\n")}
+            : available(JSON.parse(JSON.stringify(blueprint.mechanics ?? {})));
+    } catch {
+        // Keep unexpected validation failures local to mechanics as a defensive boundary,
+        // so unrelated sections remain inspectable even if a future rule validator throws.
+        return {status: "invalid", reason: "blueprint-mechanics-invalid: mechanics: These rule fields could not be validated. Check their value types."};
+    }
 }
 
 // symbolId -> matchCount (string key) -> payout, the exact shape GameBlueprint.paytable is authored in
@@ -85,6 +100,10 @@ export function buildGameModelProjection(
         isScatter: (blueprint.scatters ?? []).includes(id),
     }));
     const availableBets = blueprint.availableBets ?? [];
+    // Draft previews deliberately bypass whole-blueprint validation. Mechanics must still satisfy
+    // their shared authored contract before a renderer can dereference or display nested fields.
+    // Keep the invalid section separate from unavailable sources and from a valid empty rule set;
+    // neither the draft nor unrelated inspectable sections are discarded or repaired here.
 
     return {
         basics: available({...blueprint.manifest}),
@@ -102,7 +121,7 @@ export function buildGameModelProjection(
             availableBets,
             betModes: (blueprint.betModes ?? []).map((mode) => ({...mode})),
         }),
-        mechanics: available(JSON.parse(JSON.stringify(blueprint.mechanics ?? {}))),
+        mechanics: projectMechanics(blueprint),
         limits: available(deriveLimits(availableBets)),
     };
 }

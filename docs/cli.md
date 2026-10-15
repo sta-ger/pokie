@@ -3892,3 +3892,9 @@ behavioral equivalence. The extraction evidence is historical provenance; editin
 does not update its original extraction hash or rewrite the source package.
 
 Hold&Win, fixed/session-local accumulating jackpots and executable base/ante/free-game purchase modes use the existing authoring, `validate`, `build SOURCE --target tsPackage|blueprint|parWorkbook`, `par`, `sim --mode <id|all>`, `report` and `replay` commands. Extended mechanic configuration survives package extraction and XLSX conversion. WASM and paid-grid outcome-library/Stake targets fail with a support diagnostic for feature histories they cannot preserve. There is no top-level export command. See [authored mechanics](game-packages.md#authored-holdwin-jackpot-and-bet-modes).
+
+## Bounded authored mechanics (V2C-14)
+
+See [cascades, respins and collections](bounded-mechanics.md) for the declarative
+contracts, supported compositions, authoring/build/extraction/PAR workflow,
+logical-round accounting, continuation and durability boundaries.

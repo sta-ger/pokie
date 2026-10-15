@@ -64,6 +64,11 @@ export function CanonicalPlayerView({
     const displayedScreen = logicalRound?.currentStep ? logicalRound.currentStep.screen.map(reel => [...reel]) as string[][] : reelsSymbols;
     const displayedWins = logicalRound?.currentStep?.wins ?? wins;
     const displayedWin = logicalRound?.currentStep?.totalWin ?? totalWin;
+    // A saved cascade delivery can show a zero-win step after its subround was already settled.
+    // Normalize that step's win to the entry bet, never to the caller's aggregate artifact ratio.
+    const displayedMultiplier = logicalRound?.currentStep
+        ? logicalRound.currentStep.totalWin / logicalRound.entry.bet
+        : payoutMultiplier;
     const displayedCoverage = logicalRound?.currentStep?.visibleRowCoverage ?? visibleRowCoverage;
     const artwork = useActiveSymbolArtwork();
     const playerRootRef = useRef<HTMLDivElement>(null);
@@ -73,12 +78,19 @@ export function CanonicalPlayerView({
             return;
         }
         const highlights = deriveWinHighlightsFromRoundArtifactWins(displayedWins ?? [], displayedScreen.length);
+        const elements = createPlayerRoundElements(playerRootRef.current);
+        if (logicalRound?.currentStep) {
+            const winLabel = elements.totalWinRow?.querySelector("dt");
+            const multiplierLabel = elements.payoutMultiplierRow?.querySelector("dt");
+            if (winLabel) winLabel.textContent = "Step win";
+            if (multiplierLabel) multiplierLabel.textContent = "Step win / entry bet";
+        }
         renderPlayerRound(
-            createPlayerRoundElements(playerRootRef.current),
+            elements,
             {
                 credits,
                 totalWin: displayedWin,
-                payoutMultiplier,
+                payoutMultiplier: displayedMultiplier,
                 formatTotalWin: (value) => value.toFixed(2),
                 formatPayoutMultiplier: (value) => value.toFixed(2),
                 reelsSymbols: displayedScreen,
@@ -99,7 +111,7 @@ export function CanonicalPlayerView({
                 },
             },
         );
-    }, [artwork, availableBets, availableModeIds, credits, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, payoutMultiplier, displayedScreen, displayedWin, displayedCoverage, displayedWins]);
+    }, [artwork, availableBets, availableModeIds, credits, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, displayedMultiplier, displayedScreen, displayedWin, displayedCoverage, displayedWins, logicalRound?.currentStep]);
 
     return <div ref={playerRootRef} />;
 }

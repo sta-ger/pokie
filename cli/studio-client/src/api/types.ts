@@ -284,7 +284,7 @@ export type GameModelProjection = {
     reels: GameModelSection<GameModelReels>;
     paytable: GameModelSection<GameModelPaytableRow[]>;
     betsAndModes: GameModelSection<GameModelBetsAndModes>;
-    mechanics: GameModelSection<GameModelMechanics>;
+    mechanics: GameModelSection<GameModelMechanics> | {status: "invalid"; reason: string};
     limits: GameModelSection<GameModelLimits>;
 };
 
@@ -668,6 +668,8 @@ export type SimulationReportReproducibility = {
 // The server's copy of this same type lives in "pokie" itself (src/reporting/SimulationReport.ts) —
 // kept as its own client-side copy here, same convention as every other type in this file.
 export type SimulationReport = {
+    sampling?: import("../../../../src/reporting/SimulationReport.js").SimulationReport["sampling"];
+    logicalRounds?: import("../../../../src/simulation/LogicalRoundStatistics.js").LogicalRoundStatistics;
     modifiers?: import("../../../../src/simulation/ModifierStatistics.js").ModifierStatistics;
     reelSequences?: ReelSequenceStatistics[];
     game: {id: string; name: string; version: string};
@@ -774,6 +776,7 @@ export type StudioSimulationReportListEntry = {
     game: {id: string; version: string};
     requestedRounds: number;
     actualRounds?: number;
+    sampling?: SimulationReport["sampling"];
     seed?: string;
     workers: number;
     rtp?: number;

@@ -5,6 +5,7 @@ import type {ScreenGeometry} from "./videoslot/coordinates/ScreenGeometry.js";
 import type {GameSessionHandling} from "./GameSessionHandling.js";
 
 export type SessionStateSchema =
+    | {readonly kind: "bounded-mechanics"; readonly rules: import("./videoslot/authored/BoundedMechanics.js").BoundedMechanics; readonly bets: readonly number[]; readonly base: SessionStateSchema}
     | {readonly kind: "base" | "custom"}
     | {readonly kind: "seeded-video-slot"; readonly modifiers?: ScreenModifiers<string | number>; readonly rows?: number; readonly wilds?: readonly (string | number)[]; readonly weightedReels?: readonly {reelIndex: number; variants: readonly WeightedSequenceVariant<string | number>[]}[]; readonly reels?: number; readonly symbols?: readonly (string | number)[]; readonly screenGeometry?: ScreenGeometry}
     | {readonly kind: "free-games"; readonly base: SessionStateSchema}
@@ -62,6 +63,7 @@ function canonicalSchema(value: unknown): unknown {
 
 /** Built-in decorator order is shared by execution guards and codec certification. */
 export function getSessionCompositionError(kind: SessionStateSchema["kind"], baseKinds: readonly string[]): string | undefined {
+    if ((kind === "bounded-mechanics" && baseKinds.some(base => base !== "seeded-video-slot")) || (kind !== "bounded-mechanics" && baseKinds.includes("bounded-mechanics"))) return "Bounded mechanics require an undecorated base session and own progression and collection updates.";
     if (kind === "hold-and-win" && baseKinds.some(base => ["bet-modes", "jackpot", "free-games"].includes(base))) return "HoldAndWin must be inside bet modes and jackpot and cannot compete with free games.";
     if (kind === "free-games" && baseKinds.some(base => ["hold-and-win", "stake-modifying-bet-modes", "jackpot"].includes(base))) return "Free games must be inside bet modes and jackpot and cannot compete with HoldAndWin.";
     if (kind === "bet-modes" && baseKinds.includes("jackpot")) return "Bet modes must be inside jackpot so contributions use the actual charged stake.";

@@ -1,12 +1,14 @@
 import {mergeModifierStatistics, type ModifierStatistics} from "./ModifierStatistics.js";
 import {mergeReelSequenceStatistics} from "./ReelSequenceStatisticsMerging.js";
 import type {ReelSequenceStatistics} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
-import {emptyLogicalRoundStatistics, mergeLogicalRoundStatistics, type LogicalRoundStatistics} from "./LogicalRoundStatistics.js";
+import {emptyLogicalRoundStatistics, mergeLogicalRoundStatistics, mergeLogicalSamplingRanges, logicalSamplingAccounting, type LogicalSamplingRange, type LogicalRoundStatistics} from "./LogicalRoundStatistics.js";
 import {ConfidenceIntervalCalculator} from "./ConfidenceIntervalCalculator.js";
 import type {SimulationAccumulatorSnapshot} from "./SimulationAccumulatorSnapshot.js";
 import type {SimulationStatistics} from "./SimulationStatistics.js";
 
 export class SimulationAccumulator {
+    private logicalSamplingRanges?: LogicalSamplingRange[];
+    private logicalSamples?: SimulationAccumulator;
     private modifiers?: ModifierStatistics;
     private reelSequences?: ReelSequenceStatistics[];
     private logicalRounds: LogicalRoundStatistics | undefined;
@@ -33,7 +35,9 @@ export class SimulationAccumulator {
         const accumulator = new SimulationAccumulator();
         if (snapshot.reelSequences) accumulator.setReelSequenceStatistics(snapshot.reelSequences);
         accumulator.modifiers = snapshot.modifiers && {...snapshot.modifiers};
+        if (snapshot.logicalSamplingRanges) accumulator.addLogicalSamplingRanges(snapshot.logicalSamplingRanges);
         accumulator.logicalRounds = snapshot.logicalRounds ? {...snapshot.logicalRounds} : undefined;
+        if (snapshot.logicalSamples) accumulator.logicalSamples = SimulationAccumulator.fromSnapshot(snapshot.logicalSamples);
         accumulator.rounds = snapshot.rounds;
         accumulator.hitCount = snapshot.hitCount;
         accumulator.totalBet = snapshot.totalBet;
@@ -62,7 +66,18 @@ export class SimulationAccumulator {
     }
 
 
+    public addLogicalSamplingRanges(ranges: LogicalSamplingRange[]): void {
+        this.logicalSamplingRanges = mergeLogicalSamplingRanges(this.logicalSamplingRanges ?? [], ranges);
+    }
+
+    public enableLogicalRoundSampling(): void {
+        this.logicalSamplingRanges ??= [];
+        this.logicalSamples ??= new SimulationAccumulator();
+        this.logicalRounds ??= emptyLogicalRoundStatistics();
+    }
+
     public addLogicalRound(observation: LogicalRoundStatistics): void {
+        if (observation.rounds === 1) this.logicalSamples?.addRound(observation.totalStake, observation.totalWin);
         this.logicalRounds = mergeLogicalRoundStatistics(this.logicalRounds ?? emptyLogicalRoundStatistics(), observation);
     }
 
@@ -110,9 +125,14 @@ export class SimulationAccumulator {
     }
 
     public merge(other: SimulationAccumulator): void {
+        if (other.logicalSamplingRanges) this.addLogicalSamplingRanges(other.logicalSamplingRanges);
         this.modifiers = mergeModifierStatistics(this.modifiers, other.modifiers);
         if (other.reelSequences) this.reelSequences = mergeReelSequenceStatistics(this.reelSequences, other.reelSequences);
-        if (other.logicalRounds) this.addLogicalRound(other.logicalRounds);
+        if (other.logicalRounds) this.logicalRounds = mergeLogicalRoundStatistics(this.logicalRounds ?? emptyLogicalRoundStatistics(), other.logicalRounds);
+        if (other.logicalSamples) {
+            this.logicalSamples ??= new SimulationAccumulator();
+            this.logicalSamples.merge(other.logicalSamples);
+        }
         if (other.rounds === 0) {
             return;
         }
@@ -189,6 +209,8 @@ export class SimulationAccumulator {
             ...(this.modifiers ? {modifiers: {...this.modifiers}} : {}),
             ...(this.reelSequences ? {reelSequences: mergeReelSequenceStatistics([], this.reelSequences)} : {}),
             ...(this.logicalRounds ? {logicalRounds: {...this.logicalRounds}} : {}),
+            ...(this.logicalSamplingRanges ? {logicalSampling: logicalSamplingAccounting(this.logicalSamplingRanges)} : {}),
+            ...(this.logicalSamples ? {logicalRoundMetrics: this.logicalSamples.getStatistics()} : {}),
             rounds: this.rounds,
             hitCount: this.hitCount,
             totalBet: this.totalBet,
@@ -219,6 +241,8 @@ export class SimulationAccumulator {
             ...(this.modifiers ? {modifiers: {...this.modifiers}} : {}),
             ...(this.reelSequences ? {reelSequences: mergeReelSequenceStatistics([], this.reelSequences)} : {}),
             ...(this.logicalRounds ? {logicalRounds: {...this.logicalRounds}} : {}),
+            ...(this.logicalSamplingRanges ? {logicalSamplingRanges: mergeLogicalSamplingRanges([], this.logicalSamplingRanges)} : {}),
+            ...(this.logicalSamples ? {logicalSamples: this.logicalSamples.toSnapshot()} : {}),
             rounds: this.rounds,
             hitCount: this.hitCount,
             totalBet: this.totalBet,
@@ -251,6 +275,10 @@ export class SimulationAccumulator {
 }
 
 function validateSnapshot(snapshot: SimulationAccumulatorSnapshot): void {
+    if (snapshot.logicalSamplingRanges !== undefined && (!Array.isArray(snapshot.logicalSamplingRanges) || snapshot.logicalSamplingRanges.some(range =>
+        !range || typeof range.trajectory !== "string" || !range.trajectory ||
+        ![range.observed, range.completed].every(ranges => Array.isArray(ranges) && ranges.every(pair => Array.isArray(pair) && pair.length === 2 && pair.every(n => Number.isSafeInteger(n) && n >= 0) && pair[1] >= pair[0]))))) throw new Error("Invalid logical sampling ranges.");
+    if (snapshot.logicalSamples && (snapshot.logicalSamples.logicalSamples || snapshot.logicalSamples.rounds !== snapshot.logicalRounds?.rounds)) throw new Error("Invalid logical sample snapshot envelope.");
     if (snapshot.modifiers && Object.values(snapshot.modifiers).some(value => !Number.isSafeInteger(value) || value < 0)) throw new Error("Invalid modifier statistics.");
     const nonNegativeIntegers: Array<[string, number]> = [
         ["rounds", snapshot.rounds],

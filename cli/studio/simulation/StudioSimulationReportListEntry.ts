@@ -8,6 +8,7 @@ export type StudioSimulationReportListEntry = {
     game: {id: string; version: string};
     requestedRounds: number;
     actualRounds?: number;
+    sampling?: import("../../../src/reporting/SimulationReport.js").SimulationReport["sampling"];
     seed?: string;
     workers: number;
     rtp?: number;

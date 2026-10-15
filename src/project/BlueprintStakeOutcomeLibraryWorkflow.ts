@@ -455,6 +455,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
     }
 
     private loadMaterializedGame(blueprint: GameBlueprint): PokieGame {
+        if (blueprint.mechanics?.cascade || blueprint.mechanics?.respins || blueprint.mechanics?.collection) throw new Error("This target cannot preserve bounded cascade, respin or collection semantics. Build a tsPackage instead.");
         if (blueprint.mechanics?.holdAndWin || blueprint.mechanics?.jackpot) throw new Error("Paid-grid outcome-library/Stake projection cannot preserve HoldAndWin progression or jackpot history. Build a tsPackage instead.");
         const module = {exports: {}} as {exports: unknown};
         // The generated package contains only require("@fromstan/pokie") plus its generated module body.  Supplying

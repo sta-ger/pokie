@@ -38,8 +38,8 @@ async function main(): Promise<void> {
             request.rounds,
             request.progressChunkSize,
             {
-                onChunkComplete: ({roundsCompleted: completed}) => {
-                    const progress: SimulationWorkerMessage = {type: "progress", workerIndex: request.workerIndex, roundsCompleted: completed};
+                onChunkComplete: ({roundsCompleted: completed, accumulator}) => {
+                    const progress: SimulationWorkerMessage = {type: "progress", workerIndex: request.workerIndex, roundsCompleted: completed, accumulator};
                     port.postMessage(progress);
                 },
                 checkConvergence: convergenceChecker

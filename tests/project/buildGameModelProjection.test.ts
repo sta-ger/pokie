@@ -13,7 +13,62 @@ const BASE_BLUEPRINT: GameBlueprint = {
     availableBets: [1, 2],
 };
 
+const BOUNDED_BLUEPRINT: GameBlueprint = {...BASE_BLUEPRINT, reelStrips: [["A", "S"], ["A", "S"], ["A", "S"]], mechanics: {
+    cascade: {maxCascades: 2},
+    respins: {trigger: {symbolId: "S", minimumCount: 1}, grant: 2, retrigger: "none", maxRespins: 8},
+    collection: {symbolId: "S", contribution: 0, threshold: 4, cap: 5, reset: "zero", payout: 0},
+}};
+
 describe("buildGameModelProjection", () => {
+    it.each([
+        "mechanics", "mechanics.cascade", "mechanics.cascade.maxCascades",
+        "mechanics.respins", "mechanics.respins.trigger", "mechanics.respins.trigger.symbolId",
+        "mechanics.respins.trigger.minimumCount", "mechanics.respins.grant", "mechanics.respins.retrigger", "mechanics.respins.maxRespins",
+        "mechanics.collection", "mechanics.collection.symbolId", "mechanics.collection.contribution",
+        "mechanics.collection.threshold", "mechanics.collection.cap", "mechanics.collection.reset", "mechanics.collection.payout",
+    ])("diagnoses malformed %s without projecting unsafe fields or discarding other sections", field => {
+        const valid = buildGameModelProjection(BOUNDED_BLUEPRINT);
+        for (const value of [{invalid: true}, [], null, true, "invalid"]) {
+            const draft = JSON.parse(JSON.stringify(BOUNDED_BLUEPRINT)) as Record<string, unknown>;
+            const keys = field.split(".");
+            const parent = keys.slice(0, -1).reduce((data, key) => data[key] as Record<string, unknown>, draft);
+            parent[keys[keys.length - 1]] = value;
+            const before = JSON.stringify(draft);
+            const projection = buildGameModelProjection(draft as unknown as GameBlueprint);
+            expect(projection.mechanics).toMatchObject({status: "invalid", reason: expect.stringContaining(field.includes(".trigger.") ? "mechanics.respins.trigger" : field)});
+            expect(projection).toEqual({...valid, mechanics: projection.mechanics});
+            expect(JSON.stringify(draft)).toBe(before);
+        }
+    });
+
+    it("recovers from a missing trigger and from preflight-invalid values on subsequent projections", () => {
+        const draft = JSON.parse(JSON.stringify(BOUNDED_BLUEPRINT)) as GameBlueprint;
+        const valid = buildGameModelProjection(draft);
+        expect(valid.mechanics).toEqual({status: "available", data: BOUNDED_BLUEPRINT.mechanics});
+        draft.mechanics = {respins: {grant: 2}} as GameBlueprint["mechanics"];
+        expect(buildGameModelProjection(draft).mechanics).toMatchObject({status: "invalid", reason: expect.stringContaining("mechanics.respins.trigger")});
+        draft.mechanics = {...BOUNDED_BLUEPRINT.mechanics, cascade: {maxCascades: 0}};
+        expect(buildGameModelProjection(draft).mechanics).toMatchObject({status: "invalid", reason: expect.stringContaining("mechanics.cascade.maxCascades")});
+        draft.mechanics = BOUNDED_BLUEPRINT.mechanics;
+        expect(buildGameModelProjection(draft)).toEqual(valid);
+        expect(buildGameModelProjection(draft)).toEqual(valid);
+    });
+
+    it.each(["respins", "collection"] as const)("returns field diagnostics for malformed %s JSON values", key => {
+        const draft = JSON.parse(JSON.stringify(BOUNDED_BLUEPRINT));
+        draft.mechanics[key][key === "respins" ? "maxRespins" : "threshold"] = {toString: null, valueOf: null};
+        const authored = JSON.stringify(draft);
+        const valid = buildGameModelProjection(BOUNDED_BLUEPRINT);
+        const projection = buildGameModelProjection(draft);
+        const field = key === "respins" ? "maxRespins" : "threshold";
+        const message = key === "respins" ? "must be an integer in [1, 90]." : "must be finite and positive.";
+        expect(projection.mechanics).toEqual({status: "invalid", reason: `blueprint-mechanics-invalid: mechanics.${key}.${field}: ${message}`});
+        expect(projection).toEqual({...valid, mechanics: projection.mechanics});
+        expect(JSON.stringify(draft)).toBe(authored);
+        draft.mechanics = BOUNDED_BLUEPRINT.mechanics;
+        expect(buildGameModelProjection(draft)).toEqual(valid);
+    });
+
     it("projects authored zeros and missing counts without filling entries", () => {
         expect(buildGameModelProjection({...BASE_BLUEPRINT, reels: 5, paytable: {A: {5: 10}, B: {5: 0}}}).paytable).toEqual({
             status: "available", data: [{symbolId: "A", matchCount: 5, payout: 10}, {symbolId: "B", matchCount: 5, payout: 0}],
@@ -78,6 +133,14 @@ describe("buildGameModelProjection", () => {
             mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 10}}},
         });
         expect(projection.mechanics).toEqual({status: "available", data: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 10}}}});
+    });
+
+    it.each<NonNullable<GameBlueprint["mechanics"]>>([
+        {holdAndWin: {minimumCount: 1, initialRespins: 2, retriggerPolicy: "reset-on-new-lock", symbolEffects: {A: {kind: "value", amount: 0}}, payout: {type: "sum-with-multiplier", amountsAreBetMultiples: false}}},
+        {jackpot: {pool: {id: "mini", type: "fixed", amount: 0}, contribution: {type: "percentage", percentage: 0}, trigger: {type: "symbol-count", symbolId: "S", minimumCount: 1}, award: "single-tier"}},
+        {modifiers: {wilds: [{symbol: "A", factor: 2}], rules: []}},
+    ])("keeps supported existing mechanic consumers available without additional declarations: %j", mechanics => {
+        expect(buildGameModelProjection({...BASE_BLUEPRINT, mechanics}).mechanics).toEqual({status: "available", data: mechanics});
     });
 
     it("maps every bet mode field through verbatim", () => {

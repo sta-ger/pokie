@@ -104,3 +104,15 @@ describe("MechanicsSheetMapper", () => {
         expect(value).toEqual(original);
     });
 });
+
+
+it("new-only bounded mechanics use configuration JSON and preserve explicit zero awards", () => {
+    const mapper = new MechanicsSheetMapper();
+    const mechanics = {cascade: {maxCascades: 10}, respins: {trigger: {symbolId: "C", minimumCount: 1}, grant: 2, retrigger: "reset" as const, maxRespins: 8}, collection: {symbolId: "C", contribution: 0, threshold: 4, cap: 5, reset: "subtract-threshold" as const, payout: 0}};
+    for (const [name, rule] of Object.entries(mechanics)) {
+        const rows = mapper.toRows(undefined, {[name]: rule});
+        expect(rows[0]).toEqual(["Mechanic", "Configuration JSON"]);
+        expect(mapper.fromRows(rows)).toMatchObject({mechanics: {[name]: rule}, issues: []});
+        expect(mapper.fromRows([...rows, rows[1]]).issues).toContainEqual(expect.objectContaining({code: "parsheet-mechanics-invalid", severity: "error"}));
+    }
+});

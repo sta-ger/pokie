@@ -64,6 +64,19 @@ export function projectPublicFeatureEvent(event: RoundArtifactFeatureEvent): Rou
     const data: Record<string, JsonValue> = {};
     const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
     if (finite(source.count)) data.count = source.count;
+    if (event.type === "boundedMechanics") {
+        for (const [name, keys] of [["collection", ["value", "cap", "threshold", "contribution", "payout"]], ["respins", ["remaining", "executed", "granted", "limit"]], ["cascade", ["winningCascades", "evaluatedSteps"]]] as const) {
+            const item = source[name];
+            if (!isJsonObject(item)) continue;
+            const projected: Record<string, JsonValue> = {};
+            for (const key of keys) if (finite(item[key])) projected[key] = item[key];
+            if (name === "collection") {
+                if (typeof item.triggered === "boolean") projected.triggered = item.triggered;
+                if (item.reset === "zero" || item.reset === "subtract-threshold") projected.reset = item.reset;
+            }
+            data[name] = projected;
+        }
+    }
     if (event.type === "screenModifiers") {
         if (source.space === "evaluated") data.space = source.space;
         const position = (value: JsonValue | undefined): value is number[] => Array.isArray(value) && value.length === 2 && value.every(n => finite(n) && Number.isSafeInteger(n));

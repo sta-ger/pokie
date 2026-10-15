@@ -11,6 +11,7 @@ export type SimulationWorkerProgressMessage = {
     type: "progress";
     workerIndex: number;
     roundsCompleted: number;
+    accumulator?: import("../../SimulationAccumulatorSnapshot.js").SimulationAccumulatorSnapshot;
 };
 
 export type SimulationWorkerResultMessage = {

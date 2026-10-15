@@ -32,6 +32,7 @@ export type StudioSimulationJobView = {
     durationMs: number;
     report?: SimulationReport | SimulationReportSet;
     statistics?: StudioSimulationStatisticsView;
+    observedPrefix?: import("../../../src/simulation/SimulationStatistics.js").SimulationStatistics;
     error?: string;
     // Package selected mode/all policy, or the concrete native outcome-library mode.
     modeName?: string;
@@ -47,4 +48,5 @@ export type StudioSimulationJobView = {
 export type StudioSimulationReportDetail = {
     report: SimulationReport | SimulationReportSet;
     statistics?: StudioSimulationStatisticsView;
+    observedPrefix?: import("../../../src/simulation/SimulationStatistics.js").SimulationStatistics;
 };
