@@ -247,8 +247,7 @@ export class ReportCommand implements CliCommandHandling {
         if (typeof parsed === "object" && parsed !== null && "libraryId" in parsed && !("rounds" in parsed)) {
             const source = parsed as OutcomeSourceSimulationReport;
             if (typeof source.libraryId !== "string" || typeof source.libraryHash !== "string" || typeof source.modeName !== "string" ||
-                !source.statistics || ![source.statistics.rounds, source.statistics.hitCount, source.statistics.totalBet, source.statistics.totalPayout, source.statistics.rtp, source.statistics.volatility, source.statistics.maxWin, source.durationMs, source.requestedRounds].every(Number.isFinite) ||
-                !source.statistics.payoutHistogram || !source.statistics.rtpConfidenceInterval95 || !source.statistics.averagePayoutConfidenceInterval95) throw new Error("Invalid sampled outcome simulation report; regenerate it with pokie sim.");
+                ![source.durationMs, source.requestedRounds].every(n => Number.isFinite(n) && n >= 0)) throw new Error("Invalid sampled outcome simulation report; regenerate it with pokie sim.");
             parsed = projectOutcomeSourceSimulationReport(source);
         }
         if (isSimulationReportSet(parsed) && Object.values(parsed.modes).every((report) => this.isSimulationReport(report))) {

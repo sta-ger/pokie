@@ -1,9 +1,11 @@
+import {validateSimulationStatisticsForReport} from "./validateSimulationReportExtensions.js";
 import type {OutcomeSourceSimulationReport} from "../project/simulateOutcomeSourceProject.js";
 import {SimulationReportBuilder} from "./SimulationReportBuilder.js";
 import type {SimulationReport} from "./SimulationReport.js";
 
 /** Sampled outcome output retains its original provenance/statistics alongside the ordinary saved report. */
 export function projectOutcomeSourceSimulationReport(source: OutcomeSourceSimulationReport): SimulationReport & Omit<OutcomeSourceSimulationReport, "seed"> {
+    validateSimulationStatisticsForReport(source.statistics);
     return {
         ...source,
         ...new SimulationReportBuilder().build({

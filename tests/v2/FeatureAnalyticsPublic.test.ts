@@ -151,6 +151,38 @@ describe("V2C-17 public analytics parity", () => {
         await expect(new ReportCommand(() => JSON.stringify({...featureAnalyticsReport(), ...patch}), undefined, undefined, unresolved).run(["invalid.json"])).rejects.toThrow(/Invalid simulation report/);
     });
 
+    it.each(["ordinary", "all-mode", "historical-native"])("preserves tiny exact probabilities and legacy ratio omissions in %s inputs", async kind => {
+        const variants = [
+            {id: "tiny-positive", weight: Number.MIN_VALUE, probability: Number.MIN_VALUE, probabilityRatio: {numerator: "1", denominator: (BigInt(2) ** BigInt(1074)).toString()}, count: 0, frequency: 0, uncovered: true},
+            {id: "underflow", weight: Number.MIN_VALUE, probability: 0, probabilityRatio: {numerator: "1", denominator: (BigInt(2) ** BigInt(1200)).toString()}, count: 0, frequency: 0, uncovered: true},
+            {id: "disabled", weight: 0, probability: 0, probabilityRatio: {numerator: "0", denominator: "2"}, count: 0, frequency: 0, uncovered: false},
+            {id: "legacy", weight: 1, probability: 1, count: 1, frequency: 1, uncovered: false},
+        ];
+        const reelSequences = [{reelIndex: 0, context: "logical-round" as const, model: "fixture", selections: 1, variants}];
+        const saved = {...featureAnalyticsReport(), reelSequences};
+        let payload: unknown = saved;
+        if (kind === "all-mode") payload = {...saved, modes: {base: saved}};
+        if (kind === "historical-native") payload = {
+            libraryId: "native", libraryHash: "hash", modeName: "base", requestedRounds: 10, durationMs: 1,
+            statistics: {...aggregate().getStatistics(), reelSequences},
+        };
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        await new ReportCommand(() => JSON.stringify(payload), undefined, undefined, unresolved).run(["tiny.json", "--format", "json"]);
+        const reopened = JSON.parse(String(log.mock.calls[0][0])) as api.SimulationReport & api.SimulationReportSet;
+        expect((kind === "all-mode" ? reopened.modes.base : reopened).reelSequences).toEqual(reelSequences);
+    });
+
+    it.each(["ordinary", "historical-native"])("retains legacy missing analytics/sampling/diagnostics in %s inputs", async kind => {
+        const legacy = {...featureAnalyticsReport(), analytics: undefined, sampling: undefined, diagnostics: undefined, logicalRounds: undefined};
+        const payload = kind === "ordinary" ? legacy : {
+            libraryId: "native", libraryHash: "hash", modeName: "base", requestedRounds: 10, durationMs: 1,
+            statistics: {...aggregate().getStatistics(), analytics: undefined, logicalRounds: undefined, logicalRoundMetrics: undefined, logicalSampling: undefined},
+        };
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        await new ReportCommand(() => JSON.stringify(payload), undefined, undefined, unresolved).run(["legacy.json", "--format", "markdown"]);
+        expect(String(log.mock.calls[0][0])).toContain("Feature analytics unavailable");
+    });
+
     it("projects the real durable phase independently of accepted-play percentage", () => {
         expect(describeSimulationProgress({id: "job", status: "running", rounds: 10, roundsCompleted: 10, workers: 2, durationMs: 1, startedAt: "now", progress: {stage: "finalizing / cleanup", current: 10, total: 10, unit: "accepted plays"}})).toMatchObject({phase: "finalizing / cleanup", percent: 100, status: "running"});
     });

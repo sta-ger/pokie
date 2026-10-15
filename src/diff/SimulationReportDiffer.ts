@@ -31,8 +31,8 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
             configurationChanged: left.weightedBonus?.model !== right.weightedBonus?.model,
             observationsChanged: JSON.stringify([left.weightedBonus?.selections, left.weightedBonus?.completed, left.weightedBonus?.outcomes.map(o => o.count)]) !== JSON.stringify([right.weightedBonus?.selections, right.weightedBonus?.completed, right.weightedBonus?.outcomes.map(o => o.count)]),
         } : undefined;
-        const samplingChanged = JSON.stringify([left.sampling, left.logicalRounds]) !== JSON.stringify([right.sampling, right.logicalRounds]);
-        const diagnosticsChanged = JSON.stringify(left.diagnostics) !== JSON.stringify(right.diagnostics);
+        const samplingChanged = JSON.stringify(toCanonicalJson([left.sampling ?? null, left.logicalRounds ?? null])) !== JSON.stringify(toCanonicalJson([right.sampling ?? null, right.logicalRounds ?? null]));
+        const diagnosticsChanged = JSON.stringify(toCanonicalJson(left.diagnostics ?? null)) !== JSON.stringify(toCanonicalJson(right.diagnostics ?? null));
         const reelSequences = diffReelSequences(left.reelSequences, right.reelSequences);
         const rtp = this.metricDiff(left.rtp, right.rtp);
         const hitFrequency = this.metricDiff(left.hitFrequency, right.hitFrequency);
