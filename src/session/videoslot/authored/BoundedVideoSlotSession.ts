@@ -127,6 +127,9 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
                 this.entryBet = this.getBet();
             }
             if (!super.canPlayNextGame()) this.setCreditsAmount(this.getBet());
+            // A direct play() continuation owns the same weighted selection as its entry.
+            // Runtime commands supply that same context explicitly; refills also reuse it.
+            if (continuing) this.baseSession.setSelectionContext?.(this.generator.getSelectionState().context);
             this.baseSession.play();
             this.screen = this.baseSession.getSymbolsCombination().toMatrix();
             let evaluation = this.baseSession.getWinEvaluationResult();

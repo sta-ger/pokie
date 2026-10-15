@@ -389,6 +389,30 @@ describe("V2C-14 authored bounded mechanics", () => {
         }
     });
 
+
+    it("plain play() holds weighted selections through respins and matches runtime mathematics", () => {
+        const blueprint = boundedBlueprint("cascade-respins-collection");
+        Reflect.deleteProperty(blueprint, "reelStrips");
+        blueprint.reelSequences = Array.from({length: 3}, () => ({type: "weighted", variants: [{id: "abc", symbols: ["A", "B", "C"], weight: 1}, {id: "cba", symbols: ["C", "B", "A"], weight: 3}]}));
+        const game = generatedMechanicsGame(blueprint),
+            plain = boundedSession(game),
+            composite = boundedSession(game);
+        for (let n = 0; n < 5; n++) {
+            const result = played(new api.SessionRuntime(composite).execute({kind: "spin", roundId: `plain-${n}`, delivery: "composite"}));
+            for (const subround of result.logicalRound!.subrounds) {
+                expect(plain.getStakeAmount()).toBe(subround.stake);
+                plain.play();
+                expect(plain.getSymbolsCombination().toMatrix()).toEqual(subround.screen);
+                expect(plain.getWinAmount()).toBe(subround.win);
+            }
+            expect(plain.hasPendingLogicalRound()).toBe(false);
+            expect(plain.getCreditsAmount()).toBe(composite.getCreditsAmount());
+            expect(plain.toSessionState().value).toBe(composite.toSessionState().value);
+            expect((plain.toSessionState().base as {rngState: number}).rngState).toBe((composite.toSessionState().base as {rngState: number}).rngState);
+            expect(plain.getSequenceStatistics().map(reel => reel.selections)).toEqual(composite.getSequenceStatistics().map(reel => reel.selections));
+        }
+    });
+
     it("direct constructors and rendering reject every unsupported ownership combination", () => {
         const config = new api.VideoSlotConfig();
         config.setAvailableSymbols(["A", "C"]);
