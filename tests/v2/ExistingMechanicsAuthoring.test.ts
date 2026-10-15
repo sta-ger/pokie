@@ -57,6 +57,16 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
             });
             return strip;
         });
+        if (row.progression === "freeGames") {
+            expect(blueprint.mechanics!.freeGames!.awardsByCount).toEqual({2: 0, 3: 2});
+            for (const count of [1, 2]) {
+                const noGrantGame = generatedMechanicsGame({...blueprint, reelStrips: Array.from({length: 3}, (_, reel) => [reel < count ? "S" : "A"])});
+                const noGrant = mechanicsSession(noGrantGame);
+                noGrant.play();
+                expect(noGrantGame.getSessionSerializer!().getRoundData(noGrant)).toMatchObject({wonFreeGamesNumber: 0, freeGamesNum: 0, freeGamesSum: 0});
+                expect(noGrant.hasPendingLogicalRound()).toBe(false);
+            }
+        }
         const game = generatedMechanicsGame(blueprint), 
             session = mechanicsSession(game);
         let contribution = 0;

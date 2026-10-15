@@ -113,6 +113,14 @@ function relatedCases(id: string, suite: string, surface: Surface): Pick<Authore
     const ref = (test: string): string => `tests/v2/${suite}.test.ts#${test}`;
     const exact: string[] = [], 
         negative: string[] = [];
+    if (surface === "simulation-report" && suite === "ExistingMechanicsAuthoring") exact.push(ref(existingWorkflow));
+    if (surface === "editor") {
+        const editorOwner = suite === "ExistingMechanicsAuthoring" ? "existingMechanics" : "weightedBonus";
+        if (suite === "ExistingMechanicsAuthoring" && (id.startsWith("fixed-") || id.startsWith("accumulating-"))) exact.push(`tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.${editorOwner}.test.tsx#uses the same controls in Project Game Model and keeps mutation separate from Save`);
+        if (suite === "WeightedBonusAuthoring") exact.push(`tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.${editorOwner}.test.tsx#Project Game Model edits and validates the shared draft, saves explicitly and reopens targets`);
+        if (suite === "WildModifierAuthoring") exact.push("tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.wildModifiers.test.tsx#Project edits remain unsaved until Save; reload and read-only inspection retain the same ordered rules");
+        if (suite === "CascadeCollectionAuthoring") exact.push("tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.cascadeCollection.test.tsx#guides all bounded rules, preserves explicit zeros and JSON changes without saving");
+    }
     if (surface === "core" && suite === "CascadeCollectionAuthoring") {
         if (id.includes("cascade")) exact.push(ref("exact two cascades, terminal evaluation at the bound, unique overlapping removals and overflow"), ref("authored terminal-at-bound cascades complete and replay while exhausted entries roll back and retry"));
         if (id.includes("collection")) exact.push(ref("exact collection cap, crossing, carry, reset, repeated awards, different denominations and isolation"));
