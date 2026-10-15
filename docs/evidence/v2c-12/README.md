@@ -1,5 +1,34 @@
 # V2C-12 independent workflow receipt
 
+## Weighted ante Recovery Replay (2026-10-15)
+
+Product identity remains `4951df55907a2863b6e077c290e3f8c468bc5f6e`; the
+clean evidence checkout began at `c00ab17f13f3e8cba4439f57ef4860f9b1117f1a`.
+One fresh Studio profile opened the retained public weighted `tsPackage`
+(`dist/index.js` SHA-256
+`51139fcf34c0b8d1b2168d81b347f0f42d0284e9c16c0c6da8481409afc11bff`).
+The runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-31b3940716a6e35c/run-2026-10-15T03-11-24-918Z/transcript.json`.
+
+Through Simulation then Replay's rendered **Recent Simulation** control, an
+explicit-seed, one-worker ante report completed and its round-1 replay
+completed as job `9824005d44124182b239008e256ff889`. Its visible financial
+rows showed package/charged mode `ante` and stake
+`0.07500000000000001`. I independently inspected the retained viewport
+screenshot `2-observation.png`; it is legible and shows those rows. The
+visible download produced the actual 4,067-byte descriptor
+`v2c12-weighted-matrix-1.0.0-9824005d44124182b239008e256ff889.json`, SHA-256
+`9be02f62aa8c98da73bedb1ed4d0dad5bc2da00e608fe5c14a25125a127db80c`.
+Its bytes match the rendered record: seed `v2c12-weighted-ante-recovery`,
+mode policy `repeat-when-available`, one `spin` command in mode `ante`,
+configuration hash `sha256:b207eb595cfccd894daace2a218722b3d468740aa66b14eb45b8a605b79c984e`,
+and both total/final stake `0.07500000000000001`.
+
+This bounded addition does not claim the remaining weighted buy/buy-more,
+ordinary target, cross-package download, or ordinary-ante financial-row
+branches; they remain not reached. Runtime artifacts and generated packages
+remain outside version control.
+
 Candidate product identity: `b02f4b4edf02b43f8ff7e2a2aec43e6438fa024f`.
 This directory retains a bounded independent-verifier evidence set; runtime
 profiles, generated package output, full logs, and automation are deliberately
