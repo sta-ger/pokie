@@ -118,7 +118,10 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
     while (entrySchema && "base" in entrySchema) {
         if (entrySchema.kind === "bounded-mechanics" && entrySchema.rules.weightedBonus) {
             const payload = state.roundPayload?.boundedMechanics as {weightedBonus?: unknown} | undefined;
-            const artifact = state.roundArtifact?.featureEvents?.find(event => event.type === "boundedMechanics")?.data?.weightedBonus;
+            // A full logical artifact folds every subround's events at the top level.
+            // Its final canonical step, rather than the first entry event, owns current progress.
+            const steps = state.roundArtifact?.steps;
+            const artifact = steps?.[steps.length - 1]?.featureEvents?.find(event => event.type === "boundedMechanics")?.data?.weightedBonus;
             try {
                 // Partial capture retains serializer observations; full capture also has an artifact.
                 // A logical envelope was checked above. Every retained copy must agree.

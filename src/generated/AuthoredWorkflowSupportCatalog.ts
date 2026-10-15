@@ -92,7 +92,7 @@ const cases: Record<string, WorkflowCases> = {
         schema: [bonusWorkflow, "CLI and Studio validation accept the finite table and reference identities."],
         editor: ["Home Form/JSON preserves identity, units, zero mass and malformed drafts without saving", "Renaming the feature updates all outcome targets; explicit zero mass and payout survive Form/JSON without saving."],
         build: ["known-answer %s direct/generated CJS/TS, payout duration, stable reads and restored next RNG", "Direct and generated CJS/TypeScript execution agree on selection, payout, duration and next RNG."],
-        "runtime-restore": ["retained progress rejects fresh handlers before creation or effects; untampered retries finish two respins (explicit: %s)", "Fresh ordinary and explicit handlers restore two respins, retain stake .05/win .55 and return duplicates exactly once."],
+        "runtime-restore": ["retained progress rejects fresh handlers before creation or effects; untampered retries finish two respins ($explicit/$captureMode)", "Fresh ordinary and explicit handlers restore two respins, retain stake .05/win .55 and return duplicates exactly once."],
         "simulation-report": ["snapshots, chunks, legacy simulation and independent workers retain eligible denominators and unfinished tails", "Snapshots, chunks, legacy simulation and worker merges retain eligible selections, counts/frequencies, zero mass and unfinished duration."],
         extraction: [bonusWorkflow, "Complete extraction retains table/outcome/target identities and rebuilt seeded executable states."],
         PAR: [bonusWorkflow, "Real CLI XLSX import retains the weighted table, Blueprint hash and rebuilt executable states."],
@@ -125,7 +125,7 @@ function relatedCases(id: string, suite: string, surface: Surface): Pick<Authore
         if (surface === "schema" || surface === "build" || surface === "core") negative.push(ref("negative %s fails validation, rendering, construction and publication before mutation"), ref("rejects the incompatible %s owner before construction/build"));
         if (surface === "core") exact.push(ref("no trigger, zero effect, zero duration and distinct denominations preserve stake and finite selection counts"), ref("both known outcomes preserve payout units and charged denomination %s"));
         if (surface === "runtime-restore") {
-            negative.push(ref("coordinated duration corruption rejects direct logical restoration before another draw"), ref("retained progress rejects fresh handlers before creation or effects; untampered retries finish two respins (explicit: %s)"), ref("descending consumed implicit contexts reject before changing the request, money or next RNG"));
+            negative.push(ref("coordinated duration corruption rejects direct logical restoration before another draw"), ref("retained progress rejects fresh handlers before creation or effects; untampered retries finish two respins ($explicit/$captureMode)"), ref("descending consumed implicit contexts reject before changing the request, money or next RNG"));
             exact.push(ref("%s durable failure, fresh handlers and duplicates settle selection once"));
         }
         if (surface === "PAR" || surface === "extraction") negative.push(ref("real malformed XLSX and descriptors retain field errors and permit corrected reuse"));

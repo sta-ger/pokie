@@ -259,13 +259,13 @@ describe("V2C-15 weighted bonus authoring", () => {
         expect(restored.toSessionState()).toEqual(before);
     });
 
-    it.each([false, true])("retained progress rejects fresh handlers before creation or effects; untampered retries finish two respins (explicit: %s)", async explicit => {
+    it.each([false, true].flatMap(explicit => (["partial", "full"] as const).map(captureMode => ({explicit, captureMode}))))("retained progress rejects fresh handlers before creation or effects; untampered retries finish two respins ($explicit/$captureMode)", async ({explicit, captureMode}) => {
         const game = generatedMechanicsGame(weightedBonusBlueprint());
         const repository = new api.InMemorySessionRepository(),
             wallet = new api.InMemoryWallet(10000),
             results = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>();
         await repository.save("s", api.captureInitialPokieSessionState({seed: 0}, boundedSession(game, 0), game.getSessionSerializer!(), true, game));
-        const handler = () => new api.SpinCommandHandler(game, repository, wallet, results);
+        const handler = (selectedRepository = repository) => new api.SpinCommandHandler(game, selectedRepository, wallet, results, undefined, false, undefined, true, captureMode);
         const command: api.RepositoryCommand = {kind: "spin", sessionId: "s", requestId: "entry", ...(explicit ? {roundId: "round", delivery: "stepwise" as const} : {})};
         const entry = await handler().execute(command);
         if (entry.status !== "played") throw new Error(JSON.stringify(entry));
@@ -284,20 +284,21 @@ describe("V2C-15 weighted bonus authoring", () => {
                 Reflect.deleteProperty(corrupt, "roundArtifact");
                 if (corrupt.logicalRound) Reflect.set(corrupt.logicalRound.subrounds[0].artifacts![0], "featureEvents", []);
             }
-            await repository.save("s", corrupt);
-            const save = jest.spyOn(repository, "save"), 
+            // Keep the valid repository's revision sequence intact for the untampered audit.
+            const invalidRepository = new api.InMemorySessionRepository();
+            await invalidRepository.save("s", corrupt);
+            const save = jest.spyOn(invalidRepository, "save"), 
                 create = jest.spyOn(game, "createSession"), 
                 debit = jest.spyOn(wallet, "debit"), 
                 credit = jest.spyOn(wallet, "credit");
             expect(api.validatePersistedSession(corrupt, game)).toMatchObject({status: "corrupt-state"});
-            expect((await handler().execute(continuation(1))).status).toBe("corrupt-state");
+            expect((await handler(invalidRepository).execute(continuation(1))).status).toBe("corrupt-state");
             for (const spy of [save, create, debit, credit]) {
                 expect(spy).not.toHaveBeenCalled();
                 spy.mockRestore(); 
             }
-            expect(await repository.load("s")).toEqual(corrupt);
+            expect(await invalidRepository.load("s")).toEqual(corrupt);
         }
-        await repository.save("s", entry.state);
         expect(await handler().execute(command)).toEqual(entry);
         let totalStake = entry.stake!, 
             totalWin = entry.win;
