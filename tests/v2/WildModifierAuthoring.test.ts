@@ -300,7 +300,7 @@ describe("V2C-13 finite modifier authoring", () => {
         if (jackpot) expect(settledData.jackpot?.award).toEqual({poolId: "mini", amount: 10});
         expect(runtime.execute({kind: "spin", mode: "missing"})).toMatchObject({status: "invalid-command"});
         expect(serializer.getRoundData(session)).toEqual(settledData);
-        if (prepared) session.setSelectionContext!("pending:unchanged");
+        if (prepared) session.setSelectionContext!("logical:pending-unchanged");
         const before = JSON.parse(JSON.stringify(session.toSessionState()));
         const selections = session.getSequenceSelections!();
         const statistics = session.getSequenceStatistics!();
