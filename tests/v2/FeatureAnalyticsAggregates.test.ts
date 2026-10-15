@@ -268,6 +268,8 @@ describe("V2C-16 feature analytics", () => {
         restoredPending.fromSessionState((source as api.BoundedVideoSlotSession).toSessionState());
         const pending = new api.AggregateSimulationRunner(restoredPending, 1).run().getStatistics().analytics!;
         expect(pending.lifecycle.weightedBonus.carriedIncomplete).toBe(1);
+        expect(tail).toMatchObject({totalStake: 0, totalWin: 4});
+        expect(tail.contribution.feature).toEqual({rtp: ratio(4, 0, 0), payoutShare: ratio(4, 4, 1)});
         expect(tail.logicalCompletions).toBe(0);
         expect(tail.carriedSubrounds).toBe(2);
         for (const row of api.AUTHORED_MECHANIC_CATALOG.filter((row) => row.progression === "freeGames" || row.progression === "holdAndWin")) {
