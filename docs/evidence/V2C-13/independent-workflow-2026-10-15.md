@@ -317,3 +317,41 @@ counters against the two derived worker seed partitions. Together with the
 separate rendered durable cancellation transcript, these records close the
 worker accounting/isolation/cancellation subbranches; they do not replace the
 still-missing authoring and catalogue coverage.
+
+### Continued rendered authoring recovery
+
+Two further isolated Studio profiles were launched from the candidate public
+entry (`node ./dist/cli/pokie.js --no-open`) after repairing the persistent
+harness checklist to begin with the first missing Home editor branch. Neither
+run repeated the targeted tests, package/XLSX collection, nor the accepted
+worker collection.
+
+The first closed transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-13-b86253e3a60d58fd/run-2026-10-15T10-07-23-851Z/transcript.json`
+(SHA-256 `0ce20e5bad3a8097b9ec42fd56fbb5b8ee4e5411d2ac6bab3c75f4a425ee6553`).
+Through the rendered advanced Home loader it loaded the isolated
+`wild-expanding`, `wild-multiplier`, and `wild-restricted` fixtures and selected
+the visible Bets tab. The resulting controls expose the authored modifier
+surface: W2/W3 substitution policies and targets, factors, ordered-rule
+description, explicit add-rule choices, and for expanding the existing
+`Rule 1: expand` with evaluated coordinate space, W2 symbol, reel 1/row 0.
+The three captures have hashes `4454a0169340aefc181665f24363203ca1af372dac593d0946cc03ddf537204e`,
+`c7ff72ae8f95dec8b2d44d48bded38c9c2726ef88b1230bcc3ad0682faac8bef`, and
+`50751c459f8c9071bd13b7f1f2ddd96d6b468079753e3ffc73b3f20b265491ff`.
+
+The second closed transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-13-b86253e3a60d58fd/run-2026-10-15T10-08-27-049Z/transcript.json`
+(SHA-256 `fd24e05ea222b8c99adc368ded84bf8203f8109fe08c31365614b60a4e96f850`).
+It reached the same `wild-restricted` public editor and focused its real
+read-only W2 substitution-policy combobox. The visible option list contained
+`unrestricted` and selected `restricted`; the independently inspected capture
+SHA-256 `b23a88f881ca1d0678b9e0f6b734889734d1046d303f450d7f654fdb3e31ac70`
+also visibly shows the empty W3 target restriction, W2 factor 2, W3 factor 0,
+and the four add-rule controls. Both interactive children were closed through
+the file channel before this evidence update.
+
+These are authentic partial rendered observations. They still do not establish
+the complete six-capability ordering matrix, a full malformed/stale/cancel
+recovery sequence, every catalogue item through rendered Play/simulation/replay,
+or the rendered sticky acquire/retain/expire trajectory. Those reviewer rows
+remain not reached; no candidate-owned defect is claimed.
