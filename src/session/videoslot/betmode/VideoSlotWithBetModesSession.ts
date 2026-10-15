@@ -73,7 +73,9 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     }
 
     public getChargedBetModeId(): string | undefined {
-        return this.stepResultValid ? this.chargedBetModeId : undefined;
+        // Entry attribution is executable continuation state, including a committed composite
+        // prefix. Rollback restores it independently of the rejected step's payout observations.
+        return this.chargedBetModeId;
     }
 
     public getBetModeId(): string {

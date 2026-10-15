@@ -280,7 +280,7 @@ describe("V2C-13 finite modifier authoring", () => {
             {id: "buy", runtimeType: "buyFeature", costMultiplier: 10, forcedFreeGames: 2}];
         Reflect.deleteProperty(b, "reelStrips");
         b.reelSequences = ["A", "W2", "A"].map(symbol => ({type: "weighted", variants: [
-            {id: "first", symbols: [symbol], weight: 1}, {id: "second", symbols: [symbol], weight: 2},
+            {id: "first", symbols: [symbol], weight: 1}, {id: "second", symbols: [symbol, symbol], weight: 2},
         ]}));
         if (jackpot) b.mechanics!.jackpot = {pool: {id: "mini", type: "fixed", amount: 10}, contribution: {type: "percentage", percentage: 0.1},
             trigger: {type: "symbol-count", symbolId: "A", minimumCount: 1}, award: "single-tier"};

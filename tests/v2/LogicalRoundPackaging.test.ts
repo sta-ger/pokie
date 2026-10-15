@@ -115,10 +115,10 @@ describe("logical-round delivery and mathematical boundaries", () => {
     ))("F1f $id/$delivery prepared=$prepared restores command state without reviving a completed feature", ({id, delivery, prepared}) => {
         const b = existingMechanicsBlueprint(api.AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
         b.rows = 2;
-        b.availableBets = [0.05, 7.5, 1e-7, 1];
+        b.availableBets = [0.05, 7.5, 1e-7, 1, 2];
         b.reelStrips = [["C"], ["A"], ["A"]];
         b.wilds = ["C"];
-        b.paytable = {A: {3: Number.MAX_VALUE}};
+        b.paytable = {A: {3: Number.MAX_VALUE / 2}};
         b.mechanics!.holdAndWin!.symbolEffects = {C: {kind: "value", amount: 3}};
         if (b.mechanics!.jackpot) {
             b.mechanics!.jackpot.pool = {id: "mini", type: "fixed", amount: 10};
@@ -152,7 +152,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
         expect(runtime.execute({kind: "spin", bet: 1})).toMatchObject({status: "blocked"});
         expect(serializer.getRoundData(session)).toEqual(settledData);
         session.setCreditsAmount(credits);
-        const command: api.SessionCommand = {kind: "spin", bet: 1, roundId: "bad", delivery, ...(b.betModes ? {mode: "base"} : {})};
+        const command: api.SessionCommand = {kind: "spin", bet: 2, roundId: "bad", delivery, ...(b.betModes ? {mode: "base"} : {})};
         for (let attempt = 0; attempt < 2; attempt++) {
             expect(() => {
                 if (!prepared) return runtime.execute(command);
