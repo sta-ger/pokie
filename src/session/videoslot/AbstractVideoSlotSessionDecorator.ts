@@ -170,7 +170,9 @@ implements VideoSlotSessionHandling<T> {
     }
 
     public play(): void {
-        this.baseSession.play();
+        if (!this.canPlayNextGame()) return;
+        this.validateScreenCoordinates();
+        this.executeStep(() => this.baseSession.play());
     }
 
     public isSymbolWild(symbolId: T): boolean {

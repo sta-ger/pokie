@@ -151,6 +151,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         this.freeBank = value.freeGamesBank;
         this.wonFreeGamesNumber = value.wonFreeGamesNumber ?? 0;
         this.featureEntryPending = value.featureEntryPending ?? false;
+        this.stepResultValid = true;
         return this;
     }
 

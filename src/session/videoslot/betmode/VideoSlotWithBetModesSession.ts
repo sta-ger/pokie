@@ -236,6 +236,7 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
         if (this.supportsSessionStateRestore(this.baseSession)) this.baseSession.fromSessionState(value.base);
         this.currentBetModeId = value.betModeId;
         this.chargedBetModeId = value.chargedBetModeId;
+        this.stepResultValid = true;
         return this;
     }
 

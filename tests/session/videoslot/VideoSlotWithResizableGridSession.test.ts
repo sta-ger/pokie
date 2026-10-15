@@ -11,7 +11,7 @@ import {
     SymbolsSequence,
     Paytable,
     LineWinCalculator,
-    SessionRuntime,
+    SessionRuntime, VideoSlotSessionSerializer,
     VideoSlotWithBetModesSession,
     BetModesConfig,
     BetModeDefinition,
@@ -49,6 +49,56 @@ describe("VideoSlotWithResizableGridSession", () => {
         expect(ante.getEvaluatedSymbolsCombination().toMatrix()).toEqual(ante.getSymbolsCombination().toMatrix());
     });
 
+    test.each(["direct", "runtime", "prepared"])("F1g %s execution exposes settled results after repairing rejected heights", entry => {
+        const config = new VideoSlotConfig();
+        config.setAvailableBets([1]);
+        config.setBet(1);
+        config.setSymbolsSequences(Array.from({length: 5}, () => new SymbolsSequence().fromArray(["A", "A", "A", "A", "A"])));
+        config.setLinesDefinitions(new CustomLinesDefinitions().setLineDefinition("high", [4, 4, 4, 4, 4]));
+        const paytable = new Paytable<string>([1]);
+        paytable.setPayoutForSymbol("A", 5, 9);
+        config.setPaytable(paytable);
+        const heights = [5, 5, 5, 5, 5];
+        const generator = new ResizableSymbolsCombinationsGenerator(config, heights, {getRandomInt: () => 0});
+        const base = new VideoSlotSession(config, generator);
+        const resize = {getNextReelsHeights: jest.fn((_session, current: number[]) => current)};
+        const session = new VideoSlotWithResizableGridSession(base, generator, resize);
+        session.setCreditsAmount(100);
+        const runtime = new SessionRuntime(session);
+        const execute = () => {
+            if (entry === "direct") return session.play();
+            if (entry === "runtime") return runtime.execute({kind: "spin"});
+            const ready = runtime.prepare({kind: "spin"}, session.getCreditsAmount());
+            if (ready.status !== "ready") throw new Error(ready.reason);
+            return ready.execute();
+        };
+        const serializer = new VideoSlotSessionSerializer();
+        execute();
+        expect(session.getCreditsAmount()).toBe(108);
+        generator.setReelsHeights([4, 4, 4, 4, 4]);
+        expect(() => execute()).toThrow(/evaluation domain/);
+        expect(session.getCreditsAmount()).toBe(108);
+        expect(session.getWinAmount()).toBe(0);
+        expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+        session.setCreditsAmount(0);
+        session.play(); // A no-op must not revive the invalid result.
+        expect(session.getWinAmount()).toBe(0);
+        expect(runtime.execute({kind: "spin", bet: 99})).toMatchObject({status: "invalid-command"});
+        expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+        session.setCreditsAmount(108);
+        generator.setReelsHeights(heights);
+        for (const credits of [116, 124]) {
+            const result = execute();
+            if (entry !== "direct") expect(result).toMatchObject({status: "played", win: 9, credits});
+            expect(session.getCreditsAmount()).toBe(credits);
+            expect(session.getWinAmount()).toBe(base.getWinAmount());
+            expect(session.getWinAmount()).toBe(9);
+            expect(session.getWinEvaluationResult().getWinComponents()).toHaveLength(1);
+            expect(serializer.getRoundData(session)).toMatchObject({totalWin: 9, credits});
+            expect(Object.keys(session.getWinningLines())).toEqual(["high"]);
+        }
+    });
+
     test("changed ordinary heights validate the new matrix before settlement or resize-handler mutation", () => {
         const config = new VideoSlotConfig();
         config.setAvailableBets([1]);
@@ -75,6 +125,41 @@ describe("VideoSlotWithResizableGridSession", () => {
         expect(session.getSymbolsCombination().toMatrix()[0]).toHaveLength(6);
         expect(session.getWinAmount()).toBe(0);
         expect(resize.getNextReelsHeights).not.toHaveBeenCalled();
+    });
+
+    test("a rejecting resize handler rolls back the settled step and heights, then permits retry", () => {
+        const config = new VideoSlotConfig();
+        config.setAvailableBets([1]);
+        config.setBet(1);
+        config.setSymbolsSequences(Array.from({length: 5}, () => new SymbolsSequence().fromArray(["A"])));
+        config.setLinesDefinitions(new CustomLinesDefinitions().setLineDefinition("line", [0, 0, 0, 0, 0]));
+        const paytable = new Paytable<string>([1]);
+        paytable.setPayoutForSymbol("A", 5, 9);
+        config.setPaytable(paytable);
+        const heights = [3, 3, 3, 3, 3];
+        const generator = new ResizableSymbolsCombinationsGenerator(config, heights, {getRandomInt: () => 0});
+        let reject = true;
+        const session = new VideoSlotWithResizableGridSession(new VideoSlotSession(config, generator), generator, {
+            getNextReelsHeights: () => {
+                if (reject) {
+                    generator.setReelsHeights([4, 4, 4, 4, 4]);
+                    throw new Error("resize rejected");
+                }
+                return [5, 5, 5, 5, 5];
+            },
+        });
+        session.setCreditsAmount(100);
+        expect(() => session.play()).toThrow("resize rejected");
+        expect(session.getCreditsAmount()).toBe(100);
+        expect(session.getReelsHeights()).toEqual(heights);
+        expect(session.getWinAmount()).toBe(0);
+        expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+        reject = false;
+        session.play();
+        expect(session.getCreditsAmount()).toBe(108);
+        expect(session.getWinAmount()).toBe(9);
+        expect(session.getWinEvaluationResult().getWinComponents()).toHaveLength(1);
+        expect(session.getReelsHeights()).toEqual([5, 5, 5, 5, 5]);
     });
 
     test("play() delegates to the base session, passes it and the current heights to the handler, and applies its result", () => {
