@@ -32,7 +32,7 @@ describe("buildGameModelProjection", () => {
             const draft = JSON.parse(JSON.stringify(BOUNDED_BLUEPRINT)) as Record<string, unknown>;
             const keys = field.split(".");
             const parent = keys.slice(0, -1).reduce((data, key) => data[key] as Record<string, unknown>, draft);
-            parent[keys.at(-1)!] = value;
+            parent[keys[keys.length - 1]] = value;
             const before = JSON.stringify(draft);
             const projection = buildGameModelProjection(draft as unknown as GameBlueprint);
             expect(projection.mechanics).toMatchObject({status: "invalid", reason: expect.stringContaining(field.includes(".trigger.") ? "mechanics.respins.trigger" : field)});
