@@ -731,3 +731,14 @@ describe("Viewport-only player data", () => {
         expect((root.querySelector('[data-cell="0:2"]') as HTMLElement).style.backgroundColor).toBe("");
     });
 });
+
+it("renders the retained weighted bonus identity and zero remaining duration", () => {
+    const root = document.createElement("div");
+    const data = {boundedMechanics: {weightedBonus: {selection: {tableId: "prizes", outcomeId: "large", context: "logical:known"}, payout: 0, remaining: 0, executed: 2}}};
+    renderFeatureCounters(root, deriveFeatureCounters(data));
+    expect(root.textContent).toContain("Bonus outcomeId");
+    expect(root.textContent).toContain("large");
+    expect(root.textContent).toContain("logical:known");
+    expect(root.textContent).toContain("Bonus remaining");
+    expect(root.textContent).toContain("0");
+});

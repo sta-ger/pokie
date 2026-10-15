@@ -17,7 +17,7 @@ export class MechanicsSheetMapper implements MechanicsSheetMapping {
                 if (isBlankRow(row)) return;
                 const name = cellToText(row[0]);
                 try {
-                    if (!name || !["freeGames", "holdAndWin", "jackpot", "modifiers", "cascade", "respins", "collection"].includes(name) || name in mechanics) throw new Error("Unknown or duplicate mechanic.");
+                    if (!name || !["freeGames", "holdAndWin", "jackpot", "modifiers", "cascade", "respins", "collection", "weightedBonus"].includes(name) || name in mechanics) throw new Error("Unknown or duplicate mechanic.");
                     mechanics[name] = JSON.parse(cellToText(row[1]) ?? "");
                 } catch (error) {
                     issues.push({code: "parsheet-mechanics-invalid", severity: "error", path: `Mechanics.${index + 2}`, message: String(error)});
@@ -110,7 +110,7 @@ export class MechanicsSheetMapper implements MechanicsSheetMapping {
     }
 
     public toRows(freeGames: GameBlueprintFreeGames | undefined, mechanics?: GameBlueprintMechanics): SheetGrid {
-        if (mechanics && (mechanics.cascade || mechanics.respins || mechanics.collection || mechanics.modifiers || mechanics.holdAndWin || mechanics.jackpot || mechanics.freeGames?.retriggerPolicy)) return [
+        if (mechanics && (mechanics.weightedBonus || mechanics.cascade || mechanics.respins || mechanics.collection || mechanics.modifiers || mechanics.holdAndWin || mechanics.jackpot || mechanics.freeGames?.retriggerPolicy)) return [
             ["Mechanic", "Configuration JSON"],
             ...Object.entries(mechanics).filter(([, value]) => value !== undefined).map(([name, value]) => [name, JSON.stringify(value)]),
         ];

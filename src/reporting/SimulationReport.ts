@@ -1,3 +1,4 @@
+import type {WeightedBonusStatistics} from "../session/videoslot/authored/WeightedBonus.js";
 import type {ModifierStatistics} from "../simulation/ModifierStatistics.js";
 import type {ReelSequenceStatistics} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {SimulationConvergenceOutcome} from "../simulation/SimulationConvergenceOutcome.js";
@@ -24,6 +25,7 @@ export type SimulationReport = {
     logicalRounds?: import("../simulation/LogicalRoundStatistics.js").LogicalRoundStatistics;
     sampling?: {unit: "completed-logical-round"; acceptedSubrounds: number; carriedSubrounds?: number; excludedSubrounds: number; trajectories: "independent-session-per-worker"};
     modifiers?: ModifierStatistics;
+    weightedBonus?: WeightedBonusStatistics;
     reelSequences?: ReelSequenceStatistics[];
     game: {id: string; name: string; version: string};
     requestedRounds: number;

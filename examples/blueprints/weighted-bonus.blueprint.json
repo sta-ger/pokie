@@ -1,0 +1,77 @@
+{
+    "manifest": {
+        "id": "weighted-bonus",
+        "name": "Weighted bonus",
+        "version": "1.0.0"
+    },
+    "reels": 3,
+    "rows": 1,
+    "symbols": [
+        "A",
+        "C"
+    ],
+    "wilds": [],
+    "scatters": [],
+    "availableBets": [
+        0.05,
+        7.5,
+        1e-07
+    ],
+    "reelStrips": [
+        [
+            "C"
+        ],
+        [
+            "C"
+        ],
+        [
+            "C"
+        ]
+    ],
+    "paytable": {
+        "C": {
+            "3": 2
+        }
+    },
+    "mechanics": {
+        "weightedBonus": {
+            "id": "prizes",
+            "context": "triggered-paid-entry",
+            "trigger": {
+                "symbolId": "C",
+                "minimumCount": 3
+            },
+            "feature": {
+                "id": "bonus-respins",
+                "type": "bonus-respins",
+                "maxDuration": 2
+            },
+            "outcomes": [
+                {
+                    "id": "small",
+                    "weight": 1,
+                    "targetId": "bonus-respins",
+                    "payout": 3,
+                    "payoutUnits": "currency",
+                    "duration": 0
+                },
+                {
+                    "id": "large",
+                    "weight": 3,
+                    "targetId": "bonus-respins",
+                    "payout": 5,
+                    "payoutUnits": "bet-multiple",
+                    "duration": 2
+                },
+                {
+                    "id": "zero",
+                    "weight": 0,
+                    "targetId": "bonus-respins",
+                    "payout": 0,
+                    "payoutUnits": "currency",
+                    "duration": 0
+                }
+            ]
+        }
+    }
+}

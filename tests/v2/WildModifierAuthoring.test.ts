@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import * as api from "@fromstan/pokie";
-import {generatedMechanicsGame, mechanicsSession} from "./fixtures/ExistingMechanicsGame.js";
+import {assertWorkflowRejections, generatedMechanicsGame, mechanicsSession} from "./fixtures/ExistingMechanicsGame.js";
 import {StudioPlayService} from "../../cli/studio/runtime/StudioPlayService.js";
 import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";
 import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprintService.js";
@@ -50,6 +50,10 @@ describe("V2C-13 finite modifier authoring", () => {
     afterEach(() => {
         jest.restoreAllMocks();
         fs.rmSync(directory, {recursive: true, force: true});
+    });
+
+    it.each(catalogue)("%s: catalogue surface rejection boundaries", async row => {
+        await assertWorkflowRejections(fixture(row), directory);
     });
 
     it.each(["component", "aggregate", "balance"] as const)("%s overflow rejects atomically and seeded retry matches uninterrupted execution", failure => {
@@ -589,6 +593,9 @@ describe("V2C-13 finite modifier authoring", () => {
                         session.play();
                     });
                     const expected = sessions[0];
+                    expect(expected.getWinAmount()).toBeCloseTo(bet * 10 * (id === "restricted" ? 2 : 6), 12);
+                    expect(expected.getSymbolsCombination().toMatrix()).toEqual(id === "restricted" ? [["A"], ["W2"], ["A"]] : [["A"], ["W2"], ["W3"]]);
+                    expect(expected.getWinEvaluationResult().getWinComponents()[0].getMultiplierBreakdown()[0].combinedMultiplier).toBe(id === "restricted" ? 2 : 6);
                     sessions.slice(1).forEach((session) => {
                         expect(session.getSymbolsCombination().toMatrix()).toEqual(
                             expected.getSymbolsCombination().toMatrix(),

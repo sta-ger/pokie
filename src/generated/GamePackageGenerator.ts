@@ -1,3 +1,4 @@
+import {validateAuthoredMechanics} from "./validateAuthoredMechanics.js";
 import {validateBlueprintReelSequences} from "./validateBlueprintReelSequences.js";
 import crypto from "crypto";
 import fs from "fs";
@@ -74,6 +75,8 @@ export class GamePackageGenerator implements GamePackageGenerating {
         reelStripGeneration?: GameBuildInfoReelStripGeneration,
         options?: GamePackageGenerateOptions,
     ): GeneratedGamePackage {
+        const mechanicErrors = validateAuthoredMechanics(blueprint as unknown as Record<string, unknown>);
+        if (mechanicErrors.length) throw new Error(mechanicErrors.map(issue => issue.message).join("; "));
         const variantErrors = validateBlueprintReelSequences(blueprint as unknown as Record<string, unknown>);
         if (variantErrors.length) throw new Error(variantErrors.join("; "));
         const id = blueprint.manifest.id;

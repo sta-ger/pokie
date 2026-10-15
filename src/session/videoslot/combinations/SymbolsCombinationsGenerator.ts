@@ -1,3 +1,4 @@
+import {selectWeightedBonus, type WeightedBonus} from "../authored/WeightedBonus.js";
 import {isWeightedSymbolsSequence, validateWeightedReelDefinitions} from "./WeightedSymbolsSequence.js";
 import type {ReelSequenceSelection, ReelSequenceStatistics, WeightedSequenceVariant} from "./WeightedSequenceVariant.js";
 import type {ScreenGeometry} from "../coordinates/ScreenGeometry.js";
@@ -158,6 +159,10 @@ implements SymbolsCombinationsGenerating<T> {
         // Subclass snapshots remain opaque unless their codec is explicitly supplied.
         if (this.constructor !== SymbolsCombinationsGenerator) return "opaque";
         return (this.rng as {getRandomStateCodec?: () => "seeded" | "opaque"}).getRandomStateCodec?.() ?? "opaque";
+    }
+
+    public selectBonus(table: WeightedBonus): WeightedBonus["outcomes"][number] {
+        return selectWeightedBonus(table, this.rng);
     }
 
     public getRandomState(): unknown {

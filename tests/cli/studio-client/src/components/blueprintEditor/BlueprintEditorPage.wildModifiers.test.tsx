@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import {AUTHORED_MODIFIER_CATALOG} from "../../../../../../src/generated/AuthoredMechanicCatalog";
 import {ModalsProvider} from "@mantine/modals";
 import {createMemoryRouter, RouterProvider} from "react-router-dom";
 import {StudioApiProvider} from "../../../../../../cli/studio-client/src/context/StudioApiProvider";
@@ -295,3 +298,20 @@ it.each([{}, [], true])("F6 actual Project retains malformed factor %p, blocks S
     // The loaded draft itself remains untouched; removal was an explicit draft mutation.
     expect(malformed.mechanics.modifiers.wilds[0].factor).toEqual(factor);
 }, 60000);
+
+it.each(AUTHORED_MODIFIER_CATALOG)("%s: Home JSON retains catalogue rules and blocks invalid publication", async id => {
+    const writes = home();
+    const blueprint = JSON.parse(fs.readFileSync(path.join(process.cwd(), `examples/blueprints/wild-${id}.blueprint.json`), "utf8")) as GameBlueprint;
+    fireEvent.change(await jsonEditor(), {target: {value: JSON.stringify(blueprint)}});
+    fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
+    showControls();
+    expect(JSON.parse((await jsonEditor()).value).mechanics).toEqual(blueprint.mechanics);
+    const invalid = {...blueprint, mechanics: {...blueprint.mechanics, unknown: {}}};
+    fireEvent.change(await jsonEditor(), {target: {value: JSON.stringify(invalid)}});
+    fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
+    showControls();
+    expect((await screen.findAllByText(/mechanics\.unknown: unknown field/)).length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeDisabled());
+    expect(JSON.parse((await jsonEditor()).value).mechanics).toEqual(invalid.mechanics);
+    expect(writes).not.toHaveBeenCalled();
+});

@@ -1,3 +1,4 @@
+import {validateWeightedBonusObservation} from "../session/videoslot/authored/WeightedBonus.js";
 import type {ConvertableToSessionState} from "../session/ConvertableToSessionState.js";
 import {sequenceSelectionsEqual} from "../artifact/validateSequenceSelections.js";
 import type {ReelSequenceSelection} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
@@ -74,11 +75,24 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
         const last = state.logicalRound.subrounds[state.logicalRound.cursor - 1];
         if (last.win !== state.win || last.credits !== state.credits || ((last.finalScreen ?? last.screen) !== undefined && JSON.stringify(last.finalScreen ?? last.screen) !== JSON.stringify(state.screen))) return {status: "corrupt-state", reason: "Retained logical output differs from executable capture."};
         let schema = state.stateSchema;
-        let feature = state.featureState as {base?: unknown; freeGamesNum?: number; freeGamesSum?: number; remaining?: number; active?: boolean; entryBet?: number; lastOutcome?: {kind?: string}} | undefined;
+        let feature = state.featureState as {base?: unknown; freeGamesNum?: number; freeGamesSum?: number; remaining?: number; executed?: number; bonus?: {selection?: unknown}; active?: boolean; entryBet?: number; lastOutcome?: {kind?: string}} | undefined;
         let pending = false;
         let known = schema?.kind !== "custom";
         while (schema && "base" in schema) {
-            if (schema.kind === "bounded-mechanics") pending ||= (feature?.remaining ?? 0) > 0;
+            if (schema.kind === "bounded-mechanics") {
+                pending ||= (feature?.remaining ?? 0) > 0;
+                if (schema.rules.weightedBonus) {
+                    const selection = (feature as {bonus?: {selection?: {context: string}}})?.bonus?.selection;
+                    const events = last.artifacts?.[last.artifacts.length - 1]?.featureEvents;
+                    const observation = events?.find(event => event.type === "boundedMechanics")?.data?.weightedBonus;
+                    if (selection && selection.context !== `logical:${state.logicalRound.id}`) return {status: "corrupt-state", reason: "Weighted bonus identity differs from retained logical round."};
+                    try {
+                        validateWeightedBonusObservation(feature!, observation);
+                    } catch (error) {
+                        return {status: "corrupt-state", reason: (error as Error).message};
+                    }
+                }
+            }
             if (schema.kind === "free-games") pending ||= (feature?.freeGamesNum ?? 0) < (feature?.freeGamesSum ?? 0);
             if (schema.kind === "hold-and-win") {
                 pending ||= feature?.active === true;
@@ -100,8 +114,24 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
     // current selection can change without changing the denomination or attribution of a feature.
     const entry = state.logicalRound ?? state.chargedEntry;
     let entrySchema = state.stateSchema;
-    let entryFeature = state.featureState as {base?: unknown; active?: boolean; remaining?: number; entryBet?: number; chargedBetModeId?: string; lastOutcome?: {kind?: string}} | undefined;
+    let entryFeature = state.featureState as {base?: unknown; active?: boolean; remaining?: number; executed?: number; bonus?: {selection?: unknown}; entryBet?: number; chargedBetModeId?: string; lastOutcome?: {kind?: string}} | undefined;
     while (entrySchema && "base" in entrySchema) {
+        if (entrySchema.kind === "bounded-mechanics" && entrySchema.rules.weightedBonus) {
+            const payload = state.roundPayload?.boundedMechanics as {weightedBonus?: unknown} | undefined;
+            // A full logical artifact folds every subround's events at the top level.
+            // Its final canonical step, rather than the first entry event, owns current progress.
+            const steps = state.roundArtifact?.steps;
+            const artifact = steps?.[steps.length - 1]?.featureEvents?.find(event => event.type === "boundedMechanics")?.data?.weightedBonus;
+            try {
+                // Partial capture retains serializer observations; full capture also has an artifact.
+                // A logical envelope was checked above. Every retained copy must agree.
+                if (state.roundPayload) validateWeightedBonusObservation(entryFeature!, payload?.weightedBonus);
+                else if (!state.logicalRound) validateWeightedBonusObservation(entryFeature!, artifact);
+                if (state.roundArtifact) validateWeightedBonusObservation(entryFeature!, artifact);
+            } catch (error) {
+                return {status: "corrupt-state", reason: (error as Error).message};
+            }
+        }
         if (entrySchema.kind === "bounded-mechanics" && (entryFeature?.remaining ?? 0) > 0 && entryFeature?.entryBet !== (entry?.bet ?? state.bet)) return {status: "corrupt-state", reason: "Respin entry denomination differs from retained charged entry."};
         if (entrySchema.kind === "hold-and-win" && (entryFeature?.active || entryFeature?.lastOutcome?.kind === "completed") && entryFeature.entryBet !== (entry?.bet ?? state.bet)) return {status: "corrupt-state", reason: "HoldAndWin entry denomination differs from retained charged entry."};
         if (entrySchema.kind === "bet-modes" && entry?.mode !== undefined && entryFeature?.chargedBetModeId !== entry.mode) return {status: "corrupt-state", reason: "Charged bet mode differs from retained entry attribution."};

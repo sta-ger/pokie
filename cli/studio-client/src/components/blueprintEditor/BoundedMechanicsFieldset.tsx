@@ -15,7 +15,7 @@ export function BoundedMechanicsFieldset({blueprint, mutate}: {blueprint: Record
         else next[key] = value;
         b.mechanics = next;
     });
-    const defaults: Required<BoundedMechanics> = {
+    const defaults: Required<Omit<BoundedMechanics, "weightedBonus">> = {
         cascade: {maxCascades: 20},
         respins: {trigger: {symbolId: first, minimumCount: 1}, grant: 3, retrigger: "none", maxRespins: 30},
         collection: {symbolId: first, contribution: 1, threshold: 10, cap: 10, reset: "zero", payout: 5},

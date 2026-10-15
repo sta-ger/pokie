@@ -1,3 +1,4 @@
+import {weightedBonusModel, type WeightedBonusState, type WeightedBonusStatistics, type WeightedBonusProviding} from "./WeightedBonus.js";
 import {cloneSessionData} from "../../../runtime/internal/cloneSessionData.js";
 import {validateAuthoredMechanics} from "../../../generated/validateAuthoredMechanics.js";
 import {validateExecutableState} from "../../../runtime/validateExecutableState.js";
@@ -16,12 +17,13 @@ import {WinningValue} from "../WinningValue.js";
 import {WinEvaluationResult} from "../winevaluation/WinEvaluationResult.js";
 import type {BoundedMechanics, BoundedMechanicObservation, BoundedMechanicsProviding} from "./BoundedMechanics.js";
 
-export type BoundedSessionState = {base: unknown; value: number; remaining: number; executed: number; entryBet: number};
+export type BoundedSessionState = {base: unknown; value: number; remaining: number; executed: number; entryBet: number; bonus?: WeightedBonusState};
 
 /** One accepted play updates the collection exactly once, on the final screen after cascading.
  * Respins pay each accepted subround; cascade stages are delivery-only after this transaction.
  */
-export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator implements SessionStateRestoring, BoundedMechanicsProviding {
+export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator implements SessionStateRestoring, BoundedMechanicsProviding, WeightedBonusProviding {
+    private bonus?: WeightedBonusState;
     private readonly rules: BoundedMechanics;
     private readonly config: VideoSlotConfigRepresenting;
     private readonly generator: SymbolsCombinationsGenerator;
@@ -39,15 +41,35 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
         const issues = validateAuthoredMechanics({mechanics: rules, symbols: config.getAvailableSymbols(), reels: config.getReelsNumber(), rows: config.getReelsSymbolsNumber(), screenGeometry: config.getScreenGeometry?.()});
         if (issues.length) throw new Error(issues.map(issue => issue.message).join("; "));
         const frozen = cloneSessionData(rules);
-        if (Reflect.getPrototypeOf(config) !== VideoSlotConfig.prototype || config.getScreenModifiers?.() || !Object.keys(rules).length || Object.keys(rules).some(key => !["cascade", "respins", "collection"].includes(key)) || issues.length) throw new Error(issues.map(issue => issue.message).join("; ") || "Unsupported bounded mechanic composition.");
+        if (Reflect.getPrototypeOf(config) !== VideoSlotConfig.prototype || config.getScreenModifiers?.() || !Object.keys(rules).length || Object.keys(rules).some(key => !["cascade", "respins", "collection", "weightedBonus"].includes(key)) || issues.length) throw new Error(issues.map(issue => issue.message).join("; ") || "Unsupported bounded mechanic composition.");
         if (!generator.isRandomStateRestorable() || !calculator.isStatelessForSessionRestoration()) throw new Error("Bounded mechanics require the built-in seeded generator and stateless evaluator codec.");
         if (!generator.usesConfig(config) || !calculator.usesConfig(config)) throw new Error("Bounded mechanics must share their configuration and RNG owner.");
         super(new VideoSlotSession(config, generator, calculator));
         this.rules = frozen;
+        if (frozen.weightedBonus) this.bonus = {selection: null, counts: frozen.weightedBonus.outcomes.map(() => 0), completed: 0, context: "initialization", implicitRound: 0};
         this.config = config;
         this.generator = generator;
         this.calculator = calculator;
         if (frozen.cascade) Reflect.defineProperty(this, "getCascadeResult", {value: () => this.cascade ?? new CascadeResult(this.getSymbolsCombination().toMatrix(), this.getSymbolsCombination().toMatrix(), [], {}, {}, {}, new WinEvaluationResult())});
+    }
+
+    public override setSelectionContext(context: string): void {
+        if (this.bonus && ((this.remaining > 0 && context !== this.bonus.context) || (this.remaining === 0 && context === this.bonus.context))) throw new Error("Weighted bonus context is pending or already consumed; use the runtime to retry a retained request.");
+        // Implicit contexts are a monotonic entry counter. Reject before the nested setter
+        // can change its pending request or counter, so every accepted snapshot restores.
+        if (this.bonus && context.startsWith("implicit:") && this.remaining === 0 && Number(context.slice(9)) <= this.bonus.implicitRound) throw new Error("Weighted bonus implicit context must advance the consumed counter.");
+        super.setSelectionContext(context);
+        if (this.bonus) {
+            this.bonus.requestedContext = context;
+        }
+    }
+
+    public getWeightedBonusStatistics(): WeightedBonusStatistics | undefined {
+        const table = this.rules.weightedBonus;
+        if (!table || !this.bonus) return undefined;
+        const selections = this.bonus.counts.reduce((sum, count) => sum + count, 0);
+        const total = table.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0);
+        return {tableId: table.id, model: weightedBonusModel(table), selections, completed: this.bonus.completed, incomplete: selections - this.bonus.completed, outcomes: table.outcomes.map((outcome, index) => ({id: outcome.id, weight: outcome.weight, probability: outcome.weight / total, count: this.bonus!.counts[index], frequency: selections ? this.bonus!.counts[index] / selections : 0, uncovered: outcome.weight > 0 && this.bonus!.counts[index] === 0}))};
     }
 
     public getBoundedMechanicObservation(): BoundedMechanicObservation | undefined {
@@ -98,7 +120,7 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
     }
     public override createStepRollback(): () => void {
         const rollback = super.createStepRollback();
-        const state = {value: this.value, remaining: this.remaining, executed: this.executed, entryBet: this.entryBet};
+        const state = {value: this.value, remaining: this.remaining, executed: this.executed, entryBet: this.entryBet, bonus: cloneSessionData(this.bonus)};
         const screen = this.screen;
         return () => {
             rollback();
@@ -125,11 +147,21 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
             if (!continuing) {
                 this.executed = 0;
                 this.entryBet = this.getBet();
+                if (this.bonus) this.bonus.selection = null;
+            }
+            if (this.bonus) {
+                if (!continuing) {
+                    if (!this.bonus.requestedContext && this.bonus.implicitRound === Number.MAX_SAFE_INTEGER) throw new Error("Bonus contexts exhausted.");
+                    this.bonus.context = this.bonus.requestedContext ?? `implicit:${++this.bonus.implicitRound}`;
+                    if (this.bonus.context.startsWith("implicit:")) this.bonus.implicitRound = Math.max(this.bonus.implicitRound, Number(this.bonus.context.slice(9)));
+                }
+                Reflect.deleteProperty(this.bonus, "requestedContext");
+                this.baseSession.setSelectionContext?.(this.bonus.context);
             }
             if (!super.canPlayNextGame()) this.setCreditsAmount(this.getBet());
             // A direct play() continuation owns the same weighted selection as its entry.
             // Runtime commands supply that same context explicitly; refills also reuse it.
-            if (continuing && this.generator.getSequenceSelections().length > 0) this.baseSession.setSelectionContext?.(this.generator.getSelectionState().context);
+            if (continuing && !this.bonus && this.generator.getSequenceSelections().length > 0) this.baseSession.setSelectionContext?.(this.generator.getSelectionState().context);
             this.baseSession.play();
             this.screen = this.baseSession.getSymbolsCombination().toMatrix();
             let evaluation = this.baseSession.getWinEvaluationResult();
@@ -176,11 +208,30 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
                 granted = Math.max(0, next - this.remaining);
                 this.remaining = next;
             }
+            const table = this.rules.weightedBonus;
+            let bonusPayout = 0;
+            let selectedNow = false;
+            if (table && this.bonus) {
+                if (!continuing && count(table.trigger.symbolId) >= table.trigger.minimumCount) {
+                    const outcome = this.generator.selectBonus(table);
+                    const index = table.outcomes.findIndex(item => item.id === outcome.id);
+                    if (this.bonus.counts.reduce((sum, count) => sum + count, 0) === Number.MAX_SAFE_INTEGER) throw new Error("Weighted bonus counter overflow.");
+                    this.bonus.counts[index]++;
+                    this.bonus.selection = {tableId: table.id, outcomeId: outcome.id, context: this.generator.getSelectionState().context, model: weightedBonusModel(table)};
+                    this.remaining = outcome.duration;
+                    bonusPayout = outcome.payout * (outcome.payoutUnits === "bet-multiple" ? this.entryBet : 1);
+                    selectedNow = true;
+                    const component = new ValueWinComponent(new WinningValue(table.feature.id, [], bonusPayout));
+                    evaluation = new WinEvaluationResult({winComponents: [...evaluation.getWinComponents(), component]});
+                }
+                if (this.bonus.selection && this.remaining === 0 && (continuing || selectedNow)) this.bonus.completed++;
+            }
             const balance = credits - stake + evaluation.getTotalWin();
             if (!Number.isFinite(evaluation.getTotalWin()) || !Number.isFinite(balance) || balance < 0) throw new Error("Bounded mechanic payout or balance overflow.");
             this.setCreditsAmount(balance);
             this.evaluation = evaluation;
             this.observation = {
+                ...(this.bonus?.selection ? {weightedBonus: {selection: cloneSessionData(this.bonus.selection), selectedNow, payout: bonusPayout, remaining: this.remaining, executed: this.executed}} : {}),
                 ...(collection ? {collection: {value: this.value, cap: collection.cap, threshold: collection.threshold, contribution, triggered, reset: collection.reset, payout: award}} : {}),
                 ...(respins ? {respins: {remaining: this.remaining, executed: this.executed, granted, limit: respins.maxRespins}} : {}),
                 ...(this.cascade ? {cascade: {winningCascades: this.cascade.getCascadeSteps().length, evaluatedSteps: this.cascade.getCascadeSteps().length + 1}} : {}),
@@ -188,13 +239,14 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
         });
     }
     public getSessionStateSchema(): SessionStateSchema {
-        return {kind: "bounded-mechanics", rules: cloneSessionData(this.rules), bets: this.getAvailableBets(), base: resolveSessionStateSchema(this.baseSession)};
+        const base = resolveSessionStateSchema(this.baseSession);
+        return {kind: "bounded-mechanics", rules: cloneSessionData(this.rules), bets: this.getAvailableBets(), base: this.rules.weightedBonus && base.kind === "seeded-video-slot" ? {...base, reels: this.getReelsNumber(), rows: this.getReelsSymbolsNumber(), symbols: this.getAvailableSymbols()} : base};
     }
     public isSessionStateRestorable(): boolean {
         return this.constructor === BoundedVideoSlotSession && isSessionStateRestorable(this.baseSession);
     }
     public toSessionState(): BoundedSessionState {
-        return {base: (this.baseSession as VideoSlotSession).toSessionState(), value: this.value, remaining: this.remaining, executed: this.executed, entryBet: this.entryBet};
+        return {base: (this.baseSession as VideoSlotSession).toSessionState(), value: this.value, remaining: this.remaining, executed: this.executed, entryBet: this.entryBet, ...(this.bonus ? {bonus: cloneSessionData(this.bonus)} : {})};
     }
     public validateSessionState(value: unknown): void {
         validateExecutableState(value, this.getSessionStateSchema(), undefined, !isSessionStateRestorable(this.baseSession));
@@ -207,6 +259,7 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
         this.remaining = value.remaining;
         this.executed = value.executed;
         this.entryBet = value.entryBet;
+        this.bonus = cloneSessionData(value.bonus);
         this.observation = undefined;
         this.cascade = undefined;
         this.screen = undefined;

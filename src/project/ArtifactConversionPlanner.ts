@@ -371,6 +371,8 @@ export function describeArtifactConversionPlanDiagnostic(plan: ArtifactConversio
     // Library and obscured the actual recovery boundary supplied by the
     // planner.  Preserve that structured boundary verbatim for every adapter.
     if (plan.packageExtraction || diagnostic.code === "unrecognized-source") return diagnostic.message;
+    // A semantic limitation cannot be repaired by opening another artifact of the same kind.
+    if (diagnostic.code === "unsupported-boundary") return `${diagnostic.message} Next: ${diagnostic.recovery}`;
     const sourceNames: Readonly<Record<ProjectType, string>> = {
         blueprint: "Game Blueprint", tsPackage: "POKIE game package", outcomeLibrary: "Outcome Library",
         stakeAdapter: "Stake Engine export", parWorkbook: "PAR workbook", wasm: WASM_PRODUCT_CONTRACT.kind,
@@ -779,10 +781,11 @@ export class ArtifactConversionPlanner {
             diagnostic: {code, failedEdge: {from: sourceKind, to: targetKind}, message, recovery},
         });
 
-        if (sourceKind === "blueprint" && source.canonicalLocation && targetKind === "wasm" && fs.existsSync(source.canonicalLocation)) {
+        if (sourceKind === "blueprint" && source.canonicalLocation && ["wasm", "outcomeLibrary", "stakeAdapter"].includes(targetKind) && fs.existsSync(source.canonicalLocation)) {
             try {
-                const blueprint = JSON.parse(fs.readFileSync(source.canonicalLocation, "utf8")) as {reelSequences?: unknown};
-                if (blueprint.reelSequences !== undefined) return unavailable("unsupported-boundary", `${targetKind} does not support reelSequences or weighted whole-sequence variants.`, "Build a TypeScript package to preserve the distribution.");
+                const blueprint = JSON.parse(fs.readFileSync(source.canonicalLocation, "utf8")) as {reelSequences?: unknown; mechanics?: {weightedBonus?: unknown}};
+                if (blueprint.mechanics?.weightedBonus !== undefined) return unavailable("unsupported-boundary", `${targetKind} cannot preserve weighted bonus selection, payout or duration.`, "Build a TypeScript package instead.");
+                if (targetKind === "wasm" && blueprint.reelSequences !== undefined) return unavailable("unsupported-boundary", `${targetKind} does not support reelSequences or weighted whole-sequence variants.`, "Build a TypeScript package to preserve the distribution.");
             } catch { /* Source validation reports malformed Blueprint content at execution. */ }
         }
 

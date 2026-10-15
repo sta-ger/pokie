@@ -394,3 +394,10 @@ Win multiplier breakdowns retain unique winning coordinates, factor values and
 the combined product. Public screen/highlight projection preserves the payout
 evidence; modifier event coordinates keep their explicit evaluation tag. Neither
 artifact construction nor Play/Replay presentation re-executes a rule.
+
+## Weighted bonus authoring
+
+See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
+payout/duration units, authoring/interchange, restoration/replay, statistics and
+custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
+maps every mandatory family separately from arbitrary custom callbacks.

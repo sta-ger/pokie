@@ -1,3 +1,4 @@
+import {validateWeightedBonus, weightedBonusModel, type WeightedBonusState} from "../session/videoslot/authored/WeightedBonus.js";
 import {restoreWinEvaluation, type WinEvaluationSnapshot} from "../session/videoslot/winevaluation/WinEvaluationSnapshot.js";
 import {getSessionCompositionError, type SessionStateSchema} from "../session/SessionStateRestoring.js";
 
@@ -14,18 +15,38 @@ export function validateMechanicState(state: Record<string, unknown>, schema: Se
     if (compositionError) throw new Error(compositionError);
     const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0;
     if (schema.kind === "bounded-mechanics") {
-        const {collection, respins} = schema.rules;
+        const {collection, respins, weightedBonus} = schema.rules;
+        if (weightedBonus) {
+            const root = schema.base;
+            if (root.kind !== "seeded-video-slot" || root.modifiers || root.screenGeometry || Object.keys(schema.rules).some(key => key !== "weightedBonus") || validateWeightedBonus(weightedBonus, root.symbols, (root.reels ?? 0) * (root.rows ?? 0)).length) throw new Error("Invalid weighted bonus schema or composition.");
+            const bonus = state.bonus as WeightedBonusState;
+            if (!bonus || Object.keys(bonus).some(key => !["selection", "counts", "completed", "context", "implicitRound", "requestedContext"].includes(key)) || !Array.isArray(bonus.counts) || bonus.counts.length !== weightedBonus.outcomes.length || !bonus.counts.every((count, i) => Number.isSafeInteger(count) && count >= 0 && (weightedBonus.outcomes[i].weight > 0 || count === 0)) || !Number.isSafeInteger(bonus.completed) || bonus.completed < 0) throw new Error("Invalid weighted bonus counters.");
+            if (!Number.isSafeInteger(bonus.implicitRound) || bonus.implicitRound < 0 || typeof bonus.context !== "string" || !(/^(initialization|implicit:[1-9][0-9]*|logical:[\s\S]+)$/).test(bonus.context) || bonus.context.includes("\0") || (bonus.requestedContext !== undefined && (typeof bonus.requestedContext !== "string" || !(/^(implicit:[1-9][0-9]*|logical:[\s\S]+)$/).test(bonus.requestedContext) || bonus.requestedContext.includes("\0")))) throw new Error("Invalid bonus selection context.");
+            if (bonus.requestedContext !== undefined && (Number(state.remaining) > 0 ? bonus.requestedContext !== bonus.context : bonus.requestedContext === bonus.context)) throw new Error("Weighted bonus context is pending or already consumed.");
+            if (state.remaining === 0 && bonus.requestedContext?.startsWith("implicit:") && Number(bonus.requestedContext.slice(9)) <= bonus.implicitRound) throw new Error("Weighted bonus implicit context must advance the consumed counter.");
+            if (bonus.requestedContext !== (state.base as {selectionContext?: string}).selectionContext) throw new Error("Weighted bonus pending context differs from its base request.");
+            const total = bonus.counts.reduce((sum, count) => sum + count, 0);
+            if (!Number.isSafeInteger(total) || bonus.completed !== total - (Number(state.remaining) > 0 ? 1 : 0)) throw new Error("Invalid weighted bonus completion count.");
+            if (bonus.selection !== null) {
+                const selection = bonus.selection;
+                const outcome = weightedBonus.outcomes.find(item => item.id === selection?.outcomeId && item.weight > 0);
+                const base = state.base as {selectionContext?: string; sequenceState?: {context: string}; implicitRound?: number};
+                const contextValid = typeof selection?.context === "string" && (/^(implicit:[1-9][0-9]*|logical:[\s\S]+)$/).test(selection.context) && !selection.context.includes("\0");
+                if (!outcome || !contextValid || Object.keys(selection).some(key => !["tableId", "outcomeId", "context", "model"].includes(key)) || selection.context !== bonus.context || selection.tableId !== weightedBonus.id || selection.model !== weightedBonusModel(weightedBonus) || (base.sequenceState && base.sequenceState.context !== selection.context) || (selection.context.startsWith("implicit:") && Number(selection.context.slice(9)) !== bonus.implicitRound) || bonus.counts[weightedBonus.outcomes.indexOf(outcome)] === 0 || Number(state.executed) + Number(state.remaining) !== outcome.duration) throw new Error("Invalid weighted bonus identity, context, configuration or duration.");
+            } else if (state.remaining !== 0 || state.executed !== 0) throw new Error("Bonus progress requires a selected identity.");
+        } else if (state.bonus !== undefined) throw new Error("Unexpected weighted bonus state.");
         const remaining = Number(state.remaining), 
             executed = Number(state.executed);
         // A paid entry either grants the full initial budget or does not trigger. Without
         // retriggers that budget is conserved; resets can only extend it, up to the lifetime cap.
+        const unownedProgressInvalid = weightedBonus ? Number(state.remaining) + Number(state.executed) > weightedBonus.feature.maxDuration : state.remaining !== 0 || state.executed !== 0;
         const reachable = !respins || (executed === 0 && remaining === 0) ||
             (respins.retrigger === "none" ? executed + remaining === respins.grant :
                 remaining >= Math.max(0, respins.grant - executed));
-        if (!reachable || Object.keys(state).some(key => !["base", "value", "remaining", "executed", "entryBet"].includes(key)) || !finite(state.value) || (collection ? state.value > collection.cap || (state.value >= collection.threshold && (collection.reset === "zero" || state.value > collection.cap - collection.threshold)) : state.value !== 0) ||
+        if (!reachable || Object.keys(state).some(key => !["base", "value", "remaining", "executed", "entryBet", "bonus"].includes(key)) || !finite(state.value) || (collection ? state.value > collection.cap || (state.value >= collection.threshold && (collection.reset === "zero" || state.value > collection.cap - collection.threshold)) : state.value !== 0) ||
             !Number.isSafeInteger(state.remaining) || Number(state.remaining) < 0 ||
             !Number.isSafeInteger(state.executed) || Number(state.executed) < 0 ||
-            (respins ? Number(state.remaining) > respins.grant || Number(state.executed) + Number(state.remaining) > respins.maxRespins : state.remaining !== 0 || state.executed !== 0) ||
+            (respins ? Number(state.remaining) > respins.grant || Number(state.executed) + Number(state.remaining) > respins.maxRespins : unownedProgressInvalid) ||
             !finite(state.entryBet) || (state.entryBet !== 0 && !schema.bets.includes(state.entryBet)) || ((Number(state.remaining) > 0 || Number(state.executed) > 0) && state.entryBet === 0)) throw new Error("Invalid bounded collection/respin state or entry denomination.");
     }
     if (schema.kind === "hold-and-win" || schema.kind === "jackpot") {

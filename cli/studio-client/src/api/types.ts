@@ -1,3 +1,4 @@
+import type {WeightedBonusStatistics} from "../../../../src/session/videoslot/authored/WeightedBonus.js";
 import type {ReelSequenceSelection, ReelSequenceStatistics, WeightedSequenceVariant} from "../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {LogicalRoundDelivery} from "../../../../src/runtime/projectLogicalRound.js";
 import type {ScreenGeometry} from "../../../../src/session/videoslot/coordinates/ScreenGeometry.js";
@@ -671,6 +672,7 @@ export type SimulationReport = {
     sampling?: import("../../../../src/reporting/SimulationReport.js").SimulationReport["sampling"];
     logicalRounds?: import("../../../../src/simulation/LogicalRoundStatistics.js").LogicalRoundStatistics;
     modifiers?: import("../../../../src/simulation/ModifierStatistics.js").ModifierStatistics;
+    weightedBonus?: WeightedBonusStatistics;
     reelSequences?: ReelSequenceStatistics[];
     game: {id: string; name: string; version: string};
     requestedRounds: number;

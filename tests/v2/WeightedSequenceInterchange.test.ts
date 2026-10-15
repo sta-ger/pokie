@@ -322,16 +322,21 @@ describe("weighted-sequence real XLSX interchange", () => {
         ).rejects.toThrow();
         expect(fs.existsSync(destination)).toBe(false);
         expect(fs.existsSync(evidence)).toBe(false);
-        const rename = fs.promises.rename.bind(fs.promises);
-        const failure = jest
-            .spyOn(fs.promises, "rename")
-            .mockImplementation((from, to) =>
-                String(to) === evidence ? Promise.reject(new Error("sidecar write failed")) : rename(from, to),
-            );
+        // Blueprint/evidence publication uses exclusive links, not replacement renames.
+        // Reject the second member after the Blueprint link exists, then verify both roll back.
+        const link = fs.promises.link.bind(fs.promises);
+        const failure = jest.spyOn(fs.promises, "link").mockImplementation((from, to) => {
+            if (String(to) === evidence) {
+                expect(fs.existsSync(destination)).toBe(true);
+                return Promise.reject(new Error("sidecar publication failed"));
+            }
+            return link(from, to);
+        });
         try {
             await expect(new api.BlueprintArtifactBuilder().build(source, destination)).rejects.toThrow(
-                "sidecar write failed",
+                "sidecar publication failed",
             );
+            expect(failure).toHaveBeenCalledWith(expect.any(String), evidence);
         } finally {
             failure.mockRestore();
         }
@@ -349,6 +354,10 @@ describe("weighted-sequence real XLSX interchange", () => {
             publication.mockRestore();
         }
         expect(fs.existsSync(rejectedWorkbook)).toBe(false);
+        const retried = await new api.BlueprintArtifactBuilder().build(source, destination);
+        expect(retried.outputPath).toBe(destination);
+        expect(JSON.parse(fs.readFileSync(destination, "utf8")).reelSequences).toEqual(model().reelSequences);
+        expect(fs.existsSync(evidence)).toBe(true);
         expect(fs.readdirSync(directory).filter((name) => name.includes(".tmp"))).toEqual([]);
     });
     it("preserves numeric-looking symbol text, key canonicalization and ordered identities", async () => {

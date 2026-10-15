@@ -444,3 +444,10 @@ Legacy literal `ReelStrips` remains supported. Generated reels and per-symbol
 PAR does not materialize or flatten alternatives. `pokie reel generate` retains its
 explicit unsupported materialization boundary, and weighted outcome libraries remain
 precomputed outcome artifacts, with no reconstruction edge to Blueprint/PAR.
+
+## Weighted bonus authoring
+
+See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
+payout/duration units, authoring/interchange, restoration/replay, statistics and
+custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
+maps every mandatory family separately from arbitrary custom callbacks.

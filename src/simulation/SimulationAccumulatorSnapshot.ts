@@ -1,3 +1,4 @@
+import type {WeightedBonusStatistics} from "../session/videoslot/authored/WeightedBonus.js";
 import type {ModifierStatistics} from "./ModifierStatistics.js";
 import type {ReelSequenceStatistics} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {LogicalRoundStatistics, LogicalSamplingRange} from "./LogicalRoundStatistics.js";
@@ -8,6 +9,7 @@ import type {LogicalRoundStatistics, LogicalSamplingRange} from "./LogicalRoundS
 // and reuse its own merge() — the online mean/variance algorithm itself is never duplicated.
 export type SimulationAccumulatorSnapshot = {
     modifiers?: ModifierStatistics;
+    weightedBonus?: WeightedBonusStatistics;
     reelSequences?: ReelSequenceStatistics[];
     logicalSamplingRanges?: LogicalSamplingRange[];
     logicalRounds?: LogicalRoundStatistics;

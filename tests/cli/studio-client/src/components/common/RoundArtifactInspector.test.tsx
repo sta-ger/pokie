@@ -900,3 +900,17 @@ it("F2 presents allowed zero-valued mechanic observations after the actual Repla
     for (const label of ["Locked symbols", "Respins", "Hold & Win payout", "Jackpot mini", "Jackpot award", "Charged mode"]) expect(within(counters as HTMLElement).getByText(label)).toBeVisible();
     expect(within(counters as HTMLElement).getByText("ante")).toBeVisible();
 });
+
+it("renders a real bonus selection from the canonical audited artifact", async () => {
+    const {ReplayRecorder} = await import("../../../../../../src/replay/ReplayRecorder");
+    const {weightedBonusBlueprint} = await import("../../../../../v2/fixtures/WeightedBonusGame");
+    const {generatedMechanicsGame, mechanicsSession} = await import("../../../../../v2/fixtures/ExistingMechanicsGame");
+    const game = generatedMechanicsGame(weightedBonusBlueprint());
+    const descriptor = new ReplayRecorder().recordAudit(game, mechanicsSession(game, 0), [{kind: "spin", roundId: "known", delivery: "composite"}], {status: "calculated", sessionId: "s", durability: "detached"}, {seed: 0});
+    const displayed = describeRoundArtifact(JSON.parse(JSON.stringify(descriptor.artifact)));
+    const view = renderWithMantine(<RoundArtifactInspector artifact={displayed} />);
+    expect(view.getAllByText("Bonus outcomeId").length).toBeGreaterThan(0);
+    expect(view.getAllByText("large").length).toBeGreaterThan(0);
+    expect(view.getAllByText("logical:known").length).toBeGreaterThan(0);
+    expect(displayed.featureEvents).toEqual(new (await import("../../../../../../src/artifact/PublicRoundArtifactProjector")).PublicRoundArtifactProjector().project(descriptor.artifact!).featureEvents);
+});

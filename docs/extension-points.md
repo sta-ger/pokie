@@ -100,3 +100,10 @@ after successful settlement. Arbitrary generators, transform callbacks,
 calculators and multiplier `combine` callbacks remain custom. A model descriptor
 preserves declared data but does not certify callback equivalence; list executable
 limitations in `unsupported` instead of flattening them into a Blueprint.
+
+## Weighted bonus authoring
+
+See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
+payout/duration units, authoring/interchange, restoration/replay, statistics and
+custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
+maps every mandatory family separately from arbitrary custom callbacks.

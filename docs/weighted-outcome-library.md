@@ -405,3 +405,10 @@ artifact with its own analyzer/report route. Per-symbol `symbolWeights` is a thi
 capability, whose PAR conversion is a diagnosed literal snapshot. No outcome-library
 reconstruction edge to Blueprint/PAR or arbitrary TypeScript-source recovery is
 implied by sequence interchange.
+
+## Weighted bonus authoring
+
+See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
+payout/duration units, authoring/interchange, restoration/replay, statistics and
+custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
+maps every mandatory family separately from arbitrary custom callbacks.

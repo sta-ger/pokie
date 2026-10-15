@@ -135,6 +135,7 @@ function assertSupportedCanonicalWasmSemantics(blueprint: GameBlueprint): void {
     if (blueprint.winModel !== undefined && blueprint.winModel.type !== "lines") {
         throw new Error(`Blueprint "${blueprint.manifest.id}" uses winModel.type "${blueprint.winModel.type}", which canonical POKIE WASM does not implement. Next: use line wins (omit winModel or set {type: "lines"}) before building.`);
     }
+    if (blueprint.mechanics?.weightedBonus) throw new Error("WASM cannot preserve weighted bonus selection, payout or duration. Build a tsPackage instead.");
     if (blueprint.mechanics?.cascade || blueprint.mechanics?.respins || blueprint.mechanics?.collection) throw new Error("This target cannot preserve bounded cascade, respin or collection semantics. Build a tsPackage instead.");
     if (blueprint.mechanics?.holdAndWin || blueprint.mechanics?.jackpot) throw new Error("Canonical POKIE WASM does not implement mechanics.holdAndWin or mechanics.jackpot. Build a tsPackage instead.");
     if (blueprint.mechanics?.freeGames !== undefined) {

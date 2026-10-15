@@ -1,3 +1,4 @@
+import {validateWeightedBonusObservation} from "../session/videoslot/authored/WeightedBonus.js";
 import {determineChargedBetMode} from "../session/determineChargedBetMode.js";
 import {isSessionStateRestorable, resolveSessionStateSchema} from "../session/SessionStateRestoring.js";
 import {sequenceSelectionsEqual} from "../artifact/validateSequenceSelections.js";
@@ -57,6 +58,10 @@ export class SessionRuntime implements SessionRuntimeHandling {
         // Canonical JSON restoration sorts object keys. Compare identity fields, rather than the
         // incidental insertion order of captured versus restored selection objects.
         if (selections?.length && !sequenceSelectionsEqual(selections, retained)) throw new Error("Retained weighted selections differ from the logical round.");
+        const schema = resolveSessionStateSchema(session);
+        const bonusState = schema.kind === "bounded-mechanics" && schema.rules.weightedBonus ? (session as {toSessionState?: () => {bonus?: {selection: unknown}; remaining: number; executed: number}}).toSessionState?.() : undefined;
+        const event = artifacts?.[artifacts.length - 1]?.featureEvents?.find(event => event.type === "boundedMechanics");
+        validateWeightedBonusObservation(bonusState ?? {}, event?.data?.weightedBonus);
         const pending = (session as Partial<LogicalRoundProgressProviding>).hasPendingLogicalRound?.() ?? false;
         // Exhaustion is an unfinished stop, not a claim that every feature counter completed.
         if (round.mathematicalStatus !== "exhausted" && (round.mathematicalStatus === "pending") !== pending) throw new Error("Retained logical progress differs from executable progress.");

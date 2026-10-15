@@ -401,3 +401,27 @@ it("V2C-13 presents a real transformed multiplier round with payout evidence and
         await service.reset();
     }
 });
+
+it("weighted bonus Play shows the actual identity, pending duration and continuation control", async () => {
+    const {generatedMechanicsGame} = await import("../../../../../v2/fixtures/ExistingMechanicsGame");
+    const {weightedBonusBlueprint} = await import("../../../../../v2/fixtures/WeightedBonusGame");
+    const {StudioPlayService} = await import("../../../../../../cli/studio/runtime/StudioPlayService");
+    const game = generatedMechanicsGame(weightedBonusBlueprint()),
+        service = new StudioPlayService(() => Promise.resolve(game));
+    try {
+        const created = await service.newSession("/bonus-package", 0);
+        if (created.status !== "ok") throw new Error(JSON.stringify(created));
+        const played = await service.spin(created.session.sessionId, "spin", 0.05, undefined, {requestId: "known", roundId: "known", delivery: "stepwise"});
+        if (played.status !== "ok") throw new Error(JSON.stringify(played));
+        const onSpin = jest.fn();
+        render(<MantineProvider><PlayTab session={{status: "ok", session: played.session}} sessionId={played.session.sessionId} onNewSession={() => undefined} onSpin={onSpin} onFindAnyWin={() => undefined} onFindSymbolWin={() => undefined} onFindFreeGames={() => undefined} /></MantineProvider>);
+        expect(screen.getAllByText("large").length).toBeGreaterThan(0);
+        expect(screen.getAllByText("Bonus remaining").length).toBeGreaterThan(0);
+        expect(screen.getByRole("button", {name: "Continue round"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Select bet 0.05"})).toBeDisabled();
+        fireEvent.click(screen.getByRole("button", {name: "Continue round"}));
+        expect(onSpin).toHaveBeenCalledWith(0.05, undefined, "stepwise");
+    } finally {
+        await service.reset();
+    }
+});

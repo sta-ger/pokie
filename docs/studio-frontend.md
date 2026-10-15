@@ -415,3 +415,10 @@ multiplied-component counts from the runtime observations.
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
 contracts, supported compositions, authoring/build/extraction/PAR workflow,
 logical-round accounting, continuation and durability boundaries.
+
+## Weighted bonus authoring
+
+See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
+payout/duration units, authoring/interchange, restoration/replay, statistics and
+custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
+maps every mandatory family separately from arbitrary custom callbacks.

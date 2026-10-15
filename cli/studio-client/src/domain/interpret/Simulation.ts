@@ -1,3 +1,4 @@
+import type {WeightedBonusStatistics} from "../../../../../src/session/videoslot/authored/WeightedBonus.js";
 import type {ReelSequenceStatistics} from "../../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {SimulationReport, SimulationReportSet, SimulationReportBreakdownComponent, StudioSimulationJobView} from "../../api/types.js";
 
@@ -62,6 +63,7 @@ export type SingleSimulationReportView = {
     sampling?: SimulationReport["sampling"];
     logicalRounds?: SimulationReport["logicalRounds"];
     modifiers?: SimulationReport["modifiers"];
+    weightedBonus?: WeightedBonusStatistics;
     reelSequences?: ReelSequenceStatistics[];
     game: {id: string; name: string; version: string};
     rounds: number;
@@ -127,6 +129,7 @@ export function describeSimulationReport(
         sampling: report.sampling,
         logicalRounds: report.logicalRounds,
         modifiers: report.modifiers,
+        weightedBonus: report.weightedBonus,
         reelSequences: report.reelSequences,
         rounds: report.rounds,
         requestedRounds: report.requestedRounds,

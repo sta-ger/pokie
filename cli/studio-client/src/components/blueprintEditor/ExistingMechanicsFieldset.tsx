@@ -1,3 +1,4 @@
+import {WeightedBonusFieldset} from "./WeightedBonusFieldset";
 import {BoundedMechanicsFieldset} from "./BoundedMechanicsFieldset";
 import {WildModifiersFieldset} from "./WildModifiersFieldset";
 import {validateAuthoredMechanics} from "../../../../../src/generated/validateAuthoredMechanics";
@@ -31,6 +32,7 @@ export function ExistingMechanicsFieldset({blueprint, mutate}: {blueprint: Recor
     });
     return <Stack>
         <IssueList title="Mechanic validation" issues={issues} />
+        <WeightedBonusFieldset blueprint={blueprint} mutate={mutate} />
         <BoundedMechanicsFieldset blueprint={blueprint} mutate={mutate} />
         <WildModifiersFieldset blueprint={blueprint} mutate={mutate} />
         <PageSection legend="Hold & Win">

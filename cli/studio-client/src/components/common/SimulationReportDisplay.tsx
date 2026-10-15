@@ -1,3 +1,4 @@
+import {describeWeightedBonusCoverage} from "../../../../../src/session/videoslot/authored/WeightedBonus";
 import {describeSequenceVariantCoverage} from "../../../../../src/session/videoslot/combinations/WeightedSequenceVariant";
 import {List, Table, Text} from "@mantine/core";
 import type {SimulationReportView} from "../../domain/interpret/Simulation";
@@ -29,6 +30,12 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
             </PageSection>}
             {view.sampling && <PageSection legend="Logical round sampling">Completed logical rounds: {view.rounds}; accepted subrounds: {view.sampling.acceptedSubrounds}; carried subrounds: {view.sampling.carriedSubrounds ?? 0}; excluded unfinished/restored subrounds: {view.sampling.excludedSubrounds}. Independent session trajectory per worker. Monetary totals include every observed subround.</PageSection>}
             {view.modifiers && <PageSection legend="Screen modifiers">Executed steps: {view.modifiers.steps}; rule applications: {view.modifiers.ruleApplications}; sticky steps: {view.modifiers.stickySteps}; multiplied components: {view.modifiers.multipliedComponents}</PageSection>}
+            {view.weightedBonus && <PageSection legend={`Weighted bonus ${view.weightedBonus.tableId}`}>
+                <Text>{view.weightedBonus.selections} eligible selections; {view.weightedBonus.completed} completed; {view.weightedBonus.incomplete} incomplete net of carried tails. Actual frequency = count / eligible selections.</Text>
+                <Table><Table.Thead><Table.Tr>{["Outcome ID", "Weight", "Configured probability", "Count", "Actual frequency", "Coverage"].map(label => <Table.Th key={label}>{label}</Table.Th>)}</Table.Tr></Table.Thead>
+                    <Table.Tbody>{view.weightedBonus.outcomes.map(o => <Table.Tr key={o.id}><Table.Td>{o.id}</Table.Td><Table.Td>{o.weight}</Table.Td><Table.Td>{o.probability}</Table.Td><Table.Td>{o.count}</Table.Td><Table.Td>{o.frequency}</Table.Td><Table.Td>{describeWeightedBonusCoverage(o.weight, o.uncovered)}</Table.Td></Table.Tr>)}</Table.Tbody>
+                </Table>
+            </PageSection>}
             {view.reelSequences?.map(reel => <PageSection key={reel.reelIndex} legend={`Weighted reel ${reel.reelIndex + 1}`}>
                 <Text>{reel.context}: {reel.selections} selections</Text>
                 <Text size="sm">Observed frequency = count / selections.</Text>

@@ -53,3 +53,22 @@ it("displays completed logical rounds separately from accepted and unfinished su
     const result = render(<MantineProvider><SimulationReportDisplay view={view} /></MantineProvider>);
     expect(result.getByText(/Completed logical rounds: 2; accepted subrounds: 9; carried subrounds: 1; excluded unfinished\/restored subrounds: 1/)).toBeInTheDocument();
 });
+
+it("forwards real bonus selection statistics through the API view and rendered report", async () => {
+    const api = await import("../../../../../../src/index");
+    const {weightedBonusBlueprint} = await import("../../../../../v2/fixtures/WeightedBonusGame");
+    const {generatedMechanicsGame, mechanicsSession} = await import("../../../../../v2/fixtures/ExistingMechanicsGame");
+    const blueprint = weightedBonusBlueprint(),
+        game = generatedMechanicsGame(blueprint);
+    const statistics = new api.AggregateSimulationRunner(mechanicsSession(game, 0), 1).run().getStatistics();
+    const report = new api.SimulationReportBuilder().build({manifest: blueprint.manifest, requestedRounds: 1, statistics, durationMs: 1});
+    const view = describeSimulationReport(JSON.parse(JSON.stringify(report)));
+    const result = render(<MantineProvider><SimulationReportDisplay view={view} /></MantineProvider>);
+    expect(result.getByText("Weighted bonus prizes")).toBeVisible();
+    expect(result.getByText(/1 eligible selections; 0 completed; 1 incomplete/)).toBeVisible();
+    const large = result.getByText("large").closest("tr")!;
+    expect(within(large).getByText("0.75")).toBeVisible();
+    expect(within(large).getByText("observed")).toBeVisible();
+    expect(result.getByText("unobserved")).toBeVisible();
+    expect(result.getByText("zero weight")).toBeVisible();
+});

@@ -1,3 +1,5 @@
+import {AUTHORED_BOUNDED_MECHANIC_CATALOG} from "../../../../../../src/generated/AuthoredMechanicCatalog";
+import {boundedBlueprint} from "../../../../../v2/fixtures/BoundedMechanicsGame";
 import {fireEvent, screen, waitFor} from "@testing-library/react";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -126,5 +128,22 @@ it.each(["respins", "collection"] as const)("repairs object-valued %s numeric dr
         }
         expect(JSON.parse(editor.value)).toEqual(draft);
     }
+    expect(writes).not.toHaveBeenCalled();
+});
+
+it.each(AUTHORED_BOUNDED_MECHANIC_CATALOG)("%s: Home JSON retains catalogue rules and blocks invalid publication", async id => {
+    const writes = home(),
+        blueprint = boundedBlueprint(id);
+    fireEvent.change(await jsonEditor(), {target: {value: JSON.stringify(blueprint)}});
+    fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
+    form();
+    expect(JSON.parse((await jsonEditor()).value).mechanics).toEqual(blueprint.mechanics);
+    const invalid = {...blueprint, mechanics: {...blueprint.mechanics, unknown: {}}};
+    fireEvent.change(await jsonEditor(), {target: {value: JSON.stringify(invalid)}});
+    fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
+    form();
+    expect((await screen.findAllByText(/mechanics\.unknown: unknown field/)).length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeDisabled());
+    expect(JSON.parse((await jsonEditor()).value).mechanics).toEqual(invalid.mechanics);
     expect(writes).not.toHaveBeenCalled();
 });

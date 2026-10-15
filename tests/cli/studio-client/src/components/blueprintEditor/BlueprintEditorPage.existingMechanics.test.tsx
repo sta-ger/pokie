@@ -1,3 +1,5 @@
+import {AUTHORED_MECHANIC_CATALOG} from "../../../../../../src/generated/AuthoredMechanicCatalog";
+import {existingMechanicsBlueprint} from "../../../../../v2/fixtures/ExistingMechanicsGame";
 import {MantineProvider} from "@mantine/core";
 import {fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -247,4 +249,38 @@ it.each([{holdAndWin: {}}, {jackpot: {}}])("F3 opens malformed Project mechanics
     expect(save).not.toHaveBeenCalled();
     expect(mutate).not.toHaveBeenCalled();
     expect(blueprint.mechanics).toEqual(mechanics);
+});
+
+it.each(AUTHORED_MECHANIC_CATALOG)("$id: Home JSON retains catalogue rules and blocks invalid publication", async row => {
+    const blueprint = existingMechanicsBlueprint(row),
+        writes = jest.fn();
+    const fetchImpl: FetchLike = (url, init) => {
+        if (url === "/api/home/blueprints/validate") {
+            const issues = new GameBlueprintValidator().validate(JSON.parse(String(init?.body)).blueprint);
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: issues.some(issue => issue.severity === "error") ? "invalid" : "ok", errors: issues.filter(issue => issue.severity === "error"), warnings: []})});
+        }
+        if (!init?.method || init.method === "GET") return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
+        writes(url);
+        return Promise.reject(new Error(`Unexpected write: ${url}`));
+    };
+    renderRoutedApp({fetchImpl});
+    fireEvent.click(screen.getByRole("button", {name: /Show advanced options/}));
+    fireEvent.click(await screen.findByLabelText("JSON"));
+    fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: JSON.stringify(blueprint)}});
+    fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
+    fireEvent.click(screen.getByLabelText("Form"));
+    fireEvent.click(screen.getByRole("tab", {name: /^Bets/}));
+    fireEvent.click(screen.getByLabelText("JSON"));
+    const retained = JSON.parse((screen.getByLabelText("Blueprint JSON") as HTMLTextAreaElement).value);
+    expect(retained.mechanics).toEqual(blueprint.mechanics);
+    if (row.modes) expect(retained.betModes).toEqual(blueprint.betModes);
+    retained.mechanics.unknown = {};
+    fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: JSON.stringify(retained)}});
+    fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
+    fireEvent.click(screen.getByLabelText("Form"));
+    expect((await screen.findAllByText(/mechanics\.unknown: unknown field/)).length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeDisabled());
+    fireEvent.click(screen.getByLabelText("JSON"));
+    expect(JSON.parse((screen.getByLabelText("Blueprint JSON") as HTMLTextAreaElement).value).mechanics).toEqual(retained.mechanics);
+    expect(writes).not.toHaveBeenCalled();
 });

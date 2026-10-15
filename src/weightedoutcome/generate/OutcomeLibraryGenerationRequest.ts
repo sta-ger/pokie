@@ -4,7 +4,7 @@ import type {ValidationRule} from "../../validation/ValidationRule.js";
 import fs from "fs";
 import path from "path";
 import {randomUUID} from "crypto";
-import {estimateExactOutcomeSpaceSize} from "./estimateExactOutcomeSpaceSize.js";
+import {assertIndependentGridEnumerationSupported, estimateExactOutcomeSpaceSize} from "./estimateExactOutcomeSpaceSize.js";
 import type {OutcomeSpaceEstimate} from "./OutcomeSpaceEstimate.js";
 import type {ExactEnumerationCheckpoint} from "./WeightedOutcomeLibraryGenerationCancelledError.js";
 import {WeightedOutcomeLibraryGenerationError} from "./WeightedOutcomeLibraryGenerationError.js";
@@ -529,6 +529,7 @@ export function resolveOutcomeLibraryGenerationIdentity(request: OutcomeLibraryG
 
 /** Resolves a request once, so estimate and execution select exactly the same strategy and work. */
 export function prepareOutcomeLibraryGeneration(request: OutcomeLibraryGenerationRequest): ResolvedOutcomeLibraryGenerationRequest {
+    assertIndependentGridEnumerationSupported(request.game);
     const identifiedRequest = resolveOutcomeLibraryGenerationIdentity(request);
     if (typeof identifiedRequest.game.createExactEnumerationSession !== "function") {
         throw new WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-unsupported", `"${request.game.getManifest().id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`);
@@ -546,6 +547,7 @@ export function prepareOutcomeLibraryGenerationFromEstimate(
     estimate: OutcomeSpaceEstimate,
     request: OutcomeLibraryGenerationRequest,
 ): ResolvedOutcomeLibraryGenerationRequest {
+    assertIndependentGridEnumerationSupported(request.game);
     const identifiedRequest = resolveOutcomeLibraryGenerationIdentity(request);
     const destination = resolveOutcomeLibraryGenerationDestination(identifiedRequest.outputDestination, identifiedRequest.outputDestinationSafety);
     const preflight = preflightOutcomeLibraryGenerationFromEstimate(estimate, identifiedRequest);

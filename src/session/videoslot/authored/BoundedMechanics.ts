@@ -14,8 +14,9 @@ export type AuthoredCollection = {
     reset: "zero" | "subtract-threshold";
     payout: number;
 };
-export type BoundedMechanics = {cascade?: AuthoredCascade; respins?: AuthoredRespins; collection?: AuthoredCollection};
+export type BoundedMechanics = {weightedBonus?: import("./WeightedBonus.js").WeightedBonus; cascade?: AuthoredCascade; respins?: AuthoredRespins; collection?: AuthoredCollection};
 export type BoundedMechanicObservation = {
+    weightedBonus?: import("./WeightedBonus.js").WeightedBonusObservation;
     collection?: {value: number; cap: number; threshold: number; contribution: number; triggered: boolean; reset: AuthoredCollection["reset"]; payout: number};
     respins?: {remaining: number; executed: number; granted: number; limit: number};
     cascade?: {winningCascades: number; evaluatedSteps: number};
