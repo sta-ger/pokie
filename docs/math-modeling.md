@@ -274,6 +274,9 @@ Each side is either `{present: false, provenance: ...}` or
 `{present: true, value: <exact JSON value>, provenance: ...}`. Missing values are
 never serialized as null or zero. Provenance records authority, authored
 presence/value, and `authored`, `effective`, `defaulted` or `unknown` status.
+For package inputs, authored presence means presence in the supplied descriptor
+declaration, not recovered pre-build authoring instructions. Original authoring
+that the generated package discarded remains unavailable.
 Numeric equality is exact binary64 equality, without integer coercion, rounding
 or probability tolerance. Stakes such as `0.05`, `7.5`, `1e-7`, zero weights and
 tiny positive weights survive JSON serialization. Non-finite numbers, accessors,
