@@ -4,6 +4,7 @@ import {WinEvaluationContext} from "./WinEvaluationContext.js";
 import {WinMultiplierBreakdown} from "./WinMultiplierBreakdown.js";
 
 export class MultiplierResolver<T extends string | number | symbol = string> {
+    private readonly uniquePositions: boolean;
     private readonly symbolMultipliers: Partial<Record<T, number>>;
     private readonly source: string;
     private readonly combine: (accumulated: number, next: number) => number;
@@ -12,10 +13,12 @@ export class MultiplierResolver<T extends string | number | symbol = string> {
 
     constructor(symbolMultipliers: Partial<Record<T, number>>, options?: {
         source?: string;
+        uniquePositions?: boolean;
         combine?: (accumulated: number, next: number) => number;
         identity?: number;
         supportedComponentTypes?: string[];
     }) {
+        this.uniquePositions = options?.uniquePositions ?? false;
         this.symbolMultipliers = symbolMultipliers;
         this.source = options?.source ?? "symbol-multipliers";
         this.combine = options?.combine ?? ((a, b) => a * b);
@@ -42,7 +45,7 @@ export class MultiplierResolver<T extends string | number | symbol = string> {
         context: WinEvaluationContext<T>,
     ): {winAmount: number; breakdown: WinMultiplierBreakdown[]} {
         const symbols = context.getSymbolsCombination().toMatrix();
-        const positions = component.getWinningPositions();
+        const positions = component.getWinningPositions().filter((position, index, all) => !this.uniquePositions || all.findIndex(other => other[0] === position[0] && other[1] === position[1]) === index);
         const matchedValues = positions
             .map(([reelId, rowId]) => {
                 const symbolId = symbols[reelId]?.[rowId];
@@ -59,6 +62,7 @@ export class MultiplierResolver<T extends string | number | symbol = string> {
         if (matchedValues.length === 0) {
             return {winAmount: component.getWinAmount(), breakdown: []};
         }
+        if (!Number.isFinite(multiplier) || !Number.isFinite(component.getWinAmount() * multiplier)) throw new Error("Win multiplier overflow.");
         return {
             winAmount: component.getWinAmount() * multiplier,
             breakdown: [

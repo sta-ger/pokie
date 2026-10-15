@@ -1,3 +1,4 @@
+import type {ScreenModifiers} from "./videoslot/modifiers/ScreenModifiers.js";
 import type {WeightedSequenceVariant} from "./videoslot/combinations/WeightedSequenceVariant.js";
 import {ScreenProjection} from "./videoslot/coordinates/ScreenProjection.js";
 import type {ScreenGeometry} from "./videoslot/coordinates/ScreenGeometry.js";
@@ -5,7 +6,7 @@ import type {GameSessionHandling} from "./GameSessionHandling.js";
 
 export type SessionStateSchema =
     | {readonly kind: "base" | "custom"}
-    | {readonly kind: "seeded-video-slot"; readonly weightedReels?: readonly {reelIndex: number; variants: readonly WeightedSequenceVariant<string | number>[]}[]; readonly reels?: number; readonly symbols?: readonly (string | number)[]; readonly screenGeometry?: ScreenGeometry}
+    | {readonly kind: "seeded-video-slot"; readonly modifiers?: ScreenModifiers<string | number>; readonly rows?: number; readonly wilds?: readonly (string | number)[]; readonly weightedReels?: readonly {reelIndex: number; variants: readonly WeightedSequenceVariant<string | number>[]}[]; readonly reels?: number; readonly symbols?: readonly (string | number)[]; readonly screenGeometry?: ScreenGeometry}
     | {readonly kind: "free-games"; readonly base: SessionStateSchema}
     | {readonly kind: "bet-modes"; readonly stakeModifying?: true; readonly base: SessionStateSchema}
     | {readonly kind: "hold-and-win"; readonly bets?: readonly number[]; readonly reels: number; readonly rows: number; readonly initialRespins: number; readonly symbolEffects: Readonly<Record<string, unknown>>; readonly base: SessionStateSchema}
@@ -41,7 +42,7 @@ export function sessionStateSchemasMatch(first: SessionStateSchema, second: Sess
         return second !== undefined && "base" in second && JSON.stringify(canonicalSchema({...first, base: undefined, ...(first.kind === "bet-modes" ? {stakeModifying: undefined} : {})})) === JSON.stringify(canonicalSchema({...second, base: undefined, ...(second.kind === "bet-modes" ? {stakeModifying: undefined} : {})})) && sessionStateSchemasMatch(first.base, second.base);
     }
     if (first.kind === "seeded-video-slot" && second?.kind === "seeded-video-slot") {
-        return JSON.stringify(first.weightedReels?.map(reel => [reel.reelIndex, reel.variants.map(variant => [variant.id, variant.weight, variant.symbols])])) === JSON.stringify(second.weightedReels?.map(reel => [reel.reelIndex, reel.variants.map(variant => [variant.id, variant.weight, variant.symbols])])) && JSON.stringify(nonidentityGeometry(first.screenGeometry)) === JSON.stringify(nonidentityGeometry(second.screenGeometry));
+        return JSON.stringify(canonicalSchema(first.modifiers)) === JSON.stringify(canonicalSchema(second.modifiers)) && JSON.stringify(first.weightedReels?.map(reel => [reel.reelIndex, reel.variants.map(variant => [variant.id, variant.weight, variant.symbols])])) === JSON.stringify(second.weightedReels?.map(reel => [reel.reelIndex, reel.variants.map(variant => [variant.id, variant.weight, variant.symbols])])) && JSON.stringify(nonidentityGeometry(first.screenGeometry)) === JSON.stringify(nonidentityGeometry(second.screenGeometry));
     }
     return true;
 }

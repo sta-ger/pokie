@@ -1,0 +1,791 @@
+import fs from "node:fs";
+import path from "node:path";
+import * as api from "@fromstan/pokie";
+import {generatedMechanicsGame, mechanicsSession} from "./fixtures/ExistingMechanicsGame.js";
+import {StudioPlayService} from "../../cli/studio/runtime/StudioPlayService.js";
+import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";
+import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprintService.js";
+import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
+import {BuildCommand} from "../../cli/commands/BuildCommand.js";
+import {ParCommand} from "../../cli/commands/ParCommand.js";
+import {SimCommand} from "../../cli/commands/SimCommand.js";
+import {ReportCommand} from "../../cli/commands/ReportCommand.js";
+import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
+import {buildSimulationReportDownload} from "../../cli/studio/simulation/buildSimulationReportDownload.js";
+
+const catalogue = api.AUTHORED_MODIFIER_CATALOG;
+function fixture(id: (typeof catalogue)[number] = "multiplier"): api.GameBlueprint {
+    return JSON.parse(
+        fs.readFileSync(path.join(__dirname, `../../examples/blueprints/wild-${id}.blueprint.json`), "utf8"),
+    );
+}
+const errors = (b: unknown) =>
+    new api.GameBlueprintValidator().validate(b).filter((issue) => issue.severity === "error");
+function directConfig(blueprint: api.GameBlueprint): api.VideoSlotConfig {
+    const config = new api.VideoSlotConfig();
+    config.setReelsNumber(blueprint.reels);
+    config.setReelsSymbolsNumber(blueprint.rows);
+    config.setAvailableBets(blueprint.availableBets!);
+    config.setWildSymbols(blueprint.wilds!);
+    config.setScatterSymbols(blueprint.scatters!);
+    config.setAvailableSymbols(blueprint.symbols);
+    config.setScreenGeometry(blueprint.screenGeometry);
+    const paytable = new api.Paytable(config.getAvailableBets());
+    for (const [symbol, payouts] of Object.entries(blueprint.paytable)) for (const [count, amount] of Object.entries(payouts)) paytable.setPayoutForSymbol(symbol, Number(count), amount);
+    config.setPaytable(paytable);
+    config.setSymbolsSequences(blueprint.reelStrips!.map((strip) => new api.SymbolsSequence().fromArray(strip)));
+    config.setScreenModifiers(blueprint.mechanics!.modifiers);
+    config.setBet(0.05);
+    config.setCreditsAmount(10000);
+    return config;
+}
+
+describe("V2C-13 finite modifier authoring", () => {
+    let directory: string;
+    beforeEach(() => {
+        directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c13-"));
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+        jest.spyOn(console, "error").mockImplementation(() => undefined);
+    });
+    afterEach(() => {
+        jest.restoreAllMocks();
+        fs.rmSync(directory, {recursive: true, force: true});
+    });
+
+    it("requires exact catalogue/example coverage", () => {
+        const files = fs
+            .readdirSync(path.join(__dirname, "../../examples/blueprints"))
+            .filter((name) => name.startsWith("wild-") && name.endsWith(".blueprint.json"));
+        expect(files.map((name) => name.slice(5, -15)).sort()).toEqual([...catalogue].sort());
+        expect(catalogue).toEqual(["expanding", "sticky", "restricted", "multiplier", "transform", "reel"]);
+    });
+
+    it.each(catalogue.flatMap((id) => (["lines", "ways", "clusters"] as const).map((type) => ({id, type}))))(
+        "$id/$type: CLI/services, Play, generated CJS/TS, XLSX, extraction, sim/report/replay preserve rules",
+        async ({id, type}) => {
+            const blueprint = fixture(id);
+            blueprint.winModel = type === "clusters" ? {type, minimumClusterSize: 3} : {type};
+            expect(errors(blueprint)).toEqual([]);
+            const source = path.join(directory, "source.json");
+            fs.writeFileSync(source, JSON.stringify(blueprint));
+            expect(await new ValidateCommand().run([source])).toBe(0);
+            expect(
+                await new BuildCommand("1.3.0").run([
+                    source,
+                    "--target",
+                    "tsPackage",
+                    "--out",
+                    path.join(directory, "built"),
+                ]),
+            ).toBe(0);
+            const game = generatedMechanicsGame(blueprint);
+            const extracted = await new api.PackageBlueprintExtraction().extract(game);
+            expect(extracted.status).toBe("complete");
+            expect(extracted.blueprint!.mechanics).toEqual(blueprint.mechanics);
+            const workbook = path.join(directory, "rules.xlsx"),
+                importedPath = path.join(directory, "imported.json");
+            expect(await new ParCommand("1.3.0").run(["export", source, "--out", workbook])).toBe(0);
+            expect(
+                await new ParCommand("1.3.0").run(["import", workbook, "--out", importedPath, "--format", "json"]),
+            ).toBe(0);
+            const imported = JSON.parse(fs.readFileSync(importedPath, "utf8")) as api.GameBlueprint;
+            expect(imported.mechanics).toEqual(blueprint.mechanics);
+            expect(api.computeBlueprintHash(imported)).toBe(api.computeBlueprintHash(blueprint));
+            const studioBlueprint = new StudioBlueprintService(
+                "1.3.0",
+                path.join(directory, "studio"),
+                new StudioHomeService("1.3.0"),
+            );
+            expect(studioBlueprint.validate(blueprint).status).toBe("ok");
+            const savedPath = path.join(directory, "saved.json");
+            expect(studioBlueprint.save(savedPath, blueprint, false).status).toBe("ok");
+            expect(studioBlueprint.load(savedPath)).toMatchObject({
+                status: "ok",
+                blueprint: {mechanics: blueprint.mechanics},
+            });
+            const games = [
+                game,
+                generatedMechanicsGame(blueprint, true),
+                generatedMechanicsGame(extracted.blueprint!),
+                generatedMechanicsGame(imported),
+            ];
+            const config = directConfig(blueprint);
+            const sessions = [
+                ...games.map((g) => mechanicsSession(g)),
+                new api.VideoSlotSession(
+                    config,
+                    new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(31)),
+                    new api.VideoSlotWinCalculator(
+                        config,
+                        undefined,
+                        undefined,
+                        type === "clusters" ? new api.ClusterWinCalculator(config, 3) : undefined,
+                        undefined,
+                        type === "ways" ? new api.WaysWinCalculator(config) : undefined,
+                        {
+                            minimumClusterSize: 3,
+                            aggregationPolicy: new api.SelectedEvaluatorGroupWinAggregationPolicy(
+                                {clusters: "cluster", ways: "ways", lines: "line"}[type],
+                            ),
+                        },
+                    ),
+                ),
+            ];
+            for (const bet of [0.05, 7.5, 1e-7]) {
+                for (let round = 0; round < 4; round++) {
+                    sessions.forEach((session) => {
+                        session.setBet(bet);
+                        session.play();
+                    });
+                    const expected = sessions[0];
+                    sessions.slice(1).forEach((session) => {
+                        expect(session.getSymbolsCombination().toMatrix()).toEqual(
+                            expected.getSymbolsCombination().toMatrix(),
+                        );
+                        expect(session.getWinAmount()).toBe(expected.getWinAmount());
+                        expect(session.toSessionState()).toEqual(expected.toSessionState());
+                    });
+                    const snapshot = JSON.parse(JSON.stringify(expected.toSessionState()));
+                    const restored = mechanicsSession(game);
+                    restored.fromSessionState(snapshot).setBet(bet);
+                    restored.setCreditsAmount(expected.getCreditsAmount());
+                    expected.play();
+                    restored.play();
+                    expect(restored.toSessionState()).toEqual(expected.toSessionState());
+                    expect(new api.VideoSlotSessionSerializer().getRoundData(restored)).toEqual(
+                        new api.VideoSlotSessionSerializer().getRoundData(expected),
+                    );
+                    // Keep the remaining parity participants on the same step.
+                    sessions.slice(1).forEach((session) => session.play());
+                }
+            }
+            const replay = new api.ReplayRecorder().record({game, seed: "31", round: 3});
+            expect(new api.ReplayRecorder().record({game: games[2], seed: "31", round: 3})).toMatchObject({
+                totalBet: replay.totalBet,
+                totalWin: replay.totalWin,
+                screen: replay.screen,
+            });
+            const reportPath = path.join(directory, "simulation.json");
+            await new SimCommand(() => Promise.resolve(game)).run([
+                directory,
+                "--rounds",
+                "8",
+                "--seed",
+                "31",
+                "--out",
+                reportPath,
+            ]);
+            const report = JSON.parse(fs.readFileSync(reportPath, "utf8")) as api.SimulationReport;
+            expect(report.modifiers?.steps).toBe(8);
+            for (const format of ["json", "markdown", "html"] as const) expect(buildSimulationReportDownload(report, "rules", format).body).toMatch(/modifiers/i);
+            await new ReportCommand().run([
+                reportPath,
+                "--format",
+                "html",
+                "--out",
+                path.join(directory, "report.html"),
+            ]);
+            const replayPath = path.join(directory, "replay.json");
+            await new ReplayCommand(() => Promise.resolve(game)).run([
+                directory,
+                "--round",
+                "3",
+                "--seed",
+                "31",
+                "--out",
+                replayPath,
+            ]);
+            expect(JSON.parse(fs.readFileSync(replayPath, "utf8")).screen).toEqual(replay.screen);
+            const play = new StudioPlayService(() => Promise.resolve(game));
+            try {
+                const created = await play.newSession(directory, 31);
+                if (created.status !== "ok") throw new Error(JSON.stringify(created));
+                expect(
+                    (
+                        await play.spin(created.session.sessionId, undefined, 0.05, undefined, {
+                            requestId: "play",
+                            roundId: "play",
+                            delivery: "composite",
+                        })
+                    ).status,
+                ).toBe("ok");
+            } finally {
+                await play.reset();
+            }
+            expect(api.buildGameModelProjection(blueprint).mechanics).toMatchObject({
+                status: "available",
+                data: blueprint.mechanics,
+            });
+            expect(() => api.resolveCanonicalWasmGameModel(blueprint)).toThrow(/modifiers/);
+            if (id === "sticky") expect(game.createExactEnumerationSession).toBeUndefined();
+            else expect(game.createExactEnumerationSession).toBeDefined();
+        },
+    );
+
+    it.each(["lines", "ways", "clusters"] as const)(
+        "%s: hand-calculated overlapping transform and restricted multiplier wilds pay 3",
+        (type) => {
+            const b = fixture("transform");
+            b.winModel = type === "clusters" ? {type, minimumClusterSize: 3} : {type};
+            const session = mechanicsSession(generatedMechanicsGame(b));
+            const before = session.getCreditsAmount();
+            session.play();
+            expect(session.getSymbolsCombination().toMatrix()).toEqual([["A"], ["W2"], ["W3"]]);
+            expect(session.getWinAmount()).toBe(3); // 0.05 × 10 × 2 × 3
+            expect(session.getCreditsAmount()).toBe(before - 0.05 + 3);
+            const components = session.getWinEvaluationResult().getWinComponents();
+            expect(components).toHaveLength(1);
+            expect(components[0].getWinAmount()).toBe(3);
+            expect(components[0].getWinningPositions()).toEqual([
+                [0, 0],
+                [1, 0],
+                [2, 0],
+            ]);
+            expect(components[0].getMultiplierBreakdown()).toEqual([
+                {
+                    source: "authored-wild-product",
+                    positions: [
+                        [0, 0],
+                        [1, 0],
+                        [2, 0],
+                    ],
+                    values: [2, 3],
+                    combinedMultiplier: 6,
+                },
+            ]);
+            const artifact = api.buildRoundArtifactFromSession(session, {
+                roundId: "known",
+                provenance: {game: b.manifest, pokieVersion: "1.3.0"},
+            });
+            expect(artifact.totalWin).toBe(3);
+            expect(new api.RoundArtifactValidator().validate(artifact)).toEqual([]);
+        },
+    );
+
+    it("zero factors, forbidden substitutions, losing multipliers, wild own paytables and multiple lines", () => {
+        const b = fixture();
+        b.mechanics!.modifiers!.wilds[0].factor = 0;
+        let session = mechanicsSession(generatedMechanicsGame(b));
+        session.play();
+        expect(session.getWinAmount()).toBe(0);
+        b.mechanics!.modifiers!.wilds[0].factor = 2;
+        b.mechanics!.modifiers!.wilds[0].substitutes = [];
+        session = mechanicsSession(generatedMechanicsGame(b));
+        session.play();
+        expect(session.getWinAmount()).toBe(0);
+        b.mechanics!.modifiers!.wilds[0].substitutes = ["A"];
+        b.reelStrips = [["B"], ["W2"], ["W3"]];
+        session = mechanicsSession(generatedMechanicsGame(b));
+        session.play();
+        expect(session.getWinAmount()).toBe(0);
+        b.reelStrips = [["W2"], ["W2"], ["W2"]];
+        b.paytable = {W2: {3: 5}};
+        session = mechanicsSession(generatedMechanicsGame(b));
+        session.play();
+        expect(session.getWinAmount()).toBe(0); // Existing line contract: an all-wild line has no regular target.
+        b.reelStrips = [
+            ["A", "A"],
+            ["W2", "W2"],
+            ["W3", "W3"],
+        ];
+        b.rows = 2;
+        b.paytable = {A: {3: 10}};
+        session = mechanicsSession(generatedMechanicsGame(b));
+        session.play();
+        expect(session.getWinAmount()).toBe(6);
+    });
+
+    it("ordered transform → expansion → sticky captures identity; expiry, reads and insufficient credits do not renew it", () => {
+        const b = fixture("sticky");
+        b.rows = 2;
+        b.reelStrips = [
+            ["A", "A"],
+            ["B", "B"],
+            ["W3", "W3"],
+        ];
+        b.mechanics!.modifiers!.rules = [
+            {id: "make", type: "transform", space: "evaluated", positions: [[1, 0]], from: "B", to: "W2"},
+            {id: "expand", type: "expand", space: "evaluated", positions: [[1, 0]], symbol: "W2"},
+            {id: "retain", type: "sticky", space: "evaluated", positions: [[1, 1]], symbol: "W2", lifetime: 3},
+        ];
+        const config = directConfig(b),
+            session = new api.VideoSlotSession(
+                config,
+                new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(31)),
+            );
+        session.play();
+        expect(session.getWinAmount()).toBe(6);
+        const captured = session.toSessionState().modifierState!;
+        expect(captured.cells).toEqual([{ruleId: "retain", position: [1, 1], symbol: "W2", factor: 2, remaining: 2}]);
+        const credits = session.getCreditsAmount();
+        session.setCreditsAmount(0);
+        session.play();
+        expect(session.toSessionState().modifierState).toEqual(captured);
+        new api.VideoSlotSessionSerializer().getRoundData(session);
+        session.getModifierObservation();
+        expect(session.toSessionState().modifierState).toEqual(captured);
+        session.setCreditsAmount(credits);
+        session.play();
+        expect(session.toSessionState().modifierState!.cells[0].remaining).toBe(1);
+        session.play();
+        expect(session.toSessionState().modifierState!.cells).toEqual([]);
+        session.play();
+        expect(session.toSessionState().modifierState!.cells[0].remaining).toBe(2);
+        const reversed = structuredClone(b);
+        reversed.mechanics!.modifiers!.rules.reverse();
+        expect(api.computeGameBlueprintHash(reversed)).not.toBe(api.computeGameBlueprintHash(b));
+        expect(() =>
+            mechanicsSession(generatedMechanicsGame(reversed)).fromSessionState(session.toSessionState()),
+        ).toThrow(/model/);
+    });
+
+    it("JSON restoration into fresh public handlers, duplicate delivery, settlement failure/retry and audit replay advance sticky once", async () => {
+        const game = generatedMechanicsGame(fixture("sticky"));
+        const repository = new api.InMemorySessionRepository(),
+            wallet = new api.InMemoryWallet(10000);
+        const initial = api.captureInitialPokieSessionState(
+            {seed: 31},
+            mechanicsSession(game),
+            game.getSessionSerializer!(),
+            true,
+            game,
+        );
+        expect(initial.executionState).toBe("durably-restorable");
+        await repository.save("s", initial);
+        const idempotency = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>(),
+            operations = new api.InMemorySpinOperationLog();
+        const reconciliation = new api.SpinReconciliationService(
+            wallet,
+            repository,
+            idempotency,
+            operations,
+            true,
+            false,
+            0,
+            undefined,
+            undefined,
+            game,
+        );
+        const handler = () =>
+            new api.SpinCommandHandler(game, repository, wallet, idempotency, operations, true, reconciliation);
+        const credit = jest.spyOn(wallet, "credit").mockRejectedValueOnce(new Error("settlement unavailable"));
+        const command = {kind: "spin" as const, sessionId: "s", requestId: "retry", bet: 0.05};
+        expect((await handler().execute(command)).status).toBe("settlement-error");
+        credit.mockRestore();
+        const first = await handler().execute(command);
+        if (first.status !== "played") throw new Error(JSON.stringify(first));
+        expect(
+            (first.state.featureState as {modifierState: api.ScreenModifierState}).modifierState.cells[0].remaining,
+        ).toBe(2);
+        const duplicate = await handler().execute(command);
+        expect(duplicate).toEqual(first);
+        expect(await repository.load("s")).toEqual(first.state);
+        const persisted = JSON.parse(JSON.stringify(await repository.load("s")));
+        await repository.save("s", persisted);
+        for (let step = 1; step <= 3; step++) {
+            const next = await handler().execute({...command, requestId: `next-${step}`});
+            if (next.status !== "played") throw new Error(JSON.stringify(next));
+            expect(new api.AuditRoundReplay().replay(game, JSON.parse(JSON.stringify(next.audit))).verification).toBe(
+                "verified",
+            );
+            expect(api.validatePersistedSession(next.state, game)).toBeUndefined();
+        }
+        const corrupt = JSON.parse(JSON.stringify(first.state));
+        corrupt.featureState.modifierState.cells[0].position = [9, 0];
+        await repository.save("s", corrupt);
+        const save = jest.spyOn(repository, "save"),
+            debit = jest.spyOn(wallet, "debit");
+        expect((await handler().execute({...command, requestId: "corrupt"})).status).toBe("corrupt-state");
+        expect(save).not.toHaveBeenCalled();
+        expect(debit).not.toHaveBeenCalled();
+    });
+
+    it("rejects invalid fields, coordinates, factors, symbols, lifetimes and duplicate/conflicting identities before publication", () => {
+        const b = fixture("sticky");
+        const rules = b.mechanics!.modifiers!.rules;
+        const invalid = [
+            {...b, mechanics: {modifiers: {...b.mechanics!.modifiers, unknown: true}}},
+            {...b, mechanics: {modifiers: {wilds: new Array(1), rules: []}}},
+            {...b, mechanics: {modifiers: {wilds: [], rules: new Array(1)}}},
+            ...[[3, 0], [-1, 0], [1, 1], [1.5, 0], [1], [1, 0, 0]].map((position) => ({
+                ...b,
+                mechanics: {modifiers: {...b.mechanics!.modifiers, rules: [{...rules[0], positions: [position]}]}},
+            })),
+            ...[0, -1, 1.5].map((lifetime) => ({
+                ...b,
+                mechanics: {modifiers: {...b.mechanics!.modifiers, rules: [{...rules[0], lifetime}]}},
+            })),
+            {...b, mechanics: {modifiers: {...b.mechanics!.modifiers, rules: [rules[0], rules[0]]}}},
+            {...b, mechanics: {modifiers: {wilds: [{symbol: "W2", factor: -1}], rules: []}}},
+            {...b, mechanics: {modifiers: {wilds: [{symbol: "W2", substitutes: ["unknown"]}], rules: []}}},
+            {...b, mechanics: {modifiers: {...b.mechanics!.modifiers, rules: [{...rules[0], symbol: "unknown"}]}}},
+            {
+                ...b,
+                mechanics: {
+                    modifiers: {
+                        wilds: [],
+                        rules: [{id: "reel", type: "reel", symbol: "A", space: "evaluated", positions: [], reels: [3]}],
+                    },
+                },
+            },
+        ];
+        for (const candidate of invalid) {
+            expect(errors(candidate).length).toBeGreaterThan(0);
+            expect(() => api.renderBuiltGameModule(candidate as api.GameBlueprint, "1.3.0")).toThrow();
+            expect(() =>
+                new api.GamePackageGenerator("1.3.0").generate(candidate as api.GameBlueprint, directory),
+            ).toThrow();
+            const config = directConfig(b);
+            expect(() => config.setScreenModifiers(candidate.mechanics.modifiers as api.ScreenModifiers)).toThrow();
+        }
+        expect(fs.readdirSync(directory)).toEqual([]);
+    });
+
+    it("custom multiplier combine callbacks remain uncertified, and custom descriptor diagnostics prevent flattening", async () => {
+        const config = directConfig(fixture());
+        const calculator = new api.VideoSlotWinCalculator(
+            config,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            {multiplierResolver: new api.MultiplierResolver({W2: 2}, {combine: (a, b) => a + b})},
+        );
+        expect(calculator.isStatelessForSessionRestoration()).toBe(false);
+        const generated = generatedMechanicsGame(fixture());
+        const game = {
+            ...generated,
+            getModelDescriptor() {
+                return {
+                    ...generated.getModelDescriptor!(),
+                    sourceKind: "custom" as const,
+                    unsupported: [
+                        {
+                            path: "mechanics.modifiers",
+                            code: "custom-transform",
+                            message: "Custom callback equivalence is not established.",
+                        },
+                    ],
+                };
+            },
+        };
+        expect((await new api.PackageBlueprintExtraction().extract(game)).status).toBe("unsupported");
+    });
+    it.each(["composite", "stepwise"] as const)(
+        "sticky state survives free games and mode changes through %s delivery",
+        async (delivery) => {
+            const b = fixture("sticky");
+            b.mechanics!.jackpot = {
+                pool: {id: "mini", type: "accumulating", seedValue: 5},
+                contribution: {type: "percentage", percentage: 0.1},
+                trigger: {type: "symbol-count", symbolId: "A", minimumCount: 1},
+                award: "single-tier",
+            };
+            b.mechanics!.freeGames = {scatterSymbol: "S", awardsByCount: {3: 0}, retriggerPolicy: "additive"};
+            b.betModes = [
+                {id: "base", runtimeType: "base", isDefault: true},
+                {id: "ante", runtimeType: "ante", costMultiplier: 1.5},
+                {id: "buy", runtimeType: "buyFeature", costMultiplier: 10, forcedFreeGames: 2},
+            ];
+            const game = generatedMechanicsGame(b),
+                repository = new api.InMemorySessionRepository(),
+                wallet = new api.InMemoryWallet(10000);
+            await repository.save(
+                "s",
+                api.captureInitialPokieSessionState(
+                    {seed: 31},
+                    mechanicsSession(game),
+                    game.getSessionSerializer!(),
+                    true,
+                    game,
+                ),
+            );
+            const handler = () => new api.SpinCommandHandler(game, repository, wallet);
+            let result = await handler().execute({
+                kind: "spin",
+                sessionId: "s",
+                requestId: "buy",
+                roundId: "buy",
+                bet: 0.05,
+                mode: "buy",
+                delivery,
+            });
+            if (result.status !== "played") throw new Error(JSON.stringify(result));
+            expect(new api.AuditRoundReplay().replay(game, JSON.parse(JSON.stringify(result.audit))).verification).toBe(
+                "verified",
+            );
+            if (delivery === "stepwise") {
+                for (let cursor = 1; result.state.logicalRound?.status === "pending" && cursor <= 3; cursor++) {
+                    result = await handler().execute({
+                        kind: "spin",
+                        sessionId: "s",
+                        requestId: `continue-${cursor}`,
+                        delivery,
+                        continuation: {roundId: "buy", cursor},
+                    });
+                    if (result.status !== "played") throw new Error(JSON.stringify(result));
+                    expect(result.stake).toBe(0);
+                    expect(
+                        new api.AuditRoundReplay().replay(game, JSON.parse(JSON.stringify(result.audit))).verification,
+                    ).toBe("verified");
+                }
+            }
+            expect(api.validatePersistedSession(result.state, game)).toBeUndefined();
+            const resumed = await handler().execute({
+                kind: "spin",
+                sessionId: "s",
+                requestId: "ante",
+                mode: "ante",
+                bet: 7.5,
+            });
+            expect(resumed.status).toBe("played");
+            if (resumed.status !== "played") throw new Error(JSON.stringify(resumed));
+            expect(resumed.stake).toBe(11.25);
+            expect(
+                new api.AuditRoundReplay().replay(game, JSON.parse(JSON.stringify(resumed.audit))).verification,
+            ).toBe("verified");
+        },
+    );
+
+    it("stateless exact enumeration pays through the same modifier path and sticky is unsupported", async () => {
+        const game = generatedMechanicsGame(fixture("transform"));
+        const {library} = await api.generateExactWeightedOutcomeLibrary({
+            libraryId: "modifiers",
+            game,
+            pokieVersion: "1.3.0",
+        });
+        expect(library.outcomes).toHaveLength(1);
+        expect(library.outcomes[0].artifact.totalWin).toBe(3);
+        await expect(
+            api.generateExactWeightedOutcomeLibrary({
+                libraryId: "sticky",
+                game: generatedMechanicsGame(fixture("sticky")),
+                pokieVersion: "1.3.0",
+            }),
+        ).rejects.toMatchObject({code: "weighted-outcome-library-generation-unsupported"});
+    });
+
+    it("rejects value evaluators and HoldAndWin composition instead of silently bypassing semantics", () => {
+        const config = directConfig(fixture());
+        expect(
+            () =>
+                new api.VideoSlotWinCalculator(
+                    config,
+                    undefined,
+                    undefined,
+                    undefined,
+                    new api.ValueWinCalculator({A: 2}),
+                ),
+        ).toThrow(/value/);
+        const b = fixture();
+        b.mechanics!.holdAndWin = {
+            minimumCount: 1,
+            initialRespins: 2,
+            retriggerPolicy: "reset-on-new-lock",
+            symbolEffects: {A: {kind: "value", amount: 2}},
+            payout: {type: "sum-with-multiplier", amountsAreBetMultiples: false},
+        };
+        expect(errors(b)).toEqual(expect.arrayContaining([expect.objectContaining({path: "mechanics.modifiers"})]));
+    });
+
+    it("sticky retains the acquired wild when generation changes, expires once, and isolates sessions", () => {
+        const b = fixture("sticky"),
+            config = directConfig(b);
+        let matrix = [["A"], ["W2"], ["W3"]];
+        const session = new api.VideoSlotSession(config, {
+            generateSymbolsCombination: () => new api.SymbolsCombination().fromMatrix(matrix),
+        });
+        session.play();
+        expect(session.getWinAmount()).toBe(3);
+        matrix = [["A"], ["B"], ["W3"]];
+        session.play();
+        expect(session.getWinAmount()).toBe(3);
+        session.play();
+        expect(session.getWinAmount()).toBe(3);
+        expect(session.getModifierObservation()!.sticky[0]).toMatchObject({symbol: "W2", factor: 2, remaining: 0});
+        session.play();
+        expect(session.getWinAmount()).toBe(0);
+        expect(
+            new api.VideoSlotSession(config, {
+                generateSymbolsCombination: () => new api.SymbolsCombination().fromMatrix(matrix),
+            }).toSessionState().modifierState!.cells,
+        ).toEqual([]);
+        const before = session.toSessionState(),
+            credits = session.getCreditsAmount();
+        matrix = [["A"], ["unknown"], ["W3"]];
+        expect(() => session.play()).toThrow(/unknown/);
+        expect(session.getWinAmount()).toBe(0);
+        expect(session.getModifierObservation()).toBeUndefined();
+        expect(session.getCreditsAmount()).toBe(credits);
+        expect(session.toSessionState()).toEqual(before);
+        matrix = [["A", "A"], ["B"], ["W3"]];
+        expect(() => session.play()).toThrow(/dimensions/);
+        expect(session.getCreditsAmount()).toBe(credits);
+    });
+
+    it("chunked sessions retain sticky trajectories and worker snapshots merge observations without sharing state", () => {
+        const game = generatedMechanicsGame(fixture("sticky"));
+        const continuous = mechanicsSession(game),
+            chunked = mechanicsSession(game);
+        const full = new api.AggregateSimulationRunner(continuous, 8).run();
+        const first = new api.AggregateSimulationRunner(chunked, 3).run();
+        const second = new api.AggregateSimulationRunner(chunked, 5).run();
+        first.merge(api.SimulationAccumulator.fromSnapshot(JSON.parse(JSON.stringify(second.toSnapshot()))));
+        expect(first.getStatistics()).toMatchObject({
+            rounds: 8,
+            totalPayout: full.getStatistics().totalPayout,
+            modifiers: full.getStatistics().modifiers,
+        });
+        expect(chunked.toSessionState()).toEqual(continuous.toSessionState());
+        const fresh = mechanicsSession(game, 32);
+        expect((fresh.toSessionState() as {modifierState: api.ScreenModifierState}).modifierState.cells).toEqual([]);
+        expect(
+            (continuous.toSessionState() as {modifierState: api.ScreenModifierState}).modifierState.cells.length,
+        ).toBeGreaterThan(0);
+    });
+
+    it.each(catalogue)(
+        "%s: mixed exact/weighted source preserves initialization, continued restore and replay",
+        async (id) => {
+            const b = fixture(id),
+                strips = b.reelStrips!;
+            Reflect.deleteProperty(b, "reelStrips");
+            b.reelSequences = strips.map((symbols, reel) =>
+                reel === 0
+                    ? {type: "exact", symbols}
+                    : {
+                        type: "weighted",
+                        variants: [
+                            {id: "authored", symbols, weight: 1},
+                            {id: "alternative", symbols: ["B"], weight: 2},
+                        ],
+                    },
+            );
+            const game = generatedMechanicsGame(b),
+                extracted = await new api.PackageBlueprintExtraction().extract(game);
+            expect(extracted.status).toBe("complete");
+            const session = mechanicsSession(game),
+                copy = mechanicsSession(generatedMechanicsGame(extracted.blueprint!, true));
+            for (let step = 0; step < 8; step++) {
+                session.play();
+                copy.play();
+                expect(copy.toSessionState()).toEqual(session.toSessionState());
+                expect(copy.getWinAmount()).toBe(session.getWinAmount());
+                const fresh = mechanicsSession(game);
+                fresh.fromSessionState(JSON.parse(JSON.stringify(session.toSessionState())));
+                expect(fresh.toSessionState()).toEqual(session.toSessionState());
+            }
+            expect(new api.ReplayRecorder().record({game, seed: "31", round: 8}).artifact).toEqual(
+                new api.ReplayRecorder().record({game: generatedMechanicsGame(b, true), seed: "31", round: 8}).artifact,
+            );
+            for (const context of [{seed: 31}, undefined]) {
+                const unplayed = game.createSession(context) as api.VideoSlotSession;
+                expect((unplayed.toSessionState().modifierState as api.ScreenModifierState).cells).toEqual([]);
+                expect(unplayed.isSessionStateRestorable()).toBe(true);
+            }
+        },
+    );
+
+    it.each([
+        {type: "lines" as const, expected: 6},
+        {type: "ways" as const, expected: 144},
+        {type: "clusters" as const, expected: 18},
+    ])("$type applies the declared product to its component scope on a two-row screen", ({type, expected}) => {
+        const b = fixture();
+        b.rows = 2;
+        b.reelStrips = [
+            ["A", "A"],
+            ["W2", "W2"],
+            ["W3", "W3"],
+        ];
+        b.paytable = {A: type === "clusters" ? {3: 10, 6: 10} : {3: 10}};
+        b.winModel = type === "clusters" ? {type, minimumClusterSize: 3} : {type};
+        const session = mechanicsSession(generatedMechanicsGame(b));
+        session.play();
+        expect(session.getWinAmount()).toBe(expected);
+        const components = session.getWinEvaluationResult().getWinComponents();
+        expect(components).toHaveLength(type === "lines" ? 2 : 1);
+        if (type !== "lines") {
+            expect(components[0].getMultiplierBreakdown()[0].combinedMultiplier).toBe(36);
+            expect(components[0].getMultiplierBreakdown()[0].values.sort()).toEqual([2, 2, 3, 3]);
+            expect(components[0].getWinningPositions()).toHaveLength(6);
+        }
+    });
+
+    it("product applies once per repeated coordinate and custom options cannot acquire restore certification by mutation", () => {
+        const config = directConfig(fixture()),
+            symbols = new api.SymbolsCombination().fromMatrix([["A"], ["W2"], ["W3"]]);
+        const component = new api.ValueWinComponent(
+            new api.WinningValue(
+                "A",
+                [
+                    [1, 0],
+                    [1, 0],
+                ],
+                1,
+            ),
+        );
+        const context = new api.WinEvaluationContext(0.05, symbols, config);
+        expect(new api.MultiplierResolver({W2: 2}, {uniquePositions: true}).resolve(component, context)).toEqual({
+            winAmount: 2,
+            breakdown: [{source: "symbol-multipliers", positions: [[1, 0]], values: [2], combinedMultiplier: 2}],
+        });
+        const options: api.VideoSlotWinCalculatorOptions = {
+            multiplierResolver: new api.MultiplierResolver({W2: 2}, {combine: (a, b) => a + b}),
+        };
+        const calculator = new api.VideoSlotWinCalculator(
+            config,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            options,
+        );
+        Reflect.deleteProperty(options, "multiplierResolver");
+        expect(calculator.isStatelessForSessionRestoration()).toBe(false);
+    });
+
+    it.each(["identity", "ruleId", "symbol", "factor", "remaining-zero", "remaining-long", "duplicate"])(
+        "corrupt retained %s is rejected before wallet or repository mutation",
+        async (field) => {
+            const game = generatedMechanicsGame(fixture("sticky")),
+                session = mechanicsSession(game);
+            session.play();
+            const valid = api.captureInitialPokieSessionState(
+                {seed: 31},
+                session,
+                game.getSessionSerializer!(),
+                true,
+                game,
+            );
+            expect(api.validatePersistedSession(valid, game)).toBeUndefined();
+            const corrupt = JSON.parse(JSON.stringify(valid));
+            const state = corrupt.featureState.modifierState;
+            if (field === "identity") state.identity = "other-model";
+            else if (field === "duplicate") state.cells.push({...state.cells[0]});
+            else {
+                const values: Record<string, unknown> = {factor: 9, "remaining-zero": 0, "remaining-long": 3};
+                state.cells[0][field.startsWith("remaining") ? "remaining" : field] = values[field] ?? "unknown";
+            }
+            const repository = new api.InMemorySessionRepository(),
+                wallet = new api.InMemoryWallet(10000);
+            await repository.save("s", corrupt);
+            const save = jest.spyOn(repository, "save"),
+                debit = jest.spyOn(wallet, "debit"),
+                credit = jest.spyOn(wallet, "credit");
+            expect(
+                (
+                    await new api.SpinCommandHandler(game, repository, wallet).execute({
+                        kind: "spin",
+                        sessionId: "s",
+                        requestId: "corrupt",
+                    })
+                ).status,
+            ).toBe("corrupt-state");
+            for (const spy of [save, debit, credit]) expect(spy).not.toHaveBeenCalled();
+            expect(await repository.load("s")).toEqual(corrupt);
+        },
+    );
+});

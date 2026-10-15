@@ -10,6 +10,7 @@ export interface VideoSlotSessionHandling<T extends string | number | symbol = s
     extends VideoSlotConfigDescribing<T>,
         GameSessionHandling,
         VideoSlotRoundStateDetermining<T> {
+    getModifierObservation?(): import("./modifiers/ScreenModifiers.js").ScreenModifierObservation<T> | undefined;
     setSelectionContext?(context: string): void;
     getSequenceSelections?(): ReelSequenceSelection[];
     getSequenceStatistics?(): ReelSequenceStatistics[];

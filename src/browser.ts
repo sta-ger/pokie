@@ -91,3 +91,8 @@ export type {AuditRoundRecording, AuditBoundary, AuditDelivery, AuditDisposition
 export type {GameBlueprint, GameBlueprintMechanics, GameBlueprintHoldAndWin, GameBlueprintJackpot} from "./generated/GameBlueprint.js";
 export * from "./generated/AuthoredMechanicCatalog.js";
 export * from "./net/videoslot/observeVideoSlotFeatures.js";
+
+export * from "./session/videoslot/modifiers/ScreenModifiers.js";
+export * from "./session/videoslot/modifiers/ScreenModifierEngine.js";
+export * from "./session/videoslot/modifiers/validateScreenModifiers.js";
+export * from "./session/videoslot/modifiers/ScreenModifierHandling.js";

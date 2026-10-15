@@ -88,3 +88,15 @@ verification. Session fencing, permanent settlement IDs, calculated continuation
 responses survive local restart. This composition reconciles independent stores and never
 claims distributed ACID. Legacy independent repositories and wallets remain weaker
 compensation configurations. See [external settlement](game-session.md#durable-external-wallet-reconciliation).
+
+### Declarative modifier boundary
+
+For expanding/sticky/restricted/multiplier wilds, transforms and reel fills, use
+`VideoSlotConfig.setScreenModifiers` or Blueprint `mechanics.modifiers`; the
+[math contract](math-modeling.md#authored-wilds-and-screen-modifiers) specifies
+ordering and supported combinations. `ScreenModifierHandling` describes the
+finite interpreter. Its proposed state is committed by `VideoSlotSession` only
+after successful settlement. Arbitrary generators, transform callbacks,
+calculators and multiplier `combine` callbacks remain custom. A model descriptor
+preserves declared data but does not certify callback equivalence; list executable
+limitations in `unsupported` instead of flattening them into a Blueprint.

@@ -40,6 +40,7 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             `- **Workers**: ${report.workers ?? 1}`,
         ];
 
+        if (report.modifiers) lines.push("", "## Screen modifiers", `Executed steps: ${report.modifiers.steps}; rule applications: ${report.modifiers.ruleApplications}; sticky steps: ${report.modifiers.stickySteps}; multiplied components: ${report.modifiers.multipliedComponents}`);
         for (const reel of report.reelSequences ?? []) {
             lines.push("", `## Weighted reel ${reel.reelIndex + 1} (${reel.context}; ${reel.selections} selections)`, "", "| Variant ID | Weight | Probability | Count | Frequency | Coverage |", "| --- | --- | --- | --- | --- | --- |");
             for (const variant of reel.variants) lines.push(`| ${variant.id.replace(/[|\n\r]/g, " ")} | ${variant.weight} | ${variant.probability === 0 && variant.weight > 0 ? `${variant.probabilityRatio?.numerator}/${variant.probabilityRatio?.denominator}` : variant.probability} | ${variant.count} | ${variant.frequency} | ${describeSequenceVariantCoverage(variant.weight, variant.uncovered)} |`);

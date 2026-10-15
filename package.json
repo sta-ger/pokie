@@ -182,7 +182,9 @@
         "docs/v2-completion/V2C-09.md",
         "docs/v2-completion/V2C-10.md",
         "docs/v2-completion/V2C-11.md",
-        "docs/v2-completion/V2C-12.md"
+        "docs/v2-completion/V2C-12.md",
+        "docs/v2-completion/V2C-13.md",
+        "examples/blueprints/wild-*.blueprint.json"
     ],
     "dependencies": {
         "commander": "^14.0.3",

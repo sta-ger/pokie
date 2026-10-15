@@ -1,3 +1,4 @@
+import {observeModifierStatistics} from "./ModifierStatistics.js";
 import {mergeReelSequenceStatistics} from "./ReelSequenceStatisticsMerging.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
 import {observeLogicalSubround} from "./LogicalRoundStatistics.js";
@@ -105,6 +106,8 @@ export class AggregateSimulationRunner {
             // payout. This same denominator reaches accumulator, breakdown,
             // worker merge and report -- no mode-specific alternate RTP.
             accumulator.addRound(stakeAmount, payout);
+            const modifiers = observeModifierStatistics(this.session);
+            if (modifiers) accumulator.addModifierStatistics(modifiers);
             const logical = observeLogicalSubround(this.session, stakeAmount, payout);
             if (logical) accumulator.addLogicalRound(logical);
 

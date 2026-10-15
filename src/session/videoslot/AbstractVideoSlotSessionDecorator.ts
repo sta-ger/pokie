@@ -27,7 +27,7 @@ implements VideoSlotSessionHandling<T> {
         this.baseSession = baseSession;
         // Preserve optional capabilities without advertising capabilities absent on the base.
         // A concrete decorator's own implementation always wins.
-        for (const name of ["getBetModeId", "setBetMode", "getAvailableBetModeIds", "validateEntryAction",
+        for (const name of ["getModifierObservation", "getBetModeId", "setBetMode", "getAvailableBetModeIds", "validateEntryAction",
             "getChargedBetModeId", "getSimulationCategory", "getJackpotStatisticsSnapshot", "getJackpotPools",
             "getJackpotLastRoundOutcome", "getJackpotPoolStatistics", "getJackpotAwardCount", "getJackpotTotalAwarded", "getJackpotTotalContributed",
             "isHoldAndWinActive", "getHoldAndWinEntryBet", "getHoldAndWinLastRoundOutcome", "getLockedHoldAndWinSymbols", "getHoldAndWinRespinsRemaining", "getHoldAndWinPayout",

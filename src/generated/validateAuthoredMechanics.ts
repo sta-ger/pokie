@@ -1,3 +1,5 @@
+import {validateScreenModifiers} from "../session/videoslot/modifiers/validateScreenModifiers.js";
+import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 
 /** Shared by validation and direct rendering: unknown authored fields never disappear. */
@@ -19,8 +21,12 @@ export function validateAuthoredMechanics(blueprint: Record<string, unknown>): V
     const positive = (value: unknown): boolean => finite(value) && Number.isSafeInteger(value) && value > 0;
     const symbols = Array.isArray(blueprint.symbols) ? blueprint.symbols : [];
     if (blueprint.mechanics === undefined) return issues;
-    const mechanics = object(blueprint.mechanics, "mechanics", ["freeGames", "holdAndWin", "jackpot"]);
+    const mechanics = object(blueprint.mechanics, "mechanics", ["freeGames", "holdAndWin", "jackpot", "modifiers"]);
     if (!mechanics) return issues;
+    if (mechanics.modifiers !== undefined) {
+        issues.push(...validateScreenModifiers(mechanics.modifiers, {symbols: symbols as string[], wilds: Array.isArray(blueprint.wilds) ? blueprint.wilds : [], reels: Number(blueprint.reels), rows: Number(blueprint.rows), screenGeometry: blueprint.screenGeometry as ScreenGeometry | undefined}));
+        if (mechanics.holdAndWin !== undefined) error("mechanics.modifiers", "cannot combine with HoldAndWin, which owns retained cells and suppresses the base payout.");
+    }
     if (mechanics.freeGames !== undefined) {
         const free = object(mechanics.freeGames, "mechanics.freeGames", ["scatterSymbol", "awardsByCount", "retriggerPolicy"]);
         if (free?.retriggerPolicy !== undefined && free.retriggerPolicy !== "additive") error("mechanics.freeGames.retriggerPolicy", "only additive retriggers are supported.");

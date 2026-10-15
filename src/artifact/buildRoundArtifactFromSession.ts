@@ -69,6 +69,7 @@ function deriveStandardFeatureEvents(session: unknown): RoundArtifactFeatureEven
     const observations = observeVideoSlotFeatures(session);
     const events: RoundArtifactFeatureEventInput[] = [];
     if (supportsWonFreeGamesNumberDetermining(session) && session.getWonFreeGamesNumber() > 0) events.push({type: "freeGamesTriggered", data: {count: session.getWonFreeGamesNumber()}});
+    if (observations.modifiers) events.push({type: "screenModifiers", data: observations.modifiers});
     if (observations.holdAndWin) events.push({type: "holdAndWin", data: observations.holdAndWin});
     if (observations.jackpot) events.push({type: "jackpot", data: observations.jackpot});
     if (observations.chargedBetModeId) events.push({type: "chargedBetMode", data: {id: observations.chargedBetModeId}});

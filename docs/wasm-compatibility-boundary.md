@@ -216,3 +216,8 @@ selects, concatenates or silently flattens a weighted reel; refusal occurs befor
 publishing an output. Use a TypeScript package for whole-sequence variants.
 
 Authored `mechanics.holdAndWin` and `mechanics.jackpot` are rejected before WASM publication, alongside free games and nonempty bet modes. Their continuation/pool histories are also outside paid-grid outcome-library/Stake projection. Use the generated TypeScript package runtime for these workflows; stackable engine classes do not imply support in a different artifact target.
+
+Blueprint `mechanics.modifiers` is outside the canonical WASM boundary. Preflight
+rejects it before publishing a reduced model or artifact; use a TypeScript package.
+No modifier calculation engine is added to WASM. Sticky combinations likewise
+cannot be flattened into independent-spin outcome libraries or Stake routes.

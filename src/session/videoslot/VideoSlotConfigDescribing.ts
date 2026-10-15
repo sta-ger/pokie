@@ -1,3 +1,4 @@
+import type {ScreenModifiers} from "./modifiers/ScreenModifiers.js";
 import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
 import type {AvailableBetsDescribing} from "../AvailableBetsDescribing.js";
 import type {LinesDefinitionsDescribing} from "./linesdefinitions/LinesDefinitionsDescribing.js";
@@ -7,6 +8,8 @@ import type {SymbolsSequenceDescribing} from "./combinations/SymbolsSequenceDesc
 
 export interface VideoSlotConfigDescribing<T extends string | number | symbol = string>
     extends AvailableBetsDescribing {
+    getScreenModifiers?(): ScreenModifiers<T> | undefined;
+
     getScreenGeometry?(): ScreenGeometry | undefined;
 
     getPaytable(): PaytableRepresenting<T>;

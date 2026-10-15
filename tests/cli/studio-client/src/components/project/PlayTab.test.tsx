@@ -298,3 +298,25 @@ it("clears consumed purchase UI intent even when the confirmed default mode has 
     fireEvent.click(screen.getByRole("button", {name: "Spin"}));
     expect(onSpin).toHaveBeenLastCalledWith(0.05, "base", "stepwise");
 });
+
+it("V2C-13 presents a real transformed multiplier round with payout evidence and visible win highlights", async () => {
+    const {generatedMechanicsGame} = await import("../../../../../v2/fixtures/ExistingMechanicsGame");
+    const {StudioPlayService} = await import("../../../../../../cli/studio/runtime/StudioPlayService");
+    const blueprint = JSON.parse(readFileSync(path.resolve(__dirname, "../../../../../../examples/blueprints/wild-transform.blueprint.json"), "utf8"));
+    const game = generatedMechanicsGame(blueprint), 
+        service = new StudioPlayService(() => Promise.resolve(game));
+    try {
+        const created = await service.newSession("/modifier-package", 31);
+        if (created.status !== "ok") throw new Error(JSON.stringify(created));
+        const played = await service.spin(created.session.sessionId, "spin", 0.05, undefined, {requestId: "known", roundId: "known", delivery: "composite"});
+        if (played.status !== "ok") throw new Error(JSON.stringify(played));
+        const {container} = render(<MantineProvider><PlayTab session={{status: "ok", session: played.session}} sessionId={played.session.sessionId} onNewSession={() => undefined} onSpin={() => undefined} onFindAnyWin={() => undefined} onFindSymbolWin={() => undefined} onFindFreeGames={() => undefined} /></MantineProvider>);
+        expect(played.session.debug!.artifact!.totalWin).toBe(3);
+        fireEvent.click(screen.getByText("Inspect round artifact"));
+        expect((await screen.findAllByText(/authored-wild-product ×6/)).length).toBeGreaterThan(0);
+        expect(screen.getAllByText("screenModifiers").length).toBeGreaterThan(0);
+        for (let reel = 0; reel < 3; reel++) expect(container.querySelector<HTMLElement>(`[data-cell="0:${reel}"]`)?.style.backgroundColor).not.toBe("");
+    } finally {
+        await service.reset(); 
+    }
+});

@@ -27,6 +27,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                 <Table><Table.Thead><Table.Tr>{["Pool", "Awards", "Awarded", "Contributed", "RTP contribution"].map(label => <Table.Th key={label}>{label}</Table.Th>)}</Table.Tr></Table.Thead>
                     <Table.Tbody>{Object.entries(view.jackpot.pools).map(([id, pool]) => <Table.Tr key={id}><Table.Td>{id}</Table.Td><Table.Td>{pool.awardCount}</Table.Td><Table.Td>{pool.totalAwarded}</Table.Td><Table.Td>{pool.totalContributed}</Table.Td><Table.Td>{(pool.contribution * 100).toFixed(4)}%</Table.Td></Table.Tr>)}</Table.Tbody></Table>
             </PageSection>}
+            {view.modifiers && <PageSection legend="Screen modifiers">Executed steps: {view.modifiers.steps}; rule applications: {view.modifiers.ruleApplications}; sticky steps: {view.modifiers.stickySteps}; multiplied components: {view.modifiers.multipliedComponents}</PageSection>}
             {view.reelSequences?.map(reel => <PageSection key={reel.reelIndex} legend={`Weighted reel ${reel.reelIndex + 1}`}>
                 <Text>{reel.context}: {reel.selections} selections</Text>
                 <Text size="sm">Observed frequency = count / selections.</Text>

@@ -395,3 +395,17 @@ separate editable authoring project. Its evidence companion remains historical e
 after ordinary edits. The original package stays unchanged.
 
 Home Design's Bets section includes free games, executable bet modes, Hold&Win and jackpot configuration. Project Game Model uses the same mechanic fieldsets under Mechanics. Edits remain drafts until the existing explicit Apply JSON / Save / Create action; validation locations, dirty drafts and stale-response protection remain shared. Symbol rename/deletion safeguards include collector effects and jackpot triggers. Play resets consumed purchase selection from each accepted server response, even when the safe default mode's value did not change. A new purchase needs another explicit action. [V2C-12](v2-completion/V2C-12.md) records the authored workflow boundaries.
+
+### Wild and modifier authoring
+
+Home's Bets section and Project's Mechanics editor share “Wilds and screen
+modifiers” controls. Configure substitution targets and factors for declared
+wilds; add transform/expand/sticky/reel rules, coordinate space, cells, reel
+selectors and lifetime; move rules up/down to change execution order. Edits remain
+drafts until explicit Apply JSON / Save / Create. Invalid JSON remains available
+for repair or explicit removal. Existing draft revisions invalidate validation
+and build results. Game Model shows ordered declarations and support limits.
+Play and Replay use the transformed outcome, existing visible win highlights and
+multiplier breakdown; “Inspect round artifact” exposes `screenModifiers` events.
+Simulation/report downloads include executed-step, applied-rule, sticky-step and
+multiplied-component counts from the runtime observations.

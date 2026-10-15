@@ -98,6 +98,7 @@ function buildPortableWasmModule(model: string, descriptor: CanonicalPokieWasmCo
 
 /** The one Blueprint-to-portable-model boundary used by preview, validation, and publication. */
 export function resolveCanonicalWasmGameModel(blueprint: GameBlueprint): PokieWasmGameModel {
+    if (blueprint.mechanics?.modifiers !== undefined) throw new Error("Canonical WASM does not support mechanics.modifiers. Build a TypeScript package to preserve modifier semantics.");
     if (blueprint.reelSequences !== undefined) throw new Error("Canonical WASM does not support reelSequences. Build a TypeScript package to preserve whole-sequence variants.");
     assertSupportedCanonicalWasmSemantics(blueprint);
     const resolution = resolveReelStripGeneration(blueprint);

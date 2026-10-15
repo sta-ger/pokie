@@ -1,3 +1,4 @@
+import {mergeModifierStatistics, type ModifierStatistics} from "./ModifierStatistics.js";
 import {mergeReelSequenceStatistics} from "./ReelSequenceStatisticsMerging.js";
 import type {ReelSequenceStatistics} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import {emptyLogicalRoundStatistics, mergeLogicalRoundStatistics, type LogicalRoundStatistics} from "./LogicalRoundStatistics.js";
@@ -6,6 +7,7 @@ import type {SimulationAccumulatorSnapshot} from "./SimulationAccumulatorSnapsho
 import type {SimulationStatistics} from "./SimulationStatistics.js";
 
 export class SimulationAccumulator {
+    private modifiers?: ModifierStatistics;
     private reelSequences?: ReelSequenceStatistics[];
     private logicalRounds: LogicalRoundStatistics | undefined;
     private rounds = 0;
@@ -30,6 +32,7 @@ export class SimulationAccumulator {
         validateSnapshot(snapshot);
         const accumulator = new SimulationAccumulator();
         if (snapshot.reelSequences) accumulator.setReelSequenceStatistics(snapshot.reelSequences);
+        accumulator.modifiers = snapshot.modifiers && {...snapshot.modifiers};
         accumulator.logicalRounds = snapshot.logicalRounds ? {...snapshot.logicalRounds} : undefined;
         accumulator.rounds = snapshot.rounds;
         accumulator.hitCount = snapshot.hitCount;
@@ -48,6 +51,10 @@ export class SimulationAccumulator {
             accumulator.payoutHistogram[bucket] = count;
         });
         return accumulator;
+    }
+
+    public addModifierStatistics(observation: ModifierStatistics): void {
+        this.modifiers = mergeModifierStatistics(this.modifiers, observation); 
     }
 
     public setReelSequenceStatistics(statistics: readonly ReelSequenceStatistics[]): void {
@@ -103,6 +110,7 @@ export class SimulationAccumulator {
     }
 
     public merge(other: SimulationAccumulator): void {
+        this.modifiers = mergeModifierStatistics(this.modifiers, other.modifiers);
         if (other.reelSequences) this.reelSequences = mergeReelSequenceStatistics(this.reelSequences, other.reelSequences);
         if (other.logicalRounds) this.addLogicalRound(other.logicalRounds);
         if (other.rounds === 0) {
@@ -178,6 +186,7 @@ export class SimulationAccumulator {
             this.rounds,
         );
         return {
+            ...(this.modifiers ? {modifiers: {...this.modifiers}} : {}),
             ...(this.reelSequences ? {reelSequences: mergeReelSequenceStatistics([], this.reelSequences)} : {}),
             ...(this.logicalRounds ? {logicalRounds: {...this.logicalRounds}} : {}),
             rounds: this.rounds,
@@ -207,6 +216,7 @@ export class SimulationAccumulator {
     // worker_threads boundary itself, but this plain snapshot can.
     public toSnapshot(): SimulationAccumulatorSnapshot {
         return {
+            ...(this.modifiers ? {modifiers: {...this.modifiers}} : {}),
             ...(this.reelSequences ? {reelSequences: mergeReelSequenceStatistics([], this.reelSequences)} : {}),
             ...(this.logicalRounds ? {logicalRounds: {...this.logicalRounds}} : {}),
             rounds: this.rounds,
@@ -241,6 +251,7 @@ export class SimulationAccumulator {
 }
 
 function validateSnapshot(snapshot: SimulationAccumulatorSnapshot): void {
+    if (snapshot.modifiers && Object.values(snapshot.modifiers).some(value => !Number.isSafeInteger(value) || value < 0)) throw new Error("Invalid modifier statistics.");
     const nonNegativeIntegers: Array<[string, number]> = [
         ["rounds", snapshot.rounds],
         ["hitCount", snapshot.hitCount],

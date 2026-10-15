@@ -1,3 +1,5 @@
+import type {ScreenModifiers} from "../modifiers/ScreenModifiers.js";
+import {MultiplierResolver} from "../winevaluation/MultiplierResolver.js";
 import {VideoSlotConfig} from "../VideoSlotConfig.js";
 import {VideoSlotWithFreeGamesConfig} from "../VideoSlotWithFreeGamesConfig.js";
 import {ClusterWinCalculator} from "./ClusterWinCalculator.js";
@@ -69,17 +71,18 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
         waysWinCalculator: WaysWinCalculating<T> | undefined = undefined,
         options: VideoSlotWinCalculatorOptions<T> = {},
     ) {
+        if (conf.getScreenModifiers?.() && valueWinCalculator) throw new Error("Authored screen modifiers do not support value evaluators.");
         this.config = conf;
         this.lineWinCalculator = lineWinCalculator;
         this.scatterWinCalculator = scatterWinCalculator;
         this.clusterWinCalculator = clusterWinCalculator;
         this.valueWinCalculator = valueWinCalculator;
         this.waysWinCalculator = waysWinCalculator;
-        this.options = options;
+        this.options = {...options};
         this.pipeline = new WinEvaluationPipeline<T>(
             this.createEvaluators(),
             options.aggregationPolicy ?? new ErrorOnIncompatibleWinAggregationPolicy<T>(),
-            options.multiplierResolver,
+            options.multiplierResolver ?? this.createAuthoredMultiplierResolver(conf.getScreenModifiers?.()),
             undefined,
             {validateOnEvaluate: options.validateOnEvaluate},
         );
@@ -211,6 +214,13 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
 
     public getWinEvaluationPipeline(): WinEvaluationPipeline<T> {
         return this.pipeline;
+    }
+
+    private createAuthoredMultiplierResolver(modifiers: ScreenModifiers<T> | undefined): MultiplierResolver<T> | undefined {
+        if (!modifiers) return undefined;
+        const factors = Object.create(null) as Partial<Record<T, number>>;
+        for (const wild of modifiers.wilds) if (wild.factor !== undefined) factors[wild.symbol] = wild.factor;
+        return new MultiplierResolver(factors, {source: "authored-wild-product", uniquePositions: true, supportedComponentTypes: ["line", "ways", "cluster"]});
     }
 
     private createEvaluators(): WinEvaluator<T>[] {

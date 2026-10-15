@@ -1,3 +1,4 @@
+import type {ModifierStatistics} from "../simulation/ModifierStatistics.js";
 import type {ReelSequenceStatistics} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {SimulationConvergenceOutcome} from "../simulation/SimulationConvergenceOutcome.js";
 import type {SimulationStopReason} from "../simulation/SimulationStopReason.js";
@@ -20,6 +21,7 @@ export type SimulationReportReproducibility = {
 };
 
 export type SimulationReport = {
+    modifiers?: ModifierStatistics;
     reelSequences?: ReelSequenceStatistics[];
     game: {id: string; name: string; version: string};
     requestedRounds: number;

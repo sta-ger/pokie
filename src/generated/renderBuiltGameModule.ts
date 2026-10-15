@@ -89,6 +89,7 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     } else if (winModel.type === "clusters") {
         winCalculatorDeclaration = `    const winCalculator = new VideoSlotWinCalculator(config, undefined, undefined, new ClusterWinCalculator(config, ${winModel.minimumClusterSize ?? 5}), undefined, undefined, {
         aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy("cluster"),
+        minimumClusterSize: ${winModel.minimumClusterSize ?? 5},
     });
 `;
     }
@@ -204,7 +205,7 @@ ${winCalculatorDeclaration}        return ${wrapJackpot(sessionConstructionExpre
     },`;
     }
 
-    if (holdAndWin || jackpot) exactEnumerationSessionExport = "";
+    if (holdAndWin || jackpot || blueprint.mechanics?.modifiers?.rules.some(rule => rule.type === "sticky")) exactEnumerationSessionExport = "";
 
     // The only two lines that differ between "dist/index.js" (format "cjs") and "src/index.ts"
     // (format "ts"): a type-only "GameBlueprint" import (erased at compile time -- adds nothing to
@@ -222,7 +223,7 @@ ${winCalculatorDeclaration}        return ${wrapJackpot(sessionConstructionExpre
     // not reject it as an ESM type import from a CommonJS generated module.
     const typeImport = format === "ts" ? `import type {GameBlueprint, PokieGameContext} from "@fromstan/pokie" with { "resolution-mode": "require" };\n\n` : "";
     const weightedReels = blueprint.reelSequences?.flatMap((reel, reelIndex) => reel.type === "weighted" ? [{reelIndex, variants: reel.variants}] : []);
-    const baseStateSchema = {kind: "seeded-video-slot", ...(weightedReels?.length ? {weightedReels} : {}), reels: blueprint.reels, symbols: blueprint.symbols, ...(blueprint.screenGeometry ? {screenGeometry: blueprint.screenGeometry} : {})};
+    const baseStateSchema = {kind: "seeded-video-slot", ...(weightedReels?.length ? {weightedReels} : {}), reels: blueprint.reels, symbols: blueprint.symbols, ...(blueprint.mechanics?.modifiers ? {modifiers: blueprint.mechanics.modifiers, rows: blueprint.rows, wilds: blueprint.wilds ?? []} : {}), ...(blueprint.screenGeometry ? {screenGeometry: blueprint.screenGeometry} : {})};
     const featureStateSchema = blueprint.mechanics?.freeGames !== undefined ? {kind: "free-games", base: baseStateSchema} : baseStateSchema;
     const holdStateSchema = holdAndWin ? {kind: "hold-and-win", reels: blueprint.reels, rows: blueprint.rows, bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], symbolEffects: holdAndWin.symbolEffects, initialRespins: holdAndWin.initialRespins, base: featureStateSchema} : featureStateSchema;
     const modeStateSchema = betModeWiring ? {kind: "bet-modes", ...(blueprint.betModes!.some(mode => (mode.costMultiplier ?? 1) !== 1 || mode.runtimeType === "buyFeature") ? {stakeModifying: true} : {}), base: holdStateSchema} : holdStateSchema;
@@ -283,6 +284,7 @@ function createConfig(${contextParam}) {
     config.setWildSymbols(blueprint.wilds || []);
     config.setScatterSymbols(blueprint.scatters || []);
     config.setAvailableSymbols(blueprint.symbols);
+    if (blueprint.mechanics?.modifiers) config.setScreenModifiers(blueprint.mechanics.modifiers);
 
     // A Blueprint is the complete payout definition, independent of hand-authored defaults.
     const paytable = new Paytable(config.getAvailableBets());

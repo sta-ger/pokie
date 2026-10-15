@@ -59,6 +59,7 @@ export type SingleSimulationReportView = {
     targetRtp?: number;
     rtpDeviation?: number;
     jackpot?: SimulationReport["jackpot"];
+    modifiers?: SimulationReport["modifiers"];
     reelSequences?: ReelSequenceStatistics[];
     game: {id: string; name: string; version: string};
     rounds: number;
@@ -121,6 +122,7 @@ export function describeSimulationReport(
         rtpDeviation: report.rtpDeviation,
         jackpot: report.jackpot,
         game: report.game,
+        modifiers: report.modifiers,
         reelSequences: report.reelSequences,
         rounds: report.rounds,
         requestedRounds: report.requestedRounds,

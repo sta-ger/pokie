@@ -1,3 +1,4 @@
+import type {ScreenModifiers} from "./modifiers/ScreenModifiers.js";
 import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
 import type {LinesDefinitionsDescribing} from "./linesdefinitions/LinesDefinitionsDescribing.js";
 import type {LinesPatternsDescribing} from "./linespatterns/LinesPatternsDescribing.js";
@@ -31,6 +32,13 @@ implements VideoSlotWithFreeGamesConfigRepresenting<T> {
         entry[5] = 20;
         rv["S"] = entry;
         return rv;
+    }
+
+    public getScreenModifiers(): ScreenModifiers<T> | undefined {
+        return this.baseConfig.getScreenModifiers(); 
+    }
+    public setScreenModifiers(modifiers: ScreenModifiers<T> | undefined): void {
+        this.baseConfig.setScreenModifiers(modifiers); 
     }
 
     public getScreenGeometry(): ScreenGeometry | undefined {

@@ -82,6 +82,9 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
         roundHandler: HoldAndWinRoundHandling<T> = new HoldAndWinRoundHandler<T>(initialRespins, collector, trigger, payoutAggregator),
     ) {
         super(baseSession);
+        let schema = resolveSessionStateSchema(baseSession);
+        while ("base" in schema) schema = schema.base;
+        if (schema.kind === "seeded-video-slot" && schema.modifiers) throw new Error("Authored screen modifiers cannot combine with HoldAndWin.");
         this.roundHandler = roundHandler;
     }
 

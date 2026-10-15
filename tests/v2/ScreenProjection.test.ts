@@ -1250,3 +1250,31 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(buildRoundArtifactFromSession(left, {roundId: "identity", provenance})).toEqual(buildRoundArtifactFromSession(right, {roundId: "identity", provenance}));
     });
 });
+
+it.each([false, true])("V2C-13 ignores hidden expansion/sticky triggers and winning multiplier wilds (validation disabled %s)", validateOnEvaluate => {
+    const config = overscanConfig();
+    config.setScreenModifiers({wilds: [{symbol: "W", factor: 100, substitutes: ["B"]}], rules: [
+        {id: "hidden-transform", type: "transform", space: "generated", positions: [[0, 0], [0, 6]], from: "S", to: "W"},
+        {id: "expand", type: "expand", space: "generated", positions: [[0, 1], [0, 5]], symbol: "W"},
+        {id: "sticky", type: "sticky", space: "visible", positions: [[0, 0]], symbol: "W", lifetime: 3},
+    ]});
+    const matrix = adversarialScreen();
+    matrix[0][5] = "W";
+    const generator = {generateSymbolsCombination: () => new SymbolsCombination().fromMatrix(matrix).withCoordinates(overscanGeometry)};
+    const calculator = new VideoSlotWinCalculator(config, undefined, undefined, undefined, undefined, undefined, {validateOnEvaluate});
+    const session = new VideoSlotSession(config, generator, calculator);
+    session.setBet(1);
+    session.setCreditsAmount(100);
+    session.play();
+    expect(session.getWinAmount()).toBe(3); // three B lines × 1; hidden W never participates
+    expect(session.getEvaluatedSymbolsCombination().toMatrix()).toEqual(Array.from({length: 5}, () => ["B", "B", "B"]));
+    expect(session.getModifierObservation()).toEqual({space: "evaluated", rules: [{id: "hidden-transform", positions: []}, {id: "expand", positions: []}, {id: "sticky", positions: []}], sticky: []});
+    expect(session.toSessionState()).toMatchObject({modifierState: {cells: []}});
+    expect(session.isSessionStateRestorable()).toBe(false); // custom RNG remains uncertified
+    const artifact = buildRoundArtifactFromSession(session, {roundId: "hidden", provenance});
+    expect(new RoundArtifactValidator().validate(artifact)).toEqual([]);
+    expect(artifact.totalWin).toBe(3);
+    const publicArtifact = new PublicRoundArtifactProjector().project(artifact);
+    expect(publicArtifact.screen[0]).toEqual(["W", "B", "B"]);
+    expect(publicArtifact.wins.flatMap(win => win.winningPositions).every(([, row]) => row === 1 || row === 2)).toBe(true);
+});
