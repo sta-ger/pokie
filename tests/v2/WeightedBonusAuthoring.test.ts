@@ -308,7 +308,10 @@ describe("V2C-15 weighted bonus authoring", () => {
             totalStake += next.stake!;
             totalWin += next.win;
             expect(api.validatePersistedSession(next.state, game)).toBeUndefined();
-            if (explicit && cursor === 2) expect(next.state.logicalRound).toMatchObject({cursor: 3, totalStake: 0.05, totalWin: 0.55});
+            if (explicit && cursor === 2) {
+                expect(next.state.logicalRound).toMatchObject({cursor: 3, totalStake: 0.05});
+                expect(next.state.logicalRound!.totalWin).toBeCloseTo(0.55, 12);
+            }
         }
         expect(totalStake).toBe(0.05);
         expect(totalWin).toBeCloseTo(0.55, 12);
