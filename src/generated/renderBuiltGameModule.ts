@@ -45,7 +45,7 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     const freeGames = blueprint.mechanics?.freeGames;
     const holdAndWin = blueprint.mechanics?.holdAndWin;
     const jackpot = blueprint.mechanics?.jackpot;
-    const bounded = blueprint.mechanics && Object.fromEntries(Object.entries(blueprint.mechanics).filter(([key]) => ["cascade", "respins", "collection"].includes(key)));
+    const bounded = blueprint.mechanics && Object.fromEntries(Object.entries(blueprint.mechanics).filter(([key]) => ["cascade", "respins", "collection", "weightedBonus"].includes(key)));
     const hasBounded = bounded !== undefined && Object.keys(bounded).length > 0;
     const hasBetModes = (blueprint.betModes?.length ?? 0) > 0;
 
@@ -232,7 +232,7 @@ ${winCalculatorDeclaration}        return ${wrapJackpot(sessionConstructionExpre
     // not reject it as an ESM type import from a CommonJS generated module.
     const typeImport = format === "ts" ? `import type {GameBlueprint, PokieGameContext} from "@fromstan/pokie" with { "resolution-mode": "require" };\n\n` : "";
     const weightedReels = blueprint.reelSequences?.flatMap((reel, reelIndex) => reel.type === "weighted" ? [{reelIndex, variants: reel.variants}] : []);
-    const baseStateSchema = {kind: "seeded-video-slot", ...(weightedReels?.length ? {weightedReels} : {}), reels: blueprint.reels, symbols: blueprint.symbols, ...(blueprint.mechanics?.modifiers ? {modifiers: blueprint.mechanics.modifiers, rows: blueprint.rows, wilds: blueprint.wilds ?? []} : {}), ...(blueprint.screenGeometry ? {screenGeometry: blueprint.screenGeometry} : {})};
+    const baseStateSchema = {kind: "seeded-video-slot", ...(blueprint.mechanics?.weightedBonus ? {rows: blueprint.rows} : {}), ...(weightedReels?.length ? {weightedReels} : {}), reels: blueprint.reels, symbols: blueprint.symbols, ...(blueprint.mechanics?.modifiers ? {modifiers: blueprint.mechanics.modifiers, rows: blueprint.rows, wilds: blueprint.wilds ?? []} : {}), ...(blueprint.screenGeometry ? {screenGeometry: blueprint.screenGeometry} : {})};
     const progressionStateSchema = blueprint.mechanics?.freeGames !== undefined ? {kind: "free-games", base: baseStateSchema} : baseStateSchema;
     const featureStateSchema = hasBounded ? {kind: "bounded-mechanics", rules: bounded, bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], base: baseStateSchema} : progressionStateSchema;
     const holdStateSchema = holdAndWin ? {kind: "hold-and-win", reels: blueprint.reels, rows: blueprint.rows, bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], symbolEffects: holdAndWin.symbolEffects, initialRespins: holdAndWin.initialRespins, base: featureStateSchema} : featureStateSchema;

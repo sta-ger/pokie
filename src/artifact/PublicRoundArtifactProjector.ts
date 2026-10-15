@@ -65,6 +65,15 @@ export function projectPublicFeatureEvent(event: RoundArtifactFeatureEvent): Rou
     const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
     if (finite(source.count)) data.count = source.count;
     if (event.type === "boundedMechanics") {
+        const bonus = source.weightedBonus;
+        if (isJsonObject(bonus) && isJsonObject(bonus.selection)) {
+            const selection: Record<string, JsonValue> = {};
+            for (const key of ["tableId", "outcomeId", "context", "model"]) if (typeof bonus.selection[key] === "string") selection[key] = bonus.selection[key];
+            const projected: Record<string, JsonValue> = {selection};
+            for (const key of ["payout", "remaining", "executed"]) if (finite(bonus[key])) projected[key] = bonus[key];
+            if (typeof bonus.selectedNow === "boolean") projected.selectedNow = bonus.selectedNow;
+            data.weightedBonus = projected;
+        }
         for (const [name, keys] of [["collection", ["value", "cap", "threshold", "contribution", "payout"]], ["respins", ["remaining", "executed", "granted", "limit"]], ["cascade", ["winningCascades", "evaluatedSteps"]]] as const) {
             const item = source[name];
             if (!isJsonObject(item)) continue;

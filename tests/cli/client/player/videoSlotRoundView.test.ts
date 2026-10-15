@@ -360,3 +360,10 @@ it("live and artifact-only bounded observations retain meaningful zero counters"
     expect(live).toContainEqual({label: "cascade evaluatedSteps", value: 1});
     expect(deriveFeatureCountersFromEvents([{type: "boundedMechanics", data}])).toEqual(live);
 });
+
+it("weighted bonus live and replay counters preserve stable identity and zero progress", () => {
+    const data = {weightedBonus: {selection: {tableId: "prizes", outcomeId: "large", context: "logical:known", model: "public-model"}, selectedNow: false, payout: 0, remaining: 0, executed: 2}};
+    const counters = deriveFeatureCounters({boundedMechanics: data});
+    expect(counters).toEqual([{label: "Bonus tableId", value: "prizes"}, {label: "Bonus outcomeId", value: "large"}, {label: "Bonus context", value: "logical:known"}, {label: "Bonus payout", value: 0}, {label: "Bonus remaining", value: 0}, {label: "Bonus executed", value: 2}]);
+    expect(deriveFeatureCountersFromEvents([{type: "boundedMechanics", data}])).toEqual(counters);
+});

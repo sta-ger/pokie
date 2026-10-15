@@ -1,3 +1,5 @@
+import type {WeightedBonusStatistics} from "../session/videoslot/authored/WeightedBonus.js";
+import {mergeWeightedBonusStatistics} from "./WeightedBonusStatisticsMerging.js";
 import {mergeModifierStatistics, type ModifierStatistics} from "./ModifierStatistics.js";
 import {mergeReelSequenceStatistics} from "./ReelSequenceStatisticsMerging.js";
 import type {ReelSequenceStatistics} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
@@ -10,6 +12,7 @@ export class SimulationAccumulator {
     private logicalSamplingRanges?: LogicalSamplingRange[];
     private logicalSamples?: SimulationAccumulator;
     private modifiers?: ModifierStatistics;
+    private weightedBonus?: WeightedBonusStatistics;
     private reelSequences?: ReelSequenceStatistics[];
     private logicalRounds: LogicalRoundStatistics | undefined;
     private rounds = 0;
@@ -33,6 +36,7 @@ export class SimulationAccumulator {
     public static fromSnapshot(snapshot: SimulationAccumulatorSnapshot): SimulationAccumulator {
         validateSnapshot(snapshot);
         const accumulator = new SimulationAccumulator();
+        if (snapshot.weightedBonus) accumulator.setWeightedBonusStatistics(snapshot.weightedBonus);
         if (snapshot.reelSequences) accumulator.setReelSequenceStatistics(snapshot.reelSequences);
         accumulator.modifiers = snapshot.modifiers && {...snapshot.modifiers};
         if (snapshot.logicalSamplingRanges) accumulator.addLogicalSamplingRanges(snapshot.logicalSamplingRanges);
@@ -59,6 +63,10 @@ export class SimulationAccumulator {
 
     public addModifierStatistics(observation: ModifierStatistics): void {
         this.modifiers = mergeModifierStatistics(this.modifiers, observation);
+    }
+
+    public setWeightedBonusStatistics(statistics: WeightedBonusStatistics): void {
+        this.weightedBonus = mergeWeightedBonusStatistics(undefined, statistics);
     }
 
     public setReelSequenceStatistics(statistics: readonly ReelSequenceStatistics[]): void {
@@ -127,6 +135,7 @@ export class SimulationAccumulator {
     public merge(other: SimulationAccumulator): void {
         if (other.logicalSamplingRanges) this.addLogicalSamplingRanges(other.logicalSamplingRanges);
         this.modifiers = mergeModifierStatistics(this.modifiers, other.modifiers);
+        this.weightedBonus = mergeWeightedBonusStatistics(this.weightedBonus, other.weightedBonus);
         if (other.reelSequences) this.reelSequences = mergeReelSequenceStatistics(this.reelSequences, other.reelSequences);
         if (other.logicalRounds) this.logicalRounds = mergeLogicalRoundStatistics(this.logicalRounds ?? emptyLogicalRoundStatistics(), other.logicalRounds);
         if (other.logicalSamples) {
@@ -207,6 +216,7 @@ export class SimulationAccumulator {
         );
         return {
             ...(this.modifiers ? {modifiers: {...this.modifiers}} : {}),
+            ...(this.weightedBonus ? {weightedBonus: mergeWeightedBonusStatistics(undefined, this.weightedBonus)} : {}),
             ...(this.reelSequences ? {reelSequences: mergeReelSequenceStatistics([], this.reelSequences)} : {}),
             ...(this.logicalRounds ? {logicalRounds: {...this.logicalRounds}} : {}),
             ...(this.logicalSamplingRanges ? {logicalSampling: logicalSamplingAccounting(this.logicalSamplingRanges)} : {}),
@@ -239,6 +249,7 @@ export class SimulationAccumulator {
     public toSnapshot(): SimulationAccumulatorSnapshot {
         return {
             ...(this.modifiers ? {modifiers: {...this.modifiers}} : {}),
+            ...(this.weightedBonus ? {weightedBonus: mergeWeightedBonusStatistics(undefined, this.weightedBonus)} : {}),
             ...(this.reelSequences ? {reelSequences: mergeReelSequenceStatistics([], this.reelSequences)} : {}),
             ...(this.logicalRounds ? {logicalRounds: {...this.logicalRounds}} : {}),
             ...(this.logicalSamplingRanges ? {logicalSamplingRanges: mergeLogicalSamplingRanges([], this.logicalSamplingRanges)} : {}),

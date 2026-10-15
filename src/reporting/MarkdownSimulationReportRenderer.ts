@@ -1,3 +1,4 @@
+import {describeWeightedBonusCoverage} from "../session/videoslot/authored/WeightedBonus.js";
 import {describeSequenceVariantCoverage} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {SimulationReport} from "./SimulationReport.js";
 import type {SimulationReportRendering} from "./SimulationReportRendering.js";
@@ -42,6 +43,11 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
 
         if (report.sampling) lines.push("", "## Logical round sampling", `Completed logical rounds: ${report.rounds}; accepted subrounds: ${report.sampling.acceptedSubrounds}; carried subrounds: ${report.sampling.carriedSubrounds ?? 0}; excluded unfinished/restored subrounds: ${report.sampling.excludedSubrounds}. Independent session trajectory per worker. Monetary totals include every observed subround.`);
         if (report.modifiers) lines.push("", "## Screen modifiers", `Executed steps: ${report.modifiers.steps}; rule applications: ${report.modifiers.ruleApplications}; sticky steps: ${report.modifiers.stickySteps}; multiplied components: ${report.modifiers.multipliedComponents}`);
+        if (report.weightedBonus) {
+            const bonus = report.weightedBonus;
+            lines.push("", `## Weighted bonus ${bonus.tableId} (${bonus.selections} eligible selections; ${bonus.completed} completed; ${bonus.incomplete} incomplete net of carried tails)`, "", "| Outcome ID | Weight | Configured probability | Count | Actual frequency | Coverage |", "| --- | --- | --- | --- | --- | --- |");
+            for (const outcome of bonus.outcomes) lines.push(`| ${outcome.id} | ${outcome.weight} | ${outcome.probability} | ${outcome.count} | ${outcome.frequency} | ${describeWeightedBonusCoverage(outcome.weight, outcome.uncovered)} |`);
+        }
         for (const reel of report.reelSequences ?? []) {
             lines.push("", `## Weighted reel ${reel.reelIndex + 1} (${reel.context}; ${reel.selections} selections)`, "", "| Variant ID | Weight | Probability | Count | Frequency | Coverage |", "| --- | --- | --- | --- | --- | --- |");
             for (const variant of reel.variants) lines.push(`| ${variant.id.replace(/[|\n\r]/g, " ")} | ${variant.weight} | ${variant.probability === 0 && variant.weight > 0 ? `${variant.probabilityRatio?.numerator}/${variant.probabilityRatio?.denominator}` : variant.probability} | ${variant.count} | ${variant.frequency} | ${describeSequenceVariantCoverage(variant.weight, variant.uncovered)} |`);

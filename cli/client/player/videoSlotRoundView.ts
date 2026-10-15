@@ -273,6 +273,10 @@ export function deriveFeatureCounters(response: VideoSlotRoundResponse): Feature
     }
     if (typeof response.chargedBetModeId === "string") counters.push({label: "Charged mode", value: response.chargedBetModeId});
     const bounded = asRecord(response.boundedMechanics);
+    const bonus = asRecord(bounded.weightedBonus),
+        selection = asRecord(bonus.selection);
+    for (const key of ["tableId", "outcomeId", "context"]) if (typeof selection[key] === "string") counters.push({label: `Bonus ${key}`, value: selection[key] as string});
+    for (const key of ["payout", "remaining", "executed"]) if (typeof bonus[key] === "number") counters.push({label: `Bonus ${key}`, value: bonus[key] as number});
     for (const [feature, fields] of [["collection", ["value", "cap", "threshold", "contribution", "triggered", "reset", "payout"]], ["respins", ["remaining", "executed", "granted", "limit"]], ["cascade", ["winningCascades", "evaluatedSteps"]]] as const) {
         const data = asRecord(bounded[feature]);
         for (const field of fields) if (typeof data[field] === "number" || typeof data[field] === "string" || typeof data[field] === "boolean") counters.push({label: `${feature} ${field}`, value: typeof data[field] === "boolean" ? String(data[field]) : data[field] as number | string});

@@ -1,3 +1,5 @@
+import type {WeightedBonusProviding} from "../session/videoslot/authored/WeightedBonus.js";
+import {mergeWeightedBonusStatistics} from "./WeightedBonusStatisticsMerging.js";
 import {observeModifierStatistics} from "./ModifierStatistics.js";
 import {mergeReelSequenceStatistics} from "./ReelSequenceStatisticsMerging.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
@@ -72,6 +74,8 @@ export class AggregateSimulationRunner {
         if (sampling) accumulator.enableLogicalRoundSampling();
         const start = sampling ? logicalSamplingPosition(this.session) : undefined;
         const slot = this.session as Partial<VideoSlotSessionHandling>;
+        const bonusProvider = this.session as Partial<WeightedBonusProviding>;
+        const bonusBefore = bonusProvider.getWeightedBonusStatistics?.();
         const sequenceBefore = slot.getSequenceStatistics?.();
         const categoryTotals = new Map<string, CategoryTotals>();
         let categorizationSupported = false;
@@ -133,6 +137,8 @@ export class AggregateSimulationRunner {
         this.lastJackpotStatistics = this.supportsJackpotStatistics(this.session)
             ? subtractJackpotStatisticsSnapshots(this.session.getJackpotStatisticsSnapshot(), jackpotBefore)
             : undefined;
+        const bonusAfter = mergeWeightedBonusStatistics(bonusProvider.getWeightedBonusStatistics?.(), bonusBefore, true);
+        if (bonusAfter) accumulator.setWeightedBonusStatistics(bonusAfter);
         const sequenceAfter = slot.getSequenceStatistics?.();
         if (sequenceAfter?.length) accumulator.setReelSequenceStatistics(mergeReelSequenceStatistics(sequenceAfter, sequenceBefore, true));
         return accumulator;

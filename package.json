@@ -184,6 +184,12 @@
         "docs/v2-completion/V2C-11.md",
         "docs/v2-completion/V2C-12.md",
         "docs/v2-completion/V2C-13.md",
+        "docs/v2-completion/V2C-14.md",
+        "docs/v2-completion/V2C-15.md",
+        "docs/v2-completion/launch-mechanics-support.md",
+        "docs/weighted-bonus.md",
+        "examples/blueprints/bounded-*.blueprint.json",
+        "examples/blueprints/weighted-bonus.blueprint.json",
         "examples/blueprints/wild-*.blueprint.json"
     ],
     "dependencies": {

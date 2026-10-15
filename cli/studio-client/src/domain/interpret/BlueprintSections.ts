@@ -29,7 +29,7 @@ const SECTION_CODE_PREFIXES: Record<BlueprintSectionId, string[]> = {
     // "blueprint-reelstrip" (no trailing "s") covers reelstrip-/reelstrips-/reelstripgeneration- alike.
     reels: ["blueprint-reel-sequences-", "blueprint-reelstrip", "blueprint-symbolweights-", "blueprint-weighting-"],
     paytable: ["blueprint-paytable-", "blueprint-symbol-missing-payout"],
-    bets: ["blueprint-mechanics-", "blueprint-availablebets-", "blueprint-betmode-", "blueprint-betmodes-"],
+    bets: ["weighted-bonus-", "blueprint-mechanics-", "blueprint-availablebets-", "blueprint-betmode-", "blueprint-betmodes-"],
 };
 
 function sectionForIssue(issue: ValidationIssue): BlueprintSectionId | undefined {

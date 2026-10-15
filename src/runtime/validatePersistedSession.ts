@@ -1,3 +1,4 @@
+import {weightedBonusSelectionsEqual} from "../session/videoslot/authored/WeightedBonus.js";
 import type {ConvertableToSessionState} from "../session/ConvertableToSessionState.js";
 import {sequenceSelectionsEqual} from "../artifact/validateSequenceSelections.js";
 import type {ReelSequenceSelection} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
@@ -78,7 +79,15 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
         let pending = false;
         let known = schema?.kind !== "custom";
         while (schema && "base" in schema) {
-            if (schema.kind === "bounded-mechanics") pending ||= (feature?.remaining ?? 0) > 0;
+            if (schema.kind === "bounded-mechanics") {
+                pending ||= (feature?.remaining ?? 0) > 0;
+                if (schema.rules.weightedBonus) {
+                    const selection = (feature as {bonus?: {selection?: {context: string}}})?.bonus?.selection;
+                    const events = last.artifacts?.[last.artifacts.length - 1]?.featureEvents;
+                    const observation = events?.find(event => event.type === "boundedMechanics")?.data?.weightedBonus as {selection?: unknown} | undefined;
+                    if ((selection && selection.context !== `logical:${state.logicalRound.id}`) || !weightedBonusSelectionsEqual(selection, observation?.selection)) return {status: "corrupt-state", reason: "Weighted bonus identity differs from retained logical round."};
+                }
+            }
             if (schema.kind === "free-games") pending ||= (feature?.freeGamesNum ?? 0) < (feature?.freeGamesSum ?? 0);
             if (schema.kind === "hold-and-win") {
                 pending ||= feature?.active === true;

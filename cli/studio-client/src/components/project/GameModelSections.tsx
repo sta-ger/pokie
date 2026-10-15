@@ -165,7 +165,7 @@ function sectionFieldIssues(id: BlueprintSectionId, edit: GameModelEditControlle
 // cross-field code a buyFeature bet mode raises when free games isn't configured
 // ("blueprint-betmodes-buyfeature-requires-freegames") is filtered directly here instead.
 function isMechanicsIssue(issue: ValidationIssue): boolean {
-    return issue.code.startsWith("blueprint-mechanics-") || issue.code === "blueprint-betmodes-buyfeature-requires-freegames";
+    return issue.code.startsWith("blueprint-mechanics-") || issue.code.startsWith("weighted-bonus-") || issue.code === "blueprint-betmodes-buyfeature-requires-freegames";
 }
 
 function mechanicsIssues(edit: GameModelEditController): ValidationIssue[] {
@@ -659,8 +659,8 @@ function MechanicsSection({section}: {section: GameModelProjection["mechanics"]}
     if (section.status === "unavailable") {
         return <UnavailableSection reason={section.reason} />;
     }
-    const {freeGames, holdAndWin, jackpot, modifiers, cascade, respins, collection} = section.data;
-    if ([freeGames, holdAndWin, jackpot, modifiers, cascade, respins, collection].every(rule => rule === undefined)) {
+    const {freeGames, holdAndWin, jackpot, modifiers, cascade, respins, collection, weightedBonus} = section.data;
+    if ([freeGames, holdAndWin, jackpot, modifiers, cascade, respins, collection, weightedBonus].every(rule => rule === undefined)) {
         return (
             <Text size="sm" c="dimmed">
                 No mechanics/features configured.
@@ -673,6 +673,10 @@ function MechanicsSection({section}: {section: GameModelProjection["mechanics"]}
             {respins && <>
                 <Text size="sm">Respins: trigger symbol {respins.trigger.symbolId}, minimum count {respins.trigger.minimumCount}; grant {respins.grant}; retrigger {respins.retrigger}; maximum executed respins {respins.maxRespins}.</Text>
                 <Text size="sm">Continuation stake is zero. Each accepted subround pays its own win; retrigger grants are clipped to the remaining lifetime budget.</Text>
+            </>}
+            {weightedBonus && <>
+                <Text size="sm">Weighted bonus: {weightedBonus.id}; {weightedBonus.context}; trigger {weightedBonus.trigger.symbolId} × {weightedBonus.trigger.minimumCount}; feature {weightedBonus.feature.id}; maximum duration {weightedBonus.feature.maxDuration}.</Text>
+                {weightedBonus.outcomes.map(o => <Text key={o.id} size="sm">Outcome {o.id}: weight {o.weight}; payout {o.payout} {o.payoutUnits}; duration {o.duration}; target {o.targetId}.</Text>)}
             </>}
             {collection && <>
                 <Text size="sm">Collection: symbol {collection.symbolId}; contribution {collection.contribution} per symbol; threshold {collection.threshold}; cap {collection.cap}; reset {collection.reset}; payout {collection.payout}.</Text>

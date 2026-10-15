@@ -1,3 +1,5 @@
+import type {WeightedBonusStatistics, WeightedBonusProviding} from "../session/videoslot/authored/WeightedBonus.js";
+import {mergeWeightedBonusStatistics} from "./WeightedBonusStatisticsMerging.js";
 import {mergeReelSequenceStatistics} from "./ReelSequenceStatisticsMerging.js";
 import type {ReelSequenceStatistics} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
@@ -11,6 +13,7 @@ import type {SimulationConfigRepresenting} from "./SimulationConfigRepresenting.
 
 export class Simulation implements AsyncSimulationHandling {
     private readonly logicalSampling: boolean;
+    private readonly bonusBefore?: WeightedBonusStatistics;
     private readonly sequenceBefore?: ReelSequenceStatistics[];
     private logicalRounds = emptyLogicalRoundStatistics();
     private readonly session: GameSessionHandling;
@@ -35,10 +38,15 @@ export class Simulation implements AsyncSimulationHandling {
     constructor(session: GameSessionHandling, config: SimulationConfigRepresenting) {
         this.session = session;
         this.logicalSampling = typeof (session as {getBoundedMechanicObservation?: unknown}).getBoundedMechanicObservation === "function";
+        this.bonusBefore = (session as Partial<WeightedBonusProviding>).getWeightedBonusStatistics?.();
         this.sequenceBefore = (session as Partial<VideoSlotSessionHandling>).getSequenceStatistics?.();
         this.numberOfRounds = config.getNumberOfRounds();
         this.changeBetStrategy = config.getChangeBetStrategy();
         this.playStrategy = config.getPlayStrategy();
+    }
+
+    public getWeightedBonusStatistics(): WeightedBonusStatistics | undefined {
+        return mergeWeightedBonusStatistics((this.session as Partial<WeightedBonusProviding>).getWeightedBonusStatistics?.(), this.bonusBefore, true);
     }
 
     public getReelSequenceStatistics(): ReelSequenceStatistics[] {

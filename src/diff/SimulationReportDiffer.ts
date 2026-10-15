@@ -25,6 +25,10 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
     }
 
     public diff(left: SimulationReport, right: SimulationReport): SimulationReportDiff {
+        const weightedBonus = left.weightedBonus || right.weightedBonus ? {
+            configurationChanged: left.weightedBonus?.model !== right.weightedBonus?.model,
+            observationsChanged: JSON.stringify([left.weightedBonus?.selections, left.weightedBonus?.completed, left.weightedBonus?.outcomes.map(o => o.count)]) !== JSON.stringify([right.weightedBonus?.selections, right.weightedBonus?.completed, right.weightedBonus?.outcomes.map(o => o.count)]),
+        } : undefined;
         const reelSequences = diffReelSequences(left.reelSequences, right.reelSequences);
         const rtp = this.metricDiff(left.rtp, right.rtp);
         const hitFrequency = this.metricDiff(left.hitFrequency, right.hitFrequency);
@@ -50,7 +54,8 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
         const spinsPerSecond = this.metricDiff(left.spinsPerSecond, right.spinsPerSecond);
 
         return {
-            changed: !!reelSequences?.changed || this.hasChanges(game.changed, seed.changed, betMode, [requestedRounds, rounds, totalBet, totalWin, rtp, hitFrequency, maxWin, durationMs, spinsPerSecond], breakdown, left.breakdown, right.breakdown),
+            changed: !!weightedBonus?.configurationChanged || !!weightedBonus?.observationsChanged || !!reelSequences?.changed || this.hasChanges(game.changed, seed.changed, betMode, [requestedRounds, rounds, totalBet, totalWin, rtp, hitFrequency, maxWin, durationMs, spinsPerSecond], breakdown, left.breakdown, right.breakdown),
+            ...(weightedBonus ? {weightedBonus} : {}),
             ...(reelSequences === undefined ? {} : {reelSequences}),
             game,
             seed,

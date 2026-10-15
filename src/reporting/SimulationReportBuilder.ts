@@ -71,6 +71,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             ...(statistics.logicalRounds ? {logicalRounds: statistics.logicalRounds} : {}),
             ...(statistics.logicalRoundMetrics ? {sampling: {unit: "completed-logical-round" as const, acceptedSubrounds: statistics.rounds, carriedSubrounds: statistics.logicalSampling?.carriedSubrounds ?? 0, excludedSubrounds: statistics.logicalSampling?.excludedSubrounds ?? 0, trajectories: "independent-session-per-worker" as const}} : {}),
             ...(statistics.modifiers ? {modifiers: statistics.modifiers} : {}),
+            ...(statistics.weightedBonus ? {weightedBonus: statistics.weightedBonus} : {}),
             ...(statistics.reelSequences ? {reelSequences: statistics.reelSequences} : {}),
             breakdown,
             jackpot,

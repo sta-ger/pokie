@@ -33,6 +33,7 @@ export type SimulationReportDiff = {
     // means callers do not need to infer it from every metric, optional breakdown, and metadata
     // field themselves.
     changed: boolean;
+    weightedBonus?: {configurationChanged: boolean; observationsChanged: boolean};
     reelSequences?: ReelSequencesDiff;
     game: {
         left: {id: string; name: string; version: string};

@@ -1,3 +1,4 @@
+import {validateWeightedBonus} from "../session/videoslot/authored/WeightedBonus.js";
 import {validateScreenModifiers} from "../session/videoslot/modifiers/validateScreenModifiers.js";
 import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
@@ -22,8 +23,14 @@ export function validateAuthoredMechanics(blueprint: Record<string, unknown>): V
     const boardSize = positive(blueprint.reels) && positive(blueprint.rows) ? blueprint.reels * blueprint.rows : undefined;
     const symbols = Array.isArray(blueprint.symbols) ? blueprint.symbols : [];
     if (blueprint.mechanics === undefined) return issues;
-    const mechanics = object(blueprint.mechanics, "mechanics", ["freeGames", "holdAndWin", "jackpot", "modifiers", "cascade", "respins", "collection"]);
+    const mechanics = object(blueprint.mechanics, "mechanics", ["freeGames", "holdAndWin", "jackpot", "modifiers", "cascade", "respins", "collection", "weightedBonus"]);
     if (!mechanics) return issues;
+    if (mechanics.weightedBonus !== undefined) {
+        issues.push(...validateWeightedBonus(mechanics.weightedBonus, symbols, boardSize));
+        for (const key of ["freeGames", "holdAndWin", "jackpot", "modifiers", "cascade", "respins", "collection"]) if (mechanics[key] !== undefined) error(`mechanics.${key}`, "weightedBonus owns bonus progression and requires an undecorated base session.", "weighted-bonus-composition");
+        if (blueprint.betModes !== undefined) error("betModes", "weightedBonus requires the base stake mode.", "weighted-bonus-composition");
+        if (blueprint.screenGeometry !== undefined) error("screenGeometry", "weightedBonus requires standard geometry.", "weighted-bonus-composition");
+    }
     const bounded = ["cascade", "respins", "collection"].filter(key => mechanics[key] !== undefined);
     if (bounded.length) {
         for (const key of ["freeGames", "holdAndWin", "jackpot", "modifiers"]) if (mechanics[key] !== undefined) error(`mechanics.${key}`, "cannot combine with bounded cascade/respins/collection.");

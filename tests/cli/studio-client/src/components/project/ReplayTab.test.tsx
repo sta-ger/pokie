@@ -429,3 +429,24 @@ describe("Recent Simulation replay eligibility and rejected-start recovery", () 
         expect(screen.getByRole("button", {name: "Load"})).toBeDisabled();
     });
 });
+
+it("weighted bonus Replay retains audited identity and duration through the real result adapter", async () => {
+    const {weightedBonusBlueprint} = await import("../../../../../v2/fixtures/WeightedBonusGame");
+    const {mechanicsSession} = await import("../../../../../v2/fixtures/ExistingMechanicsGame");
+    const game = generatedMechanicsGame(weightedBonusBlueprint());
+    const descriptor = new ReplayRecorder().recordAudit(game, mechanicsSession(game, 0), [{kind: "spin", roundId: "known", delivery: "composite"}], {status: "calculated", sessionId: "s", durability: "detached"}, {seed: 0});
+    const job: StudioReplayJobView = {id: "bonus-replay", status: "completed", round: 1, seed: "0", completedRounds: 1, startedAt: "2026-10-15T00:00:00Z", durationMs: 0, descriptor};
+    render(<MantineProvider><ReplayTab progress={describeReplayProgress(job)} result={describeReplayResult(job)} error={undefined}
+        onRun={() => undefined} onCancel={() => undefined} onRetry={() => undefined}
+        listView={{status: "empty"}} listError={undefined} onRefreshList={() => undefined}
+        onInspectStored={() => Promise.resolve()} onCompareStored={() => undefined}
+        expected={{status: "empty"}} onLoadExpectedFromPaste={() => undefined} onClearExpected={() => undefined} comparison={undefined}
+        recentSpins={{status: "empty"}} recentSpinsError={undefined} onRefreshRecentSpins={() => undefined}
+        recentRuns={{status: "empty"}} recentRunsError={undefined} onRefreshRecentRuns={() => undefined} currentGame={descriptor.game} /></MantineProvider>);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", {name: "Load"}));
+    await user.click(screen.getByRole("button", {name: "Run again"}));
+    expect(screen.getAllByText("large").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("logical:known").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Bonus executed").length).toBeGreaterThan(0);
+});
