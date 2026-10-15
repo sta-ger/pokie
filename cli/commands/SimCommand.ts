@@ -1,3 +1,5 @@
+import {analyticsEnvelope} from "../../src/simulation/FeatureAnalytics.js";
+import {describeFeatureAnalytics} from "../../src/simulation/describeFeatureAnalytics.js";
 import {Command} from "commander";
 import {
     BetMode,
@@ -385,7 +387,7 @@ export class SimCommand implements CliCommandHandling {
             const accumulator = new SimulationAccumulator();
             for (let index = 0; index < options.rounds; index++) {
                 const round = await session.play();
-                accumulator.addRound(round.stake, round.payout);
+                accumulator.addRound(round.stake, round.payout, {envelope: analyticsEnvelope(runtime.manifest.artifact?.configurationHash ?? null), source: "wasm", logicalEntry: false, logicalCompletion: false, carriedSubround: false, cascadeSteps: 0, features: []});
             }
             const statistics = accumulator.getStatistics();
             const report = this.reportBuilder.build({
@@ -446,6 +448,7 @@ export class SimCommand implements CliCommandHandling {
     }
 
     private printOutcomeSourceSummary(report: OutcomeSourceSimulationReport): void {
+        for (const line of describeFeatureAnalytics(report.statistics.analytics)) console.log(`  ${line}`);
         const statistics = report.statistics;
         console.log(`Simulated outcome library "${report.libraryId}" (hash "${report.libraryHash}"), mode "${report.modeName}"`);
         console.log(`  rounds          ${statistics.rounds}`);
@@ -630,6 +633,7 @@ export class SimCommand implements CliCommandHandling {
     }
 
     private printSummary(report: SimulationReport): void {
+        for (const line of describeFeatureAnalytics(report.analytics)) console.log(`  ${line}`);
         console.log(`Simulated "${report.game.name}" (id: "${report.game.id}", v${report.game.version})`);
         const roundsSuffix = report.rounds !== report.requestedRounds ? ` (requested ${report.requestedRounds})` : "";
         console.log(`  rounds          ${report.rounds}${roundsSuffix}`);

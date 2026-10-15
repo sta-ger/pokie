@@ -1,10 +1,11 @@
+import {SessionFeatureAnalyticsObserver} from "./SessionFeatureAnalyticsObserver.js";
 import type {WeightedBonusProviding} from "../session/videoslot/authored/WeightedBonus.js";
 import {mergeWeightedBonusStatistics} from "./WeightedBonusStatisticsMerging.js";
 import {observeModifierStatistics} from "./ModifierStatistics.js";
 import {mergeReelSequenceStatistics} from "./ReelSequenceStatisticsMerging.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
-import {observeLogicalSubround, logicalSamplingPosition} from "./LogicalRoundStatistics.js";
-import {executeSessionCommand} from "../runtime/SessionRuntime.js";
+import {observeLogicalSubround, logicalSamplingPosition, hasTrackedLogicalSubround, logicalAbandonedSteps} from "./LogicalRoundStatistics.js";
+import {SessionRuntime, executeSessionCommand} from "../runtime/SessionRuntime.js";
 import type {JackpotStatisticsProviding} from "../session/JackpotStatisticsProviding.js";
 import type {JackpotStatisticsSnapshot} from "../session/JackpotStatisticsSnapshot.js";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
@@ -70,7 +71,9 @@ export class AggregateSimulationRunner {
 
     public run(shouldStop?: () => boolean): SimulationAccumulator {
         const accumulator = new SimulationAccumulator();
-        const sampling = typeof (this.session as {getBoundedMechanicObservation?: unknown}).getBoundedMechanicObservation === "function";
+        const observer = new SessionFeatureAnalyticsObserver(this.session);
+        accumulator.configureAnalytics(observer.getEnvelope());
+        const sampling = SessionRuntime.supportsLogicalRoundDelivery(this.session);
         if (sampling) accumulator.enableLogicalRoundSampling();
         const start = sampling ? logicalSamplingPosition(this.session) : undefined;
         const slot = this.session as Partial<VideoSlotSessionHandling>;
@@ -85,47 +88,57 @@ export class AggregateSimulationRunner {
         // same session/runner) into a report that's supposed to describe only this run's own rounds.
         const jackpotBefore = this.supportsJackpotStatistics(this.session) ? this.session.getJackpotStatisticsSnapshot() : undefined;
 
-        for (let round = 0; round < this.rounds; round++) {
-            if (shouldStop?.()) break;
-            if (!this.session.canPlayNextGame()) {
-                break;
-            }
-            if (this.playStrategy && !this.playStrategy.canPlayNextSimulationRound(this.session)) {
-                break;
-            }
-            this.betModeSelector?.setBetModeForNextRound(this.session);
+        try {
+            for (let round = 0; round < this.rounds; round++) {
+                if (shouldStop?.()) break;
+                if (!this.session.canPlayNextGame()) {
+                    break;
+                }
+                if (this.playStrategy && !this.playStrategy.canPlayNextSimulationRound(this.session)) {
+                    break;
+                }
+                this.betModeSelector?.setBetModeForNextRound(this.session);
 
-            const supportsCategorization = this.roundCategoryDeterminer.supportsRoundCategorization(this.session);
-            // Normalized/validated here, centrally, regardless of which determiner produced it — an
-            // injected custom SimulationRoundCategoryDetermining (see the extension point) gets the same
-            // safety net as the built-in ExplicitSimulationRoundCategoryDeterminer, so no determiner can
-            // put an empty/oversized/unsafe string directly into a breakdown key. An invalid category is
-            // treated exactly like "this determiner doesn't support this round" — the round still plays
-            // and counts toward the overall totals, it just isn't attributed to any breakdown category.
-            const category = supportsCategorization
-                ? SimulationCategoryNameNormalizer.normalize(this.roundCategoryDeterminer.categorizeRound(this.session))
-                : undefined;
+                const supportsCategorization = this.roundCategoryDeterminer.supportsRoundCategorization(this.session);
+                // Normalized/validated here, centrally, regardless of which determiner produced it — an
+                // injected custom SimulationRoundCategoryDetermining (see the extension point) gets the same
+                // safety net as the built-in ExplicitSimulationRoundCategoryDeterminer, so no determiner can
+                // put an empty/oversized/unsafe string directly into a breakdown key. An invalid category is
+                // treated exactly like "this determiner doesn't support this round" — the round still plays
+                // and counts toward the overall totals, it just isn't attributed to any breakdown category.
+                const category = supportsCategorization
+                    ? SimulationCategoryNameNormalizer.normalize(this.roundCategoryDeterminer.categorizeRound(this.session))
+                    : undefined;
 
-            const {stake: stakeAmount, win: payout} = executeSessionCommand(this.session);
-            // Canonical accounting: nominalBet is the displayed denomination;
-            // stakeAmount is what the player actually paid for this round;
-            // a free continuation therefore contributes 0 stake but its full
-            // payout. This same denominator reaches accumulator, breakdown,
-            // worker merge and report -- no mode-specific alternate RTP.
-            accumulator.addRound(stakeAmount, payout);
-            const modifiers = observeModifierStatistics(this.session);
-            if (modifiers) accumulator.addModifierStatistics(modifiers);
-            const logical = observeLogicalSubround(this.session, stakeAmount, payout);
-            if (logical) accumulator.addLogicalRound(logical);
-            if (start) {
-                const end = logicalSamplingPosition(this.session).position;
-                accumulator.addLogicalSamplingRanges([{trajectory: start.id, observed: [[end - 1, end]], completed: logical ? [[end - logical.steps, end]] : []}]);
+                const before = observer.beforePlay();
+                const {stake: stakeAmount, win: payout, mode} = executeSessionCommand(this.session);
+                // Canonical accounting: nominalBet is the displayed denomination;
+                // stakeAmount is what the player actually paid for this round;
+                // a free continuation therefore contributes 0 stake but its full
+                // payout. This same denominator reaches accumulator, breakdown,
+                // worker merge and report -- no mode-specific alternate RTP.
+                accumulator.addRound(stakeAmount, payout, observer.afterPlay(before, payout, mode));
+                const modifiers = observeModifierStatistics(this.session);
+                if (modifiers) accumulator.addModifierStatistics(modifiers);
+                const logical = observeLogicalSubround(this.session, stakeAmount, payout, !before.pending);
+                if (logical) accumulator.addLogicalRound(logical);
+                if (start) {
+                    const end = logicalSamplingPosition(this.session).position;
+                    const abandoned = logicalAbandonedSteps(this.session);
+                    const excluded = !abandoned && !logical && !hasTrackedLogicalSubround(this.session);
+                    accumulator.addLogicalSamplingRanges([{trajectory: start.id, observed: excluded ? [] : [[end - 1, end]], completed: logical ? [[end - logical.steps, end]] : [], excluded: excluded ? 1 : 0, ...(abandoned ? {abandoned: [[end - abandoned, end] as [number, number]]} : {})}]);
+                }
+
+                if (category !== undefined) {
+                    categorizationSupported = true;
+                    this.addToCategoryTotals(categoryTotals, category, stakeAmount, payout);
+                }
             }
 
-            if (category !== undefined) {
-                categorizationSupported = true;
-                this.addToCategoryTotals(categoryTotals, category, stakeAmount, payout);
-            }
+        } catch (error) {
+            const failure = error instanceof Error ? error : new Error(String(error));
+            Object.assign(failure, {observedPrefix: accumulator.getStatistics(), accumulatorSnapshot: accumulator.toSnapshot()});
+            throw failure;
         }
 
         this.lastBreakdown = categorizationSupported ? this.toBreakdownComponents(categoryTotals) : undefined;

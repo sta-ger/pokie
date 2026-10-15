@@ -1,3 +1,4 @@
+import {describeFeatureAnalytics} from "../simulation/describeFeatureAnalytics.js";
 import {describeWeightedBonusCoverage} from "../session/videoslot/authored/WeightedBonus.js";
 import {describeSequenceVariantCoverage} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {SimulationReport} from "./SimulationReport.js";
@@ -41,6 +42,7 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             `- **Workers**: ${report.workers ?? 1}`,
         ];
 
+        lines.push("", "## Feature analytics", ...describeFeatureAnalytics(report.analytics).map(line => `- ${line.replace(/[<>|\n\r]/g, " ")}`));
         if (report.sampling) lines.push("", "## Logical round sampling", `Completed logical rounds: ${report.rounds}; accepted subrounds: ${report.sampling.acceptedSubrounds}; carried subrounds: ${report.sampling.carriedSubrounds ?? 0}; excluded unfinished/restored subrounds: ${report.sampling.excludedSubrounds}. Independent session trajectory per worker. Monetary totals include every observed subround.`);
         if (report.modifiers) lines.push("", "## Screen modifiers", `Executed steps: ${report.modifiers.steps}; rule applications: ${report.modifiers.ruleApplications}; sticky steps: ${report.modifiers.stickySteps}; multiplied components: ${report.modifiers.multipliedComponents}`);
         if (report.weightedBonus) {

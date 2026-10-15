@@ -1,3 +1,4 @@
+import {analyticsEnvelope, emptyFeatureAnalytics, featureAnalyticsStatistics} from "../../src/simulation/FeatureAnalytics.js";
 import {SimulationReport, SimulationReportDiffer} from "@fromstan/pokie";
 
 const reproducibility = {
@@ -428,4 +429,12 @@ it.each(["weighted", "exact"])("attributes a reel 2 %s definition edit once with
     const sampledDiff = new SimulationReportDiffer().diff(before, sampled);
     expect(sampledDiff.reelSequences!.changes).toEqual(diff.reelSequences!.changes);
     expect(sampledDiff.reelSequences!.observationsChanged).toBe(true);
+});
+
+it("observes analytics-only changes and availability even when all legacy totals match", () => {
+    const analytics = featureAnalyticsStatistics(emptyFeatureAnalytics(analyticsEnvelope("one", true, true)));
+    const differ = new SimulationReportDiffer();
+    expect(differ.diff({...left, analytics}, {...left, analytics: {...analytics, deadSpins: 1}})).toMatchObject({changed: true, analytics: {changed: true}});
+    expect(differ.diff(left, {...left, analytics})).toMatchObject({changed: true, analytics: {changed: true}});
+    expect(differ.diff({...left, analytics}, {...left, analytics})).toMatchObject({changed: false, analytics: {changed: false}});
 });

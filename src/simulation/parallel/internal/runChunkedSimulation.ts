@@ -81,7 +81,15 @@ export async function runChunkedSimulation(
 
         const chunkRounds = Math.min(chunkSize, roundsRemaining);
         const runner = new AggregateSimulationRunner(session, chunkRounds, undefined, undefined, betModeSelector);
-        const chunkAccumulator = runner.run(callbacks.shouldStop);
+        let chunkAccumulator: SimulationAccumulator;
+        try {
+            chunkAccumulator = runner.run(callbacks.shouldStop);
+        } catch (error) {
+            const snapshot = (error as {accumulatorSnapshot?: import("../../SimulationAccumulatorSnapshot.js").SimulationAccumulatorSnapshot}).accumulatorSnapshot;
+            if (snapshot) accumulator.merge(SimulationAccumulator.fromSnapshot(snapshot));
+            if (error instanceof Error) Object.assign(error, {observedPrefix: accumulator.getStatistics(), accumulatorSnapshot: accumulator.toSnapshot()});
+            throw error;
+        }
         accumulator.merge(chunkAccumulator);
         const chunkBreakdown = runner.getBreakdownStatistics();
         if (chunkBreakdown) {

@@ -1,3 +1,4 @@
+import {analyticsEnvelope, emptyFeatureAnalytics, featureAnalyticsStatistics} from "../../../../../../src/simulation/FeatureAnalytics";
 import {describeSimulationReport, type SimulationReportView} from "../../../../../../cli/studio-client/src/domain/interpret/Simulation";
 import type {SimulationReport} from "../../../../../../cli/studio-client/src/api/types";
 import {MantineProvider} from "@mantine/core";
@@ -71,4 +72,19 @@ it("forwards real bonus selection statistics through the API view and rendered r
     expect(within(large).getByText("observed")).toBeVisible();
     expect(result.getByText("unobserved")).toBeVisible();
     expect(result.getByText("zero weight")).toBeVisible();
+});
+
+it("renders analytics availability, zero denominators, unfinished features and populated ratios", () => {
+    const report: SimulationReport = {game: {id: "analytics", name: "Analytics", version: "1"}, rounds: 0, requestedRounds: 0, seed: "1", totalBet: 0, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0, durationMs: 0, spinsPerSecond: 0};
+    const result = render(<MantineProvider><SimulationReportDisplay view={describeSimulationReport(report)} /></MantineProvider>);
+    expect(result.getByText(/Feature analytics unavailable/)).toBeVisible();
+    const analytics = featureAnalyticsStatistics(emptyFeatureAnalytics(analyticsEnvelope("model", true, true)));
+    result.rerender(<MantineProvider><SimulationReportDisplay view={describeSimulationReport({...report, analytics})} /></MantineProvider>);
+    expect(result.getAllByText(/bonus win \/ completions: 0 \/ 0 = 0/)).toHaveLength(7);
+    expect(result.container.textContent).not.toContain("NaN");
+    analytics.lifecycle.freeGames.incomplete = 1;
+    analytics.lifecycle.freeGames.entryPerPaidRound = {numerator: 1, denominator: 2, value: 0.5};
+    result.rerender(<MantineProvider><SimulationReportDisplay view={describeSimulationReport({...report, analytics})} /></MantineProvider>);
+    expect(result.getByText(/freeGames: entries \/ paid rounds: 1 \/ 2 = 0.5/)).toHaveTextContent("incomplete: 1");
+    expect(result.getByText(/feature: RTP contribution \/ actual charged stake/)).toHaveTextContent("payout share / total win");
 });

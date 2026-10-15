@@ -1009,7 +1009,8 @@ describe("SimCommand (integration, real game with a free-games feature)", () => 
         const {base, freeGames} = report.breakdown!.components;
         expect(base.rounds).toBeGreaterThan(0);
         expect(freeGames.rounds).toBeGreaterThan(0);
-        expect(base.rounds + freeGames.rounds).toBe(report.rounds);
+        expect(base.rounds + freeGames.rounds).toBe(report.sampling?.acceptedSubrounds ?? report.rounds);
+        expect(report.analytics?.subrounds).toBe(base.rounds + freeGames.rounds);
         expect(base.totalBet + freeGames.totalBet).toBeCloseTo(report.totalBet, 10);
         expect(base.totalWin + freeGames.totalWin).toBeCloseTo(report.totalWin, 10);
     });

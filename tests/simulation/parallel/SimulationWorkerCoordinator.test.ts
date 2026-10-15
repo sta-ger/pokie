@@ -1,3 +1,5 @@
+import {SimulationAccumulator} from "../../../src/simulation/SimulationAccumulator.js";
+import {analyticsEnvelope} from "../../../src/simulation/FeatureAnalytics.js";
 import {SimulationCancelledError, SimulationWorkerCoordinator, SimulationWorkerFailureError, SimulationWorkerRequest, SimulationWorkerResult} from "@fromstan/pokie";
 import {EventEmitter} from "events";
 import type {Worker} from "worker_threads";
@@ -86,7 +88,8 @@ describe("SimulationWorkerCoordinator", () => {
     test("forwards progress messages via onProgress", async () => {
         const worker = new FakeWorker();
         const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
-        const progressEvents: Array<{workerIndex: number; roundsCompleted: number}> = [];
+        const progressEvents: Array<{workerIndex: number;
+ roundsCompleted: number}> = [];
 
         const promise = coordinator.run([makeRequest(0)], {onProgress: (p) => progressEvents.push(p)});
         worker.emit("message", {type: "progress", workerIndex: 0, roundsCompleted: 50});
@@ -266,4 +269,23 @@ describe("SimulationWorkerCoordinator", () => {
 
         await expect(promise).rejects.toThrow(/original reason/);
     });
+});
+
+it("rejects incompatible cancellation prefixes after worker cleanup instead of escaping finish", async () => {
+    const workers = [new FakeWorker(), new FakeWorker()];
+    let index = 0;
+    const signal = new AbortController();
+    const coordinator = new SimulationWorkerCoordinator(undefined, () => workers[index++] as unknown as Worker);
+    const promise = coordinator.run([makeRequest(0), makeRequest(1)], {signal: signal.signal});
+    for (let i = 0;
+        i < 2;
+        i++) {
+        const accumulator = new SimulationAccumulator();
+        accumulator.configureAnalytics(analyticsEnvelope(`model-${i}`));
+        workers[i].emit("message", {type: "progress", workerIndex: i, roundsCompleted: 0, accumulator: accumulator.toSnapshot()});
+    }
+    signal.abort();
+    await expect(promise).rejects.toThrow(/analytics.*provenance/);
+    expect(workers.map(worker => worker.terminateCallCount)).toEqual([1, 1]);
+    expect(workers.map(worker => worker.listenerCount("message"))).toEqual([0, 0]);
 });

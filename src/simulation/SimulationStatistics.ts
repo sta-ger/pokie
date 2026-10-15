@@ -3,6 +3,7 @@ import type {ModifierStatistics} from "./ModifierStatistics.js";
 import type {ReelSequenceStatistics} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {LogicalRoundStatistics, LogicalSamplingAccounting} from "./LogicalRoundStatistics.js";
 export type SimulationStatistics = {
+    analytics?: import("./FeatureAnalytics.js").FeatureAnalytics;
     modifiers?: ModifierStatistics;
     weightedBonus?: WeightedBonusStatistics;
     reelSequences?: ReelSequenceStatistics[];

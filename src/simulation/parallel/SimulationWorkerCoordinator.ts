@@ -1,3 +1,4 @@
+import {SimulationAccumulator} from "../SimulationAccumulator.js";
 import {SimulationStatisticsMerger} from "../SimulationStatisticsMerger.js";
 import type {Worker} from "worker_threads";
 import {getDefaultWorkerEntryUrl} from "./internal/defaultWorkerEntryUrl.js";
@@ -78,7 +79,7 @@ export class SimulationWorkerCoordinator {
             let settled = false;
 
             const terminateAll = async (): Promise<void> => {
-                await Promise.allSettled(workers.map((worker) => worker.terminate()));
+                await Promise.allSettled(workers.map((worker) => Promise.resolve().then(() => worker.terminate())));
             };
 
             const onAbort = (): void => {
@@ -92,7 +93,12 @@ export class SimulationWorkerCoordinator {
                 settled = true;
                 signal?.removeEventListener("abort", onAbort);
                 await terminateAll();
-                action();
+                for (const worker of workers) worker.removeAllListeners();
+                try {
+                    action();
+                } catch (error) {
+                    reject(error);
+                }
             }
 
             signal?.addEventListener("abort", onAbort);
@@ -130,42 +136,55 @@ export class SimulationWorkerCoordinator {
                     }
 
                     const message = raw as SimulationWorkerMessage;
-                    switch (message.type) {
-                        case "progress":
-                            if (message.accumulator) prefixes.set(index, message.accumulator);
-                            onProgress?.({workerIndex: message.workerIndex, roundsCompleted: message.roundsCompleted});
-                            return;
-                        case "error":
-                            finish(() => reject(new SimulationWorkerFailureError(message.workerIndex, message.message)));
-                            return;
-                        case "result": {
-                            const result: SimulationWorkerResult = {
-                                workerIndex: message.workerIndex,
-                                manifest: message.manifest,
-                                configHash: message.configHash,
-                                accumulator: message.accumulator,
-                                breakdown: message.breakdown,
-                                jackpot: message.jackpot,
-                                roundsCompleted: message.roundsCompleted,
-                                stopReason: message.stopReason,
-                                convergence: message.convergence,
-                            };
-                            results[index] = result;
-                            prefixes.set(index, result.accumulator);
-                            if (results.every((entry) => entry !== undefined)) {
-                                finish(() => resolve(results as SimulationWorkerResult[]));
-                            }
-                            return;
+                    try {
+                        if (["progress", "result", "error"].includes(message.type) && message.workerIndex !== request.workerIndex) throw new SimulationWorkerFailureError(request.workerIndex, "message identity does not match its request.");
+                        if ((message.type === "progress" || message.type === "result") && message.accumulator) {
+                            SimulationAccumulator.fromSnapshot(message.accumulator);
+                            if (message.roundsCompleted !== message.accumulator.rounds) throw new Error("Simulation worker progress disagrees with accepted subrounds.");
+                            if (message.type === "result" && message.accumulator.analytics && message.accumulator.analytics.envelope.modelId !== (message.configHash ?? null)) throw new Error("Simulation worker analytics model identity disagrees with its result provenance.");
+                            prefixes.set(index, message.accumulator);
+                            new SimulationStatisticsMerger().merge([...prefixes.values()].map(accumulator => ({accumulator})));
                         }
-                        default:
-                            finish(() =>
-                                reject(
-                                    new SimulationWorkerFailureError(
-                                        request.workerIndex,
-                                        `received an unrecognized message from the worker.`,
+                        switch (message.type) {
+                            case "progress":
+                                if (message.accumulator) prefixes.set(index, message.accumulator);
+                                onProgress?.({workerIndex: message.workerIndex, roundsCompleted: message.roundsCompleted});
+                                return;
+                            case "error":
+                                if (message.accumulator) prefixes.set(index, message.accumulator);
+                                finish(() => reject(new SimulationWorkerFailureError(message.workerIndex, message.message, prefixes.size ? new SimulationStatisticsMerger().merge([...prefixes.values()].map(accumulator => ({accumulator}))).statistics : undefined)));
+                                return;
+                            case "result": {
+                                const result: SimulationWorkerResult = {
+                                    workerIndex: message.workerIndex,
+                                    manifest: message.manifest,
+                                    configHash: message.configHash,
+                                    accumulator: message.accumulator,
+                                    breakdown: message.breakdown,
+                                    jackpot: message.jackpot,
+                                    roundsCompleted: message.roundsCompleted,
+                                    stopReason: message.stopReason,
+                                    convergence: message.convergence,
+                                };
+                                results[index] = result;
+                                prefixes.set(index, result.accumulator);
+                                if (results.every((entry) => entry !== undefined)) {
+                                    finish(() => resolve(results as SimulationWorkerResult[]));
+                                }
+                                return;
+                            }
+                            default:
+                                finish(() =>
+                                    reject(
+                                        new SimulationWorkerFailureError(
+                                            request.workerIndex,
+                                            `received an unrecognized message from the worker.`,
+                                        ),
                                     ),
-                                ),
-                            );
+                                );
+                        }
+                    } catch (error) {
+                        finish(() => reject(error));
                     }
                 });
 

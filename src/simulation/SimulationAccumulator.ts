@@ -1,3 +1,4 @@
+import {emptyFeatureAnalytics, featureAnalyticsStatistics, mergeFeatureAnalytics, observeFeatureAnalytics, validateFeatureAnalytics, type AnalyticsEnvelope, type FeatureAnalyticsObservation, type FeatureAnalyticsSnapshot} from "./FeatureAnalytics.js";
 import type {WeightedBonusStatistics} from "../session/videoslot/authored/WeightedBonus.js";
 import {mergeWeightedBonusStatistics} from "./WeightedBonusStatisticsMerging.js";
 import {mergeModifierStatistics, type ModifierStatistics} from "./ModifierStatistics.js";
@@ -9,6 +10,7 @@ import type {SimulationAccumulatorSnapshot} from "./SimulationAccumulatorSnapsho
 import type {SimulationStatistics} from "./SimulationStatistics.js";
 
 export class SimulationAccumulator {
+    private analytics?: FeatureAnalyticsSnapshot;
     private logicalSamplingRanges?: LogicalSamplingRange[];
     private logicalSamples?: SimulationAccumulator;
     private modifiers?: ModifierStatistics;
@@ -36,6 +38,7 @@ export class SimulationAccumulator {
     public static fromSnapshot(snapshot: SimulationAccumulatorSnapshot): SimulationAccumulator {
         validateSnapshot(snapshot);
         const accumulator = new SimulationAccumulator();
+        accumulator.analytics = mergeFeatureAnalytics(undefined, snapshot.analytics);
         if (snapshot.weightedBonus) accumulator.setWeightedBonusStatistics(snapshot.weightedBonus);
         if (snapshot.reelSequences) accumulator.setReelSequenceStatistics(snapshot.reelSequences);
         accumulator.modifiers = snapshot.modifiers && {...snapshot.modifiers};
@@ -85,11 +88,16 @@ export class SimulationAccumulator {
     }
 
     public addLogicalRound(observation: LogicalRoundStatistics): void {
+        if (!Number.isSafeInteger(observation.rounds) || observation.rounds < 0 || !Number.isSafeInteger(observation.steps) || observation.steps < observation.rounds || ![observation.totalStake, observation.totalWin].every(n => Number.isFinite(n) && n >= 0)) throw new Error("Invalid logical-round observation.");
         if (observation.rounds === 1) this.logicalSamples?.addRound(observation.totalStake, observation.totalWin);
         this.logicalRounds = mergeLogicalRoundStatistics(this.logicalRounds ?? emptyLogicalRoundStatistics(), observation);
     }
 
-    public addRound(bet: number, payout: number): void {
+    public configureAnalytics(envelope: AnalyticsEnvelope): void {
+        this.analytics = mergeFeatureAnalytics(this.analytics, emptyFeatureAnalytics(envelope));
+    }
+
+    public addRound(bet: number, payout: number, observation?: FeatureAnalyticsObservation): void {
         // Do this before changing *any* running total.  `NaN <= 0` is false in
         // JavaScript, so the old positivity-only guard let one bad game result
         // poison a whole report irreversibly.
@@ -99,6 +107,8 @@ export class SimulationAccumulator {
         if (!Number.isFinite(payout) || payout < 0) {
             throw new Error(`SimulationAccumulator requires a finite payout >= 0, got ${payout}`);
         }
+        const analytics = mergeFeatureAnalytics(this.analytics, observeFeatureAnalytics(bet, payout, observation));
+        this.analytics = analytics;
         this.rounds++;
         this.totalBet += bet;
         this.totalPayout += payout;
@@ -133,15 +143,23 @@ export class SimulationAccumulator {
     }
 
     public merge(other: SimulationAccumulator): void {
-        if (other.logicalSamplingRanges) this.addLogicalSamplingRanges(other.logicalSamplingRanges);
-        this.modifiers = mergeModifierStatistics(this.modifiers, other.modifiers);
-        this.weightedBonus = mergeWeightedBonusStatistics(this.weightedBonus, other.weightedBonus);
-        if (other.reelSequences) this.reelSequences = mergeReelSequenceStatistics(this.reelSequences, other.reelSequences);
-        if (other.logicalRounds) this.logicalRounds = mergeLogicalRoundStatistics(this.logicalRounds ?? emptyLogicalRoundStatistics(), other.logicalRounds);
-        if (other.logicalSamples) {
-            this.logicalSamples ??= new SimulationAccumulator();
-            this.logicalSamples.merge(other.logicalSamples);
-        }
+        const analytics = mergeFeatureAnalytics(this.analytics, other.analytics);
+        if (this.rounds > 0 && !this.analytics && other.analytics || other.rounds > 0 && !other.analytics && this.analytics) throw new Error("Cannot merge missing analytics provenance with current observations.");
+        const ranges = other.logicalSamplingRanges ? mergeLogicalSamplingRanges(this.logicalSamplingRanges ?? [], other.logicalSamplingRanges) : this.logicalSamplingRanges;
+        const modifiers = mergeModifierStatistics(this.modifiers, other.modifiers);
+        const bonus = mergeWeightedBonusStatistics(this.weightedBonus, other.weightedBonus);
+        const sequences = other.reelSequences ? mergeReelSequenceStatistics(this.reelSequences, other.reelSequences) : this.reelSequences;
+        const logicalRounds = other.logicalRounds ? mergeLogicalRoundStatistics(this.logicalRounds ?? emptyLogicalRoundStatistics(), other.logicalRounds) : this.logicalRounds;
+        let logicalSamples = this.logicalSamples ? SimulationAccumulator.fromSnapshot(this.logicalSamples.toSnapshot()) : undefined;
+        if (!logicalSamples && other.logicalSamples) logicalSamples = new SimulationAccumulator();
+        if (other.logicalSamples) logicalSamples!.merge(other.logicalSamples);
+        this.analytics = analytics;
+        this.logicalSamplingRanges = ranges;
+        this.modifiers = modifiers;
+        this.weightedBonus = bonus;
+        this.reelSequences = sequences;
+        this.logicalRounds = logicalRounds;
+        this.logicalSamples = logicalSamples;
         if (other.rounds === 0) {
             return;
         }
@@ -221,6 +239,7 @@ export class SimulationAccumulator {
             ...(this.logicalRounds ? {logicalRounds: {...this.logicalRounds}} : {}),
             ...(this.logicalSamplingRanges ? {logicalSampling: logicalSamplingAccounting(this.logicalSamplingRanges)} : {}),
             ...(this.logicalSamples ? {logicalRoundMetrics: this.logicalSamples.getStatistics()} : {}),
+            ...(this.analytics ? {analytics: featureAnalyticsStatistics(this.analytics)} : {}),
             rounds: this.rounds,
             hitCount: this.hitCount,
             totalBet: this.totalBet,
@@ -254,6 +273,7 @@ export class SimulationAccumulator {
             ...(this.logicalRounds ? {logicalRounds: {...this.logicalRounds}} : {}),
             ...(this.logicalSamplingRanges ? {logicalSamplingRanges: mergeLogicalSamplingRanges([], this.logicalSamplingRanges)} : {}),
             ...(this.logicalSamples ? {logicalSamples: this.logicalSamples.toSnapshot()} : {}),
+            ...(this.analytics ? {analytics: mergeFeatureAnalytics(undefined, this.analytics)} : {}),
             rounds: this.rounds,
             hitCount: this.hitCount,
             totalBet: this.totalBet,
@@ -286,9 +306,13 @@ export class SimulationAccumulator {
 }
 
 function validateSnapshot(snapshot: SimulationAccumulatorSnapshot): void {
+    if (snapshot.analytics) {
+        validateFeatureAnalytics(snapshot.analytics);
+        if (snapshot.analytics.subrounds !== snapshot.rounds || snapshot.analytics.totalStake !== snapshot.totalBet || snapshot.analytics.totalWin !== snapshot.totalPayout || snapshot.analytics.deadSpins !== snapshot.rounds - snapshot.hitCount || snapshot.analytics.maxWin !== snapshot.maxWin) throw new Error("Analytics snapshot totals disagree with accumulator.");
+    }
     if (snapshot.logicalSamplingRanges !== undefined && (!Array.isArray(snapshot.logicalSamplingRanges) || snapshot.logicalSamplingRanges.some(range =>
-        !range || typeof range.trajectory !== "string" || !range.trajectory ||
-        ![range.observed, range.completed].every(ranges => Array.isArray(ranges) && ranges.every(pair => Array.isArray(pair) && pair.length === 2 && pair.every(n => Number.isSafeInteger(n) && n >= 0) && pair[1] >= pair[0]))))) throw new Error("Invalid logical sampling ranges.");
+        !range || range.excluded !== undefined && (!Number.isSafeInteger(range.excluded) || range.excluded < 0) || typeof range.trajectory !== "string" || !range.trajectory ||
+        ![range.observed, range.completed, range.abandoned ?? []].every(ranges => Array.isArray(ranges) && ranges.every(pair => Array.isArray(pair) && pair.length === 2 && pair.every(n => Number.isSafeInteger(n) && n >= 0) && pair[1] >= pair[0]))))) throw new Error("Invalid logical sampling ranges.");
     if (snapshot.logicalSamples && (snapshot.logicalSamples.logicalSamples || snapshot.logicalSamples.rounds !== snapshot.logicalRounds?.rounds)) throw new Error("Invalid logical sample snapshot envelope.");
     if (snapshot.modifiers && Object.values(snapshot.modifiers).some(value => !Number.isSafeInteger(value) || value < 0)) throw new Error("Invalid modifier statistics.");
     const nonNegativeIntegers: Array<[string, number]> = [

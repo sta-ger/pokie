@@ -1,3 +1,4 @@
+import {artifactAnalyticsObservation} from "../simulation/artifactAnalyticsObservation.js";
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
 import {deriveDeterministicSeed} from "../pregenerated/internal/deriveDeterministicSeed.js";
 import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedOutcomeRandomSource.js";
@@ -67,7 +68,7 @@ export async function simulateOutcomeSourceProject(
         const selection = await outcomeSource.drawOutcome(roundRandomSource);
         libraryId = selection.libraryId;
         libraryHash = selection.libraryHash;
-        accumulator.addRound(selection.outcome.artifact.stake, selection.outcome.artifact.totalWin);
+        accumulator.addRound(selection.outcome.artifact.stake, selection.outcome.artifact.totalWin, artifactAnalyticsObservation(selection.outcome.artifact, selection.libraryHash));
         if (seed !== undefined) {
             lastReplay = {
                 game: selection.outcome.artifact.provenance.game,

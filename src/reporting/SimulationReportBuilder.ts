@@ -68,6 +68,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         const warnings = this.buildWarnings(core, breakdown, statistics.logicalRoundMetrics ? statistics.rounds : undefined);
         return {
             ...core,
+            ...(statistics.analytics ? {analytics: statistics.analytics} : {}),
             ...(statistics.logicalRounds ? {logicalRounds: statistics.logicalRounds} : {}),
             ...(statistics.logicalRoundMetrics ? {sampling: {unit: "completed-logical-round" as const, acceptedSubrounds: statistics.rounds, carriedSubrounds: statistics.logicalSampling?.carriedSubrounds ?? 0, excludedSubrounds: statistics.logicalSampling?.excludedSubrounds ?? 0, trajectories: "independent-session-per-worker" as const}} : {}),
             ...(statistics.modifiers ? {modifiers: statistics.modifiers} : {}),
@@ -150,7 +151,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         }
 
         if (core.totalBet === 0) {
-            warnings.push("Total bet is 0 — no rounds appear to have been played.");
+            warnings.push("Total charged stake is 0 — RTP uses the defined zero-denominator convention.");
         }
 
         // A "converged" stop is the adaptive-stop feature working as intended, not a problem — only the

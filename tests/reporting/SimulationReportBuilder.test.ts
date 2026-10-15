@@ -367,7 +367,7 @@ describe("SimulationReportBuilder", () => {
                 durationMs: 10,
             });
 
-            expect(report.warnings!).toContain("Total bet is 0 — no rounds appear to have been played.");
+            expect(report.warnings!).toContain("Total charged stake is 0 — RTP uses the defined zero-denominator convention.");
         });
 
         test("warns when actual rounds is less than requested rounds", () => {
@@ -1049,4 +1049,15 @@ describe("SimulationReportBuilder convergence/stopReason", () => {
             "pokie sim ./game --rounds 100 --min-rounds 10 --rtp-tolerance 0.02 --check-interval 5 --stable-checks 3",
         );
     });
+});
+
+it("preserves analytics separately from completed logical sample metrics", () => {
+    const accumulator = new SimulationAccumulator();
+    accumulator.enableLogicalRoundSampling();
+    accumulator.addRound(7.5, 0);
+    const statistics = accumulator.getStatistics();
+    const report = new SimulationReportBuilder().build({manifest: {id: "a", name: "A", version: "1"}, requestedRounds: 1, statistics, durationMs: 1});
+    expect(report.rounds).toBe(0);
+    expect(report.analytics).toEqual(statistics.analytics);
+    expect(report.analytics).toMatchObject({subrounds: 1, totalStake: 7.5, envelope: {lifecycle: false, components: false}});
 });

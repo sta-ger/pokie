@@ -1,3 +1,5 @@
+import {analyticsEnvelope} from "../../../src/simulation/FeatureAnalytics.js";
+import {artifactAnalyticsObservation} from "../../../src/simulation/artifactAnalyticsObservation.js";
 import {
     describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
@@ -445,6 +447,7 @@ export class StudioSimulationService {
                 record.report = report;
                 const metrics = result.statistics.logicalRoundMetrics ?? result.statistics;
                 record.statistics = {
+                    analytics: result.statistics.analytics,
                     volatility: metrics.volatility,
                     payoutStandardDeviation: metrics.payoutStandardDeviation,
                     returnStandardDeviation: metrics.returnStandardDeviation,
@@ -462,6 +465,7 @@ export class StudioSimulationService {
             record.status = "completed";
             this.markTerminal(record);
         } catch (error) {
+            if (error instanceof Error && "observedPrefix" in error) Object.assign(record, {observedPrefix: error.observedPrefix});
             if (error instanceof SimulationCancelledError) {
                 Object.assign(record, {observedPrefix: error.observedPrefix});
                 this.cancelRecord(record);
@@ -486,32 +490,41 @@ export class StudioSimulationService {
         this.markRunning(record);
         const seed = record.seed ?? crypto.randomUUID();
         let runtime;
+        const accumulator = new SimulationAccumulator();
         let disposeSession: (() => void) | undefined;
         try {
             runtime = await this.loadWasmRuntime(record.projectRoot, new SeededPokieWasmHost(seed));
             const session = runtime.createSession(seed, {credits: Number.MAX_SAFE_INTEGER});
             disposeSession = () => session.dispose();
-            const accumulator = new SimulationAccumulator();
             let remaining = record.rounds;
             while (remaining > 0) {
                 if (record.abortController.signal.aborted) {
+                    record.observedPrefix = accumulator.getStatistics();
+                    record.roundsCompleted = record.observedPrefix.rounds;
                     this.cancelRecord(record);
                     return;
                 }
                 const chunk = Math.min(this.chunkSize, remaining);
                 for (let index = 0; index < chunk; index++) {
                     if (record.abortController.signal.aborted) {
+                        record.observedPrefix = accumulator.getStatistics();
+                        record.roundsCompleted = record.observedPrefix.rounds;
                         this.cancelRecord(record);
                         return;
                     }
                     const round = await session.play();
-                    accumulator.addRound(round.stake, round.payout);
+                    accumulator.addRound(round.stake, round.payout, {envelope: analyticsEnvelope(runtime.manifest.artifact?.configurationHash ?? null), source: "wasm", logicalEntry: false, logicalCompletion: false, carriedSubround: false, cascadeSteps: 0, features: []});
                 }
                 record.roundsCompleted += chunk;
                 record.durationMs = this.now() - record.startedAt;
                 this.jobService?.progress(record.id, {stage: "simulation", unit: "rounds", current: record.roundsCompleted, total: record.rounds});
                 remaining -= chunk;
                 if (remaining > 0) await this.yieldToEventLoop();
+            }
+            if (record.abortController.signal.aborted) {
+                record.observedPrefix = accumulator.getStatistics();
+                this.cancelRecord(record);
+                return;
             }
             const statistics = accumulator.getStatistics();
             const report = this.reportBuilder.build({
@@ -528,6 +541,7 @@ export class StudioSimulationService {
             record.status = "completed";
             record.report = report;
             record.statistics = {
+                analytics: statistics.analytics,
                 volatility: statistics.volatility,
                 payoutStandardDeviation: statistics.payoutStandardDeviation,
                 returnStandardDeviation: statistics.returnStandardDeviation,
@@ -537,6 +551,8 @@ export class StudioSimulationService {
             };
             this.markTerminal(record);
         } catch (error) {
+            record.observedPrefix = accumulator.getStatistics();
+            record.roundsCompleted = record.observedPrefix.rounds;
             if (record.abortController.signal.aborted) this.cancelRecord(record);
             else this.fail(record, error);
         } finally {
@@ -602,6 +618,8 @@ export class StudioSimulationService {
         try {
             while (roundsRemaining > 0) {
                 if (record.abortController.signal.aborted) {
+                    record.observedPrefix = accumulator.getStatistics();
+                    record.roundsCompleted = record.observedPrefix.rounds;
                     this.cancelRecord(record);
                     return;
                 }
@@ -617,7 +635,7 @@ export class StudioSimulationService {
                             ? randomSource
                             : new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(record.seed, replayRound));
                     const selection = await outcomeSource.drawOutcome(roundRandomSource);
-                    accumulator.addRound(selection.outcome.artifact.stake, selection.outcome.artifact.totalWin);
+                    accumulator.addRound(selection.outcome.artifact.stake, selection.outcome.artifact.totalWin, artifactAnalyticsObservation(selection.outcome.artifact, selection.libraryHash));
                     if (record.seed !== undefined) {
                         const artifact = selection.outcome.artifact;
                         lastReplay = {
@@ -650,10 +668,17 @@ export class StudioSimulationService {
                 }
             }
         } catch (error) {
+            record.observedPrefix = accumulator.getStatistics();
+            record.roundsCompleted = record.observedPrefix.rounds;
             this.fail(record, error);
             return;
         }
 
+        if (record.abortController.signal.aborted) {
+            record.observedPrefix = accumulator.getStatistics();
+            this.cancelRecord(record);
+            return;
+        }
         const statistics = accumulator.getStatistics();
         const report: SimulationReport = this.reportBuilder.build({
             manifest: manifestGame,
@@ -669,6 +694,7 @@ export class StudioSimulationService {
         record.status = "completed";
         record.report = report;
         record.statistics = {
+            analytics: statistics.analytics,
             volatility: statistics.volatility,
             payoutStandardDeviation: statistics.payoutStandardDeviation,
             returnStandardDeviation: statistics.returnStandardDeviation,
@@ -776,7 +802,7 @@ export class StudioSimulationService {
         } else if (record.status === "cancelled") {
             this.jobService?.cancelled(record.id, {summary: "Simulation cancelled after the observed accepted prefix.", provenance: {simulationId: record.id, projectRoot: record.projectRoot}, detail: {simulationId: record.id, rounds: record.roundsCompleted, observedPrefix: record.observedPrefix}}, {action: "retry", reason: "Run the simulation again with the captured parameters."});
         } else if (record.status === "failed") {
-            this.jobService?.fail(record.id, record.error ?? "Simulation failed.", {action: "retry", reason: record.error ?? "Correct the reported problem and run the simulation again."});
+            this.jobService?.fail(record.id, record.error ?? "Simulation failed.", {action: "retry", reason: record.error ?? "Correct the reported problem and run the simulation again."}, record.observedPrefix ? {summary: "Simulation failed after the observed accepted prefix.", detail: {simulationId: record.id, rounds: record.observedPrefix.rounds, observedPrefix: record.observedPrefix}} : undefined);
         }
     }
 

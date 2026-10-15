@@ -61,6 +61,8 @@ export type SingleSimulationReportView = {
     rtpDeviation?: number;
     jackpot?: SimulationReport["jackpot"];
     sampling?: SimulationReport["sampling"];
+    analytics?: SimulationReport["analytics"];
+    workerSeedStrategy?: string;
     logicalRounds?: SimulationReport["logicalRounds"];
     modifiers?: SimulationReport["modifiers"];
     weightedBonus?: WeightedBonusStatistics;
@@ -127,6 +129,8 @@ export function describeSimulationReport(
         jackpot: report.jackpot,
         game: report.game,
         sampling: report.sampling,
+        analytics: report.analytics,
+        workerSeedStrategy: report.reproducibility?.workerSeedStrategy,
         logicalRounds: report.logicalRounds,
         modifiers: report.modifiers,
         weightedBonus: report.weightedBonus,

@@ -3898,3 +3898,12 @@ Hold&Win, fixed/session-local accumulating jackpots and executable base/ante/fre
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
 contracts, supported compositions, authoring/build/extraction/PAR workflow,
 logical-round accounting, continuation and durability boundaries.
+
+Simulation reports include **Feature analytics** in `pokie sim` text/JSON,
+`pokie report` Markdown/HTML, and Studio details/downloads. Counts distinguish paid
+entries, logical entries/completions, accepted subrounds and cascade evaluations.
+Every lifecycle rate labels its denominator; RTP contribution uses charged stake
+and payout share uses total observed win. An all-mode report keeps each mode's
+analytics separate. `pokie diff` flags analytics-only changes. Unavailable source
+evidence and incomplete features display explicitly. See [analytics formulas,
+capabilities, bounds and worker seed policy](simulation.md#feature-analytics-aggregates-v2c-16).

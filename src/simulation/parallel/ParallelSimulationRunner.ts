@@ -1,3 +1,4 @@
+import {setSimulationModelIdentity} from "../SessionFeatureAnalyticsObserver.js";
 import {loadPokieGame, releasePokieGame} from "../../gamepackage/loadPokieGame.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {PokieGameManifest} from "../../gamepackage/PokieGameManifest.js";
@@ -141,6 +142,7 @@ export class ParallelSimulationRunner {
         const game = await loadGame(this.packageRoot);
         try {
             const session = game.createSession(this.options.seed === undefined ? undefined : {seed: this.options.seed});
+            setSimulationModelIdentity(session, game.getConfigHash?.());
             // Simulations measure RTP/volatility, not risk of ruin — same as every other simulation path.
             session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
 
@@ -210,6 +212,8 @@ export class ParallelSimulationRunner {
             onProgress: this.options.onProgress ? (progress) => this.reportProgress(progressByWorker, progress) : undefined,
         });
 
+        const configHash = this.resolveConfigHash(results);
+        for (const result of results) if (result.accumulator.analytics && result.accumulator.analytics.envelope.modelId !== (result.configHash ?? null)) throw new Error("Simulation worker analytics provenance disagrees with its executable model identity.");
         const merger = new SimulationStatisticsMerger();
         const merged = merger.merge(
             results.map((result) => ({accumulator: result.accumulator, breakdown: result.breakdown, jackpot: result.jackpot})),
@@ -217,7 +221,7 @@ export class ParallelSimulationRunner {
 
         return {
             manifest: results[0].manifest,
-            configHash: this.resolveConfigHash(results),
+            configHash,
             statistics: merged.statistics,
             breakdown: merged.breakdown,
             jackpot: merged.jackpot,
@@ -301,7 +305,7 @@ export class ParallelSimulationRunner {
     }
 
     private resolveConfigHash(results: SimulationWorkerResult[]): string | undefined {
-        const hashes = Array.from(new Set(results.map((result) => result.configHash).filter((hash): hash is string => hash !== undefined)));
+        const hashes = Array.from(new Set(results.map((result) => result.configHash)));
         if (hashes.length > 1) {
             throw new Error("Simulation workers loaded different resolved game models; refusing to publish a mixed-model report.");
         }
