@@ -300,3 +300,20 @@ This newly closes explicit wild-reel save/reload, exact Play, seeded replay and
 download branches. It does not complete the six-capability matrix, malformed /
 stale recovery, catalogue and sticky lifecycle sweep, all rendered reports,
 ordinary/weighted rendered package routes, or the remaining worker evidence.
+
+Receipt reconciliation also authenticated the later non-rendered public
+comparisons already retained by this same harness. The clean 15-command
+weighted receipt `public-packages-2026-10-15T09-49-36.952Z/receipt.json`
+preserves ordered transform plus sticky rules, W3 factor 0 and empty
+substitutions across build → extract → XLSX export/import → rebuild and seeded
+simulation/replay. Its `session-isolation.json` records three independently
+created public runtime sessions with an untouched second-session snapshot and
+matching first-round sessions. The earlier ordinary comparison completed the
+same 15 real public commands before an intentionally invalid *subsequent*
+weighted fixture exited 1; that failed preparation is not an ordinary runtime
+result. Finally, `public-packages-2026-10-15T09-27-00.162Z/partition-comparison.json`
+authenticates workers=2 sticky rounds, stake, payout and all four modifier
+counters against the two derived worker seed partitions. Together with the
+separate rendered durable cancellation transcript, these records close the
+worker accounting/isolation/cancellation subbranches; they do not replace the
+still-missing authoring and catalogue coverage.
