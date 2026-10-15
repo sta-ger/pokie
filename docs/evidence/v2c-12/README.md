@@ -840,3 +840,35 @@ ordinary-buy target 2/3 descriptor, and the financial-row captures for the
 remaining required targets were not obtained. The missing rows/downloads are
 not product findings; a later bounded collection must restore the exact
 retained profiles and complete those observations without rerunning Replay.
+
+## Completed retained Replay matrix (2026-10-15)
+
+Product identity remains `025f2ebf32f77faeecf3d10762e9868336f53cf7`; the
+clean evidence descendant used the authenticated candidate build recorded in
+the assigned harness. Five isolated Studio launches restored only the
+reviewer-named completed-job profiles and used public Projects → Replay →
+**Inspect record**. No **Load**, **Run again**, **Reproduce**, Simulation, or
+Replay execution was activated, and no descriptor was downloaded again.
+
+The following runtime-only captures were independently opened and inspected:
+
+| retained result | runtime screenshot / SHA-256 | visible final-step result |
+| --- | --- | --- |
+| ordinary buy-more target 1, `c7b567c075d34045a76f8e0761499dd8` | `run-2026-10-15T05-18-50-655Z/1-observation.png` — `064c0dc661406959b11c174c21b20efb175db2871edf3543036f1fd37e94df8f` | seed `v2c12-ordinary-buy-more-recovery`; one repeat-when-available command; Bet/Charged `buy-more`; Stake `1.25` |
+| ordinary buy-more target 2, `70269d4b7e1948c8a772129b74b21951` | `run-2026-10-15T05-13-09-308Z/1-observation.png` — `ed2256151e25d2476d12a97f54ace5cf565821f8cd477589cfe58de953d38da4` | seed `v2c12-ordinary-buy-more-final`; two commands; Bet/Charged `buy-more`; Stake `0` |
+| ordinary buy-more target 4, `195572d1cb0f4c12afd9458facfca98b` | `run-2026-10-15T05-13-09-308Z/2-observation.png` — `becab78895074dccdba917980b8c49fee5fdbfec88a5a8c8ad115c89c1995d32` | same seed; four commands; Bet/Charged `buy-more`; Stake `0` |
+| ordinary buy-more target 5, `8254801483a84b82aa9dbc2e61b9131c` | `run-2026-10-15T05-15-42-066Z/1-observation.png` — `c0c2f3d740bce3951bf62d44c2bac9f3350e4e530fe896ee63abb831bdb56415` | same seed; five commands; Bet/Charged `buy-more`; Stake `1.25` |
+| weighted buy target 2, `129a09066c3b4bc4a62a690231d14322` | `run-2026-10-15T05-17-16-753Z/1-observation.png` — `ed35e535d0d7d3ac6a13268957c6621ef4d20e091b57993b6ec42dbb98b13187` | seed `v2c12-weighted-buy-matrix`; two commands; Bet/Charged `buy`; Stake `0` |
+
+Together with the already inspected retained captures in
+`run-2026-10-15T05-03-24-011Z` (ordinary buy targets 2/3; weighted buy
+targets 1/3; weighted buy-more targets 1/2/4) and the retained weighted
+buy-more target-5 capture, this completes the requested viewport matrix.
+Every displayed result identifies its job, target, seed, package hash and
+`modePolicy.selection=repeat-when-available`; its command count and final
+Stake agree with the descriptor. The eight existing descriptor receipts cover
+ordinary buy 2/3, ordinary buy-more 4/5, weighted buy 2/3 and weighted
+buy-more 2/4. Descriptor `totalBet` is cumulative; the displayed artifact
+`Stake` is the authoritative final-step amount used above.
+
+Runtime profiles, downloads, transcripts and screenshots remain outside Git.
