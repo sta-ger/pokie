@@ -278,3 +278,31 @@ per-step Replay descriptor matrix remain uncollected.
 
 I independently opened both PNGs. They are legible and show the stated
 rendered rows; the images and transcript are collection evidence only.
+
+## Weighted seeded package continuation (2026-10-15)
+
+One additional fresh isolated Studio profile is retained at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-75a0b3989d3dd707/run-2026-10-15T00-11-59-396Z/transcript.json`.
+It reused the same authenticated current-candidate build, authored the
+weighted `reelSequences` whole-array fixture `v2c12-weighted-followup`, built
+its TypeScript package, and opened the visible package handoff. With seed
+`v2c12-weighted-seeded-followup`, its completed ante result visibly showed
+denomination `0.05`, stake `0.07500000000000001`, weighted symbols `A C C`,
+and charged mode `ante`.
+
+The selected public Session Spin Replay identified the seed, ante mode, full
+audit export state and configuration hash
+`sha256:870029342b7c1d0700c1d45a45a4d137d4cfaf2ccd97ae384e748eb656233478`.
+Its **Download JSON** produced
+`spin-0c11f8c6-f598-42e1-b0c0-630a08dae8c4.json` (22,120 bytes; SHA-256
+`b7880515ef09f7b136e7c541396083fa7dd16f06e058963498f3175ebb9e5d49`).
+The actual bytes agree with the visible record: the same seed, ante mode,
+artifact stake, recorded `spin` command at bet `0.05`, stepwise delivery, and
+`recorded-commands` mode policy. Screenshot `1-observation.png` (SHA-256
+`2729419a978d2714e87f1a4f3035d1ee8f53aba310c97c18c23947685b819935`) was
+independently opened; it is legible and shows the stated Play result.
+
+This closes the missing seeded-ante observation for both package mechanisms,
+but is still not approval: the complete ordinary/weighted repeated
+buy/buy-more continuation rows and corresponding per-step Replay descriptors
+remain uncollected.
