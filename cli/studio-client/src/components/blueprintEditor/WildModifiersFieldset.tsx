@@ -269,6 +269,7 @@ function isEditable(value: unknown): value is ScreenModifiers {
             (wild) =>
                 wild &&
                 typeof wild.symbol === "string" &&
+                (wild.factor === undefined || (typeof wild.factor === "number" && Number.isFinite(wild.factor))) &&
                 (wild.substitutes === undefined ||
                     (Array.isArray(wild.substitutes) && wild.substitutes.every((s) => typeof s === "string"))),
         ) &&

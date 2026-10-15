@@ -1,5 +1,9 @@
+import {ModalsProvider} from "@mantine/modals";
+import {createMemoryRouter, RouterProvider} from "react-router-dom";
+import {StudioApiProvider} from "../../../../../../cli/studio-client/src/context/StudioApiProvider";
+import {GameModelTab} from "../../../../../../cli/studio-client/src/components/project/GameModelTab";
 import {MantineProvider} from "@mantine/core";
-import {act, fireEvent, screen, waitFor} from "@testing-library/react";
+import {act, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import {useState} from "react";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -225,4 +229,69 @@ it("Home saves and reloads valid renamed modifier declarations without losing ze
     await waitFor(() => expect(writes).toHaveBeenCalledWith("/api/home/blueprints/load"));
     expect(JSON.parse((await jsonEditor()).value)).toEqual(storage.blueprint);
     expect(new GameBlueprintValidator().validate(storage.blueprint).filter(issue => issue.severity === "error")).toEqual([]);
+}, 60000);
+
+
+it.each([{}, [], true])("F6 Home retains malformed factor %p, repairs JSON to zero and explicitly removes it", async factor => {
+    const writes = home();
+    const malformed = {...initial, mechanics: {modifiers: {wilds: [{symbol: "W", factor}], rules: []}}};
+    fireEvent.change(await jsonEditor(), {target: {value: JSON.stringify(malformed)}});
+    fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
+    showControls();
+    expect(screen.getByText(/modifier draft is incomplete or malformed/)).toBeVisible();
+    expect(screen.queryByLabelText("W multiplier factor")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeDisabled());
+    expect(JSON.parse((await jsonEditor()).value)).toEqual(malformed);
+    const repaired = {...initial, mechanics: {modifiers: {wilds: [{symbol: "W", factor: 0}], rules: []}}};
+    fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: JSON.stringify(repaired)}});
+    fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
+    showControls();
+    expect(screen.getByLabelText("W multiplier factor")).toHaveValue("0");
+    expect(screen.queryByText(/modifier draft is incomplete or malformed/)).not.toBeInTheDocument();
+    expect(JSON.parse((await jsonEditor()).value)).toEqual(repaired);
+    fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: JSON.stringify(malformed)}});
+    fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
+    showControls();
+    fireEvent.click(screen.getByRole("button", {name: "Remove wild modifiers"}));
+    expect(screen.getByRole("button", {name: "Add wild modifiers"})).toBeEnabled();
+    expect(JSON.parse((await jsonEditor()).value).mechanics.modifiers).toBeUndefined();
+    expect(writes).not.toHaveBeenCalled();
+}, 60000);
+
+it.each([{}, [], true])("F6 actual Project retains malformed factor %p, blocks Save and permits explicit removal", async factor => {
+    const malformed = {...initial, mechanics: {modifiers: {wilds: [{symbol: "W", factor}], rules: []}}};
+    const writes = jest.fn();
+    const response = (value: unknown) => Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(value)});
+    const fetchImpl: FetchLike = (url, init) => {
+        if (url.includes("/api/project/gameModel")) return response(buildGameModelProjection(initial));
+        if (url.endsWith("/load")) return response({status: "ok", path: "model.json", blueprint: malformed, blueprintHash: "before"});
+        if (url.endsWith("/validate")) {
+            const {blueprint} = JSON.parse(String(init?.body));
+            const issues = new GameBlueprintValidator().validate(blueprint);
+            return response({status: issues.some(i => i.severity === "error") ? "invalid" : "ok", errors: issues.filter(i => i.severity === "error"), warnings: []});
+        }
+        if (!init?.method || init.method === "GET") return response({});
+        writes(url, init);
+        if (url.endsWith("/save")) return response({status: "ok", path: "model.json", blueprintHash: "after"});
+        return Promise.reject(new Error(`Unexpected request: ${url}`));
+    };
+    const router = createMemoryRouter([{path: "/project/gameModel", element: <GameModelTab editable projectRoot="model.json" />}], {initialEntries: ["/project/gameModel"]});
+    render(<MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><ModalsProvider><RouterProvider router={router} /></ModalsProvider></StudioApiProvider></MantineProvider>);
+    const section = (await screen.findByText("Mechanics", {selector: "span"})).closest("fieldset")!;
+    fireEvent.click(within(section).getByRole("button", {name: "Edit"}));
+    await screen.findByText(/modifier draft is incomplete or malformed/);
+    expect(screen.queryByLabelText("W multiplier factor")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Save", exact: true})).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", {name: "Save", exact: true}));
+    expect(writes).not.toHaveBeenCalled();
+    expect(malformed.mechanics.modifiers.wilds[0].factor).toEqual(factor);
+    fireEvent.click(screen.getByRole("button", {name: "Remove wild modifiers"}));
+    expect(screen.queryByText(/modifier draft is incomplete or malformed/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Save", exact: true})).toBeEnabled();
+    expect(writes).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", {name: "Save", exact: true}));
+    await waitFor(() => expect(writes).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(String(writes.mock.calls[0][1].body)).blueprint.mechanics.modifiers).toBeUndefined();
+    // The loaded draft itself remains untouched; removal was an explicit draft mutation.
+    expect(malformed.mechanics.modifiers.wilds[0].factor).toEqual(factor);
 }, 60000);
