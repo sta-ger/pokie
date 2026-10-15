@@ -291,7 +291,7 @@ describe("V2C-13 finite modifier authoring", () => {
         const game = generatedMechanicsGame(b);
         const session = mechanicsSession(game);
         const runtime = new api.SessionRuntime(session);
-        const success: api.SessionCommand = {kind: "spin", bet: 1e-7, mode: "ante", roundId: "settled", delivery: "composite"};
+        const success: api.SessionCommand = {kind: "spin", bet: 1e-7, mode: "ante", roundId: "settled"};
         const saved = runtime.execute(success);
         expect(saved.status).toBe("played");
         expect(session.getWinAmount()).toBeGreaterThan(1e302);
@@ -309,6 +309,12 @@ describe("V2C-13 finite modifier authoring", () => {
         reference.fromSessionState(before);
         reference.setBet(1e-7);
         reference.setCreditsAmount(credits);
+        // This finite payout has a nonfinite stake ratio. Explicit artifact publication must
+        // reject after play, restoring the same pre-command state and invalidating its results.
+        expect(() => runtime.execute({...success, roundId: "artifact-overflow", delivery: "stepwise"})).toThrow(/not JSON-safe/);
+        expect(session.toSessionState()).toEqual(before);
+        expect(session.getCreditsAmount()).toBe(credits);
+        expect(session.getWinAmount()).toBe(0);
         const command: api.SessionCommand = {kind: "spin", bet: 7.5, mode: "buy", roundId: "bad", delivery};
         for (let attempt = 0; attempt < 2; attempt++) {
             expect(() => {
@@ -340,7 +346,7 @@ describe("V2C-13 finite modifier authoring", () => {
             expect(session.toSessionState()).toEqual(before);
         }
         // Retry the rejected identity with its supported stake and mode. It was never accepted.
-        const retry: api.SessionCommand = {kind: "spin", bet: 1e-7, mode: "ante", roundId: "bad", delivery: "composite"};
+        const retry: api.SessionCommand = {kind: "spin", bet: 1e-7, mode: "ante", roundId: "bad"};
         const expected = new api.SessionRuntime(reference).execute(retry);
         const actual = runtime.execute(retry);
         expect(actual).toEqual(expected);
