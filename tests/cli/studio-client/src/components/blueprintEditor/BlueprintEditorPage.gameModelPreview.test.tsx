@@ -59,16 +59,19 @@ describe("Guided Design Game: Game Model preview", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         fireEvent.click(screen.getByRole("button", {name: /Show advanced options/}));
         fireEvent.click(screen.getByLabelText("JSON"));
-        const editor = screen.getByLabelText("Blueprint JSON") as HTMLTextAreaElement;
-        const preview = screen.getByRole("button", {name: "Preview Game Model"});
-        for (const draft of [valid, malformed, valid, valid]) {
+        for (const [index, draft] of [valid, malformed, valid, valid].entries()) {
             const authored = JSON.stringify(draft, null, 2);
-            fireEvent.change(editor, {target: {value: authored}});
-            fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
+            // Apply JSON intentionally remounts the JSON and preview panels. Re-query public
+            // controls after each apply; the final preview reuses the repaired panel directly.
+            if (index < 3) {
+                fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: authored}});
+                fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
+            }
+            const preview = screen.getByRole("button", {name: "Preview Game Model"});
             fireEvent.click(preview);
             const panel = screen.getByText("Game Model preview").closest("fieldset")!;
             await waitFor(() => expect(preview).toBeEnabled());
-            expect(within(panel).getByText(`Id: ${valid.manifest.id}`)).toBeVisible();
+            expect(await within(panel).findByText(`Id: ${valid.manifest.id}`)).toBeVisible();
             expect(within(panel).getByText("Paytable")).toBeVisible();
             if (draft === malformed) {
                 const alert = within(panel).getByRole("alert");
@@ -85,7 +88,7 @@ describe("Guided Design Game: Game Model preview", () => {
                 expect(within(panel).getByText(/^Respins: trigger symbol/)).toBeVisible();
                 expect(within(panel).getByText(/^Collection: symbol/)).toHaveTextContent(/contribution 0 per symbol;.*payout 0/);
             }
-            expect(editor.value).toBe(authored);
+            expect(screen.getByLabelText("Blueprint JSON")).toHaveValue(authored);
         }
         expect(previews).toEqual([valid, malformed, valid, valid]);
         expect(writes.every(url => ["/api/home/blueprints/validate", "/api/home/blueprints/game-model-preview"].includes(url))).toBe(true);
