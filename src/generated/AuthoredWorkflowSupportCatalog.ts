@@ -111,7 +111,7 @@ const negativeAssertions: Record<Exclude<Surface, "editor">, string> = {
 };
 function relatedCases(id: string, suite: string, surface: Surface): Pick<AuthoredWorkflowCell, "additionalExactFixtures" | "additionalNegativeFixtures"> {
     const ref = (test: string): string => `tests/v2/${suite}.test.ts#${test}`;
-    const exact: string[] = [], 
+    const exact: string[] = [],
         negative: string[] = [];
     if (surface === "simulation-report" && suite === "ExistingMechanicsAuthoring") exact.push(ref(existingWorkflow));
     if (surface === "editor") {

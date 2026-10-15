@@ -276,7 +276,7 @@ describe("V2C-15 weighted bonus authoring", () => {
             const feature = corrupt.featureState as api.BoundedSessionState;
             if (patch === "progress") {
                 feature.executed = 1;
-                feature.remaining = 1; 
+                feature.remaining = 1;
             }
             if (patch === "identity") feature.bonus!.selection!.context = "logical:foreign";
             if (patch === "missing-observation") {
@@ -287,20 +287,20 @@ describe("V2C-15 weighted bonus authoring", () => {
             // Keep the valid repository's revision sequence intact for the untampered audit.
             const invalidRepository = new api.InMemorySessionRepository();
             await invalidRepository.save("s", corrupt);
-            const save = jest.spyOn(invalidRepository, "save"), 
-                create = jest.spyOn(game, "createSession"), 
-                debit = jest.spyOn(wallet, "debit"), 
+            const save = jest.spyOn(invalidRepository, "save"),
+                create = jest.spyOn(game, "createSession"),
+                debit = jest.spyOn(wallet, "debit"),
                 credit = jest.spyOn(wallet, "credit");
             expect(api.validatePersistedSession(corrupt, game)).toMatchObject({status: "corrupt-state"});
             expect((await handler(invalidRepository).execute(continuation(1))).status).toBe("corrupt-state");
             for (const spy of [save, create, debit, credit]) {
                 expect(spy).not.toHaveBeenCalled();
-                spy.mockRestore(); 
+                spy.mockRestore();
             }
             expect(await invalidRepository.load("s")).toEqual(corrupt);
         }
         expect(await handler().execute(command)).toEqual(entry);
-        let totalStake = entry.stake!, 
+        let totalStake = entry.stake!,
             totalWin = entry.win;
         for (const cursor of [1, 2]) {
             const next = await handler().execute(continuation(cursor));
@@ -1259,11 +1259,11 @@ it("an explicit pending direct request restores without consuming its draw or ch
 it("descending consumed implicit contexts reject before changing the request, money or next RNG", () => {
     const blueprint = weightedBonusBlueprint();
     for (const outcome of blueprint.mechanics!.weightedBonus!.outcomes) outcome.duration = 0;
-    const game = generatedMechanicsGame(blueprint), 
+    const game = generatedMechanicsGame(blueprint),
         session = boundedSession(game, 0);
     session.setSelectionContext("implicit:20");
     session.play();
-    const before = session.toSessionState(), 
+    const before = session.toSessionState(),
         credits = session.getCreditsAmount();
     expect(() => session.setSelectionContext("implicit:1")).toThrow(/implicit context must advance/);
     expect(session.toSessionState()).toEqual(before);

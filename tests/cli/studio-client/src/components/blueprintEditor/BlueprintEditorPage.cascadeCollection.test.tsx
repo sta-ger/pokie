@@ -132,7 +132,7 @@ it.each(["respins", "collection"] as const)("repairs object-valued %s numeric dr
 });
 
 it.each(AUTHORED_BOUNDED_MECHANIC_CATALOG)("%s: Home JSON retains catalogue rules and blocks invalid publication", async id => {
-    const writes = home(), 
+    const writes = home(),
         blueprint = boundedBlueprint(id);
     fireEvent.change(await jsonEditor(), {target: {value: JSON.stringify(blueprint)}});
     fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));

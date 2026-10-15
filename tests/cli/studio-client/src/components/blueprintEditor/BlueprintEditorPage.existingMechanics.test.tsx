@@ -252,7 +252,7 @@ it.each([{holdAndWin: {}}, {jackpot: {}}])("F3 opens malformed Project mechanics
 });
 
 it.each(AUTHORED_MECHANIC_CATALOG)("$id: Home JSON retains catalogue rules and blocks invalid publication", async row => {
-    const blueprint = existingMechanicsBlueprint(row), 
+    const blueprint = existingMechanicsBlueprint(row),
         writes = jest.fn();
     const fetchImpl: FetchLike = (url, init) => {
         if (url === "/api/home/blueprints/validate") {

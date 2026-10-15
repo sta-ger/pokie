@@ -53,7 +53,7 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         blueprint.reelStrips = Array.from({length: 3}, (_, reel) => {
             const strip = Array<string>(1024).fill("A");
             screens.forEach((screen, step) => {
-                strip[stops[step][reel]] = screen[reel]; 
+                strip[stops[step][reel]] = screen[reel];
             });
             return strip;
         });
@@ -68,7 +68,7 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
                 expect(noGrant.hasPendingLogicalRound()).toBe(false);
             }
         }
-        const game = generatedMechanicsGame(blueprint), 
+        const game = generatedMechanicsGame(blueprint),
             session = mechanicsSession(game);
         let contribution = 0;
         for (let step = 0; step < screens.length; step++) {
@@ -113,7 +113,7 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         }
         if (row.modes && row.progression === "freeGames") {
             blueprint.reelStrips = [["A"], ["A"], ["A"]];
-            const purchaseGame = generatedMechanicsGame(blueprint), 
+            const purchaseGame = generatedMechanicsGame(blueprint),
                 purchase = mechanicsSession(purchaseGame);
             const result = new api.SessionRuntime(purchase).execute({kind: "spin", mode: "buy", roundId: "purchase", delivery: "composite"});
             expect(result).toMatchObject({status: "played", logicalRound: {status: "completed", cursor: 2, totalStake: 0.5, totalWin: 0.2}});

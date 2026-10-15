@@ -65,7 +65,7 @@ export async function assertWorkflowRejections(blueprint: api.GameBlueprint, dir
     expect(() => new api.GamePackageGenerator("1.3.0").generate(blueprint, directory, destination)).toThrow();
     expect(fs.readFileSync(path.join(destination, "keep"), "utf8")).toBe("original");
 
-    const game = generatedMechanicsGame(blueprint), 
+    const game = generatedMechanicsGame(blueprint),
         session = mechanicsSession(game);
     const before = session.toSessionState();
     const corrupt = JSON.parse(JSON.stringify(before)) as Record<string, unknown>;
@@ -91,7 +91,7 @@ export async function assertWorkflowRejections(blueprint: api.GameBlueprint, dir
         expect(extracted.diagnostics.length).toBeGreaterThan(0);
         expect(create).not.toHaveBeenCalled();
     } finally {
-        create.mockRestore(); 
+        create.mockRestore();
     }
 
     const filename = path.join(directory, "invalid-mechanic.xlsx");
@@ -113,6 +113,6 @@ export async function assertWorkflowRejections(blueprint: api.GameBlueprint, dir
         expect(() => new api.AuditRoundReplay().replay(incompatible, recording.audit!)).toThrow();
         expect(replayCreate).not.toHaveBeenCalled();
     } finally {
-        replayCreate.mockRestore(); 
+        replayCreate.mockRestore();
     }
 }

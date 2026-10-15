@@ -52,7 +52,7 @@ describe("V2C-14 authored bounded mechanics", () => {
         const runtime = new api.SessionRuntime(session);
         const command: api.SessionCommand = {kind: "spin", roundId: "exact", delivery: "composite"};
         const result = played(runtime.execute(command));
-        const respins = id.includes("respins"), 
+        const respins = id.includes("respins"),
             collection = id.includes("collection");
         expect(result.logicalRound).toMatchObject({status: "completed", cursor: respins ? 9 : 1, totalStake: 0.05, totalWin: respins && collection ? 60 : 0});
         if (respins) expect(session.getBoundedMechanicObservation()!.respins).toEqual({remaining: 0, executed: 8, granted: 0, limit: 8});
