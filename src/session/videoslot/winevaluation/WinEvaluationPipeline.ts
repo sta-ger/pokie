@@ -63,11 +63,13 @@ export class WinEvaluationPipeline<T extends string | number | symbol = string> 
             evaluator,
             components: evaluator.evaluate(context).map((component) => this.applyMultiplier(component, context)),
         }));
+        for (const {components} of componentsByEvaluator) this.assertFinitePayout(components);
         const geometry = context.getConfig().getScreenGeometry?.() ?? context.getSymbolsCombination().getScreenGeometry?.();
         if (geometry) componentsByEvaluator.forEach(({components}) => assertEvaluationComponents(components, geometry));
         const selectedComponents = this.aggregationPolicy.aggregate(componentsByEvaluator, context);
 
         if (geometry) assertEvaluationComponents(selectedComponents, geometry);
+        this.assertFinitePayout(selectedComponents);
 
         return new WinEvaluationResult<T>({
             lineWins: selectedComponents.filter((component): component is LineWinComponent<T> => component instanceof LineWinComponent),
@@ -116,6 +118,13 @@ export class WinEvaluationPipeline<T extends string | number | symbol = string> 
 
     public getOptions(): WinEvaluationPipelineOptions {
         return {...this.options};
+    }
+
+    private assertFinitePayout(components: WinComponent<T>[]): void {
+        if (components.some(component => !Number.isFinite(component.getWinAmount())) ||
+            !Number.isFinite(components.reduce((sum, component) => sum + component.getWinAmount(), 0))) {
+            throw new Error("Win payout overflow.");
+        }
     }
 
     private applyMultiplier(component: WinComponent<T>, context: WinEvaluationContext<T>): WinComponent<T> {

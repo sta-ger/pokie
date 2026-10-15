@@ -221,32 +221,53 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         engine?.validateState(this.modifierState);
         if (!engine && this.modifierState) throw new Error("Modifier configuration changed; create a fresh session.");
         if (this.selectionContext === undefined && this.implicitRound === Number.MAX_SAFE_INTEGER) throw new Error("Implicit round contexts exhausted.");
-        this.combinationsGenerator.setSelectionContext?.(this.selectionContext ?? `implicit:${++this.implicitRound}`);
-        this.selectionContext = undefined;
-        let generated = this.combinationsGenerator.generateSymbolsCombination();
-        const geometry = this.validateGeneratedCoordinates(generated, contract);
-        const modified = engine?.execute(generated.toMatrix(), this.modifierState!);
-        if (modified) {
-            generated = new SymbolsCombination<T>().fromMatrix(modified.matrix);
-            if (geometry) generated = (generated as SymbolsCombination<T>).withCoordinates(geometry);
+        const generator = this.combinationsGenerator instanceof SymbolsCombinationsGenerator && this.combinationsGenerator.isRandomStateRestorable()
+            ? this.combinationsGenerator : undefined;
+        const rngState = generator?.getRandomState();
+        const selectionState = generator?.getSelectionState();
+        const implicitRound = this.implicitRound;
+        const selectionContext = this.selectionContext;
+        try {
+            this.combinationsGenerator.setSelectionContext?.(this.selectionContext ?? `implicit:${++this.implicitRound}`);
+            this.selectionContext = undefined;
+            let generated = this.combinationsGenerator.generateSymbolsCombination();
+            const geometry = this.validateGeneratedCoordinates(generated, contract);
+            const modified = engine?.execute(generated.toMatrix(), this.modifierState!);
+            if (modified) {
+                generated = new SymbolsCombination<T>().fromMatrix(modified.matrix);
+                if (geometry) generated = (generated as SymbolsCombination<T>).withCoordinates(geometry);
+            }
+            const evaluationSource = geometry
+                ? new SymbolsCombination<T>().fromMatrix(generated.toMatrix()).withCoordinates(geometry) : generated;
+            const evaluated = projectEvaluationSymbols(evaluationSource);
+            this.winCalculator.calculateWin(this.getBet(), evaluated);
+            if (geometry) {
+                const result = this.supportsWinEvaluationResult() ? this.winCalculator.getWinEvaluationResult!() : LegacyWinEvaluationResultAdapter.fromWinCalculator(this.winCalculator);
+                assertEvaluationComponents(result.getWinComponents(), geometry);
+            }
+            const payout = this.supportsWinEvaluationResult()
+                ? this.winCalculator.getWinEvaluationResult!().getTotalWin() : this.winCalculator.getWinAmount();
+            const balance = this.getCreditsAmount() - this.getBet() + payout;
+            if (!Number.isFinite(payout) || !Number.isFinite(balance)) throw new Error("Win payout or balance overflow.");
+            this.baseSession.play();
+            this.symbolsCombination = generated;
+            this.roundGeometry = geometry;
+            this.roundDimensions = this.captureScreenDimensions(geometry);
+            this.resultValid = true;
+            this.winAmount = payout;
+            this.setCreditsAmount(balance);
+            this.modifierState = modified?.state;
+            this.modifierObservation = modified?.observation;
+        } catch (error) {
+            if (generator) {
+                generator.setRandomState(rngState);
+                generator.setSelectionState(selectionState);
+            }
+            this.implicitRound = implicitRound;
+            this.selectionContext = selectionContext;
+            this.resultValid = false;
+            throw error;
         }
-        const evaluationSource = geometry
-            ? new SymbolsCombination<T>().fromMatrix(generated.toMatrix()).withCoordinates(geometry) : generated;
-        const evaluated = projectEvaluationSymbols(evaluationSource);
-        this.winCalculator.calculateWin(this.getBet(), evaluated);
-        if (geometry) {
-            const result = this.supportsWinEvaluationResult() ? this.winCalculator.getWinEvaluationResult!() : LegacyWinEvaluationResultAdapter.fromWinCalculator(this.winCalculator);
-            assertEvaluationComponents(result.getWinComponents(), geometry);
-        }
-        this.baseSession.play();
-        this.symbolsCombination = generated;
-        this.roundGeometry = geometry;
-        this.roundDimensions = this.captureScreenDimensions(geometry);
-        this.resultValid = true;
-        this.winAmount = this.getWinAmount();
-        this.setCreditsAmount(this.getCreditsAmount() + this.winAmount);
-        this.modifierState = modified?.state;
-        this.modifierObservation = modified?.observation;
     }
 
     public getSessionStateSchema(): Extract<SessionStateSchema, {kind: "seeded-video-slot"}> {

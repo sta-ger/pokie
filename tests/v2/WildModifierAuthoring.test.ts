@@ -52,6 +52,127 @@ describe("V2C-13 finite modifier authoring", () => {
         fs.rmSync(directory, {recursive: true, force: true});
     });
 
+    it.each(["component", "aggregate", "balance"] as const)("%s overflow rejects atomically and seeded retry matches uninterrupted execution", failure => {
+        const b = fixture("sticky");
+        b.rows = failure === "aggregate" ? 3 : 1;
+        b.reelStrips = [["A"], ["W2"], ["A"]];
+        b.mechanics!.modifiers!.wilds = [{symbol: "W2", factor: Number.MAX_VALUE}];
+        const config = directConfig(b);
+        const generator = new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(31));
+        const session = new api.VideoSlotSession(config, generator);
+        session.setBet(1e-7);
+        session.play(); // Retain a real sticky cell and a successful prior observation.
+        const reference = new api.VideoSlotSession(config, new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(31)));
+        reference.fromSessionState(JSON.parse(JSON.stringify(session.toSessionState())));
+        const before = session.toSessionState();
+        const selections = generator.getSelectionState();
+        const screen = session.getSymbolsCombination().toMatrix();
+        session.setBet(failure === "component" ? 7.5 : 0.05);
+        session.setCreditsAmount(failure === "balance" ? Number.MAX_VALUE : 10000);
+        const credits = session.getCreditsAmount();
+        for (let attempt = 0; attempt < 2; attempt++) {
+            expect(() => session.play()).toThrow(/overflow/);
+            expect(session.toSessionState()).toEqual(before);
+            expect(generator.getSelectionState()).toEqual(selections);
+            expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
+            expect(session.getCreditsAmount()).toBe(credits);
+            expect(session.getWinAmount()).toBe(0);
+            expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+            expect(session.getWinningLines()).toEqual({});
+            expect(session.getModifierObservation()).toBeUndefined();
+            const artifact = api.buildRoundArtifactFromSession(session, {roundId: "rejected", provenance: {game: b.manifest, pokieVersion: "1.3.0"}});
+            expect(artifact.totalWin).toBe(0);
+            expect(artifact.featureEvents).toBeUndefined();
+        }
+        for (const candidate of [session, reference]) {
+            candidate.setBet(1e-7);
+            candidate.setCreditsAmount(10000);
+            candidate.play();
+        }
+        expect(session.toSessionState()).toEqual(reference.toSessionState());
+        expect(session.getCreditsAmount()).toBe(reference.getCreditsAmount());
+        expect(session.getWinEvaluationResult()).toEqual(reference.getWinEvaluationResult());
+        expect(session.getModifierObservation()).toEqual(reference.getModifierObservation());
+    });
+
+    it("generated three-row MAX_VALUE modifier payout rejects instead of settling an infinite aggregate", () => {
+        const b = fixture("sticky");
+        b.rows = 3;
+        b.reelStrips = [["A"], ["W2"], ["A"]];
+        b.mechanics!.modifiers!.wilds = [{symbol: "W2", factor: Number.MAX_VALUE}];
+        const session = mechanicsSession(generatedMechanicsGame(b));
+        const before = session.toSessionState();
+        expect(() => session.play()).toThrow(/overflow/);
+        expect(session.toSessionState()).toEqual(before);
+        expect(session.getCreditsAmount()).toBe(10000);
+        expect(session.getWinAmount()).toBe(0);
+        expect(session.getModifierObservation()).toBeUndefined();
+    });
+
+    it("calculator reuse reads current authored factors and fresh restoration has identical math", () => {
+        const b = fixture("sticky");
+        b.reelStrips = [["A"], ["W2"], ["A"]];
+        const config = directConfig(b);
+        config.setScreenModifiers(undefined);
+        const reused = new api.VideoSlotWinCalculator(config);
+        const screen = new api.SymbolsCombination().fromMatrix(b.reelStrips);
+        reused.calculateWin(0.05, screen);
+        expect(reused.getWinAmount()).toBe(0.5);
+        for (const factor of [2, 0, 3]) {
+            config.setScreenModifiers({wilds: [{symbol: "W2", factor}], rules: b.mechanics!.modifiers!.rules});
+            reused.calculateWin(0.05, screen);
+            const fresh = new api.VideoSlotWinCalculator(config);
+            fresh.calculateWin(0.05, screen);
+            expect(reused.getWinAmount()).toBe(0.5 * factor);
+            expect(reused.getWinEvaluationResult()).toEqual(fresh.getWinEvaluationResult());
+            const session = new api.VideoSlotSession(config, new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(31)), reused);
+            session.play();
+            const restored = new api.VideoSlotSession(config, new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(99)), fresh);
+            restored.fromSessionState(JSON.parse(JSON.stringify(session.toSessionState())));
+            restored.setCreditsAmount(session.getCreditsAmount());
+            expect(session.isSessionStateRestorable()).toBe(true);
+            expect(restored.getSessionStateSchema()).toEqual(session.getSessionStateSchema());
+            session.play();
+            restored.play();
+            expect(session.getWinAmount()).toBe(restored.getWinAmount());
+            expect(session.getCreditsAmount()).toBe(restored.getCreditsAmount());
+            expect(session.toSessionState()).toEqual(restored.toSessionState());
+        }
+    });
+
+    it("late modifier configuration rejects a value evaluator at calculation and validation boundaries", () => {
+        const config = directConfig(fixture());
+        config.setScreenModifiers(undefined);
+        const calculator = new api.VideoSlotWinCalculator(config, undefined, undefined, undefined, new api.ValueWinCalculator({A: 2}));
+        config.setScreenModifiers(fixture().mechanics!.modifiers);
+        const screen = new api.SymbolsCombination().fromMatrix([["A"], ["W2"], ["W3"]]);
+        expect(() => calculator.calculateWin(0.05, screen)).toThrow(/value evaluators/);
+        expect(() => calculator.validateWinEvaluation(0.05, screen)).toThrow(/value evaluators/);
+        expect(() => calculator.getWinEvaluationPipeline()).toThrow(/value evaluators/);
+        expect(calculator.getWinAmount()).toBe(0);
+        expect(calculator.isStatelessForSessionRestoration()).toBe(false);
+    });
+
+    it.each([undefined, [], ["A"]])("authored substitutes %p override legacy restrictions and match generated execution", substitutes => {
+        const b = fixture();
+        b.reelStrips = [["A"], ["W2"], ["A"]];
+        b.mechanics!.modifiers!.wilds = [{symbol: "W2", factor: 2, ...(substitutes === undefined ? {} : {substitutes})}];
+        const config = directConfig(b);
+        config.setWildSubstitutions({W2: [], W3: ["B"]});
+        expect(config.getWildSubstitutions()).toEqual({W3: ["B"], ...(substitutes === undefined ? {} : {W2: substitutes})});
+        const direct = new api.VideoSlotSession(config);
+        const generated = mechanicsSession(generatedMechanicsGame(b));
+        direct.play();
+        generated.play();
+        expect(direct.getWinAmount()).toBe(substitutes?.length === 0 ? 0 : 1);
+        expect(direct.getWinAmount()).toBe(generated.getWinAmount());
+        config.setScreenModifiers(undefined);
+        expect(config.getWildSubstitutions()).toEqual({W2: [], W3: ["B"]});
+        const legacy = new api.VideoSlotSession(config);
+        legacy.play();
+        expect(legacy.getWinAmount()).toBe(0);
+    });
+
     it("requires exact catalogue/example coverage", () => {
         const files = fs
             .readdirSync(path.join(__dirname, "../../examples/blueprints"))

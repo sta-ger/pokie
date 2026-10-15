@@ -1,4 +1,5 @@
 import {
+    PublicRoundArtifactProjector, projectPublicFeatureEvent, VideoSlotSession, SymbolsSequence, Paytable,
     RoundArtifactProvenance,
     SymbolsCombination,
     VideoSlotConfig,
@@ -100,4 +101,34 @@ describe("buildRoundArtifactFromSession", () => {
         const artifact = buildRoundArtifactFromSession(fakeSession(), {roundId: "r6", provenance, betMode: "freeGames"});
         expect(artifact.betMode).toBe("freeGames");
     });
+});
+
+
+it("preserves a negative numeric sticky symbol through canonical and public session artifacts", () => {
+    const config = new VideoSlotConfig<number>();
+    config.setReelsNumber(3);
+    config.setReelsSymbolsNumber(1);
+    config.setAvailableSymbols([1, -1]);
+    config.setWildSymbols([-1]);
+    config.setScatterSymbols([]);
+    const paytable = new Paytable<number>(config.getAvailableBets());
+    paytable.setPayoutForSymbol(1, 3, 10);
+    config.setPaytable(paytable);
+    config.setSymbolsSequences([[1], [-1], [1]].map(strip => new SymbolsSequence<number>().fromArray(strip)));
+    config.setScreenModifiers({wilds: [{symbol: -1, factor: 2}], rules: [{id: "negative", type: "sticky", symbol: -1, space: "evaluated", positions: [[1, 0]], lifetime: 3}]});
+    const session = new VideoSlotSession(config);
+    session.play();
+    const artifact = buildRoundArtifactFromSession(session, {roundId: "negative", provenance});
+    expect(new RoundArtifactValidator<number>().validate(artifact)).toEqual([]);
+    const projected = new PublicRoundArtifactProjector<number>().project(artifact);
+    const event = {type: "screenModifiers", data: {space: "evaluated", rules: [{id: "negative", positions: [[1, 0]]}], sticky: [{ruleId: "negative", position: [1, 0], symbol: -1, factor: 2, remaining: 2}]}};
+    expect(projected.featureEvents).toEqual([event]);
+    expect(projected.steps[0].featureEvents).toEqual([event]);
+    expect(projected.totalWin).toBe(artifact.totalWin);
+});
+
+it.each([null, {}, [], NaN, Infinity, -Infinity])("public projection rejects malformed/nonfinite sticky identity %p", symbol => {
+    const cell = {ruleId: "r", position: [0, 0], symbol, factor: 0, remaining: 1};
+    const event = projectPublicFeatureEvent({type: "screenModifiers", data: {sticky: [cell]}});
+    expect(event.data?.sticky).toEqual([]);
 });

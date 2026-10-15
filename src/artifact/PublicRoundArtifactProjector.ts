@@ -68,7 +68,7 @@ export function projectPublicFeatureEvent(event: RoundArtifactFeatureEvent): Rou
         if (source.space === "evaluated") data.space = source.space;
         const position = (value: JsonValue | undefined): value is number[] => Array.isArray(value) && value.length === 2 && value.every(n => finite(n) && Number.isSafeInteger(n));
         if (Array.isArray(source.rules)) data.rules = source.rules.flatMap(rule => isJsonObject(rule) && typeof rule.id === "string" && Array.isArray(rule.positions) ? [{id: rule.id, positions: rule.positions.filter(position).map(p => [...p])}] : []);
-        if (Array.isArray(source.sticky)) data.sticky = source.sticky.flatMap(cell => isJsonObject(cell) && typeof cell.ruleId === "string" && position(cell.position) && (typeof cell.symbol === "string" || finite(cell.symbol)) && finite(cell.factor) && finite(cell.remaining) && Number.isSafeInteger(cell.remaining) ? [{ruleId: cell.ruleId, position: [...cell.position], symbol: cell.symbol, factor: cell.factor, remaining: cell.remaining}] : []);
+        if (Array.isArray(source.sticky)) data.sticky = source.sticky.flatMap(cell => isJsonObject(cell) && typeof cell.ruleId === "string" && position(cell.position) && (typeof cell.symbol === "string" || (typeof cell.symbol === "number" && Number.isFinite(cell.symbol))) && finite(cell.factor) && finite(cell.remaining) && Number.isSafeInteger(cell.remaining) ? [{ruleId: cell.ruleId, position: [...cell.position], symbol: cell.symbol, factor: cell.factor, remaining: cell.remaining}] : []);
     }
     if (event.type === "chargedBetMode" && typeof source.id === "string") data.id = source.id;
     if (event.type === "holdAndWin") {

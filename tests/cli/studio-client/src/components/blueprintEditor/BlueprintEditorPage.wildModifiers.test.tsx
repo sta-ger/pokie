@@ -1,14 +1,15 @@
 import {MantineProvider} from "@mantine/core";
-import {fireEvent, render, screen, waitFor} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor} from "@testing-library/react";
 import {useState} from "react";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
-import {GameModelSections} from "../../../../../../cli/studio-client/src/components/project/GameModelSections";
+import {renderWithProviders} from "../../testUtils/renderWithProviders";
+import {GameModelSections, type GameModelSectionId} from "../../../../../../cli/studio-client/src/components/project/GameModelSections";
 import {GameBlueprintValidator} from "../../../../../../src/generated/GameBlueprintValidator";
 import {buildGameModelProjection} from "../../../../../../src/project/buildGameModelProjection";
 import type {GameBlueprint} from "../../../../../../src/generated/GameBlueprint";
 
-function home() {
+function home(storage?: {blueprint?: GameBlueprint}) {
     const writes = jest.fn();
     const fetchImpl: FetchLike = (url, init) => {
         if (url === "/api/home/blueprints/validate") {
@@ -25,6 +26,16 @@ function home() {
                     }),
             });
         }
+        if (storage && url === "/api/home/blueprints/save") {
+            storage.blueprint = JSON.parse(String(init?.body)).blueprint;
+            writes(url, storage.blueprint);
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", path: "/games/modifiers.json", blueprintHash: "saved"})});
+        }
+        if (storage && url === "/api/home/blueprints/load") {
+            writes(url);
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", path: "/games/modifiers.json", blueprint: storage.blueprint, blueprintHash: "saved"})});
+        }
+        if (url.startsWith("/api/home/fs/browse")) return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", resolvedPath: "/games/modifiers.json", displayPath: "/games/modifiers.json", isDirectory: false, entries: []})});
         if (!init?.method || init.method === "GET") return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
         writes(url);
         return Promise.reject(new Error(`Unexpected write: ${url}`));
@@ -113,19 +124,19 @@ const initial: GameBlueprint = {
     reelStrips: [["A"], ["W"], ["A"]],
 };
 
-it("Project edits remain unsaved until Save; reload and read-only inspection retain the same ordered rules", () => {
+it("Project edits remain unsaved until Save; reload and read-only inspection retain the same ordered rules", async () => {
     const save = jest.fn();
     function Project() {
         const [saved, setSaved] = useState(initial);
         const [blueprint, update] = useState<Record<string, unknown>>(initial);
-        const [editing, setEditing] = useState(true);
+        const [section, setSection] = useState<GameModelSectionId | undefined>("mechanics");
         return (
             <MantineProvider>
                 <GameModelSections
                     projection={buildGameModelProjection(saved)}
                     edit={{
                         ready: true,
-                        activeSection: editing ? "mechanics" : undefined,
+                        activeSection: section,
                         blueprint,
                         mutate: (fn) =>
                             update((previous) => {
@@ -134,15 +145,15 @@ it("Project edits remain unsaved until Save; reload and read-only inspection ret
                                 return next;
                             }),
                         saving: false,
-                        onEdit: () => setEditing(true),
+                        onEdit: setSection,
                         onSave: () => {
                             save(blueprint);
                             setSaved(blueprint as GameBlueprint);
-                            setEditing(false);
+                            setSection(undefined);
                         },
                         onCancel: () => {
                             update(saved);
-                            setEditing(false);
+                            setSection(undefined);
                         },
                         drafts: {current: new Map()},
                         modeDrafts: {current: new Map()},
@@ -153,7 +164,7 @@ it("Project edits remain unsaved until Save; reload and read-only inspection ret
             </MantineProvider>
         );
     }
-    render(<Project />);
+    renderWithProviders(<Project />);
     fireEvent.click(screen.getByRole("button", {name: "Add wild modifiers"}));
     fireEvent.click(screen.getByRole("button", {name: "Add sticky rule"}));
     fireEvent.change(screen.getByLabelText("Rule 1 lifetime"), {target: {value: "6"}});
@@ -165,7 +176,53 @@ it("Project edits remain unsaved until Save; reload and read-only inspection ret
         }),
     );
     expect(screen.getByText(/Rule 1: rule-1, sticky/)).toHaveTextContent("lifetime 6");
+    fireEvent.click(document.getElementById("game-model-symbols-edit")!);
+    fireEvent.change(screen.getByLabelText("Symbol 2 id"), {target: {value: "W4"}});
+    fireEvent.blur(screen.getByLabelText("Symbol 2 id"));
+    fireEvent.click(screen.getByRole("button", {name: "Save"}));
+    const renamed = save.mock.calls[1][0];
+    expect(renamed.mechanics.modifiers.rules[0].symbol).toBe("W4");
+    expect(renamed.reelStrips[1]).toEqual(["W4"]);
+    expect(new GameBlueprintValidator().validate(renamed).filter(issue => issue.severity === "error")).toEqual([]);
     const buttons = screen.getAllByRole("button", {name: "Edit"});
     fireEvent.click(buttons[buttons.length - 1]);
     expect(screen.getByLabelText("Rule 1 lifetime")).toHaveValue("6");
+    await act(async () => {
+        await Promise.resolve();
+    });
 });
+
+
+it("Home saves and reloads valid renamed modifier declarations without losing zero, empty restrictions or ordering", async () => {
+    const storage: {blueprint?: GameBlueprint} = {};
+    const writes = home(storage);
+    const declaration: GameBlueprint = {...initial, mechanics: {modifiers: {
+        wilds: [{symbol: "W", factor: 0, substitutes: []}],
+        rules: [
+            {id: "make", type: "transform", from: "A", to: "W", space: "evaluated", positions: [[0, 0]]},
+            {id: "retain", type: "sticky", symbol: "W", lifetime: 3, space: "evaluated", positions: [[1, 0]]},
+        ],
+    }}};
+    fireEvent.change(await jsonEditor(), {target: {value: JSON.stringify(declaration)}});
+    fireEvent.click(screen.getByRole("button", {name: "Apply JSON"}));
+    fireEvent.click(screen.getByLabelText("Form"));
+    fireEvent.click(screen.getByRole("tab", {name: /^Symbols/}));
+    fireEvent.change(screen.getByLabelText("Symbol 2 id"), {target: {value: "W4"}});
+    fireEvent.blur(screen.getByLabelText("Symbol 2 id"));
+    expect(writes).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Save to path"), {target: {value: "/games/modifiers.json"}});
+    fireEvent.click(await screen.findByRole("button", {name: "Save", exact: true}));
+    await screen.findByText('Saved to "/games/modifiers.json".');
+    expect(storage.blueprint!.mechanics!.modifiers).toEqual({
+        wilds: [{symbol: "W4", factor: 0, substitutes: []}],
+        rules: [
+            {id: "make", type: "transform", from: "A", to: "W4", space: "evaluated", positions: [[0, 0]]},
+            {id: "retain", type: "sticky", symbol: "W4", lifetime: 3, space: "evaluated", positions: [[1, 0]]},
+        ],
+    });
+    fireEvent.change(screen.getByLabelText("Load from path"), {target: {value: "/games/modifiers.json"}});
+    fireEvent.click(screen.getByRole("button", {name: "Load", exact: true}));
+    await waitFor(() => expect(writes).toHaveBeenCalledWith("/api/home/blueprints/load"));
+    expect(JSON.parse((await jsonEditor()).value)).toEqual(storage.blueprint);
+    expect(new GameBlueprintValidator().validate(storage.blueprint).filter(issue => issue.severity === "error")).toEqual([]);
+}, 60000);

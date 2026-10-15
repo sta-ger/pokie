@@ -109,7 +109,10 @@ export class VideoSlotConfig<T extends string | number | symbol = string> implem
     public getWildSubstitutions(): Partial<Record<T, T[]>> {
         if (!this.screenModifiers) return this.wildSubstitutions;
         const substitutions = Object.assign(Object.create(null) as Partial<Record<T, T[]>>, this.wildSubstitutions);
-        for (const wild of this.screenModifiers?.wilds ?? []) if (wild.substitutes !== undefined) Reflect.defineProperty(substitutions, wild.symbol, {value: [...wild.substitutes], enumerable: true, configurable: true, writable: true});
+        for (const wild of this.screenModifiers.wilds) {
+            if (wild.substitutes === undefined) Reflect.deleteProperty(substitutions, wild.symbol);
+            else Reflect.defineProperty(substitutions, wild.symbol, {value: [...wild.substitutes], enumerable: true, configurable: true, writable: true});
+        }
         return substitutions;
     }
 

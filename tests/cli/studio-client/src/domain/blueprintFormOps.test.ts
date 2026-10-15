@@ -752,3 +752,42 @@ it("renames and protects Hold&Win effect and jackpot trigger symbol references",
     expect(renameSymbol(blueprint, "J", "prize")).toBeUndefined();
     expect(blueprint.mechanics).toEqual({holdAndWin: {symbolEffects: {coin: {kind: "value", amount: 2}}}, jackpot: {trigger: {symbolId: "prize"}}});
 });
+
+
+it("renames every modifier symbol reference, preserves ordered rules/zero/empty, and blocks deletion at concrete locations", () => {
+    const modifiers = {
+        wilds: [{symbol: "W", factor: 0, substitutes: []}, {symbol: "V", substitutes: ["W"]}],
+        rules: [
+            {id: "transform", type: "transform", from: "W", to: "W", space: "evaluated", positions: [[0, 0]]},
+            ...["expand", "sticky", "reel"].map(type => ({id: type, type, symbol: "W", space: "evaluated", positions: [[0, 0]]})),
+        ],
+    };
+    const b: Record<string, unknown> = {symbols: ["W", "V"], mechanics: {modifiers}};
+    expect(getSymbolDeletionBlockers(b, "W")).toEqual([
+        "mechanics.modifiers.wilds[0].symbol",
+        "mechanics.modifiers.wilds[1].substitutes[0]",
+        "mechanics.modifiers.rules[0].from",
+        "mechanics.modifiers.rules[0].to",
+        "mechanics.modifiers.rules[1].symbol",
+        "mechanics.modifiers.rules[2].symbol",
+        "mechanics.modifiers.rules[3].symbol",
+    ]);
+    removeSymbolAt(b, 0);
+    expect(b.symbols).toEqual(["W", "V"]);
+    expect(renameSymbol(b, "W", "W4")).toBeUndefined();
+    expect(modifiers.wilds).toEqual([{symbol: "W4", factor: 0, substitutes: []}, {symbol: "V", substitutes: ["W4"]}]);
+    expect(modifiers.rules).toEqual([
+        {id: "transform", type: "transform", from: "W4", to: "W4", space: "evaluated", positions: [[0, 0]]},
+        ...["expand", "sticky", "reel"].map(type => ({id: type, type, symbol: "W4", space: "evaluated", positions: [[0, 0]]})),
+    ]);
+    expect(getSymbolDeletionBlockers(b, "W")).toEqual([]);
+    expect(getSymbolDeletionBlockers(b, "W4")).toHaveLength(7);
+});
+
+it.each([null, "broken", {wilds: null, rules: "broken"}, {wilds: [null, {symbol: "W", substitutes: [null, "W", 0]}], rules: [null, {from: "W", to: null, positions: "broken"}]}])("retains malformed modifier draft %p safely during symbol edits", modifiers => {
+    const b: Record<string, unknown> = {symbols: ["W"], mechanics: {modifiers}};
+    const expected = JSON.parse(JSON.stringify(modifiers).replaceAll('"W"', '"W4"'));
+    expect(() => getSymbolDeletionBlockers(b, "W")).not.toThrow();
+    expect(renameSymbol(b, "W", "W4")).toBeUndefined();
+    expect(b.mechanics).toEqual({modifiers: expected});
+});

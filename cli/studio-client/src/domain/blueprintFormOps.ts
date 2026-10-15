@@ -97,6 +97,9 @@ export function renameSymbol(blueprint: Record<string, unknown>, from: string, t
     if (isRecord(hold) && isRecord(hold.symbolEffects)) renameRecordKey(hold, "symbolEffects", from, to);
     const jackpot = mechanics.jackpot;
     if (isRecord(jackpot) && isRecord(jackpot.trigger) && jackpot.trigger.symbolId === from) jackpot.trigger.symbolId = to;
+    visitModifierSymbols(mechanics.modifiers, (value, replace) => {
+        if (value === from) replace(to);
+    });
     blueprint.mechanics = mechanics;
     return undefined;
 }
@@ -131,7 +134,35 @@ export function getSymbolDeletionBlockers(blueprint: Record<string, unknown>, id
     const mechanics = asMechanics(blueprint.mechanics);
     if (isRecord(mechanics.holdAndWin) && isRecord(mechanics.holdAndWin.symbolEffects) && id in mechanics.holdAndWin.symbolEffects) blockers.push("mechanics.holdAndWin.symbolEffects");
     if (isRecord(mechanics.jackpot) && isRecord(mechanics.jackpot.trigger) && mechanics.jackpot.trigger.symbolId === id) blockers.push("mechanics.jackpot.trigger.symbolId");
+    visitModifierSymbols(mechanics.modifiers, (value, _replace, location) => {
+        if (value === id) blockers.push(location);
+    });
     return blockers;
+}
+
+// Visit only declared symbol fields, leaving malformed containers and unrelated draft data intact.
+function visitModifierSymbols(modifiers: unknown, visit: (value: unknown, replace: (value: string) => void, location: string) => void): void {
+    if (!isRecord(modifiers)) return;
+    if (Array.isArray(modifiers.wilds)) modifiers.wilds.forEach((wild: unknown, index: number) => {
+        if (!isRecord(wild)) return;
+        visit(wild.symbol, value => {
+            wild.symbol = value;
+        }, `mechanics.modifiers.wilds[${index}].symbol`);
+        const substitutes = wild.substitutes;
+        if (Array.isArray(substitutes)) substitutes.forEach((symbol: unknown, target: number) => {
+            visit(symbol, value => {
+                substitutes[target] = value;
+            }, `mechanics.modifiers.wilds[${index}].substitutes[${target}]`);
+        });
+    });
+    if (Array.isArray(modifiers.rules)) modifiers.rules.forEach((rule: unknown, index: number) => {
+        if (!isRecord(rule)) return;
+        for (const field of ["symbol", "from", "to"]) {
+            visit(rule[field], value => {
+                rule[field] = value;
+            }, `mechanics.modifiers.rules[${index}].${field}`);
+        }
+    });
 }
 
 function renameRecordKey(blueprint: Record<string, unknown>, field: string, from: string, to: string): void {

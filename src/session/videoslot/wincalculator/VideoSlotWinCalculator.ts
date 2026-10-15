@@ -53,7 +53,6 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
     private readonly valueWinCalculator?: ValueWinCalculating<T>;
     private readonly waysWinCalculator?: WaysWinCalculating<T>;
     private readonly options: VideoSlotWinCalculatorOptions<T>;
-    private readonly pipeline: WinEvaluationPipeline<T>;
 
     private winEvaluationResult: WinEvaluationResult<T> = new WinEvaluationResult<T>();
 
@@ -79,13 +78,6 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
         this.valueWinCalculator = valueWinCalculator;
         this.waysWinCalculator = waysWinCalculator;
         this.options = {...options};
-        this.pipeline = new WinEvaluationPipeline<T>(
-            this.createEvaluators(),
-            options.aggregationPolicy ?? new ErrorOnIncompatibleWinAggregationPolicy<T>(),
-            options.multiplierResolver ?? this.createAuthoredMultiplierResolver(conf.getScreenModifiers?.()),
-            undefined,
-            {validateOnEvaluate: options.validateOnEvaluate},
-        );
     }
 
     public usesConfig(config: VideoSlotConfigDescribing<T>): boolean {
@@ -108,7 +100,7 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
     public calculateWin(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): void {
         this.winEvaluationResult = new WinEvaluationResult<T>();
         if (this.config.getAvailableBets().some((availableBet) => availableBet === bet)) {
-            this.winEvaluationResult = this.pipeline.evaluate(
+            this.winEvaluationResult = this.getWinEvaluationPipeline().evaluate(
                 new WinEvaluationContext<T>(bet, symbolsCombination, this.config),
             );
         } else {
@@ -117,7 +109,7 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
     }
 
     public validateWinEvaluation(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): ValidationResult {
-        return this.pipeline.validate(new WinEvaluationContext<T>(bet, symbolsCombination, this.config));
+        return this.getWinEvaluationPipeline().validate(new WinEvaluationContext<T>(bet, symbolsCombination, this.config));
     }
 
     public getWinEvaluationResult(): WinEvaluationResult<T> {
@@ -213,7 +205,15 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
     }
 
     public getWinEvaluationPipeline(): WinEvaluationPipeline<T> {
-        return this.pipeline;
+        // Config is mutable: factors and evaluator compatibility must use the same current model.
+        if (this.config.getScreenModifiers?.() && this.valueWinCalculator) throw new Error("Authored screen modifiers do not support value evaluators.");
+        return new WinEvaluationPipeline<T>(
+            this.createEvaluators(),
+            this.options.aggregationPolicy ?? new ErrorOnIncompatibleWinAggregationPolicy<T>(),
+            this.options.multiplierResolver ?? this.createAuthoredMultiplierResolver(this.config.getScreenModifiers?.()),
+            undefined,
+            {validateOnEvaluate: this.options.validateOnEvaluate},
+        );
     }
 
     private createAuthoredMultiplierResolver(modifiers: ScreenModifiers<T> | undefined): MultiplierResolver<T> | undefined {
