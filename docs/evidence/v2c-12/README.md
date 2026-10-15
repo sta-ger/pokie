@@ -536,3 +536,29 @@ the rendered Replay card and table are legible, with the completed status,
 download, seed, package mode and repeat policy visible. This adds only the
 ordinary ante branch; the required ordinary/weighted buy and buy-more matrix
 remains uncollected.
+
+## Ordinary buy Recent Simulation producer failure (2026-10-15)
+
+Candidate product identity remains `cf08dbafb1d3cf6799e5c35526a6beeae8d78e8d`.
+One fresh Studio profile opened the retained ordinary generated package through
+the public Projects path. In visible Simulation configuration it selected
+`buy`, rounds `3`, one worker, and seed `v2c12-ordinary-buy-recent`, then
+activated **Run Simulation** once. That action first rendered `Simulation
+queued — 0/3 rounds`; its own local terminal rendered `Simulation failed —
+0/3 rounds` and `Bet mode "buy" forces feature entry and cannot be selected
+while a zero-stake feature round is already active`. No Recent Simulation
+report or Replay target was produced, and the action was not retried.
+
+The runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-a6452b8c3c3e9238/run-2026-10-15T02-03-04-790Z/transcript.json`
+(SHA-256 `0d82d78033f36e5b820f6ee848525c0de7f55dae45884285db609a618dc918f8`).
+The corresponding transient job receipt was
+`8968a8327824427a8e2c327665db2d6b`, with the same `rounds: 3`, seed, and
+`modeName: "buy"`, and SHA-256
+`6bb22cc31aae4b3d4e63911606bc216955f3a8ea374be2f5c97190ca0feaf9ce`.
+These runtime artifacts are not committed. The source boundary is
+`cli/studio/simulation/StudioSimulationService.ts`, which supplies the chosen
+mode to `ParallelSimulationRunner`; that runner constructs
+`FixedBetModeForNextSimulationRoundSetting`. The latter explicitly intends to
+absorb this exact forcing-mode continuation rejection, whereas the public
+candidate run propagated it and failed before its first round.
