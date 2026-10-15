@@ -1,3 +1,5 @@
+import {projectOutcomeSourceSimulationReport} from "../../src/reporting/projectOutcomeSourceSimulationReport.js";
+import {describeSimulationDiagnostics} from "../../src/reporting/describeSimulationDiagnostics.js";
 import {analyticsEnvelope} from "../../src/simulation/FeatureAnalytics.js";
 import {describeFeatureAnalytics} from "../../src/simulation/describeFeatureAnalytics.js";
 import {Command} from "commander";
@@ -6,7 +8,6 @@ import {
     describeUnavailableArtifactOperation,
     loadPokieGame,
     MAX_SIMULATION_WORKERS,
-    OutcomeSourceSimulationReport,
     OutcomeSourceSimulationResult,
     ParallelSimulationRunner,
     ParallelSimulationRunOptions,
@@ -414,6 +415,7 @@ export class SimCommand implements CliCommandHandling {
     }
 
     private async runOutcomeSourceSim(project: PokieProject, options: SimOptions): Promise<void> {
+        if (options.convergence) throw new Error("Native outcome-library simulation does not support adaptive convergence; omit the adaptive flags to use its fixed sampling budget.");
         if (!options.mode || options.mode === ALL_MODES) {
             throw new Error(`--mode <modeName> is required to simulate a native outcome-library project. ${USAGE}`);
         }
@@ -432,7 +434,7 @@ export class SimCommand implements CliCommandHandling {
             throw new UnsupportedProjectOperationError(result.diagnostic);
         }
 
-        const report = result.report;
+        const report = projectOutcomeSourceSimulationReport(result.report);
         if (options.out) {
             this.writeReport(options.out, JSON.stringify(report, null, 4));
         }
@@ -440,29 +442,14 @@ export class SimCommand implements CliCommandHandling {
         if (options.format === "json") {
             console.log(JSON.stringify(report, null, 4));
         } else {
-            this.printOutcomeSourceSummary(report);
+            console.log(`Simulated outcome library "${report.libraryId}" (hash "${report.libraryHash}"), mode "${report.modeName}"`);
+            this.printSummary(report);
         }
         if (options.out) {
             this.printReportDestination(options.out, options.format === "json");
         }
     }
 
-    private printOutcomeSourceSummary(report: OutcomeSourceSimulationReport): void {
-        for (const line of describeFeatureAnalytics(report.statistics.analytics)) console.log(`  ${line}`);
-        const statistics = report.statistics;
-        console.log(`Simulated outcome library "${report.libraryId}" (hash "${report.libraryHash}"), mode "${report.modeName}"`);
-        console.log(`  rounds          ${statistics.rounds}`);
-        if (report.seed !== undefined) {
-            console.log(`  seed            ${report.seed}`);
-        }
-        if (report.workerSeedStrategy) console.log(`  seed policy     ${report.workerSeedStrategy}`);
-        console.log(`  total bet       ${statistics.totalBet.toFixed(2)}`);
-        console.log(`  total win       ${statistics.totalPayout.toFixed(2)}`);
-        console.log(`  rtp             ${(statistics.rtp * 100).toFixed(2)}%`);
-        console.log(`  hit frequency   ${((statistics.rounds > 0 ? statistics.hitCount / statistics.rounds : 0) * 100).toFixed(2)}%`);
-        console.log(`  max win         ${statistics.maxWin.toFixed(2)}`);
-        console.log(`  duration        ${report.durationMs}ms`);
-    }
 
     private async executeAgainstRuntimePackage(options: SimOptions): Promise<void> {
         // Loaded once up front regardless of path (single mode, no mode, or --mode all) purely to read
@@ -634,6 +621,7 @@ export class SimCommand implements CliCommandHandling {
     }
 
     private printSummary(report: SimulationReport): void {
+        for (const line of describeSimulationDiagnostics(report)) console.log(`  ${line}`);
         for (const line of describeFeatureAnalytics(report.analytics)) console.log(`  ${line}`);
         console.log(`Simulated "${report.game.name}" (id: "${report.game.id}", v${report.game.version})`);
         const roundsSuffix = report.rounds !== report.requestedRounds ? ` (requested ${report.requestedRounds})` : "";
@@ -676,7 +664,7 @@ export class SimCommand implements CliCommandHandling {
             console.log(
                 `  convergence     minRounds ${c.minRounds}, rtpTolerance ${(c.rtpTolerance * 100).toFixed(2)}pp, ` +
                     `checkInterval ${c.checkIntervalRounds}, checks ${c.checksPerformed}, ` +
-                    `stable ${c.consecutiveStableChecks}/${c.stableChecks}, achieved half-width ${(c.achievedRtpHalfWidth * 100).toFixed(3)}pp`,
+                    `stable ${c.consecutiveStableChecks}/${c.stableChecks}, achieved half-width ${c.achievedRtpHalfWidth === null ? "unavailable" : (c.achievedRtpHalfWidth * 100).toFixed(3)}pp`,
             );
         }
         if (report.reproducibility?.configHash !== undefined) {

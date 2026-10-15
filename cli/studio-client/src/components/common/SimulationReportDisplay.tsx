@@ -1,3 +1,4 @@
+import {describeSimulationDiagnostics} from "../../../../../src/reporting/describeSimulationDiagnostics";
 import {describeFeatureAnalytics} from "../../../../../src/simulation/describeFeatureAnalytics";
 import {describeWeightedBonusCoverage} from "../../../../../src/session/videoslot/authored/WeightedBonus";
 import {describeSequenceVariantCoverage} from "../../../../../src/session/videoslot/combinations/WeightedSequenceVariant";
@@ -30,6 +31,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                     <Table.Tbody>{Object.entries(view.jackpot.pools).map(([id, pool]) => <Table.Tr key={id}><Table.Td>{id}</Table.Td><Table.Td>{pool.awardCount}</Table.Td><Table.Td>{pool.totalAwarded}</Table.Td><Table.Td>{pool.totalContributed}</Table.Td><Table.Td>{(pool.contribution * 100).toFixed(4)}%</Table.Td></Table.Tr>)}</Table.Tbody></Table>
             </PageSection>}
             {view.workerSeedStrategy && <Text>Worker seed strategy: {view.workerSeedStrategy}. Independent feature trajectory and session-local jackpot per worker.</Text>}
+            <PageSection legend="Sampling and precision diagnostics">{describeSimulationDiagnostics(view, false).map((line, index) => <Text key={index}>{line}</Text>)}</PageSection>
             <PageSection legend="Feature analytics">{describeFeatureAnalytics(view.analytics).map((line, index) => <Text key={index}>{line}</Text>)}</PageSection>
             {view.sampling && <PageSection legend="Logical round sampling">Completed logical rounds: {view.rounds}; accepted subrounds: {view.sampling.acceptedSubrounds}; carried subrounds: {view.sampling.carriedSubrounds ?? 0}; excluded unfinished/restored subrounds: {view.sampling.excludedSubrounds}. Independent session trajectory per worker. Monetary totals include every observed subround.</PageSection>}
             {view.modifiers && <PageSection legend="Screen modifiers">Executed steps: {view.modifiers.steps}; rule applications: {view.modifiers.ruleApplications}; sticky steps: {view.modifiers.stickySteps}; multiplied components: {view.modifiers.multipliedComponents}</PageSection>}
@@ -134,7 +136,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                                 </Table.Tr>
                                 <Table.Tr>
                                     <Table.Th>Achieved RTP half-width</Table.Th>
-                                    <Table.Td>{(view.convergence.achievedRtpHalfWidth * 100).toFixed(3)} pp</Table.Td>
+                                    <Table.Td>{view.convergence.achievedRtpHalfWidth === null ? "unavailable" : (view.convergence.achievedRtpHalfWidth * 100).toFixed(3)} pp</Table.Td>
                                 </Table.Tr>
                             </>
                         )}

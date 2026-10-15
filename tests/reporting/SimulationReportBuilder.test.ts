@@ -294,10 +294,11 @@ describe("SimulationReportBuilder", () => {
     });
 
     describe("warnings", () => {
-        test("produces no warnings for a healthy report (seeded, enough rounds, hits, wins, bets)", () => {
+        test("keeps support limitations explicit even for a large seeded amount-only report", () => {
             const report = buildHealthyReport();
 
             expect(report.warnings!).toEqual([]);
+            expect(report.diagnostics!.coverageLimitations.join("\n")).toContain("Component attribution unsupported");
         });
 
         test("warns when no seed was given", () => {
@@ -320,14 +321,14 @@ describe("SimulationReportBuilder", () => {
             expect(report.warnings!.some((warning) => warning.includes("No seed was provided"))).toBe(true);
         });
 
-        test("warns when requestedRounds is below the low-rounds threshold", () => {
+        test("warns based on actual usable samples rather than requested budget", () => {
             const accumulator = new SimulationAccumulator();
             accumulator.addRound(1, 0);
             const builder = new SimulationReportBuilder();
 
             const report = builder.build({manifest, requestedRounds: 100, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
 
-            expect(report.warnings!.some((warning) => warning.includes("Requested rounds (100) is low"))).toBe(true);
+            expect(report.warnings!.some((warning) => warning.includes("Usable samples (1) is low"))).toBe(true);
         });
 
         test("does not warn about low rounds at/above the threshold", () => {
@@ -1060,4 +1061,14 @@ it("preserves analytics separately from completed logical sample metrics", () =>
     expect(report.rounds).toBe(0);
     expect(report.analytics).toEqual(statistics.analytics);
     expect(report.analytics).toMatchObject({subrounds: 1, totalStake: 7.5, envelope: {lifecycle: false, components: false}});
+});
+
+it("uses completed usable samples for low-evidence diagnostics even with a large requested budget", () => {
+    const accumulator = new SimulationAccumulator();
+    accumulator.addRound(0.05, 0);
+    accumulator.enableLogicalRoundSampling();
+    const report = new SimulationReportBuilder().build({manifest: {id: "early", name: "Early", version: "1"}, requestedRounds: 100000, statistics: accumulator.getStatistics(), durationMs: 1, stopReason: "sessionStopped"});
+    expect(report.diagnostics).toMatchObject({samples: 0, sampleUnit: "completed-logical-round", precision: "insufficientSamples"});
+    expect(report.warnings?.join("\n")).toContain("Usable samples (0) is low");
+    expect(report.sampling?.acceptedSubrounds).toBe(1);
 });

@@ -16,6 +16,7 @@ import {describeUnsupportedProjectOperation} from "./describeUnsupportedProjectO
 // -- never a PokieGameManifest, since a resolved "outcomeLibrary" project has no loadable game behind it to ask
 // for one (see this module's own doc comment on why sampling never touches loadPokieGame).
 export type OutcomeSourceSimulationReport = {
+    readonly game?: import("../gamepackage/PokieGameManifest.js").PokieGameManifest;
     readonly libraryId: string;
     readonly libraryHash: string;
     readonly modeName: string;
@@ -59,6 +60,7 @@ export async function simulateOutcomeSourceProject(
 
     const outcomeSource = new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName);
     const accumulator = new SimulationAccumulator();
+    let game: OutcomeSourceSimulationReport["game"];
     let libraryId = "";
     let libraryHash = "";
     let lastReplay: PreGeneratedRoundReplayDescriptor | undefined;
@@ -67,6 +69,7 @@ export async function simulateOutcomeSourceProject(
         const replayRound = round + 1;
         const roundRandomSource = seed === undefined ? randomSource : new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(seed, replayRound));
         const selection = await outcomeSource.drawOutcome(roundRandomSource);
+        game = selection.outcome.artifact.provenance.game;
         libraryId = selection.libraryId;
         libraryHash = selection.libraryHash;
         accumulator.addRound(selection.outcome.artifact.stake, selection.outcome.artifact.totalWin, artifactAnalyticsObservation(selection.outcome.artifact, selection.libraryHash));
@@ -95,6 +98,7 @@ export async function simulateOutcomeSourceProject(
     return {
         supported: true,
         report: {
+            game,
             libraryId,
             libraryHash,
             modeName,

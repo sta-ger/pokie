@@ -324,3 +324,27 @@ it.each(["progress", "result", "error"] as const)("rejects malformed %s analytic
         expect(JSON.stringify(accumulator)).toBe(before);
     }
 });
+
+it("propagates cleanup only when every worker has entered it and still drains after observer failure", async () => {
+    const workers = [new FakeWorker(), new FakeWorker()];
+    let created = 0;
+    const phases: string[] = [];
+    const coordinator = new SimulationWorkerCoordinator(undefined, () => workers[created++] as unknown as Worker);
+    const pending = coordinator.run([makeRequest(0, 2), makeRequest(1, 2)], {onPhase: phase => phases.push(phase)});
+    workers[0].emit("message", {type: "phase", workerIndex: 0, phase: "simulation"});
+    workers[0].emit("message", {type: "phase", workerIndex: 0, phase: "finalizing / cleanup"});
+    expect(phases).toEqual(["simulation"]);
+    workers[1].emit("message", {type: "phase", workerIndex: 1, phase: "finalizing / cleanup"});
+    expect(phases).toEqual(["simulation", "finalizing / cleanup"]);
+    workers[0].emit("message", {type: "result", ...makeResult(0)});
+    workers[1].emit("message", {type: "result", ...makeResult(1)});
+    await pending;
+    expect(workers.every(worker => worker.terminateCallCount === 1)).toBe(true);
+    const failing = new FakeWorker();
+    const rejected = new SimulationWorkerCoordinator(undefined, () => failing as unknown as Worker).run([makeRequest(0)], {onPhase: () => {
+        throw new Error("observation failed");
+    }});
+    failing.emit("message", {type: "result", ...makeResult(0)});
+    await expect(rejected).rejects.toThrow("observation failed");
+    expect(failing.terminateCallCount).toBe(1);
+});

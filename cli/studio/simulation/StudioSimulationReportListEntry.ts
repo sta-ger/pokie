@@ -3,6 +3,7 @@
 // always present except `seed`, which is legitimately optional at the domain level regardless of
 // status.
 export type StudioSimulationReportListEntry = {
+    convergence?: import("../../../src/simulation/SimulationConvergenceOptions.js").SimulationConvergenceOptions;
     id: string;
     status: "completed";
     game: {id: string; version: string};

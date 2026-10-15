@@ -8,6 +8,9 @@ export function toStudioSimulationJobView(record: StudioSimulationJobRecord): St
     return {
         id: record.id,
         status: record.status,
+        progress: {stage: record.phase ?? record.status, unit: "accepted plays", current: record.roundsCompleted, total: record.rounds * (record.modeCount ?? 1)},
+        convergence: record.convergence,
+        requestedRounds: record.rounds,
         rounds: record.rounds * (record.modeCount ?? 1),
         seed: record.seed,
         workers: record.workers,

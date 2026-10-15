@@ -65,9 +65,13 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
 
         const breakdown = this.buildBreakdown(input.breakdown, core.totalBet);
         const jackpot = this.buildJackpot(input.jackpot, core.totalBet);
+        const diagnostics = this.buildDiagnostics(core, input);
         const warnings = this.buildWarnings(core, breakdown, statistics.logicalRoundMetrics ? statistics.rounds : undefined);
+        if (diagnostics.precision === "insufficientPrecision") warnings.push("Maximum budget or session stop reached without the requested empirical precision.");
+        if (diagnostics.precision === "insufficientSamples" || diagnostics.precision === "uninformative") warnings.push("Insufficient evidence for precision: too few usable samples, no charged stake or an uninformative losing prefix.");
         return {
             ...core,
+            diagnostics,
             ...(statistics.analytics ? {analytics: statistics.analytics} : {}),
             ...(statistics.logicalRounds ? {logicalRounds: statistics.logicalRounds} : {}),
             ...(statistics.logicalRoundMetrics ? {sampling: {unit: "completed-logical-round" as const, acceptedSubrounds: statistics.rounds, carriedSubrounds: statistics.logicalSampling?.carriedSubrounds ?? 0, excludedSubrounds: statistics.logicalSampling?.excludedSubrounds ?? 0, trajectories: "independent-session-per-worker" as const}} : {}),
@@ -79,6 +83,36 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             reproducibility: this.buildReproducibility(core, packageRoot, workerSeedStrategy, configHash, pokieVersion),
             warnings,
             recommendations: this.buildRecommendations(core),
+        };
+    }
+
+    private buildDiagnostics(core: CoreMetrics, input: SimulationReportInput): NonNullable<SimulationReport["diagnostics"]> {
+        const {statistics} = input;
+        const samples = statistics.logicalRoundMetrics ?? statistics;
+        const ci = samples.rtpConfidenceInterval95;
+        const halfWidth = (ci.high - ci.low) / 2;
+        const limitations = ["Empirical estimates only: unseen rare outcomes and normal-approximation error remain possible; precision does not prove configured target RTP."];
+        if (!statistics.analytics) limitations.push("Feature analytics unavailable (legacy or missing observations).");
+        else {
+            if (!statistics.analytics.envelope.lifecycle) limitations.push("Feature lifecycle attribution unsupported: custom names, categories and flattened events do not prove entry, retrigger, duration or completion.");
+            if (!statistics.analytics.envelope.components) limitations.push("Component attribution unsupported; unassignable win remains in the unavailable monetary partition.");
+            for (const name of statistics.analytics.envelope.supportedFeatures) if (!statistics.analytics.features[name].entries) limitations.push(`${name}: supported but no entries observed; feature precision unavailable.`);
+        }
+        if (statistics.weightedBonus?.outcomes.some(o => o.weight > 0 && o.uncovered) || statistics.reelSequences?.some(r => r.variants.some(v => v.weight > 0 && v.uncovered))) limitations.push("Positive-weight configured outcomes remain uncovered; the sample does not establish rare-event coverage.");
+        let precision: NonNullable<SimulationReport["diagnostics"]>["precision"] = "notRequested";
+        if (samples.rounds < 2) precision = "insufficientSamples";
+        else if (samples.totalBet === 0 || samples.hitCount === 0) precision = "uninformative";
+        else if (core.convergence) {
+            const attained = core.stopReason === "converged" && samples.rounds >= core.convergence.minRounds &&
+                core.convergence.consecutiveStableChecks >= core.convergence.stableChecks && halfWidth <= core.convergence.rtpTolerance;
+            precision = attained ? "empiricalPrecision" : "insufficientPrecision";
+        }
+        return {
+            sampleUnit: statistics.logicalRoundMetrics ? "completed-logical-round" : "accepted-subround",
+            samples: samples.rounds,
+            achievedRtpHalfWidth: Number.isFinite(halfWidth) ? halfWidth : null,
+            precision,
+            coverageLimitations: limitations,
         };
     }
 
@@ -136,9 +170,9 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             warnings.push("No seed was provided — this run is not reproducible.");
         }
 
-        if (core.requestedRounds < SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD) {
+        if (core.rounds < SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD) {
             warnings.push(
-                `Requested rounds (${core.requestedRounds}) is low — RTP/hit-frequency estimates may be noisy.`,
+                `Usable samples (${core.rounds}) is low — RTP/hit-frequency estimates may be noisy regardless of requested budget (${core.requestedRounds}).`,
             );
         }
 
@@ -210,7 +244,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             recommendations.push("Run with --seed <seed> (e.g. --seed demo) to make this simulation reproducible.");
         }
 
-        if (core.requestedRounds < SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD) {
+        if (core.rounds < SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD) {
             recommendations.push(
                 `Increase --rounds (e.g. ${SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD}+) for more stable RTP/hit-frequency estimates.`,
             );

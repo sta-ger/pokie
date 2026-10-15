@@ -65,7 +65,7 @@ export class InMemoryStudioSimulationRepository implements StudioSimulationRepos
     }
 
     private isActive(record: StudioSimulationJobRecord): boolean {
-        return record.status === "queued" || record.status === "running";
+        return record.status === "queued" || record.status === "running" || record.status === "cancelling";
     }
 
     private isTerminal(record: StudioSimulationJobRecord): boolean {

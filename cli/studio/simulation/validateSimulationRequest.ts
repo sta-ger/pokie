@@ -6,10 +6,12 @@ export type SimulationRequestInput = {
     seed?: unknown;
     workers?: unknown;
     modeName?: unknown;
+    convergence?: unknown;
 };
 
 export type ValidatedSimulationRequest = {
     rounds: number;
+    convergence?: import("../../../src/simulation/SimulationConvergenceOptions.js").SimulationConvergenceOptions;
     seed?: string;
     // Optional (rather than required) so a hand-built ValidatedSimulationRequest (as used throughout
     // StudioSimulationService's own tests, calling start() directly without going through this
@@ -27,6 +29,7 @@ export type ValidatedSimulationRequest = {
 // MAX_SIMULATION_WORKERS].
 export function validateSimulationRequest(input: SimulationRequestInput): ValidatedSimulationRequest {
     const {rounds, seed, workers, modeName} = input;
+    const convergence = validateSimulationConvergence(input.convergence);
 
     if (typeof rounds !== "number" || !Number.isInteger(rounds) || rounds < 1) {
         throw new Error('"rounds" must be a positive integer.');
@@ -48,10 +51,23 @@ export function validateSimulationRequest(input: SimulationRequestInput): Valida
     }
 
     if (seed === undefined) {
-        return {rounds, workers: validatedWorkers, ...(modeName === undefined ? {} : {modeName})};
+        return {rounds, ...(convergence ? {convergence} : {}), workers: validatedWorkers, ...(modeName === undefined ? {} : {modeName})};
     }
     if (typeof seed !== "string" || seed.trim().length === 0) {
         throw new Error('"seed" must be a non-empty string when given.');
     }
-    return {rounds, seed, workers: validatedWorkers, ...(modeName === undefined ? {} : {modeName})};
+    return {rounds, seed, ...(convergence ? {convergence} : {}), workers: validatedWorkers, ...(modeName === undefined ? {} : {modeName})};
+}
+
+/** Adaptive options are one coherent request group, never silently ignored. */
+export function validateSimulationConvergence(value: unknown): ValidatedSimulationRequest["convergence"] {
+    if (value === undefined) return undefined;
+    if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error('"convergence" must be an adaptive options object.');
+    const c = value as Record<string, unknown>;
+    if (Object.keys(c).some(k => !["minRounds", "rtpTolerance", "checkIntervalRounds", "stableChecks"].includes(k))) throw new Error('Unknown "convergence" option.');
+    const integer = (v: unknown, min: number): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= min && v <= MAX_STUDIO_SIMULATION_ROUNDS;
+    if (!integer(c.minRounds, 0) || !integer(c.checkIntervalRounds, 1) || typeof c.rtpTolerance !== "number" || !Number.isFinite(c.rtpTolerance) || c.rtpTolerance <= 0 || (c.stableChecks !== undefined && !integer(c.stableChecks, 1))) {
+        throw new Error('"convergence" requires minRounds (non-negative integer), rtpTolerance (positive finite RTP units), checkIntervalRounds (positive integer), and optional stableChecks (positive integer).');
+    }
+    return {minRounds: c.minRounds, rtpTolerance: c.rtpTolerance, checkIntervalRounds: c.checkIntervalRounds, ...(c.stableChecks === undefined ? {} : {stableChecks: c.stableChecks as number})};
 }

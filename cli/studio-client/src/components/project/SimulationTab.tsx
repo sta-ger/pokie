@@ -31,7 +31,7 @@ export type ReportDetailState =
 const DEFAULT_ROUNDS = 10000;
 const RECENT_RUNS_PAGE_SIZE = 50;
 
-type FormValues = {rounds: number; seed: string; workers: number; modeName: string};
+type FormValues = {rounds: number; seed: string; workers: number; modeName: string; convergence?: StudioSimulationReportListEntry["convergence"]};
 
 // The single Configure -> Run -> Review -> Export workflow, replacing the old separate Simulation and
 // Reports tabs. All data-fetching is still owned by ProjectDashboardPage (useSimulationPoll, the
@@ -73,7 +73,7 @@ export function SimulationTab({
     operation: "simulation" | "simulation-retry";
     /** A terminal durable job receipt, retained across the control's React replacement. */
     terminalReceipt: SimulationTerminalReceipt | undefined;
-    onRun: (rounds: number, seed: string | undefined, workers: number, modeName?: string) => void;
+    onRun: (rounds: number, seed: string | undefined, workers: number, modeName?: string, convergence?: StudioSimulationReportListEntry["convergence"]) => void;
     onCancel: () => void;
     onRetry: () => void;
     recentRuns: ReportListView;
@@ -98,7 +98,7 @@ export function SimulationTab({
     const confirm = useConfirm();
     const form = useForm<FormValues>({
         mode: "uncontrolled",
-        initialValues: {rounds: DEFAULT_ROUNDS, seed: "", workers: 1, modeName: ""},
+        initialValues: {rounds: DEFAULT_ROUNDS, seed: "", workers: 1, modeName: "", convergence: undefined as StudioSimulationReportListEntry["convergence"]},
         validate: {rounds: getSimulationRoundsError},
         validateInputOnChange: ["rounds"],
         validateInputOnBlur: ["rounds"],
@@ -115,6 +115,7 @@ export function SimulationTab({
             ...(seed === undefined ? {} : {seed}),
             ...(workers === undefined ? {} : {workers}),
             ...(modeName === undefined ? {} : {modeName}),
+            convergence: recoveryRequest.convergence as StudioSimulationReportListEntry["convergence"],
         });
         form.validateField("rounds");
         // Mantine's uncontrolled form object is intentionally stable.
@@ -283,7 +284,7 @@ export function SimulationTab({
                 <form
                     data-pokie-lifecycle-form="simulation"
                     onSubmit={form.onSubmit((values) =>
-                        onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined),
+                        onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined, values.convergence),
                     )}
                 >
                     <Text size="sm" c="dimmed" mb="sm">
@@ -320,6 +321,7 @@ export function SimulationTab({
                             key={form.key("modeName")}
                         />
                     )}
+                    {form.getValues().convergence && <Text size="sm">Captured adaptive stopping: minimum {form.getValues().convergence?.minRounds} usable samples per worker; tolerance {form.getValues().convergence?.rtpTolerance} RTP units; check every {form.getValues().convergence?.checkIntervalRounds} accepted plays; stable checks {form.getValues().convergence?.stableChecks ?? 3}. These settings will be retained on retry. <Button variant="subtle" size="xs" onClick={() => form.setFieldValue("convergence", undefined)}>Use fixed budget</Button></Text>}
                     <AdvancedDisclosure detail="seed, workers">
                         <QuickActions>
                             <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
@@ -334,6 +336,7 @@ export function SimulationTab({
                     {progress === undefined && <EmptyState message="No simulation has been run yet." />}
                     {progress !== undefined && (
                         <div>
+                            <Text role="status">Phase: {progress.phase ?? progress.status}{progress.percent === 100 && active ? " — accepted-play budget reached; awaiting cleanup and report publication." : ""}</Text>
                             <Progress value={progress.percent} mb="sm" />
                             <QuickActions>
                                 {active && !cancellationPending && (

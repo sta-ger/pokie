@@ -59,7 +59,7 @@ export function useSimulationPoll() {
     // A terminal view can outlive the in-memory job snapshot while a reload
     // or recovery reconciliation settles. Keep the real request that created
     // it so Retry remains a public operation, never a visible no-op.
-    const lastRequestRef = useRef<{rounds: number; seed: string | undefined; workers: number; modeName: string | undefined} | undefined>(undefined);
+    const lastRequestRef = useRef<{rounds: number; seed: string | undefined; workers: number; modeName: string | undefined; convergence?: StudioSimulationJobView["convergence"]} | undefined>(undefined);
     const cancelledRef = useRef(false);
     const generationRef = useRef(0);
     const runGuardGenerationRef = useRef<number | undefined>(undefined);
@@ -123,7 +123,7 @@ export function useSimulationPoll() {
                 }
                 setJob(polledJob);
                 setConnectionError(undefined);
-                lastRequestRef.current = {rounds: polledJob.rounds, seed: polledJob.seed, workers: polledJob.workers, modeName: polledJob.modeName};
+                lastRequestRef.current = {rounds: polledJob.requestedRounds ?? polledJob.rounds, seed: polledJob.seed, workers: polledJob.workers, modeName: polledJob.modeName, convergence: polledJob.convergence};
                 setProgress(describeSimulationProgress(polledJob));
                 if (!isSimulationActive(polledJob)) {
                     setCancellationRequested(false);
@@ -151,7 +151,7 @@ export function useSimulationPoll() {
         cancelRequestRef.current = undefined;
     }
 
-    function run(rounds: number, seed: string | undefined, workers: number, modeName?: string, startedBy: SimulationOperation = "simulation"): void {
+    function run(rounds: number, seed: string | undefined, workers: number, modeName?: string, startedBy?: SimulationOperation, convergence?: StudioSimulationJobView["convergence"]): void {
         const roundsError = getSimulationRoundsError(rounds);
         if (roundsError !== null) {
             setError(roundsError);
@@ -172,15 +172,15 @@ export function useSimulationPoll() {
             clearTimeout(timeoutRef.current);
             timeoutRef.current = undefined;
         }
-        lastRequestRef.current = {rounds, seed, workers, modeName};
-        operationRef.current = startedBy;
-        setOperation(startedBy);
+        lastRequestRef.current = {rounds, seed, workers, modeName, convergence};
+        operationRef.current = startedBy ?? "simulation";
+        setOperation(startedBy ?? "simulation");
         setTerminalReceipt(undefined);
         setError(undefined);
         setConnectionError(undefined);
         setCancellationRequested(false);
         setProgress({status: "queued", roundsCompleted: 0, rounds, workers, percent: 0, durationMs: 0});
-        startSimulation(fetchImpl, rounds, seed, workers, modeName)
+        startSimulation(fetchImpl, rounds, seed, workers, modeName, convergence)
             .then((result) => {
                 if (!isCurrent(generation)) {
                     return;
@@ -335,7 +335,7 @@ export function useSimulationPoll() {
     function retry(): void {
         const request = lastRequestRef.current;
         if (request !== undefined) {
-            run(request.rounds, request.seed, request.workers, request.modeName, "simulation-retry");
+            run(request.rounds, request.seed, request.workers, request.modeName, "simulation-retry", request.convergence);
         }
     }
 

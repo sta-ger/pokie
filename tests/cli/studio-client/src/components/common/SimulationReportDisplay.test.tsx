@@ -1,3 +1,4 @@
+import {SimulationSummaryCard} from "../../../../../../cli/studio-client/src/components/common/SimulationSummaryCard";
 import {featureAnalyticsReport} from "../../../../../v2/fixtures/FeatureAnalyticsFixture";
 import {describeSimulationReport, type SimulationReportView} from "../../../../../../cli/studio-client/src/domain/interpret/Simulation";
 import type {SimulationReport} from "../../../../../../cli/studio-client/src/api/types";
@@ -86,4 +87,17 @@ it("renders analytics availability, zero denominators, unfinished features and p
     result.rerender(<MantineProvider><SimulationReportDisplay view={describeSimulationReport(featureAnalyticsReport())} /></MantineProvider>);
     expect(result.getByText(/freeGames: duration/)).toHaveTextContent("bonus win / completions: 4 / 1 = 4");
     expect(result.getByText(/feature: RTP contribution \/ actual charged stake/)).toHaveTextContent("payout share / total win");
+});
+
+it("keeps sample, attribution and noise limitations visible in the compact summary and full report", () => {
+    const report = featureAnalyticsReport("empty");
+    const view = describeSimulationReport(report);
+    for (const surface of [<SimulationSummaryCard key="summary" outcome={{kind: "completed", report: view}} />, <SimulationReportDisplay key="report" view={view} />]) {
+        const result = render(<MantineProvider>{surface}</MantineProvider>);
+        expect(result.container.textContent).toContain("usable samples 0");
+        expect(result.container.textContent).toContain("insufficientSamples");
+        expect(result.container.textContent).toContain("neither establishes exact RTP");
+        expect(result.container.textContent).toContain("supported but no entries observed");
+        result.unmount();
+    }
 });

@@ -23,6 +23,9 @@ export type StudioSimulationStatisticsView = {
 // never a runtime session/game/AbortController object (see StudioSimulationJobRecord, which is the
 // internal record this is derived from via toStudioSimulationJobView).
 export type StudioSimulationJobView = {
+    requestedRounds?: number;
+    progress?: import("../jobs/StudioJobView.js").StudioJobProgressView;
+    convergence?: import("../../../src/simulation/SimulationConvergenceOptions.js").SimulationConvergenceOptions;
     id: string;
     status: StudioSimulationStatus;
     rounds: number;

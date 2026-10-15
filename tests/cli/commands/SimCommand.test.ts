@@ -1405,10 +1405,17 @@ describe("SimCommand outcome-source routing (integration, real outcome-library b
         const report = JSON.parse(logSpy.mock.calls[0][0]) as {libraryId: string; workerSeedStrategy: string; statistics: {rounds: number; rtp: number; totalBet: number}};
         expect(report.libraryId).toBe("base-lib");
         expect(report.statistics.rounds).toBe(200);
+        expect(report).toMatchObject({rounds: 200, analytics: {envelope: {lifecycle: false, components: true}}, diagnostics: {sampleUnit: "accepted-subround", samples: 200}});
+        expect((report as unknown as SimulationReport).diagnostics?.coverageLimitations.join("\n")).toContain("Feature lifecycle attribution unsupported");
         expect(report.workerSeedStrategy).toContain("derived-round-seed-v1");
         expect(report.statistics.totalBet).toBe(200);
         expect(report.statistics.rtp).toBeGreaterThanOrEqual(0);
 
         logSpy.mockRestore();
     });
+});
+
+it("rejects adaptive flags for native outcome sampling instead of silently ignoring them", async () => {
+    const command = new SimCommand(undefined, undefined, undefined, undefined, undefined, undefined, stubProjectResolver(outcomeLibraryProject));
+    await expect(command.run(["/libraries/base", "--mode", "base", "--rounds", "20", "--min-rounds", "2", "--rtp-tolerance", "0.01", "--check-interval", "2"])).rejects.toThrow("does not support adaptive convergence");
 });

@@ -22,6 +22,7 @@ export type SimulationReportReproducibility = {
 };
 
 export type SimulationReport = {
+    diagnostics?: import("./describeSimulationDiagnostics.js").SimulationDiagnostics;
     analytics?: import("../simulation/FeatureAnalytics.js").FeatureAnalytics;
     logicalRounds?: import("../simulation/LogicalRoundStatistics.js").LogicalRoundStatistics;
     sampling?: {unit: "completed-logical-round"; acceptedSubrounds: number; carriedSubrounds?: number; excludedSubrounds: number; trajectories: "independent-session-per-worker"};

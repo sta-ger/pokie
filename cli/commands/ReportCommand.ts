@@ -1,3 +1,6 @@
+import {validateSimulationReportExtensions} from "../../src/reporting/validateSimulationReportExtensions.js";
+import {projectOutcomeSourceSimulationReport} from "../../src/reporting/projectOutcomeSourceSimulationReport.js";
+import type {OutcomeSourceSimulationReport} from "../../src/project/simulateOutcomeSourceProject.js";
 import {Command} from "commander";
 import {
     HtmlSimulationReportRenderer,
@@ -240,6 +243,14 @@ export class ReportCommand implements CliCommandHandling {
             throw new Error(`"${reportPath}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
         }
 
+        // Historical sampled outcome reports are not static outcome-source analyses.
+        if (typeof parsed === "object" && parsed !== null && "libraryId" in parsed && !("rounds" in parsed)) {
+            const source = parsed as OutcomeSourceSimulationReport;
+            if (typeof source.libraryId !== "string" || typeof source.libraryHash !== "string" || typeof source.modeName !== "string" ||
+                !source.statistics || ![source.statistics.rounds, source.statistics.hitCount, source.statistics.totalBet, source.statistics.totalPayout, source.statistics.rtp, source.statistics.volatility, source.statistics.maxWin, source.durationMs, source.requestedRounds].every(Number.isFinite) ||
+                !source.statistics.payoutHistogram || !source.statistics.rtpConfidenceInterval95 || !source.statistics.averagePayoutConfidenceInterval95) throw new Error("Invalid sampled outcome simulation report; regenerate it with pokie sim.");
+            parsed = projectOutcomeSourceSimulationReport(source);
+        }
         if (isSimulationReportSet(parsed) && Object.values(parsed.modes).every((report) => this.isSimulationReport(report))) {
             return parsed;
         }
@@ -330,6 +341,7 @@ export class ReportCommand implements CliCommandHandling {
             return false;
         }
 
+        validateSimulationReportExtensions(value as Record<string, unknown>);
         const candidate = value as Partial<SimulationReport>;
         const game = candidate.game as Partial<SimulationReport["game"]> | undefined;
 
@@ -433,7 +445,10 @@ export class ReportCommand implements CliCommandHandling {
     }
 
     private hasConvergence(value: unknown): boolean {
-        return value === undefined || this.hasNumbers(value, ["minRounds", "rtpTolerance", "checkIntervalRounds", "stableChecks", "checksPerformed", "consecutiveStableChecks", "achievedRtpHalfWidth"]);
+        if (value === undefined) return true;
+        if (!this.hasNumbers(value, ["minRounds", "rtpTolerance", "checkIntervalRounds", "stableChecks", "checksPerformed", "consecutiveStableChecks"])) return false;
+        const halfWidth = (value as {achievedRtpHalfWidth?: unknown}).achievedRtpHalfWidth;
+        return halfWidth === null || typeof halfWidth === "number" && Number.isFinite(halfWidth);
     }
 
     private hasNumbers(value: unknown, keys: string[]): boolean {

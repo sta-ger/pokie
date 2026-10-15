@@ -31,6 +31,8 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
             configurationChanged: left.weightedBonus?.model !== right.weightedBonus?.model,
             observationsChanged: JSON.stringify([left.weightedBonus?.selections, left.weightedBonus?.completed, left.weightedBonus?.outcomes.map(o => o.count)]) !== JSON.stringify([right.weightedBonus?.selections, right.weightedBonus?.completed, right.weightedBonus?.outcomes.map(o => o.count)]),
         } : undefined;
+        const samplingChanged = JSON.stringify([left.sampling, left.logicalRounds]) !== JSON.stringify([right.sampling, right.logicalRounds]);
+        const diagnosticsChanged = JSON.stringify(left.diagnostics) !== JSON.stringify(right.diagnostics);
         const reelSequences = diffReelSequences(left.reelSequences, right.reelSequences);
         const rtp = this.metricDiff(left.rtp, right.rtp);
         const hitFrequency = this.metricDiff(left.hitFrequency, right.hitFrequency);
@@ -56,7 +58,7 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
         const spinsPerSecond = this.metricDiff(left.spinsPerSecond, right.spinsPerSecond);
 
         return {
-            changed: !!analytics?.changed || !!weightedBonus?.configurationChanged || !!weightedBonus?.observationsChanged || !!reelSequences?.changed || this.hasChanges(game.changed, seed.changed, betMode, [requestedRounds, rounds, totalBet, totalWin, rtp, hitFrequency, maxWin, durationMs, spinsPerSecond], breakdown, left.breakdown, right.breakdown),
+            changed: samplingChanged || diagnosticsChanged || !!analytics?.changed || !!weightedBonus?.configurationChanged || !!weightedBonus?.observationsChanged || !!reelSequences?.changed || this.hasChanges(game.changed, seed.changed, betMode, [requestedRounds, rounds, totalBet, totalWin, rtp, hitFrequency, maxWin, durationMs, spinsPerSecond], breakdown, left.breakdown, right.breakdown),
             ...(analytics ? {analytics} : {}),
             ...(weightedBonus ? {weightedBonus} : {}),
             ...(reelSequences === undefined ? {} : {reelSequences}),
@@ -72,7 +74,7 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
             maxWin,
             durationMs,
             spinsPerSecond,
-            warnings: [...(analytics?.changed ? ["Feature analytics observations, denominators or provenance changed."] : []), ...this.buildWarnings(rtp, hitFrequency, maxWin, breakdown, left.breakdown, right.breakdown, betMode),
+            warnings: [...(samplingChanged ? ["Report sample populations, carried observations or excluded logical tails changed; compare the labelled denominators before interpreting metric deltas."] : []), ...(diagnosticsChanged ? ["Saved empirical precision or support diagnostics changed."] : []), ...(analytics?.changed ? ["Feature analytics observations, denominators or provenance changed."] : []), ...this.buildWarnings(rtp, hitFrequency, maxWin, breakdown, left.breakdown, right.breakdown, betMode),
                 ...(reelSequences?.changes.map(change => `Whole-sequence ${change.kind} change at ${change.reelIndex < 0 ? "model" : `reel ${change.reelIndex + 1}`} ${change.path}: ${JSON.stringify(change.left)} -> ${JSON.stringify(change.right)}`) ?? []),
                 ...(reelSequences?.observationsChanged ? ["Whole-sequence observed counts or selection denominators changed (sampling results)."] : [])],
             breakdown,

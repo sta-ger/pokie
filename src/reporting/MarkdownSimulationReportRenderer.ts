@@ -1,3 +1,4 @@
+import {describeSimulationDiagnostics} from "./describeSimulationDiagnostics.js";
 import {describeFeatureAnalytics} from "../simulation/describeFeatureAnalytics.js";
 import {describeWeightedBonusCoverage} from "../session/videoslot/authored/WeightedBonus.js";
 import {describeSequenceVariantCoverage} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
@@ -42,6 +43,7 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             `- **Workers**: ${report.workers ?? 1}`,
         ];
 
+        lines.push("", "## Sampling and precision diagnostics", ...describeSimulationDiagnostics(report).map(line => `- ${line.replace(/[<>|\n\r]/g, " ")}`));
         lines.push("", "## Feature analytics", ...describeFeatureAnalytics(report.analytics).map(line => `- ${line.replace(/[<>|\n\r]/g, " ")}`));
         if (report.sampling) lines.push("", "## Logical round sampling", `Completed logical rounds: ${report.rounds}; accepted subrounds: ${report.sampling.acceptedSubrounds}; carried subrounds: ${report.sampling.carriedSubrounds ?? 0}; excluded unfinished/restored subrounds: ${report.sampling.excludedSubrounds}. Independent session trajectory per worker. Monetary totals include every observed subround.`);
         if (report.modifiers) lines.push("", "## Screen modifiers", `Executed steps: ${report.modifiers.steps}; rule applications: ${report.modifiers.ruleApplications}; sticky steps: ${report.modifiers.stickySteps}; multiplied components: ${report.modifiers.multipliedComponents}`);
@@ -104,7 +106,7 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
                 `- **Stable checks required**: ${convergence.stableChecks}`,
                 `- **Checks performed**: ${convergence.checksPerformed}`,
                 `- **Consecutive stable checks**: ${convergence.consecutiveStableChecks}`,
-                `- **Achieved RTP half-width**: ${(convergence.achievedRtpHalfWidth * 100).toFixed(3)} pp`,
+                `- **Achieved RTP half-width**: ${convergence.achievedRtpHalfWidth === null ? "unavailable" : (convergence.achievedRtpHalfWidth * 100).toFixed(3)} pp`,
             );
         }
 

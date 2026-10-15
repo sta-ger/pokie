@@ -442,3 +442,11 @@ it("observes analytics-only changes and availability even when all legacy totals
     expect(differ.diff({...original, analytics: undefined}, original)).toMatchObject({changed: true, analytics: {changed: true}});
     expect(differ.diff(original, original)).toMatchObject({changed: false, analytics: {changed: false}});
 });
+
+it("detects sampling and diagnostic changes independently of headline monetary metrics", () => {
+    const report = featureAnalyticsReport();
+    const diff = new SimulationReportDiffer().diff(report, {...report, sampling: {...report.sampling!, excludedSubrounds: 1}});
+    expect(diff.changed).toBe(true);
+    expect(diff.warnings.join("\n")).toContain("sample populations");
+    expect(new SimulationReportDiffer().diff(report, {...report, diagnostics: undefined}).warnings.join("\n")).toContain("precision or support diagnostics");
+});

@@ -53,6 +53,7 @@ export type ParallelSimulationRunOptions = {
     yieldToEventLoop?: () => Promise<void>;
     // Aggregate rounds completed across every worker.
     onProgress?: (roundsCompleted: number) => void;
+    onPhase?: (phase: "preparing" | "simulation" | "finalizing / cleanup") => void;
     // Where the compiled worker entry point lives — optional. When omitted (the common case), workers
     // > 1 uses this package's own bundled worker entry automatically; only supply this to point at a
     // different build (e.g. a test pointing at source, or an embedder shipping its own copy).
@@ -139,6 +140,7 @@ export class ParallelSimulationRunner {
     // caller like Studio) that never changes the resulting statistics.
     private async runInProcess(workers = 1): Promise<ParallelSimulationResult> {
         const loadGame = this.options.loadGame ?? loadPokieGame;
+        this.options.onPhase?.("preparing");
         const game = await loadGame(this.packageRoot);
         let observedPrefix: SimulationStatistics | undefined;
         try {
@@ -156,6 +158,7 @@ export class ParallelSimulationRunner {
             const betModeSelector =
             this.options.betModeId !== undefined ? new FixedBetModeForNextSimulationRoundSetting(this.options.betModeId) : undefined;
 
+            this.options.onPhase?.("simulation");
             const {accumulator, breakdown, jackpot, stopReason} = await runChunkedSimulation(
                 session,
                 this.rounds,
@@ -192,10 +195,14 @@ export class ParallelSimulationRunner {
             observedPrefix = (error as {observedPrefix?: SimulationStatistics} | null)?.observedPrefix ?? observedPrefix;
             throw error;
         } finally {
-            await releasePokieGame(game).catch((error: unknown) => {
-                if (error instanceof Error && observedPrefix) Object.assign(error, {observedPrefix});
-                return Promise.reject(error);
-            });
+            try {
+                this.options.onPhase?.("finalizing / cleanup");
+            } finally {
+                await releasePokieGame(game).catch((error: unknown) => {
+                    if (error instanceof Error && observedPrefix) Object.assign(error, {observedPrefix});
+                    return Promise.reject(error);
+                });
+            }
         }
     }
 
@@ -215,7 +222,9 @@ export class ParallelSimulationRunner {
             : new SimulationWorkerCoordinator(this.options.workerEntryUrl);
 
         const progressByWorker = new Map<number, number>();
+        this.options.onPhase?.("preparing");
         const results = await coordinator.run(requests, {
+            onPhase: this.options.onPhase,
             signal: this.options.signal,
             onProgress: this.options.onProgress ? (progress) => this.reportProgress(progressByWorker, progress) : undefined,
         });
@@ -308,7 +317,7 @@ export class ParallelSimulationRunner {
             stableChecks: outcomes[0].stableChecks,
             checksPerformed: outcomes.reduce((sum, outcome) => sum + outcome.checksPerformed, 0),
             consecutiveStableChecks: Math.min(...outcomes.map((outcome) => outcome.consecutiveStableChecks)),
-            achievedRtpHalfWidth: Math.max(...outcomes.map((outcome) => outcome.achievedRtpHalfWidth)),
+            achievedRtpHalfWidth: outcomes.some(outcome => outcome.achievedRtpHalfWidth === null) ? null : Math.max(...outcomes.map((outcome) => outcome.achievedRtpHalfWidth!)),
         };
     }
 

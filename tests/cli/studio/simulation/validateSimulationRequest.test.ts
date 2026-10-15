@@ -80,3 +80,11 @@ describe("validateSimulationRequest", () => {
         );
     });
 });
+
+it("validates adaptive options as a group and preserves their exact values", () => {
+    const convergence = {minRounds: 100, rtpTolerance: 0.001, checkIntervalRounds: 20, stableChecks: 2};
+    expect(validateSimulationRequest({rounds: 1000, convergence}).convergence).toEqual(convergence);
+    for (const invalid of [null, {}, {minRounds: 10}, {...convergence, rtpTolerance: 0}, {...convergence, rtpTolerance: Infinity}, {...convergence, stableChecks: 0}, {...convergence, ignored: true}]) {
+        expect(() => validateSimulationRequest({rounds: 1000, convergence: invalid})).toThrow(/convergence/);
+    }
+});
