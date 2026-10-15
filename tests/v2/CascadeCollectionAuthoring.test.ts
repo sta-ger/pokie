@@ -248,7 +248,7 @@ describe("V2C-14 authored bounded mechanics", () => {
             expect(() => new api.BoundedVideoSlotSession(config, new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(31)), blueprint.mechanics!)).toThrow(expectedPath);
             // Inject malformed JSON into an otherwise real, valid XLSX interchange artifact.
             const filename = path.join(directory, `invalid-policy-${policyIndex++}.xlsx`);
-            await new api.ParSheetExporter().exportToFile(constant(mechanic), filename);
+            await new api.ParSheetExporter("1.3.0").exportToFile(constant(mechanic), filename);
             const workbook = new ExcelJS.Workbook();
             await workbook.xlsx.readFile(filename);
             workbook.getWorksheet("Mechanics")!.getCell("B2").value = JSON.stringify(blueprint.mechanics![mechanic]);
