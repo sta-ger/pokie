@@ -223,8 +223,6 @@ describe("V2C-15 weighted bonus authoring", () => {
         const artifact = foreign.subrounds[0].artifacts![0];
         const event = artifact.featureEvents!.find((event) => event.type === "boundedMechanics")!;
         Reflect.set((event.data!.weightedBonus as {selection: object}).selection, "outcomeId", "small");
-        const {hash: _tamperedHash, ...unsigned} = artifact;
-        Reflect.set(artifact, "hash", api.computeRoundArtifactHash(unsigned));
         expect(() => new api.SessionRuntime(session, foreign)).toThrow(/bonus identity/);
         const audit = new api.ReplayRecorder().recordAudit(
             game,
@@ -653,7 +651,7 @@ const api = require("@fromstan/pokie");
             release,
         );
         try {
-            const started = service.start(directory, {round: 100, seed: 0});
+            const started = service.start(directory, {round: 100, seed: "0"});
             if (started.status !== "created") throw new Error(JSON.stringify(started));
             for (
                 let n = 0;
@@ -851,6 +849,8 @@ const api = require("@fromstan/pokie");
                 api.estimateExactOutcomeSpaceSize({...game, createExactEnumerationSession: enumeration}),
             ).toThrow(/weighted bonus/);
             expect(enumeration).not.toHaveBeenCalled();
+            const project = await new api.ProjectTargetResolver().resolve(source);
+            if (!project) throw new Error("Expected the authored Blueprint project.");
             for (const targetKind of ["wasm", "outcomeLibrary", "stakeAdapter"] as const) {
                 const target = path.join(directory, `unsupported-${targetKind}`);
                 await expect(
@@ -858,7 +858,7 @@ const api = require("@fromstan/pokie");
                 ).rejects.toThrow(/weighted bonus/);
                 expect(fs.existsSync(target)).toBe(false);
                 const plan = new api.ArtifactConversionPlanner().plan(
-                    {type: "blueprint", rootPath: source},
+                    project,
                     targetKind,
                 );
                 expect(api.describeArtifactConversionPlanDiagnostic(plan)).toMatch(/weighted bonus/);
