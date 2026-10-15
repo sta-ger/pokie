@@ -85,6 +85,7 @@ function verifyCompleteness(snapshot: MathDefinitionSnapshot): void {
     const model = snapshot.effective;
     const missing =
         !isRecord(model) ||
+        !isRecord(snapshot.authored) ||
         ["manifest", "reels", "rows", "symbols", "paytable"].some((key) => !(key in model)) ||
         (model.reelStrips === undefined && model.reelSequences === undefined) ||
         model.maxWinPolicy === undefined;
@@ -111,7 +112,9 @@ function verifyCompleteness(snapshot: MathDefinitionSnapshot): void {
                 message: policy.authority,
             });
         }
-        const errors = new GameBlueprintValidator().validate(model).filter((issue) => issue.severity === "error");
+        // Effective defaults can be forbidden as explicit authored fields for some feature families.
+        // Validate the retained declaration rather than interpreting inserted defaults as author intent.
+        const errors = new GameBlueprintValidator().validate(snapshot.authored).filter((issue) => issue.severity === "error");
         if (errors.length) {
             snapshot.support = "invalid";
             snapshot.diagnostics.push(
