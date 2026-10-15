@@ -157,3 +157,45 @@ catalogue/report sweep, worker partition comparison, state isolation, or
 cancellation cleanup. They therefore do not change the incomplete disposition
 above. The controller-owned 13-suite/866-test receipt remains the sole test
 execution used here; packaging and official full/release gates remain deferred.
+
+### Fresh focused recovery collection
+
+Two further fresh-profile Studio runs reused the same candidate build and are
+retained only as runtime references. The first transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-13-b86253e3a60d58fd/run-2026-10-15T09-11-58-908Z/transcript.json`
+(SHA-256 `c5d8e2a0c1120139611a04e50144db5cb03e905f00d7690af3d0c7b65d119140`).
+It loaded `wild-transform` by the rendered Home form, saved it through the
+visible `Save game` action and reached its editable Project overview. It then
+loaded `generated-reels`, captured the per-reel surface, and selected the
+visible Whole-sequence variants radio. The UI rendered five empty weighted
+variants and disabled preview/apply with the local validation error. Activating
+`Cancel sequence changes` left that same deliberately selected whole-sequence
+mode invalid. This is not claimed as a product failure: source confirms the
+mode radio first applies `setReelGenerationMode` to the Home draft, while that
+button only restores the whole-sequence editor's definitions from its current
+source (`ReelGenerationModeSelector.tsx`, `WholeSequencesEditor.tsx`, and
+`blueprintFormOps.ts`). No Save or Build followed the malformed state. Visual
+inspection found the malformed and post-cancel screenshots readable:
+`4-observation.png` SHA-256
+`03f51b25ca4130312a6288ffa92f82d782134a76a878219c56d88915bed27aa5` and
+`5-observation.png` SHA-256
+`7797149196fa086dd532f8449aead76a62115d3aba2752b1d1ecac9b98e8e151`.
+
+The second transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-13-b86253e3a60d58fd/run-2026-10-15T09-16-37-071Z/transcript.json`
+(SHA-256 `8bce97765b7cc30335277de80c13a32e4f3f24c79c4e44db7beb56b4ed633bbb`).
+It loaded and saved `wild-sticky` through the rendered Home/Project workflow,
+then submitted one Simulation with 500,000 rounds, seed
+`v2c13-sticky-cancel-20261015`, and workers `2`. The accepted job
+`6e7f13a8126d4022a3efed43f8ae30ad` rendered queued, running, cancellation
+requested, and durable cancelled states. It stopped at 355,000/500,000 after
+23.879 seconds; the Recent runs surface stated `No completed simulations yet`.
+Thus the run supplies actual multi-worker cancellation/cleanup evidence without
+claiming a partial result as completed. The independently inspected terminal
+screenshot `1-observation.png` is readable and has SHA-256
+`3da266d694efc2bf1bef5e5f4317c89b8de25ffe75e8c32f10521b865792daa1`.
+
+This additional collection still does not establish complete ordinary/weighted
+package execution, XLSX export/import/rebuild, catalogue/report coverage,
+six-capability authoring, explicit reload, worker partition comparison, or
+independent session state. Those acceptance portions remain not reached.
