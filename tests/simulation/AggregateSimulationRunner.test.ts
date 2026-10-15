@@ -392,3 +392,18 @@ describe("AggregateSimulationRunner jackpot statistics", () => {
         });
     });
 });
+
+it("bounds arbitrary category names before another play and preserves the settled prefix", () => {
+    let category = 0;
+    const runner = new AggregateSimulationRunner(createBaseOnlySession(1000), 1000, undefined, {
+        supportsRoundCategorization: () => true,
+        categorizeRound: () => `category-${category++}`,
+    });
+    try {
+        runner.run();
+        throw new Error("Expected category bound rejection");
+    } catch (error) {
+        expect((error as Error).message).toMatch(/category dimension bound/);
+        expect((error as {observedPrefix: {rounds: number}}).observedPrefix.rounds).toBe(128);
+    }
+});

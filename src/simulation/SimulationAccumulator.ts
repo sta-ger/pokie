@@ -352,6 +352,7 @@ function validateSnapshot(snapshot: SimulationAccumulatorSnapshot): void {
         throw new Error(`SimulationAccumulator snapshot has invalid payoutBetCoMoment: ${snapshot.payoutBetCoMoment}.`);
     }
     for (const [bucket, count] of Object.entries(snapshot.payoutHistogram)) {
+        if (!["0", "1-9", "10-99", "100+"].includes(bucket)) throw new Error("Invalid simulation payout histogram bucket; only the four fixed buckets are supported.");
         if (!Number.isSafeInteger(count) || count < 0) {
             throw new Error(`SimulationAccumulator snapshot has invalid payoutHistogram count for ${JSON.stringify(bucket)}: ${count}.`);
         }

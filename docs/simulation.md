@@ -712,7 +712,9 @@ never reconcile each other's unfinished features. Failure/cancellation prefixes
 are diagnostics, not completed reports.
 
 Analytics stores seven feature rows, two four-bucket distributions per feature,
-ten top payouts, at most 512 component/hit IDs, 128 modes and 64 session trajectories.
+ten top payouts, at most 512 component/hit IDs, 128 modes/categories and 64 session trajectories.
+Category names remain limited to 64 characters, and imported payout histograms
+accept only their four fixed buckets.
 Excess model dimensions/trajectories reject before mutation. Logical reconciliation
 immediately discards matched coordinates and summarizes abandoned samples;
 unmatched disjoint coordinates are capped at 128 per trajectory. This bounds even

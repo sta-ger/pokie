@@ -110,6 +110,7 @@ export class AggregateSimulationRunner {
                     ? SimulationCategoryNameNormalizer.normalize(this.roundCategoryDeterminer.categorizeRound(this.session))
                     : undefined;
 
+                if (category !== undefined && !categoryTotals.has(category) && categoryTotals.size >= SimulationCategoryNameNormalizer.MAX_CATEGORIES) throw new Error("Simulation category dimension bound exceeded (128 categories).");
                 const before = observer.beforePlay();
                 const {stake: stakeAmount, win: payout, mode} = executeSessionCommand(this.session);
                 // Canonical accounting: nominalBet is the displayed denomination;

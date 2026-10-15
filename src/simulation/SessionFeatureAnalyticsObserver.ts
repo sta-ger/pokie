@@ -96,15 +96,16 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
         const free = session as Partial<FreeGamesStateDetermining>;
         const hold = session as Partial<HoldAndWinStateDetermining>;
         const bounded = observeVideoSlotFeatures(session).boundedMechanics;
+        const pending = (session as Partial<LogicalRoundProgressProviding>).hasPendingLogicalRound?.() ?? false;
         return {
-            pending: (session as Partial<LogicalRoundProgressProviding>).hasPendingLogicalRound?.() ?? false,
+            pending,
             freeNum: free.getFreeGamesNum?.() ?? 0,
             freeSum: free.getFreeGamesSum?.() ?? 0,
             free: (free.getFreeGamesSum?.() ?? 0) > (free.getFreeGamesNum?.() ?? 0),
             hold: hold.isHoldAndWinActive?.() ?? false,
             locks: hold.getLockedHoldAndWinSymbols?.().length ?? 0,
-            respins: (bounded?.respins?.remaining ?? 0) > 0,
-            bonus: (bounded?.weightedBonus?.remaining ?? 0) > 0,
+            respins: bounded?.respins ? bounded.respins.remaining > 0 : pending && this.envelope.supportedFeatures.includes("respins"),
+            bonus: bounded?.weightedBonus ? bounded.weightedBonus.remaining > 0 : pending && this.envelope.supportedFeatures.includes("weightedBonus"),
         };
     }
     public afterPlay(before: SessionFeatureAnalyticsBeforePlay, win: number, mode?: string): FeatureAnalyticsObservation {
