@@ -372,3 +372,43 @@ Reading those downloaded bytes confirmed the `buy` command, paid entry stake
 
 This is still not approval: the required repeated weighted buy-more `1.25`
 purchase and its matching Replay/descriptor are not collected.
+
+## Weighted repeated buy-more completion (2026-10-15)
+
+The remaining branch was collected in the fresh isolated public-Studio run at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-75a0b3989d3dd707/run-2026-10-15T00-43-51-410Z/transcript.json`.
+It publicly authored weighted whole-array `reelSequences` fixture
+`v2c12-weighted-later-buymore`, built its TypeScript package, and opened the
+result as a read-only `Playable game`. The generated package used config hash
+`sha256:8f27f079fbdb5f1d025925c6dce0b4dea63ef14bc1296b87253293d6c0e2f5e6`.
+
+With seed `v2c12-weighted-later-buymore-seeded`, the first completed public
+buy-more round was used only to reach the recovery boundary. The visible
+**Reset Play session** path reset the selection to base; the collector then
+explicitly reselected `buy-more` at denomination `0.05` and submitted the
+later purchase. Its rendered entry and continuations showed charged mode
+`buy-more`, paid stake `1.25`, then three zero-stake continuations, completing
+four subrounds. The selected public Replay record identifies session
+`095f90cc-4a80-485e-bea8-3dd348e7ac3b`, round/request
+`84f53b02-8df0-42df-99a3-dbf25487c1c6`, the same seed and config hash; its
+final visible row shows `Stake 0`, `Bet mode buy-more`, `Charged mode
+buy-more`, and whole-sequence `C/C/C` selections.
+
+The actual public **Download JSON** file is
+`spin-095f90cc-4a80-485e-bea8-3dd348e7ac3b.json` (122,611 bytes; SHA-256
+`e6256c62a7a03c9332672025ef0c75b8710313fdb765abc1905a8538f22674de`).
+Reading its bytes confirmed the recorded `spin` command at bet `0.05` and
+mode `buy-more`, stepwise continuation cursors 1–3, per-step stakes
+`[1.25, 0, 0, 0]`, logical-round total `1.25`, recorded-command mode policy,
+and charged-mode events. The screenshots were independently opened: the Play
+terminal image is legible with the completed four-subround financial surface
+(`1-observation.png`, SHA-256
+`b5aab27b8a07476570fa4be6578e20baa30327108e826f26fda85d353d9d073a`), and
+the Replay image is legible with the selected public record, seed, package
+identity and exportability (`2-observation.png`, SHA-256
+`24b521b6e35c53729c26e7c36e11f640149d2767350b00f339eda58af1c8f021`).
+
+Together with the retained ordinary/weighted antecedent, buy, omitted-seed,
+and initial buy-more evidence above, this completes the previously missing
+weighted later buy-more Replay/descriptor branch. Runtime artifacts remain in
+the assigned harness and are not committed.
