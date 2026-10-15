@@ -63,7 +63,8 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
                 const noGrantGame = generatedMechanicsGame({...blueprint, reelStrips: Array.from({length: 3}, (_, reel) => [reel < count ? "S" : "A"])});
                 const noGrant = mechanicsSession(noGrantGame);
                 noGrant.play();
-                expect(noGrantGame.getSessionSerializer!().getRoundData(noGrant)).toMatchObject({wonFreeGamesNumber: 0, freeGamesNum: 0, freeGamesSum: 0});
+                expect(noGrantGame.getSessionSerializer!().getRoundData(noGrant)).toMatchObject({freeGamesNum: 0, freeGamesSum: 0});
+                expect((noGrant as unknown as {getWonFreeGamesNumber(): number}).getWonFreeGamesNumber()).toBe(0);
                 expect(noGrant.hasPendingLogicalRound()).toBe(false);
             }
         }
@@ -80,9 +81,10 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
             session.play();
             const data = game.getSessionSerializer!().getRoundData(session) as unknown as api.VideoSlotRoundNetworkData & {freeGamesNum?: number; freeGamesSum?: number; freeGamesBank?: number; wonFreeGamesNumber?: number};
             if (row.progression === "freeGames") {
-                if (step === 0) expect(data).toMatchObject({freeGamesNum: 0, freeGamesSum: 0, wonFreeGamesNumber: 0});
-                if (step === 1) expect(data).toMatchObject({freeGamesNum: 0, freeGamesSum: 2, wonFreeGamesNumber: 2});
-                if (step === 2) expect(data).toMatchObject({freeGamesNum: 1, freeGamesSum: 4, wonFreeGamesNumber: 2});
+                if (step === 0) expect(data).toMatchObject({freeGamesNum: 0, freeGamesSum: 0});
+                if (step === 1) expect(data).toMatchObject({freeGamesNum: 0, freeGamesSum: 2});
+                if (step === 2) expect(data).toMatchObject({freeGamesNum: 1, freeGamesSum: 4});
+                if (step <= 2) expect((session as unknown as {getWonFreeGamesNumber(): number}).getWonFreeGamesNumber()).toBe(step === 0 ? 0 : 2);
                 if (step === 5) {
                     expect(data).toMatchObject({freeGamesNum: 4, freeGamesSum: 4});
                     expect(data.freeGamesBank).toBeCloseTo(0.3, 12);
