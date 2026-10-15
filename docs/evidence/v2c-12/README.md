@@ -800,3 +800,43 @@ actual JSON bytes match that seed, configuration hash
 `{kind:"spin", mode:"ante"}` command, repeat-when-available policy, and final
 stake/totalBet `0.07500000000000001`. Runtime profiles, screenshots and the
 download remain outside version control.
+
+## Bounded retained-result continuation (2026-10-15)
+
+Product identity is `025f2ebf32f77faeecf3d10762e9868336f53cf7`. Its delta from
+the pre-review evidence commit changes this README only. Two fresh, isolated
+Studio sessions restored completed Replay storage and used only public
+`Inspect record` and `Download replay JSON` controls; no Replay, simulation,
+or `Run again` command was activated. Their runtime-only transcripts are
+`run-2026-10-15T04-36-38-322Z/transcript.json` (SHA-256
+`a348f0fa2fa33bdfe1d59dcb2f62636e7c46690b0a2f0e4ccbccd3da78c690c7`) and
+`run-2026-10-15T04-40-35-183Z/transcript.json` (SHA-256
+`fc27914988e6cd9643a7ba4a3959090e3d80e74b224d5d5ab73714d6369d9461`) beneath
+the assigned verifier harness.
+
+| retained record / target | checked public result | descriptor retained |
+| --- | --- | --- |
+| weighted buy 2 `129a09066c3b4bc4a62a690231d14322` | seed `v2c12-weighted-buy-matrix`; policy `repeat-when-available`; two commands; descriptor total `0.5` | 4,068 bytes, `b3c96e2a17a6ba97ab42bc04aeb30a8a96dd47bb18c53b01df349f7ebfbdcd1c` |
+| weighted buy 3 `1e6d85c3526840e9838182d956cb0350` | same seed/policy; three commands ending in `spin` mode `buy`; descriptor total `1` | 4,141 bytes, `aa68f1db31efcf3198814a34bba3cf45aabe3de792ec2fa3bd0f6d9c44adf7d9` |
+| weighted buy-more 2 `d435cc994a2c4717ac1207f30dfd964e` | seed `v2c12-weighted-buy-more-matrix`; policy `repeat-when-available`; two commands | 4,105 bytes, `eb5848252bf9f9128172e1f10845d749a7893436e04aad9dddafe8b3095a61e1` |
+| weighted buy-more 4 `5c8dbfd18f364cf68e8b186b833b00dd` | same seed/policy; four commands | 4,201 bytes, `50d1e060ce53b38baa803980dda19cb4c115dc3f120b68feb43756e143a46e79` |
+| ordinary buy-more 4 `195572d1cb0f4c12afd9458facfca98b` | seed `v2c12-ordinary-buy-more-final`; policy `repeat-when-available`; four commands | 3,169 bytes, `7512cd1071fd223c167f36f820f8388603a0655340dd0c0ea0f4adc081a8c11c` |
+| ordinary buy-more 5 `8254801483a84b82aa9dbc2e61b9131c` | rendered target 5: config `sha256:e07ad42fe08c0c44ad95739fc1c4ff7f81e6111e825d0eb26bd8ffbc15839658`, five commands, Bet/Charged mode `buy-more`, final Stake `1.25` | 3,250 bytes, `5e3fbffa92887f7d56b2073a6d159b2a0e45393c670425f06e637c95ab54bf44` |
+
+I independently opened the rendered weighted buy-more target-5 screenshot
+(`2-observation.png`, SHA-256
+`dfa7745780ac892f784aa534f83f009e4525874e864178dba42f3f1cc5eb84ff`): it
+shows the weighted config `sha256:b207eb595cfccd894daace2a218722b3d468740aa66b14eb45b8a605b79c984e`,
+seed, five-command policy, Bet/Charged `buy-more`, and final Stake `1.25`.
+I independently opened the ordinary buy-more target-5 screenshot
+(`1-observation.png`, SHA-256
+`7a85bd7890f76f20ace3d65411eeb0bc95dc5d5b1dc575072744d4dce2a06ad2`) with
+the corresponding values. A descriptor's `totalBet` is cumulative (for
+example target-5 ordinary is `2.5`), so it was not treated as a final-step
+stake.
+
+This is deliberately partial: the current retained sessions exposed no
+ordinary-buy target 2/3 descriptor, and the financial-row captures for the
+remaining required targets were not obtained. The missing rows/downloads are
+not product findings; a later bounded collection must restore the exact
+retained profiles and complete those observations without rerunning Replay.
