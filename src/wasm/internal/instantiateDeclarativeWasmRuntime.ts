@@ -192,7 +192,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                 if (round) {
                     const subround = round.subrounds[0];
                     for (const artifact of subround.artifacts ?? []) {
-                        screen(artifact.screen, "evaluated");
+                        screen(artifact.screen, "visible");
                         if (artifact.generatedScreen) screen(artifact.generatedScreen, "generated");
                         if (stableSlotMathJson(artifact.geometry) !== stableSlotMathJson(projection && !projection.isIdentity() ? blueprint.screenGeometry : undefined)) throw new Error("Retained artifact geometry differs from its model.");
                     }

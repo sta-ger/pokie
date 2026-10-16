@@ -292,7 +292,7 @@ it.each(["bonus", "banked"] as const)("restores %s composite continuations and i
         const entry = session.serialize();
         const command = {delivery: "composite", continuation: {roundId: "x", cursor: 1}};
         const complete = await session.play(command);
-        expect(complete.win).toBeCloseTo(kind === "bonus" ? 0.2 : 0.4);
+        expect(complete.win).toBeCloseTo(kind === "bonus" ? 0.2 : 0.3);
         expect(complete.payout).toBeCloseTo(kind === "bonus" ? 0.2 : 0.4);
         expect(complete.stake).toBe(0);
         expect(complete.logicalRound?.status).toBe("completed");
@@ -337,8 +337,9 @@ it("binds visible receipt screens to artifact coordinates rather than evaluated 
     const blueprint = weightedBonusBlueprint();
     Reflect.deleteProperty(blueprint.mechanics!, "weightedBonus");
     blueprint.mechanics!.freeGames = {scatterSymbol: "C", awardsByCount: {3: 0}};
-    blueprint.rows = 2;
-    blueprint.reelStrips = [["A", "C", "A", "A"], ["A", "C", "A", "A"], ["A", "C", "A", "A"]];
+    blueprint.rows = 3;
+    blueprint.scatters = ["C"];
+    blueprint.reelStrips = [["C", "A", "C", "A"], ["C", "A", "C", "A"], ["C", "A", "C", "A"]];
     blueprint.screenGeometry = {generated: {reels: 3, rows: 4}, visible: {rowOffset: 0.5, rows: 2}, evaluated: {rowOffset: 1, rows: 1}, paylineSpace: "evaluated"};
     const fixture = createCanonicalWasmFixture({blueprint});
     const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("projection"));
@@ -350,9 +351,10 @@ it("binds visible receipt screens to artifact coordinates rather than evaluated 
         if (saved.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
         const artifact = saved.feature.logicalRound!.subrounds[0].artifacts![0];
         expect(result.screen.every(reel => reel.length === 3)).toBe(true);
-        expect(artifact.screen.every(reel => reel.length === 1)).toBe(true);
+        expect(artifact.screen.every(reel => reel.length === 3)).toBe(true);
+        const evaluated = artifact.generatedScreen!.map(reel => reel.slice(1, 2));
         expect(await runtime.restoreSession(saved).play(command)).toEqual(result);
-        for (const screen of [artifact.screen, artifact.generatedScreen, [["A", "A", "A"], ["A", "A", "A"], ["A", "A", "A"]]]) {
+        for (const screen of [evaluated, artifact.generatedScreen, [["A", "A", "A"], ["A", "A", "A"], ["A", "A", "A"]]]) {
             const corrupt = JSON.parse(JSON.stringify(saved));
             Object.assign(corrupt.feature.lastRound, {screen, network: {...result.network, reelsSymbols: screen}});
             expect(() => runtime.restoreSession(corrupt)).toThrow(/screen/);

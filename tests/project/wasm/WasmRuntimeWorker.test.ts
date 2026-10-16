@@ -317,6 +317,9 @@ it("rejects coordinated bonus receipt contradictions through Worker restore/repl
         expect(await target.handle({id: "start", type: "instantiate", ...fixture, seed: "probe"})).toMatchObject({ok: true});
         expect(await target.handle({id: "entry", type: "play", command: {bet: 0.05, roundId: "x", delivery: "stepwise"}})).toMatchObject({ok: true});
     }
+    const origin = await worker.handle({id: "origin", type: "serialize"});
+    if (!origin.ok) throw new Error(origin.error);
+    expect(await reference.handle({id: "align", type: "restore", state: JSON.parse(JSON.stringify(origin.result))})).toMatchObject({ok: true});
     try {
         for (const cursor of [1, 2]) {
             const command = {delivery: "stepwise", continuation: {roundId: "x", cursor}};
