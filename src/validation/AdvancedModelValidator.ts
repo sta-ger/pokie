@@ -1,4 +1,5 @@
-import {validateDeclaredContinuation} from "./internal/validateDeclaredContinuation.js";
+import {definitionPreprocessingWork} from "./internal/definitionPreprocessingWork.js";
+import {declaredAccountingOwnership, validateDeclaredContinuation} from "./internal/validateDeclaredContinuation.js";
 import {canonicalDefinitionJson} from "../diff/MathDefinitionDiffer.js";
 import {modelFieldPathSegments} from "../generated/internal/modelFieldPath.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
@@ -93,6 +94,8 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
             adjacency.set(edge.from, entries);
             await budget.yield();
         }
+        const balances = new Map<string, number>();
+        let snapshotsComplete = stateSchemaSupported;
         const visited = new Set<string>(),
             active = new Map<string, number>();
         const path: string[] = [];
@@ -115,6 +118,10 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
             active.set(id, path.length);
             path.push(id);
             const state = states.get(id)!;
+            if (!state.state) {
+                snapshotsComplete = false;
+                report.checks.push({id: "invariants.executable-state", path: `states.${stateIndices.get(id)}.state`, status: "unknown", severity: "warning", message: "Reachable executable-state snapshot is missing.", assumptions: report.assumptions});
+            }
             if (model.schema && stateSchemaSupported && state.state) {
                 try {
                     validateExecutableState(state.state, model.schema);
@@ -160,11 +167,32 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                 const money = edge.accounting;
                 if (!money) accountingComplete = false;
                 if (money) {
+                    let ownership: ReturnType<typeof declaredAccountingOwnership>;
+                    if (model.schema && stateSchemaSupported && state.state && states.get(edge.to)?.state) {
+                        try {
+                            ownership = declaredAccountingOwnership(state.state, states.get(edge.to)!.state!, model.schema);
+                        } catch {
+                            // Malformed snapshots already carry an executable-state witness.
+                            ownership = undefined;
+                        }
+                    }
+                    if (!ownership?.complete) accountingComplete = false;
+                    const disconnected = edge.from === edge.to && money.creditsBefore !== money.creditsAfter || [
+                        [edge.from, money.creditsBefore], [edge.to, money.creditsAfter],
+                    ].find(([owner, balance]) => balances.has(owner as string) && balances.get(owner as string) !== balance);
+                    const ownedBefore = balances.get(edge.from);
+                    const ownedAfter = balances.get(edge.to);
+                    if (!balances.has(edge.from)) balances.set(edge.from, money.creditsBefore);
+                    if (!balances.has(edge.to)) balances.set(edge.to, money.creditsAfter);
+                    const ownershipMismatch = ownership && (ownership.continuation !== (money.continuation ?? false) || ownership.bet !== undefined && ownership.bet !== money.bet || ownership.complete && (money.multiplier ?? 1) !== 1);
                     const expectedStake = money.continuation ? 0 : money.bet * (money.multiplier ?? 1);
                     const expectedCredits = money.creditsBefore - money.stake + money.payout;
-                    if (![money.creditsBefore, money.creditsAfter, money.stake, money.payout, money.bet, money.multiplier ?? 1].every(value => Number.isFinite(value) && value >= 0) || money.bet <= 0 || money.stake !== expectedStake || money.creditsAfter !== expectedCredits) {
+                    if (![money.creditsBefore, money.creditsAfter, money.stake, money.payout, money.bet, money.multiplier ?? 1].every(value => Number.isFinite(value) && value >= 0) || money.bet <= 0 || money.stake !== expectedStake || money.creditsAfter !== expectedCredits || ownershipMismatch || disconnected) {
                         invariant = true;
-                        await this.add(report, budget, {id: "invariants.money", path: `transitions.${index}.accounting`, status: "violation", severity: "error", message: "Stake or wallet conservation violated.", assumptions: report.assumptions, evidence: {path: [...path, edge.to], transition: edge, before: edge.before ?? state.state ?? {}, after: edge.after ?? states.get(edge.to)?.state ?? {}, expected: {stake: expectedStake, creditsAfter: expectedCredits}, actual: money}});
+                        let message = "Stake or wallet conservation violated.";
+                        if (ownershipMismatch) message = "Accounting denomination or continuation ownership differs from the executable state.";
+                        if (disconnected) message = "Connected transitions disagree on their shared wallet balance.";
+                        await this.add(report, budget, {id: "invariants.money", path: `transitions.${index}.accounting`, status: "violation", severity: "error", message, assumptions: report.assumptions, evidence: {path: [...path, edge.to], transition: edge, before: edge.before ?? state.state ?? {}, after: edge.after ?? states.get(edge.to)?.state ?? {}, expected: {stake: expectedStake, creditsAfter: expectedCredits, ownership, connectedBalances: {before: ownedBefore, after: ownedAfter}}, actual: money}});
                     }
                 }
                 await visit(edge.to);
@@ -173,9 +201,9 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
             active.delete(id);
         };
         await visit(model.initial);
-        report.checks.push({id: "invariants.state-support", path: "schema", status: stateSchemaSupported && !invariant ? "pass" : "unknown", severity: stateSchemaSupported && !invariant ? "info" : "warning", message: "State invariants require a supported production executable-state schema; table topology alone does not establish them.", assumptions: report.assumptions});
+        report.checks.push({id: "invariants.state-support", path: "schema", status: snapshotsComplete && !invariant ? "pass" : "unknown", severity: snapshotsComplete && !invariant ? "info" : "warning", message: "State invariants require a supported production executable-state schema and every reachable snapshot; table topology alone does not establish them.", assumptions: report.assumptions});
         for (const [index, target] of (model.targets ?? []).entries()) await this.add(report, budget, {id: "reachability.target", path: `targets.${index}`, status: visited.has(target) ? "pass" : "violation", severity: visited.has(target) ? "info" : "error", message: visited.has(target) ? "Target is attainable." : "No positive-weight transition from the complete reachable region enters the target.", assumptions: report.assumptions, evidence: {target, exploredRegion: [...visited], complete: true}});
-        for (const [id, failed] of [["termination.all-path", cycleFound], ["transitions.target", illegal], ["invariants.money", invariant]] as const) if (!failed) report.checks.push({id, path: "$", status: id === "invariants.money" && !accountingComplete ? "unknown" : "pass", severity: id === "invariants.money" && !accountingComplete ? "warning" : "info", message: id === "invariants.money" && !accountingComplete ? "Some reachable transitions omit accounting; monetary conservation is unsupported." : "Complete reachable transition table checked.", assumptions: report.assumptions});
+        for (const [id, failed] of [["termination.all-path", cycleFound], ["transitions.target", illegal], ["invariants.money", invariant]] as const) if (!failed) report.checks.push({id, path: "$", status: id === "invariants.money" && !accountingComplete ? "unknown" : "pass", severity: id === "invariants.money" && !accountingComplete ? "warning" : "info", message: id === "invariants.money" && !accountingComplete ? "Reachable accounting requires connected balances and state evidence for denomination, continuation ownership and selected-mode cost; omitted relationships remain unsupported." : "Complete reachable transition table checked.", assumptions: report.assumptions});
     }
 
     private async blueprint(input: AdvancedBlueprintInput, report: AdvancedModelValidationReport, budget: AnalysisBudget): Promise<void> {
@@ -191,7 +219,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
         const generatedRows = model?.screenGeometry?.generated?.rows ?? model?.rows;
         const boardCells = Number.isSafeInteger(model?.reels) && Number.isSafeInteger(generatedRows) && model.reels > 0 && generatedRows > 0 ? model.reels * generatedRows : 0;
         const preparationWork = boardCells + symbolCount * Math.max(1, Number.isSafeInteger(model?.reels) && model.reels > 0 ? model.reels : 1) * betCount;
-        budget.take("inputNodes", symbolCount ** 2 + preparationWork);
+        budget.take("inputNodes", definitionPreprocessingWork(model ?? {}));
         await budget.yield();
         report.issues = new GameBlueprintValidator().validate(model);
         report.structuralValid = !report.issues.some(issue => issue.severity === "error");
@@ -209,12 +237,6 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
         if (!definitions && model.reelStrips) definitions = model.reelStrips.map(symbols => ({type: "exact", symbols}));
         if (!definitions && model.reelStripGeneration?.every(reel => reel.type === "literal")) definitions = model.reelStripGeneration.map(reel => ({type: "exact", symbols: reel.type === "literal" ? reel.strip : []}));
         if (!definitions) {
-            // Bound allocation and generator attempts before calling the authoritative resolver.
-            let estimate = 0;
-            for (const reel of model.reelStripGeneration ?? []) if (reel.type === "generated") estimate += reel.length * (reel.maxAttempts ?? 200) * Math.max(1, (reel.constraints?.length ?? 0) + 1);
-            if (!model.reelStripGeneration) estimate = model.reels * (model.symbolWeights ? Object.values(model.symbolWeights).reduce((sum, value) => sum + value, 0) : model.symbols.length * 1000);
-            if (!Number.isSafeInteger(estimate) || estimate < 0) throw new AnalysisStopped("budget-exhausted", "Reel materialization work estimate exceeds finite budget.");
-            budget.take("inputNodes", estimate);
             await budget.yield();
             const resolved = resolveReelStripGeneration(model);
             if (!resolved.success) throw new Error("Declared reel generation constraints cannot be satisfied.");

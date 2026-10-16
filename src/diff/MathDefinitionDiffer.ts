@@ -1,3 +1,5 @@
+import {definitionPreprocessingWork} from "../validation/internal/definitionPreprocessingWork.js";
+import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {modelFieldPathSegments} from "../generated/internal/modelFieldPath.js";
 import {definitionDiagnostics} from "./internal/definitionDiagnostics.js";
 import {definitionFieldAuthority, definitionFieldUnsupported} from "./internal/definitionFieldAuthority.js";
@@ -126,6 +128,11 @@ function verifyCompleteness(snapshot: MathDefinitionSnapshot): void {
             message:
                 "Complete support requires an effective model, resolved reels, declared policy and no unsupported fields.",
         });
+        return;
+    }
+    if (definitionPreprocessingWork(snapshot.authored as Partial<GameBlueprint>) > 100000) {
+        snapshot.support = "unsupported";
+        snapshot.diagnostics.push({code: "definition-acquisition-budget-exhausted", severity: "warning", path: "", message: "Definition preprocessing exceeds its bounded normalization work limit."});
         return;
     }
     const typedModel = model as Record<string, DefinitionJson>;

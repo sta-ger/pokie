@@ -26,3 +26,27 @@ export function validateDeclaredContinuation(before: Record<string, unknown>, af
     }
     if ("base" in schema && before.base && after.base) validateDeclaredContinuation(before.base as Record<string, unknown>, after.base as Record<string, unknown>, schema.base);
 }
+
+/** Only infer accounting relationships actually represented by the production codec. */
+export function declaredAccountingOwnership(before: Record<string, unknown>, after: Record<string, unknown>, schema: SessionStateSchema): {continuation: boolean; bet?: number; complete: boolean} | undefined {
+    if (schema.kind === "custom") return undefined;
+    if (schema.kind === "bounded-mechanics") {
+        const continuation = Number(before.remaining) > 0;
+        let bet = Number(after.remaining) > 0 || Number(after.executed) > 0 ? after.entryBet : undefined;
+        if (continuation) bet = before.entryBet;
+        return {continuation, ...(typeof bet === "number" ? {bet} : {}), complete: typeof bet === "number"};
+    }
+    if (schema.kind === "hold-and-win") {
+        const continuation = before.active === true;
+        let bet = after.active === true || (after.lastOutcome as {kind?: string})?.kind === "completed" ? after.entryBet : undefined;
+        if (continuation) bet = before.entryBet;
+        return {continuation, ...(typeof bet === "number" ? {bet} : {}), complete: typeof bet === "number"};
+    }
+    if (schema.kind === "free-games") return {continuation: Number(before.freeGamesSum) > Number(before.freeGamesNum), complete: false};
+    if ("base" in schema) {
+        const owned = declaredAccountingOwnership(before.base as Record<string, unknown>, after.base as Record<string, unknown>, schema.base);
+        // The codec retains a mode ID, but does not declare its cost or selected bet.
+        return owned && schema.kind === "bet-modes" ? {...owned, complete: false} : owned;
+    }
+    return {continuation: false, complete: false};
+}

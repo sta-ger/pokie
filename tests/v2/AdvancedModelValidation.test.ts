@@ -334,3 +334,54 @@ it.each([0.5, 2])("records an actual funded repeating prefix for a default ante 
     const report = await validate(model);
     expect(report.checks).toContainEqual(expect.objectContaining({id: "termination.free-games", status: "violation", evidence: expect.objectContaining({entryPrefix: [expect.objectContaining({mode: "ante", chargedStake: 0.05 * costMultiplier, creditsBefore: Math.max(0.05, 0.05 * costMultiplier)})], repeat: expect.objectContaining({before: expect.objectContaining({base: expect.objectContaining({freeGamesSum: 2})}), after: expect.objectContaining({base: expect.objectContaining({freeGamesSum: 4})})})})}));
 });
+
+it("requires snapshots for every reachable state before certifying state invariants", async () => {
+    for (const terminal of [true, false]) {
+        const model: DeclaredTransitionModel = {kind: "declared-transitions", initial: "missing", schema: {kind: "seeded-video-slot"}, states: [{id: "missing", terminal}, {id: "done", terminal: true, state: {rngState: 1, reelStrips: [["A"]]}}], transitions: terminal ? [] : [{from: "missing", to: "done"}]};
+        const report = await new AdvancedModelValidator().validate(model);
+        expect(report).toMatchObject({status: "unsupported", verdict: "inconclusive"});
+        expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.state-support", status: "unknown"}));
+    }
+});
+
+it.each(["bet", "owner", "balance"])("binds accounting to state and connected wallet evidence: %s", async fault => {
+    const snapshot = (remaining: number, executed: number) => ({base: {}, value: 0, remaining, executed, entryBet: 1});
+    const model: DeclaredTransitionModel = {kind: "declared-transitions", initial: "a", schema: {kind: "bounded-mechanics", bets: [1, 7.5], rules: {respins: {trigger: {symbolId: "A", minimumCount: 1}, grant: 2, maxRespins: 2, retrigger: "none"}}, base: {kind: "base"}},
+        states: [{id: "a", state: snapshot(2, 0)}, {id: "b", state: snapshot(1, 1)}, {id: "done", terminal: true, state: snapshot(0, 2)}],
+        transitions: [{from: "a", to: "b", accounting: {creditsBefore: 10, creditsAfter: 10, bet: 1, stake: 0, payout: 0, continuation: true}}, {from: "b", to: "done", accounting: {creditsBefore: 10, creditsAfter: 10, bet: 1, stake: 0, payout: 0, continuation: true}}]};
+    const validator = new AdvancedModelValidator();
+    expect(await validator.validate(model)).toMatchObject({verdict: "proved-within-assumptions"});
+    const money = model.transitions[1].accounting!;
+    if (fault === "bet") money.bet = 7.5;
+    if (fault === "owner") Object.assign(money, {continuation: false, stake: 1, creditsAfter: 9});
+    if (fault === "balance") Object.assign(money, {creditsBefore: 100, creditsAfter: 100});
+    const report = await validator.validate(model);
+    expect(report.verdict).toBe("violated");
+    expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.money", path: "transitions.1.accounting", status: "violation", evidence: expect.objectContaining({path: ["a", "b", "done"], actual: money, expected: expect.objectContaining({ownership: {continuation: true, bet: 1, complete: true}, connectedBalances: {before: 10}})})}));
+});
+
+it("keeps locally consistent accounting unknown without a state denomination", async () => {
+    const report = await new AdvancedModelValidator().validate({kind: "declared-transitions", initial: "a", schema: {kind: "base"}, states: [{id: "a", state: {}}, {id: "b", terminal: true, state: {}}], transitions: [{from: "a", to: "b", accounting: {creditsBefore: 10, creditsAfter: 9, bet: 1, stake: 1, payout: 0}}]});
+    expect(report).toMatchObject({status: "unsupported", verdict: "inconclusive"});
+    expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.money", status: "unknown"}));
+});
+
+it("retains supported-reader diagnostics and handles effective-only snapshots and cancellation", async () => {
+    const {validateMathDefinitionSnapshot} = await import("../../src/validation/validateMathDefinitionSnapshot.js");
+    const {MathDefinitionSourceReader} = await import("../../src/diff/MathDefinitionSourceReader.js");
+    const snapshot = await new MathDefinitionSourceReader().read({kind: "blueprint", model: blueprint()}, {analysisOnly: true});
+    const diagnostic = {code: "reader-warning", path: "/authored~1field", severity: "warning" as const, message: "Retained source authority"};
+    snapshot.diagnostics.push(diagnostic);
+    snapshot.limits.push("Reader-specific limitation");
+    const report = await validateMathDefinitionSnapshot(snapshot);
+    expect(report.issues).toContainEqual(diagnostic);
+    expect(report.limitations).toContain("Reader-specific limitation");
+    Reflect.deleteProperty(snapshot, "authored");
+    expect(await validateMathDefinitionSnapshot(snapshot)).toMatchObject({status: "unsupported", verdict: "inconclusive"});
+    const controller = new AbortController();
+    controller.abort();
+    expect(await validateMathDefinitionSnapshot(snapshot, {signal: controller.signal})).toMatchObject({status: "cancelled", verdict: "inconclusive"});
+    snapshot.support = "failed";
+    snapshot.diagnostics.push({code: "snapshot-release-failed", path: "", severity: "error", message: "Cleanup failed"});
+    expect(await validateMathDefinitionSnapshot(snapshot, {signal: controller.signal})).toMatchObject({status: "failed", issues: expect.arrayContaining([expect.objectContaining({code: "snapshot-release-failed"})])});
+});

@@ -1052,3 +1052,17 @@ it("reserves definition JSON stdout while executable descriptors log diagnostics
         fs.rmSync(root, {recursive: true, force: true});
     }
 });
+
+it("keeps unknown advanced validation incomplete under CI even with identical definitions", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "diff-advanced-unknown-"));
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+        const source = writeDescriptorPackage(root);
+        expect(await new DiffCommand().run([source, source, "--comparison", "definition", "--format", "json", "--ci"])).toBe(2);
+        const report = JSON.parse(log.mock.calls[0][0]);
+        expect(report).toMatchObject({status: "partial", left: {advanced: {verdict: "inconclusive", executableFidelity: "unverified"}}, right: {advanced: {verdict: "inconclusive"}}});
+    } finally {
+        log.mockRestore();
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});

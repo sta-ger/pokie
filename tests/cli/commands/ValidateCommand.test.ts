@@ -712,3 +712,74 @@ it("reports an oversized source as inconclusive before structural parsing or rep
         fs.rmSync(root, {recursive: true, force: true});
     }
 });
+
+it("analyzes the original PAR workbook while structurally validating its owned runtime", async () => {
+    const {ParSheetExporter} = await import("@fromstan/pokie");
+    const {AdvancedModelSourceValidator} = await import("../../../src/validation/AdvancedModelSourceValidator.js");
+    const {fractionalBetBlueprint} = await import("../../fixtures/math/FractionalBetFixture.js");
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "validate-par-authority-"));
+    const file = path.join(root, "model.xlsx");
+    const release = jest.fn(() => Promise.resolve());
+    const validator = createStubValidator(validReport);
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+        await new ParSheetExporter("1.3.0").exportToFile(fractionalBetBlueprint([0.05], true), file);
+        const expected = await new AdvancedModelSourceValidator().validate(file);
+        const command = new ValidateCommand(validator, undefined, () => Promise.resolve({runtimePath: path.join(root, "generated-runtime"), release}));
+        expect(await command.run([file, "--format", "json"])).toBe(2);
+        expect(validator.calledWith).toBe(path.join(root, "generated-runtime"));
+        expect(release).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({advanced: expected});
+        expect(expected).toMatchObject({adapter: "parWorkbook-declaration-v1", executableFidelity: "unverified"});
+        expect(expected.limitations.some(limit => limit.includes("PAR"))).toBe(true);
+    } finally {
+        log.mockRestore();
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});
+
+it.each([false, true])("retains unsupported-source cancellation and observable cleanup failures: %s", async cleanupFails => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "validate-cancel-"));
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+        if (cleanupFails) fs.writeFileSync(path.join(root, "package.json"), "{}");
+        const command = cleanupFails
+            ? new ValidateCommand(createStubValidator(validReport), undefined, () => {
+                process.emit("SIGINT");
+                return Promise.resolve({runtimePath: root, release: () => Promise.reject(new Error("Cleanup failed"))});
+            })
+            : new ValidateCommand(undefined, undefined, undefined, undefined, {validate: () => {
+                process.emit("SIGINT");
+                return Promise.resolve([]);
+            }});
+        expect(await command.run([root, "--format", "json"])).toBe(cleanupFails ? 1 : 130);
+        const report = JSON.parse(log.mock.calls[0][0]);
+        if (cleanupFails) expect(report).toMatchObject({valid: false, errors: [expect.objectContaining({code: "validate-lease-release-failed"})]});
+        else expect(report).toMatchObject({advanced: {status: "cancelled", verdict: "inconclusive"}});
+    } finally {
+        log.mockRestore();
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});
+
+it("rejects mixed source revisions during structural package validation and permits retry", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "validate-revision-"));
+    const {writeDescriptorPackage} = await import("../../v2/fixtures/PackageExtractionFixture.js");
+    const source = writeDescriptorPackage(root);
+    const file = path.join(source, "index.js");
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    const validator = {validate: () => {
+        fs.appendFileSync(file, "\n// replaced during structural validation\n");
+        return Promise.resolve(validReport);
+    }};
+    try {
+        expect(await new ValidateCommand(validator).run([source, "--format", "json"])).toBe(1);
+        expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({valid: false, errors: [expect.objectContaining({message: "Source changed during validation. Retry against the current source."})]});
+        log.mockClear();
+        expect(await new ValidateCommand(createStubValidator(validReport)).run([source, "--format", "json"])).toBe(2);
+        expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({advanced: {verdict: "inconclusive"}});
+    } finally {
+        log.mockRestore();
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});

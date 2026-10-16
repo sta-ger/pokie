@@ -8,21 +8,29 @@ import type {AdvancedModelValidationReport, AdvancedValidationOptions} from "./A
 export async function validateMathDefinitionSnapshot(snapshot: MathDefinitionSnapshot, options: AdvancedValidationOptions = {}): Promise<AdvancedModelValidationReport> {
     const limits = new AnalysisBudget(options);
     const blueprint = snapshot.identity.kind === "blueprint";
-    const supported = (blueprint && snapshot.authored !== undefined && ["complete", "partial", "invalid"].includes(snapshot.support)) || ["complete", "partial"].includes(snapshot.support) && snapshot.effective && ["reels", "rows", "symbols", "paytable"].every(key => Reflect.apply(Object.prototype.hasOwnProperty, snapshot.effective, [key])) && !snapshot.fields.some(field => field.status === "unsupported");
+    const authored = snapshot.authored && typeof snapshot.authored === "object" && !Array.isArray(snapshot.authored) ? snapshot.authored : undefined;
+    const failed = snapshot.support === "failed" || snapshot.diagnostics.some(issue => issue.code === "snapshot-release-failed");
+    const cancelled = options.signal?.aborted || snapshot.support === "cancelled";
+    const supported = !failed && !cancelled && authored !== undefined && (
+        blueprint && ["complete", "partial", "invalid"].includes(snapshot.support) ||
+        ["complete", "partial"].includes(snapshot.support) && snapshot.effective &&
+        ["reels", "rows", "symbols", "paytable"].every(key => Reflect.apply(Object.prototype.hasOwnProperty, snapshot.effective, [key])) &&
+        !snapshot.fields.some(field => field.status === "unsupported")
+    );
     // Effective comparison defaults can be forbidden as authored feature fields. Reuse the
     // retained declaration with only authoritative resolved reels/policy, never re-author defaults.
     const effective = snapshot.effective as unknown as GameBlueprint & {maxWinPolicy?: import("../diff/MathDefinitionDiff.js").MathDefinitionMaxWinPolicy};
-    const model = (snapshot.authored && typeof snapshot.authored === "object" && !Array.isArray(snapshot.authored) ? {...snapshot.authored} : snapshot.authored) as unknown as GameBlueprint;
-    if (effective?.reelStrips) {
+    const model = (supported ? {...authored} : undefined) as unknown as GameBlueprint;
+    if (supported && effective?.reelStrips) {
         model.reelStrips = effective.reelStrips;
         Reflect.deleteProperty(model, "reelStripGeneration");
         Reflect.deleteProperty(model, "symbolWeights");
     }
     let unsupportedStatus: AdvancedModelValidationReport["status"] = "unsupported";
-    if (snapshot.support === "failed") unsupportedStatus = "failed";
-    if (snapshot.support === "cancelled") unsupportedStatus = "cancelled";
-    if (snapshot.support === "invalid") unsupportedStatus = "invalid";
-    if (snapshot.diagnostics.some(issue => issue.code === "definition-acquisition-budget-exhausted")) unsupportedStatus = "budget-exhausted";
+    if (failed) unsupportedStatus = "failed";
+    if (cancelled && !failed) unsupportedStatus = "cancelled";
+    if (!failed && !cancelled && snapshot.support === "invalid") unsupportedStatus = "invalid";
+    if (!failed && !cancelled && snapshot.diagnostics.some(issue => issue.code === "definition-acquisition-budget-exhausted")) unsupportedStatus = "budget-exhausted";
     const report: AdvancedModelValidationReport = supported && snapshot.effective
         ? await new AdvancedModelValidator().validate({kind: "blueprint", model, maxWinPolicy: effective?.maxWinPolicy ?? (blueprint ? {type: "none", scope: "logical-round", authority: "Blueprint runtime has no payout cap"} : undefined)}, options)
         : {
@@ -34,6 +42,16 @@ export async function validateMathDefinitionSnapshot(snapshot: MathDefinitionSna
                 ...(["definition-read-failed", "package-model-read-failed", "definition-normalization-failed"].includes(issue.code) ? {message: "Source declaration could not be read. Check the input and retry."} : {}), severity: issue.severity === "suggestion" ? "info" : issue.severity})),
             checks: ["reachability", "termination", "invariants"].map(id => ({id: `${id}.source-support`, path: "$", status: "unknown", severity: "warning", message: "This source does not establish a complete supported transition model; no defaults are supplied for unsupported fields.", assumptions: []})),
         };
+    // Reader diagnostics carry adapter authority and acquisition/cleanup failures, even
+    // when a supported declaration can be analysed independently.
+    for (const issue of snapshot.diagnostics) {
+        const normalized = {...issue, ...(["definition-read-failed", "package-model-read-failed", "definition-normalization-failed"].includes(issue.code) ? {message: "Source declaration could not be read. Check the input and retry."} : {}), severity: issue.severity === "suggestion" ? "info" as const : issue.severity};
+        if (!report.issues.some(existing => existing.code === normalized.code && existing.path === normalized.path && existing.severity === normalized.severity && existing.message === normalized.message)) report.issues.push(normalized);
+    }
+    if (failed) {
+        report.status = "failed";
+        report.verdict = "inconclusive";
+    }
     if (snapshot.identity.revision) report.sourceRevision = snapshot.identity.revision;
     if (!blueprint) report.adapter = `${snapshot.identity.kind}-declaration-v1`;
     report.limitations = [...new Set([...report.limitations, ...snapshot.limits])];

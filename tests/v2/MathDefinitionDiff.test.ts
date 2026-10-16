@@ -998,3 +998,42 @@ it("keeps unsupported literal feature extensions separate from supported nested 
         after: expect.objectContaining({provenance: expect.objectContaining({status: "authored"})}),
     }));
 });
+
+it("bounds shared-weight preprocessing through source reads, comparisons and direct snapshots", async () => {
+    const model = {...base(), reels: 1, rows: 1, symbolWeights: {A: 1000000000}};
+    Reflect.deleteProperty(model, "reelStrips");
+    const reader = new api.MathDefinitionSourceReader();
+    const read = await reader.read(source(model));
+    expect(read).toMatchObject({support: "unsupported", advanced: {status: "budget-exhausted", verdict: "inconclusive", structuralValid: null}});
+    expect(read.diagnostics).toContainEqual(expect.objectContaining({code: "definition-acquisition-budget-exhausted"}));
+    const compared = await api.compareMathDefinitions(source(model), source(base()));
+    expect(compared.left.advanced?.status).toBe("budget-exhausted");
+    expect(compared.status).toBe("partial");
+    const forged = clone(await reader.read(source(base())));
+    forged.authored = model as unknown as api.DefinitionJson;
+    expect(new api.MathDefinitionDiffer().diff(forged, forged).left).toMatchObject({support: "unsupported", diagnostics: expect.arrayContaining([expect.objectContaining({code: "definition-acquisition-budget-exhausted"})])});
+    expect((await reader.read(source(base()))).advanced?.status).toBe("complete");
+});
+
+it("diffs advanced witness additions, removals, support assumptions and escaped identities losslessly", async () => {
+    const original = await new api.MathDefinitionSourceReader().read(source(base()));
+    const left = clone(original);
+    const right = clone(original);
+    const diagnostic = {id: "check/~id", path: "/mechanics/a~b", status: "unknown" as const, severity: "warning" as const, message: "Same text", assumptions: ["Before authority"], evidence: {path: ["entry", "cycle"], before: {balance: 10}}};
+    left.advanced!.checks = [diagnostic, {...diagnostic, id: "removed/~"}];
+    right.advanced!.checks = [{...diagnostic, assumptions: ["After authority"], evidence: {path: ["entry", "exit"], before: {balance: 100}}}, {...diagnostic, id: "added/~"}];
+    for (const snapshot of [left, right]) Object.assign(snapshot.advanced!, {status: "unsupported", verdict: "inconclusive", supportedChecks: [], assumptions: [snapshot === left ? "Before scope" : "After scope"]});
+    const diff = new api.MathDefinitionDiffer().diff(left, right);
+    expect(diff.status).toBe("partial");
+    const changed = diff.changes.find(change => change.path === "/validation/advanced/~1mechanics~1a~0b/check~1~0id");
+    expect(changed).toMatchObject({classification: "validation", mathematical: false, before: {present: true, value: diagnostic}, after: {present: true, value: right.advanced!.checks[0]}});
+    expect(diff.changes).toContainEqual(expect.objectContaining({path: "/validation/advanced/~1mechanics~1a~0b/removed~1~0", before: {present: true, value: left.advanced!.checks[1], provenance: expect.anything()}, after: {present: false, provenance: expect.anything()}}));
+    expect(diff.changes).toContainEqual(expect.objectContaining({path: "/validation/advanced/~1mechanics~1a~0b/added~1~0", before: {present: false, provenance: expect.anything()}, after: {present: true, value: right.advanced!.checks[1], provenance: expect.anything()}}));
+    expect(diff.changes).toContainEqual(expect.objectContaining({path: "/validation/advanced/report", before: expect.objectContaining({value: expect.objectContaining({assumptions: ["Before scope"]})}), after: expect.objectContaining({value: expect.objectContaining({assumptions: ["After scope"]})})}));
+    // Colliding messages/severities retain distinct complete identities rather than overwriting.
+    right.advanced!.checks.push({...right.advanced!.checks[0], severity: "info", message: "Other text"});
+    const collision = new api.MathDefinitionDiffer().diff(left, right).changes.filter(change => change.path.startsWith("/validation/advanced/~1mechanics~1a~0b/check~1~0id/"));
+    expect(collision).toHaveLength(3);
+    expect(collision.filter(change => change.after.present)).toHaveLength(2);
+    expect(new api.MathDefinitionDiffer().diff(right, right)).toMatchObject({status: "partial", changes: []});
+});

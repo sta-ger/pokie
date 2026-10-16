@@ -1,4 +1,4 @@
-import {validateMathDefinitionSnapshot} from "../../src/validation/validateMathDefinitionSnapshot.js";
+import {readValidationSourceRevision} from "../validation/readValidationSourceRevision.js";
 import {AdvancedModelSourceValidator} from "../../src/validation/AdvancedModelSourceValidator.js";
 import type {AdvancedModelValidationReport} from "../../src/validation/AdvancedModelValidation.js";
 import {writeNewValidationReportAtomically} from "./internal/writeNewValidationReportAtomically.js";
@@ -141,16 +141,19 @@ export class ValidateCommand implements CliCommandHandling {
             process.stdout.write = stdoutWrite;
         };
         try {
+            const revision = readValidationSourceRevision(packageRoot);
             report = await this.validateProject(packageRoot, resultRef.deep ?? false, controller.signal);
-            report.advanced ??= ["outcome-library", "stake-engine"].includes(report.project.kind)
-                ? await validateMathDefinitionSnapshot({identity: {kind: report.project.kind}, support: "unsupported", diagnostics: [], fields: [], limits: ["Outcome artifacts cannot establish their generating transition model."]}, {signal: controller.signal})
-                : await new AdvancedModelSourceValidator().validate(packageRoot, {signal: controller.signal});
+            report.advanced ??= await new AdvancedModelSourceValidator().validate(packageRoot, {signal: controller.signal});
+            if (readValidationSourceRevision(packageRoot) !== revision) throw new Error("Source changed during validation. Retry against the current source.");
         } catch (error) {
+            let message = `POKIE could not inspect "${packageRoot}" as a supported project.`;
+            if (error instanceof Error && error.message.startsWith("Source changed")) message = error.message;
+            if (error instanceof ValidationLeaseCleanupError) message = "Runtime validation lease cleanup failed; validation did not complete successfully.";
             report = this.failedReport(
                 packageRoot,
                 "unknown",
                 error instanceof ValidationLeaseCleanupError ? "validate-lease-release-failed" : "validate-project-unavailable",
-                error instanceof ValidationLeaseCleanupError ? "Runtime validation lease cleanup failed; validation did not complete successfully." : `POKIE could not inspect "${packageRoot}" as a supported project.`,
+                message,
                 "Check that the path exists and points to a POKIE package, Blueprint JSON file, or outcome-library bundle, then run validate again.",
             );
         } finally {
@@ -158,6 +161,7 @@ export class ValidateCommand implements CliCommandHandling {
             process.off("SIGINT", cancel);
         }
         this.writeAndPrint(report, format, out);
+        if (report.errors.some(issue => ["pokie-package-release-failed", "validate-lease-release-failed"].includes(issue.code))) return 1;
         if (report.advanced?.status === "cancelled") return 130;
         if (report.advanced?.status === "budget-exhausted" && report.advanced.structuralValid === null) return 2;
         if (!report.valid || report.advanced?.verdict === "violated") return 1;
@@ -305,7 +309,7 @@ export class ValidateCommand implements CliCommandHandling {
             resolution = await this.resolveRuntimePackageRoot(packageRoot, signal ? {signal} : undefined);
             const report = await this.validator.validate(resolution.runtimePath);
             result = this.packageReport(packageRoot, report);
-            result.advanced = await new AdvancedModelSourceValidator().validate(resolution.runtimePath, {signal});
+            result.advanced = await new AdvancedModelSourceValidator().validate(packageRoot, {signal});
         } catch {
             result = this.failedReport(
                 packageRoot, "package", "pokie-package-unavailable",

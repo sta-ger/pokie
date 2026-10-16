@@ -1,3 +1,4 @@
+import {readValidationSourceRevision} from "../validation/readValidationSourceRevision.js";
 import {AdvancedModelSourceValidator} from "../../src/validation/AdvancedModelSourceValidator.js";
 import {compareMathDefinitions} from "../../src/diff/MathDefinitionSourceReader.js";
 import type {MathDefinitionDiff} from "../../src/diff/MathDefinitionDiff.js";
@@ -566,6 +567,8 @@ export class StudioServer implements StudioServerHandling {
     // those Home jobs invisible by changing the context would strand real
     // publishing work behind a finished confirmation.
     private async cancelActiveJobsForOldProject(excludeJobId?: string): Promise<void> {
+        for (const controller of this.advancedValidations.keys()) controller.abort();
+        await Promise.allSettled([...this.advancedValidations.values()]);
         for (const controller of this.definitionPreviews.keys()) controller.abort();
         await Promise.allSettled([...this.definitionPreviews.values()]);
         if (this.currentContext.mode === "project") {
@@ -876,6 +879,7 @@ export class StudioServer implements StudioServerHandling {
     }
 
     private cancelRuntimePreparation(): void {
+        for (const controller of this.advancedValidations.keys()) controller.abort();
         for (const controller of this.definitionPreviews.keys()) controller.abort();
         this.runtimePreparation?.controller.abort();
         this.runtimePreparation = undefined;
@@ -2307,7 +2311,12 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         await this.withAdvancedValidation(req, res, async signal => {
+            const revision = readValidationSourceRevision(root);
+            const assertCurrent = (): void => {
+                if (readValidationSourceRevision(root) !== revision) throw new StudioHttpRequestError(409, "Source changed during validation. Retry against the current source.");
+            };
             const advanced = await new AdvancedModelSourceValidator().validate(root, {signal});
+            assertCurrent();
             if (advanced.structuralValid === null && advanced.status !== "unsupported" || advanced.status === "cancelled" || advanced.status === "failed") return {
                 packageRoot: root, valid: false, game: null, errors: advanced.issues.filter(issue => issue.severity === "error"), warnings: advanced.issues.filter(issue => issue.severity !== "error"), suggestions: [], advanced,
             };
@@ -2317,6 +2326,8 @@ export class StudioServer implements StudioServerHandling {
                 return {packageRoot: root, valid: advanced.structuralValid === true, game: readBlueprintGameIdentity(current), errors: advanced.issues.filter(issue => issue.severity === "error"), warnings: advanced.issues.filter(issue => issue.severity === "warning"), information: advanced.issues.filter(issue => issue.severity === "info"), suggestions: advanced.issues.flatMap(issue => issue.suggestion ? [issue.suggestion] : []), advanced};
             }
             const structural = await this.validateProjectContract(root);
+            assertCurrent();
+            if (signal.aborted) return {...structural, valid: false, advanced: {...advanced, status: "cancelled", verdict: "inconclusive"}};
             return {...structural, advanced};
         });
     }
