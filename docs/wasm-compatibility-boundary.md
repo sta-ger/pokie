@@ -29,6 +29,15 @@ Generated `dist/index.js` and recompilable `src/index.ts` select this calculatio
 models. Direct built-in calculators and custom evaluator injection retain their existing extension pipeline.
 Unsupported generated features retain their Node pipeline and cannot be published as a reduced WASM model.
 
+Both generated factories resolve shared math from the current declared Blueprint rather than an embedded
+second model. Existing sessions keep their own mutable config: supported paytable, bet, strip, payline and
+wild/scatter edits are lowered from that config for evaluation. The Node adapter sends exact stake-scaled
+public paytable amounts to the same kernel at unit stake, preserving bet-specific edits without division
+or a second payout evaluator. A directly supplied shared model must initially match the public config.
+Custom/nondefault line patterns, restricted wild substitutions, modifiers and other unsupported strategies
+are rejected on the shared path, including after mutation; they cannot claim supported restoration.
+Cluster/ways validation and `validateOnEvaluate` remain part of the public evaluation pipeline.
+
 ABI **2.0.0** imports `pokie.next_random: () -> f64`, a raw finite draw in `[0,1)`.
 `play(stake: f64) -> f64` validates an available stake before drawing, consumes exactly one draw per reel,
 selects `floor(draw * strip.length)`, builds circular reel-major windows, evaluates the selected win model and

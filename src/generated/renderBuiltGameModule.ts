@@ -70,7 +70,7 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
         "VideoSlotSessionSerializer",
         "validateExecutableState",
     ];
-    if (sharedMathModel) requireNames.push("VideoSlotWinCalculator");
+    if (sharedMathModel) requireNames.push("VideoSlotWinCalculator", "resolveSharedSlotMathModel");
     if (!sharedMathModel && (winModel.type === "ways" || winModel.type === "clusters")) {
         requireNames.push("VideoSlotWinCalculator", "SelectedEvaluatorGroupWinAggregationPolicy");
         requireNames.push(winModel.type === "ways" ? "WaysWinCalculator" : "ClusterWinCalculator");
@@ -98,7 +98,7 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     let winCalculatorDeclaration = "";
     if (sharedMathModel) {
         winCalculatorDeclaration = `    const winCalculator = new VideoSlotWinCalculator(config, undefined, undefined, undefined, undefined, undefined, {
-        sharedMathModel: ${JSON.stringify(sharedMathModel)},
+        sharedMathModel: resolveSharedSlotMathModel(blueprint),
     });
 `;
     } else if (winModel.type === "ways") {
@@ -251,6 +251,8 @@ ${winCalculatorDeclaration}        return ${wrapJackpot(sessionConstructionExpre
     const holdStateSchema = holdAndWin ? {kind: "hold-and-win", reels: blueprint.reels, rows: blueprint.rows, bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], symbolEffects: holdAndWin.symbolEffects, initialRespins: holdAndWin.initialRespins, base: featureStateSchema} : featureStateSchema;
     const modeStateSchema = betModeWiring ? {kind: "bet-modes", ...(blueprint.betModes!.some(mode => (mode.costMultiplier ?? 1) !== 1 || mode.runtimeType === "buyFeature") ? {stakeModifying: true} : {}), base: holdStateSchema} : holdStateSchema;
     const stateSchema = jackpot ? {kind: "jackpot", pools: [jackpot.pool], base: modeStateSchema} : modeStateSchema;
+    const stateSchemaExpression = sharedMathModel ? `{kind: "seeded-video-slot", reels: blueprint.reels, symbols: blueprint.symbols}` : JSON.stringify(stateSchema);
+    const commandCapabilitiesExpression = sharedMathModel ? `{bets: blueprint.availableBets ?? ${JSON.stringify([1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100])}}` : JSON.stringify({bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], ...(betModeWiring !== undefined ? {modes: blueprint.betModes!.map(mode => mode.id)} : {})});
     const blueprintDeclaration =
         format === "ts"
             ? `const blueprint: GameBlueprint = ${JSON.stringify(blueprint, null, 4)};`
@@ -354,13 +356,13 @@ module.exports = {
         return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model: blueprint};
     },
     getSessionStateSchema() {
-        return ${JSON.stringify(stateSchema)};
+        return ${stateSchemaExpression};
     },
     getSessionCommandCapabilities() {
-        return ${JSON.stringify({bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], ...(betModeWiring !== undefined ? {modes: blueprint.betModes!.map(mode => mode.id)} : {})})};
+        return ${commandCapabilitiesExpression};
     },
     validateLiveSessionState(${format === "ts" ? "state: unknown" : "state"}, ${contextParam}) {
-        validateExecutableState(state, ${JSON.stringify(stateSchema)}, undefined, context?.seed === undefined);
+        validateExecutableState(state, ${stateSchemaExpression}, undefined, context?.seed === undefined);
     },
     createSession(${contextParam}) {
 ${createSessionBody}    },

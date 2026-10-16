@@ -96,6 +96,46 @@ describe("GamePackageGenerator", () => {
         return [cjs.game, typed.game];
     }
 
+    it.each(["lines", "ways", "clusters"] as const)("uses live %s declarations and public paytable edits in normal and exact sessions from dist and recompiled source", async type => {
+        const blueprint = buildBlueprint({rows: 1, availableBets: [1], reelStrips: [["A"], ["A"], ["A"]],
+            paytable: {A: {3: 2}}, winModel: {type, ...(type === "clusters" ? {minimumClusterSize: 3} : {})}});
+        for (const game of await loadGeneratedEntrypoints(blueprint)) {
+            const createSessions = (): VideoSlotSessionHandling[] => [game.createSession({seed: "0"}),
+                game.createExactEnumerationSession!({generateSymbolsCombination: () => new SymbolsCombination().fromMatrix([["A"], ["A"], ["A"]])})] as VideoSlotSessionHandling[];
+            const sessions = createSessions();
+            for (const session of sessions) {
+                session.play();
+                expect(session.getWinAmount()).toBe(2);
+                session.getPaytable().setPayoutForSymbol("A", 3, 9);
+                session.play();
+                expect(session.getPaytable().getWinAmountForSymbol("A", 3, 1)).toBe(9);
+                expect(session.getWinAmount()).toBe(9);
+            }
+            const before = game.getConfigHash!();
+            const descriptor = await game.getModelDescriptor!();
+            (descriptor.model as GameBlueprint).paytable.A[3] = 7;
+            expect(game.getConfigHash!()).not.toBe(before);
+            expect(game.getConfigHash!()).toBe(computeGameBlueprintHash(descriptor.model as GameBlueprint));
+            for (const session of createSessions()) {
+                session.play();
+                expect(session.getWinAmount()).toBe(7);
+                expect(session.getPaytable().getWinAmountForSymbol("A", 3, 1)).toBe(7);
+            }
+            (descriptor.model as GameBlueprint).availableBets = [2];
+            expect(game.getSessionCommandCapabilities!().bets).toEqual([2]);
+            for (const session of createSessions()) {
+                session.setBet(2);
+                session.play();
+                expect(session.getWinAmount()).toBe(14);
+            }
+            // Existing sessions retain their own resolved config, as before.
+            for (const session of sessions) {
+                session.play();
+                expect(session.getWinAmount()).toBe(9);
+            }
+        }
+    });
+
     it.each((["missing-symbol", "missing-count", "zero", "positive"] as AuthoredAwardCase[]).flatMap(kind => FRACTIONAL_BET_STAKES.map(bet => [kind, bet] as const)))("uses only authored %s awards at stake %s through generated CJS and compiled TS", async (kind, bet) => {
         const blueprint = authoritativePaytableBlueprint(kind, bet);
         const screen = blueprint.reelStrips!.map(strip => [strip[0]]);

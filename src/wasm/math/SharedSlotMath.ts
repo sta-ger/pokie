@@ -43,7 +43,10 @@ export function assertSharedSlotMathModel(value: unknown): asserts value is Shar
         !integer(model.reels, 64) || !integer(model.rows, 64) || model.reels * model.rows > 1024 ||
         !Array.isArray(model.symbols) || !integer(model.symbols.length, 128) || new Set(model.symbols).size !== model.symbols.length ||
         !model.symbols.every(s => typeof s === "string" && s.length > 0) ||
-        !["lines", "ways", "clusters"].includes(model.winModel?.type) ||
+        !model.winModel || typeof model.winModel !== "object" || Array.isArray(model.winModel) ||
+        Object.keys(model.winModel).some(key => !["type", "minimumClusterSize"].includes(key)) ||
+        !["lines", "ways", "clusters"].includes(model.winModel.type) ||
+        (model.winModel.minimumClusterSize !== undefined && model.winModel.type !== "clusters") ||
         (model.winModel.minimumClusterSize !== undefined && !integer(model.winModel.minimumClusterSize, 1024)) ||
         !Array.isArray(model.reelStrips) || model.reelStrips.length !== model.reels ||
         !model.reelStrips.every(strip => Array.isArray(strip) && integer(strip.length, 65536) && strip.every(s => model.symbols.includes(s))) ||

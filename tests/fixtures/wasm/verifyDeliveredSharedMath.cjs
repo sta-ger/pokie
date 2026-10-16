@@ -85,6 +85,39 @@ async function main() {
     for (const exports of [pokie, esm, browser, portable]) assert.equal(typeof exports.SharedSlotMath, 'function');
     const receipts = [];
     const negatives = [];
+    const configurationChecks = [];
+    for (const type of ['lines', 'ways', 'clusters']) {
+        const folder = path.join(directory, `config-${type}`); fs.mkdirSync(folder);
+        const model = {...base, rows: 1, availableBets: [1], reelStrips: [['A'], ['A'], ['A']], paytable: {A: {3: 2}},
+            winModel: {type, ...(type === 'clusters' ? {minimumClusterSize: 3} : {})}};
+        const generated = new pokie.GamePackageGenerator('1.3.0').generate(model, folder);
+        const ts = nativeRequire('typescript');
+        const compiledPath = path.join(generated.projectRoot, 'dist', 'recompiled.cjs');
+        fs.writeFileSync(compiledPath, ts.transpileModule(fs.readFileSync(path.join(generated.projectRoot, 'src/index.ts'), 'utf8'),
+            {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022}}).outputText);
+        for (const entry of [path.join(generated.projectRoot, 'dist', 'index.js'), compiledPath]) {
+            const game = nativeRequire(entry);
+            const sessions = () => [game.createSession({seed: '0'}), game.createExactEnumerationSession({
+                generateSymbolsCombination: () => new pokie.SymbolsCombination().fromMatrix([['A'], ['A'], ['A']]),
+            })];
+            for (const session of sessions()) {
+                session.play(); assert.equal(session.getWinAmount(), 2);
+                session.getPaytable().setPayoutForSymbol('A', 3, 9);
+                session.play(); assert.equal(session.getWinAmount(), 9);
+                assert.equal(session.getPaytable().getWinAmountForSymbol('A', 3, 1), 9);
+            }
+            const before = game.getConfigHash();
+            const blueprint = game.getModelDescriptor().model;
+            blueprint.paytable.A[3] = 7;
+            assert.notEqual(game.getConfigHash(), before);
+            assert.equal(game.getConfigHash(), pokie.computeGameBlueprintHash(blueprint));
+            for (const session of sessions()) {
+                session.play(); assert.equal(session.getWinAmount(), 7);
+                assert.equal(session.getPaytable().getWinAmountForSymbol('A', 3, 1), 7);
+            }
+        }
+        configurationChecks.push(type);
+    }
     for (const {name, model} of fixtures) {
         const folder = path.join(directory, name); fs.mkdirSync(folder);
         const source = path.join(folder, 'game.blueprint.json'), artifact = path.join(folder, 'game.wasm');
@@ -243,6 +276,6 @@ async function main() {
         receipts.push({name, longSession, artifact: manifest.artifact.sha256, model: manifest.artifact.configurationHash, bytes: bytes.length, rounds: observed.length, draws: rawDraws, multi});
         runtime.dispose(); fresh.dispose(); await loaded.release();
     }
-    console.log(JSON.stringify({native: true, runtime: process.version, negatives, receipts}));
+    console.log(JSON.stringify({native: true, runtime: process.version, configurationChecks, negatives, receipts}));
 }
 main().catch(error => {console.error(error); process.exitCode = 1;});

@@ -10,6 +10,7 @@ it("compares delivered generated Node entries and independently instantiated mod
         expect({status: result.status, error: result.error?.message, stderr: result.stderr}).toEqual({status: 0, error: undefined, stderr: ""});
         const report = JSON.parse(result.stdout.trim());
         expect(report.native).toBe(true);
+        expect(report.configurationChecks).toEqual(["lines", "ways", "clusters"]);
         expect(report.negatives).toEqual(["changed-bytes", "swapped-component", "old-abi", "rehashed-code", "rehashed-model-code"]);
         expect(report.receipts).toHaveLength(34);
     } finally {

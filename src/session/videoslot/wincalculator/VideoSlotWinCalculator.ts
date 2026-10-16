@@ -1,4 +1,5 @@
-import {SharedSlotMath} from "../../../wasm/math/SharedSlotMath.js";
+import {SharedSlotMath, lowerSharedSlotMath, stableSlotMathJson} from "../../../wasm/math/SharedSlotMath.js";
+import {assertSharedSlotMathConfig, resolveConfiguredSharedSlotMath} from "./internal/resolveConfiguredSharedSlotMath.js";
 import {SharedSlotMathWinEvaluator} from "./SharedSlotMathWinEvaluator.js";
 import type {ScreenModifiers} from "../modifiers/ScreenModifiers.js";
 import {MultiplierResolver} from "../winevaluation/MultiplierResolver.js";
@@ -49,6 +50,7 @@ import {VideoSlotWinCalculatorOptions} from "./VideoSlotWinCalculatorOptions.js"
 
 export class VideoSlotWinCalculator<T extends string | number | symbol = string> implements VideoSlotWinCalculating<T> {
     private readonly sharedMath?: SharedSlotMath;
+    private readonly configuredSharedMath = new Map<number, {key: string; math: SharedSlotMath}>();
     private readonly config: VideoSlotConfigDescribing<T>;
     private readonly lineWinCalculator: LineWinCalculating<T>;
     private readonly scatterWinCalculator: ScatterWinCalculating<T>;
@@ -85,6 +87,11 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
             if (!(conf instanceof VideoSlotConfig) || !conf.isResolvedForSessionRestoration() || !(lineWinCalculator instanceof LineWinCalculator) || lineWinCalculator.constructor !== LineWinCalculator || !lineWinCalculator.usesConfig(conf) || !(scatterWinCalculator instanceof ScatterWinCalculator) || scatterWinCalculator.constructor !== ScatterWinCalculator || !scatterWinCalculator.usesConfig(conf) || clusterWinCalculator || waysWinCalculator || valueWinCalculator || options.aggregationPolicy || options.multiplierResolver) {
                 throw new Error("Shared math cannot lower custom evaluators or aggregation policies.");
             }
+            assertSharedSlotMathConfig(conf, options.sharedMathModel);
+            if (options.minimumClusterSize !== undefined && (options.sharedMathModel.winModel.type !== "clusters" ||
+                options.minimumClusterSize !== (options.sharedMathModel.winModel.minimumClusterSize ?? 5))) {
+                throw new Error("Shared math minimumClusterSize does not match the declared win model.");
+            }
             this.sharedMath = new SharedSlotMath(options.sharedMathModel);
         }
     }
@@ -94,6 +101,14 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
     }
 
     public isStatelessForSessionRestoration(): boolean {
+        if (this.sharedMath) {
+            try {
+                lowerSharedSlotMath(resolveConfiguredSharedSlotMath(this.config, this.sharedMath.model.winModel, this.config.getAvailableBets()[0]));
+                for (const bet of this.config.getAvailableBets()) resolveConfiguredSharedSlotMath(this.config, this.sharedMath.model.winModel, bet);
+            } catch {
+                return false;
+            }
+        }
         const policy = this.options.aggregationPolicy;
         const policySupported = policy === undefined || [ErrorOnIncompatibleWinAggregationPolicy, SumAllEnabledWinAggregationPolicy,
             SelectedEvaluatorGroupWinAggregationPolicy, HighestWinOnlyAggregationPolicy].some(kind => policy.constructor === kind);
@@ -214,7 +229,14 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
     }
 
     public getWinEvaluationPipeline(): WinEvaluationPipeline<T> {
-        if (this.sharedMath) return new WinEvaluationPipeline<T>([new SharedSlotMathWinEvaluator<T>(this.sharedMath)], new SumAllEnabledWinAggregationPolicy<T>());
+        if (this.sharedMath) {
+            resolveConfiguredSharedSlotMath(this.config, this.sharedMath.model.winModel, this.config.getAvailableBets()[0]);
+            return new WinEvaluationPipeline<T>([new SharedSlotMathWinEvaluator<T>(this.sharedMath, context => {
+                if (context.getConfig() !== this.config) throw new Error("Shared math evaluation context does not match the calculator config.");
+                return this.getConfiguredSharedMath(context.getBet());
+            })],
+            new SumAllEnabledWinAggregationPolicy<T>(), undefined, undefined, {validateOnEvaluate: this.options.validateOnEvaluate});
+        }
         // Config is mutable: factors and evaluator compatibility must use the same current model.
         if (this.config.getScreenModifiers?.() && this.valueWinCalculator) throw new Error("Authored screen modifiers do not support value evaluators.");
         return new WinEvaluationPipeline<T>(
@@ -224,6 +246,18 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
             undefined,
             {validateOnEvaluate: this.options.validateOnEvaluate},
         );
+    }
+
+    private getConfiguredSharedMath(bet: number): SharedSlotMath {
+        const model = resolveConfiguredSharedSlotMath(this.config, this.sharedMath!.model.winModel, bet);
+        const key = stableSlotMathJson(model);
+        const cached = this.configuredSharedMath.get(bet);
+        if (cached?.key === key) return cached.math;
+        const math = new SharedSlotMath(model);
+        // Keep only current bet entries; a mutable config must not accumulate old models.
+        for (const previous of this.configuredSharedMath.keys()) if (!this.config.getAvailableBets().includes(previous)) this.configuredSharedMath.delete(previous);
+        this.configuredSharedMath.set(bet, {key, math});
+        return math;
     }
 
     private createAuthoredMultiplierResolver(modifiers: ScreenModifiers<T> | undefined): MultiplierResolver<T> | undefined {
