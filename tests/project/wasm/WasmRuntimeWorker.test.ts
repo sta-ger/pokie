@@ -1197,6 +1197,10 @@ it.each([true, false].flatMap(serialize => ["new", "spin"].flatMap(action => ["r
         expect(next).toMatchObject({status: "ok", session: {credits: (await native.play({bet: 1})).credits}});
         expect(test.controls.plays).toBe(id ? 2 : 1);
         expect(test.recorder.list()).toHaveLength(id ? 2 : 1);
+        const obsolete = await test.network(`/api/project/wasm/jobs/${retained.id}/finish`, {method: "POST", body: JSON.stringify(binding)});
+        expect(await obsolete.json()).toMatchObject({result: retained.result, browserSessionActive: false});
+        expect(await test.api.spinPlaySession(test.owner.fetch, id ?? admitted.id, 1, undefined, {requestId: "successor-two"})).toMatchObject({status: "ok", session: {credits: (await native.play({bet: 1})).credits}});
+        expect(test.controls.plays).toBe(id ? 3 : 2);
     } finally {
         reference.dispose();
         await test.close(action === "spin" || drop === "response");

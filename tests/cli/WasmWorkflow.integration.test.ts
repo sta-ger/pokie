@@ -190,9 +190,12 @@ describe("canonical WASM CLI workflow", () => {
             expect(ownedProcess.listenerCount("SIGINT")).toBe(1);
             expect(ownedProcess.listenerCount("SIGTERM")).toBe(1);
         } finally {
-            await server?.stop();
-            ownedProcess.removeAllListeners();
-            log.mockRestore();
+            try {
+                await server?.stop();
+            } finally {
+                ownedProcess.removeAllListeners();
+                log.mockRestore();
+            }
         }
         expect(ownedProcess.eventNames()).toEqual([]);
     });
