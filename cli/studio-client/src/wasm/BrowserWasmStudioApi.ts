@@ -240,7 +240,7 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
             throw new PlayFailure(message(error), {retryDisposition: "safe-to-retry"});
         }
         if (this.publication === publication) this.publication = undefined;
-        if (this.disposed || execution.generation !== this.generation || execution.cancelled || (fresh ? this.session !== old : this.session?.client !== execution.client)) {
+        if (this.disposed || execution.generation !== this.generation || execution.cancelled || (!fresh && this.session?.client !== execution.client)) {
             execution.client.dispose();
             const sessionId = fresh ? execution.id : old!.id;
             await this.network(`/api/project/wasm/sessions/${sessionId}/dispose`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(this.binding(execution))}).catch(() => undefined);

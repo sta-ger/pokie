@@ -1258,6 +1258,37 @@ it("V2C-22-ASYNC-OWNERSHIP ignores an idle-session heartbeat after the Worker is
         jest.useRealTimers();
     }
 });
+it("V2C-22-ASYNC-OWNERSHIP permits a validated replacement when the previous idle heartbeat fails during publication", async () => {
+    jest.useFakeTimers({doNotFake: ["nextTick", "queueMicrotask", "setImmediate"]});
+    const test = await browserOwner();
+    const heartbeat = controlled<OwnerResponse>();
+    const finish = controlled<OwnerResponse>();
+    const accepted = controlled<OwnerResponse>();
+    try {
+        expect(await test.api.createPlaySession(test.owner.fetch, "old")).toMatchObject({status: "ok"});
+        test.controls.before = (url, init) => url.includes("/sessions/") && url.endsWith("/heartbeat") ? heartbeat.promise : test.network(url, init);
+        await jest.advanceTimersByTimeAsync(1000);
+        test.controls.after = (url, result) => {
+            if (url.endsWith("/finish")) {
+                accepted.resolve(result);
+                return finish.promise;
+            }
+            return Promise.resolve(result);
+        };
+        const replacement = test.api.createPlaySession(test.owner.fetch, "new");
+        const result = await accepted.promise;
+        heartbeat.reject(new Error("previous idle owner expired"));
+        await jest.advanceTimersByTimeAsync(0);
+        expect(test.controls.live).toBe(1);
+        finish.resolve(result);
+        expect(await replacement).toMatchObject({status: "ok"});
+        expect(test.controls.live).toBe(1);
+    } finally {
+        await test.close();
+        jest.useRealTimers();
+    }
+});
+
 it.each(["switch", "dispose"] as const)("V2C-22-ASYNC-OWNERSHIP cannot install delayed Play/context ownership after %s", async action => {
     const test = await browserOwner();
     const finish = controlled<OwnerResponse>();
