@@ -117,7 +117,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
         if (state.rngState !== undefined) clonePokieWasmHostState(state.rngState);
         const round = state.feature.logicalRound;
         if (round && (round.retention !== "latest" || validateLogicalRound(round))) throw new Error("Invalid compact logical-round continuation.");
-        if (state.feature.pendingCommand && !round) throw new Error("Pending delivery requires compact logical progress.");
+        if ((state.feature.pendingCommand || state.feature.deliveryStart) && !round) throw new Error("Retained delivery requires compact logical progress.");
         const last = state.feature.lastRound;
         if (state.sequence === 0 ? last !== undefined || round !== undefined : !last || last.sequence !== state.sequence || last.credits !== state.credits || JSON.stringify(last.logicalRound) !== JSON.stringify(round)) throw new Error("Feature checkpoint differs from its last accepted delivery.");
         if (last) {
