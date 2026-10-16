@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import * as api from "@fromstan/pokie";
 import {fractionalBetBlueprint} from "../fixtures/math/FractionalBetFixture.js";
-import {weightedBlueprint, weightedConfig} from "./fixtures/WeightedWholeSequenceGame.js";
+import {weightedBlueprint, weightedConfig, weightedGame} from "./fixtures/WeightedWholeSequenceGame.js";
 import {weightedBonusBlueprint} from "./fixtures/WeightedBonusGame.js";
 import {
     writeDescriptorPackage,
@@ -673,5 +673,164 @@ describe("reviewed field semantics", () => {
             path: "/" + path.split(".").join("/"), classification: "provenance", mathematical: false,
             after: expect.objectContaining({provenance: expect.objectContaining({authority: "replacement authority"})}),
         })]);
+    });
+});
+
+
+describe("remaining comparison information loss", () => {
+    it.each(["exact reels", "symbol inventory", "metadata mode cost", "metadata mode default"])(
+        "retains %s edits with equal effective runtime behavior", async field => {
+            const left = base();
+            left.betModes = [{id: "legacy", costMultiplier: 2}];
+            const right = clone(left);
+            if (field === "exact reels") {
+                right.reelSequences = right.reelStrips!.map(symbols => ({type: "exact", symbols}));
+                Reflect.deleteProperty(right, "reelStrips");
+            }
+            if (field === "symbol inventory") right.symbols.reverse();
+            if (field === "metadata mode cost") right.betModes![0].costMultiplier = 7.5;
+            if (field === "metadata mode default") right.betModes![0].isDefault = true;
+            for (const [a, b] of [[left, right], [right, left]]) {
+                const diff = await api.compareMathDefinitions(source(a), source(b));
+                expect(diff.status).toBe("different");
+                expect(diff.changes.length).toBeGreaterThan(0);
+                expect(diff.changes.every(change => !change.mathematical)).toBe(true);
+                if (field === "exact reels") {
+                    expect(diff.changes.map(change => change.path)).toEqual(expect.arrayContaining([
+                        "/reelStrips", "/reelSequences",
+                    ]));
+                }
+                if (field === "symbol inventory") expect(diff.changes).toContainEqual(expect.objectContaining({
+                    path: "/symbols", classification: "order", seededTraceImpact: false,
+                }));
+            }
+            const sessions = [left, right].map(model => weightedGame(model).createSession({seed: 19}) as api.VideoSlotSession);
+            for (const session of sessions) {
+                session.setCreditsAmount(100);
+                session.setBet(0.05);
+            }
+            for (let round = 0; round < 10; round++) {
+                sessions.forEach(session => session.play());
+                expect(sessions[0].getWinAmount()).toBe(sessions[1].getWinAmount());
+                expect(sessions[0].toSessionState()).toEqual(sessions[1].toSessionState());
+            }
+            if (field === "exact reels") {
+                right.reelSequences![0] = {type: "exact", symbols: ["B", "A"]};
+                const changed = await api.compareMathDefinitions(source(left), source(right));
+                expect(changed.changes).toContainEqual(expect.objectContaining({
+                    path: "/reelStrips/0", classification: "order", mathematical: true, seededTraceImpact: true,
+                    after: expect.objectContaining({provenance: expect.objectContaining({authored: {present: true, value: ["B", "A"]}})}),
+                }));
+            }
+        },
+    );
+
+    it("keeps raw-hash generation effects and executable mode costs mathematical", async () => {
+        const left = base();
+        Reflect.deleteProperty(left, "reelStrips");
+        left.symbolWeights = {A: 10, B: 10};
+        const right = {...left, symbols: [...left.symbols].reverse()};
+        const generated = await api.compareMathDefinitions(source(left), source(right));
+        expect(generated.changes).toContainEqual(expect.objectContaining({path: "/symbols", mathematical: false}));
+        expect(generated.changes.some(change => change.path.startsWith("/reelStrips") && change.mathematical)).toBe(true);
+        const a = modes(), 
+            b = clone(a);
+        b.betModes![1].costMultiplier = 9;
+        expect((await api.compareMathDefinitions(source(a), source(b))).changes).toContainEqual(expect.objectContaining({
+            path: "/betModes/1/costMultiplier", mathematical: true,
+        }));
+        const custom = await new api.MathDefinitionSourceReader().read(source({...base(), betModes: [{id: "custom", costMultiplier: 2}]}));
+        custom.identity = {kind: "package", descriptorKind: "custom"};
+        const edited = clone(custom);
+        (edited.effective as unknown as api.GameBlueprint).betModes![0].costMultiplier = 7.5;
+        expect(new api.MathDefinitionDiffer().diff(custom, edited).changes).toContainEqual(expect.objectContaining({
+            path: "/betModes/0/costMultiplier", mathematical: true,
+        }));
+    });
+
+    it.each(["paytable", "wilds", "mechanics", "reelStrips", "betModes.0"])(
+        "compares authority on empty and nonempty containers: %s", async field => {
+            const model = modes();
+            model.paytable = {};
+            model.mechanics = {};
+            model.betModes = [{id: "legacy"}];
+            const left = await new api.MathDefinitionSourceReader().read(source(model));
+            const right = clone(left);
+            right.fields.find(entry => entry.path === field)!.authority = "replacement container authority";
+            for (const [a, b] of [[left, right], [right, left]]) {
+                const diff = new api.MathDefinitionDiffer().diff(a, b);
+                expect(diff.status).toBe("different");
+                expect(diff.changes).toEqual([expect.objectContaining({
+                    path: "/" + field.replace(/\./g, "/"), classification: "provenance", mathematical: false,
+                })]);
+            }
+        },
+    );
+
+    it("preserves each missing-payout warning through removal, reverse addition and diagnostic reordering", async () => {
+        const model = {...base(), symbols: ["A", "B", "C"], paytable: {}};
+        const reader = new api.MathDefinitionSourceReader();
+        const left = await reader.read(source(model));
+        const right = await reader.read(source({...model, paytable: {A: {3: 0}}}));
+        const missing = (snapshot: api.MathDefinitionSnapshot) => snapshot.diagnostics.filter(issue => issue.code === "blueprint-symbol-missing-payout");
+        expect(missing(left)).toHaveLength(3);
+        expect(missing(right)).toHaveLength(2);
+        expect(missing(left).every(issue => issue.path === "")).toBe(true);
+        for (const [a, b, added] of [[left, right, false], [right, left, true]] as const) {
+            const diff = new api.MathDefinitionDiffer().diff(a, b);
+            const changes = diff.changes.filter(change => change.classification === "validation" && change.path.includes("blueprint-symbol-missing-payout"));
+            expect(changes).toHaveLength(1);
+            expect(changes[0].before.present).toBe(!added);
+            expect(changes[0].after.present).toBe(added);
+            const value = added ? changes[0].after : changes[0].before;
+            expect(value).toMatchObject({value: {message: expect.stringContaining('Symbol "A"')}});
+        }
+        const shuffled = clone(left);
+        shuffled.diagnostics.reverse();
+        expect(new api.MathDefinitionDiffer().diff(left, shuffled).changes).toEqual([]);
+    });
+
+    it("retains colliding messages and severities and deduplicates only exact normalized copies", async () => {
+        const left = await new api.MathDefinitionSourceReader().read(source(base()));
+        const issue: api.MathDefinitionDiagnostic = {code: "same", path: "betModes[0].costMultiplier", message: "A", severity: "warning"};
+        left.diagnostics = [issue, {...issue, path: "/betModes/0/costMultiplier"}, {...issue, message: "B"}, {...issue, severity: "error"}];
+        const right = clone(left);
+        right.diagnostics = [{...issue, message: "changed", severity: "info"}, {...issue, message: "B"}, {...issue, severity: "error"}];
+        const result = new api.MathDefinitionDiffer().diff(left, right);
+        expect(result.left.diagnostics).toHaveLength(3);
+        expect(result.left.diagnostics.every(entry => entry.path === "/betModes/0/costMultiplier")).toBe(true);
+        expect(result.changes.filter(change => change.classification === "validation")).toHaveLength(2);
+        expect(new Set(result.changes.map(change => change.path)).size).toBe(result.changes.length);
+        const single = clone(left), 
+            changed = clone(left);
+        single.diagnostics = [issue];
+        changed.diagnostics = [{...issue, message: "changed", severity: "error"}];
+        expect(new api.MathDefinitionDiffer().diff(single, changed).changes).toEqual([expect.objectContaining({
+            path: "/validation/~1betModes~10~1costMultiplier/same",
+            before: expect.objectContaining({value: expect.objectContaining({severity: "warning", message: "A"})}),
+            after: expect.objectContaining({value: expect.objectContaining({severity: "error", message: "changed"})}),
+        })]);
+    });
+
+    it("rejects malformed metadata costs without coercion and supports repeated repaired reuse", async () => {
+        const reader = new api.MathDefinitionSourceReader(), 
+            differ = new api.MathDefinitionDiffer();
+        const good = {...base(), betModes: [{id: "legacy", costMultiplier: 2}]};
+        const bad = clone(good);
+        Reflect.set(bad.betModes[0], "costMultiplier", "7.5");
+        expect(new api.GameBlueprintValidator().validate(bad)).toContainEqual(expect.objectContaining({
+            path: "betModes[0].costMultiplier", severity: "error",
+        }));
+        for (const model of [good, bad, good, good]) {
+            const snapshot = await reader.read(source(model));
+            const direct = differ.diff(snapshot, snapshot);
+            const publicResult = await api.compareMathDefinitions(source(model), source(model), {reader});
+            expect(publicResult).toEqual(direct);
+            expect(direct.status).toBe(model === bad ? "invalid" : "identical");
+            if (model === bad) expect(snapshot.diagnostics).toContainEqual(expect.objectContaining({
+                path: "/betModes/0/costMultiplier", severity: "error",
+            }));
+        }
+        expect(bad.betModes[0].costMultiplier).toBe("7.5");
     });
 });

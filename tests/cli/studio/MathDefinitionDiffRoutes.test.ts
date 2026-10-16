@@ -10,6 +10,7 @@ import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioP
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
 import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRepository.js";
 import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
+import {dispatch} from "../../../cli/dispatch.js";
 import {DiffCommand} from "../../../cli/commands/DiffCommand.js";
 import {fractionalBetBlueprint} from "../../fixtures/math/FractionalBetFixture.js";
 import {
@@ -107,6 +108,53 @@ describe("definition comparison public Studio route", () => {
             }
         }
     });
+
+    it.each(["exact reels", "inventory", "metadata cost", "diagnostics", "container authority", "invalid cost"])(
+        "shares %s results between direct API, dispatcher and saved/draft Studio previews", async field => {
+            const model = {...fractionalBetBlueprint([0.05], true), betModes: [{id: "legacy", costMultiplier: 2}]};
+            if (field === "diagnostics") {
+                model.symbols.push("C");
+                model.paytable = {};
+            }
+            if (field === "container authority") model.paytable = {};
+            const changed = JSON.parse(JSON.stringify(model)) as typeof model;
+            if (field === "exact reels") {
+                changed.reelSequences = changed.reelStrips!.map(symbols => ({type: "exact", symbols}));
+                Reflect.deleteProperty(changed, "reelStrips");
+            }
+            if (field === "inventory") changed.symbols.reverse();
+            if (field === "metadata cost") changed.betModes[0].costMultiplier = 7.5;
+            if (field === "diagnostics") changed.paytable.A = {3: 0};
+            if (field === "invalid cost") Reflect.set(changed.betModes[0], "costMultiplier", "7.5");
+            fs.writeFileSync(left, JSON.stringify(model));
+            fs.writeFileSync(right, JSON.stringify(changed));
+            const target = field === "container authority" ? writeDescriptorPackage(root, {model, descriptorBody:
+                'return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model};',}) : right;
+            for (const [a, b] of [[left, target], [target, left]]) {
+                const result = await post({leftPath: a, rightPath: b, revision: 0});
+                expect(result.status).toBe(200);
+                expect(result.body).toEqual(await compareMathDefinitions(a, b));
+                const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+                try {
+                    expect(await dispatch([new DiffCommand()], ["node", "pokie", "diff", a, b, "--ci", "--format", "json"]))
+                        .toBe(field === "invalid cost" ? 2 : 0);
+                    expect(JSON.parse(log.mock.calls[0][0])).toEqual(result.body);
+                } finally {
+                    log.mockRestore(); 
+                }
+                if (field === "container authority") expect(result.body.changes).toContainEqual(expect.objectContaining({
+                    path: "/paytable", classification: "provenance", mathematical: false,
+                }));
+                if (field === "diagnostics") expect(result.body.changes.filter(change => change.path.includes("blueprint-symbol-missing-payout"))).toHaveLength(1);
+            }
+            const draft = await post({leftPath: left, draft: changed, revision: 1});
+            expect(draft.body).toEqual(await compareMathDefinitions(left, {kind: "blueprint", model: changed}));
+            if (field === "invalid cost") {
+                expect(draft.body.right.diagnostics).toContainEqual(expect.objectContaining({path: "/betModes/0/costMultiplier", severity: "error"}));
+                for (const revision of [2, 3]) expect((await post({leftPath: left, draft: model, revision})).body.status).toBe("identical");
+            }
+        },
+    );
 
     it("compares saved versus draft without writes, builds or session construction", async () => {
         const bytes = fs.readFileSync(left);

@@ -1,3 +1,4 @@
+import {definitionDiagnostics} from "./internal/definitionDiagnostics.js";
 import {definitionFieldAuthority} from "./internal/definitionFieldAuthority.js";
 import fs from "fs";
 import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
@@ -173,6 +174,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
                         result.limits.push(
                             "PAR comparison covers imported representable fields; unknown cells and defaults are recorded by the importer.",
                         );
+                        result.diagnostics = definitionDiagnostics(result.diagnostics);
                         if (imported.issues.some((issue) => issue.severity === "error")) result.support = "invalid";
                         else if (imported.conversionEvidence?.losslessEligible === false) result.support = "partial";
                         return result;
@@ -287,6 +289,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
                 message: issue.message,
                 path: issue.path ?? "",
             }));
+            snapshot.diagnostics = definitionDiagnostics(snapshot.diagnostics);
             if (authored.reels > 1000 || authored.rows > 10000 || authored.reels * authored.rows > 1000000) throw new Error("Definition geometry exceeds comparison limits");
             if (snapshot.diagnostics.some((issue) => issue.severity === "error")) {
                 snapshot.support = "invalid";
@@ -329,17 +332,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
                     }
                 }
             }
-            result.diagnostics.push(
-                ...snapshot.diagnostics.filter(
-                    (issue) =>
-                        !result.diagnostics.some(
-                            (existing) =>
-                                existing.code === issue.code &&
-                                existing.path === issue.path &&
-                                existing.message === issue.message,
-                        ),
-                ),
-            );
+            result.diagnostics = definitionDiagnostics([...result.diagnostics, ...snapshot.diagnostics]);
             // Generation instructions are authoring data; the effective comparison uses only strips.
             if (result.effective && typeof result.effective === "object") {
                 Reflect.deleteProperty(result.effective, "symbolWeights");
@@ -364,7 +357,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
             identity: {...extraction.source, ...identity, descriptorKind: extraction.source.kind},
             support: extraction.status === "malformed" ? "invalid" : extraction.status,
             fields: extraction.fields,
-            diagnostics: extraction.diagnostics.map((issue) => ({...issue, severity: issue.severity ?? "warning"})),
+            diagnostics: definitionDiagnostics(extraction.diagnostics.map((issue) => ({...issue, severity: issue.severity ?? "warning"}))),
             limits: extraction.comparisonLimits,
         };
         if (
@@ -397,6 +390,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
             ...(extraction.source.descriptorVersion === 1 ? effectiveDefaults(model, extraction.fields) : model),
             maxWinPolicy: policy,
         } as DefinitionJson;
+        snapshot.diagnostics = definitionDiagnostics(snapshot.diagnostics);
         return snapshot;
     }
 }

@@ -924,6 +924,46 @@ describe("DiffCommand canonical definitions through dispatch", () => {
         }
     });
 
+    it.each(["exact reels", "inventory", "metadata cost"])("keeps %s representation changes visible through dispatch", async field => {
+        const model = {...fractionalBetBlueprint([0.05], true), betModes: [{id: "legacy", costMultiplier: 2}]};
+        fs.writeFileSync(a, JSON.stringify(model));
+        const changed = JSON.parse(JSON.stringify(model)) as typeof model;
+        if (field === "exact reels") {
+            changed.reelSequences = changed.reelStrips!.map(symbols => ({type: "exact", symbols}));
+            Reflect.deleteProperty(changed, "reelStrips");
+        }
+        if (field === "inventory") changed.symbols.reverse();
+        if (field === "metadata cost") changed.betModes[0].costMultiplier = 7.5;
+        fs.writeFileSync(b, JSON.stringify(changed));
+        for (const [left, right] of [[a, b], [b, a]]) {
+            log.mockClear();
+            expect(await run([left, right, "--ci", "--format", "json"])).toBe(0);
+            const diff = JSON.parse(log.mock.calls[0][0]);
+            expect(diff.status).toBe("different");
+            expect(diff.changes.length).toBeGreaterThan(0);
+            expect(diff.changes.every((change: {mathematical: boolean}) => !change.mathematical)).toBe(true);
+        }
+        changed.paytable.A[3] = 7.5;
+        fs.writeFileSync(b, JSON.stringify(changed));
+        expect(await run([a, b, "--ci"])).toBe(1);
+    });
+
+    it("publishes every distinct missing-payout diagnostic and its reverse addition", async () => {
+        const model = {...fractionalBetBlueprint([0.05], true), symbols: ["A", "B", "C"], paytable: {}};
+        fs.writeFileSync(a, JSON.stringify(model));
+        fs.writeFileSync(b, JSON.stringify({...model, paytable: {A: {3: 0}}}));
+        for (const [left, right, added] of [[a, b, false], [b, a, true]] as const) {
+            log.mockClear();
+            expect(await run([left, right, "--ci", "--format", "json"])).toBe(0);
+            const diff = JSON.parse(log.mock.calls[0][0]);
+            const changes = diff.changes.filter((change: {path: string}) => change.path.includes("blueprint-symbol-missing-payout"));
+            expect(changes).toHaveLength(1);
+            expect(changes[0].before.present).toBe(!added);
+            expect(changes[0].after.present).toBe(added);
+            expect((added ? changes[0].after : changes[0].before).value.message).toContain('Symbol "A"');
+        }
+    });
+
     it("maps SIGINT cancellation through dispatch without publishing an equality result", async () => {
         const read = fs.readFileSync.bind(fs);
         let cancelled = false;

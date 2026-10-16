@@ -1,3 +1,4 @@
+import {definitionDiagnostics} from "./internal/definitionDiagnostics.js";
 import {definitionFieldAuthority} from "./internal/definitionFieldAuthority.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {validateMathDefinitionMaxWinPolicy} from "./validateMathDefinitionMaxWinPolicy.js";
@@ -37,7 +38,12 @@ function side(
     snapshot: MathDefinitionSnapshot,
     value: ReturnType<typeof valueAt>,
     keys: string[],
+    effective = false,
 ): MathDefinitionValue {
+    if (effective && keys[0] === "reelStrips" && exactSequenceStrips(snapshot)) {
+        keys = keys.length === 1 ? ["reelSequences"] :
+            ["reelSequences", keys[1], "symbols", ...keys.slice(2)];
+    }
     const authored = valueAt(snapshot.authored, keys);
     const field = definitionFieldAuthority(snapshot.fields, keys);
     let status: MathDefinitionValue["provenance"]["status"] = "effective";
@@ -79,6 +85,27 @@ function context(snapshot: MathDefinitionSnapshot, keys: string[]): Record<strin
 }
 function isRecord(value: unknown): value is Record<string, DefinitionJson> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Both declarations construct SymbolsSequence; weighted variants retain their selection contract. */
+function exactSequenceStrips(snapshot: MathDefinitionSnapshot): DefinitionJson[][] | undefined {
+    const model = snapshot.effective;
+    if (!isRecord(model) || model.reelStrips !== undefined || !Array.isArray(model.reelSequences) ||
+        !model.reelSequences.length || definitionFieldAuthority(snapshot.fields, ["reelSequences"])?.status === "unsupported" ||
+        snapshot.fields.some(field => field.status === "unsupported" && field.path.startsWith("reelSequences."))) return undefined;
+    const strips: DefinitionJson[][] = [];
+    for (const reel of model.reelSequences) {
+        if (!isRecord(reel) || reel.type !== "exact" || !Array.isArray(reel.symbols) ||
+            Object.keys(reel).some(key => !["type", "symbols"].includes(key))) return undefined;
+        strips.push(reel.symbols);
+    }
+    return strips;
+}
+function effectiveModel(snapshot: MathDefinitionSnapshot): DefinitionJson | undefined {
+    const strips = exactSequenceStrips(snapshot);
+    if (!strips) return snapshot.effective;
+    const {reelSequences: _sequences, ...model} = snapshot.effective as Record<string, DefinitionJson>;
+    return {...model, reelStrips: strips};
 }
 
 function verifyCompleteness(snapshot: MathDefinitionSnapshot): void {
@@ -145,6 +172,10 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
         const right = detachPackageModelData(rightInput) as MathDefinitionSnapshot;
         verifyCompleteness(left);
         verifyCompleteness(right);
+        left.diagnostics = definitionDiagnostics(left.diagnostics);
+        right.diagnostics = definitionDiagnostics(right.diagnostics);
+        const leftModel = effectiveModel(left);
+        const rightModel = effectiveModel(right);
         const changes: MathDefinitionChange[] = [];
         const walk = (a: unknown, b: unknown, keys: string[], representation = false): void => {
             if (canonicalDefinitionJson(a) === canonicalDefinitionJson(b)) return;
@@ -172,7 +203,17 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
                 (keys[0] === "paytable" || keys.slice(0, 3).join("/") === "mechanics/freeGames/awardsByCount") &&
                 ((a === undefined && (b === 0 || (isRecord(b) && Object.keys(b).length === 0))) ||
                     (b === undefined && (a === 0 || (isRecord(a) && Object.keys(a).length === 0))));
-            const descriptiveModeField = keys[0] === "betModes" && ["label", "targetRtp"].includes(keys[2]);
+            const descriptiveModeField = keys[0] === "betModes" && (
+                ["label", "targetRtp"].includes(keys[2]) ||
+                (["costMultiplier", "isDefault"].includes(keys[2]) && [left, right].every(snapshot => {
+                    // Custom descriptors without runtimeType do not establish generated semantics.
+                    const modes = valueAt(snapshot.effective, ["betModes"]);
+                    return (snapshot.identity.kind === "blueprint" || snapshot.identity.descriptorKind === "generated") &&
+                        modes.present && Array.isArray(modes.value) &&
+                        modes.value.every(mode => isRecord(mode) && mode.runtimeType === undefined);
+                }))
+            );
+            const inventoryOrder = order && keys.length === 1 && keys[0] === "symbols";
             const ignoredPaylines = keys[0] === "paylines" && [left, right].every((snapshot) => {
                 const type = valueAt(snapshot.effective, ["winModel", "type"]);
                 return type.present && (type.value === "ways" || type.value === "clusters");
@@ -182,6 +223,7 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
             const mathematical =
                 !unknown &&
                 !descriptiveModeField &&
+                !inventoryOrder &&
                 !ignoredPaylines &&
                 !zeroOmission &&
                 !representation &&
@@ -204,15 +246,17 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
                     left,
                     a === undefined ? {present: false} : {present: true, value: a as DefinitionJson},
                     keys,
+                    !representation,
                 ),
                 after: side(
                     right,
                     b === undefined ? {present: false} : {present: true, value: b as DefinitionJson},
                     keys,
+                    !representation,
                 ),
             });
         };
-        walk(left.effective, right.effective, []);
+        walk(leftModel, rightModel, []);
         // Retain authoring/default differences only where the effective comparison did not already
         // describe the field. Source identity is carried separately and never makes a math change.
         const effectiveChanges = changes.length;
@@ -230,26 +274,30 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
             );
         changes.push(...authoredChanges);
         const provenance = (keys: string[]): void => {
-            const before = valueAt(left.effective, keys);
-            const after = valueAt(right.effective, keys);
+            const before = valueAt(leftModel, keys);
+            const after = valueAt(rightModel, keys);
             if (!before.present || !after.present) return;
-            if ((isRecord(before.value) && isRecord(after.value)) ||
-                (Array.isArray(before.value) && Array.isArray(after.value))) {
-                for (const key of Object.keys(before.value).sort()) provenance([...keys, key]);
-                return;
+            const container = (isRecord(before.value) && isRecord(after.value)) ||
+                (Array.isArray(before.value) && Array.isArray(after.value));
+            if (container) {
+                for (const key of Object.keys(before.value as object).sort()) provenance([...keys, key]);
             }
             const path = keys.length ? "/" + keys.map(definitionPointerPart).join("/") : "";
             if (
-                canonicalDefinitionJson(before.value) !== canonicalDefinitionJson(after.value) ||
+                (!container && canonicalDefinitionJson(before.value) !== canonicalDefinitionJson(after.value)) ||
                 changes.some(
                     (change) =>
                         change.path === path ||
                         path.startsWith(change.path + "/") ||
-                        change.path.startsWith(path + "/"),
+                        (!container && change.path.startsWith(path + "/")),
                 )
             ) return;
-            const a = side(left, before, keys);
-            const b = side(right, after, keys);
+            const a = side(left, before, keys, true);
+            const b = side(right, after, keys, true);
+            // A child representation change already discloses adding/removing the declaration.
+            // Independent container authority changes still need their own precise path.
+            if (container && a.provenance.authored.present !== b.provenance.authored.present &&
+                changes.some(change => change.classification === "representation" && change.path.startsWith(path + "/"))) return;
             if (a.provenance.authority !== b.provenance.authority || a.provenance.status !== b.provenance.status) changes.push({
                 path,
                 classification: "provenance",
@@ -260,15 +308,31 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
             });
         };
         provenance([]);
-        const diagnostics = (snapshot: MathDefinitionSnapshot): Map<string, DefinitionJson> =>
-            new Map(
-                snapshot.diagnostics.map((issue) => [
-                    `/validation/${definitionPointerPart(issue.path)}/${definitionPointerPart(issue.code)}`,
-                    issue as unknown as DefinitionJson,
-                ]),
-            );
-        const a = diagnostics(left);
-        const b = diagnostics(right);
+        const diagnostics = (snapshot: MathDefinitionSnapshot): Map<string, DefinitionJson[]> => {
+            const groups = new Map<string, DefinitionJson[]>();
+            for (const issue of snapshot.diagnostics) {
+                const path = `/validation/${definitionPointerPart(issue.path)}/${definitionPointerPart(issue.code)}`;
+                const group = groups.get(path) ?? [];
+                group.push(issue as unknown as DefinitionJson);
+                groups.set(path, group);
+            }
+            return groups;
+        };
+        const leftDiagnostics = diagnostics(left);
+        const rightDiagnostics = diagnostics(right);
+        const a = new Map<string, DefinitionJson>();
+        const b = new Map<string, DefinitionJson>();
+        for (const path of [...new Set([...leftDiagnostics.keys(), ...rightDiagnostics.keys()])].sort()) {
+            const before = leftDiagnostics.get(path) ?? [];
+            const after = rightDiagnostics.get(path) ?? [];
+            const multiple = before.length > 1 || after.length > 1;
+            for (const [values, target] of [[before, a], [after, b]] as const) for (const issue of values) {
+                // A colliding path/code cannot identify a particular issue. Use its complete,
+                // deterministic identity instead of guessing which message was edited.
+                const key = multiple ? `${path}/${definitionPointerPart(canonicalDefinitionJson(issue))}` : path;
+                target.set(key, issue);
+            }
+        }
         for (const path of [...new Set([...a.keys(), ...b.keys()])].sort()) {
             if (canonicalDefinitionJson(a.get(path)) === canonicalDefinitionJson(b.get(path))) continue;
             const before = a.get(path);

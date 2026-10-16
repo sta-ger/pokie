@@ -292,12 +292,24 @@ change hash-derived materialized strips, in which case the strip changes are
 mathematical. With literal reels held fixed, mode labels and descriptive `targetRtp`,
 paylines ignored by ways/cluster evaluators, and omitted modifier wild `factor`
 versus explicit `1` remain visible representation changes without mathematical CI
-failure. Actual wild multipliers and payout amounts remain mathematical.
+failure. All-exact `reelSequences` and literal `reelStrips` are compared as the
+same effective ordered strips, at `/reelStrips/...`, with provenance mapped back
+to the original sequence symbols. The snapshots retain their declarations, and
+the authored pass retains representation additions/removals. Mixed/weighted
+sequences retain variant IDs, weights and selection ordering. Actual wild
+multipliers, sequence positions and payout amounts remain mathematical.
+For generated/Blueprint modes with no `runtimeType` anywhere, `costMultiplier`
+and `isDefault` are metadata; an explicit runtime mode contract retains executable
+cost/default changes. Custom descriptors without that generated contract do not
+establish that their costs are inert.
 Generated packages cannot recover discarded generation instructions.
 
 Ordered arrays are retained. Permutations are `order` changes, with a separate
 mathematical flag; reel positions, modifier execution and cumulative weighted
-selection retain their operational ordering. `seededTraceImpact` conservatively
+selection retain their operational ordering. The `symbols` inventory is a
+membership declaration: reordering the same inventory is a non-mathematical
+`order` change. Deterministic generated strips are still compared independently,
+so raw-hash effects from inventory or metadata edits remain mathematical. `seededTraceImpact` conservatively
 flags ordering that can affect seeded execution, without claiming every seed
 changes. This comparison does not prove distribution equivalence for reordered
 models. Whole-sequence selection retains `logical-round-v1` /
@@ -306,10 +318,25 @@ models. Whole-sequence selection retains `logical-round-v1` /
 policy, target references, payout units and forced free games are compared even
 when current payouts agree.
 
-Validation changes are keyed at `/validation/<escaped diagnostic path>/<code>`.
-Before/after presence distinguishes additions/removals; changed severity/message
-retains the same key. Both sources also retain their diagnostics with stable
-`code`, `severity`, `path`, and `message`. Invalid authored fields remain visible;
+Provenance is compared at containers as well as leaves, including empty objects
+and arrays. A container authority change has its own pointer even when child
+fields have independent authority. A child representation change that already
+discloses adding/removing a default declaration avoids redundant parent entries.
+
+Diagnostic paths use JSON Pointers, with `""` for the root. Source validator dotted
+paths and numeric brackets are adapted at the comparison boundary; already
+escaped pointers remain unchanged. Missing validator paths use the same field
+fallback as extraction (or the root when no field is known). Exact normalized
+`(path, code, severity, message)` copies are deduplicated, preserving all distinct
+messages/severities and deterministic ordering. Custom diagnostics should supply
+pointers for property names containing dots or brackets.
+Validation changes are grouped at `/validation/<escaped diagnostic path>/<code>`.
+When each side has at most one diagnostic in a group, changed severity/message
+retains that key. If either side has multiple distinct diagnostics, the key adds
+`/<escaped canonical diagnostic JSON>` as a deterministic identity; unchanged
+identities cancel, while removals/additions remain explicit. Colliding messages
+are never overwritten or guessed to be edits of each other. Both sources retain
+all distinct diagnostics with stable `code`, `severity`, `path`, and `message`. Invalid authored fields remain visible;
 normalization failures do not substitute a sampled or invented model.
 
 ### Max-win declaration and custom boundary
