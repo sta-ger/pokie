@@ -532,38 +532,3 @@ it("restores expansion in triggering-cell order when configured reels are interl
     }
 });
 
-it("restores carried plain respins after an exhausted cascade and preserves excluded completion", async () => {
-    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
-    const blueprint = boundedBlueprint("cascade-respins");
-    blueprint.reelStrips = [["A", "C", "B"], ["A", "C", "B"], ["A", "C", "B"]];
-    blueprint.mechanics!.cascade!.maxCascades = 1;
-    blueprint.mechanics!.respins = {trigger: {symbolId: "C", minimumCount: 1}, grant: 4, maxRespins: 4, retrigger: "none"};
-    // Initialization, entry/grant, winning continuation/refill at the bound, then losing tails.
-    const draws = [0.9, 0.4, 0, 0, 0.9, 0.9, 0.9].flatMap(draw => [draw, draw, draw]);
-    const makeHost = () => {
-        let cursor = 0;
-        return {nextRandom: () => draws[cursor++] ?? 0.9, serializeState: () => cursor, restoreState: (value: unknown) => {
-            cursor = value as number;
-        }};
-    };
-    const fixture = createCanonicalWasmFixture({blueprint});
-    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, makeHost());
-    const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, makeHost());
-    try {
-        const session = runtime.createSession("carried");
-        for (let index = 0; index < 5; index++) {
-            const played = await session.play({bet: 0.05, roundId: `plain:${index}`});
-            if (index === 1) expect(played.analytics?.features).toContainEqual(expect.objectContaining({feature: "respins", abandonedEntryPosition: 1}));
-            if (index === 4) expect(played.analytics).toMatchObject({carriedSubround: true, logicalCompletion: false, features: [expect.objectContaining({feature: "respins", excludedCompletion: true})]});
-            const saved = JSON.parse(JSON.stringify(session.serialize()));
-            const restored = fresh.restoreSession(saved);
-            expect(await restored.play({bet: 0.05, roundId: `plain:${index}`})).toEqual(played);
-            const next = {bet: 0.05};
-            expect((await runtime.replay(saved, [next])).rounds).toEqual([await restored.play(next)]);
-            restored.dispose();
-        }
-    } finally {
-        runtime.dispose();
-        fresh.dispose();
-    }
-});

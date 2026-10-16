@@ -719,3 +719,38 @@ it("binds the analytics owner's prior state to real paid entries and continuatio
         built.dispose();
     }
 });
+
+it("preserves a carried analytics observer's own duration through accepted native continuations", async () => {
+    const {createAuthoredSession} = await import("../../../src/generated/createAuthoredSession.js");
+    const {SeededRandomNumberGenerator} = await import("../../../src/session/videoslot/combinations/SeededRandomNumberGenerator.js");
+    const {SessionFeatureAnalyticsObserver} = await import("../../../src/simulation/SessionFeatureAnalyticsObserver.js");
+    const {SessionRuntime} = await import("../../../src/runtime/SessionRuntime.js");
+    const blueprint = weightedBonusBlueprint();
+    blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => {
+        outcome.weight = outcome.id === "large" ? 1 : 0;
+        if (outcome.id === "large") outcome.duration = 4;
+    });
+    const built = createAuthoredSession(blueprint, new SeededRandomNumberGenerator("probe"));
+    const runtime = new SessionRuntime(built.session);
+    built.session.setBet(0.05);
+    try {
+        // A native simulation observer can start mid-feature; it has no known entry.
+        for (let index = 0; index < 3; index++) expect(runtime.execute({kind: "spin"})).toMatchObject({status: "played"});
+        const observer = new SessionFeatureAnalyticsObserver(built.session);
+        for (let index = 0; index < 2; index++) {
+            const before = observer.beforePlay();
+            const prior = observer.toState();
+            const result = runtime.execute({kind: "spin"});
+            if (result.status !== "played") throw new Error(result.reason);
+            observer.validateAcceptedTransition(before, false, false);
+            expect(observer.toState()).toEqual(prior);
+            const accepted = observer.afterPlay(before, result.win);
+            expect(accepted).toMatchObject({carriedSubround: true, logicalCompletion: false});
+            if (index === 0) expect(observer.toState().active.weightedBonus).toMatchObject({known: false, duration: 1});
+            else expect(accepted.features).toContainEqual(expect.objectContaining({feature: "weightedBonus", excludedCompletion: true}));
+        }
+    } finally {
+        runtime.release();
+        built.dispose();
+    }
+});
