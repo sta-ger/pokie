@@ -1165,7 +1165,9 @@ export function BlueprintEditorPage({
         guidedActionDescriptionId = "blueprint-create-game-saving";
     }
     let validationGuidance = "Studio is checking this game design automatically. Create game becomes available when the check succeeds.";
-    if (validationView.status === "invalid") {
+    if (validationView.status === "inconclusive") {
+        validationGuidance = "Analysis is inconclusive. Review its limits and retry validation before creating the game.";
+    } else if (validationView.status === "invalid") {
         validationGuidance = "Fix the highlighted design errors before creating your game. Studio checks your changes automatically.";
     } else if (validationView.status === "error") {
         validationGuidance = "Studio couldn't check this design. Review the validation error below and edit the design to check it again.";

@@ -30,6 +30,11 @@ function describeAddedToStudio(origin: StudioProjectOrigin | undefined): string 
 // one lives inline, next to everything else Overview already reports).
 function ValidationDiagnostics({view, onRevalidate}: {view: ProjectValidationView; onRevalidate: () => void}) {
     const terminal = view.status === "success" ? "completed" : view.status;
+    let summaryText = "Valid — no issues found.";
+    if (view.status === "success") {
+        if (view.summary.advanced?.structuralValid === null) summaryText = "Structural validation is inconclusive. Review the analysis limits and retry.";
+        else if (view.summary.hasIssues) summaryText = `${view.summary.valid ? "Valid, with warnings" : "Invalid"} — ${view.summary.errors.length} error(s), ${view.summary.warnings.length} warning(s).`;
+    }
     return (
         <div
             role="status"
@@ -44,9 +49,7 @@ function ValidationDiagnostics({view, onRevalidate}: {view: ProjectValidationVie
             {view.status === "success" && (
                 <div>
                     <Text mb="sm">
-                        {view.summary.hasIssues
-                            ? `${view.summary.valid ? "Valid, with warnings" : "Invalid"} — ${view.summary.errors.length} error(s), ${view.summary.warnings.length} warning(s).`
-                            : "Valid — no issues found."}
+                        {summaryText}
                     </Text>
                     <IssueList title="Errors" issues={view.summary.errors} />
                     <IssueList title="Warnings" issues={view.summary.warnings} />

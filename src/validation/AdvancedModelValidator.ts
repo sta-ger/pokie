@@ -26,6 +26,7 @@ class ChoiceRequired extends Error {
 const ASSUMPTIONS = [
     "Initial feature state is empty, collection starts at zero and is closed over reachable entry values; jackpot pools start at their declared seed; one paid-entry logical round is checked for every declared bet and executable mode.",
     "All positive-weight variants are possible. A variant is retained for the logical round; every circular stop window is possible on each draw. No probability is rounded to zero.",
+    "Primitive RNG calls and support samplers are assumed to return; rejection-sampler divergence and arbitrary custom RNG code are outside the mechanic transition proof.",
     "Termination is all-path termination under nondeterministic supported entropy, not almost-sure termination or a theorem about a particular finite PRNG seed.",
     "JavaScript binary64 arithmetic and production handlers/evaluators are used. Wallet starts at exactly the charged entry stake; arbitrary initial credits and lifetime counter overflow are outside this initial-state proof.",
 ];

@@ -297,6 +297,22 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
             const authored = detachPackageModelData(input.model) as GameBlueprint;
             snapshot.authored = authored as unknown as DefinitionJson;
             snapshot.identity.revision = computeGameBlueprintHash(authored);
+            if (options?.analysisOnly) {
+                const policy = input.maxWinPolicy ?? {type: "none" as const, scope: "logical-round" as const, authority: "Blueprint runtime has no payout cap"};
+                snapshot.effective = {...authored, maxWinPolicy: policy} as unknown as DefinitionJson;
+                return snapshot;
+            }
+            const symbols = Array.isArray(authored.symbols) ? authored.symbols.length : 0;
+            const bets = Array.isArray(authored.availableBets) ? authored.availableBets.length : 11;
+            let preprocessing = symbols ** 2 + symbols * (Number.isSafeInteger(authored.reels) && authored.reels > 0 ? authored.reels : 1) * bets;
+            for (const reel of Array.isArray(authored.reelStripGeneration) ? authored.reelStripGeneration : []) if (reel && reel.type === "generated" && Number.isSafeInteger(reel.length) && reel.length > 0 && (reel.maxAttempts === undefined || Number.isSafeInteger(reel.maxAttempts) && reel.maxAttempts > 0)) preprocessing += reel.length * (reel.maxAttempts ?? 200) * Math.max(1, (reel.constraints?.length ?? 0) + 1);
+            if (!Number.isFinite(preprocessing) || preprocessing > 100000 || authored.reels * authored.rows > 100000) {
+                snapshot.support = "unsupported";
+                snapshot.effective = snapshot.authored;
+                snapshot.limits.push("Definition preprocessing exceeds its bounded normalization work limit.");
+                snapshot.diagnostics.push(diagnostic("definition-acquisition-budget-exhausted", snapshot.limits[0], "warning"));
+                return snapshot;
+            }
             snapshot.diagnostics = new GameBlueprintValidator().validate(authored).map((issue) => ({
                 code: issue.code,
                 severity: issue.severity,
@@ -308,11 +324,6 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
             if (snapshot.diagnostics.some((issue) => issue.severity === "error")) {
                 snapshot.support = "invalid";
                 snapshot.effective = snapshot.authored;
-                return snapshot;
-            }
-            if (options?.analysisOnly) {
-                const policy = input.maxWinPolicy ?? {type: "none" as const, scope: "logical-round" as const, authority: "Blueprint runtime has no payout cap"};
-                snapshot.effective = {...authored, maxWinPolicy: policy} as unknown as DefinitionJson;
                 return snapshot;
             }
             const resolution = resolveReelStripGeneration(authored);

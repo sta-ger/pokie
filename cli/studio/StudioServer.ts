@@ -33,6 +33,7 @@ import {
     CERTIFICATION_BUILD_OPERATION,
     CERTIFICATION_VALIDATE_OPERATION,
     computeGameBlueprintHash,
+    loadGameBlueprint,
     DEPLOYMENT_TARGETS_OPERATION,
     FAIRNESS_CONFIGURE_OPERATION,
     FAIRNESS_GENERATE_OPERATION,
@@ -2306,10 +2307,16 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         await this.withAdvancedValidation(req, res, async signal => {
-            const [structural, advanced] = await Promise.all([
-                this.validateProjectContract(root),
-                new AdvancedModelSourceValidator().validate(root, {signal}),
-            ]);
+            const advanced = await new AdvancedModelSourceValidator().validate(root, {signal});
+            if (advanced.structuralValid === null && advanced.status !== "unsupported" || advanced.status === "cancelled" || advanced.status === "failed") return {
+                packageRoot: root, valid: false, game: null, errors: advanced.issues.filter(issue => issue.severity === "error"), warnings: advanced.issues.filter(issue => issue.severity !== "error"), suggestions: [], advanced,
+            };
+            if (advanced.adapter === "blueprint-runtime-v1" && advanced.sourceRevision) {
+                const current = loadGameBlueprint(root, {preserveInvalidAuthoredContent: true, maxBytes: 400000});
+                if (computeGameBlueprintHash(current) !== advanced.sourceRevision) throw new StudioHttpRequestError(409, "Source changed during validation. Retry against the current source.");
+                return {packageRoot: root, valid: advanced.structuralValid === true, game: readBlueprintGameIdentity(current), errors: advanced.issues.filter(issue => issue.severity === "error"), warnings: advanced.issues.filter(issue => issue.severity === "warning"), information: advanced.issues.filter(issue => issue.severity === "info"), suggestions: advanced.issues.flatMap(issue => issue.suggestion ? [issue.suggestion] : []), advanced};
+            }
+            const structural = await this.validateProjectContract(root);
             return {...structural, advanced};
         });
     }

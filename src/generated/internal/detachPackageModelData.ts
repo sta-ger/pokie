@@ -4,7 +4,12 @@ export function detachPackageModelData(value: unknown): unknown {
     let nodes = 0;
     const copy = (input: unknown, field: string, depth: number): unknown => {
         if (++nodes > 1000000 || depth > 100) throw new Error(`${field}: metadata exceeds extraction limits`);
-        if (input === null || typeof input === "string" || typeof input === "boolean") return input;
+        if (typeof input === "string") {
+            nodes += input.length;
+            if (nodes > 1000000) throw new Error(`${field}: metadata exceeds extraction limits`);
+            return input;
+        }
+        if (input === null || typeof input === "boolean") return input;
         if (typeof input === "number" && Number.isFinite(input)) return input;
         if (typeof input !== "object" || input === null) throw new Error(`${field}: unsupported JSON value`);
         if (ancestors.has(input)) throw new Error(`${field}: cyclic metadata`);

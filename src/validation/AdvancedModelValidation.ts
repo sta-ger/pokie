@@ -26,6 +26,8 @@ export type AdvancedValidationCheck = {
 export type AdvancedModelValidationReport = {
     schemaVersion: 1;
     scope: "declared-model";
+    /** Reader model revision, when acquisition reached an authoritative declaration. */
+    sourceRevision?: string;
     status: AdvancedValidationStatus;
     structuralValid: boolean | null;
     /** Never an assertion about arbitrary executable code. */

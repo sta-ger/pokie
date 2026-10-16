@@ -696,3 +696,19 @@ describe("advanced validation report publication", () => {
         }
     });
 });
+
+it("reports an oversized source as inconclusive before structural parsing or report publication", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "validation-source-budget-"));
+    const file = path.join(root, "large.blueprint.json");
+    const bytes = JSON.stringify({...createStarterGameBlueprint(), description: "x".repeat(400001)});
+    fs.writeFileSync(file, bytes);
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+        expect(await new ValidateCommand().run([file, "--format", "json"])).toBe(2);
+        expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({valid: false, advanced: {status: "budget-exhausted", structuralValid: null, verdict: "inconclusive"}});
+        expect(fs.readFileSync(file, "utf8")).toBe(bytes);
+    } finally {
+        log.mockRestore();
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});

@@ -7,6 +7,7 @@ import {
     OutcomeLibraryBundleValidating,
     OutcomeLibraryBundleValidator,
     GameBlueprintValidator,
+    loadGameBlueprint,
     PokieGamePackageValidating,
     PokieGamePackageValidationReport,
     PokieGamePackageValidator,
@@ -157,15 +158,16 @@ export class ValidateCommand implements CliCommandHandling {
             process.off("SIGINT", cancel);
         }
         this.writeAndPrint(report, format, out);
-        if (!report.valid || report.advanced?.verdict === "violated") return 1;
         if (report.advanced?.status === "cancelled") return 130;
+        if (report.advanced?.status === "budget-exhausted" && report.advanced.structuralValid === null) return 2;
+        if (!report.valid || report.advanced?.verdict === "violated") return 1;
         if (report.advanced?.status === "failed") return 3;
         return report.advanced?.verdict === "inconclusive" ? 2 : 0;
     }
 
     private async validateProject(packageRoot: string, deep: boolean, signal?: AbortSignal): Promise<ValidateReport> {
         if (this.isBlueprintFile(packageRoot)) {
-            return this.validateBlueprint(packageRoot);
+            return this.validateBlueprint(packageRoot, signal);
         }
         if (this.isPackageDirectory(packageRoot)) {
             return this.validatePackage(packageRoot, signal);
@@ -207,7 +209,7 @@ export class ValidateCommand implements CliCommandHandling {
             return this.validateOutcomeLibrary(packageRoot, deep);
         }
         if (project?.type === "blueprint") {
-            return this.validateBlueprint(packageRoot);
+            return this.validateBlueprint(packageRoot, signal);
         }
         return this.validatePackage(packageRoot, signal);
     }
@@ -274,10 +276,14 @@ export class ValidateCommand implements CliCommandHandling {
         return fs.existsSync(projectPath) && fs.statSync(projectPath).isDirectory() && fs.existsSync(path.join(projectPath, "package.json"));
     }
 
-    private validateBlueprint(blueprintPath: string): ValidateReport {
+    private async validateBlueprint(blueprintPath: string, signal?: AbortSignal): Promise<ValidateReport> {
+        const advanced = await new AdvancedModelSourceValidator().validate(blueprintPath, {signal});
+        if (advanced.structuralValid === null || advanced.status === "cancelled") return {
+            ...this.reportFromIssues(blueprintPath, "blueprint", advanced.issues), valid: false, advanced,
+        };
         let source: unknown;
         try {
-            source = JSON.parse(fs.readFileSync(blueprintPath, "utf-8"));
+            source = loadGameBlueprint(blueprintPath, {preserveInvalidAuthoredContent: true, maxBytes: 400000});
         } catch {
             return this.failedReport(
                 blueprintPath,
@@ -289,7 +295,7 @@ export class ValidateCommand implements CliCommandHandling {
             );
         }
 
-        return this.reportFromIssues(blueprintPath, "blueprint", new GameBlueprintValidator().validate(source));
+        return {...this.reportFromIssues(blueprintPath, "blueprint", new GameBlueprintValidator().validate(source)), advanced};
     }
 
     private async validatePackage(packageRoot: string, signal?: AbortSignal): Promise<ValidateReport> {

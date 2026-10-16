@@ -6,3 +6,6 @@ import type {ValidationIssue} from "@fromstan/pokie";
 export type StudioBlueprintValidationView =
     | {status: "ok"; warnings: ValidationIssue[]; advanced?: AdvancedModelValidationReport}
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; advanced?: AdvancedModelValidationReport};
+
+export type StudioBlueprintAdvancedValidationView = StudioBlueprintValidationView |
+    {status: "inconclusive"; errors?: ValidationIssue[]; warnings: ValidationIssue[]; advanced: AdvancedModelValidationReport};

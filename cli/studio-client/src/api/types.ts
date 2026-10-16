@@ -446,6 +446,7 @@ export type StudioBuildResult =
 // POST /api/home/blueprints/validate's own DTO — see cli/studio/blueprint/StudioBlueprintValidationView.ts's
 // own doc comment. Never the result of anything being read/written on disk.
 export type StudioBlueprintValidationView =
+    | {status: "inconclusive"; errors?: ValidationIssue[]; warnings: ValidationIssue[]; advanced: AdvancedModelValidationReport}
     | {status: "ok"; warnings: ValidationIssue[]; advanced?: AdvancedModelValidationReport}
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; advanced?: AdvancedModelValidationReport};
 

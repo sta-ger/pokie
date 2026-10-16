@@ -9,6 +9,7 @@ import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 
 function statusText(view: BlueprintValidationView): string | undefined {
+    if (view.status === "inconclusive") return "Inconclusive — structural validation did not complete. Review the analysis limits and retry.";
     if (view.status === "invalid") {
         return `Invalid — ${view.errors.length} error(s).`;
     }
@@ -46,7 +47,7 @@ export function BlueprintValidationPanel({
                 <LoadingState label="Validating…" />
                 {onCancel && <Button variant="default" onClick={onCancel}>Cancel validation</Button>}
             </>}
-            {automatic && view.status === "error" && <Button onClick={onValidate}>Retry validation</Button>}
+            {automatic && (view.status === "error" || view.status === "inconclusive") && <Button onClick={onValidate}>Retry validation</Button>}
             {view.status === "stale" && (
                 <Text c="dimmed" mb="sm">
                     Source changed — checking again…
@@ -54,9 +55,9 @@ export function BlueprintValidationPanel({
             )}
             {view.status === "error" && <ErrorState message={describePathActionError("This validation request", view.message)} />}
             {statusText(view) && <Text mb="sm">{statusText(view)}</Text>}
-            {(view.status === "ok" || view.status === "invalid") && <Text size="sm" c="dimmed">Structural validation. Advanced analysis is reported separately below.</Text>}
-            {view.status === "invalid" && <IssueList title="Errors" issues={view.errors} />}
-            {(view.status === "ok" || view.status === "invalid") && <>
+            {(view.status === "ok" || view.status === "invalid" || view.status === "inconclusive") && <Text size="sm" c="dimmed">Structural validation. Advanced analysis is reported separately below.</Text>}
+            {(view.status === "invalid" || view.status === "inconclusive") && <IssueList title="Errors" issues={view.errors ?? []} />}
+            {(view.status === "ok" || view.status === "invalid" || view.status === "inconclusive") && <>
                 <IssueList title="Warnings" issues={view.warnings} />
                 <AdvancedValidationPanel report={view.advanced} />
             </>}

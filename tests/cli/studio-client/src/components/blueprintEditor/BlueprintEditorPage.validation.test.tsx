@@ -250,3 +250,14 @@ it("renders warnings and advanced unknown paths even when structural validation 
     expect(screen.getByText(/Path: mechanics.respins/)).toBeInTheDocument();
     expect(screen.getByText(/respin-2/)).toBeInTheDocument();
 });
+
+it("keeps structurally inconclusive reports distinct from valid reports and disables creation", async () => {
+    const {advancedUnknownReport} = await import("../../../../../v2/fixtures/AdvancedModelReport");
+    const advanced = {...advancedUnknownReport(), structuralValid: null};
+    const fetchImpl: FetchLike = (url, init) => url.split("?")[0] === "/api/home/blueprints/validate" && init?.method === "POST"
+        ? respond({status: "inconclusive", warnings: [], advanced}) : respond([]);
+    renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+    expect(await screen.findByText(/Inconclusive — structural validation did not complete/)).toBeInTheDocument();
+    expect(screen.queryByText("Valid — no issues found.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Retry validation"})).toBeEnabled();
+});
