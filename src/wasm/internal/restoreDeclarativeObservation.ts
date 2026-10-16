@@ -1,3 +1,6 @@
+import {WinningWay} from "../../session/videoslot/WinningWay.js";
+import {WinningCluster} from "../../session/videoslot/WinningCluster.js";
+import type {PokieWasmFeatureSessionState} from "../PokieWasmRuntimeApi.js";
 import type {GameBlueprint} from "../../generated/GameBlueprint.js";
 import type {RoundStepArtifact} from "../../artifact/RoundStepArtifact.js";
 import type {VideoSlotSessionHandling} from "../../session/videoslot/VideoSlotSessionHandling.js";
@@ -14,7 +17,7 @@ import {stableSlotMathJson} from "../math/SharedSlotMath.js";
 /** Rehydrate accepted observations for the existing serializers/analytics observer.
  * No evaluator, RNG, wallet effect or session-prefix replay is involved.
  */
-export function restoreDeclarativeObservation(session: VideoSlotSessionHandling, blueprint: GameBlueprint, artifacts: readonly RoundStepArtifact[], finalScreen: string[][], win: number): VideoSlotSessionHandling {
+export function restoreDeclarativeObservation(session: VideoSlotSessionHandling, blueprint: GameBlueprint, artifacts: readonly RoundStepArtifact[], finalScreen: string[][], win: number, componentAmounts: PokieWasmFeatureSessionState["feature"]["componentAmounts"]): VideoSlotSessionHandling {
     const last = artifacts[artifacts.length - 1];
     if (!last) throw new Error("Missing retained mathematical observation.");
     const event = (type: string) => last.featureEvents?.find(event => event.type === type)?.data;
@@ -35,6 +38,21 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
     if (wrapped) result = new WinEvaluationResult({winComponents: restored.getWinComponents()});
     if (retainedOutcome) result = session.getWinEvaluationResult();
     const legacy = retainedOutcome ? session : undefined;
+    // The legacy fallback displays the underlying ways/cluster amount, whereas the
+    // evaluation DTO reports its multiplied component. Zero factors are not invertible:
+    // retain just those accepted base amounts, never recalculate a paytable award.
+    if (mechanics?.modifiers) {
+        if (!componentAmounts || Object.keys(componentAmounts).sort().join(",") !== "clusters,ways") throw new Error("Missing accepted component presentation amounts.");
+        for (const [type, components, amounts] of [["ways", result.getWaysWins(), componentAmounts.ways], ["cluster", result.getClusterWins(), componentAmounts.clusters]] as const) {
+            if (!Array.isArray(amounts) || amounts.length !== components.length) throw new Error("Invalid accepted component presentation amounts.");
+            const wins = artifacts.flatMap(step => step.wins.filter(win => win.type === type));
+            for (const [index, amount] of amounts.entries()) {
+                const win = wins[index];
+                const factor = win.multiplierBreakdown.reduce((factor, item) => factor * item.combinedMultiplier, 1);
+                if (!Number.isFinite(amount) || amount < 0 || !Number.isFinite(factor) || amount * factor !== win.winAmount) throw new Error("Component presentation amount contradicts its accepted multiplier attribution.");
+            }
+        }
+    } else if (componentAmounts) throw new Error("Unexpected component presentation amounts.");
     let cascade: CascadeResult | undefined;
     if (blueprint.mechanics?.cascade) {
         const count = bounded?.cascade?.winningCascades;
@@ -57,9 +75,9 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
         getWinAmount: () => win,
         getWinningLines: () => legacy?.getWinningLines() ?? Object.fromEntries(result.getLineWins().map(c => [c.getId(), c.getWinningLine()])),
         getWinningScatters: () => legacy?.getWinningScatters() ?? Object.fromEntries(result.getScatterWins().map(c => [c.getSymbolId(), c.getWinningScatter()])),
-        getWinningClusters: () => legacy?.getWinningClusters?.() ?? Object.fromEntries(result.getClusterWins().map(c => [c.getId(), c.getWinningCluster()])),
+        getWinningClusters: () => legacy?.getWinningClusters?.() ?? Object.fromEntries(result.getClusterWins().map((c, index) => [c.getId(), componentAmounts ? new WinningCluster(c.getSymbolId()!, c.getWinningPositions(), componentAmounts.clusters[index]) : c.getWinningCluster()])),
         getWinningValues: () => legacy?.getWinningValues?.() ?? Object.fromEntries(result.getValueWins().map(c => [c.getSymbolId(), c.getWinningValue()])),
-        getWinningWays: () => legacy?.getWinningWays?.() ?? Object.fromEntries(result.getWaysWins().map(c => [c.getSymbolId(), c.getWinningWay()])),
+        getWinningWays: () => legacy?.getWinningWays?.() ?? Object.fromEntries(result.getWaysWins().map((c, index) => [c.getSymbolId(), componentAmounts ? new WinningWay(c.getSymbolId()!, c.getWinningPositions(), c.getWinningWay().getWaysCount(), componentAmounts.ways[index]) : c.getWinningWay()])),
         getSymbolsCombination: () => new SymbolsCombination().fromMatrix(finalScreen),
         getVisibleSymbolsCombination: () => new SymbolsCombination().fromMatrix(last.screen as string[][]),
         getScreenGeometry: () => blueprint.screenGeometry,

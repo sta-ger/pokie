@@ -443,3 +443,31 @@ it.each(["stepwise", "composite"].flatMap(delivery => ["literal", "weighted", "b
         runtime.dispose();
     }
 });
+
+it.each(["ways", "clusters"] as const)("restores %s base display amounts separately from multiplied mathematics, including zero factors", async type => {
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    for (const factor of [0, 2, 1e-7]) {
+        const blueprint = JSON.parse(fs.readFileSync(path.resolve("examples/blueprints/wild-multiplier.blueprint.json"), "utf8"));
+        blueprint.winModel = {type, ...(type === "clusters" ? {minimumClusterSize: 2} : {})};
+        blueprint.mechanics.modifiers.wilds[0].factor = factor;
+        const fixture = createCanonicalWasmFixture({blueprint});
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("amounts"));
+        try {
+            const session = runtime.createSession("amounts");
+            const command = {bet: 0.05, roundId: "amounts", delivery: "stepwise"};
+            const played = await session.play(command);
+            const saved = session.serialize();
+            const restored = runtime.restoreSession(saved);
+            expect(await restored.play(command)).toEqual(played);
+            expect(restored.getInitialData?.()).toMatchObject(played.network!);
+            const corrupt = JSON.parse(JSON.stringify(saved));
+            const field = type === "ways" ? "winningWays" : "winningClusters";
+            const key = Object.keys(corrupt.feature.lastRound.network[field])[0];
+            corrupt.feature.lastRound.network[field][key].winAmount = -123;
+            expect(() => runtime.restoreSession(corrupt)).toThrow(`network.${field}`);
+            expect(await restored.play({bet: 0.05})).toEqual(await session.play({bet: 0.05}));
+        } finally {
+            runtime.dispose();
+        }
+    }
+});

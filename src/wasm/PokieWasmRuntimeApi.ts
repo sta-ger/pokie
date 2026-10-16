@@ -32,6 +32,8 @@ export type PokieWasmFeatureSessionState = Omit<PokieWasmOrdinarySessionState, "
         /** Plain commands use the same mathematical artifact contract without logical cursors. */
         readonly plainMath?: {readonly command: import("../runtime/SessionCommand.js").SessionCommand; readonly finalScreen?: readonly (readonly string[])[]; readonly artifact: import("../artifact/RoundArtifact.js").RoundArtifact; readonly payout: number; readonly credits: number};
         readonly pendingCommand?: {readonly command: import("../runtime/SessionCommand.js").SessionCommand; readonly advanced: number};
+        /** Accepted underlying legacy display amounts; zero multipliers cannot be inverted. */
+        readonly componentAmounts?: {readonly ways: readonly number[]; readonly clusters: readonly number[]};
         /** Input to the sole latest accepted analytics transition; replaced, never accumulated. */
         readonly analyticsCheckpoint?: {readonly state: import("../simulation/SessionFeatureAnalyticsObserver.js").SessionFeatureAnalyticsState; readonly before: import("../simulation/SessionFeatureAnalyticsObserver.js").SessionFeatureAnalyticsBeforePlay};
         readonly analytics?: import("../simulation/SessionFeatureAnalyticsObserver.js").SessionFeatureAnalyticsState;

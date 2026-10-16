@@ -122,7 +122,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
     function validate(state: PokieWasmRestorableState): asserts state is PokieWasmFeatureSessionState {
         if (!state || state.schemaVersion !== "pokie.state.v4" || state.artifactIdentity !== artifactIdentity || typeof state.seed !== "string" || !Number.isSafeInteger(state.sequence) || state.sequence < 0 || !Number.isSafeInteger(state.drawCount) || state.drawCount < blueprint.reels || !Number.isFinite(state.credits) || state.credits < 0 || !state.feature || !(blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]).includes(state.feature.bet)) throw new Error("Unsupported or malformed artifact-bound WASM feature state.");
         if (Object.keys(state).some(key => !["schemaVersion", "artifactIdentity", "seed", "sequence", "drawCount", "credits", "rngState", "feature"].includes(key)) ||
-            Object.keys(state.feature).some(key => !["bet", "state", "initialStops", "logicalRound", "lastRound", "analytics", "pendingCommand", "deliveryStart", "deliveryPrefix", "plainMath", "analyticsCheckpoint"].includes(key))) throw new Error("Unexpected compact feature-state fields.");
+            Object.keys(state.feature).some(key => !["bet", "state", "initialStops", "logicalRound", "lastRound", "analytics", "pendingCommand", "deliveryStart", "deliveryPrefix", "plainMath", "analyticsCheckpoint", "componentAmounts"].includes(key))) throw new Error("Unexpected compact feature-state fields.");
         if (state.rngState !== undefined) clonePokieWasmHostState(state.rngState);
         const round = state.feature.logicalRound;
         if (round && (round.retention !== "latest" || validateLogicalRound(round))) throw new Error("Invalid compact logical-round continuation.");
@@ -199,7 +199,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
             setSimulationModelIdentity(check.session, manifest.artifact?.configurationHash);
             const analytics = new SessionFeatureAnalyticsObserver(check.session);
             analytics.restoreState(state.feature.analytics);
-            if (state.feature.analytics.position > state.sequence || state.sequence === 0 && (state.feature.analytics.position !== 0 || Object.keys(state.feature.analytics.active).length || state.feature.analyticsCheckpoint)) throw new Error("Invalid initialized analytics continuation.");
+            if (state.feature.analytics.position > state.sequence || state.sequence === 0 && (state.feature.analytics.position !== 0 || Object.keys(state.feature.analytics.active).length || state.feature.analyticsCheckpoint || state.feature.componentAmounts)) throw new Error("Invalid initialized analytics continuation.");
             if (round) {
                 if (round.bet !== state.feature.bet || round.subrounds[0].credits !== state.credits) throw new Error("Feature checkpoint selection/ledger differs from logical progress.");
                 SessionRuntime.validateLogicalRoundProgress(check.session, round);
@@ -239,7 +239,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                 const artifacts = round?.subrounds[0].artifacts ?? state.feature.plainMath?.artifact.steps ?? [];
                 const mathematicalWin = round?.subrounds[0].win ?? state.feature.plainMath!.artifact.totalWin;
                 const final = round?.subrounds[0].finalScreen ?? state.feature.plainMath?.finalScreen ?? artifacts[artifacts.length - 1]?.generatedScreen ?? last.screen!;
-                const observation = restoreDeclarativeObservation(check.session, blueprint, artifacts, final as string[][], mathematicalWin);
+                const observation = restoreDeclarativeObservation(check.session, blueprint, artifacts, final as string[][], mathematicalWin, state.feature.componentAmounts);
                 const expectedNetwork = serializer.getRoundData(observation as NativeSession & import("../../session/videoslot/cascade/CascadeResultProviding.js").CascadeResultProviding);
                 if (!last.network || typeof last.network !== "object" || Array.isArray(last.network)) throw new Error("Missing retained network projection.");
                 for (const key of new Set([...Object.keys(last.network), ...Object.keys(expectedNetwork)])) {
@@ -291,11 +291,18 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
         let delivered = {stake: 0, win: 0, payout: 0};
         let compositeRequest = false;
         let analyticsCheckpoint = initial.feature.analyticsCheckpoint;
+        let componentAmounts = initial.feature.componentAmounts;
         const onAccepted = (command: SessionCommand, result: Extract<import("../../runtime/SessionRuntimeHandling.js").SessionCommandResult, {status: "played"}>): void => {
             const creditsBefore = state.credits;
             const network = result.deliveryOnly && state.feature.lastRound?.network ? copy(state.feature.lastRound.network)
                 : serializer.getRoundData(native! as NativeSession & import("../../session/videoslot/cascade/CascadeResultProviding.js").CascadeResultProviding);
-            if (!result.deliveryOnly) analyticsCheckpoint = {state: observer.toState(), before: copy(before)};
+            if (!result.deliveryOnly) {
+                analyticsCheckpoint = {state: observer.toState(), before: copy(before)};
+                if (blueprint.mechanics?.modifiers) {
+                    const result = native!.getWinEvaluationResult();
+                    componentAmounts = {ways: result.getWaysWins().map(c => c.getWinningWay().getWinAmount()), clusters: result.getClusterWins().map(c => c.getWinningCluster().getWinAmount())};
+                }
+            }
             const payout = result.payout ?? Math.max(0, native!.getCreditsAmount() - creditsBefore + result.stake);
             const round: PokieWasmRound = {sequence: state.sequence + 1, draw: currentDraws[0] ?? 0, stops: result.deliveryOnly && state.feature.lastRound ? state.feature.lastRound.stops : built.generator.getLastStopPositions(), screen: network.reelsSymbols,
                 winMultiplier: result.win / native!.getBet(), win: result.win, stake: result.stake, payout, creditsBefore, credits: native!.getCreditsAmount(), command,
@@ -316,7 +323,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
             }
             before = observer.beforePlay();
             state = checkpoint(native!, runtime, state, round);
-            state = {...state, feature: {...state.feature, analytics: observer.toState(), ...(analyticsCheckpoint ? {analyticsCheckpoint} : {}), ...(deliveryStart ? {deliveryStart} : {}), ...(deliveryPrefix ? {deliveryPrefix} : {}), ...(plainMath ? {plainMath} : {})}};
+            state = {...state, feature: {...state.feature, analytics: observer.toState(), ...(analyticsCheckpoint ? {analyticsCheckpoint} : {}), ...(componentAmounts ? {componentAmounts} : {}), ...(deliveryStart ? {deliveryStart} : {}), ...(deliveryPrefix ? {deliveryPrefix} : {}), ...(plainMath ? {plainMath} : {})}};
             record(trace, replaying ? "replay" : "round", state.sequence);
             accepted.push(round);
         };
