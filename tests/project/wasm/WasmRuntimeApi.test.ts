@@ -730,6 +730,7 @@ it("preserves a carried analytics observer's own duration through accepted nativ
         outcome.weight = outcome.id === "large" ? 1 : 0;
         if (outcome.id === "large") outcome.duration = 4;
     });
+    blueprint.mechanics!.weightedBonus!.feature.maxDuration = 4;
     const built = createAuthoredSession(blueprint, new SeededRandomNumberGenerator("probe"));
     const runtime = new SessionRuntime(built.session);
     built.session.setBet(0.05);
@@ -749,6 +750,38 @@ it("preserves a carried analytics observer's own duration through accepted nativ
             if (index === 0) expect(observer.toState().active.weightedBonus).toMatchObject({known: false, duration: 1});
             else expect(accepted.features).toContainEqual(expect.objectContaining({feature: "weightedBonus", excludedCompletion: true}));
         }
+    } finally {
+        runtime.release();
+        built.dispose();
+    }
+});
+
+it("rejects retained instantaneous analytics features during a real pending progression", async () => {
+    const {boundedBlueprint} = await import("../../v2/fixtures/BoundedMechanicsGame.js");
+    const {createAuthoredSession} = await import("../../../src/generated/createAuthoredSession.js");
+    const {SeededRandomNumberGenerator} = await import("../../../src/session/videoslot/combinations/SeededRandomNumberGenerator.js");
+    const {SessionFeatureAnalyticsObserver} = await import("../../../src/simulation/SessionFeatureAnalyticsObserver.js");
+    const {SessionRuntime} = await import("../../../src/runtime/SessionRuntime.js");
+    const blueprint = boundedBlueprint("cascade-respins");
+    blueprint.reelStrips = [["C"], ["C"], ["C"]];
+    const built = createAuthoredSession(blueprint, new SeededRandomNumberGenerator("probe"));
+    const runtime = new SessionRuntime(built.session);
+    const observer = new SessionFeatureAnalyticsObserver(built.session);
+    built.session.setBet(0.05);
+    try {
+        const entry = observer.beforePlay();
+        expect(runtime.execute({kind: "spin"})).toMatchObject({status: "played"});
+        observer.afterPlay(entry, 0);
+        const before = observer.beforePlay();
+        const prior = observer.toState();
+        expect(runtime.execute({kind: "spin"})).toMatchObject({status: "played"});
+        const corrupt = {...prior, active: {...prior.active, cascade: {known: true, duration: 0, win: 0, entryPosition: 1}}};
+        observer.restoreState(corrupt);
+        expect(() => observer.validateAcceptedTransition(before, false, false)).toThrow("Analytics prior state contradicts");
+        expect(observer.toState()).toEqual(corrupt);
+        observer.restoreState(prior);
+        observer.validateAcceptedTransition(before, false, false);
+        expect(observer.afterPlay(before, 0).activeKnownFeatures).toEqual(["respins"]);
     } finally {
         runtime.release();
         built.dispose();

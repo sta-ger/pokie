@@ -131,6 +131,7 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             !supported("freeGames") && (before.freeNum !== 0 || before.freeSum !== 0) ||
             !supported("holdAndWin") && (before.locks !== 0 || before.holdRemaining !== 0)) throw invalid();
         const active = {freeGames: before.free, holdAndWin: before.hold, respins: before.respins, weightedBonus: before.bonus};
+        if (Object.keys(this.state.active).some(feature => Reflect.get(active, feature) !== true)) throw invalid();
         for (const [feature, wasActive] of Object.entries(active)) {
             const retained = this.state.active[feature as AnalyticsFeature];
             if (retained && !wasActive || logicalContinuation && wasActive && (!retained || !retained.known)) throw invalid();
