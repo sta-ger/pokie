@@ -409,8 +409,9 @@ describe("StudioReplayExecutionService", () => {
     it.each([false, true])("keeps WASM replay cancellation pending through asynchronous disposal rejection=%s", async (rejectDisposal) => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wasm-replay-cleanup-"));
         const wasmPath = path.join(workDir, "game.wasm");
-        fs.writeFileSync(wasmPath, "");
-        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({artifact: {}, capabilities: ["runtime.replay"]}));
+        const fixture = createCanonicalWasmFixture({capabilities: ["runtime.replay"]});
+        fs.writeFileSync(wasmPath, fixture.bytes);
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
         const gate = createControlledYield();
         let jobId = "";
         let finishDisposal!: () => void;
@@ -423,7 +424,7 @@ describe("StudioReplayExecutionService", () => {
             });
         });
         const runtime = {
-            manifest: {component: {id: "wasm", version: "1.0.0"}, capabilities: ["runtime.replay"], artifact: {configurationHash: "config"}},
+            manifest: fixture.manifest,
             replay: (state: {sequence: number; credits: number}, commands: readonly Record<string, unknown>[]) => ({
                 rounds: commands.map((_command, index) => ({stake: 1, payout: 1, credits: state.credits, screen: [["A"]], sequence: state.sequence + index + 1})),
                 stateAfter: {schemaVersion: "pokie.state.v2", seed: "cleanup", drawCount: 2, sequence: state.sequence + commands.length, credits: state.credits},
@@ -445,7 +446,7 @@ describe("StudioReplayExecutionService", () => {
         );
         try {
             const started = service.start(wasmPath, {round: 2, seed: "cleanup"});
-            if (started.status !== "created") throw new Error("expected WASM replay job");
+            if (started.status !== "created") throw new Error(JSON.stringify(started));
             jobId = started.job.id;
             await waitFor(() => gate.pendingCount() === 1, "WASM replay did not acquire its session before yielding.");
             service.cancel(wasmPath, started.job.id);

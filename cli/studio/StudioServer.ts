@@ -508,15 +508,13 @@ export class StudioServer implements StudioServerHandling {
     }
 
     public async stop(): Promise<void> {
-        let browserDrainError: unknown;
-        try {
-            await this.wasmBrowserService.shutdown();
-        } catch (error) {
-            browserDrainError = error;
-        }
+        // Request browser cleanup immediately, but cancel every other executor before awaiting it.
+        // A paused executor can otherwise resume into another yield while shutdown is still waiting.
+        const browserDrain = this.wasmBrowserService.shutdown();
         const server = this.server;
         this.server = undefined;
-        const listenerClosed = new Promise<void>((resolve, reject) => {
+        // Browser disposal acknowledgements still need HTTP while their leases drain.
+        const listenerClosed = browserDrain.catch(() => undefined).then(() => new Promise<void>((resolve, reject) => {
             if (!server) {
                 resolve();
                 return;
@@ -528,7 +526,7 @@ export class StudioServer implements StudioServerHandling {
                 }
                 resolve();
             });
-        });
+        }));
 
         this.cancelRuntimePreparation();
         for (const controller of this.advancedValidations.keys()) controller.abort();
@@ -543,7 +541,7 @@ export class StudioServer implements StudioServerHandling {
         // Request every domain cancellation before waiting for any executor.
         // Listener closure alone cannot attest to worker or staging cleanup.
         const drains = await Promise.allSettled([
-            browserDrainError === undefined ? Promise.resolve() : Promise.reject(browserDrainError),
+            browserDrain,
             listenerClosed,
             Promise.allSettled([...this.advancedValidations.values()]),
             Promise.allSettled([...this.definitionPreviews.values()]),

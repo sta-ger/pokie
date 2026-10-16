@@ -6230,8 +6230,10 @@ describe("StudioServer", () => {
             const serverToStop = projectServer;
             projectServer = undefined;
             const stopping = serverToStop.stop();
+            // Release immediately: cleanup of another executor must not postpone replay cancellation.
             gate.release();
             await stopping;
+            expect(replayService.getStatus("/tmp/sample-slot", (created.body as {id: string}).id)).toMatchObject({status: "cancelled", completedRounds: 10});
         });
     });
 
