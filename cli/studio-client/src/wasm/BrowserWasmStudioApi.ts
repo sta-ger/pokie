@@ -73,7 +73,7 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
             const execution = this.executions.get(id);
             if (execution) this.cancel(execution);
         }
-        const contextBoundary = ["/api/project/context", "/api/context", "/api/home/projects/open", "/api/project/close"].includes(url);
+        const contextBoundary = ["/api/project/context", "/api/context", "/api/home/projects/open", "/api/projects/close"].includes(url);
         const contextRequest = contextBoundary ? ++this.contextRequest : this.contextRequest;
         const result = await this.network(url, init);
         const currentContext = () => contextRequest === this.contextRequest && !this.disposed;
@@ -87,7 +87,7 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
             if (currentContext() && body.mode !== "project") this.select(undefined);
             return response(result.status, body);
         }
-        if ((url === "/api/home/projects/open" || url === "/api/project/close") && result.ok && currentContext()) this.select(undefined);
+        if ((url === "/api/home/projects/open" || url === "/api/projects/close") && result.ok && currentContext()) this.select(undefined);
         return result;
     };
 
@@ -136,7 +136,10 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
             client = operation === "browser-play" && request.action === "spin" ? this.session?.client : undefined;
             client ??= new PokieWasmWorkerClient(this.createWorker, {project: artifact.projectRoot, generation: artifact.generation, artifact: artifact.manifest.artifact!.sha256, job: body.job.id});
             if (client === this.session?.client) {
-                this.watchSession();
+                // The execution now owns this Worker, including ambiguous publication.
+                // An expired idle lease must not dispose its already accepted Play.
+                clearTimeout(this.sessionWatch);
+                this.sessionWatchGeneration++;
             }
             client.bindJob(body.job.id);
             const execution: Execution = {generation, id: body.job.id, client, artifact: body.artifact, request: body.request, cancelled: false};
@@ -233,7 +236,7 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
     }
     private async publishPlay(publication: Publication): Promise<unknown> {
         const {execution, fresh, old, view, failure} = publication;
-        let terminal: StudioJobView;
+        let terminal: StudioJobView & {browserSessionActive?: boolean};
         try {
             terminal = await this.finish(execution, failure ? "failed" : "completed", publication.output, failure?.message);
         } catch (error) {
@@ -246,7 +249,16 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
             await this.network(`/api/project/wasm/sessions/${sessionId}/dispose`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(this.binding(execution))}).catch(() => undefined);
             throw new PlayFailure("The WASM Play owner changed before publication completed.", {retryDisposition: "safe-to-retry"});
         }
-        if ((terminal.status !== "completed" && !(failure && terminal.status === "failed")) || !terminal.result?.detail?.session) {
+        // A terminal is historical evidence, not authorization to install a Worker.
+        // Recheck bytes/generation even on the retained-publication retry path.
+        const current = await this.artifact().catch(() => undefined);
+        if (terminal.browserSessionActive !== true || !current || current.generation !== execution.artifact.generation || current.manifest.artifact!.sha256 !== execution.artifact.manifest.artifact!.sha256) {
+            execution.client.dispose();
+            if (this.session?.client === execution.client) this.releaseSession();
+            await this.network(`/api/project/wasm/sessions/${fresh ? execution.id : old!.id}/dispose`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(this.binding(execution))}).catch(() => undefined);
+            throw new PlayFailure(`The WASM Project or artifact changed. The historical Play result remains in job ${execution.id}; start a new session in the current Project.`, {retryDisposition: "rejected"});
+        }
+        if ((terminal.status !== "completed" && terminal.status !== "recovery-required" && !(failure && terminal.status === "failed")) || !terminal.result?.detail?.session) {
             execution.client.dispose();
             if (this.session?.client === execution.client) this.releaseSession();
             throw new PlayFailure(terminal.error ?? "WASM Play was interrupted. Start a new session.", {retryDisposition: "safe-to-retry"});

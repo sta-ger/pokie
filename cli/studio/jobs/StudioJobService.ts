@@ -171,6 +171,15 @@ export class StudioJobService {
         return this.transition(id, (job) => ({...job, recovery}));
     }
 
+    /** Attach a late accepted Play publication without erasing the lost-owner terminal/warning.
+     * The browser service authenticates the admitted owner and current artifact first.
+     */
+    public retainBrowserPlayPublication(id: string, result: StudioJobResultView): StudioJobView | undefined {
+        return this.transition(id, job => job.operation === "browser-play" && job.status === "recovery-required" && !job.result?.detail?.session
+            ? {...job, result}
+            : job);
+    }
+
     /**
      * Runs one compatibility executor behind the common durable job record.
      * Reattachment/conflict is resolved before `executor` is called, and the

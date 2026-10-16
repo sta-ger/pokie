@@ -4341,6 +4341,38 @@ describe("StudioServer", () => {
             expect(jobs.get(wasmFile, job.id)?.status).toBe("cancelled");
         });
 
+        it("V2C-22-ASYNC-OWNERSHIP closes through apiClient.closeProject and rejects delayed historical reattachment", async () => {
+            const {closeProject} = await import("../../../cli/studio-client/src/api/apiClient.js");
+            const wasmFile = path.join(wasmStudioRoot, "closing.wasm");
+            const fixture = createCanonicalWasmFixture();
+            fs.writeFileSync(wasmFile, fixture.bytes);
+            fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+            const jobs = createIsolatedJobService(wasmStudioRoot);
+            const homeService = new StudioHomeService("1.3.0");
+            wasmServer = new StudioServer({pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: wasmStudioRoot,
+                jobService: jobs, homeService, blueprintService: new StudioBlueprintService("1.3.0", wasmStudioRoot, homeService),
+                initialContext: {mode: "project", projectRoot: wasmFile}});
+            const address = await wasmServer.start();
+            const base = `http://${address.host}:${address.port}`;
+            const artifactResponse = await get(`${base}/api/project/wasm/artifact`);
+            const binding = {owner: "closing-tab", projectRoot: wasmFile, generation: (artifactResponse.body as {generation: string}).generation, artifactIdentity: fixture.manifest.artifact!.sha256};
+            const started = await post(`${base}/api/project/wasm/jobs`, {...binding, operation: "browser-play", request: {action: "new", seed: "0"}});
+            const id = (started.body as {job: {id: string}}).job.id;
+            const finish = {...binding, cleanup: true, status: "completed", output: {state: {credits: 1000}}};
+            expect((await post(`${base}/api/project/wasm/jobs/${id}/finish`, finish)).status).toBe(200);
+            const historical = jobs.get(wasmFile, id);
+            // The real public close waits for the browser's owned idle session disposal.
+            const closing = closeProject((url, init) => fetch(`${base}${url}`, init), true);
+            try {
+                expect((await post(`${base}/api/project/wasm/sessions/${id}/dispose`, binding)).status).toBe(200);
+            } finally {
+                expect(await closing).toEqual({mode: "home"});
+            }
+            expect((await post(`${base}/api/project/wasm/jobs/${id}/finish`, finish)).status).toBe(409);
+            expect((await get(`${base}/api/project/context`)).body).toEqual({status: "empty"});
+            expect(jobs.get(wasmFile, id)).toEqual(historical);
+        });
+
         it("V2C-22-IDLE-SHUTDOWN settles an unresponsive idle lease after admission closes and retains recovery", async () => {
             const wasmFile = path.join(wasmStudioRoot, "idle.wasm");
             const fixture = createCanonicalWasmFixture();

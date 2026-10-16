@@ -981,16 +981,25 @@ async function browserOwner(fixture = createCanonicalWasmFixture()) {
     const file = path.join(directory, "game.wasm");
     fs.writeFileSync(file, fixture.bytes);
     fs.writeFileSync(`${file}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
-    const context = {mode: "project" as const, projectRoot: file};
+    let context: import("../../../cli/studio/StudioContext.js").StudioContext = {mode: "project", projectRoot: file};
     const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
     const recorder = new StudioRoundRecorder();
     const broker = new StudioWasmBrowserService(jobs, recorder, 10000);
     const controls: {before?: OwnerFetch; after?: (url: string, result: OwnerResponse) => Promise<OwnerResponse>; live: number; plays: number; dispatch?: (data: unknown, deliver: () => void) => void} = {live: 0, plays: 0};
     const network: OwnerFetch = async (url, init) => {
         let result: {status: number; body: unknown};
-        if (url === "/api/project/context") result = {status: 200, body: {status: "loaded", type: "wasm", projectRoot: file}};
-        else if (url === "/api/project/close") result = {status: 200, body: {}};
-        else result = await broker.handle(init?.method ?? "GET", url, init?.body ? JSON.parse(init.body) : undefined, context);
+        if (url === "/api/project/context") result = {status: 200, body: context.mode === "project" ? {status: "loaded", type: "wasm", projectRoot: file} : {status: "empty"}};
+        else if (url === "/api/projects/close") {
+            context = {mode: "home"};
+            result = {status: 200, body: {context}};
+        } else {
+            try {
+                const selected = context;
+                result = await broker.handle(init?.method ?? "GET", url, init?.body ? JSON.parse(init.body) : undefined, selected, () => selected === context);
+            } catch (error) {
+                result = {status: 409, body: {error: error instanceof Error ? error.message : String(error)}};
+            }
+        }
         return {ok: result.status < 300, status: result.status, json: () => Promise.resolve(result.body)};
     };
     const workerRequests: Promise<void>[] = [];
@@ -1050,11 +1059,14 @@ async function browserOwner(fixture = createCanonicalWasmFixture()) {
     });
     await owner.fetch("/api/project/context");
     const api = await import("../../../cli/studio-client/src/api/apiClient.js");
-    return {owner, broker, jobs, recorder, controls, network, file, api, close: async () => {
+    return {owner, broker, jobs, recorder, controls, network, file, api, reopen: () => {
+        context = {mode: "project", projectRoot: file};
+    }, close: async (lostIdleOwner = false) => {
         controls.before = undefined;
         controls.after = undefined;
         owner.dispose();
-        await broker.shutdown();
+        if (lostIdleOwner) await expect(broker.shutdown()).rejects.toThrow(/idle browser Worker cleanup/);
+        else await broker.shutdown();
         await Promise.all(workerRequests);
         fs.rmSync(directory, {recursive: true, force: true});
     }};
@@ -1127,6 +1139,95 @@ it.each([true, false])("V2C-22-PUBLICATION-RECOVERY retries dropped requests/res
         expect(test.jobs.list()).toHaveLength(2);
         expect(await test.api.spinPlaySession(test.owner.fetch, created.session.sessionId, 1, undefined, {requestId: "next"})).toMatchObject({status: "ok"});
         expect(test.controls.plays).toBe(2);
+    } finally {
+        await test.close();
+    }
+});
+it.each([true, false].flatMap(serialize => ["new", "spin"].flatMap(action => ["request", "response"].map(drop => ({serialize, action, drop})))))("V2C-22-PUBLICATION-RECOVERY recovers $action after dropped $drop beyond the lease with serialize=$serialize", async ({serialize, action, drop}) => {
+    jest.useFakeTimers({doNotFake: ["nextTick", "queueMicrotask", "setImmediate"]});
+    const fixture = createCanonicalWasmFixture({capabilities: serialize ? ["runtime.play", "runtime.serialize"] : ["runtime.play"]});
+    const test = await browserOwner(fixture);
+    const reference = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("0"));
+    try {
+        const native = reference.createSession("0");
+        let id: string | undefined;
+        if (action === "spin") {
+            const created = await test.api.createPlaySession(test.owner.fetch, "0");
+            if (created.status !== "ok") throw new Error("Creation rejected");
+            id = created.session.sessionId;
+        }
+        const url = id ? `/api/project/play/sessions/${id}/spin` : "/api/project/play/session";
+        const input = id ? {bet: 1, requestId: "delayed"} : {seed: "0"};
+        const invoke = () => test.owner.fetch(url, {method: "POST", body: JSON.stringify(input)}).then(result => result.json());
+        const expected = id ? await native.play({bet: 1}) : undefined;
+        if (drop === "request") test.controls.before = (route, init) => {
+            if (route.endsWith("/finish")) throw new Error("finish request dropped");
+            return test.network(route, init);
+        };
+        else test.controls.after = (route, response) => {
+            if (route.endsWith("/finish")) throw new Error("accepted finish response dropped");
+            return Promise.resolve(response);
+        };
+        expect(await invoke()).toMatchObject({status: "failed", retryDisposition: "safe-to-retry"});
+        // Pass the real configured lease boundary while publication has no heartbeat.
+        await jest.advanceTimersByTimeAsync(10001);
+        const admitted = test.jobs.list().find(job => job.request.action === action)!;
+        expect(admitted.status).toBe(drop === "request" ? "recovery-required" : "completed");
+        expect(test.controls.live).toBe(1);
+        test.controls.before = undefined;
+        test.controls.after = undefined;
+        const recovered = await invoke();
+        expect(recovered).toMatchObject({status: "ok", session: {sessionId: id ?? admitted.id, credits: expected?.credits ?? 1000}});
+        if (expected) expect(recovered).toMatchObject({session: {screen: expected.screen, stake: expected.stake, payout: expected.payout}});
+        expect(test.controls.plays).toBe(id ? 1 : 0);
+        expect(test.recorder.list()).toHaveLength(id ? 1 : 0);
+        const retained = test.jobs.get(test.file, admitted.id)!;
+        expect(retained.status).toBe(admitted.status);
+        if (drop === "request") expect(retained.recovery).toBeDefined();
+        const binding = {owner: retained.request.browserOwner, generation: retained.request.browserGeneration, artifactIdentity: retained.request.artifactIdentity, cleanup: true, status: "completed"};
+        // Repeated publication cannot substitute a single edited field or a coordinated
+        // round/checkpoint edit for the durable accepted result.
+        for (const output of [{credits: -50}, {round: {credits: -50, stake: 99}, state: {credits: -50}, stateAfter: {credits: -50}}]) {
+            const historical = await test.network(`/api/project/wasm/jobs/${retained.id}/finish`, {method: "POST", body: JSON.stringify({...binding, output})});
+            expect(await historical.json()).toMatchObject({result: retained.result, browserSessionActive: true});
+        }
+        if (id) expect(await invoke()).toEqual(recovered);
+        expect(test.controls.plays).toBe(id ? 1 : 0);
+        const next = await test.api.spinPlaySession(test.owner.fetch, id ?? admitted.id, 1, undefined, {requestId: "successor"});
+        expect(next).toMatchObject({status: "ok", session: {credits: (await native.play({bet: 1})).credits}});
+        expect(test.controls.plays).toBe(id ? 2 : 1);
+        expect(test.recorder.list()).toHaveLength(id ? 2 : 1);
+    } finally {
+        reference.dispose();
+        await test.close(action === "spin" || drop === "response");
+        jest.useRealTimers();
+    }
+});
+it.each(["artifact", "generation"] as const)("V2C-22-PUBLICATION-BINDING preserves historical results without installing a session after %s replacement", async replacement => {
+    const test = await browserOwner();
+    const fs = await import("fs");
+    try {
+        test.controls.after = (route, response) => {
+            if (route.endsWith("/finish")) throw new Error("accepted response lost");
+            return Promise.resolve(response);
+        };
+        await expect(test.api.createPlaySession(test.owner.fetch, "0")).rejects.toThrow(/lost/);
+        const retained = test.jobs.list()[0];
+        expect(retained.result?.detail?.session).toBeDefined();
+        test.controls.after = undefined;
+        if (replacement === "artifact") {
+            const changed = createCanonicalWasmFixture({id: "replacement"});
+            fs.writeFileSync(test.file, changed.bytes);
+            fs.writeFileSync(`${test.file}.pokie-wasm.json`, JSON.stringify(changed.manifest));
+        } else test.reopen();
+        const binding = {owner: retained.request.browserOwner, generation: retained.request.browserGeneration, artifactIdentity: retained.request.artifactIdentity, cleanup: true};
+        const historical = await test.network(`/api/project/wasm/jobs/${retained.id}/finish`, {method: "POST", body: JSON.stringify(binding)});
+        expect(await historical.json()).toMatchObject({result: retained.result, browserSessionActive: false});
+        await expect(test.api.createPlaySession(test.owner.fetch, "0")).rejects.toThrow(/historical Play result/);
+        expect(test.controls.live).toBe(0);
+        expect(test.jobs.get(test.file, retained.id)).toEqual(retained);
+        expect(await test.api.createPlaySession(test.owner.fetch, "0")).toMatchObject({status: "ok"});
+        expect(test.controls.plays).toBe(0);
     } finally {
         await test.close();
     }
@@ -1317,7 +1418,7 @@ it.each(["switch", "dispose"] as const)("V2C-22-ASYNC-OWNERSHIP cannot install d
         const staleContext = test.owner.fetch("/api/project/context");
         await contextSent.promise;
         if (action === "dispose") test.owner.dispose();
-        else await test.owner.fetch("/api/project/close", {method: "POST"});
+        else expect(await test.api.closeProject(test.owner.fetch)).toEqual({mode: "home"});
         context.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "loaded", type: "wasm", projectRoot: "/obsolete.wasm"})});
         await staleContext;
         finish.resolve(terminal);
@@ -1325,6 +1426,10 @@ it.each(["switch", "dispose"] as const)("V2C-22-ASYNC-OWNERSHIP cannot install d
         expect(test.controls.live).toBe(0);
         if (action === "switch") {
             test.controls.before = undefined;
+            // A new Play while Home is selected must reach the real network, not
+            // stale browser interception. Reopening creates a new server generation.
+            expect((await test.owner.fetch("/api/project/wasm/artifact")).ok).toBe(false);
+            test.reopen();
             await test.owner.fetch("/api/project/context");
             expect(await test.api.createPlaySession(test.owner.fetch, "0")).toMatchObject({status: "ok"});
             expect(test.controls.live).toBe(1);

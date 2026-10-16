@@ -42,6 +42,28 @@ describe("StudioJobService", () => {
         ]));
     });
 
+    it("retains a late browser Play result once while preserving lost-owner status and other terminal contracts", () => {
+        let nextId = 0;
+        const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => `late-${++nextId}`);
+        const result = {summary: "Accepted Play", detail: {session: {credits: 999, sessionId: "session"}}};
+        for (const operation of ["browser-play", "simulation", "replay"]) {
+            const started = service.start({projectId: "/a", operation, request: {}, conflictKey: operation});
+            if (started.status !== "created") throw new Error("Expected admission");
+            expect(service.retainBrowserPlayPublication(started.job.id, result)?.result).toBeUndefined();
+            service.requireRecovery(started.job.id, {action: "retry", reason: "Owner expired"});
+            const prior = service.get("/a", started.job.id)!;
+            const retained = service.retainBrowserPlayPublication(started.job.id, result)!;
+            expect(retained).toEqual(operation === "browser-play" ? {...prior, result} : prior);
+            expect(service.retainBrowserPlayPublication(started.job.id, {...result, detail: {session: {credits: 777}}})).toEqual(retained);
+            expect(service.complete(started.job.id, {summary: "replacement"})).toEqual(retained);
+            expect(service.cancelled(started.job.id)).toEqual(retained);
+        }
+        const next = service.start({projectId: "/a", operation: "browser-play", request: {}, conflictKey: "browser-play"});
+        if (next.status !== "created") throw new Error("Expected later admission");
+        service.complete(next.job.id, result);
+        expect(service.retainBrowserPlayPublication(next.job.id, {summary: "replacement"})?.result).toEqual(result);
+    });
+
     it("locks a canonical publication resource across owners while exact requests reattach", () => {
         let nextId = 0;
         const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => `resource-${++nextId}`);

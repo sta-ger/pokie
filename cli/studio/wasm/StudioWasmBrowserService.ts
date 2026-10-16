@@ -36,6 +36,8 @@ export class StudioWasmBrowserService {
     private accepting = true;
     private readonly sessions = new Map<string, SessionLease>();
     private lostSessionCleanup = false;
+    private admission = 0;
+    private readonly recoveries = new Map<string, Promise<Reply>>();
     private readonly jobs: StudioJobService;
     private readonly recorder: StudioRoundRecorder;
     private readonly leaseMs: number;
@@ -93,7 +95,17 @@ export class StudioWasmBrowserService {
         const lease = this.leases.get(route[1]);
         if (!lease && route[2] === "finish" && typeof value.owner === "string" && typeof value.generation === "string" && typeof value.artifactIdentity === "string") {
             const retained = context.mode === "project" ? this.jobs.get(canonicalStudioProjectIdentity(context.projectRoot), route[1]) : undefined;
-            if (retained && isStudioJobTerminal(retained.status) && retained.request.browserOwner === value.owner && retained.request.browserGeneration === value.generation && retained.request.artifactIdentity === value.artifactIdentity) return {status: 200, body: retained};
+            if (retained && isStudioJobTerminal(retained.status) && retained.request.browserOwner === value.owner && retained.request.browserGeneration === value.generation && retained.request.artifactIdentity === value.artifactIdentity) {
+                const pending = this.recoveries.get(retained.id);
+                if (pending) return pending;
+                const publication = this.recoverPublication(retained, value, context, isCurrent);
+                this.recoveries.set(retained.id, publication);
+                try {
+                    return await publication;
+                } finally {
+                    this.recoveries.delete(retained.id);
+                }
+            }
         }
         if (!lease || lease.owner !== value.owner || lease.artifact.generation !== value.generation || lease.artifact.manifest.artifact!.sha256 !== value.artifactIdentity) return {status: 409, body: {error: "The WASM execution owner, generation or artifact changed. Retry from the current Project."}};
         const job = this.jobs.get(lease.job.projectId, lease.job.id)!;
@@ -162,7 +174,7 @@ export class StudioWasmBrowserService {
             request = {...value.request};
         }
         request.seed = String(request.seed ?? crypto.randomUUID());
-        const started = this.jobs.start({projectId: canonicalStudioProjectIdentity(artifact.projectRoot), operation, request: {...request, artifactIdentity: artifact.manifest.artifact!.sha256, browserOwner: value.owner, browserGeneration: artifact.generation}, conflictKey: `${operation}:${canonicalStudioProjectIdentity(artifact.projectRoot)}`, recoveryOnRestart: recovery});
+        const started = this.jobs.start({projectId: canonicalStudioProjectIdentity(artifact.projectRoot), operation, request: {...request, artifactIdentity: artifact.manifest.artifact!.sha256, browserOwner: value.owner, browserGeneration: artifact.generation, browserAdmission: ++this.admission}, conflictKey: `${operation}:${canonicalStudioProjectIdentity(artifact.projectRoot)}`, recoveryOnRestart: recovery});
         if (started.status !== "created") return {status: 409, body: {activeJobId: started.status === "conflict" ? started.activeJobId : started.job.id, error: "An execution already owns this operation. Observe or cancel the retained job; another tab cannot resubmit it."}};
         let settle!: () => void;
         const drained = new Promise<void>(resolve => {
@@ -192,9 +204,10 @@ export class StudioWasmBrowserService {
                     return {status: 200, body: this.jobs.get(job.projectId, job.id)};
                 }
                 const result = this.result(lease, value.output);
+                if (job.operation === "browser-play") this.attachSession(job, lease.owner, lease.artifact, lease.context);
                 if (committedPrefix) this.jobs.fail(job.id, typeof value.error === "string" ? value.error : "Browser Play failed after committed progress.", recovery, result);
                 else this.jobs.complete(job.id, result);
-                return {status: 200, body: this.jobs.get(job.projectId, job.id)};
+                return {status: 200, body: {...this.jobs.get(job.projectId, job.id), ...(job.operation === "browser-play" ? {browserSessionActive: true} : {})}};
             }
             const result = {summary: "Browser Worker stopped after its observed prefix.", detail: {rounds: lease.completed, observedPrefix: lease.prefix}};
             if (value.status === "cancelled" || this.jobs.signal(job.id)?.aborted) this.jobs.cancelled(job.id, result, recovery);
@@ -206,6 +219,50 @@ export class StudioWasmBrowserService {
         } finally {
             this.release(lease);
         }
+    }
+
+    private async recoverPublication(job: StudioJobView, value: Record<string, unknown>, context: StudioContext, isCurrent: () => boolean): Promise<Reply> {
+        // Historical results remain readable under their admitted binding. That binding
+        // does not authorize a live session in a replacement Project or artifact.
+        const historical = () => ({status: 200, body: {...this.jobs.get(job.projectId, job.id), browserSessionActive: false}});
+        if (job.operation !== "browser-play" || value.cleanup !== true || !isCurrent()) return historical();
+        let artifact: PokieWasmBrowserArtifact;
+        try {
+            artifact = await this.artifact(context);
+        } catch {
+            return historical();
+        }
+        if (!isCurrent() || artifact.generation !== job.request.browserGeneration || artifact.manifest.artifact!.sha256 !== job.request.artifactIdentity) return historical();
+        if (this.jobs.list(job.projectId).some(other => other.operation === "browser-play" && other.request.browserGeneration === job.request.browserGeneration && (other.request.browserAdmission as number) > (job.request.browserAdmission as number))) return historical();
+        const existing = this.sessions.get(job.request.sessionId as string ?? job.id);
+        if (existing && (existing.cancelled || existing.owner !== value.owner || existing.context !== context || existing.artifact.generation !== artifact.generation || existing.artifact.manifest.artifact!.sha256 !== artifact.manifest.artifact!.sha256)) return historical();
+        let retained = this.jobs.get(job.projectId, job.id)!;
+        if (!retained.result?.detail?.session && retained.status === "recovery-required" && record(value.output) && (value.status === "completed" || value.status === "failed" && value.output.committedProgress === true)) {
+            // The lease expired before finish arrived. The same owner still holds the
+            // advanced Worker and its accepted output, including non-serializable state.
+            // Retain it once; never turn the cleanup-unconfirmed terminal into success.
+            const lease: Lease = {job: retained, owner: value.owner as string, artifact, context, timer: undefined!, completed: 0, settle: () => undefined, drained: Promise.resolve()};
+            retained = this.jobs.retainBrowserPlayPublication(job.id, this.result(lease, value.output))!;
+        }
+        if (!retained.result?.detail?.session || !["completed", "failed", "recovery-required"].includes(retained.status)) return historical();
+        this.attachSession(retained, value.owner as string, artifact, context);
+        return {status: 200, body: {...retained, browserSessionActive: true}};
+    }
+
+    private attachSession(job: StudioJobView, owner: string, artifact: PokieWasmBrowserArtifact, context: StudioContext): void {
+        const id = job.request.sessionId as string ?? job.id;
+        const existing = this.sessions.get(id);
+        if (existing) {
+            this.armSession(existing);
+            return;
+        }
+        let settle!: () => void;
+        const drained = new Promise<void>(resolve => {
+            settle = resolve;
+        });
+        const session: SessionLease = {id, owner, artifact, context, cancelled: false, timer: undefined!, settle, drained};
+        this.sessions.set(id, session);
+        this.armSession(session);
     }
 
     private result(lease: Lease, output: unknown): StudioJobResultView {
@@ -239,15 +296,6 @@ export class StudioWasmBrowserService {
         }
         const round = (output.round ?? (job.request.action === "restore" ? output.restoredRound : undefined)) as PokieWasmRound | undefined;
         const sessionId = job.request.sessionId as string ?? job.id;
-        if (!this.sessions.has(sessionId)) {
-            let settle!: () => void;
-            const drained = new Promise<void>(resolve => {
-                settle = resolve; 
-            });
-            const session: SessionLease = {id: sessionId, owner: lease.owner, artifact, context: lease.context, cancelled: false, timer: undefined!, settle, drained};
-            this.sessions.set(sessionId, session);
-            this.armSession(session);
-        }
         let roundDetail: StudioRuntimeSessionView["debug"] = {};
         if (round) roundDetail = manifest.capabilities.includes("artifact.inspect")
             ? {artifact: projectPokieWasmRoundArtifact(round, {game, pokieVersion: POKIE_WASM_RUNTIME_VERSION, configHash: provenance.configHash}, `wasm:${job.id}`)}
