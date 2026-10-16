@@ -37,23 +37,39 @@ export function isWasmComponentFile(targetPath: string): boolean {
     }
 }
 
-/** Synchronous admission for public services with synchronous start contracts.
- * Execution still revalidates asynchronously after acquiring its resources.
- */
-function readVerifiedCanonicalFile(targetPath: string): PokieWasmComponentManifest {
+/** Declaration checks authorize only a queued attempt, never module execution. */
+function readDeclaredCanonicalFile(targetPath: string): PokieWasmComponentManifest {
     const manifest = JSON.parse(fs.readFileSync(`${targetPath}.pokie-wasm.json`, "utf-8")) as PokieWasmComponentManifest;
     const compatibility = assessWasmComponentCompatibility(manifest);
     if (!compatibility.compatible) throw new Error(compatibility.issues.map(issue => issue.message).join(" "));
     if (!manifest.artifact) throw new Error("Legacy sidecar-only WASM is inspection-only.");
     if (manifest.minPokieVersion && !satisfiesMinimumSemverLite(POKIE_WASM_RUNTIME_VERSION, manifest.minPokieVersion)) throw new Error(`Update POKIE runtime ${POKIE_WASM_RUNTIME_VERSION} to ${manifest.minPokieVersion} or newer.`);
     if (manifest.artifact.format !== "pokie.wasm.v1" || manifest.artifact.abiVersion !== "3.0.0" || manifest.artifact.adapter !== "@fromstan/pokie/wasm") throw new Error("WASM artifact format, ABI or adapter is incompatible with this runtime.");
+    assertSupportedCanonicalWasmRuntimeContract(manifest);
+    return manifest;
+}
+
+/** Synchronous lifecycle admission. Runtime acquisition must still validate current bytes. */
+export function readCanonicalWasmDeclaration(targetPath: string, operation: string):
+    | {readonly supported: true; readonly manifest: PokieWasmComponentManifest}
+    | {readonly supported: false; readonly message: string} {
+    try {
+        return {supported: true, manifest: readDeclaredCanonicalFile(targetPath)};
+    } catch {
+        return {supported: false, message: describeWasmLifecycleBoundary(targetPath, operation)};
+    }
+}
+
+/** Strict artifact checks used by public integrity/capability queries. */
+function readVerifiedCanonicalFile(targetPath: string): PokieWasmComponentManifest {
+    const manifest = readDeclaredCanonicalFile(targetPath);
+    const artifact = manifest.artifact!;
     const bytes = fs.readFileSync(targetPath);
     const hash = (value: Uint8Array): string => `sha256:${crypto.createHash("sha256").update(value).digest("hex")}`;
-    if (bytes.length !== manifest.artifact.bytes || hash(bytes) !== manifest.artifact.sha256) throw new Error("WASM module bytes do not match the sidecar SHA-256/byte count.");
+    if (bytes.length !== artifact.bytes || hash(bytes) !== artifact.sha256) throw new Error("WASM module bytes do not match the sidecar SHA-256/byte count.");
     const canonical = readCanonicalPokieWasmModule(bytes);
-    if (hash(canonical.modelBytes) !== manifest.artifact.configurationHash) throw new Error("WASM configuration hash does not match its sidecar.");
+    if (hash(canonical.modelBytes) !== artifact.configurationHash) throw new Error("WASM configuration hash does not match its sidecar.");
     assertCanonicalWasmDescriptorMatchesManifest(canonical.descriptor, manifest);
-    assertSupportedCanonicalWasmRuntimeContract(manifest);
     if (manifest.serialization.state !== (canonical.model.features ? "pokie.state.v4" : "pokie.state.v3")) throw new Error("WASM model and state schema are incompatible.");
     return manifest;
 }

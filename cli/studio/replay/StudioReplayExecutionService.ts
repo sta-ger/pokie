@@ -10,9 +10,7 @@ import {
     captureRoundPokieSessionState,
     captureScreen,
     describeUnavailableArtifactOperation,
-    describeWasmLifecycleBoundary,
-    hasDeclaredCanonicalWasmOperation,
-    hasDeclaredCanonicalWasmArtifact,
+    readCanonicalWasmDeclaration,
     isWasmComponentFile,
     loadPokieWasmFileRuntime,
     GameSessionHandling,
@@ -198,14 +196,14 @@ export class StudioReplayExecutionService {
         }
         if (request.recording && (isWasmComponentFile(projectRoot) || outcomeSourceProject)) return {status: "unsupported", message: "Recorded package audit is unavailable for WASM and outcome libraries; use their existing replay profiles."};
         if (request.unit === "logical-round" && outcomeSourceProject) return {status: "unsupported", message: "This runtime cannot replay feature logical rounds."};
-        // Keep the no-job WASM boundary inside the shared lifecycle as well as
-        // StudioServer. A direct caller must not be able to queue work that
-        // can only fail after attempting runtime preparation.
-        if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmArtifact(projectRoot)) {
-            return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "replay a game round")};
-        }
-        if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmOperation(projectRoot, "runtime.replay")) {
-            return {status: "unsupported", message: "This canonical WASM artifact does not declare runtime.replay; it cannot replay a game round."};
+        // Admission checks declarations; runtime acquisition revalidates bytes
+        // and publishes a retained failure if a canonical artifact was replaced.
+        if (isWasmComponentFile(projectRoot)) {
+            const declaration = readCanonicalWasmDeclaration(projectRoot, "replay a game round");
+            if (!declaration.supported) return {status: "unsupported", message: declaration.message};
+            if (!declaration.manifest.capabilities.includes("runtime.replay")) {
+                return {status: "unsupported", message: "This canonical WASM artifact does not declare runtime.replay; it cannot replay a game round."};
+            }
         }
         const common = this.jobService?.start({
             projectId: projectRoot,
