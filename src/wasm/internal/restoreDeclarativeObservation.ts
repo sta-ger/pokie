@@ -209,9 +209,18 @@ function validateRetainedWins(session: VideoSlotSessionHandling, blueprint: Game
             } else if (win.type === "cluster") {
                 if (blueprint.winModel?.type !== "clusters" || !(/^(0|[1-9][0-9]*)$/).test(win.id) || Number(win.id) >= blueprint.reels * matrix[0].length ||
                     count < (blueprint.winModel.minimumClusterSize ?? 5) || stableSlotMathJson(win.metadata.symbolsPositions) !== stableSlotMathJson(win.winningPositions)) throw invalid();
-                const connected = new Set([0]);
-                for (let pass = 0; pass < count; pass++) for (const [index, [reel, row]] of win.winningPositions.entries()) {
-                    if (win.winningPositions.some(([r, y], other) => connected.has(other) && Math.abs(r - reel) + Math.abs(y - row) === 1)) connected.add(index);
+                const cells = new Set(win.winningPositions.map(([reel, row]) => `${reel}:${row}`));
+                const connected = new Set<string>();
+                const pending = [win.winningPositions[0]];
+                while (pending.length) {
+                    const [reel, row] = pending.pop()!;
+                    const key = `${reel}:${row}`;
+                    if (connected.has(key)) continue;
+                    connected.add(key);
+                    for (const position of [[reel - 1, row], [reel + 1, row], [reel, row - 1], [reel, row + 1]]) {
+                        const neighbor = `${position[0]}:${position[1]}`;
+                        if (cells.has(neighbor) && !connected.has(neighbor)) pending.push(position);
+                    }
                 }
                 if (connected.size !== count) throw invalid();
             } else throw invalid();
