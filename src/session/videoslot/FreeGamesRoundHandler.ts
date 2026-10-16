@@ -1,32 +1,42 @@
 import type {FreeGamesRoundHandling} from "./FreeGamesRoundHandling.js";
 import type {VideoSlotWithFreeGamesSessionHandling} from "./VideoSlotWithFreeGamesSessionHandling.js";
 
+/** Built-in bookkeeping, shared by execution and canonical checkpoint validation. */
+export function resolveFreeGamesEntry(num: number, sum: number, bank: number, forcedGrant = 0) {
+    return num === sum ? {num: 0, sum: forcedGrant, bank: 0} : {num, sum: sum + forcedGrant, bank};
+}
+
+export function resolveFreeGamesRound(num: number, sum: number, bank: number, win: number, grant: number) {
+    const banked = sum > 0 && num < sum;
+    if (banked) {
+        num++;
+        bank += win;
+    }
+    if (grant > 0) sum += grant;
+    const released = grant <= 0 && sum > 0 && num === sum;
+    if (!Number.isFinite(bank)) throw new Error("Free-games bank or balance overflow.");
+    return {num, sum, bank, banked, released, payout: (banked ? 0 : win) + (released ? bank : 0)};
+}
+
 export class FreeGamesRoundHandler<T extends string | number | symbol = string> implements FreeGamesRoundHandling<T> {
     public beforeRoundPlayed(session: VideoSlotWithFreeGamesSessionHandling<T>): void {
         if (session.getFreeGamesNum() === session.getFreeGamesSum()) {
-            session.setFreeGamesBank(0);
-            session.setFreeGamesNum(0);
-            session.setFreeGamesSum(0);
+            const next = resolveFreeGamesEntry(session.getFreeGamesNum(), session.getFreeGamesSum(), session.getFreeGamesBank());
+            session.setFreeGamesBank(next.bank);
+            session.setFreeGamesNum(next.num);
+            session.setFreeGamesSum(next.sum);
         }
     }
 
     public afterRoundPlayed(session: VideoSlotWithFreeGamesSessionHandling<T>, creditsBeforePlay: number): void {
-        let cursor = session.getFreeGamesNum();
-        let bank = session.getFreeGamesBank();
-        let credits = session.getCreditsAmount();
-        let sum = session.getFreeGamesSum();
-        if (sum > 0 && cursor < sum) {
-            cursor++;
-            bank += session.getWinAmount();
-            credits = creditsBeforePlay;
-        }
-        const wonFreeGames = session.getWonFreeGamesNumber();
-        if (wonFreeGames > 0) sum += wonFreeGames;
-        else if (sum > 0 && cursor === sum) credits += bank;
-        if (!Number.isFinite(bank) || !Number.isFinite(credits)) throw new Error("Free-games bank or balance overflow.");
-        session.setFreeGamesNum(cursor);
-        session.setFreeGamesBank(bank);
-        session.setFreeGamesSum(sum);
+        const next = resolveFreeGamesRound(session.getFreeGamesNum(), session.getFreeGamesSum(), session.getFreeGamesBank(),
+            session.getWinAmount(), session.getWonFreeGamesNumber());
+        let credits = next.banked ? creditsBeforePlay : session.getCreditsAmount();
+        if (next.released) credits += next.bank;
+        if (!Number.isFinite(credits)) throw new Error("Free-games bank or balance overflow.");
+        session.setFreeGamesNum(next.num);
+        session.setFreeGamesBank(next.bank);
+        session.setFreeGamesSum(next.sum);
         session.setCreditsAmount(credits);
     }
 }

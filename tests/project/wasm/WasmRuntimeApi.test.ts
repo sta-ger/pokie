@@ -678,9 +678,9 @@ it.each(["stepwise", "composite", "plain"] as const)("binds %s artifact awards, 
                 const error = /modifier|sticky|holdAndWin|jackpot|chargedBetMode|win|position|logical|stops|draw|plain money|canonical feature|freeGamesTriggered|respins|bonus/i;
                 if (nativeObservation) {
                     const steps = corrupt.feature.logicalRound?.subrounds[0].artifacts ?? corrupt.feature.plainMath!.artifact.steps;
-                    expect(() => restoreDeclarativeObservation(nativeObservation.session, blueprint, steps!, receipt.screen!.map(reel => [...reel]), receipt.win!, undefined, nativeObservation.calculator, corrupt.feature.analyticsCheckpoint?.before)).toThrow(error);
+                    expect(() => restoreDeclarativeObservation(nativeObservation.session, blueprint, steps!, receipt.screen!.map(reel => [...reel]), receipt.win!, undefined, nativeObservation.calculator, corrupt.feature.analyticsCheckpoint?.before, corrupt.feature.analyticsCheckpoint?.balances, corrupt.feature.logicalRound?.subrounds[0].stake ?? corrupt.feature.plainMath!.artifact.stake)).toThrow(error);
                     const validSteps = saved.feature.logicalRound?.subrounds[0].artifacts ?? saved.feature.plainMath!.artifact.steps;
-                    expect(() => restoreDeclarativeObservation(nativeObservation.session, blueprint, validSteps!, receipt.screen!.map(reel => [...reel]), receipt.win!, undefined, nativeObservation.calculator, saved.feature.analyticsCheckpoint?.before)).not.toThrow();
+                    expect(() => restoreDeclarativeObservation(nativeObservation.session, blueprint, validSteps!, receipt.screen!.map(reel => [...reel]), receipt.win!, undefined, nativeObservation.calculator, saved.feature.analyticsCheckpoint?.before, saved.feature.analyticsCheckpoint?.balances, saved.feature.logicalRound?.subrounds[0].stake ?? saved.feature.plainMath!.artifact.stake)).not.toThrow();
                 }
                 expect(() => runtime.restoreSession(corrupt)).toThrow(error);
                 expect(() => fresh.restoreSession(corrupt)).toThrow(error);
@@ -927,14 +927,21 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s aut
         native.session.setBet(0.05);
         try {
             const session = runtime.createSession("probe");
-            const command = {bet: 0.05, roundId: "x", ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1})};
+            const entry = {bet: 0.05, roundId: "x", ...(test.mode ? {mode: test.mode} : {}), ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1})};
+            const continuation = policy === "plain" ? {bet: 0.05, roundId: "continued"} : {delivery: policy, maxSubrounds: 1, continuation: {roundId: "x", cursor: 1}};
+            const command = test.continuation ? continuation : entry;
+            if (test.continuation) await session.play(entry);
             const {deliveries: _deliveries, ...receipt} = await session.play(command);
             expect(receipt.win).toBe(test.expectedWin);
+            if (test.expectedPayout !== undefined) expect(receipt.payout).toBeCloseTo(test.expectedPayout, 12);
+            if (test.expectedSum !== undefined) expect(Reflect.get(receipt.network!, "freeGamesSum")).toBe(test.expectedSum);
+            if (test.expectedRemaining !== undefined) expect(receipt.network?.holdAndWin).toMatchObject({active: true, respinsRemaining: 2, payout: 0});
             const saved = session.serialize();
             if (saved.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
             const corrupt = await mutateCheckpointTransition(saved, test, command);
             let expected = /Collection.*transition/i;
-            if (test.id.includes("hold")) expected = /HoldAndWin.*(payout|entry)/i;
+            if (test.id.includes("hold")) expected = /HoldAndWin.*(payout|entry|completion)/i;
+            if (test.id.includes("free")) expected = /Free-games.*(bank|counters)/i;
             if (test.id.includes("jackpot")) expected = /Jackpot.*(award|payout)/i;
             if (test.id.includes("bonus")) expected = /bonus.*(selection|observation)/i;
             if (test.id === "transition-bonus-entry") expected = /Weighted bonus selection presence/i;
@@ -954,7 +961,7 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s aut
                 return restoreDeclarativeObservation(native.session, test.blueprint, math?.artifacts ?? state.feature.plainMath!.artifact.steps!,
                     state.feature.lastRound!.screen!.map(reel => [...reel]), math?.win ?? state.feature.plainMath!.artifact.totalWin,
                     undefined, native.calculator, state.feature.analyticsCheckpoint!.before, state.feature.analyticsCheckpoint!.balances,
-                    math?.stake ?? state.feature.plainMath!.artifact.stake);
+                    math?.stake ?? state.feature.plainMath!.artifact.stake, math?.payout ?? state.feature.plainMath!.payout);
             };
             expect(() => observe(corrupt)).toThrow(expected);
             expect(() => observe(saved)).not.toThrow();
@@ -974,6 +981,12 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s aut
                 const actual = await session.play(next);
                 expect(actual).toEqual(await reference.play(next));
                 if (test.nextWin !== undefined) expect(actual.win).toBe(test.nextWin);
+                if (test.mode === "buy" && !test.continuation) {
+                    expect(actual.payout).toBe(0);
+                    expect(actual.credits).toBe(999.5);
+                    if (index === 1) expect(Reflect.get(actual.network!, "freeGamesNum")).toBe(3);
+                }
+                if (test.expectedRemaining !== undefined) expect(actual.network?.holdAndWin).toMatchObject({active: index === 0, respinsRemaining: index === 0 ? 1 : 0, payout: index === 0 ? 0 : 2});
                 expect(session.serialize()).toEqual(reference.serialize());
             }
             for (const target of [runtime, fresh]) {

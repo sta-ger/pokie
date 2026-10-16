@@ -240,7 +240,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                 const plainArtifact = state.feature.plainMath?.artifact;
                 const mathematicalWin = round?.subrounds[0].win ?? state.feature.plainMath!.artifact.totalWin;
                 const final = round?.subrounds[0].finalScreen ?? state.feature.plainMath?.finalScreen ?? artifacts[artifacts.length - 1]?.generatedScreen ?? last.screen!;
-                const observation = restoreDeclarativeObservation(check.session, blueprint, artifacts, final as string[][], mathematicalWin, state.feature.componentAmounts, check.calculator, state.feature.analyticsCheckpoint?.before, state.feature.analyticsCheckpoint?.balances, round?.subrounds[0].stake ?? plainArtifact!.stake);
+                const observation = restoreDeclarativeObservation(check.session, blueprint, artifacts, final as string[][], mathematicalWin, state.feature.componentAmounts, check.calculator, state.feature.analyticsCheckpoint?.before, state.feature.analyticsCheckpoint?.balances, round?.subrounds[0].stake ?? plainArtifact!.stake, round?.subrounds[0].payout ?? state.feature.plainMath!.payout);
                 // The shared owner has now validated the complete canonical event set
                 // against the model/native observations. Bind the plain aggregate to it;
                 // equality between two unchecked retained copies is insufficient.
@@ -298,6 +298,12 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                     ![accounting.credits, accounting.stake, accounting.baseWin].every(value => Number.isFinite(value) && value >= 0) ||
                     mathematicalEntry && (accounting.entryPosition !== checkpoint.state.position + 1 || Math.abs(accounting.credits - mathBefore) > ledgerTolerance || accounting.stake !== stake ||
                         accounting.baseWin !== entryBaseWin)) throw new Error("Invalid accepted analytics entry accounting.");
+                if (checkpoint.before.free) {
+                    const priorWin = checkpoint.state.active.freeGames?.win;
+                    const priorBank = checkpoint.balances?.freeGamesBank;
+                    const settled = mathBefore - accounting.credits + accounting.stake - accounting.baseWin;
+                    if (priorWin === undefined || priorBank === undefined || Math.abs(priorBank + settled - priorWin) > ledgerTolerance) throw new Error("Analytics free-games prior bank contradicts accepted feature accounting.");
+                }
                 const bank = (observation as {getFreeGamesBank?: () => number}).getFreeGamesBank?.() ?? 0;
                 const priorImmediateWin = (round ? round.totalWin : state.credits - accounting.credits + accounting.stake) - accounting.baseWin - mathematicalWin;
                 // Free-game mathematics includes outer jackpot awards as well as the bank.

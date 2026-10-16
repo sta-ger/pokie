@@ -1,3 +1,6 @@
+import {resolveFreeGamesEntry, resolveFreeGamesRound} from "../../session/videoslot/FreeGamesRoundHandler.js";
+import type {FreeGamesStateDetermining} from "../../session/FreeGamesStateDetermining.js";
+import {resolveHoldAndWinProgression} from "../../session/videoslot/holdandwin/HoldAndWinRoundHandler.js";
 import {SymbolSetHoldAndWinCollector} from "../../session/videoslot/holdandwin/SymbolSetHoldAndWinCollector.js";
 import {MinimumCountHoldAndWinTrigger} from "../../session/videoslot/holdandwin/MinimumCountHoldAndWinTrigger.js";
 import {SumWithMultiplierHoldAndWinPayoutAggregator} from "../../session/videoslot/holdandwin/SumWithMultiplierHoldAndWinPayoutAggregator.js";
@@ -40,10 +43,11 @@ import {stableSlotMathJson} from "../math/SharedSlotMath.js";
 import {ScreenProjection} from "../../session/videoslot/coordinates/ScreenProjection.js";
 
 /** Only the immediately preceding balances needed by non-invertible reset transitions. */
-export type DeclarativeTransitionBalances = {collectionValue?: number; jackpotValue?: number};
+export type DeclarativeTransitionBalances = {collectionValue?: number; jackpotValue?: number; freeGamesBank?: number};
 
 export function captureDeclarativeTransitionBalances(session: VideoSlotSessionHandling, blueprint: GameBlueprint): DeclarativeTransitionBalances {
     const balances: DeclarativeTransitionBalances = {};
+    if (blueprint.mechanics?.freeGames) balances.freeGamesBank = (session as VideoSlotSessionHandling & FreeGamesStateDetermining).getFreeGamesBank();
     if (blueprint.mechanics?.collection) balances.collectionValue = (session as VideoSlotSessionHandling & {toSessionState(): BoundedSessionState}).toSessionState().value;
     if (blueprint.mechanics?.jackpot) balances.jackpotValue = (session as VideoSlotSessionHandling & {getJackpotPools(): readonly JackpotPoolRepresenting[]}).getJackpotPools()[0].getValue();
     return balances;
@@ -52,7 +56,7 @@ export function captureDeclarativeTransitionBalances(session: VideoSlotSessionHa
 /** Rehydrate accepted observations for the existing serializers/analytics observer.
  * Existing stateless math validates retained screens; no RNG, wallet effect or prefix replay.
  */
-export function restoreDeclarativeObservation(session: VideoSlotSessionHandling, blueprint: GameBlueprint, artifacts: readonly RoundStepArtifact[], finalScreen: string[][], win: number, componentAmounts: PokieWasmFeatureSessionState["feature"]["componentAmounts"], calculator: VideoSlotWinCalculator, before?: SessionFeatureAnalyticsBeforePlay, balances?: DeclarativeTransitionBalances, stake = 0): VideoSlotSessionHandling {
+export function restoreDeclarativeObservation(session: VideoSlotSessionHandling, blueprint: GameBlueprint, artifacts: readonly RoundStepArtifact[], finalScreen: string[][], win: number, componentAmounts: PokieWasmFeatureSessionState["feature"]["componentAmounts"], calculator: VideoSlotWinCalculator, before?: SessionFeatureAnalyticsBeforePlay, balances?: DeclarativeTransitionBalances, stake?: number, payout?: number): VideoSlotSessionHandling {
     const last = artifacts[artifacts.length - 1];
     if (!last) throw new Error("Missing retained mathematical observation.");
     const event = (type: string) => last.featureEvents?.find(event => event.type === type)?.data;
@@ -70,7 +74,10 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
     const free = mechanics?.freeGames;
     const evaluated = blueprint.screenGeometry ? new ScreenProjection(blueprint.screenGeometry).project(finalScreen, "evaluated") : finalScreen;
     const grant = free ? free.awardsByCount[SymbolsCombinationsAnalyzer.getScatterSymbolsPositions(evaluated, free.scatterSymbol).length] ?? 0 : 0;
-    validateNativeFeatureTransition(session, blueprint, finalScreen, before, balances, stake);
+    // Components are checked against the domain calculator below. Sum the bankable
+    // components directly: subtracting a large outer jackpot can erase a small win.
+    const bankableWin = artifacts.flatMap(step => step.wins).filter(component => component.type !== "jackpot").reduce((sum, component) => sum + component.winAmount, 0);
+    validateNativeFeatureTransition(session, blueprint, finalScreen, before, balances, stake ?? 0, bankableWin, grant, payout);
     const nativeGrant = (session as Partial<WonFreeGamesNumberDetermining>).getWonFreeGamesNumber?.() ?? 0;
     if (nativeGrant !== grant) throw new Error("Retained freeGamesTriggered grant contradicts its model and evaluated screen.");
     for (const [type, expected] of [["holdAndWin", current.holdAndWin], ["jackpot", current.jackpot],
@@ -237,15 +244,28 @@ function validateRetainedWins(session: VideoSlotSessionHandling, blueprint: Game
 
 /** Validate native result authority before using native components in any projection. */
 function validateNativeFeatureTransition(session: VideoSlotSessionHandling, blueprint: GameBlueprint, screen: string[][],
-    before: SessionFeatureAnalyticsBeforePlay | undefined, balances: DeclarativeTransitionBalances | undefined, stake: number): void {
+    before: SessionFeatureAnalyticsBeforePlay | undefined, balances: DeclarativeTransitionBalances | undefined, stake: number, bankableWin: number, grant: number, payout?: number): void {
     const mechanics = blueprint.mechanics;
-    const expectedKeys = [mechanics?.collection ? "collectionValue" : undefined, mechanics?.jackpot ? "jackpotValue" : undefined].filter(Boolean).sort();
-    if (balances === undefined ? expectedKeys.length > 0 : !balances || typeof balances !== "object" || Array.isArray(balances) || Object.keys(balances).sort().join(",") !== expectedKeys.join(",")) throw new Error("Missing or invalid collection/jackpot/bonus observation transition balances.");
+    const expectedKeys = [mechanics?.freeGames ? "freeGamesBank" : undefined, mechanics?.collection ? "collectionValue" : undefined, mechanics?.jackpot ? "jackpotValue" : undefined].filter(Boolean).sort();
+    if (balances === undefined ? expectedKeys.length > 0 : !balances || typeof balances !== "object" || Array.isArray(balances) || Object.keys(balances).sort().join(",") !== expectedKeys.join(",")) throw new Error("Missing or invalid free-games bank/collection/jackpot/bonus observation transition balances.");
+    if (mechanics?.freeGames) {
+        const priorBank = balances!.freeGamesBank;
+        if (!before || !Number.isSafeInteger(before.freeNum) || !Number.isSafeInteger(before.freeSum) || before.freeNum < 0 || before.freeSum < before.freeNum || before.free !== (before.freeSum > before.freeNum) || typeof priorBank !== "number" || !Number.isFinite(priorBank) || priorBank < 0) throw new Error("Invalid free-games accepted bank transition.");
+        const modeId = observeVideoSlotFeatures(session).chargedBetModeId;
+        const mode = stake > 0 ? blueprint.betModes?.find(mode => mode.id === modeId) : undefined;
+        const forcedGrant = mode?.runtimeType === "buyFeature" ? mode.forcedFreeGames ?? 0 : 0;
+        const entry = resolveFreeGamesEntry(before.freeNum, before.freeSum, priorBank, forcedGrant);
+        const jackpot = observeVideoSlotFeatures(session).jackpot?.award?.amount ?? 0;
+        const next = resolveFreeGamesRound(entry.num, entry.sum, entry.bank, bankableWin, grant);
+        const native = session as VideoSlotSessionHandling & FreeGamesStateDetermining;
+        if (native.getFreeGamesNum() !== next.num || native.getFreeGamesSum() !== next.sum || Math.abs(native.getFreeGamesBank() - next.bank) > 32 * Number.EPSILON * Math.max(1, native.getFreeGamesBank(), next.bank)) throw new Error("Free-games counters or bank contradict their accepted entry, grant or continuation transition.");
+        if (payout !== undefined && Math.abs(payout - next.payout - jackpot) > 32 * Number.EPSILON * Math.max(1, session.getCreditsAmount(), next.payout, payout)) throw new Error("Free-games bank release contradicts its accepted wallet payout.");
+    }
     const hold = mechanics?.holdAndWin;
     if (hold) {
         const native = session as VideoSlotSessionHandling & {
             isHoldAndWinActive(): boolean; getLockedHoldAndWinSymbols(): readonly LockedHoldAndWinSymbol[];
-            getHoldAndWinLastRoundOutcome(): {kind: string; payout?: number}; getHoldAndWinEntryBet(): number;
+            getHoldAndWinLastRoundOutcome(): {kind: string; payout?: number}; getHoldAndWinEntryBet(): number; getHoldAndWinRespinsRemaining(): number;
         };
         const locks = native.getLockedHoldAndWinSymbols();
         const outcome = native.getHoldAndWinLastRoundOutcome();
@@ -253,6 +273,15 @@ function validateNativeFeatureTransition(session: VideoSlotSessionHandling, blue
         const triggered = new MinimumCountHoldAndWinTrigger(hold.minimumCount).isTriggered(candidates);
         if (!before || !before.hold && (native.isHoldAndWinActive() || outcome.kind === "completed") !== triggered ||
             (before.hold || triggered) && stableSlotMathJson([...locks].sort((a, b) => a.position[0] - b.position[0] || a.position[1] - b.position[1])) !== stableSlotMathJson(candidates)) throw new Error("HoldAndWin entry or locks contradict its accepted screen and model trigger.");
+        if (before.hold || triggered) {
+            if (!Number.isSafeInteger(before.locks) || before.locks < 0 || !Number.isSafeInteger(before.holdRemaining) ||
+                before.hold && (before.locks > locks.length || before.holdRemaining < 1 || before.holdRemaining > hold.initialRespins)) throw new Error("HoldAndWin prior locks or respins contradict its accepted transition.");
+            const next = resolveHoldAndWinProgression(hold.initialRespins, before.holdRemaining, locks.length - (before.hold ? before.locks : 0),
+                locks.length >= blueprint.reels * blueprint.rows, !before.hold);
+            let kind = before.hold ? "suppressed" : "ordinary";
+            if (next.completed) kind = "completed";
+            if (native.isHoldAndWinActive() !== !next.completed || native.getHoldAndWinRespinsRemaining() !== (next.completed ? 0 : next.remaining) || outcome.kind !== kind) throw new Error("HoldAndWin completion contradicts its accepted lock and respin transition.");
+        }
         if ((before.hold || triggered) && native.getHoldAndWinEntryBet() !== session.getBet()) throw new Error("HoldAndWin entry denomination contradicts its accepted play.");
         if (outcome.kind === "completed" && outcome.payout !== new SumWithMultiplierHoldAndWinPayoutAggregator(hold.payout.amountsAreBetMultiples).aggregate(locks, session.getBet())) throw new Error("HoldAndWin payout contradicts its authored payout contract.");
     }

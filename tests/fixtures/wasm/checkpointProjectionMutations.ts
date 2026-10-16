@@ -59,6 +59,18 @@ export const checkpointProjectionMutations: readonly (readonly [string, unknown?
 
 export function mutateCheckpointProjection<T>(saved: T, [path, value]: readonly [string, unknown?]): T {
     const corrupt = JSON.parse(JSON.stringify(saved));
+    if (path.startsWith("acceptedTransition.free")) {
+        const field = path.endsWith("Bank") ? "freeGamesBank" : "freeGamesSum";
+        let native = corrupt.feature.state;
+        while (!(field in native)) native = native.base;
+        native[field] = 999;
+        corrupt.feature.lastRound.network[field] = 999;
+        if (path.endsWith("Sum") && corrupt.feature.lastRound.analytics) {
+            const event = corrupt.feature.lastRound.analytics.features.find((event: {feature: string}) => event.feature === "freeGames");
+            if (path.includes("Purchased")) event.granted = 999;
+        }
+        return corrupt as T;
+    }
     if (path === "acceptedTransition.entryBet") {
         corrupt.feature.state.entryBet = value;
         return corrupt as T;
@@ -344,7 +356,7 @@ function checkpointAwardFixtures(base: GameBlueprint): ReturnType<typeof checkpo
 }
 
 /** Alternative-rule checkpoints retain internally consistent native/public money and events. */
-export function checkpointTransitionFixtures(): {id: string; blueprint: GameBlueprint; alternative?: GameBlueprint; mutation: readonly [string, unknown?]; expectedWin: number; nextWin?: number}[] {
+export function checkpointTransitionFixtures(): {id: string; blueprint: GameBlueprint; alternative?: GameBlueprint; mutation: readonly [string, unknown?]; expectedWin: number; nextWin?: number; mode?: string; continuation?: boolean; expectedPayout?: number; expectedSum?: number; expectedRemaining?: number}[] {
     const clone = (value: GameBlueprint): GameBlueprint => JSON.parse(JSON.stringify(value)) as GameBlueprint;
     const model = (id: string) => existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
     const hold = model("hold-flat");
@@ -376,6 +388,16 @@ export function checkpointTransitionFixtures(): {id: string; blueprint: GameBlue
         else rule.minimumCount = 2;
         return alternative;
     };
+    const natural = model("free-games");
+    natural.reelStrips = [["S"], ["S"], ["S"]];
+    const purchased = model("modes");
+    purchased.reelStrips = [["A"], ["A"], ["A"]];
+    purchased.betModes!.find(mode => mode.id === "buy")!.forcedFreeGames = 3;
+    const continuingHold = clone(oneHold);
+    continuingHold.mechanics!.holdAndWin!.initialRespins = 3;
+    continuingHold.mechanics!.holdAndWin!.payout.amountsAreBetMultiples = false;
+    const exhaustedHold = clone(continuingHold);
+    exhaustedHold.mechanics!.holdAndWin!.initialRespins = 1;
     return [
         {id: "transition-hold-payout", blueprint: hold, alternative: holdFlat, mutation: ["acceptedTransition.alternative"], expectedWin: 0.30000000000000004},
         {id: "transition-hold-denomination", blueprint: hold, alternative: holdFlat, mutation: ["acceptedTransition.alternativeDenomination"], expectedWin: 0.30000000000000004},
@@ -389,6 +411,16 @@ export function checkpointTransitionFixtures(): {id: string; blueprint: GameBlue
         {id: "transition-bonus-balances-zero", blueprint: bonus, mutation: ["analyticsCheckpoint.balances", 0], expectedWin: 0.25},
         {id: "transition-collection-carry", blueprint: collection, mutation: ["acceptedTransition.collection", 0], expectedWin: 0, nextWin: 10},
         {id: "transition-collection-reset", blueprint: zero, mutation: ["acceptedTransition.collection", 1], expectedWin: 10, nextWin: 10},
+        {id: "transition-free-natural-bank", blueprint: natural, mutation: ["acceptedTransition.freeNaturalBank"], expectedWin: 0, expectedPayout: 0, expectedSum: 2},
+        {id: "transition-free-purchased-bank", blueprint: purchased, mode: "buy", mutation: ["acceptedTransition.freePurchasedBank"], expectedWin: 0, expectedPayout: 0, expectedSum: 3},
+        {id: "transition-free-natural-sum", blueprint: natural, mutation: ["acceptedTransition.freeNaturalSum"], expectedWin: 0, expectedPayout: 0, expectedSum: 2},
+        {id: "transition-free-purchased-sum", blueprint: purchased, mode: "buy", mutation: ["acceptedTransition.freePurchasedSum"], expectedWin: 0, expectedPayout: 0, expectedSum: 3},
+        {id: "transition-free-natural-continuation-bank", blueprint: natural, continuation: true, mutation: ["acceptedTransition.freeNaturalBank"], expectedWin: 0, expectedPayout: 0, expectedSum: 4},
+        {id: "transition-free-purchased-continuation-bank", blueprint: purchased, mode: "buy", continuation: true, mutation: ["acceptedTransition.freePurchasedBank"], expectedWin: 0, expectedPayout: 0, expectedSum: 3},
+        ...([undefined, null, "0", -1] as const).map((value, index) => ({id: `transition-free-prior-bank-${index}`, blueprint: purchased, mode: "buy",
+            mutation: ["analyticsCheckpoint.balances.freeGamesBank", value] as const, expectedWin: 0, expectedPayout: 0, expectedSum: 3})),
+        {id: "transition-hold-premature-completion", blueprint: continuingHold, alternative: exhaustedHold, continuation: true,
+            mutation: ["acceptedTransition.alternative"], expectedWin: 0, expectedPayout: 0, expectedRemaining: 2},
     ];
 }
 
@@ -402,6 +434,7 @@ export async function mutateCheckpointTransition(saved: import("../../../src/was
     const runtime = await instantiatePokieWasm(artifact.bytes, artifact.manifest, new SeededPokieWasmHost("probe"));
     try {
         const session = runtime.createSession("probe");
+        if (fixture.continuation) await session.play({bet: 0.05, roundId: "x", ...(command.delivery ? {delivery: "stepwise"} : {})});
         await session.play(command);
         const alternative = session.serialize();
         if (alternative.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
@@ -410,6 +443,12 @@ export async function mutateCheckpointTransition(saved: import("../../../src/was
         // Keep them original while the native award/statistics/ledger copies agree.
         const record = JSON.parse(JSON.stringify(alternative));
         record.artifactIdentity = saved.artifactIdentity;
+        if (fixture.continuation) {
+            record.feature.analyticsCheckpoint.before.holdRemaining = saved.feature.analyticsCheckpoint!.before.holdRemaining;
+            expect(record.feature.analyticsCheckpoint.before.holdRemaining).toBe(3);
+            expect(record.feature.analyticsCheckpoint.state.source).toBe(record.feature.analytics.source);
+            expect(record.feature.lastRound.network.holdAndWin).toMatchObject({active: false, respinsRemaining: 0, payout: 2});
+        }
         if (fixture.mutation[0] === "acceptedTransition.alternativeDenomination") record.feature.state.entryBet = 1;
         record.feature.lastRound.analytics.envelope = saved.feature.lastRound!.analytics!.envelope;
         if (record.feature.lastRound.weightedBonusStatistics) {

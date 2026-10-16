@@ -610,16 +610,21 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s aut
         const fresh = new PokieWasmWorkerProtocol();
         try {
             for (const target of [worker, fresh]) expect(await target.handle({id: "start", type: "instantiate", ...fixture, seed: "probe"})).toMatchObject({ok: true});
-            const command = {bet: 0.05, roundId: "x", ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1})};
+            const entry = {bet: 0.05, roundId: "x", ...(test.mode ? {mode: test.mode} : {}), ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1})};
+            const continuation = policy === "plain" ? {bet: 0.05, roundId: "continued"} : {delivery: policy, maxSubrounds: 1, continuation: {roundId: "x", cursor: 1}};
+            const command = test.continuation ? continuation : entry;
+            if (test.continuation) expect(await worker.handle({id: "entry", type: "play", command: entry})).toMatchObject({ok: true});
             const played = await worker.handle({id: "play", type: "play", command});
             expect(played).toMatchObject({ok: true, result: {win: test.expectedWin}});
+            if (test.expectedPayout !== undefined) expect(played).toMatchObject({ok: true, result: {payout: expect.closeTo(test.expectedPayout, 12)}});
+            if (test.expectedRemaining !== undefined) expect(played).toMatchObject({ok: true, result: {network: {holdAndWin: {active: true, respinsRemaining: 2, payout: 0}}}});
             const snapshot = await worker.handle({id: "state", type: "serialize"});
             if (!snapshot.ok) throw new Error(snapshot.error);
             const saved = snapshot.result as import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmFeatureSessionState;
             const corrupt = await mutateCheckpointTransition(saved, test, command);
             const diagnostics = worker.getDiagnostics();
             for (const target of [worker, fresh]) {
-                const error = expect.stringMatching(test.id === "transition-bonus-entry" ? /Weighted bonus selection presence/i : /HoldAndWin.*(payout|entry)|Jackpot.*(award|payout)|bonus.*(selection|observation)|Collection.*transition/i);
+                const error = expect.stringMatching(test.id === "transition-bonus-entry" ? /Weighted bonus selection presence/i : /Free-games.*(bank|counters)|HoldAndWin.*(payout|entry|completion)|Jackpot.*(award|payout)|bonus.*(selection|observation)|Collection.*transition/i);
                 expect(await target.handle({id: "bad", type: "restore", state: corrupt})).toMatchObject({ok: false, error});
                 expect(await target.handle({id: "bad", type: "replay", state: corrupt, commands: [command]})).toMatchObject({ok: false, error});
             }
@@ -636,6 +641,8 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s aut
                 const actual = await worker.handle(request);
                 expect(actual).toEqual(await fresh.handle(request));
                 if (test.nextWin !== undefined) expect(actual).toMatchObject({ok: true, result: {win: test.nextWin}});
+                if (test.mode === "buy" && !test.continuation) expect(actual).toMatchObject({ok: true, result: {payout: 0, credits: 999.5}});
+                if (test.expectedRemaining !== undefined) expect(actual).toMatchObject({ok: true, result: {network: {holdAndWin: {active: index === 0, respinsRemaining: index === 0 ? 1 : 0, payout: index === 0 ? 0 : 2}}}});
                 expect(await worker.handle({id: "state", type: "serialize"})).toEqual(await fresh.handle({id: "state", type: "serialize"}));
             }
             for (const target of [worker, fresh]) {

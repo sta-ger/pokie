@@ -35,7 +35,7 @@ export type PokieWasmFeatureSessionState = Omit<PokieWasmOrdinarySessionState, "
         /** Accepted underlying legacy display amounts; zero multipliers cannot be inverted. */
         readonly componentAmounts?: {readonly ways: readonly number[]; readonly clusters: readonly number[]};
         /** Input to the sole latest accepted analytics transition; replaced, never accumulated. */
-        readonly analyticsCheckpoint?: {readonly balances?: {readonly collectionValue?: number; readonly jackpotValue?: number}; readonly state: import("../simulation/SessionFeatureAnalyticsObserver.js").SessionFeatureAnalyticsState; readonly before: import("../simulation/SessionFeatureAnalyticsObserver.js").SessionFeatureAnalyticsBeforePlay};
+        readonly analyticsCheckpoint?: {readonly balances?: {readonly collectionValue?: number; readonly jackpotValue?: number; readonly freeGamesBank?: number}; readonly state: import("../simulation/SessionFeatureAnalyticsObserver.js").SessionFeatureAnalyticsState; readonly before: import("../simulation/SessionFeatureAnalyticsObserver.js").SessionFeatureAnalyticsBeforePlay};
         /** One mathematical entry ledger anchor; replaced on the next entry, never a history. */
         readonly accounting?: {readonly entryPosition: number; readonly credits: number; readonly stake: number; readonly baseWin: number};
         readonly analytics?: import("../simulation/SessionFeatureAnalyticsObserver.js").SessionFeatureAnalyticsState;
