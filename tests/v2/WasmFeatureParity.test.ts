@@ -23,6 +23,9 @@ it("checkpoints weighted bonus through fresh JSON hosts without reselecting or c
         const manifest = JSON.parse(fs.readFileSync(`${artifact}.pokie-wasm.json`, "utf8")) as PokieWasmComponentManifest;
         const runtime = await instantiatePokieWasm(bytes, manifest, new SeededPokieWasmHost("0"));
         const session = runtime.createSession("0");
+        const initialized = session.serialize();
+        await expect(session.play({mode: () => "buy"})).rejects.toThrow(/Mode must be/);
+        expect(session.serialize()).toEqual(initialized);
         const entry = await session.play({bet: 0.05, roundId: "bonus", delivery: "stepwise"});
         expect(entry.stake).toBe(0.05);
         expect(entry.network?.boundedMechanics?.weightedBonus?.selectedNow).toBe(true);

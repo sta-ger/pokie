@@ -14,7 +14,7 @@ import {SessionFeatureAnalyticsObserver, setSimulationModelIdentity} from "../..
 import {VideoSlotSessionSerializer} from "../../net/videoslot/VideoSlotSessionSerializer.js";
 import type {SessionStateRestoring} from "../../session/SessionStateRestoring.js";
 import type {VideoSlotSessionHandling} from "../../session/videoslot/VideoSlotSessionHandling.js";
-import type {SessionCommand} from "../../runtime/SessionCommand.js";
+import {validateSessionCommand, type SessionCommand} from "../../runtime/SessionCommand.js";
 import {BoundedPokieWasmTraceCollector, POKIE_WASM_DEFAULT_CREDITS, type PokieWasmFeatureSessionState, type PokieWasmHost, type PokieWasmHostState, type PokieWasmRestorableState, type PokieWasmRound, type PokieWasmRuntime, type PokieWasmRuntimeSession} from "../PokieWasmRuntimeApi.js";
 
 type NativeSession = VideoSlotSessionHandling & SessionStateRestoring & {toSessionState(): unknown; fromSessionState(value: unknown): unknown};
@@ -204,7 +204,11 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
             play: (input = {}, options = {}) => Promise.resolve().then(() => {
                 declared(replaying ? "runtime.replay" : "runtime.play");
                 if (!native) throw new Error("The WASM runtime session has been disposed.");
-                const command = copy({...input, kind: input.kind ?? "spin"}) as SessionCommand;
+                if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("invalid-command: Command must be an object.");
+                const candidate = {...input, kind: input.kind === undefined ? "spin" : input.kind};
+                const malformed = validateSessionCommand(candidate);
+                if (malformed) throw new Error(`invalid-command: ${malformed}`);
+                const command = copy(candidate) as SessionCommand;
                 const last = state.feature.lastRound;
                 const identity = deliveryIdentity(command);
                 const previous = last?.command as SessionCommand | undefined;
