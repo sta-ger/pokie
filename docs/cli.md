@@ -51,13 +51,12 @@ Design Game and Build/Export expose editable/browsable destinations and refuse c
 action. Previews are advisory: execution checks again, so an occupied-after-preview destination is refused
 unchanged. After a conflict, choose another destination and retry; the prior artifact and unsaved source remain.
 
-WASM supports line wins with wild substitution, visible-screen scatter payouts, and `availableBets` selection.
-It rejects ways, clusters, `mechanics.freeGames`, and nonempty `betModes`. ABI 1.0 allows **30 total stop bits
-across all reels**. Its module generates packed reel stops with host randomness; a separate JavaScript
-`evaluateWinMultiplier` in `PokieWasmRuntime.ts` calculates wins. Blueprint is canonical and PAR uses
-model-preserving import. Arbitrary TypeScript/Node packages are not converted; an empty packaging advisory is
-not proof of portability or compilation. Narrow parity is not full mechanics or one shared calculation path.
-See [WASM boundary](wasm-compatibility-boundary.md) and the [reviewed status register](audit-corrections/README.md).
+WASM and generated Node games share `pokie.math.v2` evaluation for ordinary lines, ways and clusters,
+including wilds, authored paytables and effective `availableBets`. ABI 2.0 generates stops and screens and
+calculates payouts in the module from raw host draws. Stops use a bounded i32 array with no total-bit cap;
+the host owns RNG continuation, ledger and IO. Feature mechanics, geometry, weighted sequences and bet modes
+remain unsupported. Blueprint is canonical; PAR and complete declared package models use model-preserving
+extraction, without compiling arbitrary TypeScript behavior. See [execution, identity and resource limits](wasm-compatibility-boundary.md).
 
 ## `pokie run <artifact.wasm>`
 

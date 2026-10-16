@@ -44,11 +44,11 @@ describe("canonical WASM CLI workflow", () => {
         const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
         try {
             for (const model of [
-                {...blueprint, winModel: {type: "ways"}},
-                {...blueprint, symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(1025).fill("A"), Array<string>(1024).fill("A"), Array<string>(1024).fill("A")]},
+                {...blueprint, mechanics: {freeGames: {scatterSymbol: "A", awardsByCount: {3: 5}}}, scatters: ["A"]},
+                {...blueprint, symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(65537).fill("A"), Array<string>(1024).fill("A"), Array<string>(1024).fill("A")]},
             ]) {
                 fs.writeFileSync(source, JSON.stringify(model));
-                const diagnostic = "winModel" in model ? /winModel.type "ways".*Next:/ : /30 total stop bits across all reels.*Next:/;
+                const diagnostic = /freeGames.*Next:|Limits:.*Next:/;
                 await expect(new BuildCommand("1.3.0").run([source, "--target", "wasm", "--out", destination, "--dry-run"])).rejects.toThrow(diagnostic);
                 await expect(new BuildCommand("1.3.0").run([source, "--target", "wasm", "--out", destination])).rejects.toThrow(diagnostic);
                 expect(fs.existsSync(destination)).toBe(false);
@@ -131,8 +131,8 @@ describe("canonical WASM CLI workflow", () => {
         try {
             await expect(new InspectCommand().run([artifact])).resolves.toBe(0);
             expect(output.join("\n")).toContain("canonical ABI");
-            expect(output.join("\n")).toContain("separate JavaScript evaluateWinMultiplier");
-            expect(output.join("\n")).toContain("30 total stop bits across all reels");
+            expect(output.join("\n")).toContain("same pokie.math.v2 WebAssembly evaluator");
+            expect(output.join("\n")).toContain("no total-bit cap");
             expect(output.join("\n")).toContain("compatibility    compatible");
             expect(output.join("\n")).toContain("host bindings");
             expect(output.join("\n")).toContain("capabilities");
@@ -142,7 +142,7 @@ describe("canonical WASM CLI workflow", () => {
             log.mockRestore();
         }
         const report = JSON.parse(output.join("\n"));
-        expect(report).toMatchObject({valid: true, wasm: {abiVersion: "1.0.0", compatibility: "compatible", hostRequirements: {rng: "pokie.rng.v1"}}});
+        expect(report).toMatchObject({valid: true, wasm: {abiVersion: "2.0.0", compatibility: "compatible", hostRequirements: {rng: "pokie.rng.v2"}}});
         expect(report.wasm.integrity).toMatch(/^sha256:[a-f0-9]{64}/);
     });
 

@@ -125,7 +125,7 @@ describe("canonical WASM Studio workflow", () => {
             const opened = await post("/api/project/play/session", {seed: "0"});
             expect(opened.status).toBe(201);
             const initial = await opened.json() as {session: StudioRuntimeSessionView};
-            expect(initial.session.debug?.stateAfter).toMatchObject({schemaVersion: "pokie.state.v2", drawCount: 2, sequence: 0, credits: 1000, rngState: expect.any(Number)});
+            expect(initial.session.debug?.stateAfter).toMatchObject({schemaVersion: "pokie.state.v3", drawCount: 2, sequence: 0, credits: 1000, rngState: expect.any(Number)});
             const node = fixture.game.createSession({seed: "0"});
             expect((initial.session.debug?.stateAfter as PokieWasmSessionState).rngState).toEqual((node as unknown as {toSessionState(): {rngState: number}}).toSessionState().rngState);
             const states: unknown[] = [initial.session.debug?.stateAfter];
@@ -187,7 +187,7 @@ describe("canonical WASM Studio workflow", () => {
         await expect(waitForTerminal(() => replay.getStatus(artifactPath, replayStart.job.id))).resolves.toMatchObject({status: "completed"});
         const download = replay.getDownload(artifactPath, replayStart.job.id);
         if (download.status !== "ok") throw new Error("expected descriptor");
-        expect(download.descriptor).toMatchObject({round: 10000, totalBet: 10000, totalWin: 20000, stateBefore: {schemaVersion: "pokie.state.v2", sequence: 9999}, stateAfter: {schemaVersion: "pokie.state.v2", sequence: 10000}});
+        expect(download.descriptor).toMatchObject({round: 10000, totalBet: 10000, totalWin: 20000, stateBefore: {schemaVersion: "pokie.state.v3", sequence: 9999}, stateAfter: {schemaVersion: "pokie.state.v3", sequence: 10000}});
         for (const state of [download.descriptor.stateBefore, download.descriptor.stateAfter]) {
             expect(Buffer.byteLength(JSON.stringify(state))).toBeLessThanOrEqual(192);
             expect(state).not.toHaveProperty("draws");
@@ -258,7 +258,7 @@ describe("canonical WASM Studio workflow", () => {
             expect(completed).not.toHaveBeenCalled();
             expect(surface === "simulation" ? simulation.getReport(artifactPath, started.job.id) : replay.getDownload(artifactPath, started.job.id)).toMatchObject({status: "not-ready"});
             if (captured !== undefined) {
-                expect(captured.schemaVersion).toBe("pokie.state.v2");
+                expect(captured.schemaVersion).toBe("pokie.state.v3");
                 expect(Buffer.byteLength(JSON.stringify(captured))).toBeLessThanOrEqual(192);
             }
             expect(() => actual!.createSession("0")).toThrow(/disposed/);

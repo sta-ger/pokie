@@ -17,7 +17,7 @@ describe("explicit bounded WASM trace", () => {
         const detached = trace.entries;
         (detached[0].draws as number[]).push(0);
         expect(trace.entries[0].draws).toHaveLength(2);
-        expect(initial).toMatchObject({schemaVersion: "pokie.state.v2", drawCount: 2});
+        expect(initial).toMatchObject({schemaVersion: "pokie.state.v3", drawCount: 2});
         expect(session.serialize()).not.toHaveProperty("draws");
         await expect(session.play({bet: -1})).rejects.toThrow(/positive/);
         expect(trace.dropped).toBe(1);
@@ -83,8 +83,9 @@ describe("explicit bounded WASM trace", () => {
         }};
         expect(() => runtime.createSession("0", {trace: fake as never})).toThrow(/collector/);
         runtime.dispose();
-        const trapped = createCanonicalWasmFixture({trapping: true});
-        const trapping = await instantiatePokieWasm(trapped.bytes, trapped.manifest, new SeededPokieWasmHost("0"));
+        const trapping = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => {
+            throw new WebAssembly.RuntimeError("unreachable host trap");
+        }});
         const trappedTrace = new BoundedPokieWasmTraceCollector(2);
         const session = trapping.createSession("0", {trace: trappedTrace});
         await expect(session.play()).rejects.toThrow(/unreachable/);
@@ -132,11 +133,11 @@ describe("explicit bounded WASM trace", () => {
             const legacy = {schemaVersion: "pokie.state.v1" as const, seed: "wasm-parity-golden", sequence, credits: 900, draws: [...history], rngState: host.serializeState()};
             const session = runtime.restoreSession(legacy);
             const compact = session.serialize();
-            expect(compact).toEqual({schemaVersion: "pokie.state.v2", seed: legacy.seed, sequence, credits: 900, drawCount: history.length, rngState: legacy.rngState});
+            expect(compact).toEqual({schemaVersion: "pokie.state.v3", artifactIdentity: fixture.manifest.artifact!.sha256, seed: legacy.seed, sequence, credits: 900, drawCount: history.length, rngState: legacy.rngState});
             expect(legacy.draws).toEqual(history);
             expect((await session.play()).draw).toBe((await runtime.replay(compact, [{}])).rounds[0].draw);
             expect(() => runtime.restoreSession({...legacy, draws: [NaN]})).toThrow(/malformed/);
-            expect(() => runtime.restoreSession({...compact, schemaVersion: "pokie.state.v3" as never})).toThrow(/Unsupported/);
+            expect(() => runtime.restoreSession({...compact, schemaVersion: "pokie.state.v999" as never})).toThrow(/Unsupported/);
             expect(() => runtime.restoreSession({...compact, draws: history} as never)).toThrow(/malformed/);
         }
         runtime.dispose();

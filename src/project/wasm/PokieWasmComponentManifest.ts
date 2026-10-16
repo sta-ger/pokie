@@ -5,7 +5,7 @@
 // major is always incompatible. See that function's own doc comment for the exact rule.
 export const POKIE_WASM_CONTRACT_VERSION = "1.0.0";
 /** Stable portable runtime ABI understood by this POKIE release. */
-export const POKIE_WASM_ABI_VERSION = "1.0.0";
+export const POKIE_WASM_ABI_VERSION = "2.0.0";
 /** Adapter understood by this release's portable WebAssembly runtime. */
 export const POKIE_WASM_ADAPTER = "@fromstan/pokie/wasm";
 

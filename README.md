@@ -263,12 +263,11 @@ resolution is protected by a max-step guard for deterministic runtime safety.
 - **Math** — configure a session and run Monte Carlo simulations to balance RTP, hit frequency, and volatility
   before a game ships.
 
-POKIE's WASM target uses a hybrid execution path: the module generates packed reel stops with host randomness,
-and `PokieWasmRuntime.ts` evaluates wins separately in JavaScript. It supports line wins, wild substitution,
-scatter payouts, and `availableBets`; ways, clusters, free games, and nonempty bet modes are rejected. ABI 1.0
-allows at most 30 total stop bits across reels. Blueprint is canonical; PAR uses model-preserving import.
-Arbitrary TypeScript/Node packages are not converted, and narrow parity does not prove full mechanics or one
-calculation path. See the [shipped WASM boundary](docs/wasm-compatibility-boundary.md).
+POKIE's WASM target and generated Node games share the `pokie.math.v2` WebAssembly evaluator for ordinary
+lines, ways and clusters, including fractional stakes, wilds and authored paytables. ABI 2.0 uses an i32 stop
+array with no total-bit cap; the host owns randomness, continuation, ledger and IO. Blueprint, PAR and complete
+declared package models use model-preserving conversion; arbitrary TypeScript behavior is not compiled.
+Feature mechanics remain outside this WASM slice. See the [execution and resource boundaries](docs/wasm-compatibility-boundary.md).
 
 Math Targeting/Optimization is agreed but not implemented; its release scope is unconfirmed. Authored YAML and
 PDF reports are absent from the reviewed formats. Overscan, partial analytics/certification/authoring/diff/

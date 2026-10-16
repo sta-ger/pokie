@@ -21,21 +21,57 @@ not runnable until rebuilt as a canonical artifact.
 
 ## Current execution and mechanics
 
-Current WASM execution is **hybrid**: the module produces packed reel stops using host randomness;
-[`PokieWasmRuntime.ts`](../src/wasm/PokieWasmRuntime.ts) calculates wins in a separate JavaScript
-`evaluateWinMultiplier` implementation. The supported subset is left-to-right line wins on materialized strips,
-wild substitution, scatter payouts counted over the visible screen, and `availableBets` stake selection
-(defaulting to its first entry, or 1 when absent). All-wild lines without a regular symbol do not pay through
-that evaluator. Ways, clusters, `mechanics.freeGames`, and nonempty `betModes` are rejected before publication.
-ABI 1.0 permits **30 total stop bits across all reels**, summing `max(1, ceil(log2(strip.length)))` per reel;
-this is not 30 bits per reel. Shorten strips or reduce reels to fit, or build a TypeScript package.
+Generated Node games and canonical portable artifacts consume **one production math kernel**, `pokie.math.v2`.
+The maintained source is `src/wasm/math/shared-math.wat`; its checked-in executable is regenerated with
+`node src/wasm/math/generate-kernel.mjs` (development requires WABT's `wat2wasm`; consumers need no compiler).
+`SharedSlotMath` lowers a validated model into the same bounded memory image for both targets.
+Generated `dist/index.js` and recompilable `src/index.ts` select this calculation path for ordinary supported
+models. Direct built-in calculators and custom evaluator injection retain their existing extension pipeline.
+Unsupported generated features retain their Node pipeline and cannot be published as a reduced WASM model.
 
-Blueprint remains canonical; PAR reaches WASM through model-preserving import. Arbitrary TypeScript/Node
-packages are not converted to WASM. An empty packaging advisory proves neither portability nor compilation
-support. A supported conversion route still requires validation of its concrete model. Golden parity tests
-cover the supported subset; they do not establish full mechanics support or one shared calculation path.
-Canonical integrity and individually declared runtime operations remain prerequisites; legacy sidecar-only
-components remain inspection-only.
+ABI **2.0.0** imports `pokie.next_random: () -> f64`, a raw finite draw in `[0,1)`.
+`play(stake: f64) -> f64` validates an available stake before drawing, consumes exactly one draw per reel,
+selects `floor(draw * strip.length)`, builds circular reel-major windows, evaluates the selected win model and
+returns the payout. `evaluate(stake: f64) -> f64` evaluates an already supplied screen without RNG. Both export
+`memory`, whose minimum and maximum are equal and derived from the model. There is no rejection sampling.
+Seeded host initialization consumes one unpaid screen's draws once, matching Node construction. The host owns
+seed/reset/continuation, credit settlement, serialization, trace collection, transport and IO. Module scratch
+contains only the current evaluation, has no session history and is cleared on runtime disposal.
+
+The model (`pokie.game.v2`, math identifier `pokie.math.v2`) includes effective bets, symbol inventory,
+strips, paylines, wilds, scatters, authored payout entries, win selection and cluster minimum. Default bets
+are `[1,2,3,4,5,10,20,30,40,50,100]`. Default three-row paylines retain the built-in middle/top/bottom order.
+Lines select the first matching left-to-right pattern, then look up its exact count; missing/zero entries
+never fall back to shorter awards. All-wild lines and all-wild clusters do not pay. Ways multiply matching
+row counts on consecutive reels and preserve the built-in all-wild substitution rule. Clusters use orthogonal
+adjacency, production DFS/wild ownership and the authored minimum. Lines include scatter payouts; ways and
+clusters select their own evaluator group, without adding a scatter evaluator. Each component multiplies its
+payout entry by stake before ways multiplication and ordered addition. Node preserves component attribution;
+portable CLI/Studio rounds remain amount-only for their existing analytics/feature boundaries.
+
+Stops are **one unsigned i32 per reel**, rather than a packed integer. The little-endian header contains
+reel count at byte 0, rows at 4, stop-array address at 44, screen-array address at 48, component-array address
+at 52, record stride at 56, component count at 72, total payout (f64) at 80 and bounded memory use at 96.
+The exported `lowerSharedSlotMath` describes the exact image. Each component record carries kind, symbol id,
+component id, position count, ways (f64), amount (f64), then reel-major cell indexes. The reader validates memory,
+cardinality, stops, symbols, positions, amounts and total, without modulo repair. There is **no total stop-bit cap**.
+Limits are 64 reels, 64 rows, 1024 cells, 128 unique symbols, 1024 paylines, 65536 stops per reel,
+262144 total stops and 8 MiB of model/output/scratch memory. A paid play consumes at most 64 draws (one per supported reel). Models exceeding these bounds fail before publication
+with a recovery action. The existing small-artifact budget remains 64 KiB; it is not a promise that every
+supported larger model produces a 64 KiB artifact.
+
+Blueprint is canonical. PAR and complete public package-model descriptors use existing model-preserving
+extraction routes; this extracts a declared representable model, never arbitrary TypeScript/Node behavior.
+Screen geometry, weighted sequences, modifiers, free games, bounded mechanics, HoldAndWin, jackpots and bet
+modes remain outside this WASM slice. Canonical integrity and individually declared operations are prerequisites;
+legacy metadata-only components remain inspection-only.
+
+The embedded descriptor (`pokie.component.v2`) and sidecar must agree on component identity, operation declarations,
+serialization (`pokie.session.v2`, `pokie.play.v2`, `pokie.state.v3`), RNG (`pokie.rng.v2`), host services and ABI.
+Byte count, SHA-256, configuration hash, imports, function signatures and required exports are checked before
+host RNG or session creation. The loader also reconstructs the supported lowering and requires **exact module
+bytes**, binding executable semantics and memory layout to the model, including internally rehashed corruption.
+Old executable ABIs must be regenerated; no user artifact migration is introduced.
 
 ## The contract — `PokieWasmComponentManifest`
 
@@ -138,27 +174,22 @@ WASM, regardless of what this scan finds.**
 No package compilation is implied by a `"wasm"` project resolving successfully, or by
 `assessWasmPackagingPreflight` reporting zero blocking API usages.
 
-## Portable continuation and explicit evidence (runtime API 1.2)
+## Portable continuation and explicit evidence (runtime API 2.0)
 
-Portable session snapshots now use `pokie.state.v2`: `seed`, `sequence`,
-`credits`, total `drawCount` (including unpaid initialization), and optional
-JSON-safe `rngState`. No draw/round/command history is part of this snapshot.
-The integrity-bound artifact declarations remain `pokie.state.v1`,
-`pokie.session.v1`, `pokie.play.v1` and ABI 1.0; existing canonical artifacts
-and sidecars are unchanged. The host snapshot format is independent of those
-module identifiers.
+Snapshots use `pokie.state.v3`: artifact SHA-256 identity, seed, sequence, credits, total draw count (including
+unpaid initialization) and optional JSON-safe RNG continuation. There is no draw, screen, result or command
+history. Restoration rejects a different artifact identity before changing the host. A JSON round trip and a
+fresh host preserve continuation, including numeric RNG state zero. An initialized sequence-zero snapshot
+restores its authoritative RNG; an empty initial seed descriptor initializes exactly once. Later unbound
+compact v2 snapshots are rejected; regenerate campaign fixtures. The explicit legacy v1 history importer
+remains for existing audit fixtures: it validates history/count, preserves authoritative continuation and
+emits a bound v3 snapshot without retaining the historical input. This compatibility importer cannot establish
+an identity absent from the input, so callers must associate old evidence with its original artifact.
 
-`restoreSession` and `replay` accept `PokieWasmRestorableState`, including
-`PokieWasmLegacySessionState`. In v1, `draws` still means complete history.
-An import validates its values and count, preserves authoritative RNG/ledger
-values, and emits v2 with the historical evidence intentionally omitted;
-keep the input separately if it is needed as audit evidence. A legacy empty
-sequence-zero seed descriptor initializes the seeded stream. Later states
-without RNG continuation and unsupported/malformed versions are rejected.
-Custom nextRandom-only hosts retain live execution; deterministic restoration
-requires appropriate host reset/restore support. Custom `serializeState`
-implementations must themselves return bounded continuation, without growing
-history or queues. The runtime cannot guarantee bounded caller-owned JSON.
+Custom nextRandom-only hosts retain live execution. Deterministic restoration requires appropriate host
+reset/restore support. Custom host snapshots must themselves remain bounded. Invalid stakes and insufficient
+credits fail before any draw or ledger mutation. Sibling sessions restore their owned continuation before play;
+replay cannot advance an unrelated settled session.
 
 `BoundedPokieWasmTraceCollector(capacity)` is exported from the root,
 `@fromstan/pokie/browser`, and `@fromstan/pokie/wasm`. Pass `{trace}` to create/restore/replay or
@@ -182,7 +213,7 @@ once and remains proportional to the supplied input length; it is not a
 bounded-history claim. Compact tape continuation carries a SHA-256 fingerprint,
 length, cursor, seed and RNG word, never the full tape. Compatible receiving
 Workers need the same tape. Old numeric and tape/cursor/seed/rng continuations
-are validated on import; ordinary v2 continuation does not rescan prefixes.
+are validated on import; ordinary Worker v2 RNG continuation does not rescan prefixes.
 An exhausted or mismatched tape reports an error and retains the settled
 session snapshot. Worker `traceCapacity` opts into finite collection; `trace`
 reads clone-safe evidence, and replay may return a finite `trace` field.
@@ -202,9 +233,8 @@ screenGeometry is explicitly unsupported by canonical WASM and PAR conversion: s
 
 V2C-07 package audit envelopes are not a new WASM feature. The browser entry exposes
 portable recording types for future reuse, while execution stays on the shared
-package SessionRuntime path in Node/Studio. Existing canonical WASM `runtime.replay`,
-compact snapshots and bounded traces are unchanged; no command history is added to
-portable WASM state. Native outcome libraries likewise retain their existing
+package SessionRuntime path in Node/Studio. Canonical WASM retains dedicated `runtime.replay`,
+compact snapshots and bounded traces; ABI 2 uses artifact-bound v3 snapshots without adding command history. Native outcome libraries likewise retain their existing
 selection provenance, hashes and fairness verification profile.
 
 ## Weighted whole-sequence boundary

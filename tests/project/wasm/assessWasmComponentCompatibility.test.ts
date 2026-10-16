@@ -46,7 +46,7 @@ describe("assessWasmComponentCompatibility", () => {
                 format: "pokie.wasm.v1",
                 sha256: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
                 bytes: 8,
-                abiVersion: "2.0.0",
+                abiVersion: "99.0.0",
                 adapter: "@fromstan/pokie/wasm",
                 configurationHash: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
             },

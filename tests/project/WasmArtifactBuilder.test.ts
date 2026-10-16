@@ -64,7 +64,7 @@ describe("WasmArtifactBuilder", () => {
         fs.writeFileSync(sourcePath, JSON.stringify({...blueprint, symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: Array.from({length: 3}, () => Array<string>(1024).fill("A"))}));
         await new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, outputPath);
         const module = readCanonicalPokieWasmModule(new Uint8Array(fs.readFileSync(outputPath)));
-        expect(module.model.stopWidths).toEqual([10, 10, 10]);
+        expect(module.model.reelStrips.map(strip => strip.length)).toEqual([1024, 1024, 1024]);
         const runtime = await loadPokieWasmFileRuntime(outputPath, {nextRandom: () => 0.5});
         try {
             expect(await runtime.createSession("boundary").play()).toMatchObject({screen: [["A"], ["A"], ["A"]], payout: 2});
@@ -73,17 +73,20 @@ describe("WasmArtifactBuilder", () => {
         }
     });
 
-    it("rejects 31 total stop bits before allocating a module or sidecar", async () => {
+    it("accepts 31 total stop bits with independent array entries", async () => {
         const sourcePath = path.join(workDir, "thirty-one.blueprint.json");
         const outputPath = path.join(workDir, "thirty-one.wasm");
         fs.writeFileSync(sourcePath, JSON.stringify({...blueprint, symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(1025).fill("A"), Array<string>(1024).fill("A"), Array<string>(1024).fill("A")]}));
         const source = {type: "blueprint" as const, rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"};
         const builder = new WasmArtifactBuilder("1.3.0");
-        await expect(builder.validate(source)).rejects.toThrow(/30 total stop bits across all reels.*Next:/);
-        await expect(builder.build(source, outputPath)).rejects.toThrow(/30 total stop bits across all reels/);
-        expect(fs.existsSync(outputPath)).toBe(false);
-        expect(fs.existsSync(`${outputPath}.pokie-wasm.json`)).toBe(false);
-        expect(fs.readdirSync(workDir)).toEqual(["thirty-one.blueprint.json"]);
+        await builder.validate(source);
+        await builder.build(source, outputPath);
+        const runtime = await loadPokieWasmFileRuntime(outputPath, {nextRandom: () => 0.999});
+        try {
+            expect(await runtime.createSession("above-boundary").play()).toMatchObject({stops: [1023, 1022, 1022], payout: 2});
+        } finally {
+            runtime.dispose();
+        }
     });
 
     it("rejects a swapped module during resolution", async () => {
@@ -168,8 +171,6 @@ describe("WasmArtifactBuilder", () => {
     });
 
     it.each([
-        ["ways", {...blueprint, winModel: {type: "ways"}}],
-        ["clusters", {...blueprint, winModel: {type: "clusters"}}],
         ["free games", {...blueprint, symbols: ["A", "B", "C", "S"], scatters: ["S"], reelStrips: [["A", "B", "S"], ["B", "C", "S"], ["C", "A", "S"]], paytable: {A: {3: 2}, B: {3: 1}, C: {3: 1}, S: {3: 1}}, mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 5}}}}],
         ["bet modes", {...blueprint, betModes: [{id: "base"}]}],
     ])("rejects unsupported canonical WASM %s semantics with a recovery action", async (_name, unsupported) => {
@@ -245,16 +246,16 @@ describe("WasmArtifactBuilder", () => {
             manifest.minPokieVersion = "1.0.0";
         }],
         ["serialization", (manifest: MutableManifestDeclaration) => {
-            manifest.serialization.play = "pokie.play.v2";
+            manifest.serialization.play = "pokie.play.v99";
         }],
         ["host", (manifest: MutableManifestDeclaration) => {
-            manifest.host.rng = "pokie.rng.v2";
+            manifest.host.rng = "pokie.rng.v99";
         }],
         ["capabilities", (manifest: MutableManifestDeclaration) => {
             manifest.capabilities.push("runtime.extra");
         }],
         ["ABI", (manifest: MutableManifestDeclaration) => {
-            manifest.artifact.abiVersion = "1.0.1";
+            manifest.artifact.abiVersion = "2.0.1";
         }],
     ])("rejects an individually edited %s declaration", async (_category, edit) => {
         const sourcePath = path.join(workDir, "fixture.blueprint.json");

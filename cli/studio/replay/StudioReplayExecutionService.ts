@@ -591,7 +591,7 @@ export class StudioReplayExecutionService {
             record.game = {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version};
             record.configHash = runtime.manifest.artifact?.configurationHash;
             const canSerialize = runtime.manifest.capabilities.includes("runtime.serialize");
-            let state = {schemaVersion: "pokie.state.v2" as const, seed: record.seed, drawCount: 0, sequence: 0, credits: 1000};
+            let state: import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmRestorableState = {schemaVersion: "pokie.state.v2", seed: record.seed, drawCount: 0, sequence: 0, credits: 1000};
             let totalBet = 0;
             let totalWin = 0;
             let finalRound;

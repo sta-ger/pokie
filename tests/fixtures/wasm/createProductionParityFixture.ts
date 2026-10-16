@@ -12,8 +12,8 @@ export const RNG_PARITY_BLUEPRINT: GameBlueprint = {
 
 export async function createProductionParityFixture(directory: string, blueprint = RNG_PARITY_BLUEPRINT) {
     const generated = new GamePackageGenerator("1.3.0").generate(blueprint, directory);
-    // Jest resolves the generated module's real require("@fromstan/pokie") to this
-    // candidate's source, avoiding an installed release or stale dist tree.
+    // Source-level regression helper. Delivered-artifact acceptance uses the native
+    // consumer in WasmSharedMath.test.ts, outside Jest remapping.
     const loaded = await loadPokieGameRuntime(generated.projectRoot, (entry) => require(entry));
     const source = path.join(directory, "parity.blueprint.json");
     const artifact = path.join(directory, "parity.wasm");

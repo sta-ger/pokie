@@ -1,3 +1,5 @@
+import {SharedSlotMath} from "../../../wasm/math/SharedSlotMath.js";
+import {SharedSlotMathWinEvaluator} from "./SharedSlotMathWinEvaluator.js";
 import type {ScreenModifiers} from "../modifiers/ScreenModifiers.js";
 import {MultiplierResolver} from "../winevaluation/MultiplierResolver.js";
 import {VideoSlotConfig} from "../VideoSlotConfig.js";
@@ -46,6 +48,7 @@ import {WinEvaluator} from "../winevaluation/WinEvaluator.js";
 import {VideoSlotWinCalculatorOptions} from "./VideoSlotWinCalculatorOptions.js";
 
 export class VideoSlotWinCalculator<T extends string | number | symbol = string> implements VideoSlotWinCalculating<T> {
+    private readonly sharedMath?: SharedSlotMath;
     private readonly config: VideoSlotConfigDescribing<T>;
     private readonly lineWinCalculator: LineWinCalculating<T>;
     private readonly scatterWinCalculator: ScatterWinCalculating<T>;
@@ -78,6 +81,12 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
         this.valueWinCalculator = valueWinCalculator;
         this.waysWinCalculator = waysWinCalculator;
         this.options = {...options};
+        if (options.sharedMathModel) {
+            if (!(conf instanceof VideoSlotConfig) || !conf.isResolvedForSessionRestoration() || !(lineWinCalculator instanceof LineWinCalculator) || lineWinCalculator.constructor !== LineWinCalculator || !lineWinCalculator.usesConfig(conf) || !(scatterWinCalculator instanceof ScatterWinCalculator) || scatterWinCalculator.constructor !== ScatterWinCalculator || !scatterWinCalculator.usesConfig(conf) || clusterWinCalculator || waysWinCalculator || valueWinCalculator || options.aggregationPolicy || options.multiplierResolver) {
+                throw new Error("Shared math cannot lower custom evaluators or aggregation policies.");
+            }
+            this.sharedMath = new SharedSlotMath(options.sharedMathModel);
+        }
     }
 
     public usesConfig(config: VideoSlotConfigDescribing<T>): boolean {
@@ -205,6 +214,7 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
     }
 
     public getWinEvaluationPipeline(): WinEvaluationPipeline<T> {
+        if (this.sharedMath) return new WinEvaluationPipeline<T>([new SharedSlotMathWinEvaluator<T>(this.sharedMath)], new SumAllEnabledWinAggregationPolicy<T>());
         // Config is mutable: factors and evaluator compatibility must use the same current model.
         if (this.config.getScreenModifiers?.() && this.valueWinCalculator) throw new Error("Authored screen modifiers do not support value evaluators.");
         return new WinEvaluationPipeline<T>(

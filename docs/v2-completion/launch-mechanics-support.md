@@ -185,3 +185,10 @@ unsupported persistent state. Blueprint runtime handlers are reused; custom
 executable fidelity is never inferred from descriptor completeness. Exhausted
 analysis budgets remain unknown, distinct from runtime respin caps and cascade
 limit rejection. CLI/Studio/definition diff retain the same report and witnesses.
+
+V2C-20 shares the ordinary lines/ways/clusters math kernel between generated Node and canonical WASM.
+ABI 2.0 uses one i32 stop per reel, supports models above the former 30-bit total and binds exact executable
+bytes to the effective model and component descriptor. Fractional components multiply before addition;
+ways/clusters retain selected-group aggregation. Portable consumers still expose amount-only analytics,
+without invented feature events. See [WASM limits and continuation](../wasm-compatibility-boundary.md).
+Independent controller review and workflow verification are recorded separately in [the V2C-20 receipt](V2C-20.md).

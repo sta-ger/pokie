@@ -163,7 +163,7 @@ describe("PokieWasmWorkerProtocol", () => {
         verifier.nextRandom();
         verifier.nextRandom();
         const legacy = {schemaVersion: "pokie.state.v1", seed, draws: draws.slice(0, 2), sequence: 0, credits: 1000, rngState: {cursor: 2, tape: JSON.stringify(draws), seed, rng: verifier.serializeState()}};
-        expect(await worker.handle({id: "restore", type: "restore", state: legacy})).toMatchObject({ok: true, result: {schemaVersion: "pokie.state.v2", rngState: {version: "pokie.worker.v2"}}});
+        expect(await worker.handle({id: "restore", type: "restore", state: legacy})).toMatchObject({ok: true, result: {schemaVersion: "pokie.state.v3", rngState: {version: "pokie.worker.v2"}}});
         expect(worker.getDiagnostics()).toMatchObject({legacyPrefixDraws: 2});
         await worker.handle({id: "play", type: "play"});
         await worker.handle({id: "play", type: "play"});
@@ -188,11 +188,10 @@ describe("PokieWasmWorkerProtocol", () => {
         expect(await protocol.handle({id: "after", type: "serialize"})).toMatchObject({ok: false, error: expect.stringMatching(/Instantiate/)});
     });
 
-    it("cleans up a trapped runtime before returning the worker error", async () => {
+    it("rejects a changed executable before creating a Worker session", async () => {
         const fixture = createCanonicalWasmFixture({id: "worker-trap", trapping: true});
         const protocol = new PokieWasmWorkerProtocol();
-        await protocol.handle({id: "start", type: "instantiate", bytes: fixture.bytes, manifest: fixture.manifest, draws: [0.25]});
-        expect(await protocol.handle({id: "trap", type: "play"})).toMatchObject({ok: false, error: expect.stringMatching(/unreachable|trap/i)});
+        expect(await protocol.handle({id: "start", type: "instantiate", bytes: fixture.bytes, manifest: fixture.manifest, draws: [0.25]})).toMatchObject({ok: false, error: expect.stringMatching(/lowering\/model identity/)});
         expect(await protocol.handle({id: "after-trap", type: "serialize"})).toMatchObject({ok: false, error: expect.stringMatching(/Instantiate/)});
     });
 
@@ -202,7 +201,7 @@ describe("PokieWasmWorkerProtocol", () => {
         const initial = {schemaVersion: "pokie.state.v1" as const, seed: "worker-replay-wire", draws: [], sequence: 0, credits: 1000};
         await expect(protocol.handle({id: "start", type: "instantiate", bytes: fixture.bytes, manifest: fixture.manifest, draws: [0.25, 0.75, 0.5, 0.125]})).resolves.toMatchObject({ok: true});
         const first = await protocol.handle({id: "replay", type: "replay", state: initial, commands: [{bet: 1}]});
-        expect(first).toMatchObject({ok: true, result: {rounds: [{sequence: 1}], stateBeforeFinal: {schemaVersion: "pokie.state.v2", sequence: 0, drawCount: 0}, stateAfter: {sequence: 1}}});
+        expect(first).toMatchObject({ok: true, result: {rounds: [{sequence: 1}], stateBeforeFinal: {schemaVersion: "pokie.state.v3", sequence: 0, drawCount: 0}, stateAfter: {sequence: 1}}});
         if (!first.ok) throw new Error(first.error);
         const cloned = structuredClone(first.result) as {stateAfter: typeof initial; rounds: readonly {sequence: number}[]};
         expect(JSON.parse(JSON.stringify(cloned))).toEqual(cloned);
@@ -221,8 +220,7 @@ describe("PokieWasmWorkerProtocol", () => {
 
         const trapping = createCanonicalWasmFixture({id: "worker-replay-trap", trapping: true});
         const poisoned = new PokieWasmWorkerProtocol();
-        await poisoned.handle({id: "start", type: "instantiate", bytes: trapping.bytes, manifest: trapping.manifest, draws: [0.25]});
-        expect(await poisoned.handle({id: "trap", type: "replay", state: initial, commands: [{}]})).toMatchObject({ok: false, error: expect.stringMatching(/unreachable|trap/i)});
+        expect(await poisoned.handle({id: "start", type: "instantiate", bytes: trapping.bytes, manifest: trapping.manifest, draws: [0.25]})).toMatchObject({ok: false, error: expect.stringMatching(/lowering\/model identity/)});
         expect(await poisoned.handle({id: "after-trap", type: "serialize"})).toMatchObject({ok: false, error: expect.stringMatching(/Instantiate/)});
     });
 

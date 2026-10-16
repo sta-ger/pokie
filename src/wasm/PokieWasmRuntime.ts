@@ -1,3 +1,4 @@
+import {lowerSharedSlotMath, readSharedSlotMathResult} from "./math/SharedSlotMath.js";
 import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
 import {SeededRandomNumberGenerator} from "../session/videoslot/combinations/SeededRandomNumberGenerator.js";
 import {
@@ -47,21 +48,17 @@ export function inspectPokieWasm(manifest: PokieWasmComponentManifest): PokieWas
 /** Instantiates the canonical portable ABI and derives complete deterministic rounds from it. */
 export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieWasmComponentManifest, host: PokieWasmHost): Promise<PokieWasmRuntime> {
     const canonical = await readIntegrityBoundCanonicalPokieWasmArtifact(bytes, manifest);
+    const layout = lowerSharedSlotMath(canonical.model);
+    const artifactIdentity = manifest.artifact!.sha256;
     let currentDraws: number[] = [];
     const instance = await WebAssembly.instantiate(canonical.module, {
         pokie: {
             "next_random": () => {
                 if (currentDraws.length >= MAX_HOST_RANDOM_DRAWS_PER_PLAY) throw new Error("POKIE WASM play requested too many host random draws while selecting reel stops.");
                 const draw = nextDraw();
-                const reel = currentDraws.length;
-                const strip = canonical.model.reelStrips[reel];
-                if (strip === undefined) throw new Error("POKIE WASM play requested more reel stops than its canonical model declares.");
+                if (currentDraws.length >= canonical.model.reels) throw new Error("POKIE WASM play requested more reel stops than its canonical model declares.");
                 currentDraws.push(draw);
-                // Match SymbolsCombinationsGenerator exactly: the seeded
-                // production host selects each reel with floor(draw * length).
-                // Supplying that already-valid stop to the ABI also avoids
-                // changing the stream by module-local rejection retries.
-                return Math.floor(draw * strip.length);
+                return draw;
             },
         },
     });
@@ -111,14 +108,16 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
         }
         const rngState = hostSnapshot();
         if (trace !== undefined) Reflect.apply(BoundedPokieWasmTraceCollector.prototype.record, trace, [{kind: "initialization", sequence: 0, draws}]);
-        return {schemaVersion: "pokie.state.v2", seed, drawCount: draws.length, sequence: 0, credits,
+        return {schemaVersion: "pokie.state.v3", artifactIdentity, seed, drawCount: draws.length, sequence: 0, credits,
             ...(rngState === undefined ? {} : {rngState: cloneHostState(rngState)})};
     }
     const restoreState = (state: PokieWasmRestorableState, trace?: BoundedPokieWasmTraceCollector): PokieWasmSessionState => {
-        if (state === null || typeof state !== "object" || !["pokie.state.v1", "pokie.state.v2"].includes(state.schemaVersion) || typeof state.seed !== "string" ||
+        if (state === null || typeof state !== "object" || !["pokie.state.v1", "pokie.state.v2", "pokie.state.v3"].includes(state.schemaVersion) || typeof state.seed !== "string" ||
             !Number.isSafeInteger(state.sequence) || state.sequence < 0 || !Number.isFinite(state.credits) || state.credits < 0 || (state.rngState !== undefined && !isHostState(state.rngState))) {
             throw new Error("Unsupported or malformed POKIE WASM session state.");
         }
+        if (state.schemaVersion === "pokie.state.v3" && state.artifactIdentity !== artifactIdentity) throw new Error("POKIE WASM state belongs to an incompatible artifact identity.");
+        if (state.schemaVersion === "pokie.state.v2" && (state.sequence !== 0 || state.drawCount !== 0)) throw new Error("Unbound compact POKIE WASM state is incompatible; start a new session.");
         const legacy = state.schemaVersion === "pokie.state.v1";
         if (legacy ? !Array.isArray(state.draws) || !state.draws.every(draw => typeof draw === "number" && Number.isFinite(draw) && draw >= 0 && draw < 1) :
             !Number.isSafeInteger(state.drawCount) || state.drawCount < 0 || "draws" in state) {
@@ -142,11 +141,12 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
         }
         // Import once; never retain the input object or its legacy evidence.
         const rngState = hostSnapshot() ?? (state.rngState === undefined ? undefined : cloneHostState(state.rngState));
-        return {schemaVersion: "pokie.state.v2", seed: state.seed, drawCount, sequence: state.sequence, credits: state.credits,
+        return {schemaVersion: "pokie.state.v3", artifactIdentity, seed: state.seed, drawCount, sequence: state.sequence, credits: state.credits,
             ...(rngState === undefined ? {} : {rngState})};
     };
     const playRound = (state: PokieWasmSessionState, command: Record<string, unknown> = {}): {readonly round: PokieWasmRound; readonly state: PokieWasmSessionState} => {
         currentDraws = [];
+        if (!Number.isSafeInteger(state.sequence + 1) || !Number.isSafeInteger(state.drawCount + canonical.model.reels)) throw new Error("POKIE WASM continuation counters are exhausted.");
         const stake = resolveStake(command, canonical.model);
         const creditsBefore = state.credits;
         if (creditsBefore < stake) throw new Error(`POKIE WASM session has insufficient credits for stake ${stake}.`);
@@ -157,15 +157,15 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
             host.restoreState(cloneHostState(state.rngState));
             diagnostics.hostRestorations++;
         }
-        const packedStops = play();
-        if (typeof packedStops !== "number" || currentDraws.length === 0) throw new Error("POKIE WASM play export must return packed reel stops after requesting host RNG draws.");
-        const stops = unpackStops(packedStops, canonical.model);
-        const screen = buildScreen(stops, canonical.model);
-        const winMultiplier = evaluateWinMultiplier(screen, canonical.model);
-        const payout = winMultiplier * stake;
+        const payout = play(stake);
+        if (currentDraws.length !== canonical.model.reels) throw new WebAssembly.RuntimeError("POKIE WASM play returned an invalid draw cardinality.");
+        const {stops, screen} = readSharedSlotMathResult(instance, canonical.model, payout, layout);
+        const winMultiplier = payout / stake;
+        if (!Number.isFinite(creditsBefore - stake + payout)) throw new Error("POKIE WASM payout or balance overflow.");
         const rngState = hostSnapshot();
         const next = {
-            schemaVersion: "pokie.state.v2" as const,
+            schemaVersion: "pokie.state.v3" as const,
+            artifactIdentity,
             seed: state.seed,
             drawCount: state.drawCount + currentDraws.length,
             sequence: state.sequence + 1,
@@ -286,6 +286,7 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
         }),
         dispose: () => {
             disposed = true;
+            new Uint8Array((instance.exports.memory as WebAssembly.Memory).buffer).fill(0);
             for (const dispose of sessions) dispose();
             currentDraws = [];
             host = {nextRandom: () => {
@@ -311,39 +312,6 @@ function isHostState(value: unknown): value is PokieWasmHostState {
     if (typeof value === "number") return Number.isFinite(value);
     if (Array.isArray(value)) return value.every(isHostState);
     return typeof value === "object" && Object.values(value).every(isHostState);
-}
-
-function unpackStops(packedStops: number, model: PokieWasmGameModel): readonly number[] {
-    let shift = 0;
-    return model.stopWidths.map((width, index) => {
-        const stop = (packedStops >>> shift) & ((1 << width) - 1);
-        shift += width;
-        return stop % model.reelStrips[index].length;
-    });
-}
-
-function buildScreen(stops: readonly number[], model: PokieWasmGameModel): readonly (readonly string[])[] {
-    return model.reelStrips.map((strip, reel) => Array.from({length: model.rows}, (_, row) => strip[(stops[reel] + row) % strip.length]));
-}
-
-function evaluateWinMultiplier(screen: readonly (readonly string[])[], model: PokieWasmGameModel): number {
-    const lineWins = model.paylines.reduce((total, line) => {
-        const symbols = line.map((row, reel) => screen[reel][row]);
-        for (let count = symbols.length; count >= 2; count--) {
-            const matching = symbols.slice(0, count);
-            const regularSymbols = [...new Set(matching.filter((symbol) => !model.wilds?.includes(symbol)))];
-            const symbol = regularSymbols[0];
-            if (symbol === undefined || regularSymbols.length !== 1 || !matching.every((candidate) => candidate === symbol || model.wilds?.includes(candidate))) continue;
-            if (model.scatters?.includes(symbol)) continue;
-            return total + (model.paytable[symbol]?.[String(count)] ?? 0);
-        }
-        return total;
-    }, 0);
-    const scatterWins = (model.scatters ?? []).reduce((total, scatter) => {
-        const count = screen.reduce((matches, reel) => matches + reel.filter((symbol) => symbol === scatter).length, 0);
-        return total + (model.paytable[scatter]?.[String(count)] ?? 0);
-    }, 0);
-    return lineWins + scatterWins;
 }
 
 function resolveStake(command: Record<string, unknown>, model: PokieWasmGameModel): number {

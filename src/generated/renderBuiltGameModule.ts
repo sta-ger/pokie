@@ -1,3 +1,5 @@
+import {resolveSharedSlotMathModel} from "./resolveSharedSlotMathModel.js";
+import type {SharedSlotMathModel} from "../wasm/math/SharedSlotMath.js";
 import {GameBlueprintValidator} from "./GameBlueprintValidator.js";
 import {validateBlueprintReelSequences} from "./validateBlueprintReelSequences.js";
 import type {GameBlueprint} from "./GameBlueprint.js";
@@ -49,6 +51,11 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     const hasBounded = bounded !== undefined && Object.keys(bounded).length > 0;
     const hasBetModes = (blueprint.betModes?.length ?? 0) > 0;
 
+    let sharedMathModel: SharedSlotMathModel | undefined;
+    try {
+        sharedMathModel = resolveSharedSlotMathModel(blueprint);
+    } catch { /* Other generated mechanics keep their existing extension pipeline. */ }
+
     const requireNames = [
         "computeGameBlueprintHash",
         "CustomLinesDefinitions",
@@ -63,7 +70,8 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
         "VideoSlotSessionSerializer",
         "validateExecutableState",
     ];
-    if (winModel.type === "ways" || winModel.type === "clusters") {
+    if (sharedMathModel) requireNames.push("VideoSlotWinCalculator");
+    if (!sharedMathModel && (winModel.type === "ways" || winModel.type === "clusters")) {
         requireNames.push("VideoSlotWinCalculator", "SelectedEvaluatorGroupWinAggregationPolicy");
         requireNames.push(winModel.type === "ways" ? "WaysWinCalculator" : "ClusterWinCalculator");
     }
@@ -88,7 +96,12 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     // Built once here (not inline in createConfig/createSession) since both the config-wrapping and
     // the session/win-calculator construction below need to agree on it.
     let winCalculatorDeclaration = "";
-    if (winModel.type === "ways") {
+    if (sharedMathModel) {
+        winCalculatorDeclaration = `    const winCalculator = new VideoSlotWinCalculator(config, undefined, undefined, undefined, undefined, undefined, {
+        sharedMathModel: ${JSON.stringify(sharedMathModel)},
+    });
+`;
+    } else if (winModel.type === "ways") {
         winCalculatorDeclaration = `    const winCalculator = new VideoSlotWinCalculator(config, undefined, undefined, undefined, undefined, new WaysWinCalculator(config), {
         aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy("ways"),
     });
@@ -100,7 +113,7 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     });
 `;
     }
-    const winCalculatorArgs = winModel.type === "lines" ? "" : ", winCalculator";
+    const winCalculatorArgs = winModel.type === "lines" && !sharedMathModel ? "" : ", winCalculator";
     const sessionClassName = freeGames ? "VideoSlotWithFreeGamesSession" : "VideoSlotSession";
     const baseConstruction = hasBounded
         ? `new BoundedVideoSlotSession(config, combinationsGenerator, ${JSON.stringify(bounded)}, ${winModel.type === "lines" ? "new VideoSlotWinCalculator(config)" : "winCalculator"})`

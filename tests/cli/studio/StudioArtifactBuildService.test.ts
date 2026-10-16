@@ -589,24 +589,34 @@ describe("StudioArtifactBuildService", () => {
         return filePath;
     }
 
-    it("exposes the shared hybrid WASM boundary on target discovery", async () => {
+    it("exposes the shared WASM boundary on target discovery", async () => {
         const targets = await service.listTargets(writeBlueprintFile());
         const target = targets.find((candidate) => candidate.target === "wasm");
-        expect(target?.unsupportedNotes.join(" ")).toMatch(/separate JavaScript evaluateWinMultiplier/);
-        expect(target?.unsupportedNotes.join(" ")).toMatch(/30 total stop bits across all reels/);
-        expect(target?.unsupportedNotes.join(" ")).toMatch(/Rejects ways, clusters, mechanics.freeGames, mechanics.holdAndWin, mechanics.jackpot, and nonempty betModes/);
+        expect(target?.unsupportedNotes.join(" ")).toMatch(/same pokie.math.v2 WebAssembly evaluator/);
+        expect(target?.unsupportedNotes.join(" ")).toMatch(/no total-bit cap/);
+        expect(target?.unsupportedNotes.join(" ")).toMatch(/Rejects mechanics.freeGames, mechanics.holdAndWin, mechanics.jackpot/);
     });
 
     it.each([
         {winModel: {type: "ways"}},
-        {winModel: {type: "clusters", minClusterSize: 3}},
+        {winModel: {type: "clusters", minimumClusterSize: 3}},
+        {symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(1025).fill("A"), Array<string>(1025).fill("A"), Array<string>(1025).fill("A")]},
+    ])("previews and publishes shared WASM launch models: %j", async model => {
+        const source = writeBlueprintFile(buildBlueprint(model));
+        const destination = path.join(workDir, "shared.wasm");
+        expect(await service.preview(source, "wasm", destination)).toMatchObject({status: "ok"});
+        expect(await service.build(source, "wasm", destination)).toMatchObject({status: "ok", outputPath: destination});
+        expect(WebAssembly.validate(new Uint8Array(fs.readFileSync(destination)))).toBe(true);
+    });
+
+    it.each([
         {scatters: ["B"], mechanics: {freeGames: {scatterSymbol: "B", awardsByCount: {3: 5}}}},
-        {symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(1025).fill("A"), Array<string>(1024).fill("A"), Array<string>(1024).fill("A")]},
+        {symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(65537).fill("A"), Array<string>(1024).fill("A"), Array<string>(1024).fill("A")]},
     ])("diagnoses unsupported WASM models before publication and permits supported retry: %j", async (model) => {
         const source = writeBlueprintFile(buildBlueprint(model));
         const destination = path.join(workDir, "unsupported.wasm");
         const preview = await service.preview(source, "wasm", destination);
-        expect(preview).toMatchObject({status: "unsupported", message: expect.stringMatching(/does not implement|stop bits/)});
+        expect(preview).toMatchObject({status: "unsupported", message: expect.stringMatching(/does not implement|Limits:/)});
         const result = await service.build(source, "wasm", destination);
         expect(result.status).not.toBe("ok");
         expect(fs.existsSync(destination)).toBe(false);

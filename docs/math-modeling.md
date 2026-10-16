@@ -394,8 +394,8 @@ all descendants. Unknown fields retain declarations without fabricated effective
 defaults or asserted mathematical changes; provenance traversal includes array
 elements in modifiers, variants and modes. Known partial fields are still compared. PAR comparison covers only
 what its importer represents and carries conversion diagnostics/limits. Canonical
-WASM compares embedded strips, payouts and stop widths with partial status because
-original symbol inventory/authoring presence is unavailable. Legacy WASM metadata
+WASM compares its effective symbol inventory, strips, payouts, paylines and win model with partial status because
+original authoring omissions/default choices are unavailable. Legacy WASM metadata
 and outcome-only artifacts cannot reconstruct a definition. These limitations
 cannot be upgraded to equality by matching report totals or matching subsets.
 

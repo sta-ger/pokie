@@ -74,8 +74,8 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
         expect(screen.getByText("round.play, round.replay")).toBeInTheDocument();
         expect(screen.getByText("1.2.3")).toBeInTheDocument();
         expect(screen.getAllByText("1.0.0").length).toBeGreaterThan(1);
-        expect(screen.getByText(/separate JavaScript evaluateWinMultiplier/)).toHaveTextContent("30 total stop bits across all reels");
-        expect(screen.getByText(/separate JavaScript evaluateWinMultiplier/)).toHaveTextContent("Rejects ways, clusters, mechanics.freeGames, and nonempty betModes");
+        expect(screen.getByText(/same pokie.math.v2 WebAssembly evaluator/)).toHaveTextContent("no total-bit cap");
+        expect(screen.getByText(/same pokie.math.v2 WebAssembly evaluator/)).toHaveTextContent("Rejects mechanics.freeGames, mechanics.holdAndWin, mechanics.jackpot");
         expect(screen.getByText("Artifact ABI")).toBeInTheDocument();
         expect(screen.getByText("@fromstan/pokie/wasm")).toBeInTheDocument();
         expect(screen.getByText("4096")).toBeInTheDocument();
@@ -138,12 +138,12 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
             expect(await screen.findByText(/Round complete — no win/)).toBeVisible();
             await user.click(await screen.findByText("Inspect round artifact"));
             await user.click(await screen.findByRole("button", {name: "Show advanced details (raw JSON, debug data)"}));
-            expect(await screen.findByText((content) => content.includes('"schemaVersion": "pokie.state.v2"') && content.includes('"drawCount": 4') && content.includes('"sequence": 1') && content.includes('"rngState": 3921318019'))).toBeVisible();
+            expect(await screen.findByText((content) => content.includes('"schemaVersion": "pokie.state.v3"') && content.includes('"drawCount": 4') && content.includes('"sequence": 1') && content.includes('"rngState": 3921318019'))).toBeVisible();
             await user.click(screen.getByRole("button", {name: "Spin"}));
             expect(await screen.findByText(/You won 1\.00/)).toBeVisible();
             expect(await screen.findByText((content) => content.includes('"sequence": 2') && content.includes('"rngState"'))).toBeVisible();
             const initial = responses.find(({url}) => url === "/api/project/play/session");
-            expect(initial?.body).toMatchObject({session: {debug: {stateAfter: {schemaVersion: "pokie.state.v2", drawCount: 2, sequence: 0, rngState: 258186393}}}});
+            expect(initial?.body).toMatchObject({session: {debug: {stateAfter: {schemaVersion: "pokie.state.v3", drawCount: 2, sequence: 0, rngState: 258186393}}}});
             const spins = responses.filter(({url}) => url.endsWith("/spin"));
             expect(spins.map(({body}) => body)).toEqual([
                 expect.objectContaining({session: expect.objectContaining({screen: [["A"], ["B"]], win: 0, credits: 999})}),
