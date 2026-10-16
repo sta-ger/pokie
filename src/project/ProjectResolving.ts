@@ -16,5 +16,5 @@ import type {PokieProject} from "./PokieProject.js";
 // to be that type at all — see
 // ProjectTargetResolver/ProjectTargetAmbiguousError/ProjectTargetUnsupportedError/ProjectTargetMalformedError.
 export interface ProjectResolving {
-    resolve(targetPath: string): Promise<PokieProject | undefined>;
+    resolve(targetPath: string, options?: {readConfigurationProvenance?: boolean}): Promise<PokieProject | undefined>;
 }

@@ -26,6 +26,32 @@ import type {PokieProject} from "../../src/project/PokieProject.js";
 describe("ArtifactBuilderRegistry", () => {
     const registry = new ArtifactBuilderRegistry();
 
+    it.each(["declared", "unknown"] as const)("refuses %s max-win policy in every model conversion and direct publication", async type => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-policy-conversion-"));
+        try {
+            const policy = type === "declared"
+                ? {type, value: 7.5, unit: "bet-multiple", scope: "logical-round", authority: "custom cap"}
+                : {type, authority: "explicitly unknown custom cap"};
+            const source = writeDescriptorPackage(root, {descriptorBody:
+                `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model, maxWinPolicy: ${JSON.stringify(policy)}};`,});
+            const project: PokieProject = {type: "tsPackage", rootPath: source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
+            for (const target of ["blueprint", "tsPackage", "parWorkbook", "wasm"] as const) {
+                const destination = path.join(root, target);
+                const plan = await registry.preparePlan(project, target, {destinationPath: destination});
+                expect(plan.status).toBe("unavailable");
+                expect(plan.diagnostic?.message).toContain("max-win-policy-not-representable");
+                await expect(registry.executePlan(plan, project, destination)).rejects.toThrow(/max-win-policy-not-representable/);
+                expect(fs.existsSync(destination)).toBe(false);
+            }
+            const builder = new BlueprintArtifactBuilder();
+            await expect(builder.validate(project)).rejects.toThrow(/max-win-policy-not-representable/);
+            await expect(builder.build(project, path.join(root, "direct.json"))).rejects.toThrow(/max-win-policy-not-representable/);
+            expect(fs.readdirSync(root)).toEqual(["descriptor-package"]);
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
     it("uses extraction once as the model stage for downstream packages/PAR and retains source-bound evidence", async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-extraction-registry-"));
         try {

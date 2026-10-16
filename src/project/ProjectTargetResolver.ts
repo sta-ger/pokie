@@ -79,7 +79,7 @@ export class ProjectTargetResolver implements ProjectResolving {
         this.fileAdapters = adapters.filter((adapter) => adapter.targetKind === "file");
     }
 
-    public async resolve(targetPath: string): Promise<PokieProject | undefined> {
+    public async resolve(targetPath: string, options?: {readConfigurationProvenance?: boolean}): Promise<PokieProject | undefined> {
         const resolvedPath = path.resolve(targetPath);
 
         let stat: fs.Stats;
@@ -140,7 +140,8 @@ export class ProjectTargetResolver implements ProjectResolving {
         }
 
         const [{adapter, provenance}] = matches;
-        const configurationProvenance = await this.configurationProvenance(adapter.type, resolvedPath);
+        // Definition readers must not invoke arbitrary getConfigHash implementations during recognition.
+        const configurationProvenance = options?.readConfigurationProvenance === false ? undefined : await this.configurationProvenance(adapter.type, resolvedPath);
         const project = {
             type: adapter.type,
             rootPath: resolvedPath,

@@ -1,3 +1,5 @@
+import {compareMathDefinitions} from "../../src/diff/MathDefinitionSourceReader.js";
+import type {MathDefinitionDiff} from "../../src/diff/MathDefinitionDiff.js";
 import {validateSimulationReportExtensions} from "../../src/reporting/validateSimulationReportExtensions.js";
 import {Command} from "commander";
 import {
@@ -30,6 +32,8 @@ type DiffOptions = {
     rightPath: string;
     format: DiffFormat;
     out?: string;
+    comparison: "auto" | "definition" | "statistics";
+    ci: boolean;
 };
 
 type OutcomeSourceDiffing = (left: PokieProject, right: PokieProject) => Promise<OutcomeSourceDiffResult>;
@@ -93,20 +97,20 @@ export class DiffCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Compare two simulation reports or two resolved precomputed-outcome projects and highlight what changed.";
+        return "Compare mathematical definitions, simulation statistics or exact outcome aggregate analyses.";
     }
 
     public getCommanderCommand(): Command {
         return this.buildCommand();
     }
 
-    public async run(args: string[]): Promise<void> {
+    public async run(args: string[]): Promise<void | number> {
         try {
             const options = this.parseArgs(args);
             this.preflightOutput(options);
-            if (await this.tryDiffOutcomeSourceProjects(options)) {
-                return;
-            }
+            const projectResult = await this.tryDiffOutcomeSourceProjects(options);
+            if (projectResult !== false) return projectResult === 0 ? undefined : projectResult;
+            if (options.ci) throw new Error("--ci applies to definition comparisons; select --comparison definition.");
             const left = this.readReportJson(options.leftPath);
             const right = this.readReportJson(options.rightPath);
 
@@ -129,10 +133,15 @@ export class DiffCommand implements CliCommandHandling {
                     console.log(`\nDiff written to "${options.out}".`);
                 }
             }
+            return undefined;
 
         } catch (error) {
             if (isCommanderHelpDisplay(error)) {
-                return;
+                return undefined;
+            }
+            if (args.includes("--ci")) {
+                console.error(error instanceof Error ? error.message : String(error));
+                return 2;
             }
             throw error;
         }
@@ -152,8 +161,8 @@ export class DiffCommand implements CliCommandHandling {
     private buildCommand(resultRef: {value?: DiffOptions} = {}): Command {
         return createCommanderCliCommand("diff")
             .description(this.getDescription())
-            .argument("<leftProjectOrReportJson>", "a pokie sim JSON report or Outcome Library/Stake Engine export")
-            .argument("<rightProjectOrReportJson>", "a pokie sim JSON report or Outcome Library/Stake Engine export")
+            .argument("<leftProjectOrReportJson>", "a definition source, pokie sim JSON report or Outcome Library/Stake Engine export")
+            .argument("<rightProjectOrReportJson>", "a definition source, pokie sim JSON report or Outcome Library/Stake Engine export")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--format <format>", "only \"json\" is supported (default: a human-readable summary)", (value: string) => {
                 if (value !== "json") {
@@ -161,12 +170,17 @@ export class DiffCommand implements CliCommandHandling {
                 }
                 return "json" as DiffFormat;
             })
+            .option("--comparison <kind>", "auto, definition or statistics", (value: string) => {
+                if (!["auto", "definition", "statistics"].includes(value)) throw new Error("--comparison expects auto, definition or statistics");
+                return value as DiffOptions["comparison"];
+            })
+            .option("--ci", "definition exit policy: 0 unchanged/representation, 1 math change, 2 incomplete/error")
             .option("--out <file>", "write the diff JSON to this path")
-            .action((leftPath: string, rightPath: string, excess: string[], options: {format?: DiffFormat; out?: string}) => {
+            .action((leftPath: string, rightPath: string, excess: string[], options: {format?: DiffFormat; out?: string; comparison?: DiffOptions["comparison"]; ci?: boolean}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
                 }
-                resultRef.value = {leftPath, rightPath, format: options.format ?? "summary", out: options.out};
+                resultRef.value = {leftPath, rightPath, format: options.format ?? "summary", out: options.out, comparison: options.comparison ?? "auto", ci: options.ci ?? false};
             });
     }
 
@@ -198,8 +212,12 @@ export class DiffCommand implements CliCommandHandling {
     // be the same broad input family: two resolved projects use their canonical readers, while two
     // JSON files use the simulation-report path. A project/report mix is a user mistake, not a
     // filesystem failure (for example, an opaque EISDIR from trying to read a bundle as JSON).
-    private async tryDiffOutcomeSourceProjects(options: DiffOptions): Promise<boolean> {
-        const [left, right] = await Promise.all([this.resolveProject.resolve(options.leftPath), this.resolveProject.resolve(options.rightPath)]);
+    private async tryDiffOutcomeSourceProjects(options: DiffOptions): Promise<number | false> {
+        if (options.comparison === "definition") return this.diffDefinitions(options, options.leftPath, options.rightPath);
+        const [left, right] = await Promise.all([this.resolveProject.resolve(options.leftPath, {readConfigurationProvenance: false}), this.resolveProject.resolve(options.rightPath, {readConfigurationProvenance: false})]);
+        const definition = (project: PokieProject | undefined): boolean => project !== undefined && !["outcomeLibrary", "stakeAdapter"].includes(project.type);
+        if (options.comparison === "auto" && definition(left) && definition(right)) return this.diffDefinitions(options, left!, right!);
+        if (options.ci) throw new Error("--ci requires two definition sources (or explicit --comparison definition).");
         if (left === undefined || right === undefined) {
             if (left !== undefined || right !== undefined) {
                 throw new Error(
@@ -227,9 +245,42 @@ export class DiffCommand implements CliCommandHandling {
                 console.log(`\nDiff written to "${options.out}".`);
             }
         }
-        return true;
+        return 0;
     }
 
+    private async diffDefinitions(options: DiffOptions, left: string | PokieProject, right: string | PokieProject): Promise<number> {
+        const controller = new AbortController();
+        const onCancel = (): void => controller.abort();
+        process.on("SIGINT", onCancel);
+        let diff: MathDefinitionDiff;
+        const stdoutWrite = process.stdout.write;
+        // Executable descriptors can log while being acquired; reserve machine stdout for JSON.
+        if (options.format === "json") process.stdout.write = process.stderr.write.bind(process.stderr);
+        const restoreStdout = (): void => {
+            process.stdout.write = stdoutWrite;
+        };
+        try {
+            diff = await compareMathDefinitions(left, right, {signal: controller.signal});
+        } finally {
+            restoreStdout();
+            process.off("SIGINT", onCancel);
+        }
+        const json = JSON.stringify(diff, null, 4);
+        if (options.out) this.writeFile(options.out, json);
+        if (options.format === "json") console.log(json);
+        else {
+            console.log(`Math definition diff: ${diff.status} (${diff.scope})`);
+            console.log(`${JSON.stringify(diff.left.identity)} -> ${JSON.stringify(diff.right.identity)}`);
+            for (const change of diff.changes) console.log(`${change.path} [${change.classification}${change.seededTraceImpact ? "; seeded trace may change" : ""}] ${JSON.stringify(change.before)} -> ${JSON.stringify(change.after)} context=${JSON.stringify(change.context)}`);
+            for (const [side, source] of [["left", diff.left], ["right", diff.right]] as const) {
+                console.log(`${side}: ${source.support}`);
+                for (const issue of source.diagnostics) console.log(`${issue.severity} ${issue.code} ${issue.path}: ${issue.message}`);
+                for (const limit of source.limits) console.log(`Limit: ${limit}`);
+            }
+        }
+        if (!["identical", "different"].includes(diff.status)) return options.ci ? 2 : 1;
+        return options.ci && diff.changes.some(change => change.mathematical) ? 1 : 0;
+    }
 
     private parseArgs(args: string[]): DiffOptions {
         const resultRef: {value?: DiffOptions} = {};
@@ -400,10 +451,10 @@ export class DiffCommand implements CliCommandHandling {
 
     private printSetSummary(setDiff: SimulationReportSetDiff): void {
         if (!setDiff.game.changed) {
-            console.log(`Diff (all modes): ${setDiff.game.right.name} (id: "${setDiff.game.right.id}")`);
+            console.log(`Statistical Diff (all modes): ${setDiff.game.right.name} (id: "${setDiff.game.right.id}")`);
         } else {
             console.log(
-                `Diff (all modes): ${setDiff.game.left.name} (id: "${setDiff.game.left.id}") -> ` +
+                `Statistical Diff (all modes): ${setDiff.game.left.name} (id: "${setDiff.game.left.id}") -> ` +
                     `${setDiff.game.right.name} (id: "${setDiff.game.right.id}")`,
             );
         }
@@ -429,9 +480,9 @@ export class DiffCommand implements CliCommandHandling {
 
     private printSummary(diff: SimulationReportDiff): void {
         if (!diff.game.changed) {
-            console.log(`Diff: ${diff.game.right.name} (id: "${diff.game.right.id}")`);
+            console.log(`Statistical Diff: ${diff.game.right.name} (id: "${diff.game.right.id}")`);
         } else {
-            console.log(`Diff: ${diff.game.left.name} (id: "${diff.game.left.id}") -> ${diff.game.right.name} (id: "${diff.game.right.id}")`);
+            console.log(`Statistical Diff: ${diff.game.left.name} (id: "${diff.game.left.id}") -> ${diff.game.right.name} (id: "${diff.game.right.id}")`);
         }
         if (diff.game.left.version !== diff.game.right.version) {
             console.log(`  version         ${diff.game.left.version} -> ${diff.game.right.version}`);

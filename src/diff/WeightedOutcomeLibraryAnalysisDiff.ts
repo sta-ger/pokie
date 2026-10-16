@@ -15,6 +15,7 @@ export type WeightedOutcomeLibraryAnalysisPayoutBucketDiff = {
 };
 
 export type WeightedOutcomeLibraryAnalysisDiff = {
+    comparisonKind?: "aggregate-analysis";
     rtp: WeightedOutcomeLibraryAnalysisMetricDiff;
     hitFrequency: WeightedOutcomeLibraryAnalysisMetricDiff;
     variance: WeightedOutcomeLibraryAnalysisMetricDiff;

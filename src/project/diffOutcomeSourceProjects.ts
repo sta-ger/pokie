@@ -56,6 +56,7 @@ function buildDiff(leftReport: OutcomeSourceProjectReport, rightReport: OutcomeS
     const onlyInRight = [...rightByMode.keys()].filter((modeName) => !leftByMode.has(modeName));
 
     return {
+        comparisonKind: "aggregate-analysis",
         changed: !sameIssues(leftReport.issues, rightReport.issues) || onlyInLeft.length > 0 || onlyInRight.length > 0 || Object.values(perMode).some(modeHasChanges),
         left: {rootPath: leftReport.rootPath, kind: leftReport.descriptor.kind, issues: leftReport.issues},
         right: {rootPath: rightReport.rootPath, kind: rightReport.descriptor.kind, issues: rightReport.issues},

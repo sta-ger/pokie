@@ -102,7 +102,8 @@ describe("SimulationReportSetDiffer", () => {
 
         const setDiff = differ.diff(left, right);
 
-        expect(Object.keys(setDiff).sort()).toEqual(["changed", "game", "onlyInLeft", "onlyInRight", "perMode"]);
+        expect(setDiff.comparisonKind).toBe("simulation-statistics");
+        expect(Object.keys(setDiff).sort()).toEqual(["changed", "comparisonKind", "game", "onlyInLeft", "onlyInRight", "perMode"]);
     });
 });
 

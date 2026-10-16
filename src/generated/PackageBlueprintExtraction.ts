@@ -1,3 +1,7 @@
+import {appendModelFieldPath} from "./internal/modelFieldPath.js";
+import {detachPackageModelData} from "./internal/detachPackageModelData.js";
+export {detachPackageModelData} from "./internal/detachPackageModelData.js";
+import {validateMathDefinitionMaxWinPolicy} from "../diff/validateMathDefinitionMaxWinPolicy.js";
 import {isPromise} from "util/types";
 import type {ValidationIssueSeverity} from "../validation/ValidationIssueSeverity.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
@@ -9,6 +13,7 @@ import {PACKAGE_MODEL_DESCRIPTOR_VERSION} from "./PackageModelDescriptor.js";
 
 export type PackageExtractionDiagnostic = {path: string; code: string; message: string; severity?: ValidationIssueSeverity};
 export type PackageExtractionField = {
+    /** Dotted/numeric paths retain their spelling; literal property names use JSON-string brackets. */
     path: string;
     status: "exact" | "inferred" | "defaulted" | "unsupported";
     authority: string;
@@ -26,11 +31,14 @@ export interface PackageBlueprintExtractionResult {
     };
     /** Partial known data is inspectable, never eligible for automatic generation. */
     model?: Partial<GameBlueprint>;
+    /** Present only when converting the declaration would preserve its policy. */
     blueprint?: GameBlueprint;
+    conversionDiagnostics?: PackageExtractionDiagnostic[];
     blueprintHash?: string;
     fields: PackageExtractionField[];
     diagnostics: PackageExtractionDiagnostic[];
     comparisonLimits: string[];
+    maxWinPolicy?: import("../diff/MathDefinitionDiff.js").MathDefinitionMaxWinPolicy;
 }
 export interface PackageBlueprintExtracting {
     extract(source: string | PokieGame, options?: {signal?: AbortSignal}): Promise<PackageBlueprintExtractionResult>;
@@ -51,39 +59,6 @@ const OPTIONAL_DEFAULTS: Record<string, string> = {
     betModes: "generated runtime: no modes",
     screenGeometry: "VideoSlotConfig: visible/evaluated grid equals reels x rows",
 };
-
-/** Strict detached JSON copying. Never invokes accessors or toJSON; bounds depth and size. */
-export function detachPackageModelData(value: unknown): unknown {
-    const ancestors = new Set<object>();
-    let nodes = 0;
-    const copy = (input: unknown, field: string, depth: number): unknown => {
-        if (++nodes > 1000000 || depth > 100) throw new Error(`${field}: metadata exceeds extraction limits`);
-        if (input === null || typeof input === "string" || typeof input === "boolean") return input;
-        if (typeof input === "number" && Number.isFinite(input)) return input;
-        if (typeof input !== "object" || input === null) throw new Error(`${field}: unsupported JSON value`);
-        if (ancestors.has(input)) throw new Error(`${field}: cyclic metadata`);
-        const array = Array.isArray(input);
-        const prototype = Reflect.getPrototypeOf(input);
-        if (prototype !== (array ? Array.prototype : Object.prototype) && !(prototype === null && !array)) throw new Error(`${field}: unsupported object prototype`);
-        ancestors.add(input);
-        const result: Record<string, unknown> | unknown[] = array ? [] : {};
-        const descriptors = Object.getOwnPropertyDescriptors(input);
-        if (Reflect.ownKeys(input).some((key) => typeof key !== "string")) throw new Error(`${field}: symbol property`);
-        if (array) {
-            for (let i = 0; i < (input as unknown[]).length; i++) if (!descriptors[String(i)]) throw new Error(`${field}: sparse collection`);
-        }
-        for (const [key, descriptor] of Object.entries(descriptors)) {
-            if (array && key === "length") continue;
-            if (["__proto__", "constructor", "prototype", "toJSON"].includes(key)) throw new Error(`${field}.${key}: unsafe property`);
-            if (!descriptor.enumerable || !hasOwn(descriptor, "value")) throw new Error(`${field}.${key}: accessor or hidden metadata`);
-            if (array && (!(/^(0|[1-9]\d*)$/).test(key) || Number(key) >= (input as unknown[]).length)) throw new Error(`${field}.${key}: malformed collection`);
-            Reflect.set(result, key, copy(descriptor.value, `${field}.${key}`, depth + 1));
-        }
-        ancestors.delete(input);
-        return result;
-    };
-    return copy(value, "$", 0);
-}
 
 /** One executable read boundary. Path inputs own a loader snapshot; supplied games remain caller-owned.
  * No session is created or advanced, so opaque legacy mechanics remain explicitly unavailable.
@@ -200,7 +175,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
             const descriptor = detachPackageModelData(descriptorData) as Record<string, unknown>;
             if (cancelled()) return result;
             for (const key of Object.keys(descriptor)) if (
-                !["descriptorVersion", "blueprintSchemaVersion", "sourceKind", "model", "unsupported"].includes(key)
+                !["descriptorVersion", "blueprintSchemaVersion", "sourceKind", "model", "unsupported", "maxWinPolicy"].includes(key)
             ) throw new Error(`Descriptor field ${key} is outside version 1`);
             result.source = {
                 ...result.source,
@@ -235,6 +210,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                 descriptorVersion: 1,
                 blueprintSchemaVersion: 1,
             };
+            if (descriptor.maxWinPolicy !== undefined) result.maxWinPolicy = validateMathDefinitionMaxWinPolicy(descriptor.maxWinPolicy);
             const model = descriptor.model as Partial<GameBlueprint>;
             if (
                 (model.reels ?? 0) > 1000 ||
@@ -270,17 +246,24 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                 "betModes",
             ]);
             for (const key of Object.keys(model)) if (!known.has(key)) result.diagnostics.push({
-                path: key,
+                path: appendModelFieldPath("", key),
                 code: "unsupported-model-field",
                 message: "This field is outside the effective Blueprint model contract.",
             });
+            const unsupportedPaths = new Map<string, string>();
             const checkKeys = (value: unknown, field: string, allowed: string[]): void => {
                 if (value && typeof value === "object" && !Array.isArray(value)) for (const key of Object.keys(value)) {
-                    if (!allowed.includes(key)) result.diagnostics.push({
-                        path: `${field}.${key}`,
-                        code: "unsupported-model-field",
-                        message: "Custom model behavior is outside the Blueprint representation.",
-                    });
+                    if (!allowed.includes(key)) {
+                        const path = appendModelFieldPath(field, key);
+                        // The validator's legacy unknown-key path is lossy. Retain the actual key
+                        // from this source-aware inspection, without treating it as nested authority.
+                        unsupportedPaths.set(`${field}.${key}`, path);
+                        result.diagnostics.push({
+                            path,
+                            code: "unsupported-model-field",
+                            message: "Custom model behavior is outside the Blueprint representation.",
+                        });
+                    }
                 }
             };
             checkKeys(model.manifest, "manifest", ["id", "name", "version", "description", "author"]);
@@ -369,12 +352,12 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                 if (maximum * model.symbols.length > 1000000) throw new Error("Field evidence exceeds extraction limits");
                 for (const symbol of model.symbols) {
                     if (!hasOwn(model.paytable, symbol)) result.fields.push({
-                        path: `paytable.${symbol}`,
+                        path: appendModelFieldPath("paytable", symbol),
                         status: "exact",
                         authority: "descriptor: authored symbol table absent; no payouts",
                     });
                     else for (let count = 1; count <= maximum; count++) if (!hasOwn(model.paytable[symbol], String(count))) result.fields.push({
-                        path: `paytable.${symbol}.${count}`,
+                        path: appendModelFieldPath(appendModelFieldPath("paytable", symbol), String(count)),
                         status: "exact",
                         authority: "descriptor: authored payout absent; effective zero",
                     });
@@ -388,6 +371,9 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
             }
             if (result.fields.length > 1000000) throw new Error("Field evidence exceeds extraction limits");
             const validation = new GameBlueprintValidator().validate(model);
+            for (const issue of validation) if (issue.code === "blueprint-mechanics-unknown-field" && issue.path) {
+                issue.path = unsupportedPaths.get(issue.path) ?? issue.path;
+            }
             if (
                 model.winModel?.type === "clusters" &&
                 (model.winModel.minimumClusterSize ?? 5) >
@@ -415,8 +401,16 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
             else if (result.diagnostics.some((issue) => issue.severity === undefined || issue.severity === "error")) result.status = "unsupported";
             else {
                 result.status = "complete";
-                result.blueprint = model as GameBlueprint;
-                result.blueprintHash = computeGameBlueprintHash(result.blueprint);
+                if (result.maxWinPolicy && result.maxWinPolicy.type !== "none") {
+                    result.conversionDiagnostics = [{
+                        path: "maxWinPolicy",
+                        code: "max-win-policy-not-representable",
+                        message: "Blueprint conversion cannot preserve a declared or explicitly unknown max-win policy. Keep the original package; no payout cap is implemented by Blueprint.",
+                    }];
+                } else {
+                    result.blueprint = model as GameBlueprint;
+                    result.blueprintHash = computeGameBlueprintHash(result.blueprint);
+                }
             }
             if (cancelled()) {
                 Reflect.deleteProperty(result, "blueprint");
@@ -470,7 +464,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
 
     private recordFields(value: unknown, field: string, authority: string, fields: PackageExtractionField[]): void {
         if (field) fields.push({path: field, status: "exact", authority});
-        if (typeof value === "object" && value !== null) for (const [key, child] of Object.entries(value)) this.recordFields(child, field ? `${field}.${key}` : key, authority, fields);
+        if (typeof value === "object" && value !== null) for (const [key, child] of Object.entries(value)) this.recordFields(child, appendModelFieldPath(field, key), authority, fields);
     }
 }
 

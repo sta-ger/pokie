@@ -7,6 +7,7 @@ import type {SimulationReportDiff} from "./SimulationReportDiff.js";
 // onlyInLeft/onlyInRight -- since that's a real, worth-knowing structural change (a mode was added or
 // removed), not something a per-mode diff could express on its own.
 export type SimulationReportSetDiff = {
+    comparisonKind?: "simulation-statistics";
     // True when game metadata, a common mode, or either side's mode list changed.  This saves
     // machine consumers from having to walk every per-mode diff and both added/removed lists.
     changed: boolean;

@@ -1,3 +1,4 @@
+import {MathDefinitionDiffPreview} from "../common/MathDefinitionDiffPreview";
 import {Button} from "@mantine/core";
 import {useState} from "react";
 import {previewGameModel} from "../../api/apiClient";
@@ -20,7 +21,7 @@ type PreviewState = {status: "idle"} | {status: "loading"} | {status: "error"; m
 // between). On-demand (a button, not auto-debounced like Validate) purely to avoid adding a second
 // debounced request alongside BlueprintEditorPage's existing auto-validate one -- the preview is a
 // deliberate "show me" action, not a live-as-you-type view.
-export function GameModelPreviewPanel({blueprint}: {blueprint: unknown}) {
+export function GameModelPreviewPanel({blueprint, sourcePath, revision}: {blueprint: unknown; sourcePath?: string; revision?: number}) {
     const fetchImpl = useStudioApi();
     const [state, setState] = useState<PreviewState>({status: "idle"});
     // Undefined keeps the Reels section's own default, reproducible "symbolWeights"/"default" sample --
@@ -43,6 +44,7 @@ export function GameModelPreviewPanel({blueprint}: {blueprint: unknown}) {
 
     return (
         <PageSection legend="Game Model preview">
+            <MathDefinitionDiffPreview sourcePath={sourcePath} draft={blueprint} revision={revision} />
             <QuickActions>
                 <Button onClick={() => handlePreview()} loading={state.status === "loading"}>
                     Preview Game Model

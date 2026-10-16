@@ -231,3 +231,170 @@ See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
 payout/duration units, authoring/interchange, restoration/replay, statistics and
 custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
 maps every mandatory family separately from arbitrary custom callbacks.
+
+## Canonical definition comparison (V2C-18)
+
+`compareMathDefinitions(left, right, {signal})` and `MathDefinitionSourceReader`
+read definitions; `MathDefinitionDiffer.diff(leftSnapshot, rightSnapshot)` is the
+pure comparison boundary. These are exported from the generated package root
+for ESM and CJS. Source readers run on the server, not in the browser. They do
+not construct sessions, advance continuations, repair tables, call custom
+`getConfigHash`, or consume a session's RNG. Authored reel generation uses the
+existing deterministic materializer and its own generation RNG. Existing config
+hashes and payout engines are unchanged.
+
+Inputs may be paths, resolved projects, caller-owned `PokieGame` objects, or
+`{kind: "blueprint", model, location?}`. Blueprint JSON, package model descriptors,
+PAR import and integrity-bound canonical WASM readers supply data. Display
+projections and reel preview samples are never definition authorities. Package
+extraction releases its own snapshots; caller games and unrelated leases remain
+caller-owned. Both reads settle and all owned cleanup completes before returning,
+including either-side failures and cancellation. Cancellation never returns an
+identical result; snapshot cleanup failure remains a failed result.
+
+### Version 1 machine contract
+
+The result contains `schemaVersion: 1`, `comparisonKind: "math-definition"`,
+`scope: "declared-effective-model"`, `status`, `left`, `right`, and `changes`.
+Statuses are `identical`, `different`, `partial`, `unsupported`, `invalid`,
+`failed`, and `cancelled`. Only two complete supported snapshots can be
+`identical` or `different`. An empty supported subset does not prove equality.
+Each source carries identity (kind, location when available, descriptor and
+Blueprint schema versions), support, complete known authored/effective JSON,
+field authority evidence, bounded diagnostics and comparison limits.
+
+A change has an RFC 6901 JSON Pointer `path`, `classification`, `mathematical`,
+`seededTraceImpact`, and `before` / `after`. Paths escape `~` as `~0` and `/` as
+`~1`; array indices are zero-based. Changes sort by pointer using code-unit
+ordering. Object insertion order is ignored. Optional `context` identifies
+reels, variant IDs, mode IDs, symbols/match counts, weighted-bonus table/outcome
+and feature IDs, selection context and sampling contract.
+
+Each side is either `{present: false, provenance: ...}` or
+`{present: true, value: <exact JSON value>, provenance: ...}`. Missing values are
+never serialized as null or zero. Provenance records authority, authored
+presence/value, and `authored`, `effective`, `defaulted` or `unknown` status.
+For package inputs, authored presence means presence in the supplied descriptor
+declaration, not recovered pre-build authoring instructions. Original authoring
+that the generated package discarded remains unavailable.
+Numeric equality is exact binary64 equality, without integer coercion, rounding
+or probability tolerance. Stakes such as `0.05`, `7.5`, `1e-7`, zero weights and
+tiny positive weights survive JSON serialization. Non-finite numbers, accessors,
+cycles, unsafe keys and oversized direct data are rejected explicitly.
+
+Classifications are `mathematical`, `representation`, `provenance`, `order`, and
+`validation`. Authored default omission versus explicit default is retained as a
+representation change even when effective values agree. Missing payout/grant
+versus explicit zero, and missing versus empty symbol tables, remain visible
+without asserting a payout change. Generated effective reels and authoring
+instructions are separate: changing metadata or generation representation can
+change hash-derived materialized strips, in which case the strip changes are
+mathematical. With literal reels held fixed, mode labels and descriptive `targetRtp`,
+paylines ignored by ways/cluster evaluators, and omitted modifier wild `factor`
+versus explicit `1` remain visible representation changes without mathematical CI
+failure. All-exact `reelSequences` and literal `reelStrips` are compared as the
+same effective ordered strips, at `/reelStrips/...`, with provenance mapped back
+to the original sequence symbols. The snapshots retain their declarations, and
+the authored pass retains representation additions/removals. Mixed/weighted
+sequences retain variant IDs, weights and selection ordering. Actual wild
+multipliers, sequence positions and payout amounts remain mathematical.
+For generated/Blueprint modes with no `runtimeType` anywhere, `costMultiplier`
+and `isDefault` are metadata; an explicit runtime mode contract retains executable
+cost/default changes. Custom descriptors without that generated contract do not
+establish that their costs are inert.
+Generated packages cannot recover discarded generation instructions.
+
+Ordered arrays are retained. Permutations are `order` changes, with a separate
+mathematical flag; reel positions, modifier execution and cumulative weighted
+selection retain their operational ordering. The `symbols` inventory is a
+membership declaration: reordering the same inventory is a non-mathematical
+`order` change. Deterministic generated strips are still compared independently,
+so raw-hash effects from inventory or metadata edits remain mathematical. `seededTraceImpact` conservatively
+flags ordering that can affect seeded execution, without claiming every seed
+changes. This comparison does not prove distribution equivalence for reordered
+models. Whole-sequence selection retains `logical-round-v1` /
+`binary64-integer-ratios-v1`; weighted bonus retains `triggered-paid-entry` and
+`integer-cumulative-u32-v1`. Grants, durations, maximum duration, reset/retrigger
+policy, target references, payout units and forced free games are compared even
+when current payouts agree.
+
+Authority evidence accepts equivalent dotted (`betModes.0.costMultiplier`),
+numeric bracket (`betModes[0].costMultiplier`) and RFC 6901 pointer
+(`/betModes/0/costMultiplier`) paths; `$` or an empty path denotes the root.
+Matching uses complete segments. A dot denotes nesting, so `paytable.A` never
+covers the distinct symbol `A.B`. Literal property names can use JSON-string
+brackets (`paytable["A.B"].3`) or escaped pointers (`/paytable/A.B/3`). Extraction
+keeps existing simple dotted paths and uses JSON-string brackets for ambiguous
+literal keys. Unsupported ancestors override exact/default evidence at every
+descendant; default filtering and normalization use the same path identity.
+
+Provenance is compared at containers as well as leaves, including empty objects
+and arrays. Retained all-exact sequence declarations also retain authority-only
+changes at `/reelSequences`, individual reels, `type`, and `symbols`, even though
+mathematical values compare through effective strips. Recorded absent symbol
+tables, payout entries and omitted feature fields retain their own provenance
+changes with `present: false` on both sides. This never supplies missing values. A container authority change has its own pointer even when child
+fields have independent authority. A child representation change that already
+discloses adding/removing a default declaration avoids redundant parent entries.
+
+Diagnostic paths use JSON Pointers, with `""` for the root. Source validator dotted
+paths and numeric/JSON-string brackets are adapted at the comparison boundary; already
+escaped pointers remain unchanged. Missing validator paths use the same field
+fallback as extraction (or the root when no field is known). Exact normalized
+`(path, code, severity, message)` copies are deduplicated, preserving all distinct
+messages/severities and deterministic ordering. Custom diagnostics should supply
+pointers for property names containing dots or brackets.
+Validation changes are grouped at `/validation/<escaped diagnostic path>/<code>`.
+When each side has at most one diagnostic in a group, changed severity/message
+retains that key. If either side has multiple distinct diagnostics, the key adds
+`/<escaped canonical diagnostic JSON>` as a deterministic identity; unchanged
+identities cancel, while removals/additions remain explicit. Colliding messages
+are never overwritten or guessed to be edits of each other. Both sources retain
+all distinct diagnostics with stable `code`, `severity`, `path`, and `message`. Invalid authored fields remain visible;
+normalization failures do not substitute a sampled or invented model.
+
+### Max-win declaration and custom boundary
+
+The comparison boundary accepts `maxWinPolicy` on a direct Blueprint input
+wrapper or a version 1 package descriptor. It is comparison evidence, not a
+Blueprint payout-cap setting and not a new runtime cap:
+
+```ts
+maxWinPolicy: {
+    type: "declared",
+    value: 10000,
+    unit: "bet-multiple", // or "currency"
+    scope: "logical-round", // or "paid-entry"
+    authority: "declared custom payout collaborator"
+}
+```
+
+`{type: "none", scope, authority}` establishes a declared absence;
+`{type: "unknown", authority}` marks an unknown policy. The generated runtime
+has no payout cap, so its absent declaration resolves to `none` with framework
+authority. An undeclared custom policy is `unknown`, making the result partial.
+Observed report `maxWin`, library maxima and equal hashes never substitute for a
+policy declaration. Declared value/unit/scope changes are mathematical;
+authority-only changes are representation/provenance information. Unknown extra
+policy fields and malformed policies are rejected.
+
+Comparison completeness does not grant conversion eligibility. Extraction retains a
+valid declared max-win policy for comparison, but emits no `blueprint` or
+`blueprintHash` for `declared` or explicitly `unknown` policies; its separate
+`conversionDiagnostics` explains `max-win-policy-not-representable`. Artifact
+planning and publication refuse these conversions, including intermediate
+Blueprints for package/PAR/WASM builds. A declared `none` policy permits the
+existing conversion contract. No payout cap is added.
+
+A custom descriptor declares representable behavior; it cannot prove arbitrary
+executable fidelity. Unsupported collaborators, unknown fields, absent descriptors,
+incompatible versions, throwing getters and asynchronous rejection retain explicit
+boundaries. Unsupported field authority overrides defaults and exact evidence at
+all descendants. Unknown fields retain declarations without fabricated effective
+defaults or asserted mathematical changes; provenance traversal includes array
+elements in modifiers, variants and modes. Known partial fields are still compared. PAR comparison covers only
+what its importer represents and carries conversion diagnostics/limits. Canonical
+WASM compares embedded strips, payouts and stop widths with partial status because
+original symbol inventory/authoring presence is unavailable. Legacy WASM metadata
+and outcome-only artifacts cannot reconstruct a definition. These limitations
+cannot be upgraded to equality by matching report totals or matching subsets.

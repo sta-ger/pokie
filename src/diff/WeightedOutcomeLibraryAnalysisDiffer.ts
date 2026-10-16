@@ -37,6 +37,7 @@ export class WeightedOutcomeLibraryAnalysisDiffer implements WeightedOutcomeLibr
         const maxWin = this.metricDiff(left.maxWin, right.maxWin);
 
         return {
+            comparisonKind: "aggregate-analysis",
             rtp,
             hitFrequency,
             variance,

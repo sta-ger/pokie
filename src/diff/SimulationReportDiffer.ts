@@ -58,6 +58,7 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
         const spinsPerSecond = this.metricDiff(left.spinsPerSecond, right.spinsPerSecond);
 
         return {
+            comparisonKind: "simulation-statistics",
             changed: samplingChanged || diagnosticsChanged || !!analytics?.changed || !!weightedBonus?.configurationChanged || !!weightedBonus?.observationsChanged || !!reelSequences?.changed || this.hasChanges(game.changed, seed.changed, betMode, [requestedRounds, rounds, totalBet, totalWin, rtp, hitFrequency, maxWin, durationMs, spinsPerSecond], breakdown, left.breakdown, right.breakdown),
             ...(analytics ? {analytics} : {}),
             ...(weightedBonus ? {weightedBonus} : {}),

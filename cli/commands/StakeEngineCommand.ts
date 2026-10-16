@@ -90,6 +90,7 @@ type AnalyzeOptions = {stakeDir: string; format: AnalyzeFormat; out?: string};
 type AnalyzeReport = {stakeDir: string; issues: ValidationIssue[]; analysis: StakeEngineStandaloneAnalysis | undefined};
 type DiffOptions = {leftStakeDir: string; rightStakeDir: string; format: AnalyzeFormat; out?: string};
 type DiffReport = {
+    comparisonKind?: "aggregate-analysis";
     stakeDir: {left: string; right: string};
     issues: {left: ValidationIssue[]; right: ValidationIssue[]};
     diff: StakeEngineStandaloneAnalysisDiff | undefined;
@@ -694,6 +695,7 @@ export class StakeEngineCommand implements CliCommandHandling {
                 : undefined;
 
         const report: DiffReport = {
+            comparisonKind: "aggregate-analysis",
             stakeDir: {left: options.leftStakeDir, right: options.rightStakeDir},
             issues: {left: [...leftRead.issues], right: [...rightRead.issues]},
             diff,
@@ -784,7 +786,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     }
 
     private printDiffSummary(report: DiffReport): void {
-        console.log(`Diffing "${report.stakeDir.left}" -> "${report.stakeDir.right}"`);
+        console.log(`Aggregate-analysis comparison (exact outcome statistics). Diffing "${report.stakeDir.left}" -> "${report.stakeDir.right}"`);
 
         const leftErrors = report.issues.left.filter((issue) => issue.severity === "error");
         const rightErrors = report.issues.right.filter((issue) => issue.severity === "error");

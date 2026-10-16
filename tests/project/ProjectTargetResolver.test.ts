@@ -76,7 +76,7 @@ describe("ProjectTargetResolver", () => {
         expect(project).toEqual({
             type: "tsPackage",
             rootPath: projectRoot,
-            capabilities: ["runtime.execute", "outcomeLibrary.generate", "stakeAdapter.export"],
+            capabilities: ["package.model.extract", "runtime.execute", "outcomeLibrary.generate", "stakeAdapter.export"],
             provenance: expect.stringContaining("pokie.entry"),
         });
     });

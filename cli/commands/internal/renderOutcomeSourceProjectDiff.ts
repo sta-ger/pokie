@@ -27,7 +27,7 @@ function formatMetric(metric: OutcomeSourceProjectMetricDiff, decimals: number):
 // exactly the shared core metrics both a native bundle's and a Stake Engine export's own exact analysis
 // already carry (see OutcomeSourceProjectModeDiff's own doc comment).
 export function renderOutcomeSourceProjectDiff(diff: OutcomeSourceProjectDiff): string {
-    const lines: string[] = [`Diffing "${diff.left.rootPath}" (${diff.left.kind}) -> "${diff.right.rootPath}" (${diff.right.kind})`];
+    const lines: string[] = [`Aggregate-analysis comparison (exact outcome statistics). Diffing "${diff.left.rootPath}" (${diff.left.kind}) -> "${diff.right.rootPath}" (${diff.right.kind})`];
 
     if (!diff.changed) {
         lines.push("  No changes detected.");

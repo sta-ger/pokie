@@ -396,3 +396,32 @@ See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
 payout/duration units, authoring/interchange, restoration/replay, statistics and
 custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
 maps every mandatory family separately from arbitrary custom callbacks.
+
+### Definition comparison declarations
+
+`pokie diff package-a package-b --comparison definition` and the public
+`compareMathDefinitions` API use `getModelDescriptor()` through
+`PackageBlueprintExtraction`, including asynchronous descriptors and owned
+snapshot cleanup. A capability authorizes attempting extraction; it does not
+certify complete or executable model equivalence. Known partial fields remain
+inspectable and opaque/custom boundaries never become identical by omission.
+
+Version 1 descriptors may additionally declare `maxWinPolicy` at the descriptor
+root. An undeclared custom cap policy is unknown; generated models establish no
+runtime cap. This is evidence about the declared model, not a mechanism to install
+or change payout caps. The exact declaration forms, schema, provenance/default
+rules and limitations are documented in
+[math-modeling.md](math-modeling.md#max-win-declaration-and-custom-boundary).
+
+
+Extraction `status: "complete"` describes the declared model, separately from
+Blueprint conversion eligibility. A declared max-win cap remains available for
+comparison; a `declared` or explicitly `unknown` policy prevents extraction from
+emitting a `blueprint`/`blueprintHash` and supplies `conversionDiagnostics` with
+`max-win-policy-not-representable`. Both direct Blueprint publication and registry
+plans for Blueprint, regenerated package, PAR and WASM refuse to discard it.
+CLI build and Studio conversion preview/build share this registry boundary.
+A declared absence (`type: "none"`) remains representable. This comparison
+contract does not implement a payout cap. Explicit unsupported field authority
+also overrides generated defaults and applies to descendants, including fields
+inside arrays.

@@ -11,5 +11,6 @@ export interface PackageModelDescriptor {
     blueprintSchemaVersion: 1;
     sourceKind: "generated" | "custom";
     model: Partial<GameBlueprint>;
+    maxWinPolicy?: import("../diff/MathDefinitionDiff.js").MathDefinitionMaxWinPolicy;
     unsupported?: {path: string; code: string; message: string}[];
 }

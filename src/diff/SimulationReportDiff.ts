@@ -29,6 +29,7 @@ export type SimulationReportBreakdownDiff = {
 };
 
 export type SimulationReportDiff = {
+    comparisonKind?: "simulation-statistics";
     // A machine-friendly answer to the question the CLI's summary answers for people: did any
     // report field that this differ compares actually change?  Keeping this at the top level
     // means callers do not need to infer it from every metric, optional breakdown, and metadata

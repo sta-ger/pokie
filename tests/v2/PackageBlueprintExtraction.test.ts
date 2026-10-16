@@ -761,3 +761,90 @@ function sparseCollection(): number[] {
     Reflect.deleteProperty(sparse, "1");
     return sparse;
 }
+
+describe("comparison-only max-win declarations", () => {
+    it("retains declared policy with its units, scope and authority without changing model data", async () => {
+        const model = fractionalBetBlueprint([0.05, 7.5, 1e-7], true);
+        const game = {
+            getManifest: () => model.manifest,
+            getModelDescriptor: () => ({
+                descriptorVersion: 1 as const,
+                blueprintSchemaVersion: 1 as const,
+                sourceKind: "custom" as const,
+                model,
+                maxWinPolicy: {
+                    type: "declared" as const,
+                    value: 7.5,
+                    unit: "bet-multiple" as const,
+                    scope: "logical-round" as const,
+                    authority: "declared external collaborator",
+                },
+            }),
+            createSession: () => {
+                throw new Error("must not create sessions");
+            },
+        };
+        const result = await new PackageBlueprintExtraction().extract(game);
+        expect(result.status).toBe("complete");
+        expect(result.blueprint).toBeUndefined();
+        expect(result.blueprintHash).toBeUndefined();
+        expect(result.conversionDiagnostics).toEqual([expect.objectContaining({code: "max-win-policy-not-representable"})]);
+        expect(result.maxWinPolicy).toEqual(game.getModelDescriptor().maxWinPolicy);
+        expect(result.model).toEqual(model);
+        const uncapped = await new PackageBlueprintExtraction().extract({...game, getModelDescriptor: () => ({
+            ...game.getModelDescriptor(), maxWinPolicy: {type: "none", scope: "logical-round", authority: "no custom cap"},
+        })});
+        expect(uncapped.status).toBe("complete");
+        expect(uncapped.blueprint).toEqual(model);
+        expect(uncapped.conversionDiagnostics).toBeUndefined();
+    });
+});
+
+it("preserves simple extraction paths and quotes literal symbol identities through object and loader boundaries", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "extraction-field-paths-"));
+    const symbols = ["A", "B", "A.B", "A/B~C", 'A[0]"\\', "$"];
+    const model = {...base(), symbols, paytable: {A: {3: 5}, "A.B": {3: 7.5}}};
+    const extractor = new PackageBlueprintExtraction();
+    try {
+        const loaded = writeDescriptorPackage(directory, {model});
+        for (const input of [custom(model), loaded]) {
+            const result = await extractor.extract(input);
+            expect(result.status).toBe("complete");
+            expect(result.blueprint).toEqual(model);
+            expect(result.fields).toEqual(expect.arrayContaining([
+                expect.objectContaining({path: "paytable.A.3", status: "exact"}),
+                expect.objectContaining({path: 'paytable["A.B"].3', status: "exact"}),
+                expect.objectContaining({path: 'paytable["A.B"].2', authority: "descriptor: authored payout absent; effective zero"}),
+                ...symbols.slice(3).map(symbol => expect.objectContaining({
+                    path: `paytable[${JSON.stringify(symbol)}]`, authority: "descriptor: authored symbol table absent; no payouts",
+                })),
+            ]));
+            expect(result.fields.some(field => field.path.startsWith("paytable.A.B"))).toBe(false);
+            expect(result.fields).toContainEqual(expect.objectContaining({path: "betModes", status: "defaulted"}));
+        }
+        expect(model.paytable).toEqual({A: {3: 5}, "A.B": {3: 7.5}});
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
+it("retains unsupported literal custom feature extensions through object and loader extraction", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "extraction-literal-extension-"));
+    const model = {...base(), mechanics: {"freeGames.awardsByCount": {custom: true}}};
+    const extractor = new PackageBlueprintExtraction();
+    try {
+        const loaded = writeDescriptorPackage(directory, {model: model as GameBlueprint});
+        for (const input of [custom(model), loaded]) {
+            const result = await extractor.extract(input);
+            expect(result.status).toBe("unsupported");
+            expect(result.model).toEqual(model);
+            expect(result.blueprint).toBeUndefined();
+            expect(result.fields).toContainEqual(expect.objectContaining({
+                path: 'mechanics["freeGames.awardsByCount"]', status: "unsupported",
+            }));
+            expect(result.fields.some(field => field.status === "unsupported" && field.path === "mechanics.freeGames.awardsByCount")).toBe(false);
+        }
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
