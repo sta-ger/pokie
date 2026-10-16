@@ -145,6 +145,8 @@ it("aborts and drains an owned saved validation before completing a project tran
             setImmediate(resolve);
         });
         expect(closed).toBe(false); // Descriptor acquisition still owns its snapshot.
+        const duringTransition = await fetch(url + "/api/project/validate");
+        expect(duringTransition.status).toBe(409);
         fixture.settle();
         expect((await closing).status).toBe(200);
         const result = await pending;

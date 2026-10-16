@@ -315,6 +315,7 @@ export class StudioServer implements StudioServerHandling {
     // Every dashboard/Home/Play preparation belongs to one generation.  A new project intent aborts
     // the previous resolver work; the generation check is still required because a loader can finish
     // just as its signal is observed.
+    private validationTransitions = 0;
     private readonly advancedValidations = new Map<AbortController, Promise<unknown>>();
     private readonly definitionPreviews = new Map<AbortController, Promise<MathDefinitionDiff>>();
     private readonly dashboardLoads = new Set<Promise<void>>();
@@ -567,19 +568,24 @@ export class StudioServer implements StudioServerHandling {
     // those Home jobs invisible by changing the context would strand real
     // publishing work behind a finished confirmation.
     private async cancelActiveJobsForOldProject(excludeJobId?: string): Promise<void> {
-        for (const controller of this.advancedValidations.keys()) controller.abort();
-        await Promise.allSettled([...this.advancedValidations.values()]);
-        for (const controller of this.definitionPreviews.keys()) controller.abort();
-        await Promise.allSettled([...this.definitionPreviews.values()]);
-        if (this.currentContext.mode === "project") {
-            const projectId = this.canonicalPathIdentity(this.currentContext.projectRoot);
-            this.simulationService.cancelActiveForProject(projectId);
-            this.replayService.cancelActiveForProject(projectId);
-            this.artifactBuildService.cancelActiveForProject(projectId);
-            await this.outcomeLibraryGenerateJobService.cancelActiveForProject(projectId);
-        }
-        for (const job of this.activeCommonJobs()) {
-            if (job.id !== excludeJobId) this.jobService.cancel(job.projectId, job.id);
+        this.validationTransitions++;
+        try {
+            for (const controller of this.advancedValidations.keys()) controller.abort();
+            await Promise.allSettled([...this.advancedValidations.values()]);
+            for (const controller of this.definitionPreviews.keys()) controller.abort();
+            await Promise.allSettled([...this.definitionPreviews.values()]);
+            if (this.currentContext.mode === "project") {
+                const projectId = this.canonicalPathIdentity(this.currentContext.projectRoot);
+                this.simulationService.cancelActiveForProject(projectId);
+                this.replayService.cancelActiveForProject(projectId);
+                this.artifactBuildService.cancelActiveForProject(projectId);
+                await this.outcomeLibraryGenerateJobService.cancelActiveForProject(projectId);
+            }
+            for (const job of this.activeCommonJobs()) {
+                if (job.id !== excludeJobId) this.jobService.cancel(job.projectId, job.id);
+            }
+        } finally {
+            this.validationTransitions--;
         }
     }
 
@@ -2286,6 +2292,7 @@ export class StudioServer implements StudioServerHandling {
     }
 
     private async withAdvancedValidation(req: IncomingMessage, res: ServerResponse, run: (signal: AbortSignal) => Promise<unknown>): Promise<void> {
+        if (this.validationTransitions > 0) throw new StudioHttpRequestError(409, "Project is changing. Validate the current source after the transition completes.");
         const controller = new AbortController();
         const context = this.currentContext;
         const abort = (): void => controller.abort();
