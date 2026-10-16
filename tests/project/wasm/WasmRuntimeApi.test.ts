@@ -516,3 +516,98 @@ it.each(["plain", "anonymous", "composite", "bounded"])("rejects coordinated %s 
         runtime.dispose();
     }
 });
+
+it.each(["stepwise", "composite", "plain"] as const)("rejects nested %s checkpoint projections and analytics before host effects, then restores and reuses", async policy => {
+    const {checkpointProjectionMutations, mutateCheckpointProjection} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
+    const blueprint = weightedBonusBlueprint();
+    blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const host = new SeededPokieWasmHost("probe");
+    const restore = jest.spyOn(host, "restoreState");
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
+    const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("fresh"));
+    try {
+        const session = runtime.createSession("probe");
+        const command = {bet: 0.05, roundId: "x", ...(policy === "plain" ? {} : {delivery: policy})};
+        const result = await session.play(command);
+        const saved = session.serialize();
+        const before = host.serializeState();
+        for (const mutation of checkpointProjectionMutations) {
+            const corrupt = mutateCheckpointProjection(saved, mutation);
+            // Completed composites have no active entries and already report completion.
+            if (JSON.stringify(corrupt) === JSON.stringify(saved)) continue;
+            const calls = restore.mock.calls.length;
+            expect(() => runtime.restoreSession(corrupt)).toThrow(/network|analytics|plain money/i);
+            expect(() => fresh.restoreSession(corrupt)).toThrow(/network|analytics|plain money/i);
+            await expect(runtime.replay(corrupt, [command])).rejects.toThrow(/network|analytics|plain money/i);
+            expect(restore).toHaveBeenCalledTimes(calls);
+            expect(host.serializeState()).toEqual(before);
+            expect(session.serialize()).toEqual(saved);
+        }
+        const {deliveries: _deliveries, ...receipt} = result;
+        for (const target of [runtime, fresh]) {
+            const restored = target.restoreSession(saved);
+            const initial = restored.getInitialData!();
+            expect(initial).toMatchObject(receipt.network!);
+            initial.reelsSymbols[0][0] = "INVALID";
+            initial.winEvaluationResult!.winningPositions.push([-999, 999]);
+            initial.boundedMechanics!.weightedBonus!.payout = -123;
+            expect(restored.serialize()).toEqual(saved);
+            expect(restored.getInitialData?.()).toMatchObject(receipt.network!);
+            expect(await restored.play(command)).toEqual(receipt);
+            expect(await restored.play(command)).toEqual(receipt);
+            restored.dispose();
+        }
+        expect((await runtime.replay(saved, [command])).rounds).toEqual([receipt]);
+        const restored = fresh.restoreSession(saved);
+        if (policy === "stepwise") {
+            for (const cursor of [1, 2]) {
+                const next = {delivery: "stepwise", continuation: {roundId: "x", cursor}};
+                expect(await restored.play(next)).toEqual(await session.play(next));
+            }
+            const completed = restored.serialize();
+            if (completed.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
+            expect(completed.feature.lastRound?.analytics).toMatchObject({position: 3, logicalCompletion: true, features: [{feature: "weightedBonus", completion: {duration: 2, win: 0.44999999999999996, entryPosition: 1}}]});
+        }
+        for (let index = 0; index < 2; index++) {
+            const next = {bet: 0.05};
+            expect(await restored.play(next)).toEqual(await session.play(next));
+            expect(restored.serialize()).toEqual(session.serialize());
+        }
+    } finally {
+        runtime.dispose();
+        fresh.dispose();
+    }
+});
+
+it("validates analytics at its shared owner before mutation and explicitly restores a used observer like a fresh one", async () => {
+    const {createAuthoredSession} = await import("../../../src/generated/createAuthoredSession.js");
+    const {SeededRandomNumberGenerator} = await import("../../../src/session/videoslot/combinations/SeededRandomNumberGenerator.js");
+    const {SessionFeatureAnalyticsObserver} = await import("../../../src/simulation/SessionFeatureAnalyticsObserver.js");
+    const first = createAuthoredSession(weightedBonusBlueprint(), new SeededRandomNumberGenerator("probe"));
+    const second = createAuthoredSession(weightedBonusBlueprint(), new SeededRandomNumberGenerator("probe"));
+    try {
+        const observer = new SessionFeatureAnalyticsObserver(first.session);
+        const fresh = new SessionFeatureAnalyticsObserver(second.session);
+        const origin = observer.toState();
+        observer.afterPlay(observer.beforePlay(), 0);
+        const used = observer.toState();
+        for (const active of [
+            {weightedBonus: {duration: 999, win: 0, known: true, entryPosition: 1}},
+            {weightedBonus: {duration: 0, win: 0, known: true, entryPosition: 0}},
+            {weightedBonus: {duration: 0, win: 0, known: true, entryPosition: 1, extra: []}},
+        ]) {
+            expect(() => observer.restoreState({...used, active})).toThrow("Invalid active feature analytics continuation.");
+            expect(observer.toState()).toEqual(used);
+        }
+        for (const target of [observer, fresh]) target.restoreState(origin);
+        expect(observer.toState()).toEqual(origin);
+        for (let index = 0; index < 2; index++) {
+            expect(observer.afterPlay(observer.beforePlay(), 0)).toEqual(fresh.afterPlay(fresh.beforePlay(), 0));
+            expect(observer.toState()).toEqual(fresh.toState());
+        }
+    } finally {
+        first.dispose();
+        second.dispose();
+    }
+});

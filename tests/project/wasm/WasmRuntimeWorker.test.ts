@@ -451,3 +451,46 @@ it.each(["stepwise", "composite"])("restores Worker checkpoints after completed 
         await fresh.handle({id: "dispose", type: "dispose"});
     }
 });
+
+it.each(["stepwise", "composite", "plain"] as const)("rejects nested %s checkpoint projections and analytics without replacing a Worker session", async policy => {
+    const {weightedBonusBlueprint} = await import("../../v2/fixtures/WeightedBonusGame.js");
+    const {checkpointProjectionMutations, mutateCheckpointProjection} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
+    const blueprint = weightedBonusBlueprint();
+    blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const worker = new PokieWasmWorkerProtocol();
+    const fresh = new PokieWasmWorkerProtocol();
+    try {
+        for (const target of [worker, fresh]) expect(await target.handle({id: "start", type: "instantiate", ...fixture, seed: "probe"})).toMatchObject({ok: true});
+        const command = {bet: 0.05, roundId: "x", ...(policy === "plain" ? {} : {delivery: policy})};
+        expect(await worker.handle({id: "play", type: "play", command})).toMatchObject({ok: true});
+        const saved = await worker.handle({id: "state", type: "serialize"});
+        if (!saved.ok) throw new Error(saved.error);
+        const state = saved.result as import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmFeatureSessionState;
+        for (const mutation of checkpointProjectionMutations) {
+            const corrupt = mutateCheckpointProjection(state, mutation);
+            if (JSON.stringify(corrupt) === JSON.stringify(state)) continue;
+            const diagnostics = worker.getDiagnostics();
+            expect(await worker.handle({id: "bad", type: "restore", state: corrupt})).toMatchObject({ok: false, error: expect.stringMatching(/network|analytics|plain money/i)});
+            expect(await worker.handle({id: "bad", type: "replay", state: corrupt, commands: [command]})).toMatchObject({ok: false, error: expect.stringMatching(/network|analytics|plain money/i)});
+            expect(worker.getDiagnostics()).toEqual(diagnostics);
+            expect(await worker.handle({id: "state", type: "serialize"})).toEqual(saved);
+        }
+        for (const target of [worker, fresh]) {
+            expect(await target.handle({id: "restore", type: "restore", state})).toMatchObject({ok: true});
+            for (let index = 0; index < 2; index++) expect(await target.handle({id: "retry", type: "play", command})).toMatchObject({ok: true, result: state.feature.lastRound});
+        }
+        if (policy === "stepwise") for (const cursor of [1, 2]) {
+            const request = {id: "next", type: "play" as const, command: {delivery: "stepwise", continuation: {roundId: "x", cursor}}};
+            expect(await worker.handle(request)).toEqual(await fresh.handle(request));
+        }
+        for (let index = 0; index < 2; index++) {
+            const request = {id: "next", type: "play" as const, command: {bet: 0.05}};
+            expect(await worker.handle(request)).toEqual(await fresh.handle(request));
+            expect(await worker.handle({id: "state", type: "serialize"})).toEqual(await fresh.handle({id: "state", type: "serialize"}));
+        }
+    } finally {
+        await worker.handle({id: "dispose", type: "dispose"});
+        await fresh.handle({id: "dispose", type: "dispose"});
+    }
+});

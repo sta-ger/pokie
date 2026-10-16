@@ -108,9 +108,12 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             !Number.isSafeInteger(value.position) || value.position < 0 || typeof value.source !== "string" || !value.source || value.source.length > 1024 ||
             (value.logicalKnown !== undefined && typeof value.logicalKnown !== "boolean") || !value.active || typeof value.active !== "object" || Array.isArray(value.active) ||
             Object.entries(value.active).some(([feature, active]) => !this.envelope.supportedFeatures.includes(feature as AnalyticsFeature) || !active ||
-                !Number.isSafeInteger(active.duration) || active.duration < 0 || !Number.isFinite(active.win) || active.win < 0 || typeof active.known !== "boolean" ||
-                !Number.isSafeInteger(active.entryPosition) || active.entryPosition < 0 || active.entryPosition > value.position)) throw new Error("Invalid active feature analytics continuation.");
-        Object.assign(this.state, JSON.parse(JSON.stringify(value)));
+                Object.keys(active).some(key => !["duration", "win", "known", "entryPosition"].includes(key)) ||
+                !Number.isSafeInteger(active.duration) || active.duration < 0 || active.duration > value.position || !Number.isFinite(active.win) || active.win < 0 || typeof active.known !== "boolean" ||
+                !Number.isSafeInteger(active.entryPosition) || active.entryPosition < 0 || active.entryPosition > value.position || (active.known && active.entryPosition === 0))) throw new Error("Invalid active feature analytics continuation.");
+        const restored = JSON.parse(JSON.stringify(value)) as SessionFeatureAnalyticsState;
+        Reflect.deleteProperty(this.state, "logicalKnown");
+        Object.assign(this.state, restored);
     }
     public getEnvelope(): AnalyticsEnvelope {
         return {...this.envelope, supportedFeatures: [...this.envelope.supportedFeatures]};
