@@ -305,3 +305,48 @@ it("retains clone-safe feature checkpoints across Worker restore, replay, reject
     expect(await worker.handle({id: "cancel", type: "cancel"})).toEqual({id: "cancel", ok: true});
     expect(await worker.handle({id: "gone", type: "serialize"})).toMatchObject({ok: false});
 });
+
+it("rejects coordinated bonus receipt contradictions through Worker restore/replay and reuses the settled session", async () => {
+    const {weightedBonusBlueprint} = await import("../../v2/fixtures/WeightedBonusGame.js");
+    const blueprint = weightedBonusBlueprint();
+    blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const worker = new PokieWasmWorkerProtocol();
+    const reference = new PokieWasmWorkerProtocol();
+    for (const target of [worker, reference]) {
+        expect(await target.handle({id: "start", type: "instantiate", ...fixture, seed: "probe"})).toMatchObject({ok: true});
+        expect(await target.handle({id: "entry", type: "play", command: {bet: 0.05, roundId: "x", delivery: "stepwise"}})).toMatchObject({ok: true});
+    }
+    try {
+        for (const cursor of [1, 2]) {
+            const command = {delivery: "stepwise", continuation: {roundId: "x", cursor}};
+            const expected = await reference.handle({id: "play", type: "play", command});
+            expect(await worker.handle({id: "play", type: "play", command})).toEqual(expected);
+            const snapshot = await worker.handle({id: "state", type: "serialize"});
+            if (!snapshot.ok) throw new Error(snapshot.error);
+            const checkpoint = JSON.parse(JSON.stringify(snapshot.result));
+            expect(checkpoint.feature.lastRound).toMatchObject({win: 0.1, sequence: cursor + 1});
+            const screens = [[['INVALID']], [['C']], [['A'], ['A'], ['A']]].map(screen => ({screen, network: {...checkpoint.feature.lastRound.network, reelsSymbols: screen}}));
+            const changes = cursor === 1 ? [{win: 0, winMultiplier: 0}, {payout: 0, creditsBefore: checkpoint.credits}, ...screens]
+                : [{command: {kind: "spin", delivery: "stepwise", continuation: {roundId: "x", cursor: 1}}}];
+            for (const change of changes) {
+                const corrupt = JSON.parse(JSON.stringify(checkpoint));
+                Object.assign(corrupt.feature.lastRound, change);
+                const diagnostics = worker.getDiagnostics();
+                expect(await worker.handle({id: "bad", type: "restore", state: corrupt})).toMatchObject({ok: false, error: expect.stringMatching(/Retained|screen/)});
+                expect(await worker.handle({id: "bad", type: "replay", state: corrupt, commands: [command]})).toMatchObject({ok: false, error: expect.stringMatching(/Retained|screen/)});
+                expect(worker.getDiagnostics()).toEqual(diagnostics);
+                expect(await worker.handle({id: "state", type: "serialize"})).toEqual(snapshot);
+            }
+            expect(await worker.handle({id: "restore", type: "restore", state: checkpoint})).toMatchObject({ok: true, result: checkpoint});
+            expect(await worker.handle({id: "play", type: "play", command})).toEqual(expected);
+        }
+        for (const roundId of ["after-rejection", "reuse-again"]) {
+            const request = {id: "next", type: "play" as const, command: {bet: 0.05, roundId, delivery: "composite"}};
+            expect(await worker.handle(request)).toEqual(await reference.handle(request));
+        }
+    } finally {
+        await worker.handle({id: "dispose", type: "dispose"});
+        await reference.handle({id: "dispose", type: "dispose"});
+    }
+});

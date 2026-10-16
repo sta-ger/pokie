@@ -25,6 +25,8 @@ export type PokieWasmFeatureSessionState = Omit<PokieWasmOrdinarySessionState, "
         readonly initialStops?: readonly number[];
         readonly logicalRound?: import("../runtime/LogicalRound.js").LogicalRound;
         readonly lastRound?: PokieWasmRound;
+        /** Starting totals for the sole retained composite continuation, never delivery history. */
+        readonly deliveryStart?: {readonly cursor: number; readonly credits: number; readonly totalStake: number; readonly totalWin: number; readonly totalPayout: number};
         readonly pendingCommand?: {readonly command: import("../runtime/SessionCommand.js").SessionCommand; readonly advanced: number};
         readonly analytics?: import("../simulation/SessionFeatureAnalyticsObserver.js").SessionFeatureAnalyticsState;
     };

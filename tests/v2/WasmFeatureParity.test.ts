@@ -245,6 +245,13 @@ it("V2C-21 classifies seed-7 cascades across stepwise, composite, resumed and re
             expect(() => runtime.restoreSession(corrupt)).toThrow(/logical delivery/);
         }
         expect(stepwise.serialize()).toMatchObject({rngState: saved.rngState, credits: composite.credits});
+        const display = runtime.restoreSession(initial);
+        await display.play({...command, delivery: "stepwise"});
+        const drain = {delivery: "composite", continuation: {roundId: "cascade", cursor: 1}};
+        const delivered = await display.play(drain);
+        expect(delivered).toMatchObject({deliveryOnly: true, win: 0, stake: 0, payout: 0});
+        const {deliveries: _displayFrames, ...displayReceipt} = delivered;
+        expect(await runtime.restoreSession(display.serialize()).play(drain)).toEqual(displayReceipt);
         const interrupted = runtime.restoreSession(initial);
         interrupt = true;
         await interrupted.play(command, {signal: controller.signal});
@@ -257,6 +264,103 @@ it("V2C-21 classifies seed-7 cascades across stepwise, composite, resumed and re
         expect(completed).toMatchObject({stake: 0.05, win: 0.2, logicalRound: {status: "completed"}});
         expect(resumed.serialize()).toEqual(saved);
         expect(await resumed.play(command)).toEqual(receipt);
+    } finally {
+        runtime.dispose();
+    }
+});
+
+it.each(["bonus", "banked"] as const)("restores %s composite continuations and interrupted prefixes with separate win/payout accounting", async kind => {
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    const {replayModesBlueprint} = await import("./fixtures/ExistingMechanicsGame.js");
+    const blueprint = kind === "bonus" ? weightedBonusBlueprint() : replayModesBlueprint();
+    if (kind === "bonus") blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    else blueprint.paytable.A = {3: 2};
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const host = new SeededPokieWasmHost("continuation");
+    const controller = new AbortController();
+    let interrupt = false;
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {
+        nextRandom: () => host.nextRandom(), resetSeed: seed => host.resetSeed(seed), restoreState: value => host.restoreState(value),
+        serializeState: () => {
+            if (interrupt) controller.abort();
+            return host.serializeState();
+        },
+    });
+    try {
+        const session = runtime.createSession("continuation");
+        await session.play({bet: 0.05, delivery: "stepwise", roundId: "x", ...(kind === "banked" ? {mode: "buy-more"} : {})});
+        const entry = session.serialize();
+        const command = {delivery: "composite", continuation: {roundId: "x", cursor: 1}};
+        const complete = await session.play(command);
+        expect(complete.win).toBeCloseTo(kind === "bonus" ? 0.2 : 0.4);
+        expect(complete.payout).toBeCloseTo(kind === "bonus" ? 0.2 : 0.4);
+        expect(complete.stake).toBe(0);
+        expect(complete.logicalRound?.status).toBe("completed");
+        const saved = session.serialize();
+        const {deliveries: _deliveries, ...receipt} = complete;
+        expect(await runtime.restoreSession(saved).play(command)).toEqual(receipt);
+        const interrupted = runtime.restoreSession(entry);
+        interrupt = true;
+        const prefix = await interrupted.play(command, {signal: controller.signal});
+        expect(prefix.win).toBe(0.1);
+        if (kind === "banked") expect(prefix.payout).toBe(0);
+        const checkpoint = JSON.parse(JSON.stringify(interrupted.serialize()));
+        expect(checkpoint.feature).toMatchObject({deliveryStart: {cursor: 1}, pendingCommand: {advanced: 1}});
+        interrupt = false;
+        for (const state of [checkpoint, saved]) {
+            if (state.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
+            const corrupt = JSON.parse(JSON.stringify(state));
+            Object.assign(corrupt.feature.lastRound, {win: 0, winMultiplier: 0});
+            await expect(runtime.replay(corrupt, [command])).rejects.toThrow(/money.*logical delivery/);
+            expect(() => runtime.restoreSession(corrupt)).toThrow(/money.*logical delivery/);
+        }
+        const resumed = runtime.restoreSession(checkpoint);
+        expect(await resumed.play(command)).toMatchObject(receipt);
+        expect(resumed.serialize()).toEqual(saved);
+        expect(await resumed.play(command)).toEqual(receipt);
+        // A bounded batch has its own starting totals; the next request starts anew.
+        const bounded = runtime.restoreSession(entry);
+        const frame = await bounded.play({...command, maxSubrounds: 1});
+        const boundedState = bounded.serialize();
+        expect(await runtime.restoreSession(boundedState).play({...command, maxSubrounds: 1})).toEqual(frame);
+        const next = {delivery: "composite", continuation: {roundId: "x", cursor: frame.logicalRound!.deliveryCursor}};
+        const finished = await bounded.play(next);
+        expect(finished.logicalRound?.status).toBe("completed");
+        expect(await runtime.restoreSession(bounded.serialize()).play(next)).toEqual({...finished, deliveries: undefined});
+    } finally {
+        runtime.dispose();
+    }
+});
+
+it("binds visible receipt screens to artifact coordinates rather than evaluated or generated matrices", async () => {
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    const blueprint = weightedBonusBlueprint();
+    Reflect.deleteProperty(blueprint.mechanics!, "weightedBonus");
+    blueprint.mechanics!.freeGames = {scatterSymbol: "C", awardsByCount: {3: 0}};
+    blueprint.rows = 2;
+    blueprint.reelStrips = [["A", "C", "A", "A"], ["A", "C", "A", "A"], ["A", "C", "A", "A"]];
+    blueprint.screenGeometry = {generated: {reels: 3, rows: 4}, visible: {rowOffset: 0.5, rows: 2}, evaluated: {rowOffset: 1, rows: 1}, paylineSpace: "evaluated"};
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("projection"));
+    try {
+        const session = runtime.createSession("projection");
+        const command = {bet: 0.05, roundId: "screen", delivery: "stepwise"};
+        const result = await session.play(command);
+        const saved = session.serialize();
+        if (saved.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
+        const artifact = saved.feature.logicalRound!.subrounds[0].artifacts![0];
+        expect(result.screen.every(reel => reel.length === 3)).toBe(true);
+        expect(artifact.screen.every(reel => reel.length === 1)).toBe(true);
+        expect(await runtime.restoreSession(saved).play(command)).toEqual(result);
+        for (const screen of [artifact.screen, artifact.generatedScreen, [["A", "A", "A"], ["A", "A", "A"], ["A", "A", "A"]]]) {
+            const corrupt = JSON.parse(JSON.stringify(saved));
+            Object.assign(corrupt.feature.lastRound, {screen, network: {...result.network, reelsSymbols: screen}});
+            expect(() => runtime.restoreSession(corrupt)).toThrow(/screen/);
+        }
+        const corrupt = JSON.parse(JSON.stringify(saved));
+        corrupt.feature.logicalRound.subrounds[0].artifacts[0].geometry.visible.rowOffset = 0;
+        corrupt.feature.lastRound.logicalRound = corrupt.feature.logicalRound;
+        expect(() => runtime.restoreSession(corrupt)).toThrow(/geometry/);
     } finally {
         runtime.dispose();
     }

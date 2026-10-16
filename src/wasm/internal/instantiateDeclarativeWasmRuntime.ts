@@ -113,7 +113,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
     function validate(state: PokieWasmRestorableState): asserts state is PokieWasmFeatureSessionState {
         if (!state || state.schemaVersion !== "pokie.state.v4" || state.artifactIdentity !== artifactIdentity || typeof state.seed !== "string" || !Number.isSafeInteger(state.sequence) || state.sequence < 0 || !Number.isSafeInteger(state.drawCount) || state.drawCount < blueprint.reels || !Number.isFinite(state.credits) || state.credits < 0 || !state.feature || !(blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]).includes(state.feature.bet)) throw new Error("Unsupported or malformed artifact-bound WASM feature state.");
         if (Object.keys(state).some(key => !["schemaVersion", "artifactIdentity", "seed", "sequence", "drawCount", "credits", "rngState", "feature"].includes(key)) ||
-            Object.keys(state.feature).some(key => !["bet", "state", "initialStops", "logicalRound", "lastRound", "analytics", "pendingCommand"].includes(key))) throw new Error("Unexpected compact feature-state fields.");
+            Object.keys(state.feature).some(key => !["bet", "state", "initialStops", "logicalRound", "lastRound", "analytics", "pendingCommand", "deliveryStart"].includes(key))) throw new Error("Unexpected compact feature-state fields.");
         if (state.rngState !== undefined) clonePokieWasmHostState(state.rngState);
         const round = state.feature.logicalRound;
         if (round && (round.retention !== "latest" || validateLogicalRound(round))) throw new Error("Invalid compact logical-round continuation.");
@@ -130,12 +130,37 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
             let leaf = decode(state.feature.state) as {base?: unknown; reelStrips: string[][]};
             while (leaf.base) leaf = leaf.base as typeof leaf;
             if (!Array.isArray(last.stops) || last.stops.length !== blueprint.reels || last.stops.some((stop, reel) => !Number.isSafeInteger(stop) || stop < 0 || stop >= leaf.reelStrips[reel].length)) throw new Error("Invalid retained WASM stops.");
-            const mathematicalDelivery = round && round.deliveryCursor - Math.max(1, round.stageCursor) + 1;
-            const deliveryOnly = !!(round && command.continuation && command.continuation.cursor >= mathematicalDelivery!);
-            if (!!last.deliveryOnly !== deliveryOnly || deliveryOnly && (last.stake !== 0 || last.win !== 0 || last.payout !== 0) ||
-                round && (command.continuation ? command.continuation.roundId !== round.id || command.continuation.cursor >= round.deliveryCursor : stableSlotMathJson(command) !== stableSlotMathJson(round.entry)) ||
-                round && (last.stake > round.totalStake || last.win! > round.totalWin || last.payout > round.totalPayout) ||
-                round && !command.continuation && (last.stake !== round.totalStake || last.win !== round.totalWin || last.payout !== round.totalPayout)) throw new Error("Retained result contradicts its accepted logical delivery.");
+            const start = state.feature.deliveryStart;
+            if (round) {
+                const subround = round.subrounds[0];
+                const cursor = command.continuation?.cursor ?? 0;
+                // The mathematical play precedes any saved presentation-only cascade frames.
+                const mathematicalCursor = round.deliveryCursor - Math.max(1, round.stageCursor);
+                const composite = command.delivery === "composite";
+                const deliveryOnly = !!command.continuation && cursor > mathematicalCursor;
+                if (cursor >= round.deliveryCursor || !composite && cursor !== round.deliveryCursor - 1 ||
+                    !!last.deliveryOnly !== deliveryOnly ||
+                    (command.continuation ? command.continuation.roundId !== round.id : stableSlotMathJson(command) !== stableSlotMathJson(round.entry)) ||
+                    !composite && !deliveryOnly && stableSlotMathJson(command) !== stableSlotMathJson(subround.command) ||
+                    composite && round.deliveryCursor - cursor > (command.maxSubrounds ?? 1000)) throw new Error("Retained command contradicts its accepted logical delivery.");
+                if (state.feature.pendingCommand && stableSlotMathJson(state.feature.pendingCommand.command) !== stableSlotMathJson(command)) throw new Error("Pending command differs from its retained receipt.");
+                if (composite && command.continuation) {
+                    if (!start || Object.keys(start).some(key => !["cursor", "credits", "totalStake", "totalWin", "totalPayout"].includes(key)) || start.cursor !== cursor || ![start.credits, start.totalStake, start.totalWin, start.totalPayout].every(amount) ||
+                        start.credits !== last.creditsBefore || start.totalStake !== round.totalStake || start.totalWin > round.totalWin || start.totalPayout > round.totalPayout) throw new Error("Invalid retained composite starting totals.");
+                    // Sum in the original accounting domain: subtraction can lose small awards
+                    // when the accepted prefix is large. Win and wallet release stay separate.
+                    const agrees = (prefix: number, delivered: number, total: number) => Math.abs(prefix + delivered - total) <= 8 * Number.EPSILON * Math.max(Math.abs(prefix), Math.abs(delivered), Math.abs(total));
+                    if (last.stake !== 0 || !agrees(start.totalWin, last.win!, round.totalWin) || !agrees(start.totalPayout, last.payout, round.totalPayout)) throw new Error("Retained composite money contradicts its accepted logical delivery.");
+                } else {
+                    if (start) throw new Error("Unexpected retained composite starting totals.");
+                    let expected = command.continuation ? subround : {stake: round.totalStake, win: round.totalWin, payout: round.totalPayout};
+                    if (deliveryOnly) expected = {stake: 0, win: 0, payout: 0};
+                    if (last.stake !== expected.stake || last.win !== expected.win || last.payout !== expected.payout) throw new Error("Retained money contradicts its accepted logical delivery.");
+                }
+                // A composite containing only presentation frames settles nothing, even if
+                // the retained mathematical subround itself won and paid an award.
+                if (deliveryOnly && (last.stake !== 0 || last.win !== 0 || last.payout !== 0)) throw new Error("Retained result contradicts its accepted logical delivery.");
+            } else if (start || last.deliveryOnly) throw new Error("Retained result requires accepted logical delivery.");
         }
         const check = assemble(state.seed, true);
         try {
@@ -157,7 +182,25 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                     stableSlotMathJson(check.generator.getSequenceStatistics()) !== stableSlotMathJson(last.sequenceStatistics)) throw new Error("Weighted identity/frequency contradicts its last accepted observation.");
                 const bonusStatistics = (check.session as {getWeightedBonusStatistics?: () => unknown}).getWeightedBonusStatistics?.();
                 if (stableSlotMathJson(bonusStatistics) !== stableSlotMathJson(last.weightedBonusStatistics)) throw new Error("Weighted bonus counters contradict their last accepted observation.");
+                const projection = blueprint.screenGeometry && new ScreenProjection(blueprint.screenGeometry);
+                const screen = (value: unknown, domain: "visible" | "evaluated" | "generated") => {
+                    const rows = projection?.getRows(domain) ?? blueprint.rows;
+                    if (!Array.isArray(value) || value.length !== blueprint.reels || value.some(reel => !Array.isArray(reel) || reel.length !== rows || reel.some(symbol => !blueprint.symbols.includes(symbol)))) throw new Error(`Invalid retained ${domain} screen dimensions or symbols.`);
+                };
+                screen(last.screen, "visible");
                 if (stableSlotMathJson(last.screen) !== stableSlotMathJson(last.network?.reelsSymbols)) throw new Error("Last screen contradicts its accepted network observation.");
+                if (round) {
+                    const subround = round.subrounds[0];
+                    for (const artifact of subround.artifacts ?? []) {
+                        screen(artifact.screen, "evaluated");
+                        if (artifact.generatedScreen) screen(artifact.generatedScreen, "generated");
+                        if (stableSlotMathJson(artifact.geometry) !== stableSlotMathJson(projection && !projection.isIdentity() ? blueprint.screenGeometry : undefined)) throw new Error("Retained artifact geometry differs from its model.");
+                    }
+                    if (subround.finalScreen) screen(subround.finalScreen, "generated");
+                    const artifact = subround.artifacts?.[subround.artifacts.length - 1];
+                    const visible = subround.finalScreen ?? (artifact?.generatedScreen && projection ? projection.project(artifact.generatedScreen, "visible") : subround.screen);
+                    if (stableSlotMathJson(last.screen) !== stableSlotMathJson(visible)) throw new Error("Last screen contradicts its accepted mathematical artifact.");
+                }
                 const current = observeVideoSlotFeatures(check.session);
                 for (const key of ["holdAndWin", "jackpot", "chargedBetModeId"] as const) if (stableSlotMathJson(current[key]) !== stableSlotMathJson(last.network?.[key])) throw new Error(`Feature ${key} contradicts its last accepted observation.`);
                 for (const field of ["freeGamesNum", "freeGamesSum", "freeGamesBank"] as const) {
@@ -185,6 +228,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
         let state = initial;
         let native: NativeSession | undefined = built.session;
         let accepted: PokieWasmRound[] = [];
+        let deliveryStart = initial.feature.deliveryStart;
         const onAccepted = (command: SessionCommand, result: Extract<import("../../runtime/SessionRuntimeHandling.js").SessionCommandResult, {status: "played"}>): void => {
             const creditsBefore = state.credits;
             const network = result.deliveryOnly && state.feature.lastRound?.network ? copy(state.feature.lastRound.network)
@@ -197,7 +241,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                 ...((native as {getWeightedBonusStatistics?: () => unknown}).getWeightedBonusStatistics?.() ? {weightedBonusStatistics: (native as unknown as {getWeightedBonusStatistics(): PokieWasmRound["weightedBonusStatistics"]}).getWeightedBonusStatistics()} : {})};
             before = observer.beforePlay();
             state = checkpoint(native!, runtime, state, round);
-            state = {...state, feature: {...state.feature, analytics: observer.toState()}};
+            state = {...state, feature: {...state.feature, analytics: observer.toState(), ...(deliveryStart ? {deliveryStart} : {})}};
             record(trace, replaying ? "replay" : "round", state.sequence);
             accepted.push(round);
         };
@@ -242,6 +286,9 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                 if ((native as {hasPendingLogicalRound?: () => boolean}).hasPendingLogicalRound?.() && command.bet !== undefined && command.bet !== state.feature.bet) throw new Error("Continuation cannot change the entry bet.");
                 const invalid = resuming ? undefined : runtime.validateSelection(command);
                 if (invalid) throw new Error(`invalid-command: ${invalid}`);
+                deliveryStart = undefined;
+                if (command.delivery === "composite" && command.continuation) deliveryStart = resuming ? state.feature.deliveryStart
+                    : {cursor: command.continuation.cursor, credits: state.credits, totalStake: state.feature.logicalRound!.totalStake, totalWin: state.feature.logicalRound!.totalWin, totalPayout: state.feature.logicalRound!.totalPayout};
                 restoreHost(state);
                 currentDraws = [];
                 const creditsBefore = prefix?.creditsBefore ?? state.credits;

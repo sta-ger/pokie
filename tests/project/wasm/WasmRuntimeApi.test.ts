@@ -397,3 +397,62 @@ it.each(["stepwise", "composite"] as const)("V2C-21 validates retained %s result
         runtime.dispose();
     }
 });
+
+it("binds bonus continuation receipts to accepted money, screen and cursor before direct/replay restoration", async () => {
+    const blueprint = weightedBonusBlueprint();
+    blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const host = new SeededPokieWasmHost("probe");
+    const restore = jest.spyOn(host, "restoreState");
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
+    const freshHost = new SeededPokieWasmHost("fresh");
+    const freshRestore = jest.spyOn(freshHost, "restoreState");
+    const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, freshHost);
+    try {
+        const session = runtime.createSession("probe");
+        await session.play({bet: 0.05, roundId: "x", delivery: "stepwise"});
+        for (const cursor of [1, 2]) {
+            const command = {delivery: "stepwise", continuation: {roundId: "x", cursor}};
+            const result = await session.play(command);
+            expect(result).toMatchObject({sequence: cursor + 1, win: 0.1, stake: 0});
+            expect(result.payout).toBeGreaterThan(0);
+            const saved = session.serialize();
+            if (saved.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
+            const money = {win: 0, winMultiplier: 0};
+            const release = {payout: 0, creditsBefore: saved.credits};
+            const screens = [[['INVALID']], [['C']], [['A'], ['A'], ['A']]].map(screen => ({screen, network: {...saved.feature.lastRound!.network, reelsSymbols: screen}}));
+            const changes = cursor === 1 ? [money, release, ...screens] : [{command: {kind: "spin", delivery: "stepwise", continuation: {roundId: "x", cursor: 1}}}];
+            for (const change of changes) {
+                const corrupt = JSON.parse(JSON.stringify(saved)) as typeof saved;
+                Object.assign(corrupt.feature.lastRound!, change);
+                const calls = restore.mock.calls.length;
+                const freshCalls = freshRestore.mock.calls.length;
+                const rng = host.serializeState();
+                expect(() => runtime.restoreSession(corrupt)).toThrow(/Retained|screen/);
+                await expect(runtime.replay(corrupt, [command])).rejects.toThrow(/Retained|screen/);
+                expect(() => fresh.restoreSession(corrupt)).toThrow(/Retained|screen/);
+                expect(restore).toHaveBeenCalledTimes(calls);
+                expect(freshRestore).toHaveBeenCalledTimes(freshCalls);
+                expect(host.serializeState()).toEqual(rng);
+                expect(session.serialize()).toEqual(saved);
+            }
+            for (const receiving of [runtime, fresh]) {
+                const restored = receiving.restoreSession(JSON.parse(JSON.stringify(saved)));
+                expect(await restored.play(command)).toEqual(result);
+                expect(restored.serialize()).toEqual(saved);
+                restored.dispose();
+            }
+            expect((await runtime.replay(saved, [command])).rounds).toEqual([result]);
+        }
+        const saved = session.serialize();
+        const recovered = runtime.restoreSession(saved);
+        for (const roundId of ["after-rejection", "reuse-again"]) {
+            const command = {bet: 0.05, roundId, delivery: "composite"};
+            expect(await recovered.play(command)).toEqual(await session.play(command));
+            expect(recovered.serialize()).toEqual(session.serialize());
+        }
+    } finally {
+        fresh.dispose();
+        runtime.dispose();
+    }
+});
