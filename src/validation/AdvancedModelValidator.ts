@@ -1,5 +1,5 @@
 import {definitionPreprocessingWork} from "./internal/definitionPreprocessingWork.js";
-import {declaredAccountingOwnership, validateDeclaredContinuation} from "./internal/validateDeclaredContinuation.js";
+import {DeclaredContinuationError, declaredAccountingOwnership, validateDeclaredContinuation} from "./internal/validateDeclaredContinuation.js";
 import {canonicalDefinitionJson} from "../diff/MathDefinitionDiffer.js";
 import {modelFieldPathSegments} from "../generated/internal/modelFieldPath.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
@@ -102,6 +102,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
         let cycleFound = false,
             illegal = false,
             invariant = false,
+            moneyViolation = false,
             accountingComplete = stateSchemaSupported;
         const visit = async (id: string): Promise<void> => {
             budget.depth(path.length);
@@ -159,11 +160,17 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                         const beforeState = edge.before ?? state.state;
                         const afterState = edge.after ?? states.get(edge.to)?.state;
                         if (afterState) validateExecutableState(afterState, model.schema);
-                        if (beforeState && afterState) validateDeclaredContinuation(beforeState, afterState, model.schema);
+                        if (beforeState && afterState) {
+                            const unsupported = validateDeclaredContinuation(beforeState, afterState, model.schema);
+                            if (unsupported.length) {
+                                snapshotsComplete = false;
+                                await this.add(report, budget, {id: "invariants.transition-support", path: `transitions.${index}`, status: "unknown", severity: "warning", message: "Some transition relationships lack production evidence.", assumptions: report.assumptions, evidence: {path: [...path, edge.to], unsupported}});
+                            }
+                        }
                     }
                 } catch (error) {
                     invariant = true;
-                    await this.add(report, budget, {id: "invariants.transition-state", path: `transitions.${index}`, status: "violation", severity: "error", message: error instanceof Error ? error.message : String(error), assumptions: report.assumptions, evidence: {path: [...path, edge.to], transition: edge, before: edge.before ?? state.state ?? {}, after: edge.after ?? states.get(edge.to)?.state ?? {}, expected: "Owned source/target snapshots and executable-state invariants", actual: edge}});
+                    await this.add(report, budget, {id: "invariants.transition-state", path: `transitions.${index}`, status: "violation", severity: "error", message: error instanceof Error ? error.message : String(error), assumptions: report.assumptions, evidence: {path: [...path, edge.to], transition: edge, before: edge.before ?? state.state ?? {}, after: edge.after ?? states.get(edge.to)?.state ?? {}, expected: error instanceof DeclaredContinuationError ? {property: error.property, relationship: error.expected} : "Owned source/target snapshots and executable-state invariants", actual: error instanceof DeclaredContinuationError ? error.actual : edge}});
                 }
                 const money = edge.accounting;
                 if (!money) accountingComplete = false;
@@ -185,13 +192,16 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                     const ownedAfter = balances.get(edge.to);
                     if (!balances.has(edge.from)) balances.set(edge.from, money.creditsBefore);
                     if (!balances.has(edge.to)) balances.set(edge.to, money.creditsAfter);
-                    const ownershipMismatch = ownership && (ownership.continuation !== (money.continuation ?? false) || ownership.bet !== undefined && ownership.bet !== money.bet || ownership.complete && (money.multiplier ?? 1) !== 1);
+                    const ownershipMismatch = ownership && (ownership.continuation !== (money.continuation ?? false) || ownership.bet !== undefined && ownership.bet !== money.bet || ownership.multiplier !== undefined && (money.multiplier ?? 1) !== ownership.multiplier);
+                    const payout = ownership?.payout;
+                    const payoutMismatch = payout && ("exact" in payout ? money.payout !== payout.exact : money.payout < payout.minimum);
                     const expectedStake = money.continuation ? 0 : money.bet * (money.multiplier ?? 1);
                     const expectedCredits = money.creditsBefore - money.stake + money.payout;
-                    if (![money.creditsBefore, money.creditsAfter, money.stake, money.payout, money.bet, money.multiplier ?? 1].every(value => Number.isFinite(value) && value >= 0) || money.bet <= 0 || money.stake !== expectedStake || money.creditsAfter !== expectedCredits || ownershipMismatch || disconnected) {
-                        invariant = true;
+                    if (![money.creditsBefore, money.creditsAfter, money.stake, money.payout, money.bet, money.multiplier ?? 1].every(value => Number.isFinite(value) && value >= 0) || money.bet <= 0 || money.stake !== expectedStake || money.creditsAfter !== expectedCredits || ownershipMismatch || payoutMismatch || disconnected) {
+                        moneyViolation = true;
                         let message = "Stake or wallet conservation violated.";
                         if (ownershipMismatch) message = "Accounting denomination or continuation ownership differs from the executable state.";
+                        if (payoutMismatch) message = "Accounting payout omits or contradicts the retained feature settlement.";
                         if (disconnected) message = "Connected transitions disagree on their shared wallet balance.";
                         await this.add(report, budget, {id: "invariants.money", path: `transitions.${index}.accounting`, status: "violation", severity: "error", message, assumptions: report.assumptions, evidence: {path: [...path, edge.to], transition: edge, before: edge.before ?? state.state ?? {}, after: edge.after ?? states.get(edge.to)?.state ?? {}, expected: {stake: expectedStake, creditsAfter: expectedCredits, ...(ownership ? {ownership} : {}), ...(ownedBefore !== undefined || ownedAfter !== undefined ? {connectedBalances: {before: ownedBefore, after: ownedAfter}} : {})}, actual: money}});
                     }
@@ -204,7 +214,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
         await visit(model.initial);
         report.checks.push({id: "invariants.state-support", path: "schema", status: snapshotsComplete && !invariant ? "pass" : "unknown", severity: snapshotsComplete && !invariant ? "info" : "warning", message: "State invariants require a supported production executable-state schema and every reachable snapshot; table topology alone does not establish them.", assumptions: report.assumptions});
         for (const [index, target] of (model.targets ?? []).entries()) await this.add(report, budget, {id: "reachability.target", path: `targets.${index}`, status: visited.has(target) ? "pass" : "violation", severity: visited.has(target) ? "info" : "error", message: visited.has(target) ? "Target is attainable." : "No positive-weight transition from the complete reachable region enters the target.", assumptions: report.assumptions, evidence: {target, exploredRegion: [...visited], complete: true}});
-        for (const [id, failed] of [["termination.all-path", cycleFound], ["transitions.target", illegal], ["invariants.money", invariant]] as const) if (!failed) report.checks.push({id, path: "$", status: id === "invariants.money" && !accountingComplete ? "unknown" : "pass", severity: id === "invariants.money" && !accountingComplete ? "warning" : "info", message: id === "invariants.money" && !accountingComplete ? "Reachable accounting requires connected balances and state evidence for denomination, continuation ownership and selected-mode cost; omitted relationships remain unsupported." : "Complete reachable transition table checked.", assumptions: report.assumptions});
+        for (const [id, failed] of [["termination.all-path", cycleFound], ["transitions.target", illegal], ["invariants.money", moneyViolation]] as const) if (!failed) report.checks.push({id, path: "$", status: id === "invariants.money" && !accountingComplete ? "unknown" : "pass", severity: id === "invariants.money" && !accountingComplete ? "warning" : "info", message: id === "invariants.money" && !accountingComplete ? "Reachable accounting requires connected balances and state evidence for denomination, continuation ownership and selected-mode cost and complete feature/evaluator payout; omitted relationships remain unsupported." : "Complete reachable transition table checked.", assumptions: report.assumptions});
     }
 
     private async blueprint(input: AdvancedBlueprintInput, report: AdvancedModelValidationReport, budget: AnalysisBudget): Promise<void> {

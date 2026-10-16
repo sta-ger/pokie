@@ -351,14 +351,17 @@ it.each(["bet", "owner", "balance"])("binds accounting to state and connected wa
         states: [{id: "a", state: snapshot(2, 0)}, {id: "b", state: snapshot(1, 1)}, {id: "done", terminal: true, state: snapshot(0, 2)}],
         transitions: [{from: "a", to: "b", accounting: {creditsBefore: 10, creditsAfter: 10, bet: 1, stake: 0, payout: 0, continuation: true}}, {from: "b", to: "done", accounting: {creditsBefore: 10, creditsAfter: 10, bet: 1, stake: 0, payout: 0, continuation: true}}]};
     const validator = new AdvancedModelValidator();
-    expect(await validator.validate(model)).toMatchObject({verdict: "proved-within-assumptions"});
+    const valid = await validator.validate(model);
+    expect(valid).toMatchObject({status: "unsupported", verdict: "inconclusive"});
+    expect(valid.checks).toContainEqual(expect.objectContaining({id: "invariants.state-support", status: "pass"}));
+    expect(valid.checks).toContainEqual(expect.objectContaining({id: "invariants.money", status: "unknown"}));
     const money = model.transitions[1].accounting!;
     if (fault === "bet") money.bet = 7.5;
     if (fault === "owner") Object.assign(money, {continuation: false, stake: 1, creditsAfter: 9});
     if (fault === "balance") Object.assign(money, {creditsBefore: 100, creditsAfter: 100});
     const report = await validator.validate(model);
     expect(report.verdict).toBe("violated");
-    expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.money", path: "transitions.1.accounting", status: "violation", evidence: expect.objectContaining({path: ["a", "b", "done"], actual: money, expected: expect.objectContaining({ownership: {continuation: true, bet: 1, complete: true}, connectedBalances: {before: 10}})})}));
+    expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.money", path: "transitions.1.accounting", status: "violation", evidence: expect.objectContaining({path: ["a", "b", "done"], actual: money, expected: expect.objectContaining({ownership: {continuation: true, bet: 1, multiplier: 1, complete: false, payout: {minimum: 0}}, connectedBalances: {before: 10}})})}));
 });
 
 it("keeps locally consistent accounting unknown without a state denomination", async () => {
@@ -385,4 +388,185 @@ it("retains supported-reader diagnostics and handles effective-only snapshots an
     snapshot.support = "failed";
     snapshot.diagnostics.push({code: "snapshot-release-failed", path: "", severity: "error", message: "Cleanup failed"});
     expect(await validateMathDefinitionSnapshot(snapshot, {signal: controller.signal})).toMatchObject({status: "failed", issues: expect.arrayContaining([expect.objectContaining({code: "snapshot-release-failed"})])});
+});
+
+/** Retain actual handler snapshots and public wallet observations at every accepted play. */
+function declaredTrace(session: import("../../src/session/videoslot/VideoSlotSessionHandling.js").VideoSlotSessionHandling<string> & import("../../src/session/SessionStateRestoring.js").SessionStateRestoring & {toSessionState(): unknown; getStakeAmount(): number; hasPendingLogicalRound(): boolean}): DeclaredTransitionModel {
+    const snapshot = () => JSON.parse(JSON.stringify(session.toSessionState())) as Record<string, unknown>;
+    const states: DeclaredTransitionModel["states"] = [{id: "s0", state: snapshot()}];
+    const transitions: DeclaredTransitionModel["transitions"] = [];
+    do {
+        const creditsBefore = session.getCreditsAmount();
+        const stake = session.getStakeAmount();
+        const bet = session.getBet();
+        const continuation = session.hasPendingLogicalRound();
+        session.play();
+        const index = states.length;
+        states.push({id: `s${index}`, state: snapshot(), terminal: !session.hasPendingLogicalRound()});
+        transitions.push({from: `s${index - 1}`, to: `s${index}`, accounting: {creditsBefore, creditsAfter: session.getCreditsAmount(), stake, payout: session.getWinAmount(), bet, continuation}});
+        if (index > 10) throw new Error("Fixture did not complete its bounded feature.");
+    } while (session.hasPendingLogicalRound());
+    return {kind: "declared-transitions", initial: "s0", schema: session.getSessionStateSchema!(), states, transitions};
+}
+
+it.each(["zero", "subtract-threshold"] as const)("rejects zero-contribution collection growth and preserves %s resets through the shared boundary", async reset => {
+    const {validateDeclaredContinuation} = await import("../../src/validation/internal/validateDeclaredContinuation.js");
+    const before = {base: {}, value: 0, remaining: 1, executed: 0, entryBet: 1};
+    const after = {...before, remaining: 0, executed: 1};
+    const schema: NonNullable<DeclaredTransitionModel["schema"]> = {kind: "bounded-mechanics", bets: [1], rules: {collection: {symbolId: "C", contribution: 0, threshold: 10, cap: 20, payout: 3, reset}, respins: {trigger: {symbolId: "C", minimumCount: 1}, grant: 1, maxRespins: 1, retrigger: "none"}}, base: {kind: "base"}};
+    const model: DeclaredTransitionModel = {kind: "declared-transitions", initial: "a", schema, states: [{id: "a", state: before}, {id: "done", terminal: true, state: after}], transitions: [{from: "a", to: "done", accounting: {creditsBefore: 10, creditsAfter: 10, stake: 0, payout: 0, bet: 1, continuation: true}}]};
+    const validator = new AdvancedModelValidator();
+    expect(validateDeclaredContinuation(before, after, schema)).toEqual([]);
+    expect((await validator.validate(model)).checks).toContainEqual(expect.objectContaining({id: "invariants.state-support", status: "pass"}));
+    Object.assign(after, {value: 9});
+    expect(() => validateDeclaredContinuation(before, after, schema)).toThrow("state.value");
+    const report = await validator.validate(model);
+    expect(report.verdict).toBe("violated");
+    expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.transition-state", path: "transitions.0", status: "violation", evidence: {path: ["a", "done"], transition: model.transitions[0], before, after, expected: {property: "state.value", relationship: {value: 0, contribution: 0, reset}}, actual: 9}}));
+    Object.assign(after, {value: 0});
+    for (let i = 0; i < 2; i++) expect((await validator.validate(model)).checks).toContainEqual(expect.objectContaining({id: "invariants.state-support", status: "pass"}));
+    // A subtract reset may leave another threshold in the bank; one play resets once.
+    before.value = reset === "zero" ? 0 : 10;
+    Object.assign(after, {value: 0});
+    model.transitions[0].accounting!.payout = reset === "zero" ? 0 : 3;
+    model.transitions[0].accounting!.creditsAfter = reset === "zero" ? 10 : 13;
+    expect(validateDeclaredContinuation(before, after, schema)).toEqual([]);
+    expect((await validator.validate(model)).checks.filter(check => check.status === "violation")).toEqual([]);
+});
+
+async function holdAndWinTrace(): Promise<DeclaredTransitionModel> {
+    const {generatedMechanicsGame} = await import("./fixtures/ExistingMechanicsGame.js");
+    const model: GameBlueprint = {...blueprint(), reels: 2, symbols: ["A", "C"], availableBets: [1], reelStrips: [["C"], ["A"]], mechanics: {holdAndWin: {minimumCount: 1, initialRespins: 2, retriggerPolicy: "reset-on-new-lock", symbolEffects: {C: {kind: "value", amount: 2}}, payout: {type: "sum-with-multiplier", amountsAreBetMultiples: false}}}};
+    const session = generatedMechanicsGame(model).createSession({seed: 1}) as import("../../src/session/videoslot/holdandwin/VideoSlotWithHoldAndWinSession.js").VideoSlotWithHoldAndWinSession<string>;
+    session.setBet(1);
+    session.setCreditsAmount(10);
+    return declaredTrace(session);
+}
+
+it("binds a retained HoldAndWin settlement to credited payout, including nested modes", async () => {
+    const model = await holdAndWinTrace();
+    const validator = new AdvancedModelValidator();
+    const original = JSON.stringify(model);
+    expect((await validator.validate(model)).checks).toContainEqual(expect.objectContaining({id: "invariants.money", status: "unknown"})); // Paid-entry base win is absent.
+    const settlement = model.transitions[2].accounting!;
+    expect(settlement).toMatchObject({payout: 2, creditsBefore: 9, creditsAfter: 11});
+    Object.assign(settlement, {payout: 0, creditsAfter: 9});
+    for (const nested of [false, true]) {
+        const declaration = JSON.parse(JSON.stringify(model)) as DeclaredTransitionModel;
+        if (nested) {
+            declaration.schema = {kind: "bet-modes", base: declaration.schema!};
+            declaration.states = declaration.states.map(state => ({...state, state: {betModeId: "base", base: state.state}}));
+        }
+        const report = await validator.validate(declaration);
+        expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.money", path: "transitions.2.accounting", status: "violation", evidence: expect.objectContaining({path: ["s0", "s1", "s2", "s3"], before: declaration.states[2].state, after: declaration.states[3].state, expected: expect.objectContaining({ownership: expect.objectContaining({payout: {exact: 2}})}), actual: settlement})}));
+    }
+    const repaired = JSON.parse(original) as DeclaredTransitionModel;
+    // Starting at the retained continuation removes only the unsupported entry, not its constraints.
+    repaired.initial = "s1";
+    for (let i = 0; i < 2; i++) expect((await validator.validate(repaired)).checks).toContainEqual(expect.objectContaining({id: "invariants.money", status: "pass"}));
+});
+
+it("rejects premature HoldAndWin completion and checks decrement, new-lock reset and full-board completion", async () => {
+    const {validateDeclaredContinuation} = await import("../../src/validation/internal/validateDeclaredContinuation.js");
+    const model = await holdAndWinTrace();
+    const schema = model.schema!;
+    const before = model.states[1].state!;
+    const after = model.states[3].state!;
+    expect(before).toMatchObject({respinsRemaining: 2, active: true});
+    expect(() => validateDeclaredContinuation(before, after, schema)).toThrow("state.progress");
+    model.transitions = [{from: "s1", to: "s3", accounting: {creditsBefore: 9, creditsAfter: 11, bet: 1, stake: 0, payout: 2, continuation: true}}];
+    model.initial = "s1";
+    const validator = new AdvancedModelValidator();
+    expect((await validator.validate(model)).checks).toContainEqual(expect.objectContaining({id: "invariants.transition-state", path: "transitions.0", status: "violation", evidence: expect.objectContaining({path: ["s1", "s3"], before, after, expected: {property: "state.progress", relationship: {active: true, respinsRemaining: 1, outcome: "suppressed"}}, actual: {active: false, respinsRemaining: 0, outcome: "completed"}})}));
+    const locks = before.lockedSymbols as {position: number[]; symbolId: string; effect: unknown}[];
+    const grown = {...before, lockedSymbols: [...locks, {...locks[0], position: [1, 0]}], respinsRemaining: 2, lastOutcome: {kind: "suppressed"}};
+    // A larger board gains one lock and resets; a full board completes even with time remaining.
+    expect(() => validateDeclaredContinuation(before, grown, {...schema, reels: 3} as typeof schema)).not.toThrow();
+    const full = {...after, lockedSymbols: grown.lockedSymbols};
+    expect(validateDeclaredContinuation(before, full, schema)).toEqual(expect.arrayContaining([expect.stringContaining("aggregator")]));
+    grown.respinsRemaining = 1;
+    expect(() => validateDeclaredContinuation(before, grown, {...schema, reels: 3} as typeof schema)).toThrow("state.progress");
+    const repaired = await holdAndWinTrace();
+    for (let i = 0; i < 2; i++) expect((await validator.validate(repaired)).checks.filter(check => check.status === "violation")).toEqual([]);
+});
+
+it.each([0, 2])("binds production weighted currency awards to entry accounting (duration %s)", async duration => {
+    const {weightedBonusBlueprint} = await import("./fixtures/WeightedBonusGame.js");
+    const {generatedMechanicsGame} = await import("./fixtures/ExistingMechanicsGame.js");
+    const blueprintModel = weightedBonusBlueprint();
+    blueprintModel.availableBets = [1];
+    blueprintModel.paytable = {};
+    const outcomes = blueprintModel.mechanics!.weightedBonus!.outcomes;
+    outcomes[0].weight = 0;
+    Object.assign(outcomes[1], {weight: 1, payoutUnits: "currency", duration});
+    const session = generatedMechanicsGame(blueprintModel).createSession({seed: 1}) as import("../../src/session/videoslot/authored/BoundedVideoSlotSession.js").BoundedVideoSlotSession;
+    session.setBet(1);
+    session.setCreditsAmount(10);
+    const model = declaredTrace(session);
+    const validator = new AdvancedModelValidator();
+    const valid = JSON.stringify(model);
+    expect(model.transitions[0].accounting).toMatchObject({payout: 5, creditsAfter: 14});
+    expect((await validator.validate(model)).checks.filter(check => check.status === "violation")).toEqual([]);
+    // Keep the entire wallet chain connected while omitting exactly the selected entry award.
+    model.transitions.forEach((edge, index) => {
+        edge.accounting!.creditsAfter -= 5;
+        if (index === 0) edge.accounting!.payout = 0;
+        else edge.accounting!.creditsBefore -= 5;
+    });
+    expect((await validator.validate(model)).checks).toContainEqual(expect.objectContaining({id: "invariants.money", path: "transitions.0.accounting", status: "violation", evidence: expect.objectContaining({path: ["s0", "s1"], before: model.states[0].state, after: model.states[1].state, expected: expect.objectContaining({ownership: expect.objectContaining({bet: 1, payout: {minimum: 5}, complete: false})}), actual: expect.objectContaining({creditsBefore: 10, creditsAfter: 9, payout: 0})})}));
+    const repaired = JSON.parse(valid) as DeclaredTransitionModel;
+    for (let i = 0; i < 2; i++) {
+        const report = await validator.validate(repaired);
+        expect(report.checks.filter(check => check.status === "violation")).toEqual([]);
+        expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.money", status: "unknown"})); // Ordinary evaluated wins are not retained.
+    }
+});
+
+it.each(["zero", "subtract-threshold"] as const)("retains real collection %s accumulation/reset and currency payout as partially supported", async reset => {
+    const {generatedMechanicsGame} = await import("./fixtures/ExistingMechanicsGame.js");
+    const model: GameBlueprint = {...blueprint(), reels: 3, symbols: ["A", "C"], availableBets: [1], reelStrips: [["C"], ["C"], ["C"]], mechanics: {collection: {symbolId: "C", contribution: 1, threshold: 2, cap: 5, reset, payout: 3}}};
+    const session = generatedMechanicsGame(model).createSession({seed: 1}) as import("../../src/session/videoslot/authored/BoundedVideoSlotSession.js").BoundedVideoSlotSession;
+    session.setBet(1);
+    session.setCreditsAmount(10);
+    const trace = declaredTrace(session);
+    expect(trace.states[1].state!.value).toBe(reset === "zero" ? 0 : 1);
+    expect(trace.transitions[0].accounting).toMatchObject({payout: 3, creditsAfter: 12});
+    const report = await new AdvancedModelValidator().validate(trace);
+    expect(report).toMatchObject({status: "unsupported", verdict: "inconclusive"});
+    expect(report.checks.filter(check => check.status === "violation")).toEqual([]);
+    expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.transition-support", path: "transitions.0", evidence: expect.objectContaining({unsupported: expect.arrayContaining([expect.stringContaining("final screen count")])})}));
+});
+
+it("retains per-check unknowns for sibling respin resets, cascades, free-game grants and nested jackpot policies", async () => {
+    const {validateDeclaredContinuation, declaredAccountingOwnership} = await import("../../src/validation/internal/validateDeclaredContinuation.js");
+    const before = {base: {}, value: 0, remaining: 2, executed: 0, entryBet: 1};
+    const after = {...before, executed: 1};
+    const schema: NonNullable<DeclaredTransitionModel["schema"]> = {kind: "bounded-mechanics", bets: [1], rules: {cascade: {maxCascades: 2}, respins: {trigger: {symbolId: "C", minimumCount: 1}, grant: 2, maxRespins: 3, retrigger: "reset"}}, base: {kind: "base"}};
+    expect(validateDeclaredContinuation(before, after, schema)).toEqual([expect.stringContaining("trigger screen"), expect.stringContaining("cascade stages")]);
+    expect(declaredAccountingOwnership(before, after, schema)).toMatchObject({complete: false});
+    const free = {base: {}, freeGamesNum: 0, freeGamesSum: 1, freeGamesBank: 2};
+    const settled = {...free, freeGamesNum: 1, freeGamesBank: 5};
+    const freeSchema = {kind: "free-games" as const, base: {kind: "base" as const}};
+    expect(validateDeclaredContinuation(free, settled, freeSchema)).toEqual([expect.stringContaining("grant and win evaluation")]);
+    expect(declaredAccountingOwnership(free, settled, freeSchema)).toEqual({continuation: true, multiplier: 1, complete: false, payout: {exact: 5}});
+    const trace = await holdAndWinTrace();
+    const holdBefore = trace.states[2].state!;
+    const holdAfter = trace.states[3].state!;
+    const wrap = (base: Record<string, unknown>, awarded: boolean) => ({base, pools: {mini: {value: 3}}, poolStatistics: {mini: {awardCount: awarded ? 1 : 0, totalAwarded: awarded ? 3 : 0, totalContributed: 0}}, lastOutcome: awarded ? {kind: "awarded", poolId: "mini", amount: 3, baseWinAmount: 2, baseEvaluation: (holdAfter.lastOutcome as Record<string, unknown>).baseEvaluation} : {kind: "ordinary"}});
+    // The outer base evaluation must itself retain the inner settlement's amount.
+    const {captureWinEvaluation} = await import("../../src/session/videoslot/winevaluation/WinEvaluationSnapshot.js");
+    const {WinEvaluationResult} = await import("../../src/session/videoslot/winevaluation/WinEvaluationResult.js");
+    const {ValueWinComponent} = await import("../../src/session/videoslot/winevaluation/ValueWinComponent.js");
+    const {WinningValue} = await import("../../src/session/videoslot/WinningValue.js");
+    const nestedBefore = wrap(holdBefore, false);
+    const nestedAfter = wrap(holdAfter, true);
+    Object.assign(nestedAfter.lastOutcome, {baseEvaluation: captureWinEvaluation(new WinEvaluationResult({winComponents: [new ValueWinComponent(new WinningValue("C", [], 2))]}))});
+    const nestedSchema = {kind: "jackpot" as const, pools: [{id: "mini", type: "fixed" as const, amount: 3}], base: trace.schema!};
+    const declaration: DeclaredTransitionModel = {kind: "declared-transitions", initial: "a", schema: nestedSchema, states: [{id: "a", state: nestedBefore}, {id: "done", state: nestedAfter, terminal: true}], transitions: [{from: "a", to: "done", accounting: {creditsBefore: 9, creditsAfter: 14, bet: 1, stake: 0, payout: 5, continuation: true}}]};
+    const validator = new AdvancedModelValidator();
+    expect((await validator.validate(declaration)).checks.filter(check => check.status === "violation")).toEqual([]);
+    Object.assign(nestedAfter.lastOutcome, {baseWinAmount: 0, baseEvaluation: {components: [], metadata: {}}});
+    Object.assign(declaration.transitions[0].accounting!, {payout: 3, creditsAfter: 12});
+    const broken = await validator.validate(declaration);
+    expect(broken.checks).toContainEqual(expect.objectContaining({id: "invariants.transition-state", path: "transitions.0", status: "violation", evidence: expect.objectContaining({before: nestedBefore, after: nestedAfter, expected: {property: "state.lastOutcome.baseWinAmount", relationship: {exact: 2}}, actual: 0})}));
 });
