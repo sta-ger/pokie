@@ -70,13 +70,25 @@ it("routes positional WASM to a playable Project and hands integrity-bound math 
         }
         expect(simulation.getReport(fixture.artifact, sim.job.id)).toMatchObject({status: "ok", report: {rounds: 3}});
         expect(replay.getDownload(fixture.artifact, rep.job.id)).toMatchObject({status: "ok", descriptor: {round: 3, seed: "0"}});
-        // A stale sidecar must fail before either the browser handoff or synchronous job admission.
+        // Browser handoff rejects stale identity upfront. Direct lifecycle callers
+        // retain a failed acquisition job for a supported canonical declaration.
         const sidecar = `${fixture.artifact}.pokie-wasm.json`;
         const manifest = JSON.parse(fs.readFileSync(sidecar, "utf8"));
         fs.writeFileSync(sidecar, JSON.stringify({...manifest, artifact: {...manifest.artifact, sha256: `sha256:${"0".repeat(64)}`}}));
         await expect(browser.artifact(context)).rejects.toThrow(/SHA-256/);
-        expect(simulation.start(fixture.artifact, {rounds: 3, seed: "0"})).toMatchObject({status: "unsupported", message: expect.stringContaining("SHA-256")});
-        expect(replay.start(fixture.artifact, {round: 3, seed: "0"})).toMatchObject({status: "unsupported", message: expect.stringContaining("SHA-256")});
+        const staleSimulation = simulation.start(fixture.artifact, {rounds: 3, seed: "0"});
+        const staleReplay = replay.start(fixture.artifact, {round: 3, seed: "0"});
+        if (staleSimulation.status !== "created" || staleReplay.status !== "created") throw new Error(JSON.stringify({staleSimulation, staleReplay}));
+        const failureDeadline = Date.now() + 5000;
+        while ((simulation.getActiveCount() || replay.getActiveCount()) && Date.now() < failureDeadline) {
+            await new Promise<void>(resolve => {
+                setImmediate(resolve);
+            });
+        }
+        expect(simulation.getStatus(staleSimulation.job.id)).toMatchObject({status: "failed", error: expect.stringContaining("SHA-256")});
+        expect(replay.getStatus(fixture.artifact, staleReplay.job.id)).toMatchObject({status: "failed", error: expect.stringContaining("SHA-256")});
+        expect(simulation.getReport(fixture.artifact, staleSimulation.job.id)).toEqual({status: "not-ready", jobStatus: "failed"});
+        expect(replay.getDownload(fixture.artifact, staleReplay.job.id)).toEqual({status: "not-ready", jobStatus: "failed"});
         expect(simulation.getActiveCount()).toBe(0);
         expect(replay.getActiveCount()).toBe(0);
     } finally {
