@@ -325,3 +325,12 @@ it("keeps nested custom state unknown without interpreting opaque field names as
         expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.state-support", status: "unknown"}));
     }
 });
+
+it.each([0.5, 2])("records an actual funded repeating prefix for a default ante multiplier %s", async costMultiplier => {
+    const model = blueprint();
+    model.reelStrips = [["S"]];
+    model.mechanics = {freeGames: {scatterSymbol: "S", awardsByCount: {1: 2}}};
+    model.betModes = [{id: "ante", runtimeType: "ante", isDefault: true, costMultiplier}];
+    const report = await validate(model);
+    expect(report.checks).toContainEqual(expect.objectContaining({id: "termination.free-games", status: "violation", evidence: expect.objectContaining({entryPrefix: [expect.objectContaining({mode: "ante", chargedStake: 0.05 * costMultiplier, creditsBefore: Math.max(0.05, 0.05 * costMultiplier)})], repeat: expect.objectContaining({before: expect.objectContaining({base: expect.objectContaining({freeGamesSum: 2})}), after: expect.objectContaining({base: expect.objectContaining({freeGamesSum: 4})})})})}));
+});

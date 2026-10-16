@@ -27,8 +27,8 @@ const ASSUMPTIONS = [
     "Initial feature state is empty, collection starts at zero and is closed over reachable entry values; jackpot pools start at their declared seed; one paid-entry logical round is checked for every declared bet and executable mode.",
     "All positive-weight variants are possible. A variant is retained for the logical round; every circular stop window is possible on each draw. No probability is rounded to zero.",
     "Primitive RNG calls and support samplers are assumed to return; rejection-sampler divergence and arbitrary custom RNG code are outside the mechanic transition proof.",
-    "Termination is all-path termination under nondeterministic supported entropy, not almost-sure termination or a theorem about a particular finite PRNG seed.",
-    "JavaScript binary64 arithmetic and production handlers/evaluators are used. Wallet starts at exactly the charged entry stake; arbitrary initial credits and lifetime counter overflow are outside this initial-state proof.",
+    "Termination means normal feature settlement on all supported paths, not almost-sure termination or a particular finite PRNG seed. A runtime/numeric guard retaining an incomplete feature is not normal settlement.",
+    "Money uses JavaScript binary64 and production handlers/evaluators. Accounting probes start at the charged stake; termination entry prefixes record sufficient funding explicitly. Lifetime counter overflow and arbitrary initial credits remain unsupported.",
 ];
 /** Explicit asynchronous analysis; synchronous structural validation never calls this service. */
 export class AdvancedModelValidator implements AdvancedModelValidating {
@@ -289,21 +289,36 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
             }
             if (wiring?.buyFeatureModes.length) targets.set("mechanics.freeGames", true);
             if (repeating) {
-                nonterminating = true;
                 budget.take("states");
                 budget.take("transitions", 2);
                 // Invoke the actual handler twice to retain a before/after accounting witness.
                 const selected = screens.findIndex(screen => screen === repeating!.screen);
                 budget.take("transitions", preparationWork);
                 const probe = createAnalysisSession(model, strips, screens, () => selected, () => budget.take("outcomeCells", boardCells));
-                probe.session.setBet((model.availableBets ?? [1])[0]);
-                probe.session.setCreditsAmount((model.availableBets ?? [1])[0]);
+                const bet = (model.availableBets ?? [1])[0];
+                probe.session.setBet(bet);
+                const chargedStake = (probe.session as Partial<StakeAmountDetermining>).getStakeAmount?.() ?? bet;
+                const creditsBefore = Math.max(bet, chargedStake);
+                probe.session.setCreditsAmount(creditsBefore);
+                budget.take("outcomeCells", 3 * strips.reduce((sum, strip) => sum + strip.length, 0));
+                const capture = () => (probe.session as unknown as {toSessionState(): unknown}).toSessionState();
+                const entryBefore = capture();
                 probe.start();
-                probe.session.play();
-                const before = (probe.session as unknown as {toSessionState(): unknown}).toSessionState();
-                probe.session.play();
-                const after = (probe.session as unknown as {toSessionState(): unknown}).toSessionState();
-                await this.add(report, budget, {id: "termination.free-games", path: "mechanics.freeGames.awardsByCount", status: "violation", severity: "error", message: "Attainable additive grants permit indefinitely repeating free spins under supported entropy.", assumptions: report.assumptions, evidence: {entryPrefix: [{variants, stops: repeating.stops, screen: repeating.screen, grant: repeating.grant}], repeat: {stops: repeating.stops, before, after, remainingDelta: repeating.grant - 1}, proof: "remaining' = remaining - 1 + grant; grant >= 1 preserves a positive pending count. Cumulative counters are not claimed to repeat.", probability: "No almost-sure claim; a cycle with an exit still violates all-path termination."}});
+                try {
+                    if (!probe.session.canPlayNextGame()) throw new Error("Declared repeating entry is blocked despite its explicit funding.");
+                    probe.session.play();
+                    const before = capture();
+                    const creditsAfterEntry = probe.session.getCreditsAmount();
+                    probe.session.play();
+                    const after = capture();
+                    validateExecutableState(after, (probe.session as unknown as SessionStateRestoring).getSessionStateSchema!());
+                    nonterminating = true;
+                    await this.add(report, budget, {id: "termination.free-games", path: "mechanics.freeGames.awardsByCount", status: "violation", severity: "error", message: "Attainable additive grants prevent guaranteed normal feature settlement under supported entropy.", assumptions: report.assumptions, evidence: {entryPrefix: [{variants, stops: repeating.stops, screen: repeating.screen, grant: repeating.grant, bet, chargedStake, creditsBefore, creditsAfterEntry, ...(wiring ? {mode: wiring.defaultModeId} : {})}], repeat: {stops: repeating.stops, before, after, remainingDelta: repeating.grant - 1}, proof: "remaining' = remaining - 1 + grant; grant >= 1 preserves a positive pending count in the declared counter recurrence. Cumulative counters are not claimed to repeat; numeric/execution guards would retain or reject incomplete progress, not establish settlement.", probability: "No almost-sure claim; a repeatable supported path with an exit still defeats all-path normal settlement."}});
+                } catch (error) {
+                    if (error instanceof AnalysisStopped) throw error;
+                    failed = true;
+                    await this.add(report, budget, {id: "invariants.runtime-transition", path: "mechanics.freeGames", status: "violation", severity: "error", message: error instanceof Error ? error.message : String(error), assumptions: report.assumptions, evidence: {phase: "entry/retrigger", bet, chargedStake, creditsBefore, variants, stops: repeating.stops, before: entryBefore, after: capture(), expected: "Finite accepted entry/retrigger with valid executable state", actual: "Runtime or state validator rejected the entry prefix"}});
+                }
                 // Unbounded bank/counter arithmetic cannot be certified by a finite prefix.
                 unsupported = true;
                 return;
@@ -433,7 +448,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
             await this.add(report, budget, {id: "reachability.feature", path: target, status: reachabilityStatus, severity: reachabilitySeverity, message: reachabilityMessage, assumptions: report.assumptions, evidence: {target, completeScreenSupport: true, exploredOutcomes: budget.work.outcomes, blockingCondition: "No supported entry satisfies the declared predicate in this closed region", declaration: Reflect.get(model.mechanics ?? {}, target.split(".")[1]), attainableTriggerCounts: [...(attainableCounts.get(target) ?? [])].sort((a, b) => a - b), ...(target === "mechanics.collection" ? {reachableEntryValues: [...collectionValues].sort((a, b) => a - b)} : {}), supportRegion: alternatives.map((variants, reel) => ({reel, variants: variants.map(variant => ({id: variant.id, stopCount: variant.symbols.length})), allCircularStops: true})), geometry: model.screenGeometry ?? {reels: model.reels, rows: model.rows}}});
         }
         if (targets.size === 0) report.checks.push({id: "reachability.feature", path: "mechanics", status: "pass", severity: "info", message: "No feature targets are declared.", assumptions: report.assumptions});
-        if (!nonterminating) report.checks.push({id: "termination.all-path", path: "mechanics", status: "pass", severity: "info", message: "All explored logical rounds completed or explicitly rejected at a declared runtime bound. Built-in respins consume a lifetime maxRespins budget; HoldAndWin resets require a new lock on a finite board.", assumptions: report.assumptions});
+        if (!nonterminating) report.checks.push({id: "termination.all-path", path: "mechanics", status: failed ? "unknown" : "pass", severity: failed ? "warning" : "info", message: failed ? "A runtime transition was rejected; normal all-path settlement is not established. Runtime bounds are distinct from analysis exhaustion." : "All explored logical rounds settled. Built-in respins consume a lifetime maxRespins budget; HoldAndWin resets require a new lock on a finite board.", assumptions: report.assumptions});
         let invariantStatus: AdvancedValidationCheck["status"] = failed ? "violation" : "pass";
         let invariantSeverity: AdvancedValidationCheck["severity"] = failed ? "error" : "info";
         if (unsupported) {
