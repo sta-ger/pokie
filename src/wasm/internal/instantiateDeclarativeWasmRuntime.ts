@@ -338,10 +338,10 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                 const finalIsPresentation = !!round && round.stageCursor > 1;
                 if (stableSlotMathJson(verifier.toState()) !== stableSlotMathJson(state.feature.analytics) ||
                     stableSlotMathJson(last.analytics) !== stableSlotMathJson(finalIsPresentation ? undefined : copy(expectedAnalytics))) throw new Error("Retained analytics contradicts its accepted mathematical observation.");
-                check.generator.validateAcceptedSelectionAccounting(state.feature.analytics.position, accounting.entryPosition,
-                    !!(blueprint.mechanics?.freeGames || blueprint.mechanics?.holdAndWin || blueprint.mechanics?.respins || blueprint.mechanics?.weightedBonus));
-                (check.session as {validateAcceptedSelectionAccounting?: (plays: number, entryPosition: number) => void})
+                const acceptedEntries = (check.session as {validateAcceptedSelectionAccounting?: (plays: number, entryPosition: number) => number | undefined})
                     .validateAcceptedSelectionAccounting?.(state.feature.analytics.position, accounting.entryPosition);
+                check.generator.validateAcceptedSelectionAccounting(state.feature.analytics.position, accounting.entryPosition,
+                    !!(blueprint.mechanics?.freeGames || blueprint.mechanics?.holdAndWin || blueprint.mechanics?.respins || blueprint.mechanics?.weightedBonus), acceptedEntries);
                 const current = observeVideoSlotFeatures(check.session);
                 for (const key of ["holdAndWin", "jackpot", "chargedBetModeId"] as const) if (stableSlotMathJson(current[key]) !== stableSlotMathJson(last.network?.[key])) throw new Error(`Feature ${key} contradicts its last accepted observation.`);
                 for (const field of ["freeGamesNum", "freeGamesSum", "freeGamesBank"] as const) {

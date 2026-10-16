@@ -237,8 +237,9 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
     public isSessionStateRestorable(): boolean {
         return this.constructor === BoundedVideoSlotSession && isSessionStateRestorable(this.baseSession);
     }
-    public validateAcceptedSelectionAccounting(mathematicalPlays: number, entryPosition: number): void {
-        if (this.rules.weightedBonus && this.bonus) validateWeightedBonusAccounting(this.rules.weightedBonus, this.bonus, this.remaining, this.executed, mathematicalPlays, entryPosition);
+    public validateAcceptedSelectionAccounting(mathematicalPlays: number, entryPosition: number): number | undefined {
+        if (this.rules.weightedBonus && this.bonus) return validateWeightedBonusAccounting(this.rules.weightedBonus, this.bonus, this.remaining, this.executed, mathematicalPlays, entryPosition);
+        return undefined;
     }
     public toSessionState(): BoundedSessionState {
         return {base: (this.baseSession as VideoSlotSession).toSessionState(), value: this.value, remaining: this.remaining, executed: this.executed, entryBet: this.entryBet, ...(this.bonus ? {bonus: cloneSessionData(this.bonus)} : {})};

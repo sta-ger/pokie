@@ -510,8 +510,15 @@ export function checkpointCounterFixtures(): {id: string; blueprint: GameBluepri
             {type: "weighted", variants: [{id: "chosen", symbols: ["A"], weight: 1}, {id: "zero", symbols: ["B"], weight: 0}]},
         ],
     };
+    const combined = JSON.parse(JSON.stringify(bonus)) as GameBlueprint;
+    Reflect.deleteProperty(combined, "reelStrips");
+    combined.reelSequences = [
+        {type: "weighted", variants: [{id: "chosen", symbols: ["C"], weight: 1}, {id: "zero", symbols: ["A"], weight: 0}]},
+        {type: "exact", symbols: ["C"]}, {type: "exact", symbols: ["C"]},
+    ];
     return [
         {id: "counter-reels", blueprint: reels, mutation: "selections"},
+        {id: "counter-reels-after-bonus", blueprint: combined, mutation: "selections"},
         {id: "counter-bonus", blueprint: bonus, mutation: "selections"},
         {id: "counter-bonus-completion", blueprint: bonus, mutation: "completion"},
     ];
@@ -546,12 +553,13 @@ export function mutateCheckpointCounters(saved: import("../../../src/wasm/PokieW
     const last = corrupt.feature.lastRound;
     let leaf = corrupt.feature.state;
     while (leaf.base) leaf = leaf.base;
-    if (id === "counter-reels") {
+    if (id.startsWith("counter-reels")) {
         // Inflate every weighted reel equally so cross-reel equality alone cannot reject.
+        const increment = id === "counter-reels-after-bonus" ? 1 : 999;
         for (const reel of last.sequenceStatistics) {
-            leaf.sequenceState.counts[reel.reelIndex].chosen += 999;
-            reel.selections += 999;
-            reel.variants.find((variant: {id: string}) => variant.id === "chosen").count += 999;
+            leaf.sequenceState.counts[reel.reelIndex].chosen += increment;
+            reel.selections += increment;
+            reel.variants.find((variant: {id: string}) => variant.id === "chosen").count += increment;
             for (const variant of reel.variants) variant.frequency = variant.count / reel.selections;
         }
     } else {

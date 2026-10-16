@@ -702,6 +702,7 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s wei
         try {
             for (const target of [worker, fresh]) expect(await target.handle({id: "start", type: "instantiate", ...fixture, seed: "probe"})).toMatchObject({ok: true});
             const command = {bet: 0.05, roundId: "counter", ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1})};
+            if (id === "counter-reels-after-bonus") expect(await worker.handle({id: "previous", type: "play", command: {bet: 0.05, roundId: "previous", delivery: "composite"}})).toMatchObject({ok: true});
             expect(await worker.handle({id: "entry", type: "play", command})).toMatchObject({ok: true});
             const snapshot = await worker.handle({id: "state", type: "serialize"});
             if (!snapshot.ok) throw new Error(snapshot.error);

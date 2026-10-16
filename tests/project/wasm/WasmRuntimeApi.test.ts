@@ -1075,19 +1075,23 @@ it.each(["plain", "stepwise", "composite"] as const)("binds coordinated %s weigh
         try {
             const session = runtime.createSession("probe");
             const command = {bet: 0.05, roundId: "counter", ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1})};
+            if (id === "counter-reels-after-bonus") {
+                await session.play({bet: 0.05, roundId: "previous", delivery: "composite"});
+            }
             const receipt = await session.play(command);
             const saved = session.serialize();
             if (saved.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
             const corrupt = mutateCheckpointCounters(saved, id);
             const position = saved.feature.analytics!.position;
-            expect(position).toBe(1);
+            expect(position).toBe(id === "counter-reels-after-bonus" ? 4 : 1);
             const expected = /Weighted (reel|bonus).*counter|weighted bonus completion/i;
             // The same uncoerced counters reach the shared domain owner, not a catch/fallback.
             const validate = (state: typeof saved) => {
                 const value = state.feature.state as {base?: {sequenceState: unknown}; sequenceState: unknown; bonus: import("../../../src/session/videoslot/authored/WeightedBonus.js").WeightedBonusState; remaining: number; executed: number};
-                if (id === "counter-reels") {
-                    native.generator.setSelectionState(value.sequenceState);
-                    native.generator.validateAcceptedSelectionAccounting(position, saved.feature.accounting!.entryPosition, false);
+                if (id.startsWith("counter-reels")) {
+                    native.generator.setSelectionState((value.base ?? value).sequenceState);
+                    const entries = blueprint.mechanics?.weightedBonus && validateWeightedBonusAccounting(blueprint.mechanics.weightedBonus, value.bonus, value.remaining, value.executed, position, saved.feature.accounting!.entryPosition);
+                    native.generator.validateAcceptedSelectionAccounting(position, saved.feature.accounting!.entryPosition, !!blueprint.mechanics?.weightedBonus, entries);
                 } else validateWeightedBonusAccounting(blueprint.mechanics!.weightedBonus!, value.bonus, value.remaining, value.executed, position, saved.feature.accounting!.entryPosition);
             };
             expect(() => validate(corrupt)).toThrow(expected);

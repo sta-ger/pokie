@@ -101,14 +101,16 @@ implements SymbolsCombinationsGenerating<T> {
     /** Portable accepted mathematics supplies a tighter authority than delivery count.
      * Native/custom carried sessions without that authority retain their codec contract.
      */
-    public validateAcceptedSelectionAccounting(mathematicalPlays: number, entryPosition: number, hasProgression: boolean): void {
+    public validateAcceptedSelectionAccounting(mathematicalPlays: number, entryPosition: number, hasProgression: boolean, acceptedEntries?: number): void {
         const statistics = this.getSequenceStatistics();
         if (!statistics.length) return;
         const invalid = () => new Error("Weighted reel counters contradict accepted execution accounting.");
         if (!Number.isSafeInteger(mathematicalPlays) || mathematicalPlays < 1 || !Number.isSafeInteger(entryPosition) || entryPosition < 1 || entryPosition > mathematicalPlays ||
             this.context === "initialization" || this.contextRequested || this.implicitGeneration > mathematicalPlays) throw invalid();
         const total = statistics[0].selections;
-        if (!Number.isSafeInteger(total) || total < 1 || total > entryPosition || !hasProgression && total !== mathematicalPlays) throw invalid();
+        const exactEntries = acceptedEntries ?? (hasProgression ? undefined : mathematicalPlays);
+        if (!Number.isSafeInteger(total) || total < 1 || total > entryPosition ||
+            exactEntries !== undefined && (!Number.isSafeInteger(exactEntries) || exactEntries < 1 || exactEntries > entryPosition || total !== exactEntries)) throw invalid();
         for (const reel of statistics) {
             const selected = this.selections.find(selection => selection.reelIndex === reel.reelIndex);
             if (reel.selections !== total || !reel.variants.some(variant => variant.id === selected?.variantId && variant.count > 0)) throw invalid();

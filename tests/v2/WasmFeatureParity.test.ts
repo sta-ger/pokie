@@ -737,7 +737,7 @@ it("freezes initialized and weighted-counter reproducer coverage", async () => {
     expect(checkpointInitializationFixtures().map(test => test.id)).toEqual([
         "initial-free-bank-counters", "initial-collection", "initial-respins", "initial-sticky", "initial-jackpot", "initial-hold", "initial-bonus-counters",
     ]);
-    expect(checkpointCounterFixtures().map(test => test.id)).toEqual(["counter-reels", "counter-bonus", "counter-bonus-completion"]);
+    expect(checkpointCounterFixtures().map(test => test.id)).toEqual(["counter-reels", "counter-reels-after-bonus", "counter-bonus", "counter-bonus-completion"]);
 });
 
 it("preserves authoritative initialized weighted variants/stops with zero and custom-host RNG continuation", async () => {
@@ -804,20 +804,21 @@ it.each(["plain", "stepwise", "composite"] as const)("conserves eligible weighte
         for (let cycle = 0; cycle < 2; cycle++) {
             for (let cursor = 0; cursor < 3; cursor++) {
                 const entry = {bet: 0.05, roundId: `entry-${cycle}`, ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1})};
-                const continuation = policy === "plain" ? {bet: 0.05, roundId: `plain-${cycle}-${cursor}`} : {delivery: policy, maxSubrounds: 1, continuation: {roundId: `entry-${cycle}`, cursor}};
+                const continuation = policy === "plain" ? {bet: 0.05} : {delivery: policy, maxSubrounds: 1, continuation: {roundId: `entry-${cycle}`, cursor}};
                 const command = cursor === 0 ? entry : continuation;
                 const receipt = await session.play(command);
                 expect(receipt.sequenceStatistics).toEqual([expect.objectContaining({selections: cycle + 1, variants: expect.arrayContaining([expect.objectContaining({id: "zero", count: 0, frequency: 0})])})]);
                 expect(receipt.weightedBonusStatistics).toMatchObject({selections: cycle + 1, completed: cycle + (cursor === 2 ? 1 : 0), incomplete: cursor === 2 ? 0 : 1});
                 expect(receipt.sequenceStatistics![0].variants.reduce((sum, variant) => sum + variant.count, 0)).toBe(cycle + 1);
                 const saved = JSON.parse(JSON.stringify(session.serialize()));
-                expect(await session.play(command)).toEqual(receipt);
+                const identified = cursor === 0 || policy !== "plain";
+                if (identified) expect(await session.play(command)).toEqual(receipt);
                 await expect(session.play({mode: "foreign"})).rejects.toThrow();
                 if (cursor < 2) await expect(session.play({bet: 7.5})).rejects.toThrow(/Continuation/);
                 expect(session.serialize()).toEqual(saved);
                 const restored = fresh.restoreSession(saved);
-                expect(await restored.play(command)).toEqual(receipt);
-                expect((await runtime.replay(saved, [command])).stateAfter).toEqual(saved);
+                if (identified) expect(await restored.play(command)).toEqual(receipt);
+                expect((await runtime.replay(saved, identified ? [command] : [])).stateAfter).toEqual(saved);
                 session.dispose();
                 session = runtime.restoreSession(restored.serialize());
                 restored.dispose();

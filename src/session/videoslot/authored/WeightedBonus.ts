@@ -201,7 +201,7 @@ export function validateWeightedBonusObservation(
  * Completed history is represented only by bounded per-outcome counters. One
  * current feature may still own an unconsumed remainder; delivery frames own none.
  */
-export function validateWeightedBonusAccounting(table: WeightedBonus, state: WeightedBonusState, remaining: number, executed: number, mathematicalPlays: number, entryPosition: number): void {
+export function validateWeightedBonusAccounting(table: WeightedBonus, state: WeightedBonusState, remaining: number, executed: number, mathematicalPlays: number, entryPosition: number): number {
     const invalid = () => new Error("Weighted bonus counters contradict accepted execution accounting.");
     if (!state || !Array.isArray(state.counts) || state.counts.length !== table.outcomes.length ||
         state.counts.some((count, index) => !Number.isSafeInteger(count) || count < 0 || table.outcomes[index].weight === 0 && count !== 0) ||
@@ -212,6 +212,7 @@ export function validateWeightedBonusAccounting(table: WeightedBonus, state: Wei
     if (!Number.isSafeInteger(selections) || !Number.isSafeInteger(continuations) || continuations < 0 || selections > entryPosition ||
         selections + continuations > mathematicalPlays || state.completed !== selections - (remaining > 0 ? 1 : 0) ||
         state.selection && executed !== mathematicalPlays - entryPosition) throw invalid();
+    return mathematicalPlays - continuations;
 }
 
 export function describeWeightedBonusCoverage(weight: number, uncovered: boolean): string {
