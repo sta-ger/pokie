@@ -1,4 +1,4 @@
-// Source-level workflow. Installed/rendered acceptance lives in tests/packaging/WasmProjectWorkflow.test.ts.
+// Source-level workflow. Installed/rendered acceptance uses tests/fixtures/wasm/runStudioProjectWorkflow.mjs.
 import fs from "fs";
 import os from "os";
 import path from "path";
