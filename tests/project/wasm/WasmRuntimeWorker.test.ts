@@ -729,17 +729,18 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s wei
                 else expect(saved.feature.lastRound!.sequenceStatistics![0].selections).toBe(plays === 2 ? 2 : 3);
             }
             const corrupt = mutateCheckpointCounters(saved, id);
-            const diagnostics = worker.getDiagnostics();
             for (const target of [worker, fresh]) {
                 const before = await target.handle({id: "state", type: "serialize"});
                 const priorDiagnostics = target.getDiagnostics();
                 const error = expect.stringMatching(/Weighted (reel|bonus).*counter|weighted bonus completion/i);
                 expect(await target.handle({id: "bad", type: "restore", state: corrupt})).toMatchObject({ok: false, error});
-                expect(await target.handle({id: "bad", type: "replay", state: corrupt, commands: [command]})).toMatchObject({ok: false, error});
-                expect(await target.handle({id: "state", type: "serialize"})).toEqual(before);
                 expect(target.getDiagnostics()).toEqual(priorDiagnostics);
+                expect(await target.handle({id: "bad", type: "replay", state: corrupt, commands: [command]})).toMatchObject({ok: false, error});
+                expect(target.getDiagnostics()).toEqual(priorDiagnostics);
+                // Serialization itself records snapshot bytes; inspect rejection's
+                // effects before taking the next observable session snapshot.
+                expect(await target.handle({id: "state", type: "serialize"})).toEqual(before);
             }
-            expect(worker.getDiagnostics()).toEqual(diagnostics);
             expect(await worker.handle({id: "state", type: "serialize"})).toEqual(snapshot);
             expect(await worker.handle({id: "retry", type: "play", command})).toMatchObject({ok: true, result: saved.feature.lastRound});
             expect(await fresh.handle({id: "restore", type: "restore", state: saved})).toMatchObject({ok: true});
