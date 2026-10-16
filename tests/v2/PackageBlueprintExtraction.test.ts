@@ -827,3 +827,24 @@ it("preserves simple extraction paths and quotes literal symbol identities throu
         fs.rmSync(directory, {recursive: true, force: true});
     }
 });
+
+it("retains unsupported literal custom feature extensions through object and loader extraction", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "extraction-literal-extension-"));
+    const model = {...base(), mechanics: {"freeGames.awardsByCount": {custom: true}}};
+    const extractor = new PackageBlueprintExtraction();
+    try {
+        const loaded = writeDescriptorPackage(directory, {model: model as GameBlueprint});
+        for (const input of [custom(model), loaded]) {
+            const result = await extractor.extract(input);
+            expect(result.status).toBe("unsupported");
+            expect(result.model).toEqual(model);
+            expect(result.blueprint).toBeUndefined();
+            expect(result.fields).toContainEqual(expect.objectContaining({
+                path: 'mechanics["freeGames.awardsByCount"]', status: "unsupported",
+            }));
+            expect(result.fields.some(field => field.status === "unsupported" && field.path === "mechanics.freeGames.awardsByCount")).toBe(false);
+        }
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});

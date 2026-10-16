@@ -250,13 +250,20 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                 code: "unsupported-model-field",
                 message: "This field is outside the effective Blueprint model contract.",
             });
+            const unsupportedPaths = new Map<string, string>();
             const checkKeys = (value: unknown, field: string, allowed: string[]): void => {
                 if (value && typeof value === "object" && !Array.isArray(value)) for (const key of Object.keys(value)) {
-                    if (!allowed.includes(key)) result.diagnostics.push({
-                        path: appendModelFieldPath(field, key),
-                        code: "unsupported-model-field",
-                        message: "Custom model behavior is outside the Blueprint representation.",
-                    });
+                    if (!allowed.includes(key)) {
+                        const path = appendModelFieldPath(field, key);
+                        // The validator's legacy unknown-key path is lossy. Retain the actual key
+                        // from this source-aware inspection, without treating it as nested authority.
+                        unsupportedPaths.set(`${field}.${key}`, path);
+                        result.diagnostics.push({
+                            path,
+                            code: "unsupported-model-field",
+                            message: "Custom model behavior is outside the Blueprint representation.",
+                        });
+                    }
                 }
             };
             checkKeys(model.manifest, "manifest", ["id", "name", "version", "description", "author"]);
@@ -364,6 +371,9 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
             }
             if (result.fields.length > 1000000) throw new Error("Field evidence exceeds extraction limits");
             const validation = new GameBlueprintValidator().validate(model);
+            for (const issue of validation) if (issue.code === "blueprint-mechanics-unknown-field" && issue.path) {
+                issue.path = unsupportedPaths.get(issue.path) ?? issue.path;
+            }
             if (
                 model.winModel?.type === "clusters" &&
                 (model.winModel.minimumClusterSize ?? 5) >

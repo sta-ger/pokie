@@ -964,3 +964,30 @@ describe("segment authority and retained provenance", () => {
             .every(change => !change.mathematical && change.after.provenance.status === "unknown")).toBe(true);
     });
 });
+
+it("keeps unsupported literal feature extensions separate from supported nested grant changes", async () => {
+    const model = free();
+    Reflect.set(model.mechanics!, "freeGames.awardsByCount", {custom: true});
+    const changed = clone(model);
+    changed.mechanics!.freeGames!.awardsByCount[3] = 9;
+    const game = (value: api.GameBlueprint): api.PokieGame => ({
+        getManifest: () => value.manifest,
+        getModelDescriptor: () => ({descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: value,
+            maxWinPolicy: {type: "none", scope: "logical-round", authority: "declared policy"},}),
+        createSession: () => {
+            throw new Error("No session");
+        },
+    });
+    const reader = new api.MathDefinitionSourceReader();
+    const left = await reader.read(game(model)),
+        right = await reader.read(game(changed));
+    expect(left.support).toBe("unsupported");
+    expect(left.diagnostics.filter(issue => issue.code === "unsupported-model-field" || issue.code === "blueprint-mechanics-unknown-field")
+        .every(issue => issue.path === "/mechanics/freeGames.awardsByCount")).toBe(true);
+    const direct = new api.MathDefinitionDiffer().diff(left, right);
+    expect(await api.compareMathDefinitions(game(model), game(changed))).toEqual(direct);
+    expect(direct.changes).toContainEqual(expect.objectContaining({
+        path: "/mechanics/freeGames/awardsByCount/3", mathematical: true,
+        after: expect.objectContaining({provenance: expect.objectContaining({status: "authored"})}),
+    }));
+});
