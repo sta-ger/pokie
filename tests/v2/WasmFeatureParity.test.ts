@@ -564,3 +564,43 @@ it.each(["plain", "stepwise", "composite"] as const)("restores %s modifier/free-
         fresh.dispose();
     }
 });
+
+it.each(["plain", "stepwise", "composite"] as const)("retains valid %s natural free-game grants, retriggers and missing/zero grants", async policy => {
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    const {checkpointFeatureObservationFixtures} = await import("../fixtures/wasm/checkpointProjectionMutations.js");
+    for (const grant of [undefined, 0, 2]) {
+        const blueprint = checkpointFeatureObservationFixtures().find(fixture => fixture.id === "freeGames")!.blueprint;
+        blueprint.mechanics!.freeGames!.awardsByCount = grant === undefined ? {} : {3: grant};
+        const fixture = createCanonicalWasmFixture({blueprint});
+        const host = new SeededPokieWasmHost("probe");
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
+        const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("fresh"));
+        try {
+            const session = runtime.createSession("probe");
+            let restored = fresh.restoreSession(session.serialize());
+            for (let index = 0; index < 4; index++) {
+                const saved = session.serialize();
+                const progress = saved.schemaVersion === "pokie.state.v4" ? saved.feature.logicalRound : undefined;
+                const command = {bet: 0.05, ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1,
+                    ...(progress?.status === "pending" ? {continuation: {roundId: progress.id, cursor: progress.deliveryCursor}} : {roundId: `grant:${index}`})})};
+                const result = await session.play(command);
+                expect(await restored.play(command)).toEqual(result);
+                expect((await runtime.replay(saved, [command])).rounds).toEqual([result]);
+                const state = session.serialize();
+                expect(state).toEqual(restored.serialize());
+                if (state.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature checkpoint");
+                const events = state.feature.logicalRound?.subrounds[0].artifacts?.flatMap(step => step.featureEvents ?? []) ?? state.feature.plainMath!.artifact.featureEvents ?? [];
+                expect(events).toEqual(grant ? [{type: "freeGamesTriggered", data: {count: grant}}] : []);
+                expect(result.network?.freeGamesSum).toBe((grant ?? 0) * (index + 1));
+                expect(result.stake).toBe(grant && index > 0 ? 0 : 0.05);
+                const before = host.serializeState();
+                restored.dispose();
+                restored = fresh.restoreSession(state);
+                expect(host.serializeState()).toEqual(before);
+            }
+        } finally {
+            runtime.dispose();
+            fresh.dispose();
+        }
+    }
+});

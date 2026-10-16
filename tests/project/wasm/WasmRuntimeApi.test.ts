@@ -629,26 +629,41 @@ it("initializes required feature analytics once for a supported empty replay ori
 it.each(["stepwise", "composite", "plain"] as const)("binds %s artifact feature events to model/native state across direct restore, replay and recovery", async policy => {
     const {checkpointFeatureObservationFixtures, mutateCheckpointProjection} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
     const {ScreenModifierEngine} = await import("../../../src/session/videoslot/modifiers/ScreenModifierEngine.js");
-    for (const {blueprint, mutations} of checkpointFeatureObservationFixtures()) {
+    for (const {id, blueprint, mutations, seed = "probe", maxSubrounds} of checkpointFeatureObservationFixtures()) {
         const fixture = createCanonicalWasmFixture({blueprint});
-        const host = new SeededPokieWasmHost("probe");
+        const host = new SeededPokieWasmHost(seed);
         const restore = jest.spyOn(host, "restoreState");
         const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
         const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("receiving"));
         try {
-            const session = runtime.createSession("probe");
-            const command = {bet: 0.05, roundId: "x", ...(policy === "plain" ? {} : {delivery: policy})};
+            const session = runtime.createSession(seed);
+            const command = {bet: 0.05, roundId: "x", ...(policy === "plain" ? {} : {delivery: policy, ...(maxSubrounds ? {maxSubrounds} : {})})};
             const {deliveries: _deliveries, ...receipt} = await session.play(command);
             const saved = session.serialize();
             if (saved.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
+            if (id === "cascade") expect(saved.feature.logicalRound?.subrounds[0].artifacts ?? saved.feature.plainMath!.artifact.steps).toHaveLength(3);
             const before = host.serializeState();
+            const {createAuthoredSession} = await import("../../../src/generated/createAuthoredSession.js");
+            const {SeededRandomNumberGenerator} = await import("../../../src/session/videoslot/combinations/SeededRandomNumberGenerator.js");
+            const {restoreDeclarativeObservation} = await import("../../../src/wasm/internal/restoreDeclarativeObservation.js");
+            const nativeFree = id === "freeGames" ? createAuthoredSession(blueprint, new SeededRandomNumberGenerator(seed)) : undefined;
+            if (nativeFree) {
+                nativeFree.session.setBet(0.05);
+                for (let index = 0; index < (policy === "composite" ? maxSubrounds! : 1); index++) nativeFree.session.play();
+            }
             const native = saved.feature.state as {modifierState: import("../../../src/session/videoslot/modifiers/ScreenModifiers.js").ScreenModifierState};
             const engine = blueprint.mechanics?.modifiers && new ScreenModifierEngine({modifiers: blueprint.mechanics.modifiers, symbols: blueprint.symbols,
                 wilds: blueprint.wilds ?? [], reels: blueprint.reels, rows: blueprint.rows, screenGeometry: blueprint.screenGeometry});
             for (const mutation of mutations) {
                 const corrupt = mutateCheckpointProjection(saved, mutation);
                 const calls = restore.mock.calls.length;
-                const error = /modifier|sticky|holdAndWin|jackpot|chargedBetMode|win|position|logical|stops|draw|plain money/i;
+                const error = /modifier|sticky|holdAndWin|jackpot|chargedBetMode|win|position|logical|stops|draw|plain money|canonical feature|freeGamesTriggered/i;
+                if (nativeFree) {
+                    const steps = corrupt.feature.logicalRound?.subrounds[0].artifacts ?? corrupt.feature.plainMath!.artifact.steps;
+                    expect(() => restoreDeclarativeObservation(nativeFree.session, blueprint, steps!, receipt.screen!, receipt.win!, undefined)).toThrow(error);
+                    const validSteps = saved.feature.logicalRound?.subrounds[0].artifacts ?? saved.feature.plainMath!.artifact.steps;
+                    expect(() => restoreDeclarativeObservation(nativeFree.session, blueprint, validSteps!, receipt.screen!, receipt.win!, undefined)).not.toThrow();
+                }
                 expect(() => runtime.restoreSession(corrupt)).toThrow(error);
                 expect(() => fresh.restoreSession(corrupt)).toThrow(error);
                 await expect(runtime.replay(corrupt, [command])).rejects.toThrow(error);
@@ -661,6 +676,7 @@ it.each(["stepwise", "composite", "plain"] as const)("binds %s artifact feature 
                 expect(session.serialize()).toEqual(saved);
                 expect(await session.play(command)).toEqual(receipt);
             }
+            nativeFree?.dispose();
             // Rejection recovery uses the existing owner. Explicit restoration below is separate.
             const reference = fresh.restoreSession(saved);
             const nextCommand = (state: ReturnType<typeof session.serialize>) => state.schemaVersion === "pokie.state.v4" && state.feature.logicalRound?.status === "pending"

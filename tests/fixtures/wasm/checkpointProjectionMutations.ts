@@ -56,6 +56,18 @@ export const checkpointProjectionMutations: readonly (readonly [string, unknown?
 
 export function mutateCheckpointProjection<T>(saved: T, [path, value]: readonly [string, unknown?]): T {
     const corrupt = JSON.parse(JSON.stringify(saved));
+    if (path.startsWith("acceptedEvents.")) {
+        const feature = corrupt.feature;
+        const artifact = feature.plainMath?.artifact;
+        const steps = feature.logicalRound?.subrounds[0].artifacts ?? artifact.steps;
+        const event = path === "acceptedEvents.foreign" ? {type: "foreignFeature", data: {count: 2}} : {type: "freeGamesTriggered", data: {count: 2}};
+        // Keep all mutable receipt copies aligned, including the plain aggregate.
+        for (const owner of [steps[0], artifact].filter(Boolean)) {
+            owner.featureEvents = [...(owner.featureEvents ?? []), event];
+        }
+        if (feature.logicalRound) feature.lastRound.logicalRound = feature.logicalRound;
+        return corrupt as T;
+    }
     if (path.startsWith("acceptedWin.")) {
         const kind = path.slice("acceptedWin.".length);
         const visit = (item: unknown): void => {
@@ -165,13 +177,24 @@ function setPath(parent: Record<string, unknown>, parts: string[], value: unknow
 }
 
 /** Actual model fixtures used by the reviewer; mutations preserve the receipt's other copies. */
-export function checkpointFeatureObservationFixtures(): {id: string; blueprint: GameBlueprint; mutations: readonly (readonly [string, unknown?])[]}[] {
+export function checkpointFeatureObservationFixtures(): {id: string; blueprint: GameBlueprint; seed?: string; maxSubrounds?: number; mutations: readonly (readonly [string, unknown?])[]}[] {
     const model = (id: string) => existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
     const wins: GameBlueprint = {manifest: {id: "retained-wins", name: "Wins", version: "1.0.0"}, reels: 3, rows: 1,
         symbols: ["A", "B"], reelStrips: [["A"], ["A"], ["A"]], paytable: {A: {3: 2}}, availableBets: [0.05],
         betModes: [{id: "base", runtimeType: "base", isDefault: true}]};
+    const cascade: GameBlueprint = {...wins, reelStrips: [["A", "B"], ["A", "B"], ["A", "B"]], mechanics: {cascade: {maxCascades: 10}}};
+    Reflect.deleteProperty(cascade, "betModes");
     return [
+        {id: "freeGames", blueprint: {...model("free-games"), reelStrips: [["S"], ["S"], ["S"]]}, maxSubrounds: 2, mutations: [
+            ["acceptedFeature.freeGamesTriggered.count", 999], ["acceptedFeature.freeGamesTriggered"],
+            ["acceptedFeature.freeGamesTriggered.duplicate"], ["acceptedFeature.freeGamesTriggered.count", "2"],
+            ["acceptedFeature.freeGamesTriggered.extra", true], ["acceptedEvents.foreign"],
+        ]},
+        {id: "cascade", blueprint: cascade, seed: "7", mutations: [
+            ["acceptedEvents.freeGamesTriggered"], ["acceptedEvents.foreign"],
+        ]},
         {id: "wins", blueprint: wins, mutations: [
+            ["acceptedEvents.freeGamesTriggered"], ["acceptedEvents.foreign"],
             ["acceptedWin.symbol", "INVALID"], ["acceptedWin.symbol", "B"], ["acceptedWin.positions", [[999, 999]]],
             ["acceptedWin.id", "foreign"], ["acceptedWin.multiplier", [{source: "foreign", positions: [[999, 999]], values: [999], combinedMultiplier: 999}]],
             ["acceptedWin.multiplier", [{source: "foreign", positions: [[0, 0]], values: [999], combinedMultiplier: 999}]],

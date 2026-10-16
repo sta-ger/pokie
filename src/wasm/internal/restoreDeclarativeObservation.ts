@@ -1,5 +1,8 @@
 import {validateArtifactCoordinates} from "../../artifact/validateArtifactCoordinates.js";
 import {buildRoundStepArtifact} from "../../artifact/buildRoundStepArtifact.js";
+import {deriveStandardFeatureEvents} from "../../artifact/buildRoundArtifactFromSession.js";
+import {SymbolsCombinationsAnalyzer} from "../../session/videoslot/combinations/SymbolsCombinationsAnalyzer.js";
+import type {WonFreeGamesNumberDetermining} from "../../session/WonFreeGamesNumberDetermining.js";
 import {MultiplierResolver} from "../../session/videoslot/winevaluation/MultiplierResolver.js";
 import {WinEvaluationContext} from "../../session/videoslot/winevaluation/WinEvaluationContext.js";
 import {ScreenModifierEngine} from "../../session/videoslot/modifiers/ScreenModifierEngine.js";
@@ -22,6 +25,7 @@ import {CascadeGridTransformer} from "../../session/videoslot/combinations/Casca
 import type {BoundedMechanicObservation} from "../../session/videoslot/authored/BoundedMechanics.js";
 import type {ScreenModifierObservation, ScreenModifierState} from "../../session/videoslot/modifiers/ScreenModifiers.js";
 import {stableSlotMathJson} from "../math/SharedSlotMath.js";
+import {ScreenProjection} from "../../session/videoslot/coordinates/ScreenProjection.js";
 
 /** Rehydrate accepted observations for the existing serializers/analytics observer.
  * No evaluator, RNG, wallet effect or session-prefix replay is involved.
@@ -41,6 +45,11 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
             stableSlotMathJson(retained.data ?? {}) !== stableSlotMathJson(projectPublicFeatureEvent(retained).data ?? {})) throw new Error(`Invalid retained ${retained.type} observation fields.`);
     }
     const current = observeVideoSlotFeatures(session);
+    const free = mechanics?.freeGames;
+    const evaluated = blueprint.screenGeometry ? new ScreenProjection(blueprint.screenGeometry).project(finalScreen, "evaluated") : finalScreen;
+    const grant = free ? free.awardsByCount[SymbolsCombinationsAnalyzer.getScatterSymbolsPositions(evaluated, free.scatterSymbol).length] ?? 0 : 0;
+    const nativeGrant = (session as Partial<WonFreeGamesNumberDetermining>).getWonFreeGamesNumber?.() ?? 0;
+    if (nativeGrant !== grant) throw new Error("Retained freeGamesTriggered grant contradicts its model and evaluated screen.");
     for (const [type, expected] of [["holdAndWin", current.holdAndWin], ["jackpot", current.jackpot],
         ["chargedBetMode", current.chargedBetModeId ? {id: current.chargedBetModeId} : undefined]] as const) {
         const retained = artifacts.flatMap(step => step.featureEvents ?? []).filter(event => event.type === type);
@@ -148,11 +157,21 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
         getModifierObservation: () => modifiers,
         ...(cascade ? {getCascadeResult: () => cascade} : {}),
     };
-    return new Proxy({} as VideoSlotSessionHandling, {get: (_target, key) => {
+    const observation = new Proxy({} as VideoSlotSessionHandling, {get: (_target, key) => {
         if (typeof key === "string" && key in overrides) return overrides[key];
         const value: unknown = Reflect.get(session, key);
         return typeof value === "function" ? value.bind(session) : value;
     }});
+    // Reuse the capture contract only after each observation has its own semantic
+    // validation. Generic artifacts allow custom events; canonical portable models
+    // can emit exactly this set, on the last mathematical step, in producer order.
+    const expectedEvents = deriveStandardFeatureEvents(observation);
+    for (const step of artifacts) {
+        if (stableSlotMathJson(step.featureEvents ?? []) !== stableSlotMathJson(step === last ? expectedEvents : [])) {
+            throw new Error("Retained canonical feature events contradict their executable observations or placement.");
+        }
+    }
+    return observation;
 }
 
 /** Attribution validation only: amounts stay owned by the accepted evaluation.

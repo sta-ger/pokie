@@ -238,10 +238,13 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                 }
                 const artifacts = round?.subrounds[0].artifacts ?? state.feature.plainMath?.artifact.steps ?? [];
                 const plainArtifact = state.feature.plainMath?.artifact;
-                if (plainArtifact && stableSlotMathJson(plainArtifact.featureEvents ?? []) !== stableSlotMathJson(artifacts.flatMap(step => step.featureEvents ?? []))) throw new Error("Plain feature events contradict their mathematical steps.");
                 const mathematicalWin = round?.subrounds[0].win ?? state.feature.plainMath!.artifact.totalWin;
                 const final = round?.subrounds[0].finalScreen ?? state.feature.plainMath?.finalScreen ?? artifacts[artifacts.length - 1]?.generatedScreen ?? last.screen!;
                 const observation = restoreDeclarativeObservation(check.session, blueprint, artifacts, final as string[][], mathematicalWin, state.feature.componentAmounts);
+                // The shared owner has now validated the complete canonical event set
+                // against the model/native observations. Bind the plain aggregate to it;
+                // equality between two unchecked retained copies is insufficient.
+                if (plainArtifact && stableSlotMathJson(plainArtifact.featureEvents ?? []) !== stableSlotMathJson(artifacts.flatMap(step => step.featureEvents ?? []))) throw new Error("Plain feature events contradict their mathematical steps.");
                 // Stops describe the generator's last circular sample, before modifiers or
                 // cascade collapse. The public draw is the first request of this mathematical
                 // play, which can instead select a weighted variant; presentation requests draw nothing.
