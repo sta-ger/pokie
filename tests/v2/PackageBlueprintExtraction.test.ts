@@ -802,7 +802,7 @@ describe("comparison-only max-win declarations", () => {
 
 it("preserves simple extraction paths and quotes literal symbol identities through object and loader boundaries", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "extraction-field-paths-"));
-    const symbols = ["A", "A.B", "A/B~C", 'A[0]"\\', "$"];
+    const symbols = ["A", "B", "A.B", "A/B~C", 'A[0]"\\', "$"];
     const model = {...base(), symbols, paytable: {A: {3: 5}, "A.B": {3: 7.5}}};
     const extractor = new PackageBlueprintExtraction();
     try {
@@ -815,7 +815,7 @@ it("preserves simple extraction paths and quotes literal symbol identities throu
                 expect.objectContaining({path: "paytable.A.3", status: "exact"}),
                 expect.objectContaining({path: 'paytable["A.B"].3', status: "exact"}),
                 expect.objectContaining({path: 'paytable["A.B"].2', authority: "descriptor: authored payout absent; effective zero"}),
-                ...symbols.slice(2).map(symbol => expect.objectContaining({
+                ...symbols.slice(3).map(symbol => expect.objectContaining({
                     path: `paytable[${JSON.stringify(symbol)}]`, authority: "descriptor: authored symbol table absent; no payouts",
                 })),
             ]));

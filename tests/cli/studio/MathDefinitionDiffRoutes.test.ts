@@ -178,7 +178,7 @@ describe("definition comparison public Studio route", () => {
                 descriptorBody: declaration(field === "literal symbol" ? "paytable.A" : field)});
             const b = writeDescriptorPackage(root, {name: "authority-right", model: changed,
                 descriptorBody: field === "retained declarations"
-                    ? 'return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model};'
+                    ? 'return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model, unsupported: [{path: "/mechanics/freeGames", code: "custom-feature", message: "Unavailable feature"}]};'
                     : declaration(field === "literal symbol" ? "paytable.A" : field)});
             fs.writeFileSync(left, JSON.stringify(model));
             for (const [before, after] of [[a, b], [b, a]]) {
@@ -188,7 +188,7 @@ describe("definition comparison public Studio route", () => {
                 const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
                 try {
                     expect(await dispatch([new DiffCommand()], ["node", "pokie", "diff", before, after, "--ci", "--format", "json"]))
-                        .toBe(field === "retained declarations" ? 0 : 2);
+                        .toBe(2);
                     expect(JSON.parse(log.mock.calls[0][0])).toEqual(result.body);
                 } finally {
                     log.mockRestore();

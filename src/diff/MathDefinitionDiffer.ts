@@ -297,8 +297,9 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
                 changes.some(
                     (change) =>
                         change.path === path ||
-                        path.startsWith(change.path + "/") ||
-                        (!container && change.path.startsWith(path + "/")),
+                        (change.classification !== "provenance" && (
+                            path.startsWith(change.path + "/") ||
+                            (!container && change.path.startsWith(path + "/")))),
                 )
             ) return;
             const a = side(left, before, keys);
