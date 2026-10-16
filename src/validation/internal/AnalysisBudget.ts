@@ -7,13 +7,13 @@ export class AnalysisStopped extends Error {
 }
 export class AnalysisBudget {
     public readonly limits: AdvancedAnalysisLimits;
-    public readonly work: AdvancedAnalysisLimits = {inputNodes: 0, outcomes: 0, states: 0, transitions: 0, depth: 0, evidenceNodes: 0, yieldEvery: 0};
+    public readonly work: AdvancedAnalysisLimits = {inputNodes: 0, outcomes: 0, outcomeCells: 0, states: 0, transitions: 0, depth: 0, evidenceNodes: 0, yieldEvery: 0};
     private ticks = 0;
     constructor(private readonly options: AdvancedValidationOptions = {}) {
         const proposed = options.limits;
         if (proposed !== undefined && (!proposed || typeof proposed !== "object" || Array.isArray(proposed) || ![Object.prototype, null].includes(Reflect.getPrototypeOf(proposed)))) throw new Error("Invalid analysis limits: expected a plain options object.");
         if (proposed && Reflect.ownKeys(proposed).some(key => typeof key !== "string" || !("value" in Reflect.getOwnPropertyDescriptor(proposed, key)!))) throw new Error("Invalid analysis limits: accessors and symbol keys are unsupported.");
-        this.limits = {inputNodes: 100000, outcomes: 1000, states: 1000, transitions: 10000, depth: 256, evidenceNodes: 10000, yieldEvery: 128, ...proposed};
+        this.limits = {inputNodes: 100000, outcomes: 1000, outcomeCells: 100000, states: 1000, transitions: 10000, depth: 256, evidenceNodes: 10000, yieldEvery: 128, ...proposed};
         for (const [key, value] of Object.entries(this.limits)) {
             if (!Reflect.apply(Object.prototype.hasOwnProperty, this.work, [key]) || !Number.isSafeInteger(value) || value < 1 || value > 10000000) throw new Error(`Invalid analysis limit ${key}: expected an integer in [1, 10000000].`);
         }

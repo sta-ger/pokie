@@ -8,6 +8,7 @@ export type AdvancedValidationStatus = "complete" | "counterexample" | "unsuppor
 export type AdvancedAnalysisLimits = {
     inputNodes: number;
     outcomes: number;
+    outcomeCells: number;
     states: number;
     transitions: number;
     depth: number;

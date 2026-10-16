@@ -283,3 +283,27 @@ it.each(["identity", "context", "duration", "completion"])("retains a concrete w
     const report = await new AdvancedModelValidator().validate(model);
     expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.executable-state", status: "violation", path: "states.0.state", message: expect.stringMatching(/identity|context|duration|completion/), evidence: expect.objectContaining({actual: expect.objectContaining({bonus: corrupt.bonus})})}));
 });
+
+it("bounds retained circular-window cells before allocating the whole outcome product", async () => {
+    const model = blueprint();
+    model.rows = 50;
+    model.reelStrips = [Array.from({length: 100}, (_, index) => index % 2 ? "A" : "S")];
+    const report = await new AdvancedModelValidator().validate({kind: "blueprint", model}, {limits: {outcomeCells: 2000, outcomes: 1000}});
+    expect(report).toMatchObject({status: "budget-exhausted", verdict: "inconclusive"});
+    expect(report.work.outcomes).toBeLessThan(100);
+    expect(report.work.outcomeCells).toBeLessThanOrEqual(2000);
+});
+
+it("retains an established violation when a tiny witness budget cannot hold its full path", async () => {
+    const report = await new AdvancedModelValidator().validate({kind: "declared-transitions", initial: "a", states: [{id: "a"}], transitions: [{from: "a", to: "missing"}]}, {limits: {evidenceNodes: 1}});
+    expect(report).toMatchObject({status: "budget-exhausted", verdict: "violated"});
+    expect(report.checks).toContainEqual(expect.objectContaining({id: "transitions.target", status: "violation", evidence: {retained: false, reason: expect.any(String)}}));
+    expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.unresolved", status: "unknown"}));
+});
+
+it("completes the lifetime respin cap boundary without branching on singleton entropy", async () => {
+    const model = blueprint();
+    model.reelStrips = [["S"]];
+    model.mechanics = {respins: {trigger: {symbolId: "S", minimumCount: 1}, grant: 90, maxRespins: 90, retrigger: "reset"}};
+    expect(await validate(model)).toMatchObject({status: "complete", verdict: "proved-within-assumptions"});
+});

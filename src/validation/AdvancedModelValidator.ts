@@ -62,8 +62,13 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
 
     private async add(report: AdvancedModelValidationReport, budget: AnalysisBudget, check: AdvancedValidationCheck): Promise<void> {
         // Never publish a partial witness as a complete one.
-        const evidence = check.evidence === undefined ? undefined : await budget.detach(check.evidence, true);
-        report.checks.push(evidence === undefined ? check : {...check, evidence});
+        try {
+            const evidence = check.evidence === undefined ? undefined : await budget.detach(check.evidence, true);
+            report.checks.push(evidence === undefined ? check : {...check, evidence});
+        } catch (error) {
+            if (error instanceof AnalysisStopped && check.status === "violation") report.checks.push({...check, evidence: {retained: false, reason: "Witness retention was interrupted; the diagnostic remains established."}});
+            throw error;
+        }
     }
 
     private async graph(model: DeclaredTransitionModel, report: AdvancedModelValidationReport, budget: AnalysisBudget): Promise<void> {
@@ -181,7 +186,8 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
         if (model && (model.reels > budget.limits.inputNodes || model.rows > budget.limits.inputNodes || model.reels * model.rows > budget.limits.inputNodes)) throw new AnalysisStopped("budget-exhausted", "Geometry exceeds preprocessing budget.");
         const symbolCount = Array.isArray(model?.symbols) ? model.symbols.length : 0;
         const betCount = Array.isArray(model?.availableBets) ? model.availableBets.length : 11;
-        const preparationWork = symbolCount * Math.max(1, Number.isSafeInteger(model?.reels) && model.reels > 0 ? model.reels : 1) * betCount;
+        const boardCells = Number.isSafeInteger(model?.reels) && Number.isSafeInteger(model?.rows) && model.reels > 0 && model.rows > 0 ? model.reels * model.rows : 0;
+        const preparationWork = boardCells + symbolCount * Math.max(1, Number.isSafeInteger(model?.reels) && model.reels > 0 ? model.reels : 1) * betCount;
         budget.take("inputNodes", symbolCount ** 2 + preparationWork);
         await budget.yield();
         report.issues = new GameBlueprintValidator().validate(model);
@@ -244,10 +250,12 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                     stops.push(positions);
                     return;
                 }
+                budget.take("outcomeCells", strips[reel].length);
                 const sequence = new SymbolsSequence<string>().fromArray(strips[reel]);
                 for (let stop = 0; stop < strips[reel].length; stop++) {
                     budget.take("transitions");
                     await budget.yield();
+                    budget.take("outcomeCells", model.screenGeometry?.generated.rows ?? model.rows);
                     await windows(reel + 1, [...screen, sequence.getSymbols(stop, model.screenGeometry?.generated.rows ?? model.rows)], [...positions, stop]);
                 }
             };
@@ -284,7 +292,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                 // Invoke the actual handler twice to retain a before/after accounting witness.
                 const selected = screens.findIndex(screen => screen === repeating!.screen);
                 budget.take("transitions", preparationWork);
-                const probe = createAnalysisSession(model, strips, screens, () => selected);
+                const probe = createAnalysisSession(model, strips, screens, () => selected, () => budget.take("outcomeCells", boardCells));
                 probe.session.setBet((model.availableBets ?? [1])[0]);
                 probe.session.setCreditsAmount((model.availableBets ?? [1])[0]);
                 probe.start();
@@ -308,12 +316,17 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                         totalWin = 0,
                         totalStake = 0;
                     const path: unknown[] = [];
+                    const draws: {stops: number[]; screen: string[][]}[] = [];
                     let attemptedBefore: unknown;
                     budget.take("transitions", preparationWork);
                     const probe = createAnalysisSession(model, strips, screens, size => {
                         budget.take("transitions");
+                        if (size === 1) return 0;
                         if (cursor >= prefix.length) throw new ChoiceRequired(size);
                         return prefix[cursor++];
+                    }, index => {
+                        budget.take("outcomeCells", boardCells);
+                        draws.push({stops: stops[index], screen: screens[index]});
                     });
                     const session = probe.session as typeof probe.session & Partial<StakeAmountDetermining & LogicalRoundProgressProviding & BetModeSelecting> & {toSessionState(): unknown};
                     if (model.mechanics?.collection) {
@@ -330,6 +343,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                         do {
                             budget.depth(++rounds);
                             budget.take("transitions");
+                            budget.take("outcomeCells", 2 * strips.reduce((sum, strip) => sum + strip.length, 0));
                             const before = session.toSessionState();
                             attemptedBefore = before;
                             const credits = session.getCreditsAmount();
@@ -387,7 +401,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                         }
                         if (error instanceof AnalysisStopped) throw error;
                         failed = true;
-                        await this.add(report, budget, {id: "invariants.runtime-transition", path: "mechanics", status: "violation", severity: "error", message: error instanceof Error ? error.message : String(error), assumptions: report.assumptions, evidence: {bet, ...(mode ? {mode: mode.id} : {}), variants, choices: prefix, before: attemptedBefore, after: session.toSessionState(), path, expected: "Accepted finite runtime transition and completion conservation", actual: "Runtime rejected transition (cascade exhaustion is not ordinary settlement)."}});
+                        await this.add(report, budget, {id: "invariants.runtime-transition", path: "mechanics", status: "violation", severity: "error", message: error instanceof Error ? error.message : String(error), assumptions: report.assumptions, evidence: {bet, ...(mode ? {mode: mode.id} : {}), variants, choices: prefix, draws, before: attemptedBefore, after: session.toSessionState(), path, expected: "Accepted finite runtime transition and completion conservation", actual: "Runtime rejected transition (cascade exhaustion is not ordinary settlement)."}});
                     }
                 }
             }
