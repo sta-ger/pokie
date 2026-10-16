@@ -471,3 +471,104 @@ export async function mutateCheckpointTransition(saved: import("../../../src/was
         runtime.dispose();
     }
 }
+
+/** Sequence-zero probes retain the actual initialization stops, selections and RNG. */
+export function checkpointInitializationFixtures(): {id: string; blueprint: GameBlueprint}[] {
+    const model = (id: string) => existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
+    const free = model("free-games");
+    free.reelStrips = [["A"], ["A"], ["A"]];
+    const collection = JSON.parse(fs.readFileSync("examples/blueprints/bounded-collection.blueprint.json", "utf8")) as GameBlueprint;
+    collection.reelStrips = [["C"], ["C"], ["C"]];
+    const respins = JSON.parse(fs.readFileSync("examples/blueprints/bounded-respins.blueprint.json", "utf8")) as GameBlueprint;
+    const sticky = JSON.parse(fs.readFileSync("examples/blueprints/wild-sticky.blueprint.json", "utf8")) as GameBlueprint;
+    sticky.reelStrips = [["A"], ["B"], ["A"]];
+    const jackpot = model("accumulating-base");
+    jackpot.reelStrips = [["J"], ["A"], ["A"]];
+    const hold = model("hold-flat");
+    hold.reelStrips = [["C"], ["A"], ["A"]];
+    hold.mechanics!.holdAndWin!.initialRespins = 1;
+    return [
+        {id: "initial-free-bank-counters", blueprint: free},
+        {id: "initial-collection", blueprint: collection},
+        {id: "initial-respins", blueprint: respins},
+        {id: "initial-sticky", blueprint: sticky},
+        {id: "initial-jackpot", blueprint: jackpot},
+        {id: "initial-hold", blueprint: hold},
+        {id: "initial-bonus-counters", blueprint: weightedBonusBlueprint()},
+    ];
+}
+
+export function checkpointCounterFixtures(): {id: string; blueprint: GameBlueprint; mutation: "selections" | "completion"}[] {
+    const bonus = weightedBonusBlueprint();
+    bonus.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    const reels: GameBlueprint = {
+        manifest: {id: "counter-reels", name: "Counter reels", version: "1"}, reels: 3, rows: 1,
+        symbols: ["A", "B"], wilds: [], scatters: [], availableBets: [0.05], paytable: {A: {3: 0}},
+        reelSequences: [
+            {type: "weighted", variants: [{id: "chosen", symbols: ["A"], weight: 1}, {id: "zero", symbols: ["B"], weight: 0}]},
+            {type: "exact", symbols: ["A"]},
+            {type: "weighted", variants: [{id: "chosen", symbols: ["A"], weight: 1}, {id: "zero", symbols: ["B"], weight: 0}]},
+        ],
+    };
+    return [
+        {id: "counter-reels", blueprint: reels, mutation: "selections"},
+        {id: "counter-bonus", blueprint: bonus, mutation: "selections"},
+        {id: "counter-bonus-completion", blueprint: bonus, mutation: "completion"},
+    ];
+}
+
+export function mutateCheckpointInitialization(saved: import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmFeatureSessionState, id: string): typeof saved {
+    const corrupt = JSON.parse(JSON.stringify(saved));
+    const state = corrupt.feature.state;
+    switch (id) {
+        case "initial-free-bank-counters": Object.assign(state, {freeGamesSum: 1, freeGamesBank: 999});
+            break;
+        case "initial-collection": state.value = 3;
+            break;
+        case "initial-respins": Object.assign(state, {remaining: 2, entryBet: 0.05});
+            break;
+        case "initial-sticky": state.modifierState.cells = [{ruleId: "sticky", position: [1, 0], symbol: "W2", factor: 2, remaining: 2}];
+            break;
+        case "initial-jackpot": state.pools.mini.value = 999;
+            break;
+        case "initial-hold": Object.assign(state, {active: true, entryBet: 0.05, respinsRemaining: 1, lockedSymbols: [{position: [0, 0], symbolId: "C", effect: {kind: "value", amount: 2}}]});
+            break;
+        case "initial-bonus-counters": state.bonus.counts[1] = state.bonus.completed = 999;
+            break;
+        default: throw new Error(`Unknown initialized probe ${id}`);
+    }
+    return corrupt as typeof saved;
+}
+
+/** Coordinated changes preserve returned native/statistics equality. */
+export function mutateCheckpointCounters(saved: import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmFeatureSessionState, id: string): typeof saved {
+    const corrupt = JSON.parse(JSON.stringify(saved));
+    const last = corrupt.feature.lastRound;
+    let leaf = corrupt.feature.state;
+    while (leaf.base) leaf = leaf.base;
+    if (id === "counter-reels") {
+        // Inflate every weighted reel equally so cross-reel equality alone cannot reject.
+        for (const reel of last.sequenceStatistics) {
+            leaf.sequenceState.counts[reel.reelIndex].chosen += 999;
+            reel.selections += 999;
+            reel.variants.find((variant: {id: string}) => variant.id === "chosen").count += 999;
+            for (const variant of reel.variants) variant.frequency = variant.count / reel.selections;
+        }
+    } else {
+        const bonus = corrupt.feature.state.bonus;
+        if (id === "counter-bonus-completion") {
+            bonus.completed++;
+            last.weightedBonusStatistics.completed++;
+            last.weightedBonusStatistics.incomplete--;
+        } else {
+            const index = last.weightedBonusStatistics.outcomes.findIndex((outcome: {id: string}) => outcome.id === "large");
+            bonus.counts[index] += 999;
+            bonus.completed += 999;
+            last.weightedBonusStatistics.selections += 999;
+            last.weightedBonusStatistics.completed += 999;
+            last.weightedBonusStatistics.outcomes[index].count += 999;
+            for (const outcome of last.weightedBonusStatistics.outcomes) outcome.frequency = outcome.count / last.weightedBonusStatistics.selections;
+        }
+    }
+    return corrupt as typeof saved;
+}

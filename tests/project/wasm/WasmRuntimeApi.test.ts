@@ -1002,3 +1002,124 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s aut
         }
     }
 });
+
+it("rejects every fabricated initialized feature before host mutation and preserves first-play continuation", async () => {
+    const {checkpointInitializationFixtures, mutateCheckpointInitialization} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
+    for (const {id, blueprint} of checkpointInitializationFixtures()) {
+        const fixture = createCanonicalWasmFixture({blueprint});
+        const host = new SeededPokieWasmHost("probe");
+        const restore = jest.spyOn(host, "restoreState");
+        const next = jest.spyOn(host, "nextRandom");
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
+        const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("fresh"));
+        try {
+            const session = runtime.createSession("probe");
+            const saved = JSON.parse(JSON.stringify(session.serialize()));
+            const display = session.getInitialData();
+            expect(saved.sequence).toBe(0);
+            const corrupt = mutateCheckpointInitialization(saved, id);
+            const before = host.serializeState();
+            const calls = restore.mock.calls.length;
+            const draws = next.mock.calls.length;
+            for (const receiving of [runtime, fresh]) {
+                expect(() => receiving.restoreSession(corrupt)).toThrow(/canonical initialization/);
+                await expect(receiving.replay(corrupt, [{bet: 0.05}])).rejects.toThrow(/canonical initialization/);
+            }
+            expect(restore).toHaveBeenCalledTimes(calls);
+            expect(next).toHaveBeenCalledTimes(draws);
+            expect(host.serializeState()).toEqual(before);
+            expect(session.serialize()).toEqual(saved);
+            expect(session.getInitialData()).toEqual(display);
+            const reference = fresh.restoreSession(saved);
+            expect(reference.getInitialData()).toEqual(display);
+            for (let index = 0; index < 2; index++) {
+                const result = await session.play({bet: 0.05});
+                expect(await reference.play({bet: 0.05})).toEqual(result);
+                expect(reference.serialize()).toEqual(session.serialize());
+                if (index === 0) {
+                    if (id === "initial-free-bank-counters") expect(result).toMatchObject({stake: 0.05, payout: expect.closeTo(0, 12), credits: 999.95});
+                    if (id === "initial-collection") expect(result.network?.boundedMechanics?.collection).toMatchObject({value: 3, triggered: false, payout: 0});
+                    if (id === "initial-respins") expect(result.stake).toBe(0.05);
+                    if (id === "initial-sticky") expect(result.payout).toBeCloseTo(0, 12);
+                    if (id === "initial-jackpot") expect(result.payout).toBeCloseTo(10.005, 12);
+                    if (id === "initial-hold") expect(result).toMatchObject({stake: 0.05, payout: expect.closeTo(0, 12)});
+                }
+            }
+            // Explicit restoration into a used runtime is separate from rejection recovery.
+            for (const receiving of [runtime, fresh]) {
+                const restored = receiving.restoreSession(saved);
+                expect(restored.getInitialData()).toEqual(display);
+                const first = await restored.play({bet: 0.05});
+                expect((await receiving.replay(saved, [{bet: 0.05}])).rounds).toEqual([first]);
+                restored.dispose();
+            }
+        } finally {
+            runtime.dispose();
+            fresh.dispose();
+        }
+    }
+});
+
+it.each(["plain", "stepwise", "composite"] as const)("binds coordinated %s weighted counters to accepted mathematics at domain and restore boundaries", async policy => {
+    const {checkpointCounterFixtures, mutateCheckpointCounters} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
+    const {createAuthoredSession} = await import("../../../src/generated/createAuthoredSession.js");
+    const {SeededRandomNumberGenerator} = await import("../../../src/session/videoslot/combinations/SeededRandomNumberGenerator.js");
+    const {validateWeightedBonusAccounting} = await import("../../../src/session/videoslot/authored/WeightedBonus.js");
+    for (const {id, blueprint} of checkpointCounterFixtures()) {
+        const fixture = createCanonicalWasmFixture({blueprint});
+        const host = new SeededPokieWasmHost("probe");
+        const restore = jest.spyOn(host, "restoreState");
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
+        const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("fresh"));
+        const native = createAuthoredSession(blueprint, new SeededRandomNumberGenerator("probe"));
+        try {
+            const session = runtime.createSession("probe");
+            const command = {bet: 0.05, roundId: "counter", ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1})};
+            const receipt = await session.play(command);
+            const saved = session.serialize();
+            if (saved.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
+            const corrupt = mutateCheckpointCounters(saved, id);
+            const position = saved.feature.analytics!.position;
+            expect(position).toBe(1);
+            const expected = /Weighted (reel|bonus).*counter|weighted bonus completion/i;
+            // The same uncoerced counters reach the shared domain owner, not a catch/fallback.
+            const validate = (state: typeof saved) => {
+                const value = state.feature.state as {base?: {sequenceState: unknown}; sequenceState: unknown; bonus: import("../../../src/session/videoslot/authored/WeightedBonus.js").WeightedBonusState; remaining: number; executed: number};
+                if (id === "counter-reels") {
+                    native.generator.setSelectionState(value.sequenceState);
+                    native.generator.validateAcceptedSelectionAccounting(position, saved.feature.accounting!.entryPosition, false);
+                } else validateWeightedBonusAccounting(blueprint.mechanics!.weightedBonus!, value.bonus, value.remaining, value.executed, position, saved.feature.accounting!.entryPosition);
+            };
+            expect(() => validate(corrupt)).toThrow(expected);
+            expect(() => validate(saved)).not.toThrow();
+            const before = host.serializeState();
+            const calls = restore.mock.calls.length;
+            for (const receiving of [runtime, fresh]) {
+                expect(() => receiving.restoreSession(corrupt)).toThrow(expected);
+                await expect(receiving.replay(corrupt, [command])).rejects.toThrow(expected);
+            }
+            expect(restore).toHaveBeenCalledTimes(calls);
+            expect(host.serializeState()).toEqual(before);
+            expect(session.serialize()).toEqual(saved);
+            expect(await session.play(command)).toEqual(receipt);
+            const reference = fresh.restoreSession(saved);
+            for (let index = 0; index < 2; index++) {
+                const current = session.serialize();
+                const round = current.schemaVersion === "pokie.state.v4" && current.feature.logicalRound;
+                const next = round && round.status === "pending" ? {delivery: "stepwise", continuation: {roundId: "counter", cursor: round.deliveryCursor}} : {bet: 0.05};
+                expect(await session.play(next)).toEqual(await reference.play(next));
+                expect(session.serialize()).toEqual(reference.serialize());
+            }
+            for (const receiving of [runtime, fresh]) {
+                const restored = receiving.restoreSession(saved);
+                for (let retry = 0; retry < 2; retry++) expect(await restored.play(command)).toEqual(receipt);
+                expect((await receiving.replay(saved, [command])).rounds).toEqual([receipt]);
+                restored.dispose();
+            }
+        } finally {
+            native.dispose();
+            runtime.dispose();
+            fresh.dispose();
+        }
+    }
+});

@@ -119,6 +119,28 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
         const generated = leaf.reelStrips!.map((strip, reel) => Array.from({length: blueprint.screenGeometry?.generated.rows ?? blueprint.rows}, (_, row) => strip[(stops[reel] + row) % strip.length]));
         return blueprint.screenGeometry ? new ScreenProjection(blueprint.screenGeometry).project(generated, "visible") : generated;
     }
+    function validateInitialization(state: PokieWasmFeatureSessionState, initialized: NativeSession): void {
+        // Constructors own all initial feature defaults. Only the unpaid sample and
+        // host cursor are authoritative retained inputs, not the restore placeholder.
+        const expected = copy(encode(initialized.toSessionState())) as Record<string, unknown>;
+        const actual = copy(state.feature.state) as Record<string, unknown>;
+        let expectedLeaf = expected,
+            actualLeaf = actual;
+        while (expectedLeaf.base) {
+            expectedLeaf = expectedLeaf.base as typeof expectedLeaf;
+            actualLeaf = actualLeaf.base as typeof actualLeaf;
+        }
+        expectedLeaf.rngState = actualLeaf.rngState;
+        if (expectedLeaf.sequenceState) {
+            const canonical = expectedLeaf.sequenceState as {selections: {variantId: string}[]};
+            const retained = actualLeaf.sequenceState as typeof canonical;
+            // Keep constructor-owned reel order/context and empty counters. Variant IDs
+            // have already been resolved against the artifact by the native validator.
+            canonical.selections.forEach((selection, index) => selection.variantId = retained.selections[index].variantId);
+        }
+        if (state.feature.bet !== initialized.getBet() || stableSlotMathJson(actual) !== stableSlotMathJson(expected)) throw new Error("Feature state contradicts canonical initialization.");
+        if (Object.keys(state.feature).some(key => !["bet", "state", "initialStops", "analytics"].includes(key)) || state.feature.analytics?.logicalKnown !== undefined) throw new Error("Unexpected initialized execution accounting.");
+    }
     function validate(state: PokieWasmRestorableState): asserts state is PokieWasmFeatureSessionState {
         if (!state || state.schemaVersion !== "pokie.state.v4" || state.artifactIdentity !== artifactIdentity || typeof state.seed !== "string" || !Number.isSafeInteger(state.sequence) || state.sequence < 0 || !Number.isSafeInteger(state.drawCount) || state.drawCount < blueprint.reels || !Number.isFinite(state.credits) || state.credits < 0 || !state.feature || !(blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]).includes(state.feature.bet)) throw new Error("Unsupported or malformed artifact-bound WASM feature state.");
         if (Object.keys(state).some(key => !["schemaVersion", "artifactIdentity", "seed", "sequence", "drawCount", "credits", "rngState", "feature"].includes(key)) ||
@@ -189,8 +211,9 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
         }
         const check = assemble(state.seed, true);
         try {
-            check.session.setBet(state.feature.bet);
             check.session.validateSessionState(decode(state.feature.state));
+            if (state.sequence === 0) validateInitialization(state, check.session);
+            check.session.setBet(state.feature.bet);
             check.session.fromSessionState(decode(state.feature.state));
             check.session.setCreditsAmount(state.credits);
             if (state.sequence === 0) initialScreen(state);
@@ -315,6 +338,10 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                 const finalIsPresentation = !!round && round.stageCursor > 1;
                 if (stableSlotMathJson(verifier.toState()) !== stableSlotMathJson(state.feature.analytics) ||
                     stableSlotMathJson(last.analytics) !== stableSlotMathJson(finalIsPresentation ? undefined : copy(expectedAnalytics))) throw new Error("Retained analytics contradicts its accepted mathematical observation.");
+                check.generator.validateAcceptedSelectionAccounting(state.feature.analytics.position, accounting.entryPosition,
+                    !!(blueprint.mechanics?.freeGames || blueprint.mechanics?.holdAndWin || blueprint.mechanics?.respins || blueprint.mechanics?.weightedBonus));
+                (check.session as {validateAcceptedSelectionAccounting?: (plays: number, entryPosition: number) => void})
+                    .validateAcceptedSelectionAccounting?.(state.feature.analytics.position, accounting.entryPosition);
                 const current = observeVideoSlotFeatures(check.session);
                 for (const key of ["holdAndWin", "jackpot", "chargedBetModeId"] as const) if (stableSlotMathJson(current[key]) !== stableSlotMathJson(last.network?.[key])) throw new Error(`Feature ${key} contradicts its last accepted observation.`);
                 for (const field of ["freeGamesNum", "freeGamesSum", "freeGamesBank"] as const) {

@@ -1,4 +1,4 @@
-import {shouldSelectWeightedBonus, weightedBonusPayout, weightedBonusModel, type WeightedBonusState, type WeightedBonusStatistics, type WeightedBonusProviding} from "./WeightedBonus.js";
+import {validateWeightedBonusAccounting, shouldSelectWeightedBonus, weightedBonusPayout, weightedBonusModel, type WeightedBonusState, type WeightedBonusStatistics, type WeightedBonusProviding} from "./WeightedBonus.js";
 import {cloneSessionData} from "../../../runtime/internal/cloneSessionData.js";
 import {validateAuthoredMechanics} from "../../../generated/validateAuthoredMechanics.js";
 import {validateExecutableState} from "../../../runtime/validateExecutableState.js";
@@ -236,6 +236,9 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
     }
     public isSessionStateRestorable(): boolean {
         return this.constructor === BoundedVideoSlotSession && isSessionStateRestorable(this.baseSession);
+    }
+    public validateAcceptedSelectionAccounting(mathematicalPlays: number, entryPosition: number): void {
+        if (this.rules.weightedBonus && this.bonus) validateWeightedBonusAccounting(this.rules.weightedBonus, this.bonus, this.remaining, this.executed, mathematicalPlays, entryPosition);
     }
     public toSessionState(): BoundedSessionState {
         return {base: (this.baseSession as VideoSlotSession).toSessionState(), value: this.value, remaining: this.remaining, executed: this.executed, entryBet: this.entryBet, ...(this.bonus ? {bonus: cloneSessionData(this.bonus)} : {})};

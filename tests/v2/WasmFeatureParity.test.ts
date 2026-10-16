@@ -731,3 +731,106 @@ it("retains every native payout, required entry and collection-transition reprod
         }
     }
 });
+
+it("freezes initialized and weighted-counter reproducer coverage", async () => {
+    const {checkpointInitializationFixtures, checkpointCounterFixtures} = await import("../fixtures/wasm/checkpointProjectionMutations.js");
+    expect(checkpointInitializationFixtures().map(test => test.id)).toEqual([
+        "initial-free-bank-counters", "initial-collection", "initial-respins", "initial-sticky", "initial-jackpot", "initial-hold", "initial-bonus-counters",
+    ]);
+    expect(checkpointCounterFixtures().map(test => test.id)).toEqual(["counter-reels", "counter-bonus", "counter-bonus-completion"]);
+});
+
+it("preserves authoritative initialized weighted variants/stops with zero and custom-host RNG continuation", async () => {
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    const blueprint = weightedBonusBlueprint();
+    Reflect.deleteProperty(blueprint, "reelStrips");
+    blueprint.reelSequences = [
+        {type: "weighted", variants: [{id: "first", symbols: ["A", "C"], weight: 1}, {id: "second", symbols: ["C", "A"], weight: 3}]},
+        {type: "exact", symbols: ["A", "C"]}, {type: "exact", symbols: ["C", "A"]},
+    ];
+    const fixture = createCanonicalWasmFixture({blueprint});
+    // A custom stream deliberately initializes the non-placeholder variant/stop.
+    // Restoring must consume no entropy and must not reconstruct initialization from seed.
+    const custom = () => {
+        let position = 0;
+        return {
+            nextRandom: jest.fn(() => [0.75, 0.75, 0.75, 0.75, 0.1, 0.9][position++ % 6]),
+            serializeState: () => ({position}),
+            restoreState: (state: unknown) => {
+                position = (state as {position: number}).position;
+            },
+        };
+    };
+    for (const zero of [false, true]) {
+        const host = zero ? new SeededPokieWasmHost("probe") : custom();
+        const receiver = zero ? new SeededPokieWasmHost("fresh") : custom();
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
+        const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, receiver);
+        try {
+            const session = runtime.createSession("probe");
+            const initial = JSON.parse(JSON.stringify(session.serialize()));
+            if (zero) initial.rngState = 0;
+            else {
+                expect(initial.feature.initialStops).toEqual([1, 1, 1]);
+                expect(initial.feature.state.base.sequenceState.selections[0].variantId).toBe("second");
+            }
+            const restored = fresh.restoreSession(initial);
+            expect(restored.getInitialData()).toEqual(session.getInitialData());
+            expect(restored.serialize()).toEqual(initial);
+            if (!zero) expect((receiver as ReturnType<typeof custom>).nextRandom).not.toHaveBeenCalled();
+            const expected = runtime.restoreSession(initial);
+            for (let index = 0; index < 2; index++) expect(await restored.play({bet: 0.05})).toEqual(await expected.play({bet: 0.05}));
+        } finally {
+            runtime.dispose();
+            fresh.dispose();
+        }
+    }
+});
+
+it.each(["plain", "stepwise", "composite"] as const)("conserves eligible weighted denominators across %s retries, rejection, continuation and fresh restoration", async policy => {
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    const blueprint = weightedBonusBlueprint();
+    blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    Reflect.deleteProperty(blueprint, "reelStrips");
+    blueprint.reelSequences = [
+        {type: "weighted", variants: [{id: "short", symbols: ["C"], weight: 1}, {id: "long", symbols: ["C", "C"], weight: 3}, {id: "zero", symbols: ["A"], weight: 0}]},
+        {type: "exact", symbols: ["C"]}, {type: "exact", symbols: ["C"]},
+    ];
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("probe"));
+    const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("fresh"));
+    try {
+        let session = runtime.createSession("probe");
+        for (let cycle = 0; cycle < 2; cycle++) {
+            for (let cursor = 0; cursor < 3; cursor++) {
+                const entry = {bet: 0.05, roundId: `entry-${cycle}`, ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1})};
+                const continuation = policy === "plain" ? {bet: 0.05, roundId: `plain-${cycle}-${cursor}`} : {delivery: policy, maxSubrounds: 1, continuation: {roundId: `entry-${cycle}`, cursor}};
+                const command = cursor === 0 ? entry : continuation;
+                const receipt = await session.play(command);
+                expect(receipt.sequenceStatistics).toEqual([expect.objectContaining({selections: cycle + 1, variants: expect.arrayContaining([expect.objectContaining({id: "zero", count: 0, frequency: 0})])})]);
+                expect(receipt.weightedBonusStatistics).toMatchObject({selections: cycle + 1, completed: cycle + (cursor === 2 ? 1 : 0), incomplete: cursor === 2 ? 0 : 1});
+                expect(receipt.sequenceStatistics![0].variants.reduce((sum, variant) => sum + variant.count, 0)).toBe(cycle + 1);
+                const saved = JSON.parse(JSON.stringify(session.serialize()));
+                expect(await session.play(command)).toEqual(receipt);
+                await expect(session.play({mode: "foreign"})).rejects.toThrow();
+                if (cursor < 2) await expect(session.play({bet: 7.5})).rejects.toThrow(/Continuation/);
+                expect(session.serialize()).toEqual(saved);
+                const restored = fresh.restoreSession(saved);
+                expect(await restored.play(command)).toEqual(receipt);
+                expect((await runtime.replay(saved, [command])).stateAfter).toEqual(saved);
+                session.dispose();
+                session = runtime.restoreSession(restored.serialize());
+                restored.dispose();
+            }
+        }
+        const full = runtime.createSession("probe");
+        const composite = await full.play({bet: 0.05, roundId: "full", delivery: "composite"});
+        expect(composite).toMatchObject({sequence: 3, sequenceStatistics: [{selections: 1}], weightedBonusStatistics: {selections: 1, completed: 1, incomplete: 0}});
+        expect(composite.deliveries).toHaveLength(3);
+        const restored = fresh.restoreSession(JSON.parse(JSON.stringify(full.serialize())));
+        expect(await restored.play({bet: 0.05})).toEqual(await full.play({bet: 0.05}));
+    } finally {
+        runtime.dispose();
+        fresh.dispose();
+    }
+});

@@ -655,3 +655,83 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s aut
         }
     }
 });
+
+it("rejects every fabricated initialized feature before Worker replacement and retains first-play results", async () => {
+    const {checkpointInitializationFixtures, mutateCheckpointInitialization} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
+    for (const {id, blueprint} of checkpointInitializationFixtures()) {
+        const fixture = createCanonicalWasmFixture({blueprint});
+        const worker = new PokieWasmWorkerProtocol();
+        const fresh = new PokieWasmWorkerProtocol();
+        try {
+            for (const target of [worker, fresh]) expect(await target.handle({id: "start", type: "instantiate", ...fixture, seed: "probe"})).toMatchObject({ok: true});
+            const snapshot = await worker.handle({id: "state", type: "serialize"});
+            if (!snapshot.ok) throw new Error(snapshot.error);
+            const saved = snapshot.result as import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmFeatureSessionState;
+            const corrupt = mutateCheckpointInitialization(saved, id);
+            const diagnostics = worker.getDiagnostics();
+            for (const target of [worker, fresh]) {
+                expect(await target.handle({id: "bad", type: "restore", state: corrupt})).toMatchObject({ok: false, error: expect.stringMatching(/canonical initialization/)});
+                expect(await target.handle({id: "bad", type: "replay", state: corrupt, commands: [{bet: 0.05}]})).toMatchObject({ok: false, error: expect.stringMatching(/canonical initialization/)});
+            }
+            expect(worker.getDiagnostics()).toEqual(diagnostics);
+            expect(await worker.handle({id: "state", type: "serialize"})).toEqual(snapshot);
+            expect(await fresh.handle({id: "restore", type: "restore", state: saved})).toMatchObject({ok: true});
+            const first = await worker.handle({id: "play", type: "play", command: {bet: 0.05}});
+            expect(first).toMatchObject({ok: true, result: {stake: 0.05}});
+            expect(await fresh.handle({id: "play", type: "play", command: {bet: 0.05}})).toEqual(first);
+            const second = await worker.handle({id: "play", type: "play", command: {bet: 0.05}});
+            expect(await fresh.handle({id: "play", type: "play", command: {bet: 0.05}})).toEqual(second);
+            for (const target of [worker, fresh]) {
+                expect(await target.handle({id: "restore", type: "restore", state: saved})).toMatchObject({ok: true});
+                expect(await target.handle({id: "play", type: "play", command: {bet: 0.05}})).toEqual(first);
+                expect(await target.handle({id: "play", type: "play", command: {bet: 0.05}})).toEqual(second);
+            }
+        } finally {
+            await worker.handle({id: "dispose", type: "dispose"});
+            await fresh.handle({id: "dispose", type: "dispose"});
+        }
+    }
+});
+
+it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s weighted counters before Worker replacement", async policy => {
+    const {checkpointCounterFixtures, mutateCheckpointCounters} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
+    for (const {id, blueprint} of checkpointCounterFixtures()) {
+        const fixture = createCanonicalWasmFixture({blueprint});
+        const worker = new PokieWasmWorkerProtocol();
+        const fresh = new PokieWasmWorkerProtocol();
+        try {
+            for (const target of [worker, fresh]) expect(await target.handle({id: "start", type: "instantiate", ...fixture, seed: "probe"})).toMatchObject({ok: true});
+            const command = {bet: 0.05, roundId: "counter", ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1})};
+            expect(await worker.handle({id: "entry", type: "play", command})).toMatchObject({ok: true});
+            const snapshot = await worker.handle({id: "state", type: "serialize"});
+            if (!snapshot.ok) throw new Error(snapshot.error);
+            const saved = snapshot.result as import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmFeatureSessionState;
+            const corrupt = mutateCheckpointCounters(saved, id);
+            const diagnostics = worker.getDiagnostics();
+            for (const target of [worker, fresh]) {
+                const error = expect.stringMatching(/Weighted (reel|bonus).*counter|weighted bonus completion/i);
+                expect(await target.handle({id: "bad", type: "restore", state: corrupt})).toMatchObject({ok: false, error});
+                expect(await target.handle({id: "bad", type: "replay", state: corrupt, commands: [command]})).toMatchObject({ok: false, error});
+            }
+            expect(worker.getDiagnostics()).toEqual(diagnostics);
+            expect(await worker.handle({id: "state", type: "serialize"})).toEqual(snapshot);
+            expect(await worker.handle({id: "retry", type: "play", command})).toMatchObject({ok: true, result: saved.feature.lastRound});
+            expect(await fresh.handle({id: "restore", type: "restore", state: saved})).toMatchObject({ok: true});
+            for (let index = 0; index < 2; index++) {
+                const current = await worker.handle({id: "state", type: "serialize"});
+                if (!current.ok) throw new Error(current.error);
+                const round = (current.result as typeof saved).feature.logicalRound;
+                const next = round?.status === "pending" ? {delivery: "stepwise", continuation: {roundId: "counter", cursor: round.deliveryCursor}} : {bet: 0.05};
+                const request = {id: "next", type: "play" as const, command: next};
+                expect(await worker.handle(request)).toEqual(await fresh.handle(request));
+            }
+            for (const target of [worker, fresh]) {
+                expect(await target.handle({id: "restore", type: "restore", state: saved})).toMatchObject({ok: true});
+                for (let retry = 0; retry < 2; retry++) expect(await target.handle({id: "retry", type: "play", command})).toMatchObject({ok: true, result: saved.feature.lastRound});
+            }
+        } finally {
+            await worker.handle({id: "dispose", type: "dispose"});
+            await fresh.handle({id: "dispose", type: "dispose"});
+        }
+    }
+});
