@@ -35,7 +35,7 @@ import {PerModeForcedFeatureEntryHandler} from "../../session/videoslot/betmode/
 import type {VideoSlotSessionHandling} from "../../session/videoslot/VideoSlotSessionHandling.js";
 
 /** Only replaces entropy with enumerated support choices. Execution stays in production handlers. */
-export function createAnalysisSession(model: GameBlueprint, strips: string[][], screens: string[][][], choose: (size: number) => number, consumeScreen: (index: number) => void) {
+export function createAnalysisSession(model: GameBlueprint, strips: string[][], screens: string[][][], choose: (size: number) => number, consumeScreen: (index: number, initialization: boolean) => void) {
     const config = new VideoSlotConfig(undefined, new ReelsSymbolsSequencesGenerator(new SeededRandomNumberGenerator(0)));
     if (model.availableBets) config.setAvailableBets(model.availableBets);
     config.setReelsNumber(model.reels);
@@ -68,7 +68,7 @@ export function createAnalysisSession(model: GameBlueprint, strips: string[][], 
         }
         public override generateSymbolsCombination() {
             const index = started ? choose(screens.length) : 0;
-            consumeScreen(index);
+            consumeScreen(index, !started);
             const combination = new SymbolsCombination<string>().fromMatrix(screens[index]);
             return model.screenGeometry ? combination.withCoordinates(model.screenGeometry) : combination;
         }

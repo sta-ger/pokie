@@ -307,3 +307,10 @@ it("completes the lifetime respin cap boundary without branching on singleton en
     model.mechanics = {respins: {trigger: {symbolId: "S", minimumCount: 1}, grant: 90, maxRespins: 90, retrigger: "reset"}};
     expect(await validate(model)).toMatchObject({status: "complete", verdict: "proved-within-assumptions"});
 });
+
+it("bounds generated overscan storage even when the visible and evaluated windows are tiny", async () => {
+    const model = blueprint();
+    model.screenGeometry = {generated: {reels: 1, rows: 1000000}, visible: {rowOffset: 1, rows: 1}, evaluated: {rowOffset: 2, rows: 1}, paylineSpace: "evaluated"};
+    const report = await new AdvancedModelValidator().validate({kind: "blueprint", model}, {limits: {outcomeCells: 2000}});
+    expect(report).toMatchObject({status: "budget-exhausted", verdict: "inconclusive", work: {outcomes: 0}});
+});

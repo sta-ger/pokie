@@ -186,7 +186,8 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
         if (model && (model.reels > budget.limits.inputNodes || model.rows > budget.limits.inputNodes || model.reels * model.rows > budget.limits.inputNodes)) throw new AnalysisStopped("budget-exhausted", "Geometry exceeds preprocessing budget.");
         const symbolCount = Array.isArray(model?.symbols) ? model.symbols.length : 0;
         const betCount = Array.isArray(model?.availableBets) ? model.availableBets.length : 11;
-        const boardCells = Number.isSafeInteger(model?.reels) && Number.isSafeInteger(model?.rows) && model.reels > 0 && model.rows > 0 ? model.reels * model.rows : 0;
+        const generatedRows = model?.screenGeometry?.generated?.rows ?? model?.rows;
+        const boardCells = Number.isSafeInteger(model?.reels) && Number.isSafeInteger(generatedRows) && model.reels > 0 && generatedRows > 0 ? model.reels * generatedRows : 0;
         const preparationWork = boardCells + symbolCount * Math.max(1, Number.isSafeInteger(model?.reels) && model.reels > 0 ? model.reels : 1) * betCount;
         budget.take("inputNodes", symbolCount ** 2 + preparationWork);
         await budget.yield();
@@ -316,7 +317,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                         totalWin = 0,
                         totalStake = 0;
                     const path: unknown[] = [];
-                    const draws: {stops: number[]; screen: string[][]}[] = [];
+                    const draws: {phase: string; stops: number[]; screen: string[][]}[] = [];
                     let attemptedBefore: unknown;
                     budget.take("transitions", preparationWork);
                     const probe = createAnalysisSession(model, strips, screens, size => {
@@ -324,9 +325,9 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                         if (size === 1) return 0;
                         if (cursor >= prefix.length) throw new ChoiceRequired(size);
                         return prefix[cursor++];
-                    }, index => {
+                    }, (index, initialization) => {
                         budget.take("outcomeCells", boardCells);
-                        draws.push({stops: stops[index], screen: screens[index]});
+                        draws.push({phase: initialization ? "initialization" : "execution", stops: stops[index], screen: screens[index]});
                     });
                     const session = probe.session as typeof probe.session & Partial<StakeAmountDetermining & LogicalRoundProgressProviding & BetModeSelecting> & {toSessionState(): unknown};
                     if (model.mechanics?.collection) {
