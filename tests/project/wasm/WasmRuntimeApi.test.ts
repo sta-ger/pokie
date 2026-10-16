@@ -537,9 +537,9 @@ it.each(["stepwise", "composite", "plain"] as const)("rejects nested %s checkpoi
             // Completed composites have no active entries and already report completion.
             if (JSON.stringify(corrupt) === JSON.stringify(saved)) continue;
             const calls = restore.mock.calls.length;
-            expect(() => runtime.restoreSession(corrupt)).toThrow(/network|analytics|plain money/i);
-            expect(() => fresh.restoreSession(corrupt)).toThrow(/network|analytics|plain money/i);
-            await expect(runtime.replay(corrupt, [command])).rejects.toThrow(/network|analytics|plain money/i);
+            expect(() => runtime.restoreSession(corrupt)).toThrow(/network|analytics|plain money|boundedMechanics/i);
+            expect(() => fresh.restoreSession(corrupt)).toThrow(/network|analytics|plain money|boundedMechanics/i);
+            await expect(runtime.replay(corrupt, [command])).rejects.toThrow(/network|analytics|plain money|boundedMechanics/i);
             expect(restore).toHaveBeenCalledTimes(calls);
             expect(host.serializeState()).toEqual(before);
             expect(session.serialize()).toEqual(saved);

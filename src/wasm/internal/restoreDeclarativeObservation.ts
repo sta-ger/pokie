@@ -1,3 +1,6 @@
+import {projectPublicFeatureEvent} from "../../artifact/PublicRoundArtifactProjector.js";
+import {validateWeightedBonusObservation} from "../../session/videoslot/authored/WeightedBonus.js";
+import type {BoundedSessionState} from "../../session/videoslot/authored/BoundedVideoSlotSession.js";
 import {WinningWay} from "../../session/videoslot/WinningWay.js";
 import {WinningCluster} from "../../session/videoslot/WinningCluster.js";
 import type {PokieWasmFeatureSessionState} from "../PokieWasmRuntimeApi.js";
@@ -25,6 +28,36 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
     const modifiers = event("screenModifiers") as ScreenModifierObservation<string> | undefined;
     const mechanics = blueprint.mechanics;
     if ((mechanics?.cascade || mechanics?.respins || mechanics?.collection || mechanics?.weightedBonus) && !bounded || mechanics?.modifiers && !modifiers) throw new Error("Missing required retained feature observation.");
+    for (const retained of last.featureEvents ?? []) {
+        if (["boundedMechanics", "screenModifiers", "holdAndWin", "jackpot", "chargedBetMode"].includes(retained.type) &&
+            stableSlotMathJson(retained.data ?? {}) !== stableSlotMathJson(projectPublicFeatureEvent(retained).data ?? {})) throw new Error(`Invalid retained ${retained.type} observation fields.`);
+    }
+    if (bounded) {
+        const state = (session as VideoSlotSessionHandling & {toSessionState(): BoundedSessionState}).toSessionState();
+        const keys = ["cascade", "respins", "collection"].filter(key => !!Reflect.get(mechanics!, key));
+        if (state.bonus?.selection) keys.push("weightedBonus");
+        if (Object.keys(bounded).sort().join(",") !== keys.sort().join(",")) throw new Error("Missing or unexpected required bounded feature observation.");
+        validateWeightedBonusObservation(state, bounded.weightedBonus);
+        if (bounded.weightedBonus) {
+            const payouts = last.wins.filter(win => win.type === "value" && win.id === mechanics!.weightedBonus!.feature.id);
+            if (typeof bounded.weightedBonus.selectedNow !== "boolean" || bounded.weightedBonus.selectedNow !== (payouts.length > 0) ||
+                bounded.weightedBonus.payout !== payouts.reduce((sum, win) => sum + win.winAmount, 0)) throw new Error("Weighted bonus observation contradicts its accepted award.");
+        }
+        if (mechanics?.respins) {
+            const observed = bounded.respins!;
+            if (observed.remaining !== state.remaining || observed.executed !== state.executed || observed.limit !== mechanics.respins.maxRespins ||
+                !Number.isSafeInteger(observed.granted) || observed.granted < 0 || observed.granted > observed.remaining) throw new Error("Respins observation contradicts executable state or its model.");
+        }
+        if (mechanics?.collection) {
+            const observed = bounded.collection!;
+            const rule = mechanics.collection;
+            const payout = last.wins.filter(win => win.type === "value" && win.symbolId === rule.symbolId).reduce((sum, win) => sum + win.winAmount, 0);
+            if (observed.value !== state.value || observed.cap !== rule.cap || observed.threshold !== rule.threshold || observed.reset !== rule.reset ||
+                typeof observed.triggered !== "boolean" || observed.payout !== payout || observed.payout !== (observed.triggered ? rule.payout : 0) ||
+                observed.contribution !== finalScreen.flat().filter(symbol => symbol === rule.symbolId).length * rule.contribution) throw new Error("Collection observation contradicts executable state, its model or its accepted award.");
+        }
+        if (bounded.cascade && bounded.cascade.evaluatedSteps !== artifacts.length) throw new Error("Cascade observation contradicts its accepted mathematical steps.");
+    }
     const pipelineMetadata = {aggregationPolicy: "sum-all-enabled", evaluators: ["shared-slot-math"]};
     const evaluation = (steps: readonly RoundStepArtifact[], metadata: Record<string, unknown> = pipelineMetadata) => restoreWinEvaluation({
         components: steps.flatMap(step => step.wins.map(win => ({type: win.type, id: win.id, symbolId: win.symbolId as string, amount: win.winAmount,
