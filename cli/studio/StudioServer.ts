@@ -512,9 +512,9 @@ export class StudioServer implements StudioServerHandling {
         // A paused executor can otherwise resume into another yield while shutdown is still waiting.
         const browserDrain = this.wasmBrowserService.shutdown();
         const server = this.server;
-        this.server = undefined;
-        // Browser disposal acknowledgements still need HTTP while their leases drain.
+        // Browser disposal acknowledgements still need HTTP and its bound port for Origin validation.
         const listenerClosed = browserDrain.catch(() => undefined).then(() => new Promise<void>((resolve, reject) => {
+            this.server = undefined;
             if (!server) {
                 resolve();
                 return;

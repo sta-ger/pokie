@@ -1,3 +1,4 @@
+import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {StudioRoundRecorder} from "../../../cli/studio/runtime/StudioRoundRecorder.js";
 import {transactionalRoundGame} from "../../v2/fixtures/TransactionalRoundGame.js";
@@ -4294,6 +4295,50 @@ describe("StudioServer", () => {
         afterEach(async () => {
             await wasmServer?.stop();
             fs.rmSync(wasmStudioRoot, {recursive: true, force: true});
+        });
+
+        it("cancels compatibility executors immediately while keeping same-origin browser cleanup reachable during shutdown", async () => {
+            const wasmFile = path.join(wasmStudioRoot, "game.wasm");
+            const fixture = createCanonicalWasmFixture();
+            fs.writeFileSync(wasmFile, fixture.bytes);
+            fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+            const replayService = new StudioReplayExecutionService();
+            const cancelReplays = jest.spyOn(replayService, "cancelAll");
+            const jobs = createIsolatedJobService(wasmStudioRoot);
+            const homeService = new StudioHomeService("1.3.0");
+            wasmServer = new StudioServer({
+                pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: wasmStudioRoot,
+                jobService: jobs, homeService,
+                blueprintService: new StudioBlueprintService("1.3.0", wasmStudioRoot, homeService),
+                replayService, initialContext: {mode: "project", projectRoot: wasmFile},
+            });
+            const address = await wasmServer.start();
+            const projectBaseUrl = `http://${address.host}:${address.port}`;
+            const artifactResponse = await get(`${projectBaseUrl}/api/project/wasm/artifact`);
+            expect(artifactResponse.status).toBe(200);
+            const artifact = artifactResponse.body as {generation: string};
+            const binding = {owner: "shutdown-tab", projectRoot: wasmFile, generation: artifact.generation, artifactIdentity: fixture.manifest.artifact!.sha256};
+            const created = await post(`${projectBaseUrl}/api/project/wasm/jobs`, {...binding, operation: "simulation", request: {rounds: 2, seed: "0", workers: 1}});
+            expect(created.status).toBe(201);
+            const {job} = created.body as {job: {id: string}};
+            const serverToStop = wasmServer;
+            wasmServer = undefined;
+            const stopping = serverToStop.stop();
+            try {
+                expect(cancelReplays).toHaveBeenCalledTimes(1);
+                expect(jobs.get(wasmFile, job.id)?.status).toBe("cancelling");
+                // The browser has an Origin header and must still authenticate against the actual
+                // listener port (port 0 in configuration) before acknowledging its Worker cleanup.
+                const finished = await fetch(`${projectBaseUrl}/api/project/wasm/jobs/${job.id}/finish`, {
+                    method: "POST", headers: {"Content-Type": "application/json", Origin: projectBaseUrl},
+                    body: JSON.stringify({...binding, cleanup: true, status: "cancelled"}),
+                });
+                expect(finished.status).toBe(200);
+                expect(await finished.json()).toMatchObject({status: "cancelled"});
+            } finally {
+                await stopping;
+            }
+            expect(jobs.get(wasmFile, job.id)?.status).toBe("cancelled");
         });
 
         it("exposes only the WASM component's own manifest identity, never inventing symbols/reels/paytable", async () => {
