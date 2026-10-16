@@ -30,15 +30,19 @@ export function validateArtifactCoordinates<T extends string | number>(step: Pic
         }
         if (win.type === "line") {
             const definition = win.metadata.definition;
-            if (!Array.isArray(definition) || definition.length !== geometry.generated.reels ||
-                !Array.from(definition).every((row, reel) => typeof row === "number" && projection.map([reel, row], "evaluated", "generated") !== null)) {
-                throw new Error("Artifact line definition is outside evaluation domain.");
+            // Custom/legacy components may omit presentation metadata. Any supplied
+            // coordinates must still satisfy the same domain as canonical components.
+            if (definition !== undefined) {
+                if (!Array.isArray(definition) || definition.length !== geometry.generated.reels ||
+                    !Array.from(definition).every((row, reel) => typeof row === "number" && projection.map([reel, row], "evaluated", "generated") !== null)) {
+                    throw new Error("Artifact line definition is outside evaluation domain.");
+                }
+                // Force the same discrete-index validation used by public drawing projection.
+                projectVisiblePayline(definition as number[], projection);
             }
-            // Force the same discrete-index validation used by public drawing projection.
-            projectVisiblePayline(definition as number[], projection);
             for (const field of ["symbolsPositions", "wildSymbolsPositions"] as const) {
                 const reels = win.metadata[field];
-                if (!Array.isArray(reels) || Array.from(reels).some(reel => typeof reel !== "number" || !Number.isSafeInteger(reel) || reel < 0 || reel >= geometry.generated.reels)) {
+                if (reels !== undefined && (!Array.isArray(reels) || Array.from(reels).some(reel => typeof reel !== "number" || !Number.isSafeInteger(reel) || reel < 0 || reel >= geometry.generated.reels))) {
                     throw new Error("Artifact line-local reel indexes are invalid.");
                 }
             }

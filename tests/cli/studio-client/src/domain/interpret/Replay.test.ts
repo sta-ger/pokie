@@ -1,3 +1,4 @@
+import {buildRoundArtifact, buildRoundStepArtifact, projectPublicRoundStep, PublicRoundArtifactProjector, RoundArtifactValidator, WinComponent, WinEvaluationResult, type RoundArtifactWin} from "@fromstan/pokie";
 import {
     describeRoundArtifact,
     describeReplayCapabilities,
@@ -83,6 +84,56 @@ function createArtifact(overrides: Partial<RoundArtifactJson> = {}): RoundArtifa
 function createComparable(overrides: Partial<ComparableReplayResult> = {}): ComparableReplayResult {
     return {artifact: createArtifact(), ...overrides};
 }
+
+describe("shared artifact coordinate validation for custom line observations", () => {
+    class InspectionWin extends WinComponent<string> {
+        constructor(win: RoundArtifactWin) {
+            super(win.type, win.id, win.symbolId as string, win.winAmount, win.winningPositions.map(position => [...position]),
+                win.multiplierBreakdown.map(item => ({...item, positions: item.positions.map(position => [...position]), values: [...item.values]})), win.metadata);
+        }
+    }
+    const screen = [["cherry"], ["cherry"], ["lemon"]];
+    const win: RoundArtifactWin = {type: "line", id: "custom", symbolId: "cherry", winAmount: 5,
+        winningPositions: [[0, 0], [1, 0]], multiplierBreakdown: [], metadata: {}};
+    const evaluation = (win: RoundArtifactWin) => new WinEvaluationResult({winComponents: [new InspectionWin(win)]});
+    const artifact = buildRoundArtifact({roundId: "custom", stake: 1,
+        provenance: {game: {id: "custom", name: "Custom", version: "1"}, pokieVersion: "1.3.0"},
+        steps: [{screen, winEvaluationResult: evaluation(win)}]});
+    const validator = new RoundArtifactValidator();
+    const projector = new PublicRoundArtifactProjector();
+
+    it.each<RoundArtifactWin["metadata"]>([{}, {definition: [0, 0, 0]}, {symbolsPositions: [0, 1]}, {wildSymbolsPositions: []}])("preserves optional line metadata %p across construction and public inspection", metadata => {
+        const step = buildRoundStepArtifact(0, {screen, winEvaluationResult: evaluation({...win, metadata})});
+        const accepted = {...artifact, steps: [step], wins: step.wins};
+        expect(validator.validate(accepted)).toEqual([]);
+        expect(projector.project(accepted).wins).toEqual(step.wins);
+        expect(describeRoundArtifact(accepted).wins).toEqual(step.wins);
+    });
+
+    it.each<Partial<RoundArtifactWin>>([
+        {winningPositions: [[999, 999]]}, {winningPositions: [[-999, 999]]}, {winningPositions: [[0, 0.5]]},
+        {multiplierBreakdown: [{source: "custom", positions: [[999, 999]], values: [2], combinedMultiplier: 2}]},
+        {metadata: {definition: [0, 0]}}, {metadata: {definition: [0, 999, 0]}}, {metadata: {definition: ["0", 0, 0]}},
+        {metadata: {definition: null}}, {metadata: {symbolsPositions: [999]}}, {metadata: {symbolsPositions: ["0"]}},
+        {metadata: {wildSymbolsPositions: [-1]}}, {metadata: {wildSymbolsPositions: null}},
+    ])("rejects supplied malformed coordinates %p through each owner, then allows valid reuse", mutation => {
+        const malformed = {...win, ...mutation};
+        const step = {...artifact.steps[0], wins: [malformed]};
+        const corrupt = {...artifact, steps: [step], wins: [malformed]};
+        expect(validator.validate(corrupt)).toContainEqual(expect.objectContaining({code: "round-artifact-coordinates-invalid", severity: "error",
+            message: expect.stringMatching(/domain|indexes|integer/i)}));
+        expect(() => projector.project(corrupt)).toThrow(/domain|indexes|integer/i);
+        expect(() => projectPublicRoundStep(step)).toThrow(/domain|indexes|integer/i);
+        expect(() => describeRoundArtifact(corrupt)).toThrow(/domain|indexes|integer/i);
+        expect(() => buildRoundStepArtifact(0, {screen, winEvaluationResult: evaluation(malformed)})).toThrow(/domain|indexes|integer/i);
+        for (let reuse = 0; reuse < 2; reuse++) {
+            expect(validator.validate(artifact)).toEqual([]);
+            expect(projector.project(artifact).wins).toEqual(artifact.wins);
+            expect(describeRoundArtifact(artifact).wins).toEqual(artifact.wins);
+            expect(buildRoundStepArtifact(0, {screen, winEvaluationResult: evaluation(win)})).toEqual(artifact.steps[0]);
+        }
+    });
+});
 
 function createListEntry(overrides: Partial<StudioReplayListEntry> = {}): StudioReplayListEntry {
     return {

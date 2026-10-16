@@ -108,16 +108,18 @@ function runtimeSnapshotsForPackage(packageName: string): string[] {
         });
 }
 
+const winningScreen = [
+    ["A", "A", "A"],
+    ["A", "K", "Q"],
+    ["A", "K", "Q"],
+    ["K", "Q", "J"],
+    ["Q", "J", "10"],
+];
+
 function winEvaluationResultWithWin(): WinEvaluationResult<string> {
     const config = new VideoSlotConfig();
     const winCalculator = new VideoSlotWinCalculator(config);
-    const symbols = new SymbolsCombination<string>().fromMatrix([
-        ["A", "A", "A"],
-        ["A", "K", "Q"],
-        ["A", "K", "Q"],
-        ["K", "Q", "J"],
-        ["Q", "J", "10"],
-    ]);
+    const symbols = new SymbolsCombination<string>().fromMatrix(winningScreen);
     winCalculator.calculateWin(config.getAvailableBets()[0], symbols);
     return winCalculator.getWinEvaluationResult();
 }
@@ -128,7 +130,7 @@ function winEvaluationResultWithWin(): WinEvaluationResult<string> {
 function createFakeVideoSlotSession(seed: string | number | undefined): GameSessionHandling & VideoSlotSessionHandling<string> {
     let credits = 1000;
     const bet = 5;
-    const screen = [[`seed-${String(seed ?? "none")}`]];
+    let screen = [[`seed-${String(seed ?? "none")}`]];
 
     return {
         getCreditsAmount: () => credits,
@@ -141,6 +143,7 @@ function createFakeVideoSlotSession(seed: string | number | undefined): GameSess
         canPlayNextGame: () => credits >= bet,
         play: () => {
             credits -= bet;
+            screen = winningScreen.map(reel => [...reel]);
         },
         getWinAmount: () => winEvaluationResultWithWin().getTotalWin(),
         getSymbolsCombination: () => ({toMatrix: () => screen}),
@@ -846,6 +849,8 @@ describe("StudioPlayService", () => {
         expect(typeof result.session.win).toBe("number");
         expect(result.session.debug?.artifact).toBeDefined();
         expect(result.session.debug?.artifactUnavailableReason).toBeUndefined();
+        expect(result.session.screen).toEqual(winningScreen);
+        expect(result.session.debug?.artifact?.steps[0].screen).toEqual(winningScreen);
     });
 
     it("applies Play's selected bet and runtime mode to the exact SpinCommandHandler round", async () => {
