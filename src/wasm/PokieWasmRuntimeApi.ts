@@ -27,6 +27,10 @@ export type PokieWasmFeatureSessionState = Omit<PokieWasmOrdinarySessionState, "
         readonly lastRound?: PokieWasmRound;
         /** Starting totals for the sole retained composite continuation, never delivery history. */
         readonly deliveryStart?: {readonly cursor: number; readonly credits: number; readonly totalStake: number; readonly totalWin: number; readonly totalPayout: number};
+        /** Accepted mathematics preceding the final subround in this composite request. */
+        readonly deliveryPrefix?: {readonly stake: number; readonly win: number; readonly payout: number};
+        /** Plain commands use the same mathematical artifact contract without logical cursors. */
+        readonly plainMath?: {readonly command: import("../runtime/SessionCommand.js").SessionCommand; readonly finalScreen?: readonly (readonly string[])[]; readonly artifact: import("../artifact/RoundArtifact.js").RoundArtifact; readonly payout: number; readonly credits: number};
         readonly pendingCommand?: {readonly command: import("../runtime/SessionCommand.js").SessionCommand; readonly advanced: number};
         readonly analytics?: import("../simulation/SessionFeatureAnalyticsObserver.js").SessionFeatureAnalyticsState;
     };

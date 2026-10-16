@@ -110,6 +110,40 @@ function snapshot(session: api.GameSessionHandling) {
 }
 
 describe("logical-round delivery and mathematical boundaries", () => {
+    it.each(["stepwise", "composite"] as const)("retires completed %s progress only after successful plain execution", delivery => {
+        const model = game(0);
+        const session = model.createSession({seed: 7});
+        const runtime = new api.SessionRuntime(session);
+        const entry: api.SessionCommand = {kind: "spin", bet: 0.05, mode: "buy", roundId: "logical", delivery};
+        const entryResult = played(runtime.execute(entry));
+        let result = entryResult;
+        while (result.logicalRound?.status === "pending") result = played(runtime.execute({kind: "spin", delivery, continuation: {roundId: "logical", cursor: result.logicalRound.deliveryCursor}}));
+        const completed = runtime.getLogicalRound();
+        expect(completed?.status).toBe("completed");
+        expect(runtime.execute({kind: "spin", bet: 99})).toMatchObject({status: "invalid-command"});
+        expect(runtime.getLogicalRound()).toEqual(completed);
+        const prepared = runtime.prepare({kind: "spin", bet: 0.05}, session.getCreditsAmount());
+        if (prepared.status !== "ready") throw new Error(prepared.reason);
+        expect(prepared.rollback()).toBe(true);
+        expect(runtime.getLogicalRound()).toEqual(completed);
+        const reference = model.createSession({seed: 7});
+        (reference as api.GameSessionHandling & {fromSessionState(state: unknown): unknown}).fromSessionState(snapshot(session));
+        reference.setBet(session.getBet());
+        reference.setCreditsAmount(session.getCreditsAmount());
+        const other = new api.SessionRuntime(reference);
+        for (const roundId of [undefined, "plain"]) {
+            const command: api.SessionCommand = {kind: "spin", bet: 0.05, ...(roundId ? {roundId} : {})};
+            expect(played(runtime.execute(command))).toEqual(played(other.execute(command)));
+            expect(runtime.getLogicalRound()).toBeUndefined();
+            expect(snapshot(session)).toEqual(snapshot(reference));
+        }
+        // Historical retries still return their accepted observation without reviving it.
+        const current = snapshot(session);
+        expect(runtime.execute(entry)).toEqual(entryResult);
+        expect(runtime.getLogicalRound()).toBeUndefined();
+        expect(snapshot(session)).toEqual(current);
+    });
+
     it.each(["hold-flat", "hold-flat-modes", "fixed-holdAndWin", "fixed-holdAndWin-modes"].flatMap(id =>
         [undefined, "stepwise", "composite"].flatMap(delivery => [false, true].map(prepared => ({id, delivery: delivery as api.SessionCommand["delivery"], prepared}))),
     ))("F1f $id/$delivery prepared=$prepared restores command state without reviving a completed feature", ({id, delivery, prepared}) => {

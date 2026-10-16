@@ -311,6 +311,7 @@ it.each(["bonus", "banked"] as const)("restores %s composite continuations and i
             if (state.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
             const corrupt = JSON.parse(JSON.stringify(state));
             Object.assign(corrupt.feature.lastRound, {win: 0, winMultiplier: 0});
+            corrupt.feature.deliveryStart.totalWin = corrupt.feature.logicalRound.totalWin;
             await expect(runtime.replay(corrupt, [command])).rejects.toThrow(/money.*logical delivery/);
             expect(() => runtime.restoreSession(corrupt)).toThrow(/money.*logical delivery/);
         }
@@ -369,6 +370,51 @@ it("binds visible receipt screens to artifact coordinates rather than evaluated 
         corrupt.feature.lastRound.logicalRound = corrupt.feature.logicalRound;
         expect(() => runtime.restoreSession(corrupt)).toThrow(/geometry/);
     } finally {
+        runtime.dispose();
+    }
+});
+
+it.each(["stepwise", "composite"])("keeps completed %s progress aligned through named and anonymous plain play, restore and replay", async delivery => {
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    const blueprint = weightedBonusBlueprint();
+    blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("probe"));
+    const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("fresh"));
+    try {
+        const session = runtime.createSession("probe");
+        let result = await session.play({bet: 0.05, roundId: "logical", delivery});
+        while (result.logicalRound?.status === "pending") result = await session.play({delivery, continuation: {roundId: "logical", cursor: result.logicalRound.deliveryCursor}});
+        const completed = session.serialize();
+        await expect(session.play({bet: 99})).rejects.toThrow(/bet/);
+        expect(session.serialize()).toEqual(completed);
+        const reference = fresh.restoreSession(completed);
+        for (const roundId of [undefined, "plain", undefined]) {
+            const command = {bet: 0.05, ...(roundId ? {roundId} : {})};
+            const before = session.serialize();
+            const played = await session.play(command);
+            expect(played).toEqual(await reference.play(command));
+            expect(played.logicalRound).toBeUndefined();
+            const state = session.serialize();
+            if (state.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
+            expect(state.feature.logicalRound).toBeUndefined();
+            expect(state.feature.deliveryStart).toBeUndefined();
+            expect(state.feature.deliveryPrefix).toBeUndefined();
+            expect(state.feature.plainMath?.artifact.totalWin).toBe(played.win);
+            expect(await runtime.replay(before, [command])).toMatchObject({rounds: [played], stateAfter: state});
+            const restored = runtime.restoreSession(JSON.parse(JSON.stringify(state)));
+            expect(restored.serialize()).toEqual(state);
+            const next = {bet: 0.05};
+            const expected = await restored.play(next);
+            expect((await runtime.replay(state, [next])).rounds).toEqual([expected]);
+            restored.dispose();
+            if (roundId) expect(await reference.play(command)).toEqual(played);
+        }
+        // Both mathematical and wallet totals survived the policy changes; the next
+        // explicit logical entry can charge and select again after the plain feature tail.
+        expect(await session.play({bet: 0.05, delivery: "composite", roundId: "again"})).toEqual(await reference.play({bet: 0.05, delivery: "composite", roundId: "again"}));
+    } finally {
+        fresh.dispose();
         runtime.dispose();
     }
 });

@@ -314,7 +314,13 @@ export class SessionRuntime implements SessionRuntimeHandling {
         const win = session.getWinAmount(),
             credits = session.getCreditsAmount();
         const payout = Math.max(0, credits - creditsBefore + stake);
-        if (command.delivery === undefined && command.continuation === undefined) return {status: "played", win, credits, stake, mode};
+        if (command.delivery === undefined && command.continuation === undefined) {
+            // Successful plain execution supersedes completed executable progress. Historical
+            // retry receipts remain in their own ledger and must not become live progress.
+            logicalRounds.delete(session);
+            retainedTails.delete(session);
+            return {status: "played", win, credits, stake, mode};
+        }
         const previous = command.continuation ? logicalRounds.get(session)! : undefined;
         if (previous && stake !== 0) throw new Error("Logical continuation attempted another entry stake.");
         const id = previous?.id ?? command.roundId!;
