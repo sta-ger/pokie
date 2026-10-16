@@ -611,3 +611,17 @@ it("validates analytics at its shared owner before mutation and explicitly resto
         second.dispose();
     }
 });
+
+it("initializes required feature analytics once for a supported empty replay origin", async () => {
+    const blueprint = weightedBonusBlueprint();
+    blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("probe"));
+    try {
+        const result = await runtime.replay({schemaVersion: "pokie.state.v2", seed: "probe", sequence: 0, drawCount: 0, credits: 1000}, [{bet: 0.05, roundId: "x", delivery: "stepwise"}]);
+        expect(result.rounds[0]).toMatchObject({sequence: 1, win: 0.35, analytics: {position: 1, logicalEntry: true}});
+        expect(runtime.restoreSession(result.stateAfter).serialize()).toEqual(result.stateAfter);
+    } finally {
+        runtime.dispose();
+    }
+});

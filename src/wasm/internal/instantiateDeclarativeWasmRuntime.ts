@@ -462,7 +462,9 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
             built.session.setCreditsAmount(credits);
             const origin: PokieWasmFeatureSessionState = {schemaVersion: "pokie.state.v4", artifactIdentity, seed, sequence: 0, drawCount: 0, credits, feature: {bet: built.session.getBet(), state: {}}};
             const captured = checkpoint(built.session, {getLogicalRound: () => undefined}, origin);
-            const state = {...captured, feature: {...captured.feature, initialStops: built.generator.getLastStopPositions()}};
+            setSimulationModelIdentity(built.session, manifest.artifact?.configurationHash);
+            const analytics = new SessionFeatureAnalyticsObserver(built.session).toState();
+            const state = {...captured, feature: {...captured.feature, initialStops: built.generator.getLastStopPositions(), analytics}};
             return {built, state};
         } catch (error) {
             built.dispose();

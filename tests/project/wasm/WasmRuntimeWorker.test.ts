@@ -494,3 +494,18 @@ it.each(["stepwise", "composite", "plain"] as const)("rejects nested %s checkpoi
         await fresh.handle({id: "dispose", type: "dispose"});
     }
 });
+
+it("initializes required feature analytics from the Worker empty replay origin", async () => {
+    const {weightedBonusBlueprint} = await import("../../v2/fixtures/WeightedBonusGame.js");
+    const blueprint = weightedBonusBlueprint();
+    blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const worker = new PokieWasmWorkerProtocol();
+    try {
+        expect(await worker.handle({id: "start", type: "instantiate", ...fixture, seed: "probe"})).toMatchObject({ok: true});
+        const result = await worker.handle({id: "replay", type: "replay", state: {schemaVersion: "pokie.state.v2", seed: "probe", sequence: 0, drawCount: 0, credits: 1000}, commands: [{bet: 0.05, roundId: "x", delivery: "stepwise"}]});
+        expect(result).toMatchObject({ok: true, result: {rounds: [{sequence: 1, win: 0.35, analytics: {position: 1, logicalEntry: true}}]}});
+    } finally {
+        await worker.handle({id: "dispose", type: "dispose"});
+    }
+});

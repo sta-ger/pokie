@@ -64,13 +64,19 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
             positions: win.winningPositions.map(position => [...position]), multipliers: win.multiplierBreakdown.map(item => ({...item, positions: item.positions.map(position => [...position]), values: [...item.values]})), metadata: win.metadata}))), metadata,
     });
     const restored = evaluation(artifacts);
-    const hold = session as VideoSlotSessionHandling & {getHoldAndWinLastRoundOutcome?: () => {kind: string}; getJackpotLastRoundOutcome?: () => {kind: string}};
+    const hold = session as VideoSlotSessionHandling & {getHoldAndWinLastRoundOutcome?: () => {kind: string}; getJackpotLastRoundOutcome?: () => {kind: string; baseWinEvaluationResult?: WinEvaluationResult}};
     const retainedOutcome = hold.getJackpotLastRoundOutcome?.().kind === "awarded" || hold.getHoldAndWinLastRoundOutcome?.().kind === "completed" || hold.getHoldAndWinLastRoundOutcome?.().kind === "suppressed";
     const wrapped = !!blueprint.mechanics?.cascade || bounded?.weightedBonus?.selectedNow || bounded?.collection?.triggered;
     let result = restored;
     if (wrapped) result = new WinEvaluationResult({winComponents: restored.getWinComponents()});
     if (retainedOutcome) result = session.getWinEvaluationResult();
     const legacy = retainedOutcome ? session : undefined;
+    const jackpot = hold.getJackpotLastRoundOutcome?.();
+    // Jackpot keeps the wrapped legacy display independently of its component-only
+    // award evaluation. Its existing executable snapshot already owns that base result.
+    const legacyResult = jackpot?.kind === "awarded" ? jackpot.baseWinEvaluationResult! : result;
+    const holdOutcome = hold.getHoldAndWinLastRoundOutcome?.();
+    const holdLegacy = holdOutcome?.kind === "completed" || holdOutcome?.kind === "suppressed";
     // The legacy fallback displays the underlying ways/cluster amount, whereas the
     // evaluation DTO reports its multiplied component. Zero factors are not invertible:
     // retain just those accepted base amounts, never recalculate a paytable award.
@@ -106,8 +112,8 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
     const overrides: Record<string, unknown> = {
         getWinEvaluationResult: () => result,
         getWinAmount: () => win,
-        getWinningLines: () => legacy?.getWinningLines() ?? Object.fromEntries(result.getLineWins().map(c => [c.getId(), c.getWinningLine()])),
-        getWinningScatters: () => legacy?.getWinningScatters() ?? Object.fromEntries(result.getScatterWins().map(c => [c.getSymbolId(), c.getWinningScatter()])),
+        getWinningLines: () => holdLegacy ? session.getWinningLines() : Object.fromEntries(legacyResult.getLineWins().map(c => [c.getId(), c.getWinningLine()])),
+        getWinningScatters: () => holdLegacy ? session.getWinningScatters() : Object.fromEntries(legacyResult.getScatterWins().map(c => [c.getSymbolId(), c.getWinningScatter()])),
         getWinningClusters: () => legacy?.getWinningClusters?.() ?? Object.fromEntries(result.getClusterWins().map((c, index) => [c.getId(), componentAmounts ? new WinningCluster(c.getSymbolId()!, c.getWinningPositions(), componentAmounts.clusters[index]) : c.getWinningCluster()])),
         getWinningValues: () => legacy?.getWinningValues?.() ?? Object.fromEntries(result.getValueWins().map(c => [c.getSymbolId(), c.getWinningValue()])),
         getWinningWays: () => legacy?.getWinningWays?.() ?? Object.fromEntries(result.getWaysWins().map((c, index) => [c.getSymbolId(), componentAmounts ? new WinningWay(c.getSymbolId()!, c.getWinningPositions(), c.getWinningWay().getWaysCount(), componentAmounts.ways[index]) : c.getWinningWay()])),
