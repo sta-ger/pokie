@@ -47,6 +47,20 @@ function existingFixture(fixture) {
     fixture.screens = screens;
     fixture.stops = script(blueprint, screens, fixture.seed);
 }
+// Both positive arrays agree at the independently enumerated sampled stops, but
+// differ at an unused stop. This isolates progression/context accounting from
+// the variant/stop interval oracles exercised by the weighted distribution cells.
+function weightFirstReel(blueprint, seed) {
+    const original = blueprint.reelStrips[0];
+    const strip = original.length === 1 ? Array(1024).fill(original[0]) : [...original];
+    const rng = random(seed), used = new Set(Array.from({length:512},()=>Math.floor(rng()*strip.length)));
+    let unused=0;while (used.has(unused)) unused++;
+    assert.ok(unused < strip.length,'finite independent unsampled position');
+    const alternative=blueprint.symbols.find(symbol=>symbol!==strip[unused]);
+    const second=[...strip];second[unused]=alternative;
+    blueprint.reelSequences=[{type:'weighted',variants:[{id:'First',symbols:strip,weight:1},{id:'first',symbols:second,weight:3},{id:'zero',symbols:Array(strip.length).fill(alternative),weight:0}]},...blueprint.reelStrips.slice(1).map(symbols=>({type:'exact',symbols}))];
+    delete blueprint.reelStrips;
+}
 async function build(fixture) {
     const folder = path.join(directory, 'features', fixture.id);
     fs.mkdirSync(folder, {recursive: true});
@@ -90,7 +104,7 @@ async function compare(fixture, portable) {
     assert.deepEqual(initialRestored.getInitialData(),session.getInitialData(),`${fixture.id}: initialized sequence-zero screen`);
     initialRestored.dispose();
     const commands = [], results = [];
-    let entry = 0, contribution = 0, roundId, continuation;
+    let entry = 0, contribution = 0, compositionPool = 10, roundId, continuation;
     const bet = fixture.bet ?? 0.05;
     const count = fixture.count ?? (fixture.kind === 'existing' ? 9 : fixture.kind === 'bounded' ? 18 : 12);
     let expectedCollection = 0;
@@ -119,6 +133,14 @@ async function compare(fixture, portable) {
             near(observed.win, fixture.known.wins[index % fixture.known.wins.length], 'independent edge award');
             if (fixture.known.stakes) near(observed.stake, fixture.known.stakes[index % fixture.known.stakes.length], 'independent edge stake');
         }
+        if (fixture.weightedLifecycle) {
+            const statistics=observed.sequenceStatistics[0];
+            assert.equal(statistics.selections,entry,'one eligible selection per paid entry');
+            assert.deepEqual(statistics.variants.map(variant=>variant.id),['First','first','zero']);
+            assert.equal(statistics.variants[2].count,0,'zero mass never selected');
+            assert.equal(observed.sequenceSelections[0].context,`logical:${roundId}`);
+        }
+        if (fixture.known?.drawCounts) assert.equal(session.serialize().drawCount,fixture.known.drawCounts[index],'independent selection/refill draw accounting');
         if (fixture.kind === 'geometry') {
             assert.deepEqual(observed.screen,Array.from({length:5},()=>['W','B','B','B']),'independent projected screen');
             assert.deepEqual(observed.network.visibleRowCoverage,[1,1,1,0.5]);
@@ -146,7 +168,14 @@ async function compare(fixture, portable) {
             const wilds = fixture.blueprint.mechanics.modifiers.wilds;
             const eligible = flat.includes('A') && flat.every(symbol => symbol === 'A' || fixture.blueprint.wilds.includes(symbol) && (wilds.find(wild => wild.symbol === symbol)?.substitutes ?? ['A']).includes('A'));
             const factor = flat.reduce((value, symbol) => value * (wilds.find(wild => wild.symbol === symbol)?.factor ?? 1), 1);
-            near(observed.win, eligible ? 10 * bet * factor : 0, 'independent composed line amount');
+            const stake=index%2===0?bet*10:0;
+            near(observed.stake,stake,'independent composed purchase stake');
+            const contributed=stake*0.1;
+            const award=flat.includes('A')?compositionPool+contributed:0;
+            compositionPool=award>0?10:compositionPool+contributed;
+            near(observed.win,(eligible?10*bet*factor:0)+award,'independent composed modifier/jackpot amount');
+            near(observed.network.jackpot.award?.amount??0,award,'independent composed jackpot award');
+            near(observed.network.jackpot.pools[0].value,compositionPool,'independent composed jackpot reset');
             assert.equal(observed.network.chargedBetModeId, 'buy');
             assert.equal(observed.network.betModeId, 'base');
         }
@@ -274,7 +303,7 @@ async function longSessions(fixtures, portable) {
             const size = Buffer.byteLength(JSON.stringify(checkpoint));
             if (index === 16) firstSize = size;
             if (index >= 16) maximum = Math.max(maximum,size);
-            assert.ok(size < 24576, `${fixture.id}: compact snapshot ${size}`);
+            assert.ok(size < 24576 + (fixture.weightedLifecycle ? Buffer.byteLength(JSON.stringify(fixture.blueprint))*8 : 0), `${fixture.id}: compact snapshot ${size}`);
             assert.ok(!('commands' in checkpoint) && !('draws' in checkpoint));
             assert.ok((checkpoint.feature.logicalRound?.subrounds.length ?? 0) <= 1);
             assert.equal(checkpoint.feature.lastRound?.deliveries,undefined);
@@ -362,7 +391,7 @@ async function main() {
         blueprint.manifest.id = `composition-${variant}`;
         if (!blueprint.symbols.includes('S')) blueprint.symbols.push('S'); blueprint.scatters = ['S'];
         blueprint.mechanics.freeGames = {scatterSymbol: 'S', awardsByCount: {3: 0}};
-        blueprint.mechanics.jackpot = {pool: {id:'mini',type:'accumulating',seedValue:10},contribution:{type:'percentage',percentage:0.1},trigger:{type:'symbol-count',symbolId:'S',minimumCount:1},award:'single-tier'};
+        blueprint.mechanics.jackpot = {pool: {id:'mini',type:'accumulating',seedValue:10},contribution:{type:'percentage',percentage:0.1},trigger:{type:'symbol-count',symbolId:'A',minimumCount:1},award:'single-tier'};
         blueprint.betModes = [{id:'base',runtimeType:'base',isDefault:true},{id:'ante',runtimeType:'ante',costMultiplier:1.5},{id:'buy',runtimeType:'buyFeature',costMultiplier:10,forcedFreeGames:2}];
         blueprint.reelSequences = blueprint.reelStrips.map((strip, index) => index === 1 ? {type:'exact',symbols:[...strip,...strip,...strip]} : {type:'weighted',variants:[
             {id:'First',symbols:[...strip,...strip,...strip],weight:1}, {id:'first',symbols:[...strip,strip[0] === 'B' ? 'A' : 'B',...strip],weight:3}, {id:'zero',symbols:['S',...strip,'B'],weight:0}]});
@@ -420,10 +449,41 @@ async function main() {
         } else blueprint.reelStrips=strips;
         extras.push({id:blueprint.manifest.id,kind:'geometry',blueprint,seed,count:6,known:{wins:[(type==='lines'?3:type==='ways'?243:2)*0.05]}});
     }
+    for (const values of ['flat','bet']) {
+        const blueprint=clone(inputs.find(fixture=>fixture.id===`hold-${values}`).blueprint), seed='weighted-feature-context';
+        blueprint.reelStrips=[['C'],['A'],['A']];
+        weightFirstReel(blueprint,seed);
+        extras.push({id:`weighted-hold-${values}`,kind:'edge',blueprint,seed,weightedLifecycle:true,count:12,known:{wins:[0,0,values==='flat'?2:0.1],stakes:[0.05,0,0]}});
+    }
+    for (const id of api.AUTHORED_BOUNDED_MECHANIC_CATALOG) for (const type of ['lines','ways','clusters']) {
+        const blueprint=clone(inputs.find(fixture=>fixture.id===`bounded-${id}`).blueprint),seed='weighted-feature-context';
+        blueprint.reelStrips=[['C'],['C'],['C']];blueprint.paytable={A:{3:2}};
+        blueprint.winModel={type,...(type==='clusters'?{minimumClusterSize:3}:{})};
+        weightFirstReel(blueprint,seed);
+        extras.push({id:`weighted-bounded-${id}-${type}`,kind:'bounded',blueprint,seed,weightedLifecycle:true,count:18});
+    }
+    for (const type of ['lines','ways','clusters']) {
+        const blueprint=clone(inputs.find(fixture=>fixture.kind==='bonus').blueprint),seed='weighted-feature-context';
+        blueprint.winModel={type,...(type==='clusters'?{minimumClusterSize:3}:{})};
+        blueprint.mechanics.weightedBonus.outcomes.forEach(outcome=>outcome.weight=outcome.id==='large'?3:0);
+        weightFirstReel(blueprint,seed);
+        extras.push({id:`weighted-bonus-${type}`,kind:'bonus',blueprint,seed,weightedLifecycle:true,count:12,known:{wins:[0.35,0.1,0.1],stakes:[0.05,0,0]}});
+    }
+    {
+        const blueprint=clone(inputs.find(fixture=>fixture.id==='bounded-cascade').blueprint),seed='weighted-refill-context',rng=random(seed);
+        for(let i=0;i<4;i++)rng(); // weighted initialization, then three stops
+        rng(); // paid entry variant
+        const entry=Array.from({length:3},()=>Math.floor(rng()*1024));
+        const refill=Array.from({length:3},()=>Math.floor(rng()*1024));
+        blueprint.reelStrips=entry.map((stop,reel)=>{assert.notEqual(stop,refill[reel]);const strip=Array(1024).fill('B');strip[stop]='A';return strip;});
+        blueprint.paytable={A:{3:2}};
+        weightFirstReel(blueprint,seed);
+        extras.push({id:'weighted-cascade-refill',kind:'edge',blueprint,seed,weightedLifecycle:true,count:3,known:{wins:[0.1,0,0],stakes:[0.05,0,0.05],drawCounts:[11,11,15]}});
+    }
     for (const input of [...inputs, ...extras]) {
         input.seed ??= 'feature-parity-31';
         if (input.kind === 'existing') existingFixture(input);
-        if (input.kind === 'bounded') {input.blueprint.reelStrips = [['C'],['C'],['C']]; input.blueprint.paytable = {};}
+        if (input.kind === 'bounded' && !input.weightedLifecycle) {input.blueprint.reelStrips = [['C'],['C'],['C']]; input.blueprint.paytable = {};}
         try {fixtures.push(await build(input));} catch (error) {error.message = `${input.id}: ${error.message}`; throw error;}
     }
     compilePackages(fixtures);
@@ -433,7 +493,7 @@ async function main() {
         try {receipts.push(await compare(fixture, portable));} catch (error) {error.message = `${fixture.id}: ${error.message}`; throw error;}
     }
     const routes = await conversionRoutes(fixtures,portable);
-    const compact = await longSessions(fixtures.slice(0,36), portable);
+    const compact = await longSessions([...fixtures.slice(0,36),...['weighted-hold-flat','weighted-bounded-cascade-respins-collection-lines','weighted-bonus-lines','weighted-cascade-refill'].map(id=>fixtures.find(fixture=>fixture.id===id))], portable);
     process.stdout.write(JSON.stringify({compact, routes, rejectionIds:[...rejectionIds].sort(), catalogueIds: inputs.map(fixture => fixture.id), crossProducts: extras.map(fixture => fixture.id), publicExports: ['cjs','esm','browser','wasm'], receipts}));
 }
 main().catch(error => {console.error(error.stack); process.exitCode = 1;});

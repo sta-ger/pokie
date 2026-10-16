@@ -71,11 +71,14 @@ it("covers the frozen 36 launch rows through fresh public CJS/TypeScript/browser
             ...AUTHORED_MODIFIER_CATALOG.map(variant => `composition-${variant}`),
             "hold-full-flat", "hold-full-bet", "bonus-small", "bonus-large", "bonus-zero-effect", "cascade-terminal-bound", "weighted-dyadic", "weighted-binary64-extreme",
             ...["lines", "ways", "clusters"].flatMap(type => [false, true].map(weighted => `projection-${type}-${weighted}`)),
+            "weighted-hold-flat", "weighted-hold-bet",
+            ...AUTHORED_BOUNDED_MECHANIC_CATALOG.flatMap(id => ["lines", "ways", "clusters"].map(type => `weighted-bounded-${id}-${type}`)),
+            ...["lines", "ways", "clusters"].map(type => `weighted-bonus-${type}`), "weighted-cascade-refill",
         ];
         expect(report.routes).toEqual(["modes:package", "modes:PAR", "weighted-dyadic:package", "weighted-dyadic:PAR"]);
         expect(report.crossProducts).toEqual(crossProducts);
         expect(report.rejectionIds).toEqual(["bonus-counts", "collection", "free-bank", "free-counters", "hold-lock", "jackpot-pool", "jackpot-stats", "modifier-model", "respins", "weighted-counts"]);
-        expect(report.compact.map((row: {id: string; iterations: number}) => [row.id, row.iterations])).toEqual(AUTHORED_WORKFLOW_SUPPORT_CATALOG.map(row => [row.id, 128]));
+        expect(report.compact.map((row: {id: string; iterations: number}) => [row.id, row.iterations])).toEqual([...AUTHORED_WORKFLOW_SUPPORT_CATALOG.map(row => row.id), "weighted-hold-flat", "weighted-bounded-cascade-respins-collection-lines", "weighted-bonus-lines", "weighted-cascade-refill"].map(id => [id, 128]));
         expect(report.publicExports).toEqual(["cjs", "esm", "browser", "wasm"]);
     } finally {
         candidate.dispose();
