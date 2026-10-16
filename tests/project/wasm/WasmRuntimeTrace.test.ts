@@ -1,6 +1,40 @@
 import {instantiatePokieWasm, SeededPokieWasmHost} from "../../../src/wasm/PokieWasmRuntime.js";
 import {BoundedPokieWasmTraceCollector} from "../../../src/wasm/PokieWasmRuntimeApi.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
+import {weightedBonusBlueprint} from "../../v2/fixtures/WeightedBonusGame.js";
+
+it("traces actual feature draws with bounded restored replay evidence and no checkpoint tape", async () => {
+    const blueprint = weightedBonusBlueprint();
+    blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("feature-trace"));
+    const trace = new BoundedPokieWasmTraceCollector(2);
+    const replayTrace = new BoundedPokieWasmTraceCollector(1);
+    try {
+        const session = runtime.createSession("feature-trace", {trace});
+        await session.play({bet: 0.05, roundId: "bonus", delivery: "stepwise"});
+        const entry = session.serialize();
+        const commands = [1, 2].map(cursor => ({delivery: "stepwise", continuation: {roundId: "bonus", cursor}}));
+        for (const command of commands) await session.play(command);
+        expect(trace.entries.map(item => [item.kind, item.sequence, item.draws.length])).toEqual([["initialization", 0, 3], ["round", 1, 4]]);
+        expect(trace.dropped).toBe(2);
+        const saved = session.serialize();
+        const replay = await runtime.replay(JSON.parse(JSON.stringify(entry)), commands, {trace: replayTrace});
+        expect(replay.stateAfter).toEqual(saved);
+        expect(replayTrace.entries.map(item => [item.kind, item.sequence, item.draws.length])).toEqual([["replay", 2, 3]]);
+        expect(replayTrace).toMatchObject({status: "completed", dropped: 1});
+        expect(saved).toMatchObject({sequence: 3, drawCount: 13});
+        expect(saved).not.toHaveProperty("draws");
+        const originTrace = new BoundedPokieWasmTraceCollector(1);
+        await runtime.replay({schemaVersion: "pokie.state.v2", seed: "feature-trace", sequence: 0, drawCount: 0, credits: 1000}, [{bet: 0.05, roundId: "origin", delivery: "stepwise"}], {trace: originTrace});
+        expect(originTrace.entries.map(item => [item.kind, item.sequence, item.draws.length])).toEqual([["initialization", 0, 3]]);
+        expect(originTrace).toMatchObject({status: "completed", dropped: 1});
+    } finally {
+        runtime.dispose();
+    }
+    expect(trace).toMatchObject({status: "disposed", entries: []});
+    expect(replayTrace.entries).toHaveLength(1);
+});
 
 describe("explicit bounded WASM trace", () => {
     it("orders initialization and settled rounds, drops newest evidence, and detaches inspection", async () => {

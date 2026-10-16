@@ -45,11 +45,11 @@ function currentBet(round: Record<string, unknown> | undefined, initial: Record<
 // Prefer the pre-round snapshot: it identifies the exact configured session that evaluated the
 // displayed round.  `stateAfter` is the equivalent fallback for Play's live view, whose state capture
 // starts after a round has completed but retains the same immutable initial payload.
-export function describeRoundPresentation(stateBefore: unknown, stateAfter: unknown, artifactBetMode?: string, events: readonly {type: string; data?: Record<string, unknown>}[] = []): RoundPresentation {
-    const initial = initialPayload(stateBefore) ?? initialPayload(stateAfter);
+export function describeRoundPresentation(stateBefore: unknown, stateAfter: unknown, artifactBetMode?: string, events?: readonly {type: string; data?: Record<string, unknown>}[], publicPayload?: Record<string, unknown>): RoundPresentation {
+    const initial = initialPayload(stateBefore) ?? initialPayload(stateAfter) ?? publicPayload;
     const round = asRecord(stateAfter);
     if (initial === undefined) {
-        const featureCounters = deriveFeatureCountersFromEvents(events);
+        const featureCounters = deriveFeatureCountersFromEvents(events ?? []);
         return featureCounters.length > 0 ? {featureCounters} : {};
     }
 

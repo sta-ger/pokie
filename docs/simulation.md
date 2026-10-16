@@ -700,9 +700,7 @@ observed zero from unavailable lifecycle/components or an unconfigured feature.
 Native outcome libraries use their flattened canonical wins once, supporting
 component hits and jackpot attribution. Their other component amounts are marked
 unattributed (`partition.unavailable`): event presence does not establish a
-feature lifecycle. Current WASM rounds expose monetary totals but no canonical
-win components or lifecycle evidence; those metrics remain explicitly unavailable.
-Neither adapter gains support for additional mechanics.
+feature lifecycle. Canonical feature WASM rounds expose accepted mathematical lifecycle/component observations and weighted counters. Ordinary amount-only artifacts keep those metrics explicitly unavailable.
 
 Built-in free games, Hold&Win, bounded respins, collection, cascades, weighted
 bonuses, modifiers and their already-supported jackpot/bet-mode compositions use
@@ -755,4 +753,4 @@ Feature entries use paid entries or logical entries as labelled; retriggers use 
 
 A normal-approximation 95% interval is an empirical estimate. Adaptive precision does not prove agreement with configured target RTP or coverage of unseen rare events. The report distinguishes insufficient samples, an uninformative losing prefix, insufficient precision, empirical precision and fixed-budget runs without a requested tolerance. Low-evidence warnings use actual usable samples even if a large budget was requested. Adaptive checks reject fewer than two usable samples, zero charged stake, losing-only prefixes and known uncovered positive-weight selections. Checks remain independent per worker at chunk boundaries; all contributing workers must converge. `maxRounds` explicitly means the budget ended, including when tolerance was not attained. The merged interval is separate from the worst-worker adaptive half-width. An adaptive run that stopped before any check stores a null half-width and renders it as unavailable, rather than inventing a measured zero or persisting Infinity.
 
-Native sampled outcome-library outputs retain their library provenance and statistics and now also project the ordinary saved simulation report. `pokie report` accepts both that projection and the older sampled shape. These sampled estimates are separate from static outcome-source analysis. Flattened artifact events cannot prove lifecycle; canonical WASM supplies amount-only observations, and custom sessions may lack lifecycle/component capabilities. Unassignable money stays in `unavailable` without losing total-win accounting.
+Native sampled outcome-library outputs retain their library provenance and statistics and now also project the ordinary saved simulation report. `pokie report` accepts both that projection and the older sampled shape. These sampled estimates are separate from static outcome-source analysis. Flattened artifact events cannot prove lifecycle; ordinary amount-only WASM artifacts supply amount-only observations, and custom sessions may lack lifecycle/component capabilities. Unassignable money stays in `unavailable` without losing total-win accounting.

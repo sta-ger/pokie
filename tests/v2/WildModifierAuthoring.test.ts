@@ -523,7 +523,11 @@ describe("V2C-13 finite modifier authoring", () => {
             expect(errors(blueprint)).toEqual([]);
             const source = path.join(directory, "source.json");
             fs.writeFileSync(source, JSON.stringify(blueprint));
-            expect(await new ValidateCommand().run([source])).toBe(0);
+            const validationCode = await new ValidateCommand().run([source, "--format", "json"]);
+            const validation = JSON.parse(jest.mocked(console.log).mock.calls.slice(-1)[0][0] as string);
+            expect(validation).toMatchObject({valid: true, errors: [], advanced: {structuralValid: true}});
+            expect(validationCode).toBe(2);
+            expect(validation.advanced.verdict).toBe("inconclusive");
             expect(
                 await new BuildCommand("1.3.0").run([
                     source,
@@ -674,7 +678,7 @@ describe("V2C-13 finite modifier authoring", () => {
                 status: "available",
                 data: blueprint.mechanics,
             });
-            expect(() => api.resolveCanonicalWasmGameModel(blueprint)).toThrow(/modifiers/);
+            expect(api.resolveCanonicalWasmGameModel(blueprint).features?.blueprint).toEqual(blueprint);
             if (id === "sticky") expect(game.createExactEnumerationSession).toBeUndefined();
             else expect(game.createExactEnumerationSession).toBeDefined();
         },

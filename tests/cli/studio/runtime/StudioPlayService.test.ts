@@ -108,16 +108,18 @@ function runtimeSnapshotsForPackage(packageName: string): string[] {
         });
 }
 
+const winningScreen = [
+    ["A", "A", "A"],
+    ["A", "K", "Q"],
+    ["A", "K", "Q"],
+    ["K", "Q", "J"],
+    ["Q", "J", "10"],
+];
+
 function winEvaluationResultWithWin(): WinEvaluationResult<string> {
     const config = new VideoSlotConfig();
     const winCalculator = new VideoSlotWinCalculator(config);
-    const symbols = new SymbolsCombination<string>().fromMatrix([
-        ["A", "A", "A"],
-        ["A", "K", "Q"],
-        ["A", "K", "Q"],
-        ["K", "Q", "J"],
-        ["Q", "J", "10"],
-    ]);
+    const symbols = new SymbolsCombination<string>().fromMatrix(winningScreen);
     winCalculator.calculateWin(config.getAvailableBets()[0], symbols);
     return winCalculator.getWinEvaluationResult();
 }
@@ -128,7 +130,7 @@ function winEvaluationResultWithWin(): WinEvaluationResult<string> {
 function createFakeVideoSlotSession(seed: string | number | undefined): GameSessionHandling & VideoSlotSessionHandling<string> {
     let credits = 1000;
     const bet = 5;
-    const screen = [[`seed-${String(seed ?? "none")}`]];
+    let screen = [[`seed-${String(seed ?? "none")}`]];
 
     return {
         getCreditsAmount: () => credits,
@@ -141,6 +143,7 @@ function createFakeVideoSlotSession(seed: string | number | undefined): GameSess
         canPlayNextGame: () => credits >= bet,
         play: () => {
             credits -= bet;
+            screen = winningScreen.map(reel => [...reel]);
         },
         getWinAmount: () => winEvaluationResultWithWin().getTotalWin(),
         getSymbolsCombination: () => ({toMatrix: () => screen}),
@@ -846,6 +849,8 @@ describe("StudioPlayService", () => {
         expect(typeof result.session.win).toBe("number");
         expect(result.session.debug?.artifact).toBeDefined();
         expect(result.session.debug?.artifactUnavailableReason).toBeUndefined();
+        expect(result.session.screen).toEqual(winningScreen);
+        expect(result.session.debug?.artifact?.steps[0].screen).toEqual(winningScreen);
     });
 
     it("applies Play's selected bet and runtime mode to the exact SpinCommandHandler round", async () => {
@@ -1776,5 +1781,34 @@ it.each([
         await service.reset();
         execute.mockRestore();
         writes.forEach(write => write.mockRestore());
+    }
+});
+
+it("forwards real portable purchases and continuations, retains mode controls and recovers after a stale cursor", async () => {
+    const {WasmArtifactBuilder, PROJECT_TYPE_CAPABILITIES} = await import("@fromstan/pokie");
+    const {replayModesBlueprint} = await import("../../../v2/fixtures/ExistingMechanicsGame.js");
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "v2c21-play-"));
+    const service = new StudioPlayService();
+    try {
+        const source = path.join(directory, "game.blueprint.json"),
+            artifact = path.join(directory, "game.wasm");
+        const blueprint = replayModesBlueprint();
+        blueprint.paytable.A = {3: 2};
+        fs.writeFileSync(source, JSON.stringify(blueprint));
+        await new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "V2C-21"}, artifact);
+        const created = await service.newSession(artifact, "feature-play");
+        expect(created).toMatchObject({status: "ok", session: {logicalRoundDeliverySupported: true, availableBetModeIds: ["base", "ante", "buy", "buy-more"]}});
+        if (created.status !== "ok") throw new Error(JSON.stringify(created));
+        const entry = await service.spin(created.session.sessionId, "spin", 0.05, "buy", {requestId: "purchase", roundId: "purchase", delivery: "stepwise"});
+        expect(entry).toMatchObject({status: "ok", session: {logicalRoundDeliverySupported: true, stake: 0.5, payout: 0, chargedBetModeId: "buy", betModeId: "base", logicalRound: {status: "pending", cursor: 1}}});
+        const intent = {requestId: "continue", delivery: "stepwise" as const, continuation: {roundId: "purchase", cursor: 1}};
+        const terminal = await service.spin(created.session.sessionId, "spin", undefined, undefined, intent);
+        expect(terminal).toMatchObject({status: "ok", session: {stake: 0, logicalRoundDeliverySupported: true, logicalRound: {status: "completed", mathematicalCursor: 2, totalStake: 0.5, totalWin: 0.2}}});
+        expect(await service.spin(created.session.sessionId, "spin", undefined, undefined, intent)).toEqual(terminal);
+        expect(await service.spin(created.session.sessionId, "spin", undefined, undefined, {requestId: "stale", delivery: "stepwise", continuation: {roundId: "purchase", cursor: 99}})).toMatchObject({status: "error", retryDisposition: "rejected"});
+        expect(await service.spin(created.session.sessionId, "spin", 0.05, "base", {requestId: "next", roundId: "next", delivery: "stepwise"})).toMatchObject({status: "ok", session: {stake: 0.05, chargedBetModeId: "base"}});
+    } finally {
+        await service.reset();
+        fs.rmSync(directory, {recursive: true, force: true});
     }
 });

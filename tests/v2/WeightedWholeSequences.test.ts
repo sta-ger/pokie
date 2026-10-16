@@ -15,6 +15,25 @@ const variants = [{id: "a", symbols: ["A", "A"], weight: 1}, {id: "b", symbols: 
 const json = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 describe("canonical weighted whole sequences", () => {
+    it("rejects reordered initialization selections before replacing executable state", () => {
+        const config = weightedConfig();
+        config.setSymbolsSequences([new api.WeightedSymbolsSequence(variants, ["A", "B"]), new api.WeightedSymbolsSequence(variants, ["A", "B"])]);
+        const generator = new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(0));
+        generator.generateSymbolsCombination();
+        const saved = generator.getSelectionState();
+        expect(saved.selections.map(selection => selection.reelIndex)).toEqual([0, 1]);
+        expect(() => generator.setSelectionState({...saved, selections: [...saved.selections].reverse()})).toThrow("Invalid retained weighted selection");
+        expect(generator.getSelectionState()).toEqual(saved);
+    });
+    it("rejects a zero-mass initialized selection without replacing the retained choice", () => {
+        const config = weightedConfig();
+        config.setSymbolsSequences([new api.WeightedSymbolsSequence([...variants, {id: "zero", symbols: ["A", "B"], weight: 0}], ["A", "B"]), new api.SymbolsSequence().fromArray(["A"])]);
+        const generator = new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(0));
+        generator.generateSymbolsCombination();
+        const saved = generator.getSelectionState();
+        expect(() => generator.setSelectionState({...saved, selections: saved.selections.map(selection => ({...selection, variantId: "zero"}))})).toThrow("zero-weight variant ID");
+        expect(generator.getSelectionState()).toEqual(saved);
+    });
     it("selects anew for a base round and successive purchased features across direct, restored and audited delivery", () => {
         const blueprint = json(weightedBlueprint);
         blueprint.scatters = ["S"];
@@ -692,12 +711,12 @@ describe("canonical weighted whole sequences", () => {
             const planner = new api.ArtifactConversionPlanner();
             const project: api.PokieProject = {type: "blueprint", rootPath: source, capabilities: api.PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "Blueprint fields"};
             expect(planner.plan(project, "parWorkbook").status).not.toBe("unavailable");
-            expect(planner.plan(project, "wasm").status).toBe("unavailable");
+            expect(planner.plan(project, "wasm").status).not.toBe("unavailable");
             const unsupported = path.join(directory, "unsupported");
-            await expect(new api.WasmArtifactBuilder("1").build(project, path.join(unsupported, "game.pokie.wasm"))).rejects.toThrow("reelSequences");
+            await expect(new api.WasmArtifactBuilder("1").build(project, path.join(unsupported, "game.pokie.wasm"))).resolves.toMatchObject({outputPath: path.join(unsupported, "game.pokie.wasm")});
             const issues = await new api.ParSheetExporter("1").exportToFile(weightedBlueprint, path.join(directory, "game.xlsx"));
             expect(issues.filter(issue => issue.severity === "error")).toEqual([]);
-            expect(fs.existsSync(unsupported)).toBe(false);
+            expect(fs.existsSync(path.join(unsupported, "game.pokie.wasm"))).toBe(true);
             fs.writeFileSync(source, JSON.stringify(invalid));
             expect(() => api.loadGameBlueprint(source)).toThrow("reelSequences");
             expect(api.loadGameBlueprint(source, {preserveInvalidAuthoredContent: true})).toEqual(invalid);
@@ -732,7 +751,7 @@ describe("canonical weighted whole sequences", () => {
         expect(() => new api.VariableHeightSymbolsCombinationsGenerator(config, [new api.SymbolsSequence<number>().fromArray([1]), new api.SymbolsSequence<number>().fromArray([1])], rng).generateSymbolsCombination()).toThrow("weighted whole sequences");
         expect(calls).toEqual([]);
         expect(api.prepareBlueprintForParSheetExport(weightedBlueprint).blueprint?.reelSequences).toEqual(weightedBlueprint.reelSequences);
-        expect(() => api.resolveCanonicalWasmGameModel(weightedBlueprint)).toThrow("reelSequences");
+        expect(api.resolveCanonicalWasmGameModel(weightedBlueprint).features?.blueprint.reelSequences).toEqual(weightedBlueprint.reelSequences);
         expect(api.buildGameModelReels(weightedBlueprint).reels[0]).toMatchObject({source: "weighted", weightedVariants: variants.map((v, i) => ({...v, id: i ? "all-B" : "all-A"}))});
     });
 });

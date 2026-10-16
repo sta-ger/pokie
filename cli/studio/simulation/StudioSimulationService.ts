@@ -1,6 +1,7 @@
-import {analyticsEnvelope} from "../../../src/simulation/FeatureAnalytics.js";
+import {collectPokieWasmSimulation} from "../../../src/wasm/PokieWasmCommands.js";
 import {artifactAnalyticsObservation} from "../../../src/simulation/artifactAnalyticsObservation.js";
 import {
+    SimulationAccumulator,
     describeOutcomeSourceSeedPolicy,
     describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
@@ -24,7 +25,6 @@ import {
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
     SeededPokieWasmHost,
-    SimulationAccumulator,
     SimulationCancelledError,
     SimulationReport,
     SimulationReportBuilder,
@@ -494,10 +494,6 @@ export class StudioSimulationService {
 
     /** Runs canonical WASM in-process: portable components have no Node worker loader. */
     private async runWasmSimulation(record: StudioSimulationJobRecord): Promise<void> {
-        if (record.modeName !== undefined) {
-            this.fail(record, new Error("WASM does not support package bet-mode selection."));
-            return;
-        }
         if (record.abortController.signal.aborted) {
             this.cancelRecord(record);
             return;
@@ -505,101 +501,48 @@ export class StudioSimulationService {
         this.markRunning(record);
         const seed = record.seed ?? crypto.randomUUID();
         let runtime;
-        const accumulator = new SimulationAccumulator();
-        let disposeSession: (() => void) | undefined;
         try {
             runtime = await this.loadWasmRuntime(record.projectRoot, new SeededPokieWasmHost(seed));
-            const session = runtime.createSession(seed, {credits: Number.MAX_SAFE_INTEGER});
-            disposeSession = () => session.dispose();
-            let remaining = record.rounds;
-            while (remaining > 0) {
-                if (record.abortController.signal.aborted) {
-                    record.observedPrefix = accumulator.getStatistics();
-                    record.roundsCompleted = record.observedPrefix.rounds;
-                    this.cancelRecord(record);
-                    return;
-                }
-                const chunk = Math.min(this.chunkSize, remaining);
-                for (let index = 0; index < chunk; index++) {
-                    if (record.abortController.signal.aborted) {
-                        record.observedPrefix = accumulator.getStatistics();
-                        record.roundsCompleted = record.observedPrefix.rounds;
-                        this.cancelRecord(record);
-                        return;
-                    }
-                    const round = await session.play();
-                    accumulator.addRound(round.stake, round.payout, {envelope: analyticsEnvelope(runtime.manifest.artifact?.configurationHash ?? null), source: "wasm", logicalEntry: false, logicalCompletion: false, carriedSubround: false, cascadeSteps: 0, features: []});
-                }
-                record.roundsCompleted += chunk;
-                record.durationMs = this.now() - record.startedAt;
-                this.setPhase(record, "simulation");
-                remaining -= chunk;
-                if (remaining > 0) await this.yieldToEventLoop();
-            }
-            if (record.abortController.signal.aborted) {
-                record.observedPrefix = accumulator.getStatistics();
-                this.cancelRecord(record);
-                return;
-            }
-            const statistics = accumulator.getStatistics();
-            const report = this.reportBuilder.build({
-                manifest: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version},
-                requestedRounds: record.rounds,
-                ...(record.seed === undefined ? {} : {seed: record.seed}),
-                statistics,
-                durationMs: record.durationMs,
-                packageRoot: record.projectRoot,
-                configHash: runtime.manifest.artifact?.configurationHash,
-                workers: 1,
-                workerSeedStrategy: "portable seeded host stream (single in-process WASM runtime)",
-                pokieVersion: this.pokieVersion,
+            const results = await collectPokieWasmSimulation(runtime, seed, record.rounds, {
+                mode: record.modeName, signal: record.abortController.signal, chunkSize: this.chunkSize, yieldToHost: this.yieldToEventLoop,
+                onProgress: (completed, _mode, modeCount, statistics) => {
+                    record.roundsCompleted = completed;
+                    record.modeCount = modeCount;
+                    record.observedPrefix = statistics;
+                    record.durationMs = this.now() - record.startedAt;
+                    this.setPhase(record, "simulation");
+                },
             });
-            record.status = "completed";
-            record.report = report;
-            record.statistics = {
-                analytics: statistics.analytics,
-                volatility: statistics.volatility,
-                payoutStandardDeviation: statistics.payoutStandardDeviation,
-                returnStandardDeviation: statistics.returnStandardDeviation,
-                averagePayoutConfidenceInterval95: statistics.averagePayoutConfidenceInterval95,
-                rtpConfidenceInterval95: statistics.rtpConfidenceInterval95,
-                payoutHistogram: statistics.payoutHistogram,
+            const reports = results.map(result => this.reportBuilder.build({
+                manifest: {id: runtime!.manifest.component.id, name: runtime!.manifest.component.id, version: runtime!.manifest.component.version},
+                requestedRounds: record.rounds, ...(record.seed === undefined ? {} : {seed: record.seed}), statistics: result.statistics,
+                durationMs: record.durationMs, packageRoot: record.projectRoot, configHash: runtime!.manifest.artifact?.configurationHash,
+                workers: 1, workerSeedStrategy: "portable seeded host stream (single in-process WASM runtime)", pokieVersion: this.pokieVersion, betMode: result.mode, targetRtp: result.targetRtp,
+            }));
+            record.report = record.modeName === "all" ? {game: reports[0].game, requestedRounds: record.rounds, seed, workers: 1, modes: Object.fromEntries(results.map((result, index) => [result.mode!, reports[index]]))} : reports[0];
+            const statistics = results[0].statistics;
+            if (record.modeName !== "all") record.statistics = {
+                analytics: statistics.analytics, volatility: statistics.volatility, payoutStandardDeviation: statistics.payoutStandardDeviation,
+                returnStandardDeviation: statistics.returnStandardDeviation, averagePayoutConfidenceInterval95: statistics.averagePayoutConfidenceInterval95,
+                rtpConfidenceInterval95: statistics.rtpConfidenceInterval95, payoutHistogram: statistics.payoutHistogram,
             };
+            record.status = "completed";
             this.markTerminal(record);
         } catch (error) {
-            record.observedPrefix = accumulator.getStatistics();
-            record.roundsCompleted = record.observedPrefix.rounds;
-            if (record.abortController.signal.aborted) this.cancelRecord(record);
+            if (error instanceof SimulationCancelledError) {
+                record.observedPrefix = error.observedPrefix;
+                this.cancelRecord(record);
+            } else if (record.abortController.signal.aborted) this.cancelRecord(record);
             else this.fail(record, error);
         } finally {
             try {
                 this.setPhase(record, "finalizing / cleanup");
             } finally {
-                try {
-                    await disposeSession?.();
-                } finally {
-                    await runtime?.dispose();
-                }
+                await runtime?.dispose();
             }
         }
     }
 
-    // The "outcomeLibrary"/"stakeAdapter" counterpart to run() above -- reached only when start() was
-    // given an already-resolved `outcomeSourceProject` (see that parameter's own doc comment). A "stakeAdapter" export has no
-    // draw contract of its own (see OUTCOME_SOURCE_SAMPLE_CAPABILITY's own doc comment) and fails here
-    // with the same structured capability diagnostic every other POKIE surface gives it, before ever
-    // reading a bundle file. A resolved "outcomeLibrary" project samples `record.modeName` -- a real mode
-    // from the manifest's own list, resolved via resolveOutcomeLibraryModeName (defaulting to the
-    // manifest's own first mode when start() wasn't given one explicitly, same as before Simulation had a
-    // mode picker at all) -- through real, independent draws from OutcomeLibraryBundleOutcomeSource -- the
-    // exact same selector simulateOutcomeSourceProject/sampleOutcomeSourceProject already draw through --
-    // accumulated into an ordinary SimulationAccumulator, chunked and abort-aware exactly like the
-    // ParallelSimulationRunner path above, never a freshly regenerated game-model simulation. Always
-    // reports `workers: 1` on the built report regardless of what was requested -- sampling here is never
-    // split across worker threads the way a "tsPackage" simulation can be. `record.modeName` is
-    // overwritten here with the actually-resolved value (even when start() left it undefined), so every
-    // terminal job/report/listing carries the real mode this run sampled, never just "whatever the caller
-    // happened to ask for".
     private async runOutcomeSourceSampling(record: StudioSimulationJobRecord, project: PokieProject): Promise<void> {
         const diagnostic = describeUnavailableArtifactOperation(project, OUTCOME_SOURCE_SIMULATE_OPERATION);
         if (diagnostic !== undefined) {

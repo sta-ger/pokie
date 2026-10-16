@@ -406,7 +406,7 @@ describe("ReplayCommand runtime package materialization boundary", () => {
         const command = new ReplayCommand(loadGame, undefined, undefined, resolveRuntimePackageRoot);
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
         try {
-            await expect(command.run([wasmPath, "--round", "2", "--seed", "canonical-seed", "--mode", "ante", "--out", descriptorPath])).rejects.toThrow(/Canonical WASM replay does not support --mode/);
+            await expect(command.run([wasmPath, "--round", "2", "--seed", "canonical-seed", "--mode", "ante", "--out", descriptorPath])).rejects.toThrow("This WASM model does not support bet mode selection.");
             expect(fs.existsSync(descriptorPath)).toBe(false);
             expect(logSpy).not.toHaveBeenCalled();
             await command.run([wasmPath, "--round", "2", "--seed", "canonical-seed", "--out", descriptorPath]);
@@ -419,6 +419,73 @@ describe("ReplayCommand runtime package materialization boundary", () => {
         } finally {
             logSpy.mockRestore();
             fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it.each([
+        {mode: "ante", rounds: 2, totalBet: 0.05 * 1.5 * 2},
+        {mode: "buy", rounds: 6, totalBet: 1.5},
+        {mode: "buy-more", rounds: 6, totalBet: 2.5},
+    ])("replays declared $mode selection in a canonical WASM artifact without charging free continuations", async ({mode, rounds, totalBet}) => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-wasm-modes-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        const descriptorPath = path.join(workDir, "replay.json");
+        const fixture = createCanonicalWasmFixture({id: "canonical-replay-modes", blueprint: replayModesBlueprint()});
+        fs.writeFileSync(wasmPath, fixture.bytes);
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const resolveRuntimePackageRoot = jest.fn(() => Promise.resolve({runtimePath: "must-not-resolve", release: () => Promise.resolve()}));
+        const command = new ReplayCommand(loadGame, undefined, undefined, resolveRuntimePackageRoot);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            await expect(command.run([wasmPath, "--round", String(rounds), "--seed", "canonical-seed", "--mode", "missing", "--out", descriptorPath])).rejects.toThrow('invalid-command: Session does not support bet mode "missing" (available modes: base, ante, buy, buy-more).');
+            expect(fs.existsSync(descriptorPath)).toBe(false);
+            expect(logSpy).not.toHaveBeenCalled();
+
+            await command.run([wasmPath, "--round", String(rounds), "--seed", "canonical-seed", "--mode", mode, "--out", descriptorPath]);
+            const descriptor = JSON.parse(fs.readFileSync(descriptorPath, "utf8")) as ReplayDescriptor;
+            expect(descriptor).toMatchObject({game: {id: "canonical-replay-modes"}, round: rounds, seed: "canonical-seed", totalWin: 0, screen: [["A"], ["A"], ["A"]]});
+            expect(descriptor.totalBet).toBeCloseTo(totalBet, 12);
+            expect(descriptor.credits).toBeCloseTo(1000 - totalBet, 12);
+            expect(descriptor.stateAfter).toMatchObject({schemaVersion: "pokie.state.v4", sequence: rounds});
+            expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+            expect(loadGame).not.toHaveBeenCalled();
+        } finally {
+            logSpy.mockRestore();
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("V2C-21 completes seed-7 cascade logical replay and persists its RNG continuation", async () => {
+        const {boundedBlueprint} = await import("../../v2/fixtures/BoundedMechanicsGame.js");
+        const {instantiatePokieWasm, SeededPokieWasmHost} = await import("../../../src/wasm/PokieWasmRuntime.js");
+        const blueprint = boundedBlueprint("cascade");
+        blueprint.reelStrips = [["A", "B"], ["A", "B"], ["A", "B"]];
+        const fixture = createCanonicalWasmFixture({blueprint});
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "cascade-replay-"));
+        const artifact = path.join(directory, "game.wasm");
+        const output = path.join(directory, "replay.json");
+        fs.writeFileSync(artifact, fixture.bytes);
+        fs.writeFileSync(`${artifact}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("7"));
+        try {
+            await new ReplayCommand().run([artifact, "--round", "1", "--unit", "logical-round", "--seed", "7", "--out", output]);
+            const result = JSON.parse(fs.readFileSync(output, "utf8"));
+            expect(result).toMatchObject({totalBet: 0.05, totalWin: 0.2, logicalRound: {status: "completed"}});
+            const direct = runtime.createSession("7");
+            await direct.play({bet: 0.05, delivery: "composite", roundId: "direct"});
+            expect(result.stateAfter.rngState).toEqual(direct.serialize().rngState);
+            const restored = runtime.restoreSession(result.stateAfter);
+            const next = {bet: 0.05, delivery: "composite", roundId: "next"};
+            const actual = await restored.play(next);
+            const expected = await direct.play(next);
+            expect(actual).toMatchObject({draw: expected.draw, stops: expected.stops, screen: expected.screen, stake: expected.stake, win: expected.win, payout: expected.payout, credits: expected.credits});
+            expect(restored.serialize().rngState).toEqual(direct.serialize().rngState);
+        } finally {
+            runtime.dispose();
+            log.mockRestore();
+            fs.rmSync(directory, {recursive: true, force: true});
         }
     });
 

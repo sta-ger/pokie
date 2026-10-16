@@ -27,7 +27,7 @@ function artifactFor(overrides: Partial<RoundArtifact> = {}): RoundArtifactJson 
             ["R1P0", "R1P1", "R1P2"],
             ["R2P0", "R2P1", "R2P2"],
         ],
-        steps: [{index: 0, screen: [["R0P0", "R0P1", "R0P2"]], totalWin: 0, wins: []}],
+        steps: [{index: 0, screen: [["R0P0", "R0P1", "R0P2"], ["R1P0", "R1P1", "R1P2"], ["R2P0", "R2P1", "R2P2"]], totalWin: 0, wins: []}],
         wins: [],
         ...overrides,
     };
@@ -97,7 +97,7 @@ describe("RoundArtifactInspector win amount presentation", () => {
     function stepWithWins(wins: RoundArtifact["wins"]) {
         return artifactFor({
             totalWin: wins.reduce((sum, win) => sum + win.winAmount, 0),
-            steps: [{index: 0, screen: [["R0P0", "R0P1", "R0P2"]], totalWin: wins.reduce((sum, win) => sum + win.winAmount, 0), wins}],
+            steps: [{index: 0, screen: [["R0P0", "R0P1", "R0P2"], ["R1P0", "R1P1", "R1P2"], ["R2P0", "R2P1", "R2P2"]], totalWin: wins.reduce((sum, win) => sum + win.winAmount, 0), wins}],
             wins,
         });
     }
@@ -295,7 +295,7 @@ describe("RoundArtifactInspector imported-artifact and incomplete-debug presenta
                 steps: [
                     {
                         index: 0,
-                        screen: [["R0P0", "R0P1", "R0P2"]],
+                        screen: [["R0P0", "R0P1", "R0P2"], ["R1P0", "R1P1", "R1P2"], ["R2P0", "R2P1", "R2P2"]],
                         totalWin: 12.5,
                         wins: [
                             {
@@ -380,7 +380,7 @@ describe("Cross-surface round presentation parity", () => {
             steps: [
                 {
                     index: 0,
-                    screen: [["R0P0", "R0P1", "R0P2"]],
+                    screen: [["R0P0", "R0P1", "R0P2"], ["R1P0", "R1P1", "R1P2"], ["R2P0", "R2P1", "R2P2"]],
                     totalWin: 12.5,
                     wins: [
                         {type: "line", id: "w1", symbolId: "cherry", winAmount: 12.5, winningPositions: [[0, 0], [1, 0]], multiplierBreakdown: [], metadata: {}},
@@ -782,7 +782,7 @@ describe("FeatureStateView feature event data (via RoundArtifactInspector)", () 
                 steps: [
                     {
                         index: 0,
-                        screen: [["R0P0", "R0P1", "R0P2"]],
+                        screen: [["R0P0", "R0P1", "R0P2"], ["R1P0", "R1P1", "R1P2"], ["R2P0", "R2P1", "R2P2"]],
                         totalWin: 0,
                         wins: [],
                         featureEvents: [{type: "free-spins-triggered", data: {count: 10, multiplier: 2}}],
@@ -812,7 +812,7 @@ describe("FeatureStateView feature event data (via RoundArtifactInspector)", () 
     it("omits the feature event data disclosure entirely when no event in the step carries a data payload", () => {
         const artifact = describeRoundArtifact(
             artifactFor({
-                steps: [{index: 0, screen: [["R0P0", "R0P1", "R0P2"]], totalWin: 0, wins: [], featureEvents: [{type: "free-spins-triggered"}]}],
+                steps: [{index: 0, screen: [["R0P0", "R0P1", "R0P2"], ["R1P0", "R1P1", "R1P2"], ["R2P0", "R2P1", "R2P2"]], totalWin: 0, wins: [], featureEvents: [{type: "free-spins-triggered"}]}],
             }),
         );
         const {getByText, queryByText} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);

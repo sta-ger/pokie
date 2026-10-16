@@ -73,7 +73,8 @@ paytable awards, while the collection award remains 10.
 | Standard rectangular geometry, explicit missing/zero payouts, fractional stakes | Yes |
 | Free games, Hold & Win, jackpots, bet modes, screen modifiers, nonstandard geometry with these new rules | Rejected before execution |
 | Opaque generators, custom evaluator callbacks or config subclasses in the bounded adapter | Rejected; use a custom session with its own complete codec instead |
-| Canonical WASM and paid-grid outcome-library / Stake conversion | Rejected before publication |
+| Canonical WASM | Supported through the shared feature runtime |
+| Paid-grid outcome-library / Stake conversion | Rejected before publication |
 | Blueprint JSON / guided Studio form, generated CJS/TS, extraction and XLSX PAR | Yes |
 | CLI / Studio Play, simulations, report formats/downloads and audit replay | Yes |
 

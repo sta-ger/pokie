@@ -2,12 +2,49 @@ import {instantiatePokieWasm, SeededPokieWasmHost} from "../../../src/wasm/Pokie
 import {BoundedPokieWasmTraceCollector, type PokieWasmSessionState} from "../../../src/wasm/PokieWasmRuntimeApi.js";
 import {PokieWasmWorkerProtocol} from "../../../src/wasm/worker.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
+import {weightedBonusBlueprint} from "../../v2/fixtures/WeightedBonusGame.js";
+import {nextPokieWasmCommand} from "../../../src/wasm/PokieWasmCommands.js";
+import fs from "node:fs";
+import path from "node:path";
 
 const seed = "compact-measurement";
 const fixture = createCanonicalWasmFixture();
 const bankroll = 1000000;
 const checkpoints = new Set([0, 10000, 100000]);
 const bytes = (state: unknown): number => Buffer.byteLength(JSON.stringify(state), "utf8");
+
+it("continues bounded feature snapshots from external JSON files in fresh runtimes without retaining history", async () => {
+    const featureFixture = createCanonicalWasmFixture({blueprint: weightedBonusBlueprint()});
+    const directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/feature-storage-"));
+    const runtime = await instantiatePokieWasm(featureFixture.bytes, featureFixture.manifest, new SeededPokieWasmHost("feature-storage"));
+    const session = runtime.createSession("feature-storage");
+    try {
+        for (let iteration = 0; iteration < 48; iteration++) {
+            const state = session.serialize();
+            const file = path.join(directory, "session.json");
+            fs.writeFileSync(file, JSON.stringify(state));
+            const fresh = await instantiatePokieWasm(featureFixture.bytes, featureFixture.manifest, new SeededPokieWasmHost("fresh"));
+            try {
+                const restored = fresh.restoreSession(JSON.parse(fs.readFileSync(file, "utf8")));
+                expect(fresh.getDiagnostics().generatedDraws).toBe(0);
+                expect(restored.getInitialData!()).toEqual(session.getInitialData!());
+                const command = nextPokieWasmCommand(state);
+                expect(await restored.play(command)).toEqual(await session.play(command));
+                expect(restored.serialize()).toEqual(session.serialize());
+                const saved = restored.serialize();
+                expect(bytes(saved)).toBeLessThan(16384);
+                expect(saved).not.toHaveProperty("commands");
+                expect(saved).not.toHaveProperty("draws");
+                if (saved.schemaVersion === "pokie.state.v4") expect(saved.feature.logicalRound?.subrounds).toHaveLength(1);
+            } finally {
+                fresh.dispose();
+            }
+        }
+    } finally {
+        runtime.dispose();
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
 
 function assertCompact(state: PokieWasmSessionState, rounds: number, ceiling = 320): void {
     expect(Object.keys(state).sort()).toEqual(["artifactIdentity", "credits", "drawCount", "rngState", "schemaVersion", "seed", "sequence"]);

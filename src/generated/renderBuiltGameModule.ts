@@ -116,7 +116,7 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     const winCalculatorArgs = winModel.type === "lines" && !sharedMathModel ? "" : ", winCalculator";
     const sessionClassName = freeGames ? "VideoSlotWithFreeGamesSession" : "VideoSlotSession";
     const baseConstruction = hasBounded
-        ? `new BoundedVideoSlotSession(config, combinationsGenerator, ${JSON.stringify(bounded)}, ${winModel.type === "lines" ? "new VideoSlotWinCalculator(config)" : "winCalculator"})`
+        ? `new BoundedVideoSlotSession(config, combinationsGenerator, ${JSON.stringify(bounded)}, ${sharedMathModel || winModel.type !== "lines" ? "winCalculator" : "new VideoSlotWinCalculator(config)"})`
         : `new ${sessionClassName}(config, combinationsGenerator${winCalculatorArgs})`;
     const sessionConstructionExpression = holdAndWin
         ? `new VideoSlotWithHoldAndWinSession(${baseConstruction}, ${holdAndWin.initialRespins}, new SymbolSetHoldAndWinCollector(blueprint.mechanics?.holdAndWin?.symbolEffects), new MinimumCountHoldAndWinTrigger(${holdAndWin.minimumCount}), new SumWithMultiplierHoldAndWinPayoutAggregator(${holdAndWin.payout.amountsAreBetMultiples}))`
@@ -251,8 +251,9 @@ ${winCalculatorDeclaration}        return ${wrapJackpot(sessionConstructionExpre
     const holdStateSchema = holdAndWin ? {kind: "hold-and-win", reels: blueprint.reels, rows: blueprint.rows, bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], symbolEffects: holdAndWin.symbolEffects, initialRespins: holdAndWin.initialRespins, base: featureStateSchema} : featureStateSchema;
     const modeStateSchema = betModeWiring ? {kind: "bet-modes", ...(blueprint.betModes!.some(mode => (mode.costMultiplier ?? 1) !== 1 || mode.runtimeType === "buyFeature") ? {stakeModifying: true} : {}), base: holdStateSchema} : holdStateSchema;
     const stateSchema = jackpot ? {kind: "jackpot", pools: [jackpot.pool], base: modeStateSchema} : modeStateSchema;
-    const stateSchemaExpression = sharedMathModel ? `{kind: "seeded-video-slot", reels: blueprint.reels, symbols: blueprint.symbols}` : JSON.stringify(stateSchema);
-    const commandCapabilitiesExpression = sharedMathModel ? `{bets: blueprint.availableBets ?? ${JSON.stringify([1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100])}}` : JSON.stringify({bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], ...(betModeWiring !== undefined ? {modes: blueprint.betModes!.map(mode => mode.id)} : {})});
+    const ordinarySharedMath = sharedMathModel && !blueprint.screenGeometry && !blueprint.reelSequences && !blueprint.betModes?.length && !Object.values(blueprint.mechanics ?? {}).some(value => value !== undefined);
+    const stateSchemaExpression = ordinarySharedMath ? `{kind: "seeded-video-slot", reels: blueprint.reels, symbols: blueprint.symbols}` : JSON.stringify(stateSchema);
+    const commandCapabilitiesExpression = ordinarySharedMath ? `{bets: blueprint.availableBets ?? ${JSON.stringify([1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100])}}` : JSON.stringify({bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], ...(betModeWiring !== undefined ? {modes: blueprint.betModes!.map(mode => mode.id)} : {})});
     const blueprintDeclaration =
         format === "ts"
             ? `const blueprint: GameBlueprint = ${JSON.stringify(blueprint, null, 4)};`

@@ -70,7 +70,7 @@ export function RoundSummary({
     );
     if (session.debug?.artifact) {
         const artifact = describeRoundArtifact(session.debug.artifact);
-        const presentation = describeRoundPresentation(session.debug.stateBefore, session.debug.stateAfter, artifact.betMode, artifact.steps[artifact.steps.length - 1]?.featureEvents);
+        const presentation = describeRoundPresentation(session.debug.stateBefore, session.debug.stateAfter, artifact.betMode, artifact.steps[artifact.steps.length - 1]?.featureEvents, session);
         return (
             <div>
                 {roundOutcome}
@@ -80,6 +80,7 @@ export function RoundSummary({
                     the immutable RoundArtifact.  The full inspector remains available below without
                     displacing normal play behind provenance or JSON. */}
                 <GameScreenView logicalRound={session.logicalRound}
+                    sequenceSelections={session.sequenceSelections} sequenceStatistics={session.sequenceStatistics}
                     screen={artifact.screen}
                     visibleRowCoverage={artifact.steps[artifact.steps.length - 1]?.visibleRowCoverage}
                     wins={artifact.wins}
@@ -106,6 +107,7 @@ export function RoundSummary({
                     {artifactInspectorOpen && (
                         <RoundArtifactInspector
                             artifact={artifact}
+                            sequenceStatistics={session.sequenceStatistics}
                             credits={session.credits}
                             stateBefore={session.debug.stateBefore}
                             stateAfter={session.debug.stateAfter}
@@ -157,6 +159,7 @@ export function RoundSummary({
 
             {session.screen && (
                 <GameScreenView logicalRound={session.logicalRound}
+                    sequenceSelections={session.sequenceSelections} sequenceStatistics={session.sequenceStatistics}
                     screen={describeRuntimeScreen(session.screen) ?? []}
                     visibleRowCoverage={Array.isArray(session.visibleRowCoverage) ? session.visibleRowCoverage as number[] : undefined}
                     credits={session.credits}

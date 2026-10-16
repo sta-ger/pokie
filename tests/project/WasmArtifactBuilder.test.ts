@@ -1,3 +1,5 @@
+import {ArtifactConversionPlanner} from "../../src/project/ArtifactConversionPlanner.js";
+import {StudioArtifactConversionPlanningService} from "../../cli/studio/artifacts/StudioArtifactConversionPlanningService.js";
 import {evaluatorValidationCases} from "../fixtures/wasm/createCanonicalWasmFixture.js";
 import {resolveSharedSlotMathModel} from "../../src/generated/resolveSharedSlotMathModel.js";
 import {assertPlayableSharedSlotMathModel} from "../../src/wasm/math/SharedSlotMath.js";
@@ -86,6 +88,33 @@ describe("WasmArtifactBuilder", () => {
             runtime.dispose();
         }
         expect(fs.readFileSync(sourcePath, "utf8")).toBe(JSON.stringify(corrected));
+    });
+
+    it.each(["literal", "generated"])("V2C-21 resolves %s reel precedence through planning, preview and publication without changing source", async kind => {
+        const authored = {...blueprint, symbolWeights: {A: 1, B: 20, C: 30}, mechanics: {cascade: {maxCascades: 10}}};
+        if (kind === "generated") {
+            Reflect.deleteProperty(authored, "reelStrips");
+            Reflect.set(authored, "reelStripGeneration", Array.from({length: 3}, (_, reel) => ({type: "generated", length: 3, symbolCounts: {A: 1, B: 1, C: 1}, seed: reel})));
+        }
+        const sourcePath = path.join(workDir, "blueprint.json");
+        const outputPath = path.join(workDir, "game.wasm");
+        fs.writeFileSync(sourcePath, JSON.stringify(authored));
+        const original = fs.readFileSync(sourcePath);
+        const source = {type: "blueprint" as const, rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"};
+        const effective = resolveCanonicalWasmGameModel(authored);
+        expect(effective.features?.blueprint.symbolWeights).toBeUndefined();
+        expect(effective.features?.blueprint.reelStripGeneration).toBeUndefined();
+        if (kind === "literal") expect(effective.reelStrips).toEqual(blueprint.reelStrips);
+        expect(new ArtifactConversionPlanner().plan(source, "wasm").status).toBe("planned");
+        expect((await new StudioArtifactConversionPlanningService("1.3.0").prepare(sourcePath, "wasm", outputPath)).status).toBe("planned");
+        const builder = new WasmArtifactBuilder("1.3.0");
+        await builder.validate(source);
+        await builder.build(source, outputPath);
+        expect(readCanonicalPokieWasmModule(fs.readFileSync(outputPath)).model).toEqual(effective);
+        expect(fs.readFileSync(sourcePath)).toEqual(original);
+        expect(authored.symbolWeights).toEqual({A: 1, B: 20, C: 30});
+        Reflect.set(authored, "evaluator", {module: "custom"});
+        expect(() => resolveCanonicalWasmGameModel(authored)).toThrow(/wasm-unsupported-field at evaluator/);
     });
 
     it("publishes a valid integrity-bound canonical artifact that resolves and reads back", async () => {
@@ -222,10 +251,12 @@ describe("WasmArtifactBuilder", () => {
     it.each([
         ["free games", {...blueprint, symbols: ["A", "B", "C", "S"], scatters: ["S"], reelStrips: [["A", "B", "S"], ["B", "C", "S"], ["C", "A", "S"]], paytable: {A: {3: 2}, B: {3: 1}, C: {3: 1}, S: {3: 1}}, mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 5}}}}],
         ["bet modes", {...blueprint, betModes: [{id: "base"}]}],
-    ])("rejects unsupported canonical WASM %s semantics with a recovery action", async (_name, unsupported) => {
+    ])("keeps canonical free games and rejects undeclared mode semantics before publication: %s", async (name, unsupported) => {
         const sourcePath = path.join(workDir, "unsupported.blueprint.json");
         fs.writeFileSync(sourcePath, JSON.stringify(unsupported));
-        await expect(new WasmArtifactBuilder("1.3.0").validate({type: "blueprint", rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"})).rejects.toThrow(/Next:/);
+        const validation = new WasmArtifactBuilder("1.3.0").validate({type: "blueprint", rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"});
+        if (name === "free games") await expect(validation).resolves.toBeUndefined();
+        else await expect(validation).rejects.toThrow(/betModes.*runtimeType/);
     });
 
     it("rejects a valid canonical sidecar copied from another game and an unsupported adapter", async () => {
@@ -304,7 +335,7 @@ describe("WasmArtifactBuilder", () => {
             manifest.capabilities.push("runtime.extra");
         }],
         ["ABI", (manifest: MutableManifestDeclaration) => {
-            manifest.artifact.abiVersion = "2.0.1";
+            manifest.artifact.abiVersion = "3.0.1";
         }],
     ])("rejects an individually edited %s declaration", async (_category, edit) => {
         const sourcePath = path.join(workDir, "fixture.blueprint.json");
@@ -418,15 +449,15 @@ describe("WasmArtifactBuilder", () => {
     });
 });
 
-it.each(["hold-flat", "fixed-base", "accumulating-base"])("fails closed for authored %s without publishing WASM or sidecars", async id => {
+it.each(["hold-flat", "fixed-base", "accumulating-base"])("publishes canonical authored %s while preserving source", async id => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-v2c12-wasm-"));
     try {
         const blueprint = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
         const source = path.join(directory, "source.json");
         fs.writeFileSync(source, JSON.stringify(blueprint));
         const before = fs.readFileSync(source);
-        await expect(new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, path.join(directory, "out.wasm"))).rejects.toThrow(/does not implement mechanics.holdAndWin or mechanics.jackpot/);
-        expect(fs.readdirSync(directory)).toEqual(["source.json"]);
+        await expect(new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, path.join(directory, "out.wasm"))).resolves.toMatchObject({outputPath: path.join(directory, "out.wasm")});
+        expect(fs.readdirSync(directory).sort()).toEqual(["out.wasm", "out.wasm.pokie-wasm.json", "source.json"]);
         expect(fs.readFileSync(source)).toEqual(before);
     } finally {
         fs.rmSync(directory, {recursive: true, force: true});

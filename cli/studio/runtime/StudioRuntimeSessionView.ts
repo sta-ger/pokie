@@ -8,6 +8,8 @@ import type {LogicalRoundDelivery, PreGeneratedRoundReplayDescriptor, RoundArtif
 // attached. Never the raw PokieSessionState/repository/wallet objects themselves — only their own
 // public+internal projection.
 export type StudioRuntimeSessionView = {
+    sequenceSelections?: readonly import("../../../src/session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceSelection[];
+    sequenceStatistics?: readonly import("../../../src/session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceStatistics[];
     logicalRound?: LogicalRoundDelivery;
     logicalRoundDurability?: "process-only";
     sessionId: string;

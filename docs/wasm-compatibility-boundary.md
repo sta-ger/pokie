@@ -21,72 +21,61 @@ not runnable until rebuilt as a canonical artifact.
 
 ## Current execution and mechanics
 
-Generated Node games and canonical portable artifacts consume **one production math kernel**, `pokie.math.v2`.
-The maintained source is `src/wasm/math/shared-math.wat`; its checked-in executable is regenerated with
-`node src/wasm/math/generate-kernel.mjs` (development requires WABT's `wat2wasm`; consumers need no compiler).
-`SharedSlotMath` lowers a validated model into the same bounded memory image for both targets.
-Generated `dist/index.js` and recompilable `src/index.ts` select this calculation path for ordinary supported
-models. Direct built-in calculators and custom evaluator injection retain their existing extension pipeline.
-Unsupported generated features retain their Node pipeline and cannot be published as a reduced WASM model.
+Generated CJS, recompilable TypeScript and portable artifacts share `pokie.math.v2`.
+The maintained kernel is `src/wasm/math/shared-math.wat`; regenerate it with
+`node src/wasm/math/generate-kernel.mjs` (WABT is a development dependency on PATH,
+not a consumer requirement). `SharedSlotMath` evaluates lines, ways and clusters,
+including restricted wild substitution. The existing pipeline applies authored
+multiplier attribution and preserves stake multiplication before aggregation.
+Missing and explicit-zero payout entries remain distinct from fallback awards.
+Mutable supported Node configuration is lowered from its current public paytable,
+strips, paylines, bets and wild/scatter rules; custom strategies do not acquire a
+portable codec by being wrapped in a built-in calculator.
 
-Both generated factories resolve shared math from the current declared Blueprint rather than an embedded
-second model. Existing sessions keep their own mutable config: supported paytable, bet, strip, payline and
-wild/scatter edits are lowered from that config for evaluation. The Node adapter sends exact stake-scaled
-public paytable amounts to the same kernel at unit stake, preserving bet-specific edits without division
-or a second payout evaluator. A directly supplied shared model must initially match the public config.
-Custom/nondefault line patterns, restricted wild substitutions, modifiers and other unsupported strategies
-are rejected on the shared path, including after mutation; they cannot claim supported restoration.
-Cluster/ways validation and `validateOnEvaluate` remain part of the public evaluation pipeline.
-Canonical publication and portable loading always enforce evaluator preconditions: the effective
-cluster minimum (default 5) must fit the grid, and ways require an inventory symbol that is neither
-wild nor scatter. Rejection includes the evaluator diagnostic code and a correction action, before
-host draws or session creation, even for an integrity-consistent artifact. Node retains its
-pipeline diagnostics and explicit `validateOnEvaluate=false` option; structural lowering alone
-does not assert that an evaluator is playable.
+ABI **3.0.0** imports `pokie.next_random: () -> f64` and exports `play(f64) -> f64`,
+`evaluate(f64) -> f64` and fixed-limit `memory`. Ordinary `play` consumes one raw
+host draw per reel and uses `floor(draw * strip.length)` with circular stops.
+`evaluate` consumes no RNG. Feature orchestration reuses the same Node session
+classes, contextual generator, modifier pipeline and settlement contracts; its
+projected/modified screens are evaluated by the shared WASM kernel. There is no
+second replay or payout engine. Unpaid initialization runs once. Weighted
+selection and rejection sampling consume their actual draws; cascade refills
+and continuations retain the entry's selection context.
 
-ABI **2.0.0** imports `pokie.next_random: () -> f64`, a raw finite draw in `[0,1)`.
-`play(stake: f64) -> f64` validates an available stake before drawing, consumes exactly one draw per reel,
-selects `floor(draw * strip.length)`, builds circular reel-major windows, evaluates the selected win model and
-returns the payout. `evaluate(stake: f64) -> f64` evaluates an already supplied screen without RNG. Both export
-`memory`, whose minimum and maximum are equal and derived from the model. There is no rejection sampling.
-Seeded host initialization consumes one unpaid screen's draws once, matching Node construction. The host owns
-seed/reset/continuation, credit settlement, serialization, trace collection, transport and IO. Module scratch
-contains only the current evaluation, has no session history and is cleared on runtime disposal.
+All 36 launch catalogue rows are supported: free-game grants/additive retriggers,
+flat and entry-bet Hold&Win, fixed and session-local accumulating jackpots,
+base/ante/explicit purchases, six modifier variants, seven bounded compositions
+and finite weighted bonus. Supported modifier combinations retain free games,
+modes, jackpots, weighted reels and geometry. This is not universal stackability:
+conflicting progression owners, modifiers with Hold&Win, bounded decorators with
+other progression decorators, and weighted-bonus schema exclusions remain errors.
+External wallet/shared-progressive services and arbitrary callbacks, evaluators,
+generators or opaque wrappers fail preflight.
 
-The model (`pokie.game.v2`, math identifier `pokie.math.v2`) includes effective bets, symbol inventory,
-strips, paylines, wilds, scatters, authored payout entries, win selection and cluster minimum. Default bets
-are `[1,2,3,4,5,10,20,30,40,50,100]`. Default three-row paylines retain the built-in middle/top/bottom order.
-Lines select the first matching left-to-right pattern, then look up its exact count; missing/zero entries
-never fall back to shorter awards. All-wild lines and all-wild clusters do not pay. Ways multiply matching
-row counts on consecutive reels and preserve the built-in all-wild substitution rule. Clusters use orthogonal
-adjacency, production DFS/wild ownership and the authored minimum. Lines include scatter payouts; ways and
-clusters select their own evaluator group, without adding a scatter evaluator. Each component multiplies its
-payout entry by stake before ways multiplication and ordered addition. Node preserves component attribution;
-portable CLI/Studio rounds remain amount-only for their existing analytics/feature boundaries.
+The arithmetic model remains `pokie.game.v2` / `pokie.math.v2`. A versioned
+`features: {schemaVersion: "pokie.features.v1", blueprint: ...}` extension binds
+the complete resolved declarative definition. The runtime checks that its
+arithmetic projection agrees with that definition. Byte count, SHA-256,
+configuration hash, component identity, imports, export signatures, memory layout,
+serialization and operation declarations are checked before session publication.
+Exact executable reconstruction rejects internally rehashed code/model mismatches.
+ABI 2 artifacts must be regenerated; no user artifact migration is introduced.
 
-Stops are **one unsigned i32 per reel**, rather than a packed integer. The little-endian header contains
-reel count at byte 0, rows at 4, stop-array address at 44, screen-array address at 48, component-array address
-at 52, record stride at 56, component count at 72, total payout (f64) at 80 and bounded memory use at 96.
-The exported `lowerSharedSlotMath` describes the exact image. Each component record carries kind, symbol id,
-component id, position count, ways (f64), amount (f64), then reel-major cell indexes. The reader validates memory,
-cardinality, stops, symbols, positions, amounts and total, without modulo repair. There is **no total stop-bit cap**.
-Limits are 64 reels, 64 rows, 1024 cells, 128 unique symbols, 1024 paylines, 65536 stops per reel,
-262144 total stops and 8 MiB of model/output/scratch memory. A paid play consumes at most 64 draws (one per supported reel). Models exceeding these bounds fail before publication
-with a recovery action. The existing small-artifact budget remains 64 KiB; it is not a promise that every
-supported larger model produces a 64 KiB artifact.
+The header retains a separate i32 stop per reel (address at byte 44), screen at
+48, result records at 52, component count at 72 and payout at 80. ABI 3 adds the
+wild-substitution table address at 116. `lowerSharedSlotMath` describes the full
+image. Limits remain 64 reels, 64 evaluation rows, 1024 evaluation cells, 128
+symbols, 1024 paylines, 65536 stops per reel, 262144 total arithmetic stops and
+8 MiB evaluator memory. Feature draws have a finite 262144-draw mathematical-step
+budget; exhaustion fails and rolls back rather than truncating a distribution.
+The 64 KiB small-artifact budget is not a size promise for every supported model.
 
-Blueprint is canonical. PAR and complete public package-model descriptors use existing model-preserving
-extraction routes; this extracts a declared representable model, never arbitrary TypeScript/Node behavior.
-Screen geometry, weighted sequences, modifiers, free games, bounded mechanics, HoldAndWin, jackpots and bet
-modes remain outside this WASM slice. Canonical integrity and individually declared operations are prerequisites;
-legacy metadata-only components remain inspection-only.
-
-The embedded descriptor (`pokie.component.v2`) and sidecar must agree on component identity, operation declarations,
-serialization (`pokie.session.v2`, `pokie.play.v2`, `pokie.state.v3`), RNG (`pokie.rng.v2`), host services and ABI.
-Byte count, SHA-256, configuration hash, imports, function signatures and required exports are checked before
-host RNG or session creation. The loader also reconstructs the supported lowering and requires **exact module
-bytes**, binding executable semantics and memory layout to the model, including internally rehashed corruption.
-Old executable ABIs must be regenerated; no user artifact migration is introduced.
+Blueprint is canonical. Supported PAR intermediates and complete declared package
+models use model-preserving extraction; absence of Node builtins is advisory and
+never proves arbitrary TypeScript fidelity. Publication stages the sidecar and
+publishes the module last, with owned-file cleanup on cancellation/failure.
+Legacy metadata-only components remain inspection-only. Play, serialize, replay
+and inspect declarations remain independent operation checks.
 
 ## The contract — `PokieWasmComponentManifest`
 
@@ -189,22 +178,42 @@ WASM, regardless of what this scan finds.**
 No package compilation is implied by a `"wasm"` project resolving successfully, or by
 `assessWasmPackagingPreflight` reporting zero blocking API usages.
 
-## Portable continuation and explicit evidence (runtime API 2.0)
+## Portable continuation and explicit evidence (runtime API 2.1)
 
-Snapshots use `pokie.state.v3`: artifact SHA-256 identity, seed, sequence, credits, total draw count (including
-unpaid initialization) and optional JSON-safe RNG continuation. There is no draw, screen, result or command
-history. Restoration rejects a different artifact identity before changing the host. A JSON round trip and a
-fresh host preserve continuation, including numeric RNG state zero. An initialized sequence-zero snapshot
-restores its authoritative RNG; an empty initial seed descriptor initializes exactly once. Later unbound
-compact v2 snapshots are rejected; regenerate campaign fixtures. The explicit legacy v1 history importer
-remains for existing audit fixtures: it validates history/count, preserves authoritative continuation and
-emits a bound v3 snapshot without retaining the historical input. This compatibility importer cannot establish
-an identity absent from the input, so callers must associate old evidence with its original artifact.
+Ordinary snapshots retain `pokie.state.v3`: artifact identity, seed, sequence,
+credits, actual draw count and optional JSON-safe RNG continuation. Feature
+snapshots use `pokie.state.v4`, adding entry bet/mode/context, native executable
+progress, banks/pools, locks/sticky lifetimes, weighted selections/counters and
+one compact logical delivery. Artifact-owned strips are reconstructed from the
+model, never from a retained session prefix. Nested state and its last accepted
+observation must agree before host restoration. Initialized sequence-zero
+snapshots and numeric RNG state zero remain authoritative.
 
-Custom nextRandom-only hosts retain live execution. Deterministic restoration requires appropriate host
-reset/restore support. Custom host snapshots must themselves remain bounded. Invalid stakes and insufficient
-credits fail before any draw or ledger mutation. Sibling sessions restore their owned continuation before play;
-replay cannot advance an unrelated settled session.
+`play` accepts the existing spin command contract: `bet`, `mode`, `roundId`,
+`delivery`, `continuation` and `maxSubrounds`. Continuations cannot change entry
+selection or charge another paid stake. `win` is mathematical win; `payout` is
+wallet release, including terminal free-game banks. Delivery-only cascade frames
+have zero new stake, payout and mathematical win. `logicalRound` retains totals
+and the latest mathematical subround, not a growing subround history. Composite
+`deliveries` are finite requested response evidence and are excluded from state.
+An interrupted composite retains one pending request/budget, so an original
+request retry or its proper successor can finish without another charge.
+Historical arbitrary retry retention is not promised by this compact protocol.
+
+Feature execution requires a bounded serializable/restorable RNG host. Ordinary
+nextRandom-only hosts retain their live execution contract. Sibling sessions and
+replay restore their owned RNG continuation before effects. Restore validates
+schema/artifact identities, model-bound nested state, weighted IDs/order/context,
+counters, coordinates, finite amounts and delivery cursors without replaying
+history. Mathematical failure rolls back the unaccepted successor; accepted
+composite prefixes remain checkpoints. Traps and disposal retire owned sessions
+and evaluator scratch. A session JSON file and Studio's in-memory session do not
+provide durable wallet/result transactions.
+
+Replay owns its explicit requested output. The legacy ordinary v1 importer and
+empty v2 seed descriptor remain ordinary compatibility inputs; feature replay
+also accepts an empty v2 seed origin and initializes it once. Later unbound
+compact states and incompatible schemas are rejected.
 
 `BoundedPokieWasmTraceCollector(capacity)` is exported from the root,
 `@fromstan/pokie/browser`, and `@fromstan/pokie/wasm`. Pass `{trace}` to create/restore/replay or
@@ -244,28 +253,28 @@ accounting and focused regression commands.
 
 ## Generated, visible and evaluated coordinates
 
-screenGeometry is explicitly unsupported by canonical WASM and PAR conversion: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).
-
-V2C-07 package audit envelopes are not a new WASM feature. The browser entry exposes
-portable recording types for future reuse, while execution stays on the shared
-package SessionRuntime path in Node/Studio. Canonical WASM retains dedicated `runtime.replay`,
-compact snapshots and bounded traces; ABI 2 uses artifact-bound v3 snapshots without adding command history. Native outcome libraries likewise retain their existing
-selection provenance, hashes and fairness verification profile.
+Canonical WASM retains supported screen geometry, fractional visible coverage,
+evaluated paylines and mapped win/feature positions. Hidden wilds/scatters do not
+acquire modifiers, pay or trigger features outside the evaluation window. PAR's
+nonrepresentable geometry boundary remains an explicit rejection.
 
 ## Weighted whole-sequence boundary
 
-Canonical WASM encodes literal strips and rejects `GameBlueprint.reelSequences`
-at conversion preflight and direct execution. The same restriction applies to
-PAR workbook export and automatic intermediate conversions. Neither target
-selects, concatenates or silently flattens a weighted reel; refusal occurs before
-publishing an output. Use a TypeScript package for whole-sequence variants.
+Mixed exact/weighted reels retain ordered case-sensitive IDs, exact arrays,
+circular stops, zero-mass alternatives and positive binary64 mass. The existing
+integer-ratio/rejection sampler selects by reel, then stop; active selections are
+held through feature continuations and cascade refills. Configured probabilities
+and eligible observed counts are distinct. Reads, rejected plays and duplicate
+deliveries do not add selections. Weighted bonus tables and stored outcome
+libraries remain separate contracts. Supported PAR preserves whole sequences;
+WASM does not flatten them into independent symbol weights.
 
-Authored `mechanics.holdAndWin` and `mechanics.jackpot` are rejected before WASM publication, alongside free games and nonempty bet modes. Their continuation/pool histories are also outside paid-grid outcome-library/Stake projection. Use the generated TypeScript package runtime for these workflows; stackable engine classes do not imply support in a different artifact target.
-
-Blueprint `mechanics.modifiers` is outside the canonical WASM boundary. Preflight
-rejects it before publishing a reduced model or artifact; use a TypeScript package.
-No modifier calculation engine is added to WASM. Sticky combinations likewise
-cannot be flattened into independent-spin outcome libraries or Stake routes.
+Portable replay remains distinct from package audit recordings. CLI and Studio
+forward modes and logical-round intent for supported artifacts; Play is
+process-only, and simulation excludes delivery-only frames from mathematical
+sampling while preserving money, lifecycle and weighted counters. See the
+[V2C-21 receipt](v2-completion/V2C-21.md) for executed candidate evidence and
+pending controller review.
 
 ## Bounded authored mechanics (V2C-14)
 

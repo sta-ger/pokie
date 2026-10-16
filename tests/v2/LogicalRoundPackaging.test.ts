@@ -38,16 +38,16 @@ function cascadeGame(onCalculate: () => void, options: api.CascadeResolverOption
         private win = 0;
         public getCascadeResult(): api.CascadeResult {
             if (!this.result) throw new Error("No cascade calculated");
-            return this.result; 
+            return this.result;
         }
         public override getSymbolsCombination() {
-            return this.result ? new api.SymbolsCombination().fromMatrix(this.result.getFinalScreen()) : this.baseSession.getSymbolsCombination(); 
+            return this.result ? new api.SymbolsCombination().fromMatrix(this.result.getFinalScreen()) : this.baseSession.getSymbolsCombination();
         }
         public override getWinAmount(): number {
-            return this.win; 
+            return this.win;
         }
         public getStakeAmount(): number {
-            return this.getBet(); 
+            return this.getBet();
         }
         public override play(): void {
             onCalculate();
@@ -59,10 +59,10 @@ function cascadeGame(onCalculate: () => void, options: api.CascadeResolverOption
             this.setCreditsAmount(before - this.getBet() + this.win);
         }
         public getSessionStateSchema(): api.SessionStateSchema {
-            return {kind: "custom"}; 
+            return {kind: "custom"};
         }
         public isSessionStateRestorable(): boolean {
-            return true; 
+            return true;
         }
         public validateSessionState(value: unknown): void {
             const state = value as {base: unknown; win: number};
@@ -70,7 +70,7 @@ function cascadeGame(onCalculate: () => void, options: api.CascadeResolverOption
             (this.baseSession as api.VideoSlotSession).validateSessionState(state.base);
         }
         public toSessionState() {
-            return {base: (this.baseSession as api.VideoSlotSession).toSessionState(), win: this.win}; 
+            return {base: (this.baseSession as api.VideoSlotSession).toSessionState(), win: this.win};
         }
         public fromSessionState(value: unknown): this {
             this.validateSessionState(value);
@@ -85,7 +85,7 @@ function cascadeGame(onCalculate: () => void, options: api.CascadeResolverOption
         validateSessionState: value => {
             const state = value as {base: unknown; win: number};
             if (!state || !Number.isFinite(state.win) || state.win < 0) throw new Error("Invalid cascade continuation");
-            api.validateExecutableState(state.base, {kind: "seeded-video-slot", reels: 3, symbols: ["A", "B"]}); 
+            api.validateExecutableState(state.base, {kind: "seeded-video-slot", reels: 3, symbols: ["A", "B"]});
         },
         createSession: context => new CascadeSession(new api.VideoSlotSession(config, new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(context?.seed ?? 7)))),
         getSessionSerializer: () => ({getInitialData: session => new api.VideoSlotSessionSerializer().getInitialData(session as api.VideoSlotSessionHandling),
@@ -110,6 +110,40 @@ function snapshot(session: api.GameSessionHandling) {
 }
 
 describe("logical-round delivery and mathematical boundaries", () => {
+    it.each(["stepwise", "composite"] as const)("retires completed %s progress only after successful plain execution", delivery => {
+        const model = game(0);
+        const session = model.createSession({seed: 7});
+        const runtime = new api.SessionRuntime(session);
+        const entry: api.SessionCommand = {kind: "spin", bet: 0.05, mode: "buy", roundId: "logical", delivery};
+        const entryResult = played(runtime.execute(entry));
+        let result = entryResult;
+        while (result.logicalRound?.status === "pending") result = played(runtime.execute({kind: "spin", delivery, continuation: {roundId: "logical", cursor: result.logicalRound.deliveryCursor}}));
+        const completed = runtime.getLogicalRound();
+        expect(completed?.status).toBe("completed");
+        expect(runtime.execute({kind: "spin", bet: 99})).toMatchObject({status: "invalid-command"});
+        expect(runtime.getLogicalRound()).toEqual(completed);
+        const prepared = runtime.prepare({kind: "spin", bet: 0.05}, session.getCreditsAmount());
+        if (prepared.status !== "ready") throw new Error(prepared.reason);
+        expect(prepared.rollback()).toBe(true);
+        expect(runtime.getLogicalRound()).toEqual(completed);
+        const reference = model.createSession({seed: 7});
+        (reference as api.GameSessionHandling & {fromSessionState(state: unknown): unknown}).fromSessionState(snapshot(session));
+        reference.setBet(session.getBet());
+        reference.setCreditsAmount(session.getCreditsAmount());
+        const other = new api.SessionRuntime(reference);
+        for (const roundId of [undefined, "plain"]) {
+            const command: api.SessionCommand = {kind: "spin", bet: 0.05, ...(roundId ? {roundId} : {})};
+            expect(played(runtime.execute(command))).toEqual(played(other.execute(command)));
+            expect(runtime.getLogicalRound()).toBeUndefined();
+            expect(snapshot(session)).toEqual(snapshot(reference));
+        }
+        // Historical retries still return their accepted observation without reviving it.
+        const current = snapshot(session);
+        expect(runtime.execute(entry)).toEqual(entryResult);
+        expect(runtime.getLogicalRound()).toBeUndefined();
+        expect(snapshot(session)).toEqual(current);
+    });
+
     it.each(["hold-flat", "hold-flat-modes", "fixed-holdAndWin", "fixed-holdAndWin-modes"].flatMap(id =>
         [undefined, "stepwise", "composite"].flatMap(delivery => [false, true].map(prepared => ({id, delivery: delivery as api.SessionCommand["delivery"], prepared}))),
     ))("F1f $id/$delivery prepared=$prepared restores command state without reviving a completed feature", ({id, delivery, prepared}) => {
@@ -460,7 +494,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
     it.each(["completed", "exhausted"] as const)("custom cascade at the bound retains %s artifacts, settlement, replay and retry", async status => {
         let calculations = 0;
         const model = cascadeGame(() => calculations++, {maxCascadeSteps: 2, onMaxCascadeStepsExceeded: "stop"}, status === "exhausted");
-        const repository = new api.InMemorySessionRepository(), 
+        const repository = new api.InMemorySessionRepository(),
             wallet = new api.InMemoryWallet(100),
             results = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>();
         await repository.save("session", api.captureInitialPokieSessionState({seed: 7}, model.createSession({seed: 7}), model.getSessionSerializer?.(), false, model));
@@ -674,11 +708,11 @@ describe("logical-round delivery and mathematical boundaries", () => {
         expect(() => new api.ReplayRecorder().record({game: model, round: 1})).toThrow(/exhausted/);
         const statistics = new api.AggregateSimulationRunner(model.createSession({seed: 7}), 1).run().getStatistics();
         expect(statistics.rounds).toBe(1);
-        expect(statistics.logicalRounds).toBeUndefined();
+        expect(statistics.logicalRounds).toEqual({rounds: 0, steps: 0, totalStake: 0, totalWin: 0});
     });
 
     it.each([0.05, 7.5, 1e-7])("packages the identical paid entry, retriggers, bank and next RNG round at bet %s", bet => {
-        const a = game().createSession({seed: 17}), 
+        const a = game().createSession({seed: 17}),
             b = game().createSession({seed: 17});
         const runtime = new api.SessionRuntime(a);
         let step = played(runtime.execute({kind: "spin", delivery: "stepwise", roundId: "round", bet, mode: "buy"}));
@@ -702,7 +736,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
         expect(result.logicalRound).toMatchObject({status: "exhausted", mathematicalStatus: "exhausted", cursor: 1, totalStake: 1, totalWin: 2});
         expect(runtime.execute({kind: "spin", roundId: "next", delivery: "stepwise"})).toMatchObject({status: "invalid-command"});
         const throwing = cascadeGame(() => undefined, {maxCascadeSteps: 1, onMaxCascadeStepsExceeded: "throw"}).createSession({seed: 7});
-        const before = snapshot(throwing), 
+        const before = snapshot(throwing),
             credits = throwing.getCreditsAmount();
         expect(() => new api.SessionRuntime(throwing).execute({kind: "spin", delivery: "composite", roundId: "throw"})).toThrow(api.MaxCascadeStepsExceededError);
         expect(snapshot(throwing)).toEqual(before);
@@ -710,7 +744,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
     });
 
     it("retains direct duplicate deliveries even after another round without another draw", () => {
-        const session = game().createSession({seed: 17}), 
+        const session = game().createSession({seed: 17}),
             runtime = new api.SessionRuntime(session);
         const entry: api.SessionCommand = {kind: "spin", roundId: "first", delivery: "composite", mode: "buy"};
         const saved = played(runtime.execute(entry));
@@ -723,10 +757,10 @@ describe("logical-round delivery and mathematical boundaries", () => {
     });
 
     it("rejects foreign, skipped, stale and entry-changing continuations before mutation", () => {
-        const session = game().createSession({seed: 17}), 
+        const session = game().createSession({seed: 17}),
             runtime = new api.SessionRuntime(session);
         played(runtime.execute({kind: "spin", roundId: "round", delivery: "stepwise", mode: "buy"}));
-        const before = snapshot(session), 
+        const before = snapshot(session),
             credits = session.getCreditsAmount();
         for (const command of [
             {kind: "spin", continuation: {roundId: "foreign", cursor: 1}},
@@ -740,11 +774,11 @@ describe("logical-round delivery and mathematical boundaries", () => {
     });
 
     it("rejects a mutated entry bet or paid continuation before another draw", () => {
-        const session = game(0).createSession({seed: 7}), 
+        const session = game(0).createSession({seed: 7}),
             runtime = new api.SessionRuntime(session);
         played(runtime.execute({kind: "spin", roundId: "round", delivery: "stepwise", mode: "buy"}));
         session.setBet(7.5);
-        const before = snapshot(session), 
+        const before = snapshot(session),
             play = jest.spyOn(session, "play");
         expect(runtime.execute({kind: "spin", continuation: {roundId: "round", cursor: 1}})).toMatchObject({status: "invalid-command"});
         expect(snapshot(session)).toEqual(before);
@@ -766,11 +800,11 @@ describe("logical-round delivery and mathematical boundaries", () => {
     });
 
     it("zero natural grants complete one entry, while a bounded feature keeps an explicit successor", () => {
-        const session = game(0).createSession({seed: 7}), 
+        const session = game(0).createSession({seed: 7}),
             runtime = new api.SessionRuntime(session);
         const result = played(runtime.execute({kind: "spin", roundId: "zero", delivery: "composite"}));
         expect(result.logicalRound).toMatchObject({status: "completed", cursor: 1, totalStake: 0.05});
-        const long = game(0).createSession({seed: 7}), 
+        const long = game(0).createSession({seed: 7}),
             bounded = new api.SessionRuntime(long);
         const prefix = played(bounded.execute({kind: "spin", roundId: "bounded", mode: "buy", delivery: "composite", maxSubrounds: 1}));
         expect(prefix.logicalRound).toMatchObject({status: "pending", cursor: 1});
@@ -828,7 +862,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
         let draw = 0;
         const session = new api.VideoSlotWithFreeGamesSession(free, {generateSymbolsCombination: () => {
             const symbol = screens[draw++];
-            return new api.SymbolsCombination().fromMatrix(Array.from({length: 3}, () => [symbol])); 
+            return new api.SymbolsCombination().fromMatrix(Array.from({length: 3}, () => [symbol]));
         }});
         const runtime = new api.SessionRuntime(session);
         let result = played(runtime.execute({kind: "spin", roundId: "retrigger", delivery: "stepwise"}));
@@ -850,7 +884,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
         const a = new api.AggregateSimulationRunner(session, 1).run();
         const b = new api.AggregateSimulationRunner(session, 2).run();
         expect(a.getStatistics().rounds).toBe(1);
-        expect(a.getStatistics().logicalRounds).toBeUndefined();
+        expect(a.getStatistics().logicalRounds).toEqual({rounds: 0, steps: 0, totalStake: 0, totalWin: 0});
         expect(b.getStatistics().logicalRounds).toEqual({rounds: 1, steps: 3, totalStake: 0.25, totalWin: expect.any(Number)});
         a.merge(b);
         expect(api.SimulationAccumulator.fromSnapshot(a.toSnapshot()).getStatistics().logicalRounds).toEqual(b.getStatistics().logicalRounds);
@@ -862,7 +896,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
         session.play();
         const statistics = new api.AggregateSimulationRunner(session, 2).run().getStatistics();
         expect(statistics.rounds).toBe(2);
-        expect(statistics.logicalRounds).toBeUndefined();
+        expect(statistics.logicalRounds).toEqual({rounds: 0, steps: 0, totalStake: 0, totalWin: 0});
     });
 
     it("replay addresses a logical round with its actual entry command and ordered artifact", () => {
@@ -874,7 +908,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
     });
 
     it("restarts at each committed subround and replays historical/final outputs independently", async () => {
-        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-logical-")), 
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-logical-")),
             filename = path.join(directory, "round.sqlite");
         const model = game(0);
         let store = await api.SqliteTransactionalRoundStore.open(filename);
@@ -924,7 +958,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
             let result = settled(await new api.SpinCommandHandler(model, store).execute({kind: "spin", sessionId: "session", requestId: "entry", delivery: "stepwise", roundId: "round"}));
             expect(result.state.logicalRound).toMatchObject({status: "pending", mathematicalStatus: "completed", cursor: 1, deliveryCursor: 1});
             const balance = await store.getBalance("session");
-            const debit = provider && jest.spyOn(provider, "debit"), 
+            const debit = provider && jest.spyOn(provider, "debit"),
                 credit = provider && jest.spyOn(provider, "credit");
             while (result.state.logicalRound!.status === "pending") {
                 await store.close();
@@ -942,18 +976,18 @@ describe("logical-round delivery and mathematical boundaries", () => {
             expect(await store.getBalance("session")).toBe(balance);
             if (provider) {
                 expect(debit).not.toHaveBeenCalled();
-                expect(credit).not.toHaveBeenCalled(); 
+                expect(credit).not.toHaveBeenCalled();
             }
         } finally {
             await store.close();
             provider?.close();
-            fs.rmSync(directory, {recursive: true, force: true}); 
+            fs.rmSync(directory, {recursive: true, force: true});
         }
     });
 
     it("cancellation after commit preserves the prefix and resumes its exact successor", async () => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-logical-cancel-"));
-        const model = game(0), 
+        const model = game(0),
             store = await api.SqliteTransactionalRoundStore.open(path.join(directory, "round.sqlite"));
         const abort = new AbortController();
         try {
@@ -976,4 +1010,34 @@ describe("logical-round delivery and mathematical boundaries", () => {
             fs.rmSync(directory, {recursive: true, force: true});
         }
     });
+});
+
+it("validates ordinary rectangular win coordinates through artifact construction, diagnostics and retained logical progress", () => {
+    const screen = [["A"], ["A"], ["A"]];
+    const result = new api.WinEvaluationResult({lineWins: [new api.LineWinComponent(new api.WinningLine(0.1, [0, 0, 0], [1, 1, 1], "0", [0, 1, 2], [], "A"), [[0, 0], [1, 0], [2, 0]])]});
+    const artifact = api.buildRoundArtifact({roundId: "coordinates", stake: 0.05, provenance: {game: {id: "coordinate-owner", name: "Coordinates", version: "1"}, pokieVersion: "1.3.0"}, steps: [{screen, winEvaluationResult: result}]});
+    const validator = new api.RoundArtifactValidator();
+    const projector = new api.PublicRoundArtifactProjector();
+    expect(projector.project(artifact).wins).toEqual(artifact.wins);
+    expect(validator.validate(artifact)).toEqual([]);
+    const command = {kind: "spin" as const, bet: 0.05, roundId: "coordinates", delivery: "stepwise" as const};
+    const logical = {id: "coordinates", entry: command, bet: 0.05, cursor: 1, mathematicalStatus: "completed" as const, deliveryCursor: 1, stageCursor: 1, status: "completed" as const,
+        totalStake: 0.05, totalWin: 0.1, totalPayout: 0.1, subrounds: [{id: "coordinates:0", index: 0, command, stake: 0.05, win: 0.1, payout: 0.1, credits: 100.05, screen, artifacts: artifact.steps}]};
+    expect(api.validateLogicalRound(logical)).toBeUndefined();
+    for (const position of [[999, 999], [-999, 999], ["0", 0], [0, 0.5], [0]]) {
+        const corrupt = JSON.parse(JSON.stringify(artifact)) as typeof artifact;
+        (corrupt.steps[0].wins[0] as {winningPositions: unknown}).winningPositions = [position];
+        (corrupt.wins[0] as {winningPositions: unknown}).winningPositions = [position];
+        const diagnostics = validator.validate(corrupt);
+        expect(diagnostics).toContainEqual(expect.objectContaining({code: "round-artifact-coordinates-invalid"}));
+        expect(() => projector.project(corrupt)).toThrow(/position|index|domain/i);
+        expect(() => api.projectPublicRoundStep(corrupt.steps[0])).toThrow(/position|index|domain/i);
+        expect(diagnostics.every(issue => issue.severity === "error")).toBe(true);
+        expect(api.validateLogicalRound({...logical, subrounds: [{...logical.subrounds[0], artifacts: corrupt.steps}]})).toBeDefined();
+        expect(() => api.buildRoundStepArtifact(0, {screen, winEvaluationResult: new api.WinEvaluationResult({lineWins: [new api.LineWinComponent(result.getLineWins()[0].getWinningLine(), [position] as number[][])]})})).toThrow(/position|index|domain/i);
+        expect(projector.project(artifact).wins).toEqual(artifact.wins);
+        expect(validator.validate(artifact)).toEqual([]);
+        expect(api.validateLogicalRound(logical)).toBeUndefined();
+        expect(api.buildRoundStepArtifact(0, {screen, winEvaluationResult: result})).toEqual(artifact.steps[0]);
+    }
 });

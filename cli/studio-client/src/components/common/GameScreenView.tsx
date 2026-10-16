@@ -20,6 +20,8 @@ import {CanonicalPlayerView} from "./CanonicalPlayerView";
 export function GameScreenView({
     screen,
     logicalRound,
+    sequenceSelections,
+    sequenceStatistics,
     wins,
     visibleRowCoverage,
     credits,
@@ -37,6 +39,8 @@ export function GameScreenView({
 }: {
     screen: string[][];
     logicalRound?: LogicalRoundDelivery;
+    sequenceSelections?: readonly import("../../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceSelection[];
+    sequenceStatistics?: readonly import("../../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceStatistics[];
     visibleRowCoverage?: readonly number[];
     wins?: readonly RoundArtifactWin[];
     credits?: number;
@@ -55,6 +59,8 @@ export function GameScreenView({
     return (
         <CanonicalPlayerView
             logicalRound={logicalRound}
+            sequenceSelections={sequenceSelections}
+            sequenceStatistics={sequenceStatistics}
             reelsSymbols={screen}
             wins={wins}
             visibleRowCoverage={visibleRowCoverage}

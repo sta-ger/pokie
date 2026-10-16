@@ -42,12 +42,12 @@ describe("StudioArtifactBuildService", () => {
         fs.writeFileSync(source, JSON.stringify(blueprint));
         const input = fs.readFileSync(source);
         expect(await service.preview(source, "wasm", destination)).toMatchObject({status: "unsupported", message: expect.stringContaining(code)});
-        expect(await service.build(source, "wasm", destination)).toMatchObject({status: "error", message: expect.stringContaining(code)});
+        expect(await service.build(source, "wasm", destination)).toMatchObject({status: "unsupported", message: expect.stringContaining(code)});
         expect(fs.readdirSync(workDir)).toEqual([path.basename(source)]);
         expect(fs.readFileSync(source)).toEqual(input);
         fs.writeFileSync(destination, "competing module");
         fs.writeFileSync(`${destination}.pokie-wasm.json`, "competing sidecar");
-        expect(await service.build(source, "wasm", destination)).toMatchObject({status: "conflict"});
+        expect(await service.build(source, "wasm", destination)).toMatchObject({status: "unsupported", message: expect.stringContaining(code)});
         expect(fs.readFileSync(destination, "utf8")).toBe("competing module");
         expect(fs.readFileSync(`${destination}.pokie-wasm.json`, "utf8")).toBe("competing sidecar");
         fs.rmSync(destination);
@@ -626,13 +626,14 @@ describe("StudioArtifactBuildService", () => {
         const target = targets.find((candidate) => candidate.target === "wasm");
         expect(target?.unsupportedNotes.join(" ")).toMatch(/same pokie.math.v2 WebAssembly evaluator/);
         expect(target?.unsupportedNotes.join(" ")).toMatch(/no total-bit cap/);
-        expect(target?.unsupportedNotes.join(" ")).toMatch(/Rejects mechanics.freeGames, mechanics.holdAndWin, mechanics.jackpot/);
+        expect(target?.unsupportedNotes.join(" ")).toMatch(/all 36 launch catalogue rows/);
     });
 
     it.each([
         {winModel: {type: "ways"}},
         {winModel: {type: "clusters", minimumClusterSize: 3}},
         {symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(1025).fill("A"), Array<string>(1025).fill("A"), Array<string>(1025).fill("A")]},
+        {scatters: ["B"], mechanics: {freeGames: {scatterSymbol: "B", awardsByCount: {3: 5}}}},
     ])("previews and publishes shared WASM launch models: %j", async model => {
         const source = writeBlueprintFile(buildBlueprint(model));
         const destination = path.join(workDir, "shared.wasm");
@@ -642,7 +643,6 @@ describe("StudioArtifactBuildService", () => {
     });
 
     it.each([
-        {scatters: ["B"], mechanics: {freeGames: {scatterSymbol: "B", awardsByCount: {3: 5}}}},
         {symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(65537).fill("A"), Array<string>(1024).fill("A"), Array<string>(1024).fill("A")]},
     ])("diagnoses unsupported WASM models before publication and permits supported retry: %j", async (model) => {
         const source = writeBlueprintFile(buildBlueprint(model));

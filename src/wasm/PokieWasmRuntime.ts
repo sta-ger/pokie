@@ -1,3 +1,5 @@
+import {ACTIVE_POKIE_WASM_TRACES as ACTIVE_TRACE_COLLECTORS} from "./internal/PokieWasmTraceOwnership.js";
+import {instantiateDeclarativeWasmRuntime} from "./internal/instantiateDeclarativeWasmRuntime.js";
 import {lowerSharedSlotMath, readSharedSlotMathResult} from "./math/SharedSlotMath.js";
 import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
 import {SeededRandomNumberGenerator} from "../session/videoslot/combinations/SeededRandomNumberGenerator.js";
@@ -7,12 +9,11 @@ import {
     POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION,
     hasCanonicalWasmOperationDeclaration,
     readIntegrityBoundCanonicalPokieWasmArtifact,
-    type PokieWasmGameModel,
+
 } from "./PokieWasmCanonicalModule.js";
-import {BoundedPokieWasmTraceCollector, POKIE_WASM_DEFAULT_CREDITS, type PokieWasmHost, type PokieWasmHostState, type PokieWasmRound, type PokieWasmRuntime, type PokieWasmRuntimeSession, type PokieWasmSessionState, type PokieWasmRestorableState} from "./PokieWasmRuntimeApi.js";
+import {BoundedPokieWasmTraceCollector, POKIE_WASM_DEFAULT_CREDITS, type PokieWasmHost, type PokieWasmHostState, type PokieWasmRound, type PokieWasmRuntime, type PokieWasmRuntimeSession, type PokieWasmOrdinarySessionState, type PokieWasmRestorableState} from "./PokieWasmRuntimeApi.js";
 
 const MAX_HOST_RANDOM_DRAWS_PER_PLAY = 1024;
-const ACTIVE_TRACE_COLLECTORS = new WeakSet<BoundedPokieWasmTraceCollector>();
 
 /** A browser-safe serializable host stream for deterministic sessions and replay. */
 export class SeededPokieWasmHost implements PokieWasmHost {
@@ -48,7 +49,9 @@ export function inspectPokieWasm(manifest: PokieWasmComponentManifest): PokieWas
 /** Instantiates the canonical portable ABI and derives complete deterministic rounds from it. */
 export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieWasmComponentManifest, host: PokieWasmHost): Promise<PokieWasmRuntime> {
     const canonical = await readIntegrityBoundCanonicalPokieWasmArtifact(bytes, manifest);
-    const layout = lowerSharedSlotMath(canonical.model);
+    if (canonical.model.features) return instantiateDeclarativeWasmRuntime({...canonical.model, features: canonical.model.features}, manifest, host);
+    const ordinaryModel = canonical.model;
+    const layout = lowerSharedSlotMath(ordinaryModel);
     const artifactIdentity = manifest.artifact!.sha256;
     let currentDraws: number[] = [];
     const instance = await WebAssembly.instantiate(canonical.module, {
@@ -56,7 +59,7 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
             "next_random": () => {
                 if (currentDraws.length >= MAX_HOST_RANDOM_DRAWS_PER_PLAY) throw new Error("POKIE WASM play requested too many host random draws while selecting reel stops.");
                 const draw = nextDraw();
-                if (currentDraws.length >= canonical.model.reels) throw new Error("POKIE WASM play requested more reel stops than its canonical model declares.");
+                if (currentDraws.length >= ordinaryModel.reels) throw new Error("POKIE WASM play requested more reel stops than its canonical model declares.");
                 currentDraws.push(draw);
                 return draw;
             },
@@ -75,10 +78,10 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
         diagnostics.hostPayloadBytes += new TextEncoder().encode(JSON.stringify(copy)).length;
         return copy;
     };
-    const snapshot = (state: PokieWasmSessionState): PokieWasmSessionState => {
+    const snapshot = (state: PokieWasmOrdinarySessionState): PokieWasmOrdinarySessionState => {
         const json = JSON.stringify(state);
         diagnostics.snapshotPayloadBytes += new TextEncoder().encode(json).length;
-        return JSON.parse(json) as PokieWasmSessionState;
+        return JSON.parse(json) as PokieWasmOrdinarySessionState;
     };
     const acquireTrace = (trace?: BoundedPokieWasmTraceCollector): void => {
         if (trace === undefined) return;
@@ -98,33 +101,34 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
         if (!Number.isFinite(draw) || draw < 0 || draw >= 1) throw new Error("POKIE WASM host RNG must return a finite value in [0, 1).");
         return draw;
     }
-    function initialState(seed: string, credits: number, trace?: BoundedPokieWasmTraceCollector): PokieWasmSessionState {
+    function initialState(seed: string, credits: number, trace?: BoundedPokieWasmTraceCollector): PokieWasmOrdinarySessionState {
         const draws: number[] = [];
         if (host.resetSeed !== undefined) {
             host.resetSeed(seed);
             // Node constructs an unpaid initial screen. Consume the same draws
             // without invoking a paid export or changing the session ledger.
-            for (let reel = 0; reel < canonical.model.reels; reel++) draws.push(nextDraw());
+            for (let reel = 0; reel < ordinaryModel.reels; reel++) draws.push(nextDraw());
         }
         const rngState = hostSnapshot();
         if (trace !== undefined) Reflect.apply(BoundedPokieWasmTraceCollector.prototype.record, trace, [{kind: "initialization", sequence: 0, draws}]);
         return {schemaVersion: "pokie.state.v3", artifactIdentity, seed, drawCount: draws.length, sequence: 0, credits,
             ...(rngState === undefined ? {} : {rngState: cloneHostState(rngState)})};
     }
-    const restoreState = (state: PokieWasmRestorableState, trace?: BoundedPokieWasmTraceCollector): PokieWasmSessionState => {
+    const restoreState = (state: PokieWasmRestorableState, trace?: BoundedPokieWasmTraceCollector): PokieWasmOrdinarySessionState => {
         if (state === null || typeof state !== "object" || !["pokie.state.v1", "pokie.state.v2", "pokie.state.v3"].includes(state.schemaVersion) || typeof state.seed !== "string" ||
             !Number.isSafeInteger(state.sequence) || state.sequence < 0 || !Number.isFinite(state.credits) || state.credits < 0 || (state.rngState !== undefined && !isHostState(state.rngState))) {
             throw new Error("Unsupported or malformed POKIE WASM session state.");
         }
         if (state.schemaVersion === "pokie.state.v3" && state.artifactIdentity !== artifactIdentity) throw new Error("POKIE WASM state belongs to an incompatible artifact identity.");
         if (state.schemaVersion === "pokie.state.v2" && (state.sequence !== 0 || state.drawCount !== 0)) throw new Error("Unbound compact POKIE WASM state is incompatible; start a new session.");
+        if (state.schemaVersion === "pokie.state.v4") throw new Error("Feature state cannot restore an ordinary artifact.");
         const legacy = state.schemaVersion === "pokie.state.v1";
         if (legacy ? !Array.isArray(state.draws) || !state.draws.every(draw => typeof draw === "number" && Number.isFinite(draw) && draw >= 0 && draw < 1) :
             !Number.isSafeInteger(state.drawCount) || state.drawCount < 0 || "draws" in state) {
             throw new Error("Unsupported or malformed POKIE WASM session state.");
         }
         const drawCount = legacy ? state.draws.length : state.drawCount;
-        if (drawCount !== state.sequence * canonical.model.reels && drawCount !== (state.sequence + 1) * canonical.model.reels) throw new Error("Malformed POKIE WASM draw count.");
+        if (drawCount !== state.sequence * ordinaryModel.reels && drawCount !== (state.sequence + 1) * ordinaryModel.reels) throw new Error("Malformed POKIE WASM draw count.");
         if (state.rngState !== undefined) {
             if (host.restoreState === undefined) throw new Error("This POKIE WASM host cannot restore the serialized RNG continuation.");
             host.restoreState(cloneHostState(state.rngState));
@@ -144,10 +148,10 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
         return {schemaVersion: "pokie.state.v3", artifactIdentity, seed: state.seed, drawCount, sequence: state.sequence, credits: state.credits,
             ...(rngState === undefined ? {} : {rngState})};
     };
-    const playRound = (state: PokieWasmSessionState, command: Record<string, unknown> = {}): {readonly round: PokieWasmRound; readonly state: PokieWasmSessionState} => {
+    const playRound = (state: PokieWasmOrdinarySessionState, command: Record<string, unknown> = {}): {readonly round: PokieWasmRound; readonly state: PokieWasmOrdinarySessionState} => {
         currentDraws = [];
-        if (!Number.isSafeInteger(state.sequence + 1) || !Number.isSafeInteger(state.drawCount + canonical.model.reels)) throw new Error("POKIE WASM continuation counters are exhausted.");
-        const stake = resolveStake(command, canonical.model);
+        if (!Number.isSafeInteger(state.sequence + 1) || !Number.isSafeInteger(state.drawCount + ordinaryModel.reels)) throw new Error("POKIE WASM continuation counters are exhausted.");
+        const stake = resolveStake(command, ordinaryModel);
         const creditsBefore = state.credits;
         if (creditsBefore < stake) throw new Error(`POKIE WASM session has insufficient credits for stake ${stake}.`);
         // Each settled session owns its continuation even when replay, restore,
@@ -158,8 +162,8 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
             diagnostics.hostRestorations++;
         }
         const payout = play(stake);
-        if (currentDraws.length !== canonical.model.reels) throw new WebAssembly.RuntimeError("POKIE WASM play returned an invalid draw cardinality.");
-        const {stops, screen} = readSharedSlotMathResult(instance, canonical.model, payout, layout);
+        if (currentDraws.length !== ordinaryModel.reels) throw new WebAssembly.RuntimeError("POKIE WASM play returned an invalid draw cardinality.");
+        const {stops, screen} = readSharedSlotMathResult(instance, ordinaryModel, payout, layout);
         const winMultiplier = payout / stake;
         if (!Number.isFinite(creditsBefore - stake + payout)) throw new Error("POKIE WASM payout or balance overflow.");
         const rngState = hostSnapshot();
@@ -177,8 +181,8 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
             round: {sequence: next.sequence, draw: currentDraws[0], stops, screen, winMultiplier, stake, payout, creditsBefore, credits: next.credits, command: JSON.parse(JSON.stringify(command)) as Record<string, unknown>},
         };
     };
-    const session = (initial: PokieWasmSessionState, initialTrace?: BoundedPokieWasmTraceCollector): PokieWasmRuntimeSession => {
-        let state: PokieWasmSessionState | undefined = initial;
+    const session = (initial: PokieWasmOrdinarySessionState, initialTrace?: BoundedPokieWasmTraceCollector): PokieWasmRuntimeSession => {
+        let state: PokieWasmOrdinarySessionState | undefined = initial;
         let trace = initialTrace;
         const dispose = (): void => {
             state = undefined;
@@ -257,7 +261,7 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
             try {
                 let replayState = restoreState(state, options.trace);
                 const results: PokieWasmRound[] = [];
-                let stateBeforeFinal: PokieWasmSessionState | undefined;
+                let stateBeforeFinal: PokieWasmOrdinarySessionState | undefined;
                 for (const command of commands) {
                     if (results.length === commands.length - 1) stateBeforeFinal = replayState;
                     const result = playRound(replayState, command);
@@ -314,7 +318,10 @@ function isHostState(value: unknown): value is PokieWasmHostState {
     return typeof value === "object" && Object.values(value).every(isHostState);
 }
 
-function resolveStake(command: Record<string, unknown>, model: PokieWasmGameModel): number {
+function resolveStake(command: Record<string, unknown>, model: import("./math/SharedSlotMath.js").SharedSlotMathModel): number {
+    if (command.mode !== undefined) throw new Error("This WASM model does not support bet mode selection.");
+    if (command.delivery !== undefined || command.roundId !== undefined) throw new Error("This ordinary WASM artifact does not declare logical delivery; use its plain play contract.");
+    if (command.continuation !== undefined) throw new Error("This ordinary WASM model has no pending continuation.");
     const stake = command.bet === undefined ? model.availableBets?.[0] ?? 1 : command.bet;
     if (typeof stake !== "number" || !Number.isFinite(stake) || stake <= 0) throw new Error("POKIE WASM play command bet must be a finite positive number.");
     if (model.availableBets !== undefined && !model.availableBets.includes(stake)) {

@@ -892,6 +892,9 @@ export type OutcomeSourceReplayDescriptorView = {
 // The server's copy of this same type lives in "pokie" itself (src/replay/ReplayDescriptor.ts) —
 // kept as its own client-side copy here, same convention as every other type in this file.
 export type ReplayDescriptor = {
+    totalPayout?: number;
+    sequenceSelections?: readonly import("../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceSelection[];
+    sequenceStatistics?: readonly import("../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceStatistics[];
     unit?: "step" | "logical-round";
     commands?: readonly import("../../../../src/runtime/SessionCommand.js").SessionCommand[];
     modePolicy?: {betModeId: string; selection: "repeat-when-available" | "recorded-commands"};
@@ -1010,6 +1013,8 @@ export type StudioReplayListEntry = {
 // an idempotent retry of the same requestId), `studioRecordedAt` is when Studio recorded it, `studioSource`
 // names which tab/route produced it, and `studioOperation` names the concrete action within that tab.
 export type StudioRuntimeSessionView = {
+    sequenceSelections?: readonly import("../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceSelection[];
+    sequenceStatistics?: readonly import("../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceStatistics[];
     logicalRound?: LogicalRoundDelivery;
     logicalRoundDeliverySupported?: boolean;
     logicalRoundDurability?: "process-only";

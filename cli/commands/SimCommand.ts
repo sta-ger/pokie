@@ -1,6 +1,6 @@
+import {collectPokieWasmSimulation} from "../../src/wasm/PokieWasmCommands.js";
 import {projectOutcomeSourceSimulationReport} from "../../src/reporting/projectOutcomeSourceSimulationReport.js";
 import {describeSimulationDiagnostics} from "../../src/reporting/describeSimulationDiagnostics.js";
-import {analyticsEnvelope} from "../../src/simulation/FeatureAnalytics.js";
 import {describeFeatureAnalytics} from "../../src/simulation/describeFeatureAnalytics.js";
 import {Command} from "commander";
 import {
@@ -28,7 +28,6 @@ import {
     SimulationReportSet,
     SIM_OPERATION,
     SeededPokieWasmHost,
-    SimulationAccumulator,
     loadPokieWasmFileRuntime,
     WeightedOutcomeRandomSource,
 } from "@fromstan/pokie";
@@ -285,7 +284,7 @@ export class SimCommand implements CliCommandHandling {
                 }
                 return parsed;
             })
-            .addHelpText("after", "\nCanonical WASM: use --workers 1; --mode and adaptive convergence are unavailable.\nCompare with replay using the same explicit --seed and --round as simulation --rounds.\nExample: pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json\n         pokie replay game.wasm --round 6 --seed demo\n")
+            .addHelpText("after", "\nCanonical WASM: use --workers 1; declared modes support --mode <id|all>. Adaptive convergence is unavailable.\nCompare with replay using the same explicit --seed and --round as simulation --rounds.\nExample: pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json\n         pokie replay game.wasm --round 6 --seed demo\n")
             .action(async (packageRoot: string, excess: string[], rawOptions: SimCliOptions) => {
                 // An empty-string positional ("pokie sim ''") is present as far as Commander's own
                 // required-argument check is concerned, but the pre-Commander behavior this preserves
@@ -372,9 +371,6 @@ export class SimCommand implements CliCommandHandling {
         if (options.workers !== 1) {
             throw new Error("Canonical WASM simulation currently supports --workers 1 because its portable host is executed in-process.");
         }
-        if (options.mode !== undefined) {
-            throw new Error("Canonical WASM simulation does not support --mode; select a declared bet with the artifact's play command instead.");
-        }
         if (options.convergence !== undefined) {
             throw new Error("Canonical WASM simulation does not support adaptive convergence yet; omit --min-rounds, --rtp-tolerance, and --check-interval.");
         }
@@ -382,34 +378,20 @@ export class SimCommand implements CliCommandHandling {
         const seed = options.seed ?? "pokie-wasm-simulation";
         const startedAt = Date.now();
         const runtime = await loadPokieWasmFileRuntime(project.rootPath, new SeededPokieWasmHost(seed));
-        let session;
         try {
-            session = runtime.createSession(seed, {credits: Number.MAX_SAFE_INTEGER});
-            const accumulator = new SimulationAccumulator();
-            for (let index = 0; index < options.rounds; index++) {
-                const round = await session.play();
-                accumulator.addRound(round.stake, round.payout, {envelope: analyticsEnvelope(runtime.manifest.artifact?.configurationHash ?? null), source: "wasm", logicalEntry: false, logicalCompletion: false, carriedSubround: false, cascadeSteps: 0, features: []});
-            }
-            const statistics = accumulator.getStatistics();
-            const report = this.reportBuilder.build({
+            const results = await collectPokieWasmSimulation(runtime, seed, options.rounds, {mode: options.mode});
+            const reports = results.map(result => this.reportBuilder.build({
                 manifest: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version},
-                requestedRounds: options.rounds,
-                seed,
-                statistics,
-                durationMs: Date.now() - startedAt,
-                packageRoot: project.rootPath,
-                configHash: runtime.manifest.artifact?.configurationHash,
-                pokieVersion: this.pokieVersion,
-                workers: 1,
-                workerSeedStrategy: "portable seeded host stream (single in-process WASM runtime)",
-                stopReason: "maxRounds",
-            });
+                requestedRounds: options.rounds, seed, statistics: result.statistics, durationMs: Date.now() - startedAt,
+                packageRoot: project.rootPath, configHash: runtime.manifest.artifact?.configurationHash, pokieVersion: this.pokieVersion,
+                workers: 1, workerSeedStrategy: "portable seeded host stream (single in-process WASM runtime)", stopReason: "maxRounds", betMode: result.mode, targetRtp: result.targetRtp,
+            }));
+            const report = options.mode === "all" ? {game: reports[0].game, requestedRounds: options.rounds, seed, workers: 1, modes: Object.fromEntries(results.map((result, index) => [result.mode!, reports[index]]))} : reports[0];
             if (options.out) this.writeReport(options.out, JSON.stringify(report, null, 4));
             if (options.format === "json") console.log(JSON.stringify(report, null, 4));
-            else this.printSummary(report);
+            else for (const item of reports) this.printSummary(item);
             if (options.out) this.printReportDestination(options.out, options.format === "json");
         } finally {
-            session?.dispose();
             runtime.dispose();
         }
     }

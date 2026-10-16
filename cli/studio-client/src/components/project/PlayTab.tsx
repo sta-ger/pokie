@@ -193,6 +193,7 @@ export function PlayTab({
     } else if (activeSession !== undefined) {
         roundResult = (
             <GameScreenView logicalRound={activeSession?.logicalRound}
+                sequenceSelections={activeSession.sequenceSelections} sequenceStatistics={activeSession.sequenceStatistics}
                 screen={describeRuntimeScreen(activeSession.screen) ?? []}
                 visibleRowCoverage={Array.isArray(activeSession.visibleRowCoverage) ? activeSession.visibleRowCoverage as number[] : undefined}
                 credits={activeSession.credits}

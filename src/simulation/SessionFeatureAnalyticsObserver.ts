@@ -28,13 +28,13 @@ export function setSimulationModelIdentity(session: GameSessionHandling, modelId
     }
 }
 type Active = {duration: number; win: number; known: boolean; entryPosition: number};
-type ObserverState = {
+export type SessionFeatureAnalyticsState = {
     position: number;
     source: string;
     active: Partial<Record<AnalyticsFeature, Active>>;
     logicalKnown?: boolean;
 };
-const states = new WeakMap<GameSessionHandling, ObserverState>();
+const states = new WeakMap<GameSessionHandling, SessionFeatureAnalyticsState>();
 export type SessionFeatureAnalyticsBeforePlay = {
     pending: boolean;
     freeNum: number;
@@ -44,6 +44,7 @@ export type SessionFeatureAnalyticsBeforePlay = {
     locks: number;
     holdRemaining: number;
     respins: boolean;
+    respinsRemaining?: number;
     bonus: boolean;
 };
 export interface SessionFeatureAnalyticsObserving {
@@ -88,7 +89,7 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
     private readonly holdGrant: number | undefined;
     private readonly envelope: AnalyticsEnvelope;
     private readonly session: GameSessionHandling;
-    private readonly state: ObserverState;
+    private readonly state: SessionFeatureAnalyticsState;
     constructor(session: GameSessionHandling) {
         this.session = session;
         this.envelope = sessionAnalyticsEnvelope(session);
@@ -99,6 +100,69 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             states.set(session, state);
         }
         this.state = state;
+    }
+    public toState(): SessionFeatureAnalyticsState {
+        return JSON.parse(JSON.stringify(this.state)) as SessionFeatureAnalyticsState;
+    }
+    public restoreState(value: SessionFeatureAnalyticsState): void {
+        if (!value || Object.keys(value).some(key => !["position", "source", "active", "logicalKnown"].includes(key)) ||
+            !Number.isSafeInteger(value.position) || value.position < 0 || typeof value.source !== "string" || !value.source || value.source.length > 1024 ||
+            (value.logicalKnown !== undefined && typeof value.logicalKnown !== "boolean") || !value.active || typeof value.active !== "object" || Array.isArray(value.active) ||
+            Object.entries(value.active).some(([feature, active]) => !this.envelope.supportedFeatures.includes(feature as AnalyticsFeature) || !active ||
+                Object.keys(active).some(key => !["duration", "win", "known", "entryPosition"].includes(key)) ||
+                !Number.isSafeInteger(active.duration) || active.duration < 0 || active.duration > value.position || !Number.isFinite(active.win) || active.win < 0 || typeof active.known !== "boolean" ||
+                !Number.isSafeInteger(active.entryPosition) || active.entryPosition < 0 || active.entryPosition > value.position || (active.known && active.entryPosition === 0))) throw new Error("Invalid active feature analytics continuation.");
+        const restored = JSON.parse(JSON.stringify(value)) as SessionFeatureAnalyticsState;
+        Reflect.deleteProperty(this.state, "logicalKnown");
+        Object.assign(this.state, restored);
+    }
+    /** The caller supplies entry identity from accepted mathematics, never from analytics copies. */
+    public validateAcceptedTransition(before: SessionFeatureAnalyticsBeforePlay, entry: boolean, logicalContinuation: boolean, accepted?: {entryPosition: number; roundingScale?: number; wins: Partial<Record<AnalyticsFeature, number>>}): void {
+        const invalid = () => new Error("Analytics prior state contradicts its accepted mathematical entry or continuation.");
+        if (!before || Object.keys(before).filter(key => key !== "respinsRemaining").sort().join(",") !== "bonus,free,freeNum,freeSum,hold,holdRemaining,locks,pending,respins" ||
+            ![before.pending, before.free, before.hold, before.respins, before.bonus].every(value => typeof value === "boolean") ||
+            ![before.freeNum, before.freeSum, before.locks, before.holdRemaining].every(value => Number.isSafeInteger(value) && value >= 0) ||
+            before.pending === entry || before.free !== (before.freeSum > before.freeNum) || before.freeNum > before.freeSum ||
+            before.pending !== (before.free || before.hold || before.respins || before.bonus) ||
+            !before.pending && (this.state.logicalKnown === true || Object.keys(this.state.active).length > 0) ||
+            logicalContinuation && this.state.logicalKnown !== true) throw invalid();
+        const supported = (name: AnalyticsFeature) => this.envelope.supportedFeatures.includes(name);
+        if (before.free !== (before.pending && supported("freeGames")) || before.hold !== (before.pending && supported("holdAndWin")) ||
+            before.respins !== (before.pending && supported("respins")) || before.bonus !== (before.pending && supported("weightedBonus")) ||
+            !supported("freeGames") && (before.freeNum !== 0 || before.freeSum !== 0) ||
+            !supported("holdAndWin") && (before.locks !== 0 || before.holdRemaining !== 0)) throw invalid();
+        if (supported("respins") ? !Number.isSafeInteger(before.respinsRemaining) || before.respinsRemaining! < 0 ||
+            before.respins !== (before.respinsRemaining! > 0) : before.respinsRemaining !== undefined) throw invalid();
+        const active = {freeGames: before.free, holdAndWin: before.hold, respins: before.respins, weightedBonus: before.bonus};
+        if (Object.keys(this.state.active).some(feature => Reflect.get(active, feature) !== true)) throw invalid();
+        for (const [feature, wasActive] of Object.entries(active)) {
+            const retained = this.state.active[feature as AnalyticsFeature];
+            if (retained && !wasActive || logicalContinuation && wasActive && (!retained || !retained.known)) throw invalid();
+        }
+        if (accepted) {
+            // Canonical restoration supplies accepted accounting. A native carried
+            // observer without that authority keeps its existing partial-duration contract.
+            if (before.free && this.state.active.freeGames?.duration !== before.freeNum) throw invalid();
+            for (const [feature, retained] of Object.entries(this.state.active)) {
+                const expected = accepted.wins[feature as AnalyticsFeature];
+                const tolerance = 32 * Number.EPSILON * Math.max(1, accepted.roundingScale ?? 0, Math.abs(expected ?? 0), retained!.win);
+                if (!Number.isFinite(expected) || expected! < -tolerance || Math.abs(retained!.win - expected!) > tolerance ||
+                    retained!.entryPosition !== accepted.entryPosition || !retained!.known) throw new Error("Analytics accumulated feature win or provenance contradicts accepted accounting.");
+            }
+        }
+        const after = this.beforePlay();
+        const grant = (this.session as Partial<WonFreeGamesNumberDetermining>).getWonFreeGamesNumber?.() ?? 0;
+        if (before.free && (after.freeNum !== before.freeNum + 1 || after.freeSum !== before.freeSum + grant)) throw invalid();
+        if (before.hold && (before.locks > after.locks || before.holdRemaining < 1 || before.holdRemaining > this.holdGrant! ||
+            after.hold && after.holdRemaining !== (after.locks > before.locks ? this.holdGrant : before.holdRemaining - 1))) throw invalid();
+        const bounded = observeVideoSlotFeatures(this.session).boundedMechanics;
+        for (const [feature, observed] of [["weightedBonus", bounded?.weightedBonus], ["respins", bounded?.respins]] as const) {
+            if (!observed) continue;
+            const continuing = observed.executed > 0;
+            if (before[feature === "weightedBonus" ? "bonus" : "respins"] !== continuing) throw invalid();
+            const retained = this.state.active[feature];
+            if (retained?.known && (retained.duration !== observed.executed - 1 || retained.entryPosition !== this.state.position - retained.duration)) throw invalid();
+        }
     }
     public getEnvelope(): AnalyticsEnvelope {
         return {...this.envelope, supportedFeatures: [...this.envelope.supportedFeatures]};
@@ -118,6 +182,7 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             locks: hold.getLockedHoldAndWinSymbols?.().length ?? 0,
             holdRemaining: hold.getHoldAndWinRespinsRemaining?.() ?? 0,
             respins: bounded?.respins ? bounded.respins.remaining > 0 : pending && this.envelope.supportedFeatures.includes("respins"),
+            ...(bounded?.respins ? {respinsRemaining: bounded.respins.remaining} : {}),
             bonus: bounded?.weightedBonus ? bounded.weightedBonus.remaining > 0 : pending && this.envelope.supportedFeatures.includes("weightedBonus"),
         };
     }

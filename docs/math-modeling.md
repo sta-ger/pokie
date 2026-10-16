@@ -212,8 +212,8 @@ failed evaluation/settlement and duplicate delivery cannot commit another advanc
 
 All six variants compose with line, ways and cluster win models, exact/weighted
 reel sources, supported geometry, free games, bet modes and jackpots. Hold & Win
-and value evaluators are explicitly unsupported with these declarations. WASM
-rejects all modifiers. Persistent sticky rules block independent-spin exact
+and value evaluators are explicitly unsupported with these declarations. Canonical WASM
+preserves these supported modifier contracts. Persistent sticky rules block independent-spin exact
 outcome enumeration and its downstream conversions; stateless rules use the same
 session payout path during enumeration. Custom callbacks retain their custom
 capability/extraction boundary. See [serialization](serialization.md) and

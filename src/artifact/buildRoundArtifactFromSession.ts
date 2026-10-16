@@ -66,7 +66,7 @@ export function buildRoundArtifactFromSession<T extends string | number = string
     return artifact;
 }
 
-function deriveStandardFeatureEvents(session: unknown): RoundArtifactFeatureEventInput[] {
+export function deriveStandardFeatureEvents(session: unknown): RoundArtifactFeatureEventInput[] {
     const observations = observeVideoSlotFeatures(session);
     const events: RoundArtifactFeatureEventInput[] = [];
     if (supportsWonFreeGamesNumberDetermining(session) && session.getWonFreeGamesNumber() > 0) events.push({type: "freeGamesTriggered", data: {count: session.getWonFreeGamesNumber()}});

@@ -103,7 +103,7 @@ cascade/respins/collections), modifiers, jackpot, modes and custom geometry cann
 be combined with this table. Those standalone launch families retain their own
 supported workflows. Unsupported combinations reject before build or drawing.
 
-WASM cannot preserve this selection/payout/duration contract. Independent-grid
+Canonical WASM preserves this selection/payout/duration contract through the shared session runtime. Independent-grid
 outcome-library generation and downstream Stake conversion lack an exact
 enumeration capability for it and must fail before final publication. Build a
 TypeScript package, Blueprint or PAR workbook to preserve these rules.

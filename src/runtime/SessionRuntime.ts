@@ -30,16 +30,31 @@ export type PreparedSessionCommand =
 /** Portable command boundary. The injected session remains the sole owner of domain math. */
 export class SessionRuntime implements SessionRuntimeHandling {
     private readonly session: GameSessionHandling;
+    private readonly latestOnly: boolean;
     private readonly onAccepted?: (command: SessionCommand, result: Played) => void;
 
-    constructor(session: GameSessionHandling, round?: LogicalRound, onAccepted?: (command: SessionCommand, result: Played) => void) {
+    constructor(session: GameSessionHandling, round?: LogicalRound, onAccepted?: (command: SessionCommand, result: Played) => void, options?: {retention: "latest"; pendingDelivery?: {command: SessionCommand; advanced: number}}) {
         this.session = session;
+        this.latestOnly = options?.retention === "latest" || round?.retention === "latest";
         this.onAccepted = onAccepted;
         if (round !== undefined) {
             const invalid = validateLogicalRound(round);
             if (invalid) throw new Error(invalid);
             SessionRuntime.validateLogicalRoundProgress(session, round);
             logicalRounds.set(session, deepFreeze(cloneSessionData(round)));
+        }
+        if (options?.pendingDelivery) {
+            const {command, advanced} = options.pendingDelivery;
+            if (!this.latestOnly || !round || round.status !== "pending" || command.delivery !== "composite" || validateSessionCommand(command) ||
+                !Number.isSafeInteger(advanced) || advanced < 1 || advanced >= (command.maxSubrounds ?? 1000) ||
+                advanced !== round.deliveryCursor - (command.continuation?.cursor ?? 0) ||
+                (command.continuation ? command.continuation.roundId !== round.id : command.roundId !== round.id || JSON.stringify(command) !== JSON.stringify(round.entry))) throw new Error("Invalid pending compact composite delivery.");
+            const last = round.subrounds[round.subrounds.length - 1];
+            const deliveryOnly = round.stageCursor > 1;
+            const result: Played = {status: "played", win: last.win, credits: last.credits, stake: deliveryOnly ? 0 : last.stake, payout: deliveryOnly ? 0 : last.payout,
+                ...(round.mode ? {mode: round.mode} : {}), ...(deliveryOnly ? {deliveryOnly: true} : {}), logicalRound: round};
+            const key = command.continuation ? `${command.continuation.roundId}:${command.continuation.cursor}` : `${command.roundId}:entry`;
+            deliveries.set(session, new Map([[key, {...this.saveDelivery(command, result), composite: {advanced, returned: false}}]]));
         }
     }
 
@@ -53,7 +68,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         if (round.mode !== undefined && typeof charged.getChargedBetModeId === "function" && charged.getChargedBetModeId() !== round.mode) throw new Error("Charged bet mode differs from retained entry attribution.");
         if ((charged.isHoldAndWinActive?.() || charged.getHoldAndWinLastRoundOutcome?.().kind === "completed") && charged.getHoldAndWinEntryBet?.() !== round.bet) throw new Error("HoldAndWin entry denomination differs from retained logical entry.");
         const selections = (session as Partial<VideoSlotSessionHandling>).getSequenceSelections?.();
-        const artifacts = round.subrounds[round.cursor - 1]?.artifacts;
+        const artifacts = round.subrounds[round.subrounds.length - 1]?.artifacts;
         const retained = artifacts?.[artifacts.length - 1]?.sequenceSelections;
         // Canonical JSON restoration sorts object keys. Compare identity fields, rather than the
         // incidental insertion order of captured versus restored selection objects.
@@ -109,6 +124,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         // Preserve the accepted prefix even if a later composite successor fails.
         if (key) {
             const ledger = deliveries.get(session) ?? new Map();
+            if (this.latestOnly) ledger.clear();
             ledger.set(key, this.saveDelivery(command, result));
             deliveries.set(session, ledger);
         }
@@ -135,7 +151,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
                 return error instanceof Error ? error.message : String(error);
             }
             if (this.session.getBet() !== round.bet) return "Continuation cannot change the entry bet.";
-            const stages = round.subrounds[round.cursor - 1].artifacts?.length ?? 0;
+            const stages = round.subrounds[round.subrounds.length - 1].artifacts?.length ?? 0;
             const stake = (this.session as Partial<StakeAmountDetermining>).getStakeAmount?.() ?? this.session.getBet();
             if (round.stageCursor >= stages && stake !== 0) return "Logical continuation requires a zero-stake domain subround.";
         } else if (command.roundId && (round?.id === command.roundId || deliveries.get(this.session)?.has(`${command.roundId}:entry`))) return "Logical entry identity was already accepted; retry its saved delivery.";
@@ -160,7 +176,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         if (invalid !== undefined) return {status: "blocked", reason: invalid, restored: true};
         const session = this.session;
         const round = logicalRounds.get(session);
-        if (command.continuation && round && round.stageCursor < (round.subrounds[round.cursor - 1].artifacts?.length ?? 0)) {
+        if (command.continuation && round && round.stageCursor < (round.subrounds[round.subrounds.length - 1].artifacts?.length ?? 0)) {
             let used = false;
             return {status: "ready", deliveryOnly: true, rollback: () => {
                 if (used) return false;
@@ -171,9 +187,9 @@ export class SessionRuntime implements SessionRuntimeHandling {
                 used = true;
                 const stageCursor = round.stageCursor + 1;
                 const next: LogicalRound = deepFreeze({...round, deliveryCursor: round.deliveryCursor + 1, stageCursor,
-                    status: stageCursor < (round.subrounds[round.cursor - 1].artifacts?.length ?? 0) || this.isDomainPending() ? "pending" : "completed"});
+                    status: stageCursor < (round.subrounds[round.subrounds.length - 1].artifacts?.length ?? 0) || this.isDomainPending() ? "pending" : "completed"});
                 logicalRounds.set(session, next);
-                const last = round.subrounds[round.cursor - 1];
+                const last = round.subrounds[round.subrounds.length - 1];
                 return {status: "played", deliveryOnly: true, win: last.win, credits: last.credits, stake: 0, payout: 0, logicalRound: cloneSessionData(next)};
             }};
         }
@@ -298,7 +314,13 @@ export class SessionRuntime implements SessionRuntimeHandling {
         const win = session.getWinAmount(),
             credits = session.getCreditsAmount();
         const payout = Math.max(0, credits - creditsBefore + stake);
-        if (command.delivery === undefined && command.continuation === undefined) return {status: "played", win, credits, stake, mode};
+        if (command.delivery === undefined && command.continuation === undefined) {
+            // Successful plain execution supersedes completed executable progress. Historical
+            // retry receipts remain in their own ledger and must not become live progress.
+            logicalRounds.delete(session);
+            retainedTails.delete(session);
+            return {status: "played", win, credits, stake, mode};
+        }
         const previous = command.continuation ? logicalRounds.get(session)! : undefined;
         if (previous && stake !== 0) throw new Error("Logical continuation attempted another entry stake.");
         const id = previous?.id ?? command.roundId!;
@@ -320,12 +342,12 @@ export class SessionRuntime implements SessionRuntimeHandling {
         if (exhausted) mathematicalStatus = "exhausted";
         let status = mathematicalStatus;
         if (!exhausted && stageCursor < (artifacts?.length ?? 0)) status = "pending";
-        const round: LogicalRound = deepFreeze({id, entry: previous?.entry ?? retainedCommand, bet: previous?.bet ?? bet,
+        const round: LogicalRound = deepFreeze({...(this.latestOnly ? {retention: "latest" as const} : {}), id, entry: previous?.entry ?? retainedCommand, bet: previous?.bet ?? bet,
             ...(previous?.mode ?? mode ? {mode: previous?.mode ?? mode} : {}), cursor: index + 1, deliveryCursor: (previous?.deliveryCursor ?? 0) + 1, stageCursor,
             mathematicalStatus,
             status, totalStake: (previous?.totalStake ?? 0) + stake,
             totalWin: (previous?.totalWin ?? 0) + win, totalPayout: (previous?.totalPayout ?? 0) + payout,
-            subrounds: [...(previous?.subrounds ?? []), deepFreeze(cloneSessionData(subround))]});
+            subrounds: [...(this.latestOnly ? [] : previous?.subrounds ?? []), deepFreeze(cloneSessionData(subround))]});
         logicalRounds.set(session, round);
         return {status: "played", win, credits, stake, mode, payout, logicalRound: cloneSessionData(round)};
     }
@@ -335,6 +357,10 @@ export class SessionRuntime implements SessionRuntimeHandling {
         const {logicalRound, ...output} = result;
         if (!logicalRound) return {command: JSON.stringify(command), result: output};
         const retained = logicalRounds.get(this.session)!;
+        if (this.latestOnly) {
+            const {subrounds, ...round} = retained;
+            return {command: JSON.stringify(command), result: output, round, tail: {subround: subrounds[subrounds.length - 1]}};
+        }
         let tail = retainedTails.get(this.session)?.roundId === retained.id ? retainedTails.get(this.session)!.tail : undefined;
         for (let index = tail ? tail.subround.index + 1 : 0; index < retained.cursor; index++) tail = {subround: retained.subrounds[index], previous: tail};
         retainedTails.set(this.session, {roundId: retained.id, tail: tail!});

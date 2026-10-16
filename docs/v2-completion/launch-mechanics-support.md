@@ -167,7 +167,7 @@ summaries may overlap, while the canonical base/feature/jackpot monetary partiti
 is additive. Native outcome events do not prove lifecycle; WASM lacks canonical
 component/lifecycle evidence. See [formulas and support boundaries](../simulation.md#feature-analytics-aggregates-v2c-16).
 
-V2C-17 report projection: canonical lifecycle evidence supports entry/retrigger/completion distributions; arbitrary custom event names and flattened artifact categories do not. Native outcome artifacts support observed components but no canonical lifecycle. Canonical WASM remains amount-only. Supported configured features with no entries are displayed as unobserved, separately from unsupported attribution and legacy missing analytics. Empirical confidence/adaptive precision is not exact RTP or proof of rare-event coverage; low-evidence diagnostics use completed usable samples rather than the requested budget.
+V2C-17 report projection: canonical lifecycle evidence supports entry/retrigger/completion distributions; arbitrary custom event names and flattened artifact categories do not. Native outcome artifacts support observed components but no canonical lifecycle. Ordinary arithmetic WASM has no feature attribution; V2C-21 feature-aware artifacts expose the shared canonical lifecycle and selection observations. Supported configured features with no entries are displayed as unobserved, separately from unsupported attribution and legacy missing analytics. Empirical confidence/adaptive precision is not exact RTP or proof of rare-event coverage; low-evidence diagnostics use completed usable samples rather than the requested budget.
 
 V2C-18 adds read-only canonical definition comparison across the existing authored
 reel/variant, paytable, bet-mode, geometry and mechanics contracts (free games,
@@ -192,3 +192,29 @@ bytes to the effective model and component descriptor. Fractional components mul
 ways/clusters retain selected-group aggregation. Portable consumers still expose amount-only analytics,
 without invented feature events. See [WASM limits and continuation](../wasm-compatibility-boundary.md).
 Independent controller review and workflow verification are recorded separately in [the V2C-20 receipt](V2C-20.md).
+
+## Portable feature execution (V2C-21)
+
+All 36 rows above now have a WASM execution cell owned by
+`tests/v2/WasmFeatureParity.test.ts` and its native public-runtime consumer.
+The matrix freezes the 22 existing-mechanic IDs, six modifier IDs, seven bounded
+IDs and weighted-bonus ID. It generates real packages and artifacts, compiles
+all generated TypeScript, and uses fresh root CJS/ESM, browser and wasm exports.
+Independent amounts, screens, feature progress, settlement, selected identity,
+JSON restoration, replay and next RNG are checked at meaningful boundaries.
+
+Additional cells cover all modifier/evaluator/denomination pairs, declared
+modifier/free-game/purchase/jackpot/weighted combinations, full-board Hold&Win,
+both bonus payout units/zero duration, exact cascade terminal delivery, binary64
+weighted mass and projected/fractional viewports with hidden wilds/scatters.
+The public matrix contains 137 cells, including weighted Hold&Win, all seven
+bounded combinations and weighted bonus through their supported evaluators, plus
+known weighted cascade refill/draw accounting. Every catalogue row and four
+representative weighted models have bounded 128-play restore loops. Executable snapshots
+retain current progress and one delivery, with no completed-round history.
+
+This adds supported portable cells; it does not widen incompatible compositions,
+custom code/services, PAR geometry, or paid-grid outcome-library/Stake targets.
+See [the current WASM boundary](../wasm-compatibility-boundary.md) and
+[the candidate receipt](V2C-21.md). Independent approval and controller gates are
+separate from implementation test evidence.

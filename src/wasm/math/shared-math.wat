@@ -10,6 +10,8 @@
     (i32.store (i32.add (local.get $base) (i32.mul (local.get $i) (i32.const 4))) (local.get $v)))
   (func $cell (param $i i32) (result i32) (call $get (call $h (i32.const 48)) (local.get $i)))
   (func $wild (param $s i32) (result i32) (call $get (call $h (i32.const 36)) (local.get $s)))
+  (func $substitute (param $candidate i32) (param $target i32) (result i32)
+    (call $get (call $h (i32.const 116)) (i32.add (i32.mul (local.get $candidate) (call $h (i32.const 8))) (local.get $target))))
   (func $scatter (param $s i32) (result i32) (call $get (call $h (i32.const 40)) (local.get $s)))
   (func $pos (param $i i32) (param $v i32) (call $put (call $h (i32.const 60)) (local.get $i) (local.get $v)))
   (func $emit (param $kind i32) (param $s i32) (param $count i32) (param $id i32) (param $ways f64) (param $bet f64) (param $n i32)
@@ -50,6 +52,15 @@
             (if (i32.eq (local.get $target) (i32.const -1)) (then (local.set $target (local.get $s))))
             (if (i32.ne (local.get $target) (local.get $s)) (then (local.set $ok (i32.const 0))))))
           (local.set $r (i32.add (local.get $r) (i32.const 1))) (br $row)))
+        ;; Once the non-wild target is known, every wild must permit that target.
+        (if (i32.ne (local.get $target) (i32.const -1)) (then
+          (local.set $r (i32.const 0))
+          (block $restrictionsEnd (loop $restrictions
+            (br_if $restrictionsEnd (i32.ge_u (local.get $r) (local.get $n)))
+            (local.set $s (call $cell (call $get (call $h (i32.const 60)) (local.get $r))))
+            (if (i32.and (call $wild (local.get $s)) (i32.eqz (call $substitute (local.get $s) (local.get $target))))
+              (then (local.set $ok (i32.const 0))))
+            (local.set $r (i32.add (local.get $r) (i32.const 1))) (br $restrictions)))))
         (if (i32.and (local.get $ok) (i32.ne (local.get $target) (i32.const -1))) (then
           (if (i32.eqz (call $scatter (local.get $target))) (then
             (call $emit (i32.const 0) (local.get $target) (local.get $n) (local.get $l) (f64.const 1) (local.get $bet) (local.get $n))))
@@ -84,7 +95,7 @@
             (br_if $rowsEnd (i32.ge_u (local.get $row) (call $h (i32.const 4))))
             (local.set $p (i32.add (i32.mul (local.get $r) (call $h (i32.const 4))) (local.get $row)))
             (local.set $candidate (call $cell (local.get $p)))
-            (if (i32.or (i32.eq (local.get $candidate) (local.get $s)) (call $wild (local.get $candidate))) (then
+            (if (i32.or (i32.eq (local.get $candidate) (local.get $s)) (call $substitute (local.get $candidate) (local.get $s))) (then
               (call $pos (local.get $n) (local.get $p)) (local.set $n (i32.add (local.get $n) (i32.const 1)))
               (local.set $matches (i32.add (local.get $matches) (i32.const 1)))))
             (local.set $row (i32.add (local.get $row) (i32.const 1))) (br $rows)))
@@ -96,7 +107,7 @@
   (func $join (param $p i32) (param $s i32) (param $top i32) (result i32)
     (if (i32.and (i32.ge_s (local.get $p) (i32.const 0)) (i32.lt_u (local.get $p) (call $h (i32.const 92)))) (then
       (if (i32.eqz (call $get (call $h (i32.const 64)) (local.get $p))) (then
-        (if (i32.or (i32.eq (call $cell (local.get $p)) (local.get $s)) (call $wild (call $cell (local.get $p)))) (then
+        (if (i32.or (i32.eq (call $cell (local.get $p)) (local.get $s)) (call $substitute (call $cell (local.get $p)) (local.get $s))) (then
           (call $put (call $h (i32.const 64)) (local.get $p) (i32.const 1))
           (call $put (call $h (i32.const 68)) (local.get $top) (local.get $p))
           (return (i32.add (local.get $top) (i32.const 1)))))))))

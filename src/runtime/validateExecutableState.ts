@@ -14,6 +14,7 @@ export function validateExecutableState(value: unknown, schema?: SessionStateSch
     partial = live?.partial ?? partial ?? false;
     if (schema !== undefined && (typeof schema !== "object" || schema === null ||
         !["base", "seeded-video-slot", "free-games", "bet-modes", "hold-and-win", "jackpot", "bounded-mechanics", "custom"].includes(schema.kind))) throw new Error("Unknown executable state schema.");
+    if (schema?.kind === "seeded-video-slot" && schema.rngCodec !== undefined && schema.rngCodec !== "portable-host") throw new Error("Unknown RNG state codec.");
     if (schema?.kind === "seeded-video-slot" && schema.screenGeometry) new ScreenProjection(schema.screenGeometry).getGeometry();
     if (schema?.kind === "custom") {
         if (live?.opaque === true) {
@@ -66,7 +67,7 @@ export function validateExecutableState(value: unknown, schema?: SessionStateSch
     if (schema?.kind === "bet-modes" && state.betModeId === undefined) throw new Error("Required bet-mode state is missing.");
     if ((schema !== undefined && "base" in schema) && (schema.base === undefined || (state.base === undefined && live?.base?.optional !== true))) throw new Error("Required base schema/state is missing.");
     if (schema) validateMechanicState(state, schema);
-    if ("rngState" in state && live?.opaqueRng !== true && (typeof state.rngState !== "number" || !Number.isSafeInteger(state.rngState) || state.rngState < 0 || state.rngState > 0xffffffff)) {
+    if ("rngState" in state && live?.opaqueRng !== true && (typeof state.rngState !== "number" || !Number.isSafeInteger(state.rngState) || state.rngState < 0 || state.rngState > (schema?.kind === "seeded-video-slot" && schema.rngCodec === "portable-host" ? Number.MAX_SAFE_INTEGER : 0xffffffff))) {
         throw new Error("Invalid seeded RNG snapshot.");
     }
     if ("freeGamesNum" in state || "freeGamesSum" in state || "freeGamesBank" in state) {

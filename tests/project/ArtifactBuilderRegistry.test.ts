@@ -788,7 +788,7 @@ describe("ArtifactBuilderRegistry", () => {
             }
         });
 
-        it("rejects unsupported PAR mechanics during WASM dry-run before publication", async () => {
+        it("validates canonical PAR free games during WASM dry-run without publication", async () => {
             const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-wasm-invalid-dry-run-"));
             const workbookPath = path.join(directory, "source.xlsx");
             const destination = path.join(directory, "game.wasm");
@@ -798,7 +798,7 @@ describe("ArtifactBuilderRegistry", () => {
                 capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
                 provenance: "test PAR workbook",
             } as PokieProject;
-            const unsupportedBlueprint = {
+            const featureBlueprint = {
                 manifest: {id: "par-free-games", name: "PAR Free Games", version: "1.0.0"},
                 reels: 3,
                 rows: 1,
@@ -809,10 +809,10 @@ describe("ArtifactBuilderRegistry", () => {
                 mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 5}}},
             };
             try {
-                const issues = await new ParSheetExporter("1.3.0").exportToFile(unsupportedBlueprint, workbookPath);
+                const issues = await new ParSheetExporter("1.3.0").exportToFile(featureBlueprint, workbookPath);
                 expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
                 const plan = await registry.preparePlan(source, "wasm", {destinationPath: destination});
-                await expect(registry.validate("wasm", source, plan)).rejects.toThrow(/mechanics\.freeGames.*Next:/);
+                await expect(registry.validate("wasm", source, plan)).resolves.toBeUndefined();
                 expect(fs.existsSync(destination)).toBe(false);
                 expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(false);
             } finally {

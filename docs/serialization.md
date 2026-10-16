@@ -428,8 +428,7 @@ retry after response loss. Their delivery controls offer one subround or a
 complete logical round. Studio Play is explicitly `process-only`; its history
 keeps one record per logical round and retains committed history across project
 changes, while late responses cannot replace another project's active session.
-Canonical WASM and outcome-source Play reject unsupported logical continuation;
-their existing single-outcome/session contracts remain unchanged.
+Canonical WASM supports declared logical continuation with artifact-bound v4 feature checkpoints and process-only Studio Play. Outcome-source Play retains its separate single-outcome contract.
 
 ## Executable audit state and public display
 
@@ -488,3 +487,17 @@ when their live snapshot retains modifier data. See the [math contract](math-mod
 See [cascades, respins and collections](bounded-mechanics.md) for the declarative
 contracts, supported compositions, authoring/build/extraction/PAR workflow,
 logical-round accounting, continuation and durability boundaries.
+
+## Portable declarative checkpoints (V2C-21)
+
+ABI 3 feature artifacts use `pokie.state.v4`, binding the artifact, actual consumed
+RNG count/continuation, denomination/mode/context, native mechanic state and latest
+logical delivery. Restore reconstructs static reels from the bound model and
+validates the last accepted observations against progress before restoring the
+host. A failed successor preserves an accepted composite prefix and its remaining
+request budget; fresh JSON restoration can retry that request or accept the proper
+continuation. Changed entry selection and foreign/stale/skipped cursors reject.
+Snapshots retain no cumulative command/draw/completed-round history. Explicit
+composite/replay output and bounded trace evidence are separate caller-owned data.
+Ordinary artifacts retain compact v3 state and their plain-play contract. These
+files are executable checkpoints, not durable wallet/result transactions.

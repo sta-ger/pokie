@@ -16,10 +16,30 @@ import {StudioPlayService} from "../../cli/studio/runtime/StudioPlayService.js";
 import fs from "node:fs";
 import path from "node:path";
 import * as api from "@fromstan/pokie";
-import {assertWorkflowRejections, existingMechanicsBlueprint, generatedMechanicsGame, mechanicsSession} from "./fixtures/ExistingMechanicsGame.js";
+import {assertWorkflowRejections, existingMechanicsBlueprint, generatedMechanicsGame, mechanicsSession, replayModesBlueprint} from "./fixtures/ExistingMechanicsGame.js";
 
 const catalogue = api.AUTHORED_MECHANIC_CATALOG;
 const errors = (b: unknown) => new api.GameBlueprintValidator().validate(b).filter(issue => issue.severity === "error");
+
+it("starts a fresh completed purchase bank through direct, generated TypeScript and logical callers", () => {
+    const blueprint = replayModesBlueprint();
+    blueprint.paytable.A = {3: 2};
+    for (const typed of [false, true]) {
+        const direct = mechanicsSession(generatedMechanicsGame(blueprint, typed));
+        const logical = mechanicsSession(generatedMechanicsGame(blueprint, typed));
+        const runtime = new api.SessionRuntime(logical);
+        for (let purchase = 0; purchase < 3; purchase++) {
+            direct.setBetMode!("buy");
+            direct.play();
+            direct.play();
+            const result = runtime.execute({kind: "spin", roundId: `purchase:${purchase}`, bet: 0.05, mode: "buy", delivery: "composite"});
+            expect(result).toMatchObject({status: "played", logicalRound: {status: "completed", totalStake: 0.5, totalWin: 0.2}});
+            expect(direct.getCreditsAmount()).toBeCloseTo(10000 - (purchase + 1) * 0.3);
+            expect(logical.getCreditsAmount()).toBeCloseTo(direct.getCreditsAmount());
+        }
+        runtime.release();
+    }
+});
 
 describe("V2C-12 catalogue-driven public authored workflows", () => {
     let directory: string;
@@ -195,7 +215,13 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         const game = generatedMechanicsGame(blueprint);
         const source = path.join(directory, "source.blueprint.json");
         fs.writeFileSync(source, JSON.stringify(blueprint));
-        expect(await new ValidateCommand().run([source])).toBe(0);
+        const validationCode = await new ValidateCommand().run([source, "--format", "json"]);
+        const validation = JSON.parse(jest.mocked(console.log).mock.calls.slice(-1)[0][0] as string);
+        expect(validation).toMatchObject({valid: true, errors: [], advanced: {structuralValid: true}});
+        // These authoring fixtures are executable. Their additive free-game path
+        // violates all-path termination; the other exhaustive checks remain bounded.
+        expect(validationCode).toBe(row.progression === "freeGames" ? 1 : 2);
+        expect(validation.advanced.verdict).toBe(row.progression === "freeGames" ? "violated" : "inconclusive");
         expect(await new BuildCommand("1.3.0").run([source, "--target", "tsPackage", "--out", path.join(directory, "cli-built")])).toBe(0);
         const cliWorkbook = path.join(directory, "cli.xlsx"),
             cliImport = path.join(directory, "cli-import.json");

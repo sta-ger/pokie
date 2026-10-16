@@ -10,6 +10,13 @@ import type {HoldAndWinTriggering} from "./HoldAndWinTriggering.js";
 import type {LockedHoldAndWinSymbol} from "./LockedHoldAndWinSymbol.js";
 import type {VideoSlotWithHoldAndWinSessionHandling} from "./VideoSlotWithHoldAndWinSessionHandling.js";
 
+/** The built-in progression rule; collectors and payout collaborators remain replaceable. */
+export function resolveHoldAndWinProgression(initialRespins: number, priorRemaining: number, newlyCollected: number, boardFull: boolean, entry = false) {
+    const remaining = entry || newlyCollected > 0 ? initialRespins : priorRemaining - 1;
+    const completed = boardFull || remaining <= 0;
+    return {remaining, completed};
+}
+
 // The actual Hold & Win/Lock & Spin state machine — see HoldAndWinRoundHandling's own doc comment for why
 // this lives in a separate, replaceable collaborator rather than in VideoSlotWithHoldAndWinSession itself.
 //
@@ -103,8 +110,9 @@ export class HoldAndWinRoundHandler<T extends string | number | symbol = string>
             session.setHoldAndWinEntryBet?.(session.getBet());
             session.setHoldAndWinActive(true);
             session.setLockedHoldAndWinSymbols(candidates);
-            session.setHoldAndWinRespinsRemaining(this.initialRespins);
-            if (this.isBoardFull(session, candidates)) {
+            const next = resolveHoldAndWinProgression(this.initialRespins, 0, candidates.length, this.isBoardFull(session, candidates), true);
+            session.setHoldAndWinRespinsRemaining(next.remaining);
+            if (next.completed) {
                 // The triggering spin alone filled the board — its own result was never touched (a normal
                 // paid spin, not a respin), so it genuinely contributes alongside the feature payout.
                 this.complete(session, baseRoundResult);
@@ -126,13 +134,10 @@ export class HoldAndWinRoundHandler<T extends string | number | symbol = string>
         const locked = newlyCollected.length > 0 ? [...alreadyLocked, ...newlyCollected] : alreadyLocked;
         session.setLockedHoldAndWinSymbols(locked);
 
-        if (newlyCollected.length > 0) {
-            session.setHoldAndWinRespinsRemaining(this.initialRespins);
-        } else {
-            session.setHoldAndWinRespinsRemaining(session.getHoldAndWinRespinsRemaining() - 1);
-        }
+        const next = resolveHoldAndWinProgression(this.initialRespins, session.getHoldAndWinRespinsRemaining(), newlyCollected.length, this.isBoardFull(session, locked));
+        session.setHoldAndWinRespinsRemaining(next.remaining);
 
-        if (this.isBoardFull(session, locked) || session.getHoldAndWinRespinsRemaining() <= 0) {
+        if (next.completed) {
             this.complete(session, emptyHoldAndWinBaseRoundResult<T>());
         } else {
             session.setHoldAndWinLastRoundOutcome({kind: "suppressed"});

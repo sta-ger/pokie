@@ -133,7 +133,7 @@ async function main() {
         const descriptor = {schemaVersion: '1.0.0', component: {id: invalid.manifest.id, version: '1.0.0'},
             serialization: {session: 'pokie.session.v2', play: 'pokie.play.v2', state: 'pokie.state.v3'}, host: {rng: 'pokie.rng.v2', services: []},
             capabilities: ['runtime.play', 'runtime.serialize', 'runtime.replay'],
-            artifact: {format: 'pokie.wasm.v1', abiVersion: '2.0.0', adapter: '@fromstan/pokie/wasm', configurationHash}};
+            artifact: {format: 'pokie.wasm.v1', abiVersion: '3.0.0', adapter: '@fromstan/pokie/wasm', configurationHash}};
         const binary = pokie.compileSharedSlotArtifact(model, descriptor);
         const sidecar = {...descriptor, artifact: {...descriptor.artifact, bytes: binary.length, sha256: hash(binary)}};
         assert.equal(WebAssembly.validate(binary), true);

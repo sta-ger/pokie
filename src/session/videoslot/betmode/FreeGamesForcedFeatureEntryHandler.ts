@@ -1,3 +1,4 @@
+import {resolveFreeGamesEntry} from "../FreeGamesRoundHandler.js";
 import type {FreeGamesStateDetermining} from "../../FreeGamesStateDetermining.js";
 import type {FreeGamesStateSetting} from "../../FreeGamesStateSetting.js";
 import type {ForcedFeatureEntryHandling} from "./ForcedFeatureEntryHandling.js";
@@ -42,13 +43,21 @@ implements ForcedFeatureEntryHandling<T> {
         if (!this.supportsFreeGamesState(session)) {
             return;
         }
-        session.setFreeGamesSum(session.getFreeGamesSum() + this.freeGamesToGrant);
+        // A completed bank has already been released. Start a fresh purchase before
+        // extending the grant, while retaining additive grants during an active feature.
+        const next = resolveFreeGamesEntry(session.getFreeGamesNum(), session.getFreeGamesSum(), 0, this.freeGamesToGrant);
+        if (session.getFreeGamesNum() === session.getFreeGamesSum()) {
+            session.setFreeGamesBank(next.bank);
+            session.setFreeGamesNum(next.num);
+            session.setFreeGamesSum(0);
+        }
+        session.setFreeGamesSum(next.sum);
     }
 
     private supportsFreeGamesState(
         session: VideoSlotSessionHandling<T>,
     ): session is VideoSlotSessionHandling<T> & FreeGamesStateSetting & FreeGamesStateDetermining {
         const candidate = session as Partial<FreeGamesStateSetting & FreeGamesStateDetermining>;
-        return typeof candidate.setFreeGamesSum === "function" && typeof candidate.getFreeGamesSum === "function";
+        return [candidate.setFreeGamesSum, candidate.getFreeGamesSum, candidate.setFreeGamesNum, candidate.getFreeGamesNum, candidate.setFreeGamesBank].every(method => typeof method === "function");
     }
 }
