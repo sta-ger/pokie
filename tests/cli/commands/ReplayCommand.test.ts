@@ -406,7 +406,7 @@ describe("ReplayCommand runtime package materialization boundary", () => {
         const command = new ReplayCommand(loadGame, undefined, undefined, resolveRuntimePackageRoot);
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
         try {
-            await expect(command.run([wasmPath, "--round", "2", "--seed", "canonical-seed", "--mode", "ante", "--out", descriptorPath])).rejects.toThrow(/Canonical WASM replay does not support --mode/);
+            await expect(command.run([wasmPath, "--round", "2", "--seed", "canonical-seed", "--mode", "ante", "--out", descriptorPath])).rejects.toThrow("This WASM model does not support bet mode selection.");
             expect(fs.existsSync(descriptorPath)).toBe(false);
             expect(logSpy).not.toHaveBeenCalled();
             await command.run([wasmPath, "--round", "2", "--seed", "canonical-seed", "--out", descriptorPath]);
@@ -414,6 +414,40 @@ describe("ReplayCommand runtime package materialization boundary", () => {
             expect(descriptor).toMatchObject({game: {id: "canonical-replay"}, round: 2, seed: "canonical-seed", credits: expect.any(Number)});
             expect(descriptor.screen).toHaveLength(3);
             expect(descriptor.screen?.every((reel) => reel.length === 1 && reel.every((symbol) => symbol !== undefined && symbol !== null))).toBe(true);
+            expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+            expect(loadGame).not.toHaveBeenCalled();
+        } finally {
+            logSpy.mockRestore();
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it.each([
+        {mode: "ante", rounds: 2, totalBet: 0.05 * 1.5 * 2},
+        {mode: "buy", rounds: 6, totalBet: 1.5},
+        {mode: "buy-more", rounds: 6, totalBet: 2.5},
+    ])("replays declared $mode selection in a canonical WASM artifact without charging free continuations", async ({mode, rounds, totalBet}) => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-wasm-modes-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        const descriptorPath = path.join(workDir, "replay.json");
+        const fixture = createCanonicalWasmFixture({id: "canonical-replay-modes", blueprint: replayModesBlueprint()});
+        fs.writeFileSync(wasmPath, fixture.bytes);
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const resolveRuntimePackageRoot = jest.fn(() => Promise.resolve({runtimePath: "must-not-resolve", release: () => Promise.resolve()}));
+        const command = new ReplayCommand(loadGame, undefined, undefined, resolveRuntimePackageRoot);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            await expect(command.run([wasmPath, "--round", String(rounds), "--seed", "canonical-seed", "--mode", "missing", "--out", descriptorPath])).rejects.toThrow('invalid-command: Session does not support bet mode "missing" (available modes: base, ante, buy, buy-more).');
+            expect(fs.existsSync(descriptorPath)).toBe(false);
+            expect(logSpy).not.toHaveBeenCalled();
+
+            await command.run([wasmPath, "--round", String(rounds), "--seed", "canonical-seed", "--mode", mode, "--out", descriptorPath]);
+            const descriptor = JSON.parse(fs.readFileSync(descriptorPath, "utf8")) as ReplayDescriptor;
+            expect(descriptor).toMatchObject({game: {id: "canonical-replay-modes"}, round: rounds, seed: "canonical-seed", totalWin: 0, screen: [["A"], ["A"], ["A"]]});
+            expect(descriptor.totalBet).toBeCloseTo(totalBet, 12);
+            expect(descriptor.credits).toBeCloseTo(1000 - totalBet, 12);
+            expect(descriptor.stateAfter).toMatchObject({schemaVersion: "pokie.state.v4", sequence: rounds});
             expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
             expect(loadGame).not.toHaveBeenCalled();
         } finally {
