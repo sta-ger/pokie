@@ -300,10 +300,13 @@ export function BlueprintEditorPage({
     const validateRequestIdRef = useRef(0);
     const validationAbortRef = useRef<AbortController | undefined>(undefined);
     const validationMountedRef = useRef(true);
-    useEffect(() => () => {
-        validationMountedRef.current = false;
-        validateRequestIdRef.current++;
-        validationAbortRef.current?.abort();
+    useEffect(() => {
+        validationMountedRef.current = true;
+        return () => {
+            validationMountedRef.current = false;
+            validateRequestIdRef.current++;
+            validationAbortRef.current?.abort();
+        };
     }, []);
     // Bind a completed check to the exact model snapshot. A rendered ok control may lose
     // readiness when focus commits a field blur, before its activation finishes.
