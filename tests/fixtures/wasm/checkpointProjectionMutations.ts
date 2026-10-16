@@ -341,18 +341,19 @@ function checkpointAwardFixtures(base: GameBlueprint): ReturnType<typeof checkpo
 
 /** Alternative-rule checkpoints retain internally consistent native/public money and events. */
 export function checkpointTransitionFixtures(): {id: string; blueprint: GameBlueprint; alternative?: GameBlueprint; mutation: readonly [string, unknown?]; expectedWin: number; nextWin?: number}[] {
+    const clone = (value: GameBlueprint): GameBlueprint => JSON.parse(JSON.stringify(value)) as GameBlueprint;
     const model = (id: string) => existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
     const hold = model("hold-flat");
     hold.reelStrips = [["C"], ["C"], ["C"]];
     hold.mechanics!.holdAndWin!.payout.amountsAreBetMultiples = true;
-    const holdFlat = structuredClone(hold);
+    const holdFlat = clone(hold);
     holdFlat.mechanics!.holdAndWin!.payout.amountsAreBetMultiples = false;
     const jackpot = model("fixed-base");
     jackpot.reelStrips = [["J"], ["A"], ["A"]];
-    const jackpot11 = structuredClone(jackpot);
+    const jackpot11 = clone(jackpot);
     if (jackpot11.mechanics!.jackpot!.pool.type !== "fixed") throw new Error("Expected fixed pool");
     jackpot11.mechanics!.jackpot!.pool.amount = 11;
-    const oneHold = structuredClone(hold);
+    const oneHold = clone(hold);
     oneHold.reelStrips = [["C"], ["A"], ["A"]];
     const bonus = weightedBonusBlueprint();
     bonus.reelStrips = [["C"], ["A"], ["A"]];
@@ -360,11 +361,11 @@ export function checkpointTransitionFixtures(): {id: string; blueprint: GameBlue
     bonus.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
     const collection = JSON.parse(fs.readFileSync("examples/blueprints/bounded-collection.blueprint.json", "utf8")) as GameBlueprint;
     collection.reelStrips = [["C"], ["C"], ["C"]];
-    const zero = structuredClone(collection);
+    const zero = clone(collection);
     zero.mechanics!.collection!.threshold = 2;
     zero.mechanics!.collection!.reset = "zero";
     const threshold2 = (blueprint: GameBlueprint, key: "holdAndWin" | "jackpot" | "weightedBonus"): GameBlueprint => {
-        const alternative = structuredClone(blueprint);
+        const alternative = clone(blueprint);
         const rule = alternative.mechanics![key]!;
         if ("trigger" in rule) rule.trigger.minimumCount = 2;
         else rule.minimumCount = 2;
