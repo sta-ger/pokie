@@ -591,7 +591,7 @@ it.each(["plain", "stepwise", "composite"] as const)("retains valid %s natural f
                 if (state.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature checkpoint");
                 const events = state.feature.logicalRound?.subrounds[0].artifacts?.flatMap(step => step.featureEvents ?? []) ?? state.feature.plainMath!.artifact.featureEvents ?? [];
                 expect(events).toEqual(grant ? [{type: "freeGamesTriggered", data: {count: grant}}] : []);
-                expect(result.network?.freeGamesSum).toBe((grant ?? 0) * (index + 1));
+                expect(Reflect.get(result.network!, "freeGamesSum")).toBe((grant ?? 0) * (index + 1));
                 expect(result.stake).toBe(grant && index > 0 ? 0 : 0.05);
                 const before = host.serializeState();
                 restored.dispose();

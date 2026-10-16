@@ -660,9 +660,9 @@ it.each(["stepwise", "composite", "plain"] as const)("binds %s artifact feature 
                 const error = /modifier|sticky|holdAndWin|jackpot|chargedBetMode|win|position|logical|stops|draw|plain money|canonical feature|freeGamesTriggered/i;
                 if (nativeFree) {
                     const steps = corrupt.feature.logicalRound?.subrounds[0].artifacts ?? corrupt.feature.plainMath!.artifact.steps;
-                    expect(() => restoreDeclarativeObservation(nativeFree.session, blueprint, steps!, receipt.screen!, receipt.win!, undefined)).toThrow(error);
+                    expect(() => restoreDeclarativeObservation(nativeFree.session, blueprint, steps!, receipt.screen!.map(reel => [...reel]), receipt.win!, undefined)).toThrow(error);
                     const validSteps = saved.feature.logicalRound?.subrounds[0].artifacts ?? saved.feature.plainMath!.artifact.steps;
-                    expect(() => restoreDeclarativeObservation(nativeFree.session, blueprint, validSteps!, receipt.screen!, receipt.win!, undefined)).not.toThrow();
+                    expect(() => restoreDeclarativeObservation(nativeFree.session, blueprint, validSteps!, receipt.screen!.map(reel => [...reel]), receipt.win!, undefined)).not.toThrow();
                 }
                 expect(() => runtime.restoreSession(corrupt)).toThrow(error);
                 expect(() => fresh.restoreSession(corrupt)).toThrow(error);
