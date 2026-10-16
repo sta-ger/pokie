@@ -59,6 +59,20 @@ export const checkpointProjectionMutations: readonly (readonly [string, unknown?
 
 export function mutateCheckpointProjection<T>(saved: T, [path, value]: readonly [string, unknown?]): T {
     const corrupt = JSON.parse(JSON.stringify(saved));
+    if (path === "acceptedTransition.collection") {
+        corrupt.feature.state.value = value;
+        const visit = (item: unknown): void => {
+            if (!item || typeof item !== "object") return;
+            for (const [key, child] of Object.entries(item)) {
+                if (key === "collection" && child && typeof child === "object") Reflect.set(child, "value", value);
+                else visit(child);
+            }
+        };
+        visit(corrupt.feature.logicalRound);
+        visit(corrupt.feature.plainMath);
+        visit(corrupt.feature.lastRound);
+        return corrupt as T;
+    }
     if (path.startsWith("acceptedAward.")) {
         const feature = corrupt.feature;
         const artifact = feature.plainMath?.artifact;
@@ -323,4 +337,79 @@ function checkpointAwardFixtures(base: GameBlueprint): ReturnType<typeof checkpo
             maxSubrounds: 1, mutations: [["acceptedAward.respinGrant"], ["analyticsCheckpoint.before.respinsRemaining", -1],
                 ["analyticsCheckpoint.before.respinsRemaining", 999], ["analyticsCheckpoint.before.respinsRemaining", "2"], ["analyticsCheckpoint.before.respinsRemaining"]]},
     ];
+}
+
+/** Alternative-rule checkpoints retain internally consistent native/public money and events. */
+export function checkpointTransitionFixtures(): {id: string; blueprint: GameBlueprint; alternative?: GameBlueprint; mutation: readonly [string, unknown?]; expectedWin: number; nextWin?: number}[] {
+    const model = (id: string) => existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
+    const hold = model("hold-flat");
+    hold.reelStrips = [["C"], ["C"], ["C"]];
+    hold.mechanics!.holdAndWin!.payout.amountsAreBetMultiples = true;
+    const holdFlat = structuredClone(hold);
+    holdFlat.mechanics!.holdAndWin!.payout.amountsAreBetMultiples = false;
+    const jackpot = model("fixed-base");
+    jackpot.reelStrips = [["J"], ["A"], ["A"]];
+    const jackpot11 = structuredClone(jackpot);
+    if (jackpot11.mechanics!.jackpot!.pool.type !== "fixed") throw new Error("Expected fixed pool");
+    jackpot11.mechanics!.jackpot!.pool.amount = 11;
+    const oneHold = structuredClone(hold);
+    oneHold.reelStrips = [["C"], ["A"], ["A"]];
+    const bonus = weightedBonusBlueprint();
+    bonus.reelStrips = [["C"], ["A"], ["A"]];
+    bonus.mechanics!.weightedBonus!.trigger.minimumCount = 1;
+    bonus.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    const collection = JSON.parse(fs.readFileSync("examples/blueprints/bounded-collection.blueprint.json", "utf8")) as GameBlueprint;
+    collection.reelStrips = [["C"], ["C"], ["C"]];
+    const zero = structuredClone(collection);
+    zero.mechanics!.collection!.threshold = 2;
+    zero.mechanics!.collection!.reset = "zero";
+    const threshold2 = (blueprint: GameBlueprint, key: "holdAndWin" | "jackpot" | "weightedBonus"): GameBlueprint => {
+        const alternative = structuredClone(blueprint);
+        const rule = alternative.mechanics![key]!;
+        if ("trigger" in rule) rule.trigger.minimumCount = 2;
+        else rule.minimumCount = 2;
+        return alternative;
+    };
+    return [
+        {id: "transition-hold-payout", blueprint: hold, alternative: holdFlat, mutation: ["acceptedTransition.alternative"], expectedWin: 0.30000000000000004},
+        {id: "transition-jackpot-payout", blueprint: jackpot, alternative: jackpot11, mutation: ["acceptedTransition.alternative"], expectedWin: 10},
+        {id: "transition-hold-entry", blueprint: oneHold, alternative: threshold2(oneHold, "holdAndWin"), mutation: ["acceptedTransition.alternative"], expectedWin: 0},
+        {id: "transition-jackpot-entry", blueprint: jackpot, alternative: threshold2(jackpot, "jackpot"), mutation: ["acceptedTransition.alternative"], expectedWin: 10},
+        {id: "transition-bonus-entry", blueprint: bonus, alternative: threshold2(bonus, "weightedBonus"), mutation: ["acceptedTransition.alternative"], expectedWin: 0.25},
+        {id: "transition-collection-carry", blueprint: collection, mutation: ["acceptedTransition.collection", 0], expectedWin: 0, nextWin: 10},
+        {id: "transition-collection-reset", blueprint: zero, mutation: ["acceptedTransition.collection", 1], expectedWin: 10, nextWin: 10},
+    ];
+}
+
+/** Keep the original artifact/model identities while transplanting alternative behavior. */
+export async function mutateCheckpointTransition(saved: import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmFeatureSessionState,
+    fixture: ReturnType<typeof checkpointTransitionFixtures>[number], command: import("../../../src/runtime/SessionCommand.js").SessionCommand): Promise<typeof saved> {
+    if (!fixture.alternative) return mutateCheckpointProjection(saved, fixture.mutation);
+    const {createCanonicalWasmFixture} = await import("./createCanonicalWasmFixture.js");
+    const {instantiatePokieWasm, SeededPokieWasmHost} = await import("../../../src/wasm/PokieWasmRuntime.js");
+    const artifact = createCanonicalWasmFixture({blueprint: fixture.alternative});
+    const runtime = await instantiatePokieWasm(artifact.bytes, artifact.manifest, new SeededPokieWasmHost("probe"));
+    try {
+        const session = runtime.createSession("probe");
+        await session.play(command);
+        const alternative = session.serialize();
+        if (alternative.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
+        // Neither model identity nor the fixed pool display is the alleged authority.
+        // Keep them original while the native award/statistics/ledger copies agree.
+        const record = JSON.parse(JSON.stringify(alternative));
+        record.artifactIdentity = saved.artifactIdentity;
+        record.feature.lastRound.analytics.envelope = saved.feature.lastRound!.analytics!.envelope;
+        if (fixture.id === "transition-jackpot-payout") {
+            const displays = [record.feature.lastRound.network.jackpot,
+                record.feature.logicalRound?.subrounds[0].artifacts[0].featureEvents.find((event: {type: string}) => event.type === "jackpot")?.data,
+                record.feature.plainMath?.artifact.steps[0].featureEvents.find((event: {type: string}) => event.type === "jackpot")?.data,
+                record.feature.plainMath?.artifact.featureEvents.find((event: {type: string}) => event.type === "jackpot")?.data];
+            for (const display of displays) if (display) display.pools[0].value = 10;
+            record.feature.analyticsCheckpoint.balances.jackpotValue = 10;
+            if (record.feature.logicalRound) record.feature.lastRound.logicalRound = record.feature.logicalRound;
+        }
+        return record as typeof saved;
+    } finally {
+        runtime.dispose();
+    }
 }

@@ -42,3 +42,17 @@ export function resolveRespinTransition(rule: AuthoredRespins, remaining: number
     }
     return {remaining, executed, granted, limit: rule.maxRespins};
 }
+
+/** Collection advances once on the final accepted screen, including losing plays. */
+export function resolveCollectionTransition(rule: AuthoredCollection, value: number, count: number): NonNullable<BoundedMechanicObservation["collection"]> {
+    if (!Number.isFinite(value) || value < 0 || value > rule.cap ||
+        value >= rule.threshold && (rule.reset === "zero" || value > rule.cap - rule.threshold) ||
+        !Number.isSafeInteger(count) || count < 0) throw new Error("Invalid collection prior transition.");
+    const contribution = count * rule.contribution;
+    const accumulated = value + contribution;
+    if (!Number.isFinite(accumulated)) throw new Error("Collection accumulation overflow.");
+    value = Math.min(rule.cap, accumulated);
+    const triggered = value >= rule.threshold;
+    if (triggered) value = rule.reset === "zero" ? 0 : value - rule.threshold;
+    return {value, cap: rule.cap, threshold: rule.threshold, contribution, triggered, reset: rule.reset, payout: triggered ? rule.payout : 0};
+}

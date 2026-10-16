@@ -1,4 +1,4 @@
-import {weightedBonusPayout, weightedBonusModel, type WeightedBonusState, type WeightedBonusStatistics, type WeightedBonusProviding} from "./WeightedBonus.js";
+import {shouldSelectWeightedBonus, weightedBonusPayout, weightedBonusModel, type WeightedBonusState, type WeightedBonusStatistics, type WeightedBonusProviding} from "./WeightedBonus.js";
 import {cloneSessionData} from "../../../runtime/internal/cloneSessionData.js";
 import {validateAuthoredMechanics} from "../../../generated/validateAuthoredMechanics.js";
 import {validateExecutableState} from "../../../runtime/validateExecutableState.js";
@@ -15,7 +15,7 @@ import {CascadingSpinResolver} from "../cascade/CascadingSpinResolver.js";
 import {ValueWinComponent} from "../winevaluation/ValueWinComponent.js";
 import {WinningValue} from "../WinningValue.js";
 import {WinEvaluationResult} from "../winevaluation/WinEvaluationResult.js";
-import {resolveRespinTransition, type BoundedMechanics, type BoundedMechanicObservation, type BoundedMechanicsProviding} from "./BoundedMechanics.js";
+import {resolveCollectionTransition, resolveRespinTransition, type BoundedMechanics, type BoundedMechanicObservation, type BoundedMechanicsProviding} from "./BoundedMechanics.js";
 
 export type BoundedSessionState = {base: unknown; value: number; remaining: number; executed: number; entryBet: number; bonus?: WeightedBonusState};
 
@@ -180,19 +180,11 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
             }
             const count = (symbol: string): number => this.screen!.flat().filter(cell => cell === symbol).length;
             const collection = this.rules.collection;
-            let award = 0;
-            let contribution = 0;
-            let triggered = false;
-            if (collection) {
-                contribution = count(collection.symbolId) * collection.contribution;
-                const accumulated = this.value + contribution;
-                if (!Number.isFinite(accumulated)) throw new Error("Collection accumulation overflow.");
-                this.value = Math.min(collection.cap, accumulated);
-                triggered = this.value >= collection.threshold;
-                if (triggered) {
-                    award = collection.payout;
-                    this.value = collection.reset === "zero" ? 0 : this.value - collection.threshold;
-                    const component = new ValueWinComponent(new WinningValue(collection.symbolId, [], award));
+            const collectionObservation = collection ? resolveCollectionTransition(collection, this.value, count(collection.symbolId)) : undefined;
+            if (collectionObservation) {
+                this.value = collectionObservation.value;
+                if (collectionObservation.triggered) {
+                    const component = new ValueWinComponent(new WinningValue(collection!.symbolId, [], collectionObservation.payout));
                     evaluation = new WinEvaluationResult({winComponents: [...evaluation.getWinComponents(), component]});
                     if (this.cascade) this.cascade = new CascadeResult(this.cascade.getInitialScreen(), this.screen, this.cascade.getCascadeSteps(), this.cascade.getMetadata(), {}, {}, new WinEvaluationResult({winComponents: [component]}));
                 }
@@ -212,7 +204,7 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
             let bonusPayout = 0;
             let selectedNow = false;
             if (table && this.bonus) {
-                if (!continuing && count(table.trigger.symbolId) >= table.trigger.minimumCount) {
+                if (shouldSelectWeightedBonus(table, continuing, this.screen!)) {
                     const outcome = this.generator.selectBonus(table);
                     const index = table.outcomes.findIndex(item => item.id === outcome.id);
                     if (this.bonus.counts.reduce((sum, count) => sum + count, 0) === Number.MAX_SAFE_INTEGER) throw new Error("Weighted bonus counter overflow.");
@@ -232,7 +224,7 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
             this.evaluation = evaluation;
             this.observation = {
                 ...(this.bonus?.selection ? {weightedBonus: {selection: cloneSessionData(this.bonus.selection), selectedNow, payout: bonusPayout, remaining: this.remaining, executed: this.executed}} : {}),
-                ...(collection ? {collection: {value: this.value, cap: collection.cap, threshold: collection.threshold, contribution, triggered, reset: collection.reset, payout: award}} : {}),
+                ...(collectionObservation ? {collection: collectionObservation} : {}),
                 ...(respins ? {respins: {remaining: this.remaining, executed: this.executed, granted, limit: respins.maxRespins}} : {}),
                 ...(this.cascade ? {cascade: {winningCascades: this.cascade.getCascadeSteps().length, evaluatedSteps: this.cascade.getCascadeSteps().length + 1}} : {}),
             };

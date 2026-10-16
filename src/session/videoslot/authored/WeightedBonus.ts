@@ -145,6 +145,11 @@ export function weightedBonusModel(table: WeightedBonus): string {
     ]);
 }
 
+/** Selection is required exactly at a triggering paid entry, never on continuation. */
+export function shouldSelectWeightedBonus(table: WeightedBonus, continuing: boolean, screen: readonly (readonly string[])[]): boolean {
+    return !continuing && screen.flat().filter(symbol => symbol === table.trigger.symbolId).length >= table.trigger.minimumCount;
+}
+
 /** The selected outcome owns its units at the paid entry denomination. */
 export function weightedBonusPayout(outcome: WeightedBonus["outcomes"][number], entryBet: number): number {
     return outcome.payout * (outcome.payoutUnits === "bet-multiple" ? entryBet : 1);

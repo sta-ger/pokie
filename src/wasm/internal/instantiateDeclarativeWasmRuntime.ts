@@ -1,4 +1,4 @@
-import {restoreDeclarativeObservation} from "./restoreDeclarativeObservation.js";
+import {captureDeclarativeTransitionBalances, restoreDeclarativeObservation} from "./restoreDeclarativeObservation.js";
 import {buildRoundArtifactFromSession} from "../../artifact/buildRoundArtifactFromSession.js";
 import {RoundArtifactValidator} from "../../artifact/RoundArtifactValidator.js";
 import {ACTIVE_POKIE_WASM_TRACES as ACTIVE_TRACES} from "./PokieWasmTraceOwnership.js";
@@ -240,7 +240,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                 const plainArtifact = state.feature.plainMath?.artifact;
                 const mathematicalWin = round?.subrounds[0].win ?? state.feature.plainMath!.artifact.totalWin;
                 const final = round?.subrounds[0].finalScreen ?? state.feature.plainMath?.finalScreen ?? artifacts[artifacts.length - 1]?.generatedScreen ?? last.screen!;
-                const observation = restoreDeclarativeObservation(check.session, blueprint, artifacts, final as string[][], mathematicalWin, state.feature.componentAmounts, check.calculator, state.feature.analyticsCheckpoint?.before);
+                const observation = restoreDeclarativeObservation(check.session, blueprint, artifacts, final as string[][], mathematicalWin, state.feature.componentAmounts, check.calculator, state.feature.analyticsCheckpoint?.before, state.feature.analyticsCheckpoint?.balances, round?.subrounds[0].stake ?? plainArtifact!.stake);
                 // The shared owner has now validated the complete canonical event set
                 // against the model/native observations. Bind the plain aggregate to it;
                 // equality between two unchecked retained copies is insufficient.
@@ -277,7 +277,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                     if (stableSlotMathJson(Reflect.get(last.network, key)) !== stableSlotMathJson(Reflect.get(expectedNetwork, key))) throw new Error(`Retained network.${key} contradicts its accepted mathematical observation or executable state.`);
                 }
                 const checkpoint = state.feature.analyticsCheckpoint;
-                if (!checkpoint || Object.keys(checkpoint).some(key => !["state", "before"].includes(key))) throw new Error("Missing or malformed accepted analytics checkpoint.");
+                if (!checkpoint || Object.keys(checkpoint).some(key => !["state", "before", "balances"].includes(key))) throw new Error("Missing or malformed accepted analytics checkpoint.");
                 setSimulationModelIdentity(observation, manifest.artifact?.configurationHash);
                 // Construct after binding identity so its envelope is artifact-owned.
                 const verifier = new SessionFeatureAnalyticsObserver(observation);
@@ -348,7 +348,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
             const network = result.deliveryOnly && state.feature.lastRound?.network ? copy(state.feature.lastRound.network)
                 : serializer.getRoundData(native! as NativeSession & import("../../session/videoslot/cascade/CascadeResultProviding.js").CascadeResultProviding);
             if (!result.deliveryOnly) {
-                analyticsCheckpoint = {state: observer.toState(), before: copy(before)};
+                analyticsCheckpoint = {state: observer.toState(), before: copy(before), balances: copy(balances)};
                 if (!before.pending) accounting = {entryPosition: analyticsCheckpoint.state.position + 1, credits: creditsBefore, stake: result.stake,
                     baseWin: ((native as {getFreeGamesNum?: () => number}).getFreeGamesNum?.() ?? 0) > 0 ? 0 : result.win - (observeVideoSlotFeatures(native!).boundedMechanics?.weightedBonus?.payout ?? 0)};
                 if (blueprint.mechanics?.modifiers) {
@@ -375,6 +375,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                     }), payout, credits: round.credits};
             }
             before = observer.beforePlay();
+            balances = captureDeclarativeTransitionBalances(native!, blueprint);
             state = checkpoint(native!, runtime, state, round);
             state = {...state, feature: {...state.feature, analytics: observer.toState(), ...(analyticsCheckpoint ? {analyticsCheckpoint} : {}), ...(componentAmounts ? {componentAmounts} : {}), ...(accounting ? {accounting} : {}), ...(deliveryStart ? {deliveryStart} : {}), ...(deliveryPrefix ? {deliveryPrefix} : {}), ...(plainMath ? {plainMath} : {})}};
             record(trace, replaying ? "replay" : "round", state.sequence);
@@ -387,6 +388,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
         if (state.feature.analytics) observer.restoreState(state.feature.analytics);
         state = {...state, feature: {...state.feature, analytics: observer.toState()}};
         let before = observer.beforePlay();
+        let balances = captureDeclarativeTransitionBalances(native, blueprint);
         const dispose = (): void => {
             runtime.release();
             built.dispose();
@@ -475,6 +477,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                     observer = new SessionFeatureAnalyticsObserver(native);
                     if (state.feature.analytics) observer.restoreState(state.feature.analytics);
                     before = observer.beforePlay();
+                    balances = captureDeclarativeTransitionBalances(native, blueprint);
                     accounting = state.feature.accounting;
                     runtime = new SessionRuntime(native, state.feature.logicalRound, onAccepted, {retention: "latest", pendingDelivery: state.feature.pendingCommand});
                     currentDraws = [];

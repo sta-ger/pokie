@@ -1039,3 +1039,18 @@ const fs = require("node:fs");
     }, 120000);
 
 });
+
+it("uses one collection transition for accumulation, cap, explicit zero awards and both resets", async () => {
+    const {resolveCollectionTransition} = await import("../../src/session/videoslot/authored/BoundedMechanics.js");
+    const rule = {symbolId: "C", contribution: 1, threshold: 4, cap: 5, reset: "subtract-threshold" as const, payout: 10};
+    expect(resolveCollectionTransition(rule, 0, 3)).toEqual({value: 3, cap: 5, threshold: 4, contribution: 3, triggered: false, reset: "subtract-threshold", payout: 0});
+    expect(resolveCollectionTransition(rule, 3, 3)).toMatchObject({value: 1, triggered: true, payout: 10});
+    expect(resolveCollectionTransition({...rule, reset: "zero"}, 3, 3)).toMatchObject({value: 0, triggered: true, payout: 10});
+    expect(resolveCollectionTransition({...rule, payout: 0}, 3, 3)).toMatchObject({value: 1, triggered: true, payout: 0});
+    expect(resolveCollectionTransition({...rule, contribution: 0}, 3, 3)).toMatchObject({value: 3, triggered: false, payout: 0});
+    for (const value of [-1, 6, NaN, Infinity, "3"] as const) expect(() => resolveCollectionTransition(rule, value as number, 3)).toThrow(/collection.*prior/i);
+    expect(() => resolveCollectionTransition(rule, 3, -1)).toThrow(/collection.*prior/i);
+    // Rejected inputs never mutate the rule or poison the stateless owner.
+    expect(resolveCollectionTransition(rule, 3, 3)).toMatchObject({value: 1, triggered: true, payout: 10});
+    expect(rule).toEqual({symbolId: "C", contribution: 1, threshold: 4, cap: 5, reset: "subtract-threshold", payout: 10});
+});

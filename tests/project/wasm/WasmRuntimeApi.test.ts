@@ -911,3 +911,80 @@ it("rejects fabricated prior analytics wins at the observer owner before effects
         }
     }
 });
+
+it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s authored payout, entry and collection transitions before host restoration", async policy => {
+    const {checkpointTransitionFixtures, mutateCheckpointTransition} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
+    const {createAuthoredSession} = await import("../../../src/generated/createAuthoredSession.js");
+    const {SeededRandomNumberGenerator} = await import("../../../src/session/videoslot/combinations/SeededRandomNumberGenerator.js");
+    const {restoreDeclarativeObservation} = await import("../../../src/wasm/internal/restoreDeclarativeObservation.js");
+    for (const test of checkpointTransitionFixtures()) {
+        const fixture = createCanonicalWasmFixture({blueprint: test.blueprint});
+        const host = new SeededPokieWasmHost("probe");
+        const restore = jest.spyOn(host, "restoreState");
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
+        const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("probe"));
+        const native = createAuthoredSession(test.blueprint, new SeededRandomNumberGenerator("probe"));
+        try {
+            const session = runtime.createSession("probe");
+            const command = {bet: 0.05, roundId: "x", ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1})};
+            const {deliveries: _deliveries, ...receipt} = await session.play(command);
+            expect(receipt.win).toBe(test.expectedWin);
+            const saved = session.serialize();
+            if (saved.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
+            const corrupt = await mutateCheckpointTransition(saved, test, command);
+            let expected = /Collection.*transition/i;
+            if (test.id.includes("hold")) expected = /HoldAndWin.*(payout|entry)/i;
+            if (test.id.includes("jackpot")) expected = /Jackpot.*(award|payout)/i;
+            if (test.id.includes("bonus")) expected = /bonus.*(selection|observation)/i;
+            const before = host.serializeState();
+            const calls = restore.mock.calls.length;
+            // Exercise the same malformed input at the stateless authority, then its
+            // public restore/replay callers. The native codec validates shape first.
+            const observe = (state: typeof saved) => {
+                const decode = (value: unknown): Record<string, unknown> => {
+                    const record = JSON.parse(JSON.stringify(value));
+                    if (record.base) record.base = decode(record.base);
+                    else record.reelStrips = test.blueprint.reelStrips;
+                    return record;
+                };
+                native.session.setBet(0.05);
+                (native.session as typeof native.session & {fromSessionState(value: unknown): unknown}).fromSessionState(decode(state.feature.state));
+                const math = state.feature.logicalRound?.subrounds[0];
+                return restoreDeclarativeObservation(native.session, test.blueprint, math?.artifacts ?? state.feature.plainMath!.artifact.steps!,
+                    state.feature.lastRound!.screen!.map(reel => [...reel]), math?.win ?? state.feature.plainMath!.artifact.totalWin,
+                    undefined, native.calculator, state.feature.analyticsCheckpoint!.before, state.feature.analyticsCheckpoint!.balances,
+                    math?.stake ?? state.feature.plainMath!.artifact.stake);
+            };
+            expect(() => observe(corrupt)).toThrow(expected);
+            expect(() => observe(saved)).not.toThrow();
+            for (const target of [runtime, fresh]) {
+                expect(() => target.restoreSession(corrupt)).toThrow(expected);
+                await expect(target.replay(corrupt, [command])).rejects.toThrow(expected);
+            }
+            expect(restore).toHaveBeenCalledTimes(calls);
+            expect(host.serializeState()).toEqual(before);
+            expect(session.serialize()).toEqual(saved);
+            expect(await session.play(command)).toEqual(receipt);
+            const reference = fresh.restoreSession(saved);
+            for (let index = 0; index < 2; index++) {
+                const state = session.serialize();
+                const round = state.schemaVersion === "pokie.state.v4" && state.feature.logicalRound;
+                const next = round && round.status === "pending" ? {delivery: "stepwise", continuation: {roundId: "x", cursor: round.deliveryCursor}} : {bet: 0.05};
+                const actual = await session.play(next);
+                expect(actual).toEqual(await reference.play(next));
+                if (test.nextWin !== undefined) expect(actual.win).toBe(test.nextWin);
+                expect(session.serialize()).toEqual(reference.serialize());
+            }
+            for (const target of [runtime, fresh]) {
+                const repaired = target.restoreSession(saved);
+                for (let retry = 0; retry < 2; retry++) expect(await repaired.play(command)).toEqual(receipt);
+                repaired.dispose();
+                expect((await target.replay(saved, [command])).rounds).toEqual([receipt]);
+            }
+        } finally {
+            native.dispose();
+            runtime.dispose();
+            fresh.dispose();
+        }
+    }
+});

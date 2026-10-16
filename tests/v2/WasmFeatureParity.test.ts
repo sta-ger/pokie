@@ -692,3 +692,33 @@ it.each(["currency", "bet-multiple"] as const)("restores authored %s bonus award
         }
     }
 });
+
+it("retains every native payout, required entry and collection-transition reproducer with valid known answers", async () => {
+    const {checkpointTransitionFixtures} = await import("../fixtures/wasm/checkpointProjectionMutations.js");
+    expect(checkpointTransitionFixtures().map(({id}) => id)).toEqual([
+        "transition-hold-payout", "transition-jackpot-payout", "transition-hold-entry", "transition-jackpot-entry",
+        "transition-bonus-entry", "transition-collection-carry", "transition-collection-reset",
+    ]);
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    for (const test of checkpointTransitionFixtures()) {
+        const fixture = createCanonicalWasmFixture({blueprint: test.blueprint});
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("probe"));
+        try {
+            const session = runtime.createSession("probe");
+            const entry = await session.play({bet: 0.05, roundId: "x", delivery: "stepwise"});
+            expect(entry.win).toBe(test.expectedWin);
+            if (test.id === "transition-hold-entry") expect(entry.network?.holdAndWin).toMatchObject({active: true, respinsRemaining: 2});
+            if (test.id === "transition-bonus-entry") expect(entry.network?.boundedMechanics?.weightedBonus).toMatchObject({selectedNow: true, payout: 0.25, remaining: 2, executed: 0});
+            if (test.id === "transition-collection-carry") expect(entry.network?.boundedMechanics?.collection).toMatchObject({value: 3, contribution: 3, triggered: false});
+            if (test.id === "transition-collection-reset") expect(entry.network?.boundedMechanics?.collection).toMatchObject({value: 0, triggered: true, payout: 10});
+            const state = JSON.parse(JSON.stringify(session.serialize()));
+            const restored = runtime.restoreSession(state);
+            const command = entry.logicalRound?.status === "pending" ? {delivery: "stepwise", continuation: {roundId: "x", cursor: 1}} : {bet: 0.05};
+            const next = await session.play(command);
+            expect(await restored.play(command)).toEqual(next);
+            if (test.nextWin !== undefined) expect(next.win).toBe(test.nextWin);
+        } finally {
+            runtime.dispose();
+        }
+    }
+});
