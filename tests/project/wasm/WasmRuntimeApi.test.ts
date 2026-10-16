@@ -663,6 +663,10 @@ it.each(["stepwise", "composite", "plain"] as const)("binds %s artifact awards, 
                     const steps = corrupt.feature.logicalRound?.subrounds[0].artifacts ?? corrupt.feature.plainMath!.artifact.steps;
                     expect(steps!.flatMap(step => step.wins).reduce((sum, win) => sum + win.winAmount, 0)).toBe(receipt.win);
                     expect(corrupt.feature.lastRound!.network!.totalWin).toBe(receipt.network!.totalWin);
+                    if (id === "award-bonus") {
+                        expect(corrupt.feature.lastRound!.network!.winEvaluationResult!.lineWins).toEqual(receipt.network!.winEvaluationResult!.lineWins);
+                        expect(corrupt.feature.lastRound!.network!.winEvaluationResult!.valueWins).toEqual(receipt.network!.winEvaluationResult!.valueWins);
+                    }
                     if (id === "award-respins") expect(corrupt.feature.lastRound!.network!.boundedMechanics!.respins).toMatchObject({remaining: 2, executed: 0, granted: mutation[0] === "acceptedAward.respinGrant" ? 1 : 2});
                     else {
                         const expected = mutation[0] === "acceptedAward.omit" ? [0.2] : [0.05, 0.15];

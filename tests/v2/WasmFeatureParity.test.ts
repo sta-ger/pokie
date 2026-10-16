@@ -674,8 +674,12 @@ it.each(["currency", "bet-multiple"] as const)("restores authored %s bonus award
                 const command = {bet, roundId: `award:${bet}`, delivery: "stepwise"};
                 const played = await session.play(command);
                 expect(played.win).toBe(2 * bet + payout * (units === "bet-multiple" ? bet : 1));
-                expect(played.network?.winEvaluationResult?.valueWins).toEqual([{symbolId: "bonus-respins", symbolsPositions: [], winAmount: payout * (units === "bet-multiple" ? bet : 1)}]);
+                expect(played.analytics?.components).toContainEqual({type: "value", id: "bonus-respins", symbol: "bonus-respins", amount: payout * (units === "bet-multiple" ? bet : 1), partition: "feature"});
                 const saved = session.serialize();
+                if (saved.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature checkpoint");
+                expect(saved.feature.logicalRound!.subrounds[0].artifacts!.flatMap(step => step.wins)).toContainEqual(expect.objectContaining({
+                    type: "value", id: "bonus-respins", winAmount: payout * (units === "bet-multiple" ? bet : 1), winningPositions: [],
+                }));
                 const restored = runtime.restoreSession(saved);
                 expect(await restored.play(command)).toEqual(played);
                 expect((await runtime.replay(saved, [command])).rounds).toEqual([played]);

@@ -84,7 +84,13 @@ export function mutateCheckpointProjection<T>(saved: T, [path, value]: readonly 
             const network = feature.lastRound.network;
             const result = restoreWinEvaluation({components: wins.map(win => ({type: win.type, id: win.id, symbolId: win.symbolId!, amount: win.winAmount,
                 positions: win.winningPositions as number[][], multipliers: [], metadata: win.metadata})), metadata: network.winEvaluationResult.metadata});
-            network.winEvaluationResult = serializeWinEvaluationResult(result);
+            const projected = serializeWinEvaluationResult(result);
+            // Bounded awards expose component-only evaluations. Preserve their empty
+            // legacy category arrays so a projection-shape error cannot reject the probe.
+            for (const [key, value] of Object.entries(network.winEvaluationResult)) {
+                if (key.endsWith("Wins") && Array.isArray(value) && value.length === 0) Reflect.set(projected, key, []);
+            }
+            network.winEvaluationResult = projected;
             network.winningPositions = result.getWinningPositions();
             for (const [kind, field, group] of [["line", "winningLines", "lineWins"], ["scatter", "winningScatters", "scatterWins"],
                 ["ways", "winningWays", "waysWins"], ["cluster", "winningClusters", "clusterWins"], ["value", "winningValues", "valueWins"]]) {
