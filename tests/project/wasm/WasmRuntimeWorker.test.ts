@@ -1203,16 +1203,24 @@ it.each([true, false].flatMap(serialize => ["new", "spin"].flatMap(action => ["r
         jest.useRealTimers();
     }
 });
-it.each(["artifact", "generation"] as const)("V2C-22-PUBLICATION-BINDING preserves historical results without installing a session after %s replacement", async replacement => {
+it.each(["artifact", "generation"].flatMap(replacement => ["new", "spin"].map(action => ({replacement, action}))))("V2C-22-PUBLICATION-BINDING preserves historical $action results without installing a session after $replacement replacement", async ({replacement, action}) => {
     const test = await browserOwner();
     const fs = await import("fs");
     try {
+        let id: string | undefined;
+        if (action === "spin") {
+            const created = await test.api.createPlaySession(test.owner.fetch, "0");
+            if (created.status !== "ok") throw new Error("Creation rejected");
+            id = created.session.sessionId;
+        }
+        const invoke = () => id ? test.api.spinPlaySession(test.owner.fetch, id, 1, undefined, {requestId: "historical"}) : test.api.createPlaySession(test.owner.fetch, "0");
         test.controls.after = (route, response) => {
             if (route.endsWith("/finish")) throw new Error("accepted response lost");
             return Promise.resolve(response);
         };
-        await expect(test.api.createPlaySession(test.owner.fetch, "0")).rejects.toThrow(/lost/);
-        const retained = test.jobs.list()[0];
+        if (id) expect(await invoke()).toMatchObject({status: "error", message: expect.stringContaining("lost")});
+        else await expect(invoke()).rejects.toThrow(/lost/);
+        const retained = test.jobs.list().find(job => job.request.action === action)!;
         expect(retained.result?.detail?.session).toBeDefined();
         test.controls.after = undefined;
         if (replacement === "artifact") {
@@ -1223,11 +1231,49 @@ it.each(["artifact", "generation"] as const)("V2C-22-PUBLICATION-BINDING preserv
         const binding = {owner: retained.request.browserOwner, generation: retained.request.browserGeneration, artifactIdentity: retained.request.artifactIdentity, cleanup: true};
         const historical = await test.network(`/api/project/wasm/jobs/${retained.id}/finish`, {method: "POST", body: JSON.stringify(binding)});
         expect(await historical.json()).toMatchObject({result: retained.result, browserSessionActive: false});
-        await expect(test.api.createPlaySession(test.owner.fetch, "0")).rejects.toThrow(/historical Play result/);
+        if (id) expect(await invoke()).toMatchObject({status: "error", message: expect.stringContaining("historical Play result")});
+        else await expect(invoke()).rejects.toThrow(/historical Play result/);
         expect(test.controls.live).toBe(0);
         expect(test.jobs.get(test.file, retained.id)).toEqual(retained);
         expect(await test.api.createPlaySession(test.owner.fetch, "0")).toMatchObject({status: "ok"});
-        expect(test.controls.plays).toBe(0);
+        expect(test.controls.plays).toBe(id ? 1 : 0);
+    } finally {
+        await test.close();
+    }
+});
+it("V2C-22-PUBLICATION-BINDING cannot reattach an historical session after shutdown begins during recovery validation", async () => {
+    const test = await browserOwner();
+    const entered = controlled<void>();
+    const release = controlled<void>();
+    try {
+        test.controls.after = (route, response) => {
+            if (route.endsWith("/finish")) throw new Error("accepted response lost");
+            return Promise.resolve(response);
+        };
+        await expect(test.api.createPlaySession(test.owner.fetch, "0")).rejects.toThrow(/lost/);
+        test.controls.after = undefined;
+        const job = test.jobs.list()[0];
+        const binding = {owner: job.request.browserOwner, generation: job.request.browserGeneration, artifactIdentity: job.request.artifactIdentity};
+        await test.network(`/api/project/wasm/sessions/${job.id}/dispose`, {method: "POST", body: JSON.stringify(binding)});
+        const artifact = test.broker.artifact.bind(test.broker);
+        const spy = jest.spyOn(test.broker, "artifact").mockImplementation(async context => {
+            const result = await artifact(context);
+            entered.resolve();
+            await release.promise;
+            return result;
+        });
+        try {
+            const recovering = test.api.createPlaySession(test.owner.fetch, "0");
+            await entered.promise;
+            await test.broker.shutdown();
+            release.resolve();
+            await expect(recovering).rejects.toThrow(/historical Play result/);
+            expect(test.controls.live).toBe(0);
+            expect(test.jobs.get(test.file, job.id)).toEqual(job);
+        } finally {
+            release.resolve();
+            spy.mockRestore();
+        }
     } finally {
         await test.close();
     }

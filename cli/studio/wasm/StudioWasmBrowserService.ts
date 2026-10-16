@@ -232,7 +232,7 @@ export class StudioWasmBrowserService {
         } catch {
             return historical();
         }
-        if (!isCurrent() || artifact.generation !== job.request.browserGeneration || artifact.manifest.artifact!.sha256 !== job.request.artifactIdentity) return historical();
+        if (!this.accepting || !isCurrent() || artifact.generation !== job.request.browserGeneration || artifact.manifest.artifact!.sha256 !== job.request.artifactIdentity) return historical();
         if (this.jobs.list(job.projectId).some(other => other.operation === "browser-play" && other.request.browserGeneration === job.request.browserGeneration && (other.request.browserAdmission as number) > (job.request.browserAdmission as number))) return historical();
         const existing = this.sessions.get(job.request.sessionId as string ?? job.id);
         if (existing && (existing.cancelled || existing.owner !== value.owner || existing.context !== context || existing.artifact.generation !== artifact.generation || existing.artifact.manifest.artifact!.sha256 !== artifact.manifest.artifact!.sha256)) return historical();
