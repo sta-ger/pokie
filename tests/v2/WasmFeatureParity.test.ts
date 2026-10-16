@@ -531,4 +531,3 @@ it("restores expansion in triggering-cell order when configured reels are interl
         runtime.dispose();
     }
 });
-
