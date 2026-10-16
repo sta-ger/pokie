@@ -1,9 +1,14 @@
 import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {readFileSync} from "node:fs";
+import {mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync} from "node:fs";
+import {webcrypto} from "node:crypto";
 import {join} from "node:path";
 import {useLocation} from "react-router-dom";
 import {ProjectsPanel} from "../../../../../../cli/studio-client/src/components/home/ProjectsPanel";
+import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
+import {StudioProjectRegistrationService} from "../../../../../../cli/studio/StudioProjectRegistrationService";
+import {InMemoryStudioProjectRegistry} from "../../../../../../cli/studio/InMemoryStudioProjectRegistry";
+import {createCanonicalWasmFixture} from "../../../../../fixtures/wasm/createCanonicalWasmFixture";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
@@ -30,6 +35,220 @@ function LocationProbe() {
     const location = useLocation();
     return <output data-testid="location">{JSON.stringify({pathname: location.pathname, state: location.state})}</output>;
 }
+
+// Keep the rendered tests connected to the real resolver, canonical-byte checks
+// and registry mutations. Only the HTTP transport is replaced; errors are the
+// service's actual errors, never canned component results or resolver strings.
+describe("V2C-22-SIDECAR-DIAGNOSTICS: rendered Home recovery", () => {
+    let directory: string;
+    let location: string;
+    let sidecar: string;
+    let registry: InMemoryStudioProjectRegistry;
+    let service: StudioProjectRegistrationService;
+    let fixture: ReturnType<typeof createCanonicalWasmFixture>;
+    let subtle: PropertyDescriptor | undefined;
+    let calls: string[];
+    let diagnostics: string[];
+    let fetchImpl: FetchLike;
+
+    const repair = (): void => {
+        writeFileSync(location, fixture.bytes);
+        writeFileSync(sidecar, JSON.stringify(fixture.manifest));
+    };
+    const contents = (): Buffer[] => [readFileSync(location), ...(readFileSyncOrAbsent(sidecar))];
+    function readFileSyncOrAbsent(file: string): Buffer[] {
+        try {
+            return [readFileSync(file)];
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+            throw error;
+        }
+    }
+
+    beforeEach(async () => {
+        // jsdom has no SubtleCrypto; use real hashing without bypassing integrity.
+        subtle = Reflect.getOwnPropertyDescriptor(globalThis.crypto, "subtle");
+        Reflect.defineProperty(globalThis.crypto, "subtle", {configurable: true, value: webcrypto.subtle});
+        directory = mkdtempSync(join(process.cwd(), "node_modules/.cache/pokie-tmp/home-wasm-"));
+        location = join(directory, "game.wasm");
+        sidecar = `${location}.pokie-wasm.json`;
+        fixture = createCanonicalWasmFixture();
+        repair();
+        registry = new InMemoryStudioProjectRegistry();
+        service = new StudioProjectRegistrationService(registry);
+        const preserved = join(directory, "preserved.wasm");
+        writeFileSync(preserved, fixture.bytes);
+        writeFileSync(`${preserved}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        await service.registerExternal(preserved, "Preserved game");
+        calls = [];
+        diagnostics = [];
+        fetchImpl = async (url, init) => {
+            const route = url.split("?")[0];
+            calls.push(route);
+            const input = JSON.parse(init?.body ?? "{}") as {location: string; name: string; newLocation: string; projectRoot: string};
+            let body: unknown;
+            try {
+                switch (route) {
+                    case "/api/home/projects/registry":
+                        body = await service.list();
+                        break;
+                    case "/api/home/projects/registry/preview":
+                        body = await service.previewImport(input.location);
+                        break;
+                    case "/api/home/projects/registry/register":
+                        body = await service.registerExternal(input.location, input.name);
+                        break;
+                    case "/api/home/projects/registry/relocate":
+                        body = await service.relocate(input.location, input.newLocation);
+                        break;
+                    case "/api/home/projects/open":
+                        await service.recordOpened(input.projectRoot);
+                        body = {context: {mode: "project", projectRoot: input.projectRoot}};
+                        break;
+                    case "/api/home/fs/browse":
+                        body = {status: "ok", resolvedPath: location, displayPath: location, entries: [], isDirectory: false};
+                        break;
+                    default: throw new Error(`Unexpected Home request: ${url}`);
+                }
+                return {ok: true, status: 200, json: () => Promise.resolve(body)};
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                diagnostics.push(message);
+                return {ok: false, status: 400, json: () => Promise.resolve({error: message})};
+            }
+        };
+    });
+
+    afterEach(() => {
+        rmSync(directory, {recursive: true, force: true});
+        if (subtle) Reflect.defineProperty(globalThis.crypto, "subtle", subtle);
+        else Reflect.deleteProperty(globalThis.crypto, "subtle");
+    });
+
+    const failures = [
+        {category: "missing", cause: "no compatible PokieWasmComponentManifest sidecar was found", guidance: "Add a valid compatible sidecar", breakArtifact: () => unlinkSync(sidecar)},
+        {category: "malformed JSON", cause: "is not valid JSON", guidance: "Repair the malformed sidecar", breakArtifact: () => writeFileSync(sidecar, "{broken")},
+        {category: "malformed shape", cause: "does not satisfy PokieWasmComponentManifest's own shape", guidance: "Repair the malformed sidecar", breakArtifact: () => writeFileSync(sidecar, "{}")},
+        {category: "stale", cause: "does not match its manifest", guidance: "Rebuild the artifact; do not copy a sidecar", breakArtifact: () => writeFileSync(location, createCanonicalWasmFixture({id: "replacement"}).bytes)},
+        {category: "incompatible schema", cause: "not compatible with this POKIE build", guidance: "Update the incompatible sidecar", breakArtifact: () => writeFileSync(sidecar, JSON.stringify({...fixture.manifest, schemaVersion: "99.0.0"}))},
+        {category: "incompatible runtime", cause: "requires POKIE 99.0.0 or newer", guidance: "Update POKIE or rebuild the artifact", breakArtifact: () => writeFileSync(sidecar, JSON.stringify({...fixture.manifest, minPokieVersion: "99.0.0"}))},
+    ];
+
+    async function expectDiagnostic(failure: typeof failures[number]): Promise<void> {
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent(failure.cause);
+        expect(alert).toHaveTextContent(failure.guidance);
+        expect(alert).toHaveTextContent(location);
+        if (failure.category !== "stale" && failure.category !== "incompatible runtime") expect(alert).toHaveTextContent(sidecar);
+        expect(alert).toHaveTextContent(diagnostics[diagnostics.length - 1]);
+        expect(screen.getByText("Preserved game")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Add to projects"})).not.toBeInTheDocument();
+    }
+
+    async function checkGame(): Promise<void> {
+        fireEvent.click(screen.getByRole("button", {name: "Check game"}));
+        await screen.findByRole("button", {name: "Add to projects"});
+    }
+
+    it.each(failures)("Check game preserves $category guidance and permits two corrected previews before registration", async (failure) => {
+        failure.breakArtifact();
+        const invalid = contents();
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+        await screen.findByText("Preserved game");
+        fireEvent.change(screen.getByLabelText("Game location"), {target: {value: location}});
+        fireEvent.click(screen.getByRole("button", {name: "Check game"}));
+        await expectDiagnostic(failure);
+        expect(contents()).toEqual(invalid);
+        expect(await registry.list()).toHaveLength(1);
+        expect(calls).not.toContain("/api/home/projects/registry/register");
+
+        repair(); // Explicit external correction; Home must never write the source.
+        const corrected = contents();
+        await checkGame();
+        await checkGame();
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(await registry.list()).toHaveLength(1);
+        fireEvent.click(screen.getByRole("button", {name: "Add to projects"}));
+        await screen.findByText('Added "game" to Your projects. Select Open to continue working on it.');
+        expect(contents()).toEqual(corrected);
+        expect(await registry.list()).toHaveLength(2);
+    });
+
+    it.each(failures)("registration revalidates $category replacement after preview and recovers explicitly", async (failure) => {
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+        await screen.findByText("Preserved game");
+        fireEvent.change(screen.getByLabelText("Game location"), {target: {value: location}});
+        await checkGame();
+        failure.breakArtifact();
+        const invalid = contents();
+        fireEvent.click(screen.getByRole("button", {name: "Add to projects"}));
+        await expectDiagnostic(failure);
+        expect(await registry.list()).toHaveLength(1);
+        expect(contents()).toEqual(invalid);
+
+        repair();
+        const corrected = contents();
+        await checkGame();
+        fireEvent.click(screen.getByRole("button", {name: "Add to projects"}));
+        await screen.findByText('Added "game" to Your projects. Select Open to continue working on it.');
+        expect(contents()).toEqual(corrected);
+        expect(await registry.list()).toHaveLength(2);
+    });
+
+    it.each(failures)("relocation retains the old entry on $category failure and repairs only the registry on retry", async (failure) => {
+        await service.registerManaged(location, "Moved game");
+        const oldLocation = location;
+        const oldSidecar = sidecar;
+        location = join(directory, "moved.wasm");
+        sidecar = `${location}.pokie-wasm.json`;
+        repair();
+        unlinkSync(oldLocation);
+        failure.breakArtifact();
+        const invalid = contents();
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+        await screen.findByText("Moved game (missing)");
+        fireEvent.click(screen.getByRole("button", {name: "Relocate"}));
+        fireEvent.change(screen.getByLabelText("New location"), {target: {value: location}});
+        const submit = screen.getAllByRole("button", {name: "Relocate"}).at(-1)!;
+        fireEvent.click(submit);
+        await expectDiagnostic(failure);
+        expect(screen.getByText("Moved game (missing)")).toBeInTheDocument();
+        expect((await registry.list()).map(entry => entry.location)).toContain(oldLocation);
+        expect(contents()).toEqual(invalid);
+
+        repair();
+        const corrected = contents();
+        fireEvent.click(submit);
+        await screen.findByRole("button", {name: "Moved game"});
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect((await registry.list()).find(entry => entry.name === "Moved game")).toMatchObject({location, origin: "managed"});
+        expect(await registry.list()).toHaveLength(2);
+        expect(contents()).toEqual(corrected);
+        expect(readFileSync(oldSidecar, "utf8")).toBe(JSON.stringify(fixture.manifest));
+    });
+
+    it.each(failures)("registered/recent Open retains $category guidance, row and route until corrected retry", async (failure) => {
+        await service.recordOpened(location, "Recent game");
+        renderWithProviders(<><ProjectsPanel /><LocationProbe /></>, {fetchImpl, initialEntries: ["/home/projects"]});
+        await screen.findByRole("button", {name: "Recent game"});
+        failure.breakArtifact(); // The row was valid when rendered; disk is authoritative at Open.
+        const invalid = contents();
+        const row = screen.getByRole("button", {name: "Recent game"}).closest("tr")!;
+        fireEvent.click(within(row).getByRole("button", {name: "Open"}));
+        await expectDiagnostic(failure);
+        expect(screen.getByTestId("location")).toHaveTextContent('"pathname":"/home/projects"');
+        expect(await registry.list()).toHaveLength(2);
+        expect(contents()).toEqual(invalid);
+
+        repair();
+        const corrected = contents();
+        fireEvent.click(within(row).getByRole("button", {name: "Open"}));
+        await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent(`/project/${encodeURIComponent(location)}/overview`));
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(await registry.list()).toHaveLength(2);
+        expect(contents()).toEqual(corrected);
+    });
+});
 
 describe("ProjectsPanel: Import Project", () => {
     it("renders conversion evidence retained by a registry reload", async () => {

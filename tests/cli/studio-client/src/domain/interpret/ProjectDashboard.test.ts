@@ -43,9 +43,11 @@ describe("describeProjectHeader", () => {
         });
     });
 
-    it("shows a resolver-derived WASM sidecar diagnostic as the primary direct-entry failure", () => {
-        const diagnostic = '"/a/component.wasm.pokie-wasm.json" is not valid JSON, but "/a/component.wasm" requires it as its PokieWasmComponentManifest sidecar.';
-
+    it.each([
+        '"/a/component.wasm.pokie-wasm.json" is not valid JSON, but "/a/component.wasm" requires it as its PokieWasmComponentManifest sidecar.',
+        'POKIE rejected "/a/component.wasm": its canonical WASM module or game configuration does not match its manifest. Rebuild the artifact.',
+        'POKIE 2.0.0 cannot run "/a/component.wasm": it requires POKIE 99.0.0 or newer. Update POKIE or rebuild the artifact for this runtime.',
+    ])("shows a resolver-derived WASM diagnostic as the primary direct-entry failure: %s", (diagnostic) => {
         expect(describeProjectHeader({status: "error", projectRoot: "/a/component.wasm", error: diagnostic})).toEqual({
             status: "error",
             projectRoot: "/a/component.wasm",
