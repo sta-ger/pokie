@@ -287,15 +287,21 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                 const stake = math?.stake ?? state.feature.plainMath!.artifact.stake;
                 const payout = math?.payout ?? state.feature.plainMath!.payout;
                 const mathBefore = state.credits + stake - payout;
+                const ledgerTolerance = 32 * Number.EPSILON * Math.max(1, state.credits, payout, accounting?.credits ?? 0);
+                const freeNum = (observation as {getFreeGamesNum?: () => number}).getFreeGamesNum?.() ?? 0;
+                const entryBaseWin = freeNum > 0 && mathematicalEntry ? 0 : mathematicalWin - (bounded?.weightedBonus?.selectedNow ? bounded.weightedBonus.payout : 0);
                 if (!accounting || Object.keys(accounting).sort().join(",") !== "baseWin,credits,entryPosition,stake" ||
                     !Number.isSafeInteger(accounting.entryPosition) || accounting.entryPosition < 1 || accounting.entryPosition > checkpoint.state.position + 1 ||
                     ![accounting.credits, accounting.stake, accounting.baseWin].every(value => Number.isFinite(value) && value >= 0) ||
-                    mathematicalEntry && (accounting.entryPosition !== checkpoint.state.position + 1 || Math.abs(accounting.credits - mathBefore) > 1e-9 || accounting.stake !== stake ||
-                        accounting.baseWin !== mathematicalWin - (bounded?.weightedBonus?.selectedNow ? bounded.weightedBonus.payout : 0))) throw new Error("Invalid accepted analytics entry accounting.");
+                    mathematicalEntry && (accounting.entryPosition !== checkpoint.state.position + 1 || Math.abs(accounting.credits - mathBefore) > ledgerTolerance || accounting.stake !== stake ||
+                        accounting.baseWin !== entryBaseWin)) throw new Error("Invalid accepted analytics entry accounting.");
                 const bank = (observation as {getFreeGamesBank?: () => number}).getFreeGamesBank?.() ?? 0;
                 const priorImmediateWin = (round ? round.totalWin : state.credits - accounting.credits + accounting.stake) - accounting.baseWin - mathematicalWin;
+                // Free-game mathematics includes outer jackpot awards as well as the bank.
+                // While pending, only the bank is unpaid; terminal release is already in credits.
+                const priorFreeWin = round ? priorImmediateWin : priorImmediateWin + (verifier.beforePlay().pending ? bank : 0);
                 verifier.validateAcceptedTransition(checkpoint.before, mathematicalEntry, !mathematicalEntry, {entryPosition: accounting.entryPosition, roundingScale: round ? round.totalWin : Math.max(state.credits, accounting.credits),
-                    wins: {weightedBonus: priorImmediateWin, respins: priorImmediateWin, freeGames: bank - mathematicalWin, holdAndWin: 0}});
+                    wins: {weightedBonus: priorImmediateWin, respins: priorImmediateWin, freeGames: priorFreeWin, holdAndWin: 0}});
                 const expectedAnalytics = verifier.afterPlay(checkpoint.before, mathematicalWin, round?.mode ?? (blueprint.betModes ? state.feature.plainMath?.artifact.betMode : undefined));
                 const finalIsPresentation = !!round && round.stageCursor > 1;
                 if (stableSlotMathJson(verifier.toState()) !== stableSlotMathJson(state.feature.analytics) ||
@@ -341,7 +347,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
             if (!result.deliveryOnly) {
                 analyticsCheckpoint = {state: observer.toState(), before: copy(before)};
                 if (!before.pending) accounting = {entryPosition: analyticsCheckpoint.state.position + 1, credits: creditsBefore, stake: result.stake,
-                    baseWin: result.win - (observeVideoSlotFeatures(native!).boundedMechanics?.weightedBonus?.payout ?? 0)};
+                    baseWin: ((native as {getFreeGamesNum?: () => number}).getFreeGamesNum?.() ?? 0) > 0 ? 0 : result.win - (observeVideoSlotFeatures(native!).boundedMechanics?.weightedBonus?.payout ?? 0)};
                 if (blueprint.mechanics?.modifiers) {
                     const result = native!.getWinEvaluationResult();
                     componentAmounts = {ways: result.getWaysWins().map(c => c.getWinningWay().getWinAmount()), clusters: result.getClusterWins().map(c => c.getWinningCluster().getWinAmount())};

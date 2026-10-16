@@ -531,3 +531,36 @@ it("restores expansion in triggering-cell order when configured reels are interl
         runtime.dispose();
     }
 });
+
+it.each(["plain", "stepwise", "composite"] as const)("restores %s modifier/free-game accounting with banked wins and outer jackpot awards", async policy => {
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    const {mutateCheckpointProjection} = await import("../fixtures/wasm/checkpointProjectionMutations.js");
+    const blueprint = JSON.parse(fs.readFileSync("examples/blueprints/wild-expanding.blueprint.json", "utf8"));
+    blueprint.mechanics.freeGames = {scatterSymbol: "S", awardsByCount: {3: 0}};
+    blueprint.mechanics.jackpot = {pool: {id: "mini", type: "fixed", amount: 10}, contribution: {type: "percentage", percentage: 0.1}, trigger: {type: "symbol-count", symbolId: "A", minimumCount: 1}, award: "single-tier"};
+    blueprint.betModes = [{id: "base", runtimeType: "base", isDefault: true}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 10, forcedFreeGames: 3}];
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("probe"));
+    const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("fresh"));
+    try {
+        const session = runtime.createSession("probe");
+        const delivery = policy === "plain" ? {} : {delivery: policy, ...(policy === "composite" ? {maxSubrounds: 1} : {})};
+        await session.play({bet: 0.05, mode: "buy", roundId: "banked", ...delivery});
+        await session.play(policy === "plain" ? {} : {...delivery, continuation: {roundId: "banked", cursor: 1}});
+        const saved = session.serialize();
+        const corrupt = mutateCheckpointProjection(saved, ["analyticsAccounting.inflated"]);
+        expect(() => runtime.restoreSession(corrupt)).toThrow(/analytics.*accounting/i);
+        const restored = fresh.restoreSession(saved);
+        const finish = policy === "plain" ? {} : {...delivery, continuation: {roundId: "banked", cursor: 2}};
+        const result = await restored.play(finish);
+        expect(await session.play(finish)).toEqual(result);
+        expect(result.analytics?.features).toContainEqual(expect.objectContaining({feature: "freeGames", completion: {duration: 3, win: 39, entryPosition: 1}}));
+        expect(result.win).toBe(13);
+        expect(result.payout).toBe(19);
+        expect((await runtime.replay(saved, [finish])).rounds).toEqual([result]);
+        expect(await runtime.restoreSession(restored.serialize()).play({bet: 0.05})).toEqual(await restored.play({bet: 0.05}));
+    } finally {
+        runtime.dispose();
+        fresh.dispose();
+    }
+});

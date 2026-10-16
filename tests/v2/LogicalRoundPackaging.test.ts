@@ -1034,7 +1034,7 @@ it("validates ordinary rectangular win coordinates through artifact construction
         expect(() => api.projectPublicRoundStep(corrupt.steps[0])).toThrow(/position|index|domain/i);
         expect(diagnostics.every(issue => issue.severity === "error")).toBe(true);
         expect(api.validateLogicalRound({...logical, subrounds: [{...logical.subrounds[0], artifacts: corrupt.steps}]})).toBeDefined();
-        expect(() => api.buildRoundStepArtifact(0, {screen, winEvaluationResult: api.restoreWinEvaluation({components: [{type: "line", id: "0", symbolId: "A", amount: 0.1, positions: [position] as number[][], multipliers: [], metadata: artifact.wins[0].metadata}], metadata: {}})})).toThrow(/position|index|domain/i);
+        expect(() => api.buildRoundStepArtifact(0, {screen, winEvaluationResult: new api.WinEvaluationResult({lineWins: [new api.LineWinComponent(result.getLineWins()[0].getWinningLine(), [position] as number[][])]})})).toThrow(/position|index|domain/i);
         expect(projector.project(artifact).wins).toEqual(artifact.wins);
         expect(validator.validate(artifact)).toEqual([]);
         expect(api.validateLogicalRound(logical)).toBeUndefined();
