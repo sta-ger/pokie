@@ -383,7 +383,7 @@ export function checkpointTransitionFixtures(): {id: string; blueprint: GameBlue
 
 /** Keep the original artifact/model identities while transplanting alternative behavior. */
 export async function mutateCheckpointTransition(saved: import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmFeatureSessionState,
-    fixture: ReturnType<typeof checkpointTransitionFixtures>[number], command: import("../../../src/runtime/SessionCommand.js").SessionCommand): Promise<typeof saved> {
+    fixture: ReturnType<typeof checkpointTransitionFixtures>[number], command: Record<string, unknown>): Promise<typeof saved> {
     if (!fixture.alternative) return mutateCheckpointProjection(saved, fixture.mutation);
     const {createCanonicalWasmFixture} = await import("./createCanonicalWasmFixture.js");
     const {instantiatePokieWasm, SeededPokieWasmHost} = await import("../../../src/wasm/PokieWasmRuntime.js");
