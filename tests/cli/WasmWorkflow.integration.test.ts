@@ -137,13 +137,16 @@ describe("canonical WASM CLI workflow", () => {
             expect(output.join("\n")).toContain("host bindings");
             expect(output.join("\n")).toContain("capabilities");
             output.length = 0;
-            await expect(new ValidateCommand().run([artifact, "--format", "json"])).resolves.toBe(0);
+            // Runnable integrity is valid; declaration analysis cannot prove executable fidelity.
+            await expect(new ValidateCommand().run([artifact, "--format", "json"])).resolves.toBe(2);
         } finally {
             log.mockRestore();
         }
         const report = JSON.parse(output.join("\n"));
         expect(report).toMatchObject({valid: true, wasm: {abiVersion: "2.0.0", compatibility: "compatible", hostRequirements: {rng: "pokie.rng.v2"}}});
         expect(report.wasm.integrity).toMatch(/^sha256:[a-f0-9]{64}/);
+        expect(report.advanced).toMatchObject({adapter: "wasm-declaration-v1", verdict: "inconclusive", executableFidelity: "unverified"});
+        expect(report.advanced.checks).toContainEqual(expect.objectContaining({id: "source.executable-fidelity", status: "unknown"}));
     });
 
     it("routes an implicit artifact path through the public dispatcher to inspect guidance", async () => {
