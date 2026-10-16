@@ -791,9 +791,10 @@ it.each(["plain", "stepwise", "composite"] as const)("conserves eligible weighte
     const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
     const blueprint = weightedBonusBlueprint();
     blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    blueprint.mechanics!.weightedBonus!.trigger.minimumCount = 2;
     Reflect.deleteProperty(blueprint, "reelStrips");
     blueprint.reelSequences = [
-        {type: "weighted", variants: [{id: "short", symbols: ["C"], weight: 1}, {id: "long", symbols: ["C", "C"], weight: 3}, {id: "zero", symbols: ["A"], weight: 0}]},
+        {type: "weighted", variants: [{id: "first", symbols: ["C", "A"], weight: 1}, {id: "second", symbols: ["A", "C"], weight: 3}, {id: "zero", symbols: ["A", "A"], weight: 0}]},
         {type: "exact", symbols: ["C"]}, {type: "exact", symbols: ["C"]},
     ];
     const fixture = createCanonicalWasmFixture({blueprint});
