@@ -12,6 +12,16 @@ export type DeclarativeWasmModel = SharedSlotMathModel & {
 };
 export type CanonicalWasmGameModel = SharedSlotMathModel & {readonly features?: DeclarativeWasmModel["features"]};
 
+/** Discard only the documented authoring distribution shadowed by resolved strips. */
+export function normalizeResolvedWasmBlueprint(blueprint: GameBlueprint): GameBlueprint {
+    const errors = new GameBlueprintValidator().validate(blueprint).filter(issue => issue.severity === "error");
+    if (errors.length) throw new Error(errors.map(issue => `${issue.code} at ${issue.path ?? "$"}: ${issue.message}`).join("; "));
+    if (blueprint.reelStrips === undefined || blueprint.symbolWeights === undefined) return blueprint;
+    const resolved = {...blueprint};
+    Reflect.deleteProperty(resolved, "symbolWeights");
+    return resolved;
+}
+
 export function assertDeclarativeWasmBlueprint(value: unknown): asserts value is GameBlueprint {
     const errors = new GameBlueprintValidator().validate(value).filter(issue => issue.severity === "error");
     if (errors.length) throw new Error(errors.map(issue => `${issue.code} at ${issue.path ?? "$"}: ${issue.message}`).join("; "));

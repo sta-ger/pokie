@@ -289,6 +289,13 @@ it("retains clone-safe feature checkpoints across Worker restore, replay, reject
     const checkpoint = JSON.parse(JSON.stringify(snapshot.result));
     expect(await worker.handle({id: "invalid", type: "play", command: {bet: 7.5, continuation: {roundId: "bonus", cursor: 1}}})).toMatchObject({ok: false});
     expect(await worker.handle({id: "unchanged", type: "serialize"})).toEqual({id: "unchanged", ok: true, result: checkpoint});
+    for (const change of [{payout: -123}, {win: "invalid"}, {stops: [-999]}, {deliveryOnly: true}, {command: {kind: "invalid"}}]) {
+        const corrupt = JSON.parse(JSON.stringify(checkpoint));
+        Object.assign(corrupt.feature.lastRound, change);
+        expect(await worker.handle({id: "corrupt", type: "restore", state: corrupt})).toMatchObject({ok: false});
+        expect(await worker.handle({id: "corrupt-replay", type: "replay", state: corrupt, commands: []})).toMatchObject({ok: false});
+        expect(await worker.handle({id: "retained", type: "serialize"})).toMatchObject({ok: true, result: checkpoint});
+    }
     expect(await worker.handle({id: "restore", type: "restore", state: checkpoint})).toMatchObject({ok: true});
     const command = {delivery: "stepwise", continuation: {roundId: "bonus", cursor: 1}};
     const expected = await worker.handle({id: "continue", type: "play", command});

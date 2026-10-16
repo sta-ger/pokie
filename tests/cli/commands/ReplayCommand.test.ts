@@ -456,6 +456,34 @@ describe("ReplayCommand runtime package materialization boundary", () => {
         }
     });
 
+    it("V2C-21 completes seed-7 cascade logical replay and persists its RNG continuation", async () => {
+        const {boundedBlueprint} = await import("../../v2/fixtures/BoundedMechanicsGame.js");
+        const {instantiatePokieWasm, SeededPokieWasmHost} = await import("../../../src/wasm/PokieWasmRuntime.js");
+        const blueprint = boundedBlueprint("cascade");
+        blueprint.reelStrips = [["A", "B"], ["A", "B"], ["A", "B"]];
+        const fixture = createCanonicalWasmFixture({blueprint});
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "cascade-replay-"));
+        const artifact = path.join(directory, "game.wasm");
+        const output = path.join(directory, "replay.json");
+        fs.writeFileSync(artifact, fixture.bytes);
+        fs.writeFileSync(`${artifact}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("7"));
+        try {
+            await new ReplayCommand().run([artifact, "--round", "1", "--unit", "logical-round", "--seed", "7", "--out", output]);
+            const result = JSON.parse(fs.readFileSync(output, "utf8"));
+            expect(result).toMatchObject({totalBet: 0.05, totalWin: 0.2, logicalRound: {status: "completed"}});
+            const direct = runtime.createSession("7");
+            await direct.play({bet: 0.05, delivery: "composite", roundId: "direct"});
+            expect(result.stateAfter.rngState).toEqual(direct.serialize().rngState);
+            expect(await runtime.restoreSession(result.stateAfter).play({bet: 0.05, delivery: "composite", roundId: "next"})).toEqual(await direct.play({bet: 0.05, delivery: "composite", roundId: "next"}));
+        } finally {
+            runtime.dispose();
+            log.mockRestore();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
     it("replays a replay-only canonical WASM artifact without session play or serialization", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-only-wasm-"));
         const wasmPath = path.join(workDir, "component.wasm");

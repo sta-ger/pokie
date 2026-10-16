@@ -197,3 +197,63 @@ it("runs a public CLI composite purchase with reel-major JSON observations and a
         fs.rmSync(directory, {recursive: true, force: true});
     }
 });
+
+
+it("V2C-21 classifies seed-7 cascades across stepwise, composite, resumed and replay boundaries", async () => {
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    const {advancePokieWasmReplay} = await import("../../src/wasm/PokieWasmCommands.js");
+    const blueprint = boundedBlueprint("cascade");
+    blueprint.reelStrips = [["A", "B"], ["A", "B"], ["A", "B"]];
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const host = new SeededPokieWasmHost("7");
+    const controller = new AbortController();
+    let interrupt = false;
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {
+        nextRandom: () => host.nextRandom(), resetSeed: seed => host.resetSeed(seed),
+        restoreState: value => host.restoreState(value),
+        serializeState: () => {
+            if (interrupt) controller.abort();
+            return host.serializeState();
+        },
+    });
+    try {
+        const command = {bet: 0.05, delivery: "composite", roundId: "cascade"};
+        const session = runtime.createSession("7");
+        const initial = session.serialize();
+        const composite = await session.play(command);
+        expect(composite).toMatchObject({stake: 0.05, win: 0.2, logicalRound: {status: "completed", deliveryCursor: 3}});
+        expect(composite.deliveryOnly).not.toBe(true);
+        expect(composite.deliveries?.map(frame => !!frame.deliveryOnly)).toEqual([false, true, true]);
+        const saved = session.serialize();
+        const {deliveries: _deliveries, ...receipt} = composite;
+        expect(await runtime.restoreSession(saved).play(command)).toEqual(receipt);
+        const replay = await advancePokieWasmReplay(runtime, initial, {unit: "logical-round", entry: {kind: "spin", ...command, delivery: "composite"}, index: 0});
+        expect(replay.rounds).toEqual([composite]);
+        expect(replay.stateAfter).toEqual(saved);
+        const stepwise = runtime.restoreSession(initial);
+        let frame = await stepwise.play({...command, delivery: "stepwise"});
+        expect(frame.deliveryOnly).not.toBe(true);
+        while (frame.logicalRound?.status === "pending") {
+            const next = {delivery: "stepwise", continuation: {roundId: "cascade", cursor: frame.logicalRound.deliveryCursor}};
+            frame = await stepwise.play(next);
+            expect(frame).toMatchObject({deliveryOnly: true, stake: 0, win: 0, payout: 0});
+            const snapshot = stepwise.serialize();
+            expect(await runtime.restoreSession(snapshot).play(next)).toEqual(frame);
+        }
+        expect(stepwise.serialize()).toMatchObject({rngState: saved.rngState, credits: composite.credits});
+        const interrupted = runtime.restoreSession(initial);
+        interrupt = true;
+        await interrupted.play(command, {signal: controller.signal});
+        const prefix = interrupted.serialize();
+        expect(prefix).toMatchObject({feature: {pendingCommand: {advanced: 1}, lastRound: {stake: 0.05, win: 0.2}}});
+        interrupt = false;
+        const resumed = runtime.restoreSession(prefix);
+        const completed = await resumed.play(command);
+        expect(completed.deliveryOnly).not.toBe(true);
+        expect(completed).toMatchObject({stake: 0.05, win: 0.2, logicalRound: {status: "completed"}});
+        expect(resumed.serialize()).toEqual(saved);
+        expect(await resumed.play(command)).toEqual(receipt);
+    } finally {
+        runtime.dispose();
+    }
+});

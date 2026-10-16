@@ -369,3 +369,31 @@ describe("Pokie WASM runtime API", () => {
     });
 
 });
+
+
+it.each(["stepwise", "composite"] as const)("V2C-21 validates retained %s results before direct/replay host mutation", async delivery => {
+    const fixture = createCanonicalWasmFixture({blueprint: weightedBonusBlueprint()});
+    const host = new SeededPokieWasmHost("receipt");
+    const restore = jest.spyOn(host, "restoreState");
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
+    try {
+        const command = {bet: 0.05, delivery, roundId: "receipt"};
+        const session = runtime.createSession("receipt");
+        await session.play(command);
+        const saved = session.serialize();
+        if (saved.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
+        for (const change of [{payout: -123}, {win: "invalid"}, {stops: [-999]}, {deliveryOnly: true}, {command: {kind: "invalid"}}, {winMultiplier: -1}, {creditsBefore: 1}]) {
+            const corrupt = JSON.parse(JSON.stringify(saved)) as typeof saved;
+            Object.assign(corrupt.feature.lastRound!, change);
+            const calls = restore.mock.calls.length;
+            expect(() => runtime.restoreSession(corrupt)).toThrow();
+            await expect(runtime.replay(corrupt, [command])).rejects.toThrow();
+            expect(restore).toHaveBeenCalledTimes(calls);
+            expect(session.serialize()).toEqual(saved);
+        }
+        expect(await runtime.restoreSession(saved).play(command)).toEqual(saved.feature.lastRound);
+        expect((await runtime.replay(saved, [command])).rounds).toEqual([saved.feature.lastRound]);
+    } finally {
+        runtime.dispose();
+    }
+});

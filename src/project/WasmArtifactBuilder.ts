@@ -1,4 +1,4 @@
-import {assertDeclarativeWasmBlueprint, compileCanonicalWasmArtifact} from "../wasm/DeclarativeWasmModel.js";
+import {assertDeclarativeWasmBlueprint, compileCanonicalWasmArtifact, normalizeResolvedWasmBlueprint} from "../wasm/DeclarativeWasmModel.js";
 import {resolveSharedSlotMathModel} from "../generated/resolveSharedSlotMathModel.js";
 import {assertPlayableSharedSlotMathModel, stableSlotMathJson} from "../wasm/math/SharedSlotMath.js";
 import crypto from "crypto";
@@ -28,7 +28,7 @@ export function resolveCanonicalWasmGameModel(blueprint: GameBlueprint): PokieWa
     }
     let materialized: GameBlueprint;
     try {
-        materialized = materializeReelStrips(blueprint, resolution.reelStripGeneration);
+        materialized = normalizeResolvedWasmBlueprint(materializeReelStrips(blueprint, resolution.reelStripGeneration));
     } catch (error) {
         throw new Error(`Blueprint "${blueprint.manifest.id}" cannot materialize its reel strips for the canonical WASM model. ${error instanceof Error ? error.message : String(error)} Next: use valid literal/generated strips or repair the authored symbol weights.`);
     }

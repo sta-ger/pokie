@@ -2081,3 +2081,34 @@ describe.each([false, true])("F12 Studio replay attribution (weighted: %s)", wei
         }
     });
 });
+
+
+it("V2C-21 completes Studio seed-7 cascade logical replay with correct totals and next RNG", async () => {
+    const {boundedBlueprint} = await import("../../../v2/fixtures/BoundedMechanicsGame.js");
+    const {instantiatePokieWasm, SeededPokieWasmHost} = await import("../../../../src/wasm/PokieWasmRuntime.js");
+    const blueprint = boundedBlueprint("cascade");
+    blueprint.reelStrips = [["A", "B"], ["A", "B"], ["A", "B"]];
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "cascade-studio-replay-"));
+    const artifact = path.join(directory, "game.wasm");
+    fs.writeFileSync(artifact, fixture.bytes);
+    fs.writeFileSync(`${artifact}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+    const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository());
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("7"));
+    try {
+        const started = service.start(artifact, {round: 1, seed: "7", unit: "logical-round", entryCommands: [{kind: "spin", bet: 0.05}]});
+        if (started.status !== "created") throw new Error(JSON.stringify(started));
+        const job = await waitForTerminal(service, artifact, started.job.id);
+        expect(job).toMatchObject({status: "completed", descriptor: {totalBet: 0.05, totalWin: 0.2, logicalRound: {status: "completed"}}});
+        const direct = runtime.createSession("7");
+        await direct.play({bet: 0.05, delivery: "composite", roundId: "direct"});
+        const state = job.descriptor!.stateAfter as unknown as ReturnType<typeof direct.serialize>;
+        expect(state.rngState).toEqual(direct.serialize().rngState);
+        const next = {bet: 0.05, delivery: "composite", roundId: "next"};
+        expect(await runtime.restoreSession(state).play(next)).toEqual(await direct.play(next));
+    } finally {
+        runtime.dispose();
+        await service.cancelAll();
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});

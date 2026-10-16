@@ -120,6 +120,23 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
         if (state.feature.pendingCommand && !round) throw new Error("Pending delivery requires compact logical progress.");
         const last = state.feature.lastRound;
         if (state.sequence === 0 ? last !== undefined || round !== undefined : !last || last.sequence !== state.sequence || last.credits !== state.credits || JSON.stringify(last.logicalRound) !== JSON.stringify(round)) throw new Error("Feature checkpoint differs from its last accepted delivery.");
+        if (last) {
+            const command = last.command as SessionCommand;
+            const amount = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
+            if (validateSessionCommand(command) || ![last.stake, last.win, last.payout, last.creditsBefore, last.credits, last.winMultiplier].every(amount) ||
+                !Number.isFinite(last.draw) || last.draw < 0 || last.draw >= 1 || last.winMultiplier !== last.win! / state.feature.bet ||
+                Math.abs(last.creditsBefore - last.stake + last.payout - last.credits) > 1e-9 * Math.max(1, last.credits, last.creditsBefore) ||
+                last.deliveryOnly !== undefined && typeof last.deliveryOnly !== "boolean" || last.deliveries !== undefined) throw new Error("Malformed retained WASM result.");
+            let leaf = decode(state.feature.state) as {base?: unknown; reelStrips: string[][]};
+            while (leaf.base) leaf = leaf.base as typeof leaf;
+            if (!Array.isArray(last.stops) || last.stops.length !== blueprint.reels || last.stops.some((stop, reel) => !Number.isSafeInteger(stop) || stop < 0 || stop >= leaf.reelStrips[reel].length)) throw new Error("Invalid retained WASM stops.");
+            const mathematicalDelivery = round && round.deliveryCursor - Math.max(1, round.stageCursor) + 1;
+            const deliveryOnly = !!(round && command.continuation && command.continuation.cursor >= mathematicalDelivery!);
+            if (!!last.deliveryOnly !== deliveryOnly || deliveryOnly && (last.stake !== 0 || last.win !== 0 || last.payout !== 0) ||
+                round && (command.continuation ? command.continuation.roundId !== round.id || command.continuation.cursor >= round.deliveryCursor : stableSlotMathJson(command) !== stableSlotMathJson(round.entry)) ||
+                round && (last.stake > round.totalStake || last.win! > round.totalWin || last.payout > round.totalPayout) ||
+                round && !command.continuation && (last.stake !== round.totalStake || last.win !== round.totalWin || last.payout !== round.totalPayout)) throw new Error("Retained result contradicts its accepted logical delivery.");
+        }
         const check = assemble(state.seed, true);
         try {
             check.session.setBet(state.feature.bet);
@@ -232,7 +249,9 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                 const aggregate = (): PokieWasmRound => {
                     const latest = accepted[accepted.length - 1] ?? state.feature.lastRound!;
                     const win = (prefix?.win ?? 0) + accepted.reduce((sum, round) => sum + (round.deliveryOnly ? 0 : round.win ?? 0), 0);
-                    return {...latest, command, creditsBefore, win, stake: (prefix?.stake ?? 0) + accepted.reduce((sum, round) => sum + round.stake, 0),
+                    const {deliveryOnly: _deliveryOnly, ...observation} = latest;
+                    const deliveryOnly = (!prefix || prefix.deliveryOnly === true) && accepted.every(round => round.deliveryOnly === true);
+                    return {...observation, ...(deliveryOnly ? {deliveryOnly: true} : {}), command, creditsBefore, win, stake: (prefix?.stake ?? 0) + accepted.reduce((sum, round) => sum + round.stake, 0),
                         payout: (prefix?.payout ?? 0) + accepted.reduce((sum, round) => sum + round.payout, 0), winMultiplier: win / native!.getBet()};
                 };
                 const retainedPending = () => {
