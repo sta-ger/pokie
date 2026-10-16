@@ -43,7 +43,7 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
     public readonly fetch: FetchLike = async (url, init) => {
         const method = init?.method ?? "GET";
         if (this.project && method === "POST" && ((url === "/api/project/play/session" || url === "/api/project/play/session/restore") || (/\/play\/sessions\/[^/]+\/spin$/).test(url))) {
-            if (this.playRunning) return response(409, {status: "failed", retryDisposition: "safe-to-retry", error: "A Play request is still pending."});
+            if (this.playRunning) return response(400, {status: "failed", code: "recovery-required", retryDisposition: "safe-to-retry", error: "A Play request is still pending."});
             this.playRunning = true;
             try {
                 const session = await this.play(url, JSON.parse(init?.body ?? "{}") as Record<string, unknown>);

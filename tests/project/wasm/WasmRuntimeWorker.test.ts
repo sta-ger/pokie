@@ -1064,6 +1064,8 @@ it.each(["stepwise", "composite"] as const)("V2C-22-RESTORE-CURSOR projects pend
         const native = reference.createSession("0");
         await native.play({bet: 0.05, roundId: "saved", delivery, maxSubrounds: 1});
         const state = JSON.parse(JSON.stringify(native.serialize()));
+        const {validateLogicalRound} = await import("../../../src/runtime/LogicalRound.js");
+        expect(validateLogicalRound(state.feature.logicalRound)).toBeUndefined();
         const restored = await test.api.createPlaySession(test.owner.fetch, undefined, undefined, state);
         if (restored.status !== "ok") throw new Error("Restore rejected");
         expect(restored.session).toMatchObject({credits: state.credits, logicalRound: {roundId: "saved", cursor: 1, status: "pending", totalStake: 0.05}});
@@ -1139,8 +1141,9 @@ it("V2C-22-PUBLICATION-RECOVERY carries a real committed feature prefix through 
         if (created.status !== "ok") throw new Error("Creation rejected");
         const command = {requestId: "prefix", delivery: "composite" as const, roundId: "prefix"};
         const failure = await test.api.spinPlaySession(test.owner.fetch, created.session.sessionId, 0.05, undefined, command);
-        expect(failure).toMatchObject({status: "error", retryDisposition: "safe-to-retry", committedProgress: {roundId: "prefix", cursor: 1, requestId: "prefix"}, session: {credits: 1000.3, logicalRound: {status: "pending", totalStake: 0.05, cursor: 1}}});
+        expect(failure).toMatchObject({status: "error", retryDisposition: "safe-to-retry", committedProgress: {roundId: "prefix", cursor: 1, requestId: "prefix"}, session: {logicalRound: {status: "pending", totalStake: 0.05, cursor: 1}}});
         if (failure.status !== "error") throw new Error("Missing prefix");
+        expect(failure.session!.credits).toBeCloseTo(1000.3, 10);
         const state = failure.session!.debug!.stateAfter;
         expect(state).toMatchObject({sequence: 1, feature: {pendingCommand: {advanced: 1}}});
         const result = await test.api.spinPlaySession(test.owner.fetch, created.session.sessionId, 0.05, undefined, command);
