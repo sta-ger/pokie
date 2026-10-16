@@ -36,7 +36,6 @@ export function readValidationSourceRevision(source: string): string {
             ancestors.delete(target);
         } else {
             hash.update(`${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}\0`);
-
         }
     };
     visit(path.resolve(source));

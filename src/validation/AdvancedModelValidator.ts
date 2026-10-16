@@ -102,7 +102,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
         let cycleFound = false,
             illegal = false,
             invariant = false,
-            accountingComplete = true;
+            accountingComplete = stateSchemaSupported;
         const visit = async (id: string): Promise<void> => {
             budget.depth(path.length);
             if (active.has(id)) {
@@ -120,6 +120,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
             const state = states.get(id)!;
             if (!state.state) {
                 snapshotsComplete = false;
+                accountingComplete = false;
                 report.checks.push({id: "invariants.executable-state", path: `states.${stateIndices.get(id)}.state`, status: "unknown", severity: "warning", message: "Reachable executable-state snapshot is missing.", assumptions: report.assumptions});
             }
             if (model.schema && stateSchemaSupported && state.state) {
@@ -192,7 +193,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                         let message = "Stake or wallet conservation violated.";
                         if (ownershipMismatch) message = "Accounting denomination or continuation ownership differs from the executable state.";
                         if (disconnected) message = "Connected transitions disagree on their shared wallet balance.";
-                        await this.add(report, budget, {id: "invariants.money", path: `transitions.${index}.accounting`, status: "violation", severity: "error", message, assumptions: report.assumptions, evidence: {path: [...path, edge.to], transition: edge, before: edge.before ?? state.state ?? {}, after: edge.after ?? states.get(edge.to)?.state ?? {}, expected: {stake: expectedStake, creditsAfter: expectedCredits, ownership, connectedBalances: {before: ownedBefore, after: ownedAfter}}, actual: money}});
+                        await this.add(report, budget, {id: "invariants.money", path: `transitions.${index}.accounting`, status: "violation", severity: "error", message, assumptions: report.assumptions, evidence: {path: [...path, edge.to], transition: edge, before: edge.before ?? state.state ?? {}, after: edge.after ?? states.get(edge.to)?.state ?? {}, expected: {stake: expectedStake, creditsAfter: expectedCredits, ...(ownership ? {ownership} : {}), ...(ownedBefore !== undefined || ownedAfter !== undefined ? {connectedBalances: {before: ownedBefore, after: ownedAfter}} : {})}, actual: money}});
                     }
                 }
                 await visit(edge.to);

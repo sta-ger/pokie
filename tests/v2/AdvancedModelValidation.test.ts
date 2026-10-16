@@ -340,6 +340,7 @@ it("requires snapshots for every reachable state before certifying state invaria
         const model: DeclaredTransitionModel = {kind: "declared-transitions", initial: "missing", schema: {kind: "seeded-video-slot"}, states: [{id: "missing", terminal}, {id: "done", terminal: true, state: {rngState: 1, reelStrips: [["A"]]}}], transitions: terminal ? [] : [{from: "missing", to: "done"}]};
         const report = await new AdvancedModelValidator().validate(model);
         expect(report).toMatchObject({status: "unsupported", verdict: "inconclusive"});
+        expect(report.checks.filter(check => check.id.startsWith("invariants.") && check.status === "pass")).toEqual([]);
         expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.state-support", status: "unknown"}));
     }
 });

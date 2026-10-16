@@ -489,7 +489,10 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
 
     it("validates a resolved Stake Engine export through its own export contract", async () => {
         const stakeDir = path.join(outDir, "stake-export");
-        fs.mkdirSync(stakeDir);
+        const {StakeEngineExporter} = await import("@fromstan/pokie");
+        const {buildStakeEngineTestLibrary} = await import("../../stakeengine/StakeEngineTestFixtures.js");
+        await new StakeEngineExporter("1.3.0").exportToDirectory([{modeName: "base", cost: 1,
+            library: buildStakeEngineTestLibrary({libraryId: "validate-stake", betMode: "base", stake: 1})}], stakeDir);
         const resolveProject = {
             resolve: jest.fn().mockResolvedValue({
                 type: "stakeAdapter",
@@ -508,6 +511,8 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {project: {kind: string; path: string}; valid: boolean};
         expect(report).toEqual(expect.objectContaining({project: {kind: "stake-engine", path: stakeDir}, valid: true}));
         expect(stakeEngineImporter.importFromDirectory).toHaveBeenCalledWith(stakeDir);
+        const {AdvancedModelSourceValidator} = await import("../../../src/validation/AdvancedModelSourceValidator.js");
+        expect(report).toMatchObject({advanced: await new AdvancedModelSourceValidator().validate(stakeDir)});
     });
 
     it("returns a remedial report instead of a raw materialization failure", async () => {
@@ -779,6 +784,32 @@ it("rejects mixed source revisions during structural package validation and perm
         expect(await new ValidateCommand(createStubValidator(validReport)).run([source, "--format", "json"])).toBe(2);
         expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({advanced: {verdict: "inconclusive"}});
     } finally {
+        log.mockRestore();
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});
+
+it("rejects a Blueprint replaced after advanced acquisition instead of combining revisions", async () => {
+    const {AdvancedModelSourceValidator} = await import("../../../src/validation/AdvancedModelSourceValidator.js");
+    const {fractionalBetBlueprint} = await import("../../fixtures/math/FractionalBetFixture.js");
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "validate-blueprint-revision-"));
+    const file = path.join(root, "model.blueprint.json");
+    const model = fractionalBetBlueprint([0.05], true);
+    fs.writeFileSync(file, JSON.stringify(model));
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    const validate = AdvancedModelSourceValidator.prototype.validate;
+    const acquisition = jest.spyOn(AdvancedModelSourceValidator.prototype, "validate").mockImplementationOnce(async function (this: AdvancedModelSourceValidator, input, options) {
+        const report = await Reflect.apply(validate, this, [input, options]);
+        fs.writeFileSync(file, JSON.stringify({...model, paytable: {A: {3: 7.5}}}));
+        return report;
+    });
+    try {
+        expect(await new ValidateCommand().run([file, "--format", "json"])).toBe(1);
+        expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({valid: false, errors: [expect.objectContaining({message: "Source changed during validation. Retry against the current source."})]});
+        log.mockClear();
+        expect(await new ValidateCommand().run([file, "--format", "json"])).toBe(0);
+    } finally {
+        acquisition.mockRestore();
         log.mockRestore();
         fs.rmSync(root, {recursive: true, force: true});
     }
