@@ -1015,7 +1015,7 @@ it("rejects every fabricated initialized feature before host mutation and preser
         try {
             const session = runtime.createSession("probe");
             const saved = JSON.parse(JSON.stringify(session.serialize()));
-            const display = session.getInitialData();
+            const display = session.getInitialData!();
             expect(saved.sequence).toBe(0);
             const corrupt = mutateCheckpointInitialization(saved, id);
             const before = host.serializeState();
@@ -1029,9 +1029,9 @@ it("rejects every fabricated initialized feature before host mutation and preser
             expect(next).toHaveBeenCalledTimes(draws);
             expect(host.serializeState()).toEqual(before);
             expect(session.serialize()).toEqual(saved);
-            expect(session.getInitialData()).toEqual(display);
+            expect(session.getInitialData!()).toEqual(display);
             const reference = fresh.restoreSession(saved);
-            expect(reference.getInitialData()).toEqual(display);
+            expect(reference.getInitialData!()).toEqual(display);
             for (let index = 0; index < 2; index++) {
                 const result = await session.play({bet: 0.05});
                 expect(await reference.play({bet: 0.05})).toEqual(result);
@@ -1048,7 +1048,7 @@ it("rejects every fabricated initialized feature before host mutation and preser
             // Explicit restoration into a used runtime is separate from rejection recovery.
             for (const receiving of [runtime, fresh]) {
                 const restored = receiving.restoreSession(saved);
-                expect(restored.getInitialData()).toEqual(display);
+                expect(restored.getInitialData!()).toEqual(display);
                 const first = await restored.play({bet: 0.05});
                 expect((await receiving.replay(saved, [{bet: 0.05}])).rounds).toEqual([first]);
                 restored.dispose();

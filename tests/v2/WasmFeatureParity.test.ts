@@ -775,7 +775,7 @@ it("preserves authoritative initialized weighted variants/stops with zero and cu
                 expect(initial.feature.state.base.sequenceState.selections[0].variantId).toBe("second");
             }
             const restored = fresh.restoreSession(initial);
-            expect(restored.getInitialData()).toEqual(session.getInitialData());
+            expect(restored.getInitialData!()).toEqual(session.getInitialData!());
             expect(restored.serialize()).toEqual(initial);
             if (!zero) expect((receiver as ReturnType<typeof custom>).nextRandom).not.toHaveBeenCalled();
             const expected = runtime.restoreSession(initial);
