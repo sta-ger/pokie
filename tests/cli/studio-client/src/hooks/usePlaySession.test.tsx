@@ -10,6 +10,18 @@ import {PlayTab} from "../../../../../cli/studio-client/src/components/project/P
 import {createCanonicalWasmFixture} from "../../../../fixtures/wasm/createCanonicalWasmFixture";
 import {instantiatePokieWasm, SeededPokieWasmHost} from "../../../../../src/wasm/PokieWasmRuntime";
 import {projectPokieWasmRoundArtifact} from "../../../../../src/wasm/projectPokieWasmRoundArtifact";
+import userEvent from "@testing-library/user-event";
+import fs from "fs";
+import path from "path";
+import os from "os";
+import {BrowserWasmStudioApi} from "../../../../../cli/studio-client/src/wasm/BrowserWasmStudioApi";
+import {StudioWasmBrowserService} from "../../../../../cli/studio/wasm/StudioWasmBrowserService";
+import {StudioJobService} from "../../../../../cli/studio/jobs/StudioJobService";
+import {FileStudioJobRepository} from "../../../../../cli/studio/jobs/FileStudioJobRepository";
+import {StudioRoundRecorder} from "../../../../../cli/studio/runtime/StudioRoundRecorder";
+import {PokieWasmWorkerProtocol, type PokieWasmWorkerRequest} from "../../../../../src/wasm/worker";
+import {renderRoutedApp} from "../testUtils/renderRoutedApp";
+import {createRoutedFakeFetch} from "../testUtils/fakeFetch";
 
 const GAME = {id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"};
 
@@ -22,6 +34,118 @@ function strictModeWrapper(fetchImpl: FetchLike) {
         return <StrictMode><StudioApiProvider fetchImpl={fetchImpl}>{children}</StudioApiProvider></StrictMode>;
     };
 }
+
+it.each(["error", "messageerror"])("V2C-22-WORKER-RETRY recovers the rendered browser-play %s through a fresh admitted session", async failure => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-rendered-retry-"));
+    const file = path.join(directory, "game.wasm");
+    const fixture = createCanonicalWasmFixture({id: GAME.id});
+    fs.writeFileSync(file, fixture.bytes);
+    fs.writeFileSync(`${file}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+    const subtle = Reflect.getOwnPropertyDescriptor(globalThis.crypto, "subtle");
+    Reflect.defineProperty(globalThis.crypto, "subtle", {configurable: true, value: webcrypto.subtle});
+    const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
+    const recorder = new StudioRoundRecorder();
+    const broker = new StudioWasmBrowserService(jobs, recorder);
+    const context = {mode: "project" as const, projectRoot: file};
+    const {fetchImpl} = createRoutedFakeFetch({
+        "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: file, game: GAME, type: "wasm", capabilities: ["wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.runtime.replay"]}}),
+        "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: file, valid: true}}),
+        "/api/project/validate": () => ({ok: true, status: 200, body: {packageRoot: file, valid: true, game: GAME, errors: [], warnings: [], suggestions: []}}),
+        "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: jobs.list()}}),
+        "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+        "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+        "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+        "/api/project/rounds": () => ({ok: true, status: 200, body: []}),
+        "/api/project/symbol-artwork": () => ({ok: true, status: 200, body: {artwork: {}}}),
+    });
+    let fault = true;
+    let created = 0;
+    let terminated = 0;
+    const dispatches: Promise<unknown>[] = [];
+    const owner = new BrowserWasmStudioApi(async (url, init) => {
+        if (!url.startsWith("/api/project/wasm/")) return fetchImpl(url, init);
+        const result = await broker.handle(init?.method ?? "GET", url, init?.body ? JSON.parse(init.body) : undefined, context, () => true);
+        return {ok: result.status < 300, status: result.status, json: () => Promise.resolve(result.body)};
+    }, () => {
+        created++;
+        const protocol = new PokieWasmWorkerProtocol();
+        type WorkerListener = (event: MessageEvent & ErrorEvent) => void;
+        const listeners = new Map<string, WorkerListener>();
+        let disposed = false;
+        return {
+            addEventListener: (type, listener) => {
+                listeners.set(type, listener);
+            },
+            removeEventListener: type => {
+                listeners.delete(type);
+            },
+            postMessage: data => {
+                if (fault) {
+                    // Fail the actual production transport request, rather than reject a checkpoint.
+                    listeners.get(failure)?.({message: "Injected Worker load failure"} as MessageEvent & ErrorEvent);
+                    return;
+                }
+                const message = data as {scope: unknown; request: PokieWasmWorkerRequest};
+                dispatches.push(protocol.handle(message.request).then(result => {
+                    if (!disposed) listeners.get("message")?.({data: {...result, scope: message.scope, type: "response"}} as MessageEvent & ErrorEvent);
+                }));
+            },
+            terminate: () => {
+                if (disposed) return;
+                disposed = true;
+                terminated++;
+                dispatches.push(protocol.handle({id: "cleanup", type: "dispose"}));
+            },
+        };
+    });
+    let view: ReturnType<typeof renderRoutedApp> | undefined;
+    let reference: Awaited<ReturnType<typeof instantiatePokieWasm>> | undefined;
+    try {
+        const user = userEvent.setup();
+        view = renderRoutedApp({fetchImpl: owner.fetch, initialEntries: [`/project/${encodeURIComponent(file)}/play`], strictMode: true});
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
+        const retry = await screen.findByRole("button", {name: "Retry"});
+        const failed = jobs.list().find(job => job.operation === "browser-play");
+        expect(failed).toMatchObject({status: "failed", request: {action: "new"}, recovery: {action: "retry"}});
+        expect(created).toBe(1);
+        expect(terminated).toBe(1);
+        expect(recorder.list()).toHaveLength(0);
+        fault = false;
+        await user.click(retry);
+        await screen.findByRole("button", {name: "Spin"});
+        expect(view.router.state.location.pathname).toMatch(/\/play$/);
+        expect(screen.queryByText(/isn't available for this project/)).not.toBeInTheDocument();
+        expect(created).toBe(2);
+        const recovered = jobs.list().find(job => job.id !== failed?.id);
+        expect(recovered).toMatchObject({operation: "browser-play", status: "completed", request: {action: "new"}});
+        expect(jobs.list()).toHaveLength(2);
+        expect(jobs.list().find(job => job.id === failed?.id)).toEqual(failed);
+        expect(recorder.list()).toHaveLength(0);
+        reference = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost(String(recovered!.request.seed)));
+        const session = reference.createSession(String(recovered!.request.seed));
+        for (let round = 1; round <= 2; round++) {
+            const expected = await session.play({bet: 1});
+            await user.click(screen.getByRole("button", {name: "Spin"}));
+            await waitFor(() => expect(recorder.list()).toHaveLength(round));
+            await waitFor(() => expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled());
+            const accepted = jobs.list().find(job => job.request.action === "spin" && job.result?.detail?.session);
+            expect(accepted?.result?.detail?.session).toMatchObject({credits: expected.credits, win: expected.payout, screen: expected.screen, debug: {stateAfter: session.serialize()}});
+        }
+        expect(created).toBe(2);
+        expect(terminated).toBe(1);
+        session.dispose();
+    } finally {
+        view?.unmount();
+        owner.dispose();
+        await broker.shutdown();
+        await Promise.all(dispatches);
+        reference?.dispose();
+        fs.rmSync(directory, {recursive: true, force: true});
+        if (subtle) Reflect.defineProperty(globalThis.crypto, "subtle", subtle);
+        else Reflect.deleteProperty(globalThis.crypto, "subtle");
+    }
+    expect(terminated).toBe(created);
+});
 
 it.each([true, false])("V2C-22-BET-COMMITMENT renders the exact selection before and after ordered fractional plays with artifact.inspect=%s", async inspect => {
     const bets = [0.05, 7.5, 1e-7];
