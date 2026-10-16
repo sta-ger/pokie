@@ -552,7 +552,7 @@ it("retains per-check unknowns for sibling respin resets, cascades, free-game gr
     const trace = await holdAndWinTrace();
     const holdBefore = trace.states[2].state!;
     const holdAfter = trace.states[3].state!;
-    const wrap = (base: Record<string, unknown>, awarded: boolean) => ({base, pools: {mini: {value: 3}}, poolStatistics: {mini: {awardCount: awarded ? 1 : 0, totalAwarded: awarded ? 3 : 0, totalContributed: 0}}, lastOutcome: awarded ? {kind: "awarded", poolId: "mini", amount: 3, baseWinAmount: 2, baseEvaluation: (holdAfter.lastOutcome as Record<string, unknown>).baseEvaluation} : {kind: "ordinary"}});
+    const wrap = (base: Record<string, unknown>, awarded: boolean) => ({base, poolStatistics: {mini: {awardCount: awarded ? 1 : 0, totalAwarded: awarded ? 3 : 0, totalContributed: 0}}, lastOutcome: awarded ? {kind: "awarded", poolId: "mini", amount: 3, baseWinAmount: 2, baseEvaluation: (holdAfter.lastOutcome as Record<string, unknown>).baseEvaluation} : {kind: "ordinary"}});
     // The outer base evaluation must itself retain the inner settlement's amount.
     const {captureWinEvaluation} = await import("../../src/session/videoslot/winevaluation/WinEvaluationSnapshot.js");
     const {WinEvaluationResult} = await import("../../src/session/videoslot/winevaluation/WinEvaluationResult.js");
