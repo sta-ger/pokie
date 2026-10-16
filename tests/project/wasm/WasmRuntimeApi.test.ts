@@ -924,6 +924,7 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s aut
         const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
         const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("probe"));
         const native = createAuthoredSession(test.blueprint, new SeededRandomNumberGenerator("probe"));
+        native.session.setBet(0.05);
         try {
             const session = runtime.createSession("probe");
             const command = {bet: 0.05, roundId: "x", ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1})};
@@ -947,7 +948,6 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s aut
                     else record.reelStrips = test.blueprint.reelStrips;
                     return record;
                 };
-                native.session.setBet(0.05);
                 (native.session as typeof native.session & {fromSessionState(value: unknown): unknown}).fromSessionState(decode(state.feature.state));
                 const math = state.feature.logicalRound?.subrounds[0];
                 return restoreDeclarativeObservation(native.session, test.blueprint, math?.artifacts ?? state.feature.plainMath!.artifact.steps!,

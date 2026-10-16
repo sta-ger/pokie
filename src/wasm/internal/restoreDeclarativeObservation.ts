@@ -240,7 +240,7 @@ function validateNativeFeatureTransition(session: VideoSlotSessionHandling, blue
     before: SessionFeatureAnalyticsBeforePlay | undefined, balances: DeclarativeTransitionBalances | undefined, stake: number): void {
     const mechanics = blueprint.mechanics;
     const expectedKeys = [mechanics?.collection ? "collectionValue" : undefined, mechanics?.jackpot ? "jackpotValue" : undefined].filter(Boolean).sort();
-    if (expectedKeys.length && !balances || balances && (typeof balances !== "object" || Array.isArray(balances) || Object.keys(balances).sort().join(",") !== expectedKeys.join(","))) throw new Error("Missing collection/jackpot accepted transition balances.");
+    if (balances === undefined ? expectedKeys.length > 0 : !balances || typeof balances !== "object" || Array.isArray(balances) || Object.keys(balances).sort().join(",") !== expectedKeys.join(",")) throw new Error("Missing or invalid collection/jackpot/bonus observation transition balances.");
     const hold = mechanics?.holdAndWin;
     if (hold) {
         const native = session as VideoSlotSessionHandling & {

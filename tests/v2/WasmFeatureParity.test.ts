@@ -697,7 +697,8 @@ it("retains every native payout, required entry and collection-transition reprod
     const {checkpointTransitionFixtures} = await import("../fixtures/wasm/checkpointProjectionMutations.js");
     expect(checkpointTransitionFixtures().map(({id}) => id)).toEqual([
         "transition-hold-payout", "transition-hold-denomination", "transition-jackpot-payout", "transition-hold-entry", "transition-jackpot-entry",
-        "transition-bonus-entry", "transition-bonus-denomination", "transition-collection-carry", "transition-collection-reset",
+        "transition-bonus-entry", "transition-bonus-denomination", "transition-bonus-balances-null",
+        "transition-bonus-balances-false", "transition-bonus-balances-zero", "transition-collection-carry", "transition-collection-reset",
     ]);
     const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
     for (const test of checkpointTransitionFixtures()) {

@@ -384,6 +384,9 @@ export function checkpointTransitionFixtures(): {id: string; blueprint: GameBlue
         {id: "transition-jackpot-entry", blueprint: jackpot, alternative: threshold2(jackpot, "jackpot"), mutation: ["acceptedTransition.alternative"], expectedWin: 10},
         {id: "transition-bonus-entry", blueprint: bonus, alternative: threshold2(bonus, "weightedBonus"), mutation: ["acceptedTransition.alternative"], expectedWin: 0.25},
         {id: "transition-bonus-denomination", blueprint: bonus, mutation: ["acceptedTransition.entryBet", 7.5], expectedWin: 0.25},
+        {id: "transition-bonus-balances-null", blueprint: bonus, mutation: ["analyticsCheckpoint.balances", null], expectedWin: 0.25},
+        {id: "transition-bonus-balances-false", blueprint: bonus, mutation: ["analyticsCheckpoint.balances", false], expectedWin: 0.25},
+        {id: "transition-bonus-balances-zero", blueprint: bonus, mutation: ["analyticsCheckpoint.balances", 0], expectedWin: 0.25},
         {id: "transition-collection-carry", blueprint: collection, mutation: ["acceptedTransition.collection", 0], expectedWin: 0, nextWin: 10},
         {id: "transition-collection-reset", blueprint: zero, mutation: ["acceptedTransition.collection", 1], expectedWin: 10, nextWin: 10},
     ];
