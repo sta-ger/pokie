@@ -1114,6 +1114,11 @@ it.each([true, false])("V2C-22-PUBLICATION-RECOVERY retries dropped requests/res
         expect(test.recorder.list()).toHaveLength(1);
         const retained = test.jobs.list().find(job => job.request.action === "spin")!;
         test.controls.after = undefined;
+        const binding = {owner: retained.request.browserOwner, generation: retained.request.browserGeneration, artifactIdentity: retained.request.artifactIdentity};
+        for (const key of ["owner", "generation", "artifactIdentity"]) {
+            expect((await test.network(`/api/project/wasm/jobs/${retained.id}/finish`, {method: "POST", body: JSON.stringify({...binding, [key]: "obsolete"})})).status).toBe(409);
+        }
+        expect((await test.broker.handle("POST", `/api/project/wasm/jobs/${retained.id}/finish`, binding, {mode: "project", projectRoot: "/other.wasm"})).status).toBe(409);
         const retried = await test.api.spinPlaySession(test.owner.fetch, created.session.sessionId, 1, undefined, {requestId: "accepted"});
         expect(retried).toEqual({status: "ok", session: retained.result!.detail!.session});
         expect(await test.api.spinPlaySession(test.owner.fetch, created.session.sessionId, 1, undefined, {requestId: "accepted"})).toEqual(retried);
@@ -1130,7 +1135,8 @@ it("V2C-22-PUBLICATION-RECOVERY carries a real committed feature prefix through 
     const {weightedBonusBlueprint} = await import("../../v2/fixtures/WeightedBonusGame.js");
     const blueprint = weightedBonusBlueprint();
     blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
-    const test = await browserOwner(createCanonicalWasmFixture({blueprint}));
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const test = await browserOwner(fixture);
     const random = SeededPokieWasmHost.prototype.nextRandom;
     let draws = 0;
     let failed = false;
@@ -1153,8 +1159,18 @@ it("V2C-22-PUBLICATION-RECOVERY carries a real committed feature prefix through 
         expect(test.jobs.list().find(job => job.request.action === "spin")).toMatchObject({status: "failed", result: {detail: {session: failure.session}}});
         const state = failure.session!.debug!.stateAfter;
         expect(state).toMatchObject({sequence: 1, feature: {pendingCommand: {advanced: 1}}});
+        const reference = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("0"));
+        let expectedState;
+        try {
+            const restored = reference.restoreSession(JSON.parse(JSON.stringify(state)));
+            await restored.play({kind: "spin", ...command, bet: 0.05});
+            expectedState = restored.serialize();
+        } finally {
+            reference.dispose();
+        }
         const result = await test.api.spinPlaySession(test.owner.fetch, created.session.sessionId, 0.05, undefined, command);
         expect(result).toMatchObject({status: "ok", session: {logicalRound: {status: "completed", totalStake: 0.05}, debug: {stateAfter: {sequence: 3}}}});
+        expect(result).toMatchObject({status: "ok", session: {debug: {stateAfter: expectedState}}});
         expect(test.recorder.list()).toHaveLength(1);
     } finally {
         spy.mockRestore();

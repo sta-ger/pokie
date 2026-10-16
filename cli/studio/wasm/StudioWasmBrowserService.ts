@@ -91,8 +91,8 @@ export class StudioWasmBrowserService {
         const route = (/^\/api\/project\/wasm\/jobs\/([A-Za-z0-9_-]+)\/(heartbeat|finish)$/).exec(path);
         if (!route) return {status: 404, body: {error: "Unknown WASM browser execution route."}};
         const lease = this.leases.get(route[1]);
-        if (!lease && route[2] === "finish") {
-            const retained = this.jobs.list().find(job => job.id === route[1]);
+        if (!lease && route[2] === "finish" && typeof value.owner === "string" && typeof value.generation === "string" && typeof value.artifactIdentity === "string") {
+            const retained = context.mode === "project" ? this.jobs.get(canonicalStudioProjectIdentity(context.projectRoot), route[1]) : undefined;
             if (retained && isStudioJobTerminal(retained.status) && retained.request.browserOwner === value.owner && retained.request.browserGeneration === value.generation && retained.request.artifactIdentity === value.artifactIdentity) return {status: 200, body: retained};
         }
         if (!lease || lease.owner !== value.owner || lease.artifact.generation !== value.generation || lease.artifact.manifest.artifact!.sha256 !== value.artifactIdentity) return {status: 409, body: {error: "The WASM execution owner, generation or artifact changed. Retry from the current Project."}};
