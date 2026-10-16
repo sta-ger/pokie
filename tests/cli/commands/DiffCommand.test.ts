@@ -1066,3 +1066,27 @@ it("keeps unknown advanced validation incomplete under CI even with identical de
         fs.rmSync(root, {recursive: true, force: true});
     }
 });
+
+it("rejects oversized shared weights through real CLI validation and definition comparison", async () => {
+    const {ValidateCommand} = await import("../../../cli/commands/ValidateCommand.js");
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cli-preprocessing-bound-"));
+    const file = path.join(root, "model.blueprint.json");
+    const model = fractionalBetBlueprint([0.05], true);
+    Reflect.deleteProperty(model, "reelStrips");
+    model.symbolWeights = {A: 1000000000};
+    fs.writeFileSync(file, JSON.stringify(model));
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+        expect(await new ValidateCommand().run([file, "--format", "json"])).toBe(2);
+        expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({advanced: {status: "budget-exhausted", structuralValid: null, verdict: "inconclusive"}});
+        log.mockClear();
+        expect(await new DiffCommand().run([file, file, "--comparison", "definition", "--format", "json", "--ci"])).toBe(2);
+        expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({status: "unsupported", left: {advanced: {status: "budget-exhausted"}}, right: {advanced: {status: "budget-exhausted"}}});
+        log.mockClear();
+        fs.writeFileSync(file, JSON.stringify(fractionalBetBlueprint([0.05], true)));
+        expect(await new ValidateCommand().run([file, "--format", "json"])).toBe(0);
+    } finally {
+        log.mockRestore();
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});

@@ -1002,6 +1002,7 @@ it("keeps unsupported literal feature extensions separate from supported nested 
 it("bounds shared-weight preprocessing through source reads, comparisons and direct snapshots", async () => {
     const model = {...base(), reels: 1, rows: 1, symbolWeights: {A: 1000000000}};
     Reflect.deleteProperty(model, "reelStrips");
+    expect(await new api.AdvancedModelValidator().validate({kind: "blueprint", model})).toMatchObject({status: "budget-exhausted", verdict: "inconclusive"});
     const reader = new api.MathDefinitionSourceReader();
     const read = await reader.read(source(model));
     expect(read).toMatchObject({support: "unsupported", advanced: {status: "budget-exhausted", verdict: "inconclusive", structuralValid: null}});
