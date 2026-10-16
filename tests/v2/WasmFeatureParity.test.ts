@@ -570,7 +570,7 @@ it.each(["plain", "stepwise", "composite"] as const)("retains valid %s natural f
     const {checkpointFeatureObservationFixtures} = await import("../fixtures/wasm/checkpointProjectionMutations.js");
     for (const grant of [undefined, 0, 2]) {
         const blueprint = checkpointFeatureObservationFixtures().find(fixture => fixture.id === "freeGames")!.blueprint;
-        blueprint.mechanics!.freeGames!.awardsByCount = grant === undefined ? {} : {3: grant};
+        blueprint.mechanics!.freeGames!.awardsByCount = grant === undefined ? {2: 0} : {3: grant};
         const fixture = createCanonicalWasmFixture({blueprint});
         const host = new SeededPokieWasmHost("probe");
         const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
