@@ -581,8 +581,8 @@ it.each(["plain", "stepwise", "composite"] as const)("retains valid %s natural f
             for (let index = 0; index < 4; index++) {
                 const saved = session.serialize();
                 const progress = saved.schemaVersion === "pokie.state.v4" ? saved.feature.logicalRound : undefined;
-                const command = {bet: 0.05, ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1,
-                    ...(progress?.status === "pending" ? {continuation: {roundId: progress.id, cursor: progress.deliveryCursor}} : {roundId: `grant:${index}`})})};
+                const command = policy === "plain" ? {bet: 0.05} : {delivery: policy, maxSubrounds: 1,
+                    ...(progress?.status === "pending" ? {continuation: {roundId: progress.id, cursor: progress.deliveryCursor}} : {bet: 0.05, roundId: `grant:${index}`})};
                 const result = await session.play(command);
                 expect(await restored.play(command)).toEqual(result);
                 expect((await runtime.replay(saved, [command])).rounds).toEqual([result]);
