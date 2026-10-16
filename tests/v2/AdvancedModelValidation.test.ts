@@ -237,9 +237,10 @@ it("bounds Blueprint acquisition before parsing and supports a later sufficientl
 });
 
 it("rejects false completion and compares owned snapshots independently of object key order", async () => {
-    const model: DeclaredTransitionModel = {kind: "declared-transitions", initial: "a", states: [{id: "a", state: {remaining: 1, entryBet: 0.05}}, {id: "done", terminal: true, state: {remaining: 1, entryBet: 0.05}}], transitions: [{from: "a", to: "done", before: {entryBet: 0.05, remaining: 1}, after: {entryBet: 0.05, remaining: 1}}]};
+    const after = {base: {}, value: 0, remaining: 1, executed: 0, entryBet: 0.05};
+    const model: DeclaredTransitionModel = {kind: "declared-transitions", initial: "a", states: [{id: "a", state: {base: {}, value: 0, remaining: 0, executed: 0, entryBet: 0}}, {id: "done", terminal: true, state: after}], transitions: [{from: "a", to: "done", before: {entryBet: 0, executed: 0, remaining: 0, value: 0, base: {}}, after}], schema: {kind: "bounded-mechanics", bets: [0.05], rules: {respins: {trigger: {symbolId: "A", minimumCount: 1}, grant: 1, maxRespins: 1, retrigger: "none"}}, base: {kind: "base"}}};
     const report = await new AdvancedModelValidator().validate(model);
-    expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.terminal-state", status: "violation", path: "states.1.state", evidence: expect.objectContaining({actual: {remaining: 1, entryBet: 0.05}})}));
+    expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.terminal-state", status: "violation", path: "states.1.state", evidence: expect.objectContaining({actual: expect.objectContaining({remaining: 1, entryBet: 0.05})})}));
     expect(report.checks.some(check => check.id === "invariants.transition-state")).toBe(false);
 });
 
@@ -313,4 +314,14 @@ it("bounds generated overscan storage even when the visible and evaluated window
     model.screenGeometry = {generated: {reels: 1, rows: 1000000}, visible: {rowOffset: 1, rows: 1}, evaluated: {rowOffset: 2, rows: 1}, paylineSpace: "evaluated"};
     const report = await new AdvancedModelValidator().validate({kind: "blueprint", model}, {limits: {outcomeCells: 2000}});
     expect(report).toMatchObject({status: "budget-exhausted", verdict: "inconclusive", work: {outcomes: 0}});
+});
+
+it("keeps nested custom state unknown without interpreting opaque field names as feature progress", async () => {
+    for (const schema of [undefined, {kind: "free-games" as const, base: {kind: "custom" as const}}]) {
+        const model: DeclaredTransitionModel = {kind: "declared-transitions", initial: "done", states: [{id: "done", terminal: true, state: {remaining: 7, base: {arbitrary: true}}}], transitions: [], schema};
+        const report = await new AdvancedModelValidator().validate(model);
+        expect(report).toMatchObject({status: "unsupported", verdict: "inconclusive"});
+        expect(report.checks.some(check => check.status === "violation")).toBe(false);
+        expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.state-support", status: "unknown"}));
+    }
 });

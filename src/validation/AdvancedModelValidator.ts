@@ -76,6 +76,8 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
         report.declarationAuthority = "Caller-declared complete finite transition table; executable fidelity unverified";
         report.assumptions = ["The supplied transition table is the complete nondeterministic model; only positive-weight edges execute. Terminal states have no outgoing execution. This does not establish executable-code fidelity."];
         if (!Array.isArray(model.states) || !Array.isArray(model.transitions)) throw new Error("Finite declarations require states and transitions arrays.");
+        const supportsSchema = (schema: DeclaredTransitionModel["schema"]): boolean => schema !== undefined && schema.kind !== "custom" && (!("base" in schema) || supportsSchema(schema.base));
+        const stateSchemaSupported = supportsSchema(model.schema);
         const states = new Map(model.states.map(state => [state.id, state]));
         if (states.size !== model.states.length || !states.has(model.initial) || model.states.some(state => typeof state.id !== "string" || !state.id)) throw new Error("Finite declarations require unique state IDs and an existing initial state.");
         report.structuralValid = true;
@@ -113,7 +115,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
             active.set(id, path.length);
             path.push(id);
             const state = states.get(id)!;
-            if (model.schema && model.schema.kind !== "custom" && state.state) {
+            if (model.schema && stateSchemaSupported && state.state) {
                 try {
                     validateExecutableState(state.state, model.schema);
                 } catch (error) {
@@ -126,7 +128,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                 const progress = value as Record<string, unknown>;
                 return progress.active === true || Number(progress.remaining) > 0 || Number(progress.freeGamesSum) > Number(progress.freeGamesNum) || pendingState(progress.base);
             };
-            if (state.terminal && pendingState(state.state)) {
+            if (state.terminal && stateSchemaSupported && pendingState(state.state)) {
                 invariant = true;
                 await this.add(report, budget, {id: "invariants.terminal-state", path: `states.${stateIndices.get(id)}.state`, status: "violation", severity: "error", message: "Declared terminal state still owns pending feature progress.", assumptions: report.assumptions, evidence: {path: [...path], before: state.state, after: state.state, expected: "No pending feature owner at completion", actual: state.state}});
             }
@@ -145,7 +147,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                 try {
                     if (edge.before && canonicalDefinitionJson(edge.before) !== canonicalDefinitionJson(state.state ?? {})) throw new Error("Transition before-state differs from its source owner.");
                     if (edge.after && canonicalDefinitionJson(edge.after) !== canonicalDefinitionJson(states.get(edge.to)?.state ?? {})) throw new Error("Transition after-state differs from its target owner.");
-                    if (model.schema && model.schema.kind !== "custom") {
+                    if (model.schema && stateSchemaSupported) {
                         const beforeState = edge.before ?? state.state;
                         const afterState = edge.after ?? states.get(edge.to)?.state;
                         if (afterState) validateExecutableState(afterState, model.schema);
@@ -171,7 +173,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
             active.delete(id);
         };
         await visit(model.initial);
-        report.checks.push({id: "invariants.state-support", path: "schema", status: model.schema && model.schema.kind !== "custom" && !invariant ? "pass" : "unknown", severity: model.schema && model.schema.kind !== "custom" && !invariant ? "info" : "warning", message: "State invariants require a supported production executable-state schema; table topology alone does not establish them.", assumptions: report.assumptions});
+        report.checks.push({id: "invariants.state-support", path: "schema", status: stateSchemaSupported && !invariant ? "pass" : "unknown", severity: stateSchemaSupported && !invariant ? "info" : "warning", message: "State invariants require a supported production executable-state schema; table topology alone does not establish them.", assumptions: report.assumptions});
         for (const [index, target] of (model.targets ?? []).entries()) await this.add(report, budget, {id: "reachability.target", path: `targets.${index}`, status: visited.has(target) ? "pass" : "violation", severity: visited.has(target) ? "info" : "error", message: visited.has(target) ? "Target is attainable." : "No positive-weight transition from the complete reachable region enters the target.", assumptions: report.assumptions, evidence: {target, exploredRegion: [...visited], complete: true}});
         for (const [id, failed] of [["termination.all-path", cycleFound], ["transitions.target", illegal], ["invariants.money", invariant]] as const) if (!failed) report.checks.push({id, path: "$", status: id === "invariants.money" && !accountingComplete ? "unknown" : "pass", severity: id === "invariants.money" && !accountingComplete ? "warning" : "info", message: id === "invariants.money" && !accountingComplete ? "Some reachable transitions omit accounting; monetary conservation is unsupported." : "Complete reachable transition table checked.", assumptions: report.assumptions});
     }
