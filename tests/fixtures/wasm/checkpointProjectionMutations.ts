@@ -498,7 +498,7 @@ export function checkpointInitializationFixtures(): {id: string; blueprint: Game
     ];
 }
 
-export function checkpointCounterFixtures(): {id: string; blueprint: GameBlueprint; mutation: "selections" | "completion"}[] {
+export function checkpointCounterFixtures(): {id: string; blueprint: GameBlueprint; mutation: "selections" | "completion"; plays?: number}[] {
     const bonus = weightedBonusBlueprint();
     bonus.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
     const reels: GameBlueprint = {
@@ -516,11 +516,19 @@ export function checkpointCounterFixtures(): {id: string; blueprint: GameBluepri
         {type: "weighted", variants: [{id: "chosen", symbols: ["C"], weight: 1}, {id: "zero", symbols: ["A"], weight: 0}]},
         {type: "exact", symbols: ["C"]}, {type: "exact", symbols: ["C"]},
     ];
+    const free = JSON.parse(JSON.stringify(reels)) as GameBlueprint;
+    free.scatters = ["A"];
+    free.mechanics = {freeGames: {scatterSymbol: "A", awardsByCount: {3: 0}}};
+    const respins = JSON.parse(JSON.stringify(reels)) as GameBlueprint;
+    respins.mechanics = {respins: {trigger: {symbolId: "A", minimumCount: 3}, grant: 2, maxRespins: 2, retrigger: "reset"}};
     return [
         {id: "counter-reels", blueprint: reels, mutation: "selections"},
         {id: "counter-reels-after-bonus", blueprint: combined, mutation: "selections"},
         {id: "counter-bonus", blueprint: bonus, mutation: "selections"},
         {id: "counter-bonus-completion", blueprint: bonus, mutation: "completion"},
+        {id: "counter-reels-free-zero-reduced", blueprint: free, mutation: "selections", plays: 2},
+        {id: "counter-reels-respins-reduced", blueprint: respins, mutation: "selections", plays: 7},
+        {id: "counter-bonus-reduced", blueprint: bonus, mutation: "selections", plays: 7},
     ];
 }
 
@@ -554,8 +562,9 @@ export function mutateCheckpointCounters(saved: import("../../../src/wasm/PokieW
     let leaf = corrupt.feature.state;
     while (leaf.base) leaf = leaf.base;
     if (id.startsWith("counter-reels")) {
-        // Inflate every weighted reel equally so cross-reel equality alone cannot reject.
-        const increment = id === "counter-reels-after-bonus" ? 1 : 999;
+        // Change every weighted reel equally so cross-reel equality alone cannot reject.
+        let increment = id === "counter-reels-after-bonus" ? 1 : 999;
+        if (id.endsWith("-reduced")) increment = 1 - last.sequenceStatistics[0].selections;
         for (const reel of last.sequenceStatistics) {
             leaf.sequenceState.counts[reel.reelIndex].chosen += increment;
             reel.selections += increment;
@@ -564,7 +573,12 @@ export function mutateCheckpointCounters(saved: import("../../../src/wasm/PokieW
         }
     } else {
         const bonus = corrupt.feature.state.bonus;
-        if (id === "counter-bonus-completion") {
+        if (id === "counter-bonus-reduced") {
+            bonus.counts = bonus.counts.map((_count: number, index: number) => last.weightedBonusStatistics.outcomes[index].id === "large" ? 1 : 0);
+            bonus.completed = 0;
+            Object.assign(last.weightedBonusStatistics, {selections: 1, completed: 0, incomplete: 1});
+            for (const outcome of last.weightedBonusStatistics.outcomes) outcome.count = outcome.frequency = outcome.id === "large" ? 1 : 0;
+        } else if (id === "counter-bonus-completion") {
             bonus.completed++;
             last.weightedBonusStatistics.completed++;
             last.weightedBonusStatistics.incomplete--;

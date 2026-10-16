@@ -1062,46 +1062,60 @@ it("rejects every fabricated initialized feature before host mutation and preser
 
 it.each(["plain", "stepwise", "composite"] as const)("binds coordinated %s weighted counters to accepted mathematics at domain and restore boundaries", async policy => {
     const {checkpointCounterFixtures, mutateCheckpointCounters} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
-    const {createAuthoredSession} = await import("../../../src/generated/createAuthoredSession.js");
-    const {SeededRandomNumberGenerator} = await import("../../../src/session/videoslot/combinations/SeededRandomNumberGenerator.js");
-    const {validateWeightedBonusAccounting} = await import("../../../src/session/videoslot/authored/WeightedBonus.js");
-    for (const {id, blueprint} of checkpointCounterFixtures()) {
+    const {validateCheckpointFeasibility} = await import("../../../src/wasm/internal/validateCheckpointFeasibility.js");
+    const {VideoSlotSession} = await import("../../../src/session/videoslot/VideoSlotSession.js");
+    for (const {id, blueprint, plays = 1} of checkpointCounterFixtures()) {
         const fixture = createCanonicalWasmFixture({blueprint});
         const host = new SeededPokieWasmHost("probe");
         const restore = jest.spyOn(host, "restoreState");
         const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
         const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("fresh"));
-        const native = createAuthoredSession(blueprint, new SeededRandomNumberGenerator("probe"));
+        const nativeRestore = jest.spyOn(VideoSlotSession.prototype, "fromSessionState");
         try {
             const session = runtime.createSession("probe");
             const command = {bet: 0.05, roundId: "counter", ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1})};
             if (id === "counter-reels-after-bonus") {
                 await session.play({bet: 0.05, roundId: "previous", delivery: "composite"});
             }
-            const receipt = await session.play(command);
+            let receipt = await session.play(command);
+            for (let index = 1; index < plays; index++) {
+                const current = session.serialize() as import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmFeatureSessionState;
+                const round = current.feature.logicalRound;
+                Reflect.deleteProperty(command, "continuation");
+                if (round?.status === "pending") {
+                    Reflect.deleteProperty(command, "bet");
+                    Reflect.deleteProperty(command, "roundId");
+                    Object.assign(command, {continuation: {roundId: round.id, cursor: round.deliveryCursor}});
+                } else {
+                    Object.assign(command, {bet: 0.05, roundId: `counter-${index}`});
+                    const state = current.feature.state as {remaining?: number};
+                    if (policy === "plain" && state.remaining! > 0) Reflect.deleteProperty(command, "roundId");
+                }
+                receipt = await session.play(command);
+            }
             const saved = session.serialize();
             if (saved.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
             const corrupt = mutateCheckpointCounters(saved, id);
             const position = saved.feature.analytics!.position;
-            expect(position).toBe(id === "counter-reels-after-bonus" ? 4 : 1);
+            expect(position).toBe(id === "counter-reels-after-bonus" ? 4 : plays);
+            if (id.endsWith("-reduced")) {
+                if (id === "counter-bonus-reduced") expect(receipt.weightedBonusStatistics).toMatchObject({selections: 3, completed: 2});
+                else expect(receipt.sequenceStatistics![0].selections).toBe(plays === 2 ? 2 : 3);
+            }
             const expected = /Weighted (reel|bonus).*counter|weighted bonus completion/i;
-            // The same uncoerced counters reach the shared domain owner, not a catch/fallback.
-            const validate = (state: typeof saved) => {
-                const value = state.feature.state as {base?: {sequenceState: unknown}; sequenceState: unknown; bonus: import("../../../src/session/videoslot/authored/WeightedBonus.js").WeightedBonusState; remaining: number; executed: number};
-                if (id.startsWith("counter-reels")) {
-                    native.generator.setSelectionState((value.base ?? value).sequenceState);
-                    const entries = blueprint.mechanics?.weightedBonus && validateWeightedBonusAccounting(blueprint.mechanics.weightedBonus, value.bonus, value.remaining, value.executed, position, saved.feature.accounting!.entryPosition);
-                    native.generator.validateAcceptedSelectionAccounting(position, saved.feature.accounting!.entryPosition, !!blueprint.mechanics?.weightedBonus, entries);
-                } else validateWeightedBonusAccounting(blueprint.mechanics!.weightedBonus!, value.bonus, value.remaining, value.executed, position, saved.feature.accounting!.entryPosition);
-            };
+            const validate = (state: typeof saved) => validateCheckpointFeasibility(blueprint, state);
             expect(() => validate(corrupt)).toThrow(expected);
             expect(() => validate(saved)).not.toThrow();
             const before = host.serializeState();
             const calls = restore.mock.calls.length;
+            const nativeCalls = nativeRestore.mock.calls.length;
             for (const receiving of [runtime, fresh]) {
+                const diagnostics = receiving.getDiagnostics();
                 expect(() => receiving.restoreSession(corrupt)).toThrow(expected);
                 await expect(receiving.replay(corrupt, [command])).rejects.toThrow(expected);
+                expect(receiving.getDiagnostics()).toEqual(diagnostics);
             }
+            expect(nativeRestore).toHaveBeenCalledTimes(nativeCalls);
             expect(restore).toHaveBeenCalledTimes(calls);
             expect(host.serializeState()).toEqual(before);
             expect(session.serialize()).toEqual(saved);
@@ -1110,7 +1124,7 @@ it.each(["plain", "stepwise", "composite"] as const)("binds coordinated %s weigh
             for (let index = 0; index < 2; index++) {
                 const current = session.serialize();
                 const round = current.schemaVersion === "pokie.state.v4" && current.feature.logicalRound;
-                const next = round && round.status === "pending" ? {delivery: "stepwise", continuation: {roundId: "counter", cursor: round.deliveryCursor}} : {bet: 0.05};
+                const next = round && round.status === "pending" ? {delivery: "stepwise", continuation: {roundId: round.id, cursor: round.deliveryCursor}} : {bet: 0.05};
                 expect(await session.play(next)).toEqual(await reference.play(next));
                 expect(session.serialize()).toEqual(reference.serialize());
             }
@@ -1121,9 +1135,75 @@ it.each(["plain", "stepwise", "composite"] as const)("binds coordinated %s weigh
                 restored.dispose();
             }
         } finally {
-            native.dispose();
+            nativeRestore.mockRestore();
             runtime.dispose();
             fresh.dispose();
+        }
+    }
+});
+
+
+it.each(["plain", "stepwise", "composite"] as const)("retains model-feasible %s nontriggers, zero durations/grants and bounded continuations without replay", async policy => {
+    const {checkpointCounterFixtures} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
+    const {weightedBonusBlueprint} = await import("../../v2/fixtures/WeightedBonusGame.js");
+    const conditional = weightedBonusBlueprint();
+    Reflect.deleteProperty(conditional, "reelStrips");
+    conditional.reelSequences = [
+        {type: "weighted", variants: [{id: "mixed", symbols: ["A", "C"], weight: 1}, {id: "zero", symbols: ["A", "A"], weight: 0}]},
+        {type: "exact", symbols: ["C"]}, {type: "exact", symbols: ["C"]},
+    ];
+    const never = JSON.parse(JSON.stringify(conditional)) as typeof conditional;
+    never.reelSequences![0] = {type: "weighted", variants: [{id: "no-trigger", symbols: ["A"], weight: 1}, {id: "zero-trigger", symbols: ["C"], weight: 0}]};
+    const zeroDuration = weightedBonusBlueprint();
+    zeroDuration.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "small" ? 1 : 0);
+    const free = checkpointCounterFixtures().find(test => test.id === "counter-reels-free-zero-reduced")!.blueprint;
+    const bought = JSON.parse(JSON.stringify(free)) as typeof free;
+    bought.betModes = [{id: "base", runtimeType: "base", isDefault: true}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 10, forcedFreeGames: 3}];
+    const respins = checkpointCounterFixtures().find(test => test.id === "counter-reels-respins-reduced")!.blueprint;
+    respins.mechanics!.respins!.trigger.symbolId = "B";
+    for (const [id, blueprint] of [["never", never], ["conditional", conditional], ["zero-duration", zeroDuration], ["zero-grant", free], ["bought", bought], ["respin-nontrigger", respins]] as const) {
+        const fixture = createCanonicalWasmFixture({blueprint});
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("probe"));
+        const receiver = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("unused-seed"));
+        try {
+            let session = runtime.createSession("probe");
+            const expected = receiver.restoreSession(session.serialize());
+            let selected = false,
+                missed = false;
+            for (let index = 0; index < 12; index++) {
+                const current = session.serialize() as import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmFeatureSessionState;
+                const round = current.feature.logicalRound;
+                const command = round?.status === "pending" ? {delivery: policy === "plain" ? undefined : policy, maxSubrounds: 1, continuation: {roundId: round.id, cursor: round.deliveryCursor}}
+                    : {bet: 0.05, ...((current.feature.state as {remaining?: number}).remaining! > 0 ? {} : {roundId: `${id}-${index}`}),
+                        ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1})};
+                if (id === "bought" && index % 3 === 0) Object.assign(command, {mode: "buy"});
+                const result = await session.play(command);
+                expect(result).toEqual(await expected.play(command));
+                selected ||= !!result.network?.boundedMechanics?.weightedBonus?.selectedNow;
+                missed ||= !result.network?.boundedMechanics?.weightedBonus;
+                const saved = session.serialize();
+                const diagnostics = runtime.getDiagnostics();
+                const restored = runtime.restoreSession(JSON.parse(JSON.stringify(saved)));
+                expect((await runtime.replay(saved, [])).stateAfter).toEqual(saved);
+                expect(runtime.getDiagnostics().generatedDraws).toBe(diagnostics.generatedDraws);
+                expect(restored.serialize()).toEqual(saved);
+                session.dispose();
+                session = restored;
+                if (id === "bought") {
+                    expect(result.network).toMatchObject({betModeId: "base", chargedBetModeId: "buy", freeGamesNum: index % 3 + 1});
+                    expect(result.sequenceStatistics![0].selections).toBe(Math.floor(index / 3) + 1);
+                }
+                if (id === "never") expect(result.weightedBonusStatistics).toMatchObject({selections: 0, completed: 0});
+                if (id === "zero-duration") expect(result.weightedBonusStatistics).toMatchObject({selections: index + 1, completed: index + 1});
+                if (id === "zero-grant" || id === "respin-nontrigger") expect(result.sequenceStatistics![0].selections).toBe(index + 1);
+            }
+            if (id === "conditional") {
+                expect(selected).toBe(true);
+                expect(missed).toBe(true);
+            }
+        } finally {
+            runtime.dispose();
+            receiver.dispose();
         }
     }
 });

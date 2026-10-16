@@ -737,7 +737,7 @@ it("freezes initialized and weighted-counter reproducer coverage", async () => {
     expect(checkpointInitializationFixtures().map(test => test.id)).toEqual([
         "initial-free-bank-counters", "initial-collection", "initial-respins", "initial-sticky", "initial-jackpot", "initial-hold", "initial-bonus-counters",
     ]);
-    expect(checkpointCounterFixtures().map(test => test.id)).toEqual(["counter-reels", "counter-reels-after-bonus", "counter-bonus", "counter-bonus-completion"]);
+    expect(checkpointCounterFixtures().map(test => test.id)).toEqual(["counter-reels", "counter-reels-after-bonus", "counter-bonus", "counter-bonus-completion", "counter-reels-free-zero-reduced", "counter-reels-respins-reduced", "counter-bonus-reduced"]);
 });
 
 it("preserves authoritative initialized weighted variants/stops with zero and custom-host RNG continuation", async () => {

@@ -197,24 +197,6 @@ export function validateWeightedBonusObservation(
     if (state.bonus?.selection && (state.executed !== retained?.executed || state.remaining !== retained?.remaining)) throw new Error("Retained weighted bonus duration progress differs from executable progress.");
 }
 
-/** Each selection consumes a paid mathematical entry and its authored respins.
- * Completed history is represented only by bounded per-outcome counters. One
- * current feature may still own an unconsumed remainder; delivery frames own none.
- */
-export function validateWeightedBonusAccounting(table: WeightedBonus, state: WeightedBonusState, remaining: number, executed: number, mathematicalPlays: number, entryPosition: number): number {
-    const invalid = () => new Error("Weighted bonus counters contradict accepted execution accounting.");
-    if (!state || !Array.isArray(state.counts) || state.counts.length !== table.outcomes.length ||
-        state.counts.some((count, index) => !Number.isSafeInteger(count) || count < 0 || table.outcomes[index].weight === 0 && count !== 0) ||
-        ![remaining, executed, mathematicalPlays, entryPosition, state.completed].every(value => Number.isSafeInteger(value) && value >= 0) ||
-        mathematicalPlays < 1 || entryPosition < 1 || entryPosition > mathematicalPlays) throw invalid();
-    const selections = state.counts.reduce((sum, count) => sum + count, 0);
-    const continuations = state.counts.reduce((sum, count, index) => sum + count * table.outcomes[index].duration, 0) - remaining;
-    if (!Number.isSafeInteger(selections) || !Number.isSafeInteger(continuations) || continuations < 0 || selections > entryPosition ||
-        selections + continuations > mathematicalPlays || state.completed !== selections - (remaining > 0 ? 1 : 0) ||
-        state.selection && executed !== mathematicalPlays - entryPosition) throw invalid();
-    return mathematicalPlays - continuations;
-}
-
 export function describeWeightedBonusCoverage(weight: number, uncovered: boolean): string {
     if (weight === 0) return "zero weight";
     return uncovered ? "unobserved" : "observed";

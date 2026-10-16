@@ -695,7 +695,7 @@ it("rejects every fabricated initialized feature before Worker replacement and r
 
 it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s weighted counters before Worker replacement", async policy => {
     const {checkpointCounterFixtures, mutateCheckpointCounters} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
-    for (const {id, blueprint} of checkpointCounterFixtures()) {
+    for (const {id, blueprint, plays = 1} of checkpointCounterFixtures()) {
         const fixture = createCanonicalWasmFixture({blueprint});
         const worker = new PokieWasmWorkerProtocol();
         const fresh = new PokieWasmWorkerProtocol();
@@ -704,15 +704,40 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s wei
             const command = {bet: 0.05, roundId: "counter", ...(policy === "plain" ? {} : {delivery: policy, maxSubrounds: 1})};
             if (id === "counter-reels-after-bonus") expect(await worker.handle({id: "previous", type: "play", command: {bet: 0.05, roundId: "previous", delivery: "composite"}})).toMatchObject({ok: true});
             expect(await worker.handle({id: "entry", type: "play", command})).toMatchObject({ok: true});
+            for (let index = 1; index < plays; index++) {
+                const current = await worker.handle({id: "state", type: "serialize"});
+                if (!current.ok) throw new Error(current.error);
+                const round = (current.result as import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmFeatureSessionState).feature.logicalRound;
+                Reflect.deleteProperty(command, "continuation");
+                if (round?.status === "pending") {
+                    Reflect.deleteProperty(command, "bet");
+                    Reflect.deleteProperty(command, "roundId");
+                    Object.assign(command, {continuation: {roundId: round.id, cursor: round.deliveryCursor}});
+                } else {
+                    Object.assign(command, {bet: 0.05, roundId: `counter-${index}`});
+                    const state = (current.result as import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmFeatureSessionState).feature.state as {remaining?: number};
+                    if (policy === "plain" && state.remaining! > 0) Reflect.deleteProperty(command, "roundId");
+                }
+                expect(await worker.handle({id: `play-${index}`, type: "play", command})).toMatchObject({ok: true});
+            }
             const snapshot = await worker.handle({id: "state", type: "serialize"});
             if (!snapshot.ok) throw new Error(snapshot.error);
             const saved = snapshot.result as import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmFeatureSessionState;
+            if (id.endsWith("-reduced")) {
+                expect(saved.sequence).toBe(plays);
+                if (id === "counter-bonus-reduced") expect(saved.feature.lastRound!.weightedBonusStatistics).toMatchObject({selections: 3, completed: 2});
+                else expect(saved.feature.lastRound!.sequenceStatistics![0].selections).toBe(plays === 2 ? 2 : 3);
+            }
             const corrupt = mutateCheckpointCounters(saved, id);
             const diagnostics = worker.getDiagnostics();
             for (const target of [worker, fresh]) {
+                const before = await target.handle({id: "state", type: "serialize"});
+                const priorDiagnostics = target.getDiagnostics();
                 const error = expect.stringMatching(/Weighted (reel|bonus).*counter|weighted bonus completion/i);
                 expect(await target.handle({id: "bad", type: "restore", state: corrupt})).toMatchObject({ok: false, error});
                 expect(await target.handle({id: "bad", type: "replay", state: corrupt, commands: [command]})).toMatchObject({ok: false, error});
+                expect(await target.handle({id: "state", type: "serialize"})).toEqual(before);
+                expect(target.getDiagnostics()).toEqual(priorDiagnostics);
             }
             expect(worker.getDiagnostics()).toEqual(diagnostics);
             expect(await worker.handle({id: "state", type: "serialize"})).toEqual(snapshot);
@@ -722,7 +747,7 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s wei
                 const current = await worker.handle({id: "state", type: "serialize"});
                 if (!current.ok) throw new Error(current.error);
                 const round = (current.result as typeof saved).feature.logicalRound;
-                const next = round?.status === "pending" ? {delivery: "stepwise", continuation: {roundId: "counter", cursor: round.deliveryCursor}} : {bet: 0.05};
+                const next = round?.status === "pending" ? {delivery: "stepwise", continuation: {roundId: round.id, cursor: round.deliveryCursor}} : {bet: 0.05};
                 const request = {id: "next", type: "play" as const, command: next};
                 expect(await worker.handle(request)).toEqual(await fresh.handle(request));
             }
