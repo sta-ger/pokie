@@ -1,6 +1,7 @@
 import {Alert, Table, Text} from "@mantine/core";
 import {IconCircleCheck} from "@tabler/icons-react";
 import {useState} from "react";
+import {deriveBetModeId} from "../../../../client/player";
 import type {StudioRuntimeSessionView} from "../../api/types";
 import {describeRoundArtifact} from "../../domain/interpret/Replay";
 import {describeRuntimeScreen, extractAdditionalRoundFields} from "../../domain/interpret/Runtime";
@@ -165,6 +166,12 @@ export function RoundSummary({
                     credits={session.credits}
                     totalWin={session.win}
                     payoutMultiplier={session.win !== undefined && session.bet !== undefined && session.bet !== 0 ? session.win / session.bet : undefined}
+                    availableBets={availableBets}
+                    currentBet={selectedBet ?? session.bet}
+                    onSelectBet={onSelectBet}
+                    availableModeIds={availableModeIds}
+                    currentModeId={selectedBetMode ?? deriveBetModeId(session.betModeId)}
+                    onSelectMode={onSelectBetMode}
                 />
             )}
 

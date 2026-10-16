@@ -204,7 +204,7 @@ export function PlayTab({
                 visibleRowCoverage={Array.isArray(activeSession.visibleRowCoverage) ? activeSession.visibleRowCoverage as number[] : undefined}
                 credits={activeSession.credits}
                 availableBets={availableBets}
-                currentBet={currentBet}
+                currentBet={selectedBet === null ? currentBet : Number(selectedBet)}
                 onSelectBet={(bet) => setSelectedBet(String(bet))}
                 availableModeIds={availableBetModes}
                 currentModeId={selectedBetMode ?? currentBetMode}

@@ -6,6 +6,9 @@ import type {StudioRuntimeSessionView} from "../../../../../cli/studio-client/sr
 import {StudioApiProvider} from "../../../../../cli/studio-client/src/context/StudioApiProvider";
 import {usePlaySession} from "../../../../../cli/studio-client/src/hooks/usePlaySession";
 import {PlayTab} from "../../../../../cli/studio-client/src/components/project/PlayTab";
+import {createCanonicalWasmFixture} from "../../../../fixtures/wasm/createCanonicalWasmFixture";
+import {instantiatePokieWasm, SeededPokieWasmHost} from "../../../../../src/wasm/PokieWasmRuntime";
+import {projectPokieWasmRoundArtifact} from "../../../../../src/wasm/projectPokieWasmRoundArtifact";
 
 const GAME = {id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"};
 
@@ -18,6 +21,88 @@ function strictModeWrapper(fetchImpl: FetchLike) {
         return <StrictMode><StudioApiProvider fetchImpl={fetchImpl}>{children}</StudioApiProvider></StrictMode>;
     };
 }
+
+it.each([true, false])("V2C-22-BET-COMMITMENT renders the exact selection before and after ordered fractional plays with artifact.inspect=%s", async inspect => {
+    const bets = [0.05, 7.5, 1e-7];
+    const fixture = createCanonicalWasmFixture({id: GAME.id, availableBets: bets,
+        reelStrips: [["A", "B", "C"], ["A", "B", "C"], ["A", "B", "C"]], paytable: {A: {3: 5}, B: {3: 0}},
+        capabilities: ["runtime.play", "runtime.serialize", ...(inspect ? ["artifact.inspect"] : [])]});
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("0"));
+    const native = runtime.createSession("0");
+    const requests: Record<string, unknown>[] = [];
+    let publish: (() => void) | undefined;
+    let current: ReturnType<typeof usePlaySession>;
+    const fetchImpl: FetchLike = async (url, init) => {
+        if (url === "/api/project/symbol-artwork") return {ok: true, status: 200, json: () => Promise.resolve({artwork: {}})};
+        const body = JSON.parse(init?.body ?? "{}");
+        if (url === "/api/project/play/session") {
+            expect(body).toEqual({seed: "0"});
+            // Ordinary Worker initial data supplies choices but no selected bet.
+            return {ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: session("stable", {bet: undefined, availableBets: bets})})};
+        }
+        expect(url).toBe("/api/project/play/sessions/stable/spin");
+        requests.push(body);
+        const before = native.serialize();
+        const round = await native.play({bet: body.bet as number});
+        const accepted = session("stable", {availableBets: bets, bet: round.stake, credits: round.credits, win: round.payout,
+            screen: round.screen.map(reel => [...reel]), debug: {stateBefore: before, stateAfter: native.serialize(),
+                ...(inspect ? {artifact: projectPokieWasmRoundArtifact(round, {game: GAME, pokieVersion: "1.3.0"}, String(requests.length))}
+                    : {artifactUnavailableReason: "This artifact does not declare artifact.inspect."})}});
+        // Execution/recording can finish before the browser publishes the accepted view.
+        return new Promise(resolve => {
+            publish = () => resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", session: accepted})});
+        });
+    };
+    function Page() {
+        current = usePlaySession();
+        return <PlayTab session={current.session} sessionId={current.sessionId} onNewSession={current.newSession}
+            onSpin={current.spin} onFindAnyWin={current.findAnyWin} onFindSymbolWin={current.findSymbolWin}
+            onFindFreeGames={current.findFreeGames} />;
+    }
+    const view = render(<MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><Page /></StudioApiProvider></MantineProvider>);
+    const choose = async (bet: number) => {
+        const button = screen.getByRole("button", {name: `Select bet ${bet}`});
+        if (button.getAttribute("aria-pressed") !== "true") fireEvent.click(button);
+        await waitFor(() => {
+            expect(screen.getByRole("button", {name: `Select bet ${bet}`})).toHaveAttribute("aria-pressed", "true");
+            expect(view.container.querySelector(".player-bet-current")?.textContent).toBe(`Bet: ${bet}`);
+        });
+    };
+    try {
+        fireEvent.click(screen.getByRole("button", {name: /Show advanced details/}));
+        fireEvent.change(screen.getByLabelText("Seed (optional)"), {target: {value: "0"}});
+        fireEvent.click(screen.getByRole("button", {name: "New Play session"}));
+        await screen.findByRole("button", {name: "Spin"});
+        const initial = native.serialize();
+        await choose(7.5);
+        await choose(0.05);
+        await choose(0.05); // Already-selected no-op must not execute a draw.
+        expect(requests).toHaveLength(0);
+        expect(native.serialize()).toEqual(initial);
+        for (const [index, bet] of bets.entries()) {
+            await waitFor(() => expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled());
+            await choose(bet);
+            fireEvent.click(screen.getByRole("button", {name: "Spin"}));
+            await waitFor(() => expect(publish).toBeDefined());
+            expect(screen.getByRole("button", {name: "Spin"})).toBeDisabled();
+            expect(requests).toHaveLength(index + 1);
+            expect(requests[index]).toMatchObject({bet, requestId: expect.any(String)});
+            expect(native.serialize().sequence).toBe(index + 1);
+            act(() => {
+                publish!();
+                publish = undefined;
+            });
+            await waitFor(() => expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled());
+            expect(current!.session).toMatchObject({status: "ok", session: {bet, credits: native.serialize().credits, debug: {stateAfter: native.serialize()}}});
+            await choose(bet);
+        }
+        expect(new Set(requests.map(body => body.requestId)).size).toBe(3);
+    } finally {
+        view.unmount();
+        native.dispose();
+        await runtime.dispose();
+    }
+});
 
 describe("usePlaySession - resetForProjectSwitch", () => {
     it("discards a pending new-session response after a project switch", async () => {

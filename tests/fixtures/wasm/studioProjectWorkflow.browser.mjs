@@ -53,8 +53,20 @@ async function evaluate(expression) {
 }
 const text = () => evaluate("document.body.innerText");
 const rendered = async value => waitFor(text, body => body.includes(value), `rendered ${value}`);
-async function click(label) {
-    await waitFor(() => evaluate(`(() => {const node=[...document.querySelectorAll('button')].find(value=>(value.textContent.trim()===${JSON.stringify(label)}||(${JSON.stringify(label)}==='Show advanced details'&&value.textContent.startsWith('Show advanced details'))));if(!node||node.disabled||node.getAttribute('data-loading'))return false;node.click();return true;})()`), Boolean, `enabled button ${label}`);
+async function click(label, ready = "true") {
+    await waitFor(() => evaluate(`(() => {const node=[...document.querySelectorAll('button')].find(value=>(value.textContent.trim()===${JSON.stringify(label)}||(${JSON.stringify(label)}==='Show advanced details'&&value.textContent.startsWith('Show advanced details'))));if(!node||node.matches(':disabled')||node.getAttribute('data-loading')||!(${ready}))return false;node.click();return true;})()`), Boolean, `enabled button ${label}`);
+}
+const spinReady = `(() => {const node=[...document.querySelectorAll('button')].find(value=>value.textContent.trim()==='Spin');return !!node&&!node.matches(':disabled')&&!node.hasAttribute('data-loading');})()`;
+async function selectBet(bet) {
+    // A server recording precedes browser publication and React's accepted-bet effect.
+    // Finish that rendered transition before selecting the next round's stake.
+    await waitFor(() => evaluate(spinReady), Boolean, "rendered idle Spin before bet selection");
+    const label = `Select bet ${bet}`;
+    const locator = `[...document.querySelectorAll('button')].find(node=>node.getAttribute('aria-label')===${JSON.stringify(label)})`;
+    assert.equal(await evaluate(`(() => {const node=${locator};if(!node)return false;if(node.getAttribute('aria-pressed')==='true')return true;if(node.matches(':disabled'))return false;node.click();return true;})()`), true, label);
+    const committed = `(() => {const node=${locator};return !!node&&node.getAttribute('aria-pressed')==='true'&&document.querySelector('.player-bet-current')?.textContent===${JSON.stringify(`Bet: ${bet}`)};})()`;
+    await waitFor(() => evaluate(committed), Boolean, `rendered committed bet ${bet}`);
+    return committed;
 }
 async function input(label, value) {
     const locator = `(() => {const labels=[...document.querySelectorAll('label')];const node=labels.find(value=>value.textContent.startsWith(${JSON.stringify(label)}));return node&&document.getElementById(node.htmlFor);})()`;
@@ -65,9 +77,9 @@ async function input(label, value) {
     assert.equal(await evaluate(`(${locator}).value`), String(value), `native ${label} input readback`);
 }
 const jobs = async () => (await api("/api/project/jobs")).jobs;
-async function submitJob(operation, label) {
+async function submitJob(operation, label, ready = "true") {
     const previous = new Set((await jobs()).map(row => row.id));
-    await click(label);
+    await click(label, ready);
     return waitFor(jobs, rows => rows.some(row => row.operation === operation && !previous.has(row.id)), `new ${operation} after ${label}`)
         .then(rows => rows.find(row => row.operation === operation && !previous.has(row.id)));
 }
@@ -102,16 +114,23 @@ try {
     await click("New Play session");
     await rendered("Reset Play session");
     for (const [index, round] of expected.entries()) {
-        const label = `Select bet ${round.bet}`;
-        await waitFor(() => evaluate(`(() => {const node=document.querySelector('[aria-label='+${JSON.stringify(JSON.stringify(label))}+']');if(!node||node.disabled)return false;node.click();return true;})()`), Boolean, label);
-        await click("Spin");
-        const rows = await waitFor(() => api("/api/project/rounds"), rows => rows.length >= index + 1, "recorded Worker round");
-        const actual = rows[0];
+        const committed = await selectBet(round.bet);
+        const requestCount = await evaluate("window.__wasm.requests.length");
+        // Recheck the rendered choice in the same DOM task that activates Spin.
+        const spun = await jobTerminal(await submitJob("browser-play", "Spin", committed));
+        assert.equal(spun.status, "completed");
+        assert.equal(spun.request.command.bet, round.bet);
+        const rows = await waitFor(() => api("/api/project/rounds"), rows => rows.some(row => row.studioRequestId === spun.request.command.requestId), "correlated recorded Worker round");
+        assert.equal(rows.length, index + 1);
+        const actual = rows.find(row => row.studioRequestId === spun.request.command.requestId);
+        const dispatched = await evaluate(`window.__wasm.requests.slice(${requestCount}).filter(row=>row.type==='play')`);
+        assert.deepEqual(dispatched, [{type: "play", bet: round.bet}], "one exact Worker command for this action");
         assert.deepEqual(actual.screen, round.screen);
         assert.equal(actual.bet, round.bet);
         assert.equal(actual.win, round.win);
         assert.equal(actual.credits, round.credits);
         assert.equal(actual.wasm.execution, "browser-worker");
+        await waitFor(() => evaluate(spinReady), Boolean, "rendered Spin completion");
     }
     const requests = await evaluate("window.__wasm.requests");
     for (const round of expected) assert(requests.some(row => row.type === "play" && row.bet === round.bet));
