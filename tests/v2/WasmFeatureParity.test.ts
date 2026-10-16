@@ -360,7 +360,12 @@ it("binds visible receipt screens to artifact coordinates rather than evaluated 
             expect(() => runtime.restoreSession(corrupt)).toThrow(/screen/);
         }
         const corrupt = JSON.parse(JSON.stringify(saved));
-        corrupt.feature.logicalRound.subrounds[0].artifacts[0].geometry.visible.rowOffset = 0;
+        const retained = corrupt.feature.logicalRound.subrounds[0];
+        retained.artifacts[0].geometry.visible.rowOffset = 1.5;
+        retained.artifacts[0].screen = retained.artifacts[0].generatedScreen.map((reel: string[]) => reel.slice(1, 4));
+        retained.screen = retained.artifacts[0].screen;
+        corrupt.feature.lastRound.screen = retained.screen;
+        corrupt.feature.lastRound.network.reelsSymbols = retained.screen;
         corrupt.feature.lastRound.logicalRound = corrupt.feature.logicalRound;
         expect(() => runtime.restoreSession(corrupt)).toThrow(/geometry/);
     } finally {
