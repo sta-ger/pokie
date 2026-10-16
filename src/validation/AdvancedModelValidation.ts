@@ -27,7 +27,7 @@ export type AdvancedModelValidationReport = {
     schemaVersion: 1;
     scope: "declared-model";
     status: AdvancedValidationStatus;
-    structuralValid: boolean;
+    structuralValid: boolean | null;
     /** Never an assertion about arbitrary executable code. */
     verdict: "proved-within-assumptions" | "violated" | "inconclusive";
     executableFidelity: "declarative-runtime-contract" | "unverified";

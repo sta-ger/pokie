@@ -21,7 +21,7 @@ describe("bounded advanced model validation", () => {
         model.reelStrips = [["S", "A", "A"]];
         model.mechanics = {freeGames: {scatterSymbol: "S", awardsByCount: {2: 1}}};
         const result = await validate(model);
-        expect(result.checks).toContainEqual(expect.objectContaining({id: "reachability.feature", status: "violation", path: "mechanics.freeGames", evidence: expect.objectContaining({completeScreenSupport: true, target: "mechanics.freeGames"})}));
+        expect(result.checks).toContainEqual(expect.objectContaining({id: "reachability.feature", status: "violation", path: "mechanics.freeGames", evidence: expect.objectContaining({completeScreenSupport: true, target: "mechanics.freeGames", attainableTriggerCounts: [0, 1], declaration: expect.objectContaining({awardsByCount: {2: 1}})})}));
     });
     it("reports additive retrigger entry and unbounded-progress witness without claiming counters repeat", async () => {
         const model = blueprint();
@@ -38,7 +38,7 @@ describe("bounded advanced model validation", () => {
         const graph: DeclaredTransitionModel = {kind: "declared-transitions", initial: "paid", targets: ["bonus", "missing"], states: [{id: "paid"}, {id: "bonus"}], transitions: [{from: "paid", to: "bonus"}, {from: "bonus", to: "bonus"}]};
         const report = await new AdvancedModelValidator().validate(graph);
         expect(report.checks).toContainEqual(expect.objectContaining({id: "termination.all-path", evidence: {entryPrefix: ["paid", "bonus"], cycle: ["bonus", "bonus"]}}));
-        expect(report.checks).toContainEqual(expect.objectContaining({id: "reachability.target", path: "states.missing", status: "violation", evidence: {target: "missing", exploredRegion: ["paid", "bonus"], complete: true}}));
+        expect(report.checks).toContainEqual(expect.objectContaining({id: "reachability.target", path: "targets.1", status: "violation", evidence: {target: "missing", exploredRegion: ["paid", "bonus"], complete: true}}));
     });
     it("retains illegal-target and exact money transition witnesses", async () => {
         const graph: DeclaredTransitionModel = {kind: "declared-transitions", initial: "a", states: [{id: "a"}, {id: "b", terminal: true}], transitions: [{from: "a", to: "absent", before: {remaining: 1}, after: {remaining: -1}}, {from: "a", to: "b", accounting: {creditsBefore: 1, creditsAfter: 2, bet: 0.05, stake: 0.05, payout: 0}}]};
@@ -217,4 +217,28 @@ it.each([false, true])("releases owned snapshots on cancellation (cleanup fails:
         fixture.restore();
         fs.rmSync(root, {recursive: true, force: true});
     }
+});
+
+it("bounds Blueprint acquisition before parsing and supports a later sufficiently budgeted retry", async () => {
+    const {default: fs} = await import("fs");
+    const {default: os} = await import("os");
+    const {default: path} = await import("path");
+    const {AdvancedModelSourceValidator} = await import("../../src/validation/AdvancedModelSourceValidator.js");
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "advanced-file-budget-"));
+    const file = path.join(root, "source.blueprint.json");
+    fs.writeFileSync(file, JSON.stringify(blueprint()));
+    try {
+        const validator = new AdvancedModelSourceValidator();
+        expect(await validator.validate(file, {limits: {inputNodes: 10}})).toMatchObject({status: "budget-exhausted", verdict: "inconclusive", structuralValid: null});
+        expect(await validator.validate(file)).toMatchObject({status: "complete"});
+    } finally {
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});
+
+it("rejects false completion and compares owned snapshots independently of object key order", async () => {
+    const model: DeclaredTransitionModel = {kind: "declared-transitions", initial: "a", states: [{id: "a", state: {remaining: 1, entryBet: 0.05}}, {id: "done", terminal: true, state: {remaining: 1, entryBet: 0.05}}], transitions: [{from: "a", to: "done", before: {entryBet: 0.05, remaining: 1}, after: {entryBet: 0.05, remaining: 1}}]};
+    const report = await new AdvancedModelValidator().validate(model);
+    expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.terminal-state", status: "violation", path: "states.1.state", evidence: expect.objectContaining({actual: {remaining: 1, entryBet: 0.05}})}));
+    expect(report.checks.some(check => check.id === "invariants.transition-state")).toBe(false);
 });

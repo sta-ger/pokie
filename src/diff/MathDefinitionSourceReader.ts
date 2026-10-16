@@ -14,7 +14,7 @@ import {
 } from "../generated/PackageBlueprintExtraction.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
-import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
+import {GameBlueprintReadBudgetExceededError, loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import {materializeReelStrips} from "../generated/materializeReelStrips.js";
 import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
@@ -32,7 +32,7 @@ import {MathDefinitionDiffer} from "./MathDefinitionDiffer.js";
 
 export type MathDefinitionInput = string | PokieProject | PokieGame | MathDefinitionBlueprintInput;
 export interface MathDefinitionSourceReading {
-    read(input: MathDefinitionInput, options?: {signal?: AbortSignal; analysisOnly?: boolean}): Promise<MathDefinitionSnapshot>;
+    read(input: MathDefinitionInput, options?: {signal?: AbortSignal; analysisOnly?: boolean; maxSourceBytes?: number}): Promise<MathDefinitionSnapshot>;
 }
 function diagnostic(
     code: string,
@@ -97,13 +97,13 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
     }
 
     /** Reading a definition is an explicit analysis boundary; extraction/build callers never enter here. */
-    public async read(input: MathDefinitionInput, options?: {signal?: AbortSignal; analysisOnly?: boolean}): Promise<MathDefinitionSnapshot> {
+    public async read(input: MathDefinitionInput, options?: {signal?: AbortSignal; analysisOnly?: boolean; maxSourceBytes?: number}): Promise<MathDefinitionSnapshot> {
         const snapshot = await this.readDefinition(input, options);
         if (!options?.analysisOnly) snapshot.advanced = await validateMathDefinitionSnapshot(snapshot, options);
         return snapshot;
     }
 
-    private async readDefinition(input: MathDefinitionInput, options?: {signal?: AbortSignal; analysisOnly?: boolean}): Promise<MathDefinitionSnapshot> {
+    private async readDefinition(input: MathDefinitionInput, options?: {signal?: AbortSignal; analysisOnly?: boolean; maxSourceBytes?: number}): Promise<MathDefinitionSnapshot> {
         const snapshot: MathDefinitionSnapshot = {
             identity: {kind: "unknown"},
             support: "unsupported",
@@ -121,7 +121,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
                 {
                     kind: "blueprint",
                     location: input,
-                    model: loadGameBlueprint(input, {preserveInvalidAuthoredContent: true}),
+                    model: loadGameBlueprint(input, {preserveInvalidAuthoredContent: true, maxBytes: options?.maxSourceBytes ?? 400000}),
                 },
                 options,
             );
@@ -139,7 +139,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
                         {
                             kind: "blueprint",
                             location: input,
-                            model: loadGameBlueprint(input, {preserveInvalidAuthoredContent: true}),
+                            model: loadGameBlueprint(input, {preserveInvalidAuthoredContent: true, maxBytes: options?.maxSourceBytes ?? 400000}),
                         },
                         options,
                     );
@@ -154,7 +154,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
                             {
                                 kind: "blueprint",
                                 location: project.rootPath,
-                                model: loadGameBlueprint(project.rootPath, {preserveInvalidAuthoredContent: true}),
+                                model: loadGameBlueprint(project.rootPath, {preserveInvalidAuthoredContent: true, maxBytes: options?.maxSourceBytes ?? 400000}),
                             },
                             options,
                         );
@@ -264,6 +264,12 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
             const malformedJson =
                 error instanceof Error &&
                 (error.message.startsWith("Could not parse") || error.message.includes("must contain a JSON object"));
+            if (error instanceof GameBlueprintReadBudgetExceededError) {
+                snapshot.support = "unsupported";
+                snapshot.limits.push(error.message);
+                snapshot.diagnostics.push(diagnostic("definition-acquisition-budget-exhausted", error.message, "warning"));
+                return snapshot;
+            }
             snapshot.support = options?.signal?.aborted ? "cancelled" : "failed";
             if (!options?.signal?.aborted && malformedJson) snapshot.support = "invalid";
             snapshot.diagnostics.push(
@@ -278,7 +284,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
 
     private async blueprint(
         input: MathDefinitionBlueprintInput,
-        options?: {signal?: AbortSignal; analysisOnly?: boolean},
+        options?: {signal?: AbortSignal; analysisOnly?: boolean; maxSourceBytes?: number},
     ): Promise<MathDefinitionSnapshot> {
         const snapshot: MathDefinitionSnapshot = {
             identity: {kind: "blueprint", ...(input.location ? {location: input.location} : {})},

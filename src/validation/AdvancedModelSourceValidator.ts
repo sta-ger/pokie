@@ -17,7 +17,7 @@ export class AdvancedModelSourceValidator implements AdvancedModelSourceValidati
         const budget = new AnalysisBudget(options); // Reject malformed limits before acquiring a source.
         if (options.signal?.aborted) return validateMathDefinitionSnapshot({identity: {kind: "unknown"}, support: "cancelled", fields: [], diagnostics: [], limits: ["Cancelled before source acquisition."]}, options);
         budget.check();
-        const snapshot = await this.reader.read(input, {signal: options.signal, analysisOnly: true});
+        const snapshot = await this.reader.read(input, {signal: options.signal, analysisOnly: true, maxSourceBytes: budget.limits.inputNodes * 4});
         return validateMathDefinitionSnapshot(snapshot, options);
     }
 }

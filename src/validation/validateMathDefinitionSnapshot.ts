@@ -22,12 +22,13 @@ export async function validateMathDefinitionSnapshot(snapshot: MathDefinitionSna
     if (snapshot.support === "failed") unsupportedStatus = "failed";
     if (snapshot.support === "cancelled") unsupportedStatus = "cancelled";
     if (snapshot.support === "invalid") unsupportedStatus = "invalid";
+    if (snapshot.diagnostics.some(issue => issue.code === "definition-acquisition-budget-exhausted")) unsupportedStatus = "budget-exhausted";
     const report: AdvancedModelValidationReport = supported && snapshot.effective
         ? await new AdvancedModelValidator().validate({kind: "blueprint", model, maxWinPolicy: effective.maxWinPolicy}, options)
         : {
             schemaVersion: 1, scope: "declared-model", adapter: snapshot.identity.kind, declarationAuthority: "Authoritative source reader; incomplete or unsupported declaration", supportedChecks: [],
             status: unsupportedStatus,
-            verdict: "inconclusive", structuralValid: !["failed", "invalid"].includes(snapshot.support), executableFidelity: "unverified", termination: "all-path",
+            verdict: "inconclusive", structuralValid: ["failed", "invalid"].includes(snapshot.support) ? false : null, executableFidelity: "unverified", termination: "all-path",
             assumptions: [], limitations: [...snapshot.limits], limits: limits.limits, work: limits.work,
             issues: snapshot.diagnostics.map(issue => ({...issue,
                 ...(["definition-read-failed", "package-model-read-failed", "definition-normalization-failed"].includes(issue.code) ? {message: "Source declaration could not be read. Check the input and retry."} : {}), severity: issue.severity === "suggestion" ? "info" : issue.severity})),

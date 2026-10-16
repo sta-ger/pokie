@@ -1,3 +1,4 @@
+import {canonicalDefinitionJson} from "../diff/MathDefinitionDiffer.js";
 import {modelFieldPathSegments} from "../generated/internal/modelFieldPath.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import {materializeReelStrips} from "../generated/materializeReelStrips.js";
@@ -33,7 +34,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
         // Invalid options are caller errors, rather than a successful or partially analysed report.
         const budget = new AnalysisBudget(options);
         const report: AdvancedModelValidationReport = {
-            schemaVersion: 1, scope: "declared-model", status: "complete", structuralValid: true,
+            schemaVersion: 1, scope: "declared-model", status: "complete", structuralValid: null,
             verdict: "inconclusive", executableFidelity: "unverified", adapter: "unavailable", declarationAuthority: "Caller-supplied declarative data", supportedChecks: [], termination: "all-path",
             assumptions: [], limitations: [], limits: budget.limits, work: budget.work, issues: [], checks: [],
         };
@@ -70,6 +71,8 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
         if (!Array.isArray(model.states) || !Array.isArray(model.transitions)) throw new Error("Finite declarations require states and transitions arrays.");
         const states = new Map(model.states.map(state => [state.id, state]));
         if (states.size !== model.states.length || !states.has(model.initial) || model.states.some(state => typeof state.id !== "string" || !state.id)) throw new Error("Finite declarations require unique state IDs and an existing initial state.");
+        report.structuralValid = true;
+        const stateIndices = new Map(model.states.map((state, index) => [state.id, index]));
         const adjacency = new Map<string, {edge: DeclaredTransitionModel["transitions"][number]; index: number}[]>();
         for (const [index, edge] of model.transitions.entries()) {
             budget.take("transitions");
@@ -93,7 +96,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
             if (active.has(id)) {
                 if (!cycleFound) {
                     cycleFound = true;
-                    await this.add(report, budget, {id: "termination.all-path", path: `states.${id}`, status: "violation", severity: "error", message: "Attainable repeatable cycle violates all-path termination; no probability claim is made.", assumptions: report.assumptions, evidence: {entryPrefix: path.slice(0, active.get(id)! + 1), cycle: [...path.slice(active.get(id)!), id]}});
+                    await this.add(report, budget, {id: "termination.all-path", path: `states.${stateIndices.get(id)}`, status: "violation", severity: "error", message: "Attainable repeatable cycle violates all-path termination; no probability claim is made.", assumptions: report.assumptions, evidence: {entryPrefix: path.slice(0, active.get(id)! + 1), cycle: [...path.slice(active.get(id)!), id]}});
                 }
                 return;
             }
@@ -108,8 +111,21 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                     validateExecutableState(state.state, model.schema);
                 } catch (error) {
                     invariant = true;
-                    await this.add(report, budget, {id: "invariants.executable-state", path: `states.${id}.state`, status: "violation", severity: "error", message: error instanceof Error ? error.message : String(error), assumptions: report.assumptions, evidence: {path: [...path], actual: state.state, expected: "Production executable-state schema invariants"}});
+                    await this.add(report, budget, {id: "invariants.executable-state", path: `states.${stateIndices.get(id)}.state`, status: "violation", severity: "error", message: error instanceof Error ? error.message : String(error), assumptions: report.assumptions, evidence: {path: [...path], actual: state.state, expected: "Production executable-state schema invariants"}});
                 }
+            }
+            const pendingState = (value: unknown): boolean => {
+                if (!value || typeof value !== "object") return false;
+                const progress = value as Record<string, unknown>;
+                return progress.active === true || Number(progress.remaining) > 0 || Number(progress.freeGamesSum) > Number(progress.freeGamesNum) || pendingState(progress.base);
+            };
+            if (state.terminal && pendingState(state.state)) {
+                invariant = true;
+                await this.add(report, budget, {id: "invariants.terminal-state", path: `states.${stateIndices.get(id)}.state`, status: "violation", severity: "error", message: "Declared terminal state still owns pending feature progress.", assumptions: report.assumptions, evidence: {path: [...path], before: state.state, after: state.state, expected: "No pending feature owner at completion", actual: state.state}});
+            }
+            if (!state.terminal && !(adjacency.get(id)?.length)) {
+                illegal = true;
+                await this.add(report, budget, {id: "transitions.deadlock", path: `states.${stateIndices.get(id)}`, status: "violation", severity: "error", message: "Reachable nonterminal state has no executable successor.", assumptions: report.assumptions, evidence: {path: [...path], before: state.state ?? {}, after: state.state ?? {}, expected: "An outgoing transition or explicit terminal state", actual: "Dead end"}});
             }
             for (const {edge, index} of adjacency.get(id) ?? []) {
                 await budget.yield();
@@ -120,8 +136,8 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                     continue;
                 }
                 try {
-                    if (edge.before && JSON.stringify(edge.before) !== JSON.stringify(state.state ?? {})) throw new Error("Transition before-state differs from its source owner.");
-                    if (edge.after && JSON.stringify(edge.after) !== JSON.stringify(states.get(edge.to)?.state ?? {})) throw new Error("Transition after-state differs from its target owner.");
+                    if (edge.before && canonicalDefinitionJson(edge.before) !== canonicalDefinitionJson(state.state ?? {})) throw new Error("Transition before-state differs from its source owner.");
+                    if (edge.after && canonicalDefinitionJson(edge.after) !== canonicalDefinitionJson(states.get(edge.to)?.state ?? {})) throw new Error("Transition after-state differs from its target owner.");
                     if (model.schema && model.schema.kind !== "custom" && edge.after) validateExecutableState(edge.after, model.schema);
                 } catch (error) {
                     invariant = true;
@@ -144,7 +160,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
         };
         await visit(model.initial);
         report.checks.push({id: "invariants.state-support", path: "schema", status: model.schema && model.schema.kind !== "custom" && !invariant ? "pass" : "unknown", severity: model.schema && model.schema.kind !== "custom" && !invariant ? "info" : "warning", message: "State invariants require a supported production executable-state schema; table topology alone does not establish them.", assumptions: report.assumptions});
-        for (const target of model.targets ?? []) await this.add(report, budget, {id: "reachability.target", path: `states.${target}`, status: visited.has(target) ? "pass" : "violation", severity: visited.has(target) ? "info" : "error", message: visited.has(target) ? "Target is attainable." : "No positive-weight transition from the complete reachable region enters the target.", assumptions: report.assumptions, evidence: {target, exploredRegion: [...visited], complete: true}});
+        for (const [index, target] of (model.targets ?? []).entries()) await this.add(report, budget, {id: "reachability.target", path: `targets.${index}`, status: visited.has(target) ? "pass" : "violation", severity: visited.has(target) ? "info" : "error", message: visited.has(target) ? "Target is attainable." : "No positive-weight transition from the complete reachable region enters the target.", assumptions: report.assumptions, evidence: {target, exploredRegion: [...visited], complete: true}});
         for (const [id, failed] of [["termination.all-path", cycleFound], ["transitions.target", illegal], ["invariants.money", invariant]] as const) if (!failed) report.checks.push({id, path: "$", status: id === "invariants.money" && !accountingComplete ? "unknown" : "pass", severity: id === "invariants.money" && !accountingComplete ? "warning" : "info", message: id === "invariants.money" && !accountingComplete ? "Some reachable transitions omit accounting; monetary conservation is unsupported." : "Complete reachable transition table checked.", assumptions: report.assumptions});
     }
 
@@ -193,6 +209,12 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
         const alternatives = definitions.map(reel => reel.type === "exact" ? [{id: "exact", symbols: reel.symbols}] : reel.variants.filter(variant => variant.weight > 0));
         const targets = new Map<string, boolean>();
         for (const name of ["freeGames", "respins", "holdAndWin", "weightedBonus", "collection", "jackpot"] as const) if (model.mechanics?.[name]) targets.set(`mechanics.${name}`, name === "freeGames" && Object.values(model.mechanics.freeGames!.awardsByCount).every(grant => grant === 0) || name === "respins" && model.mechanics.respins!.grant === 0);
+        const attainableCounts = new Map<string, Set<number>>();
+        const recordCount = (target: string, count: number): void => {
+            const counts = attainableCounts.get(target) ?? new Set<number>();
+            counts.add(count);
+            attainableCounts.set(target, counts);
+        };
         let nonterminating = false,
             failed = false,
             unsupported = false;
@@ -233,6 +255,12 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                     if (grant > 0 && !model.mechanics?.modifiers) repeating ??= {screen, stops: stops[screenIndex], grant};
                 }
                 const mechanics = model.mechanics;
+                if (free) recordCount("mechanics.freeGames", count(free.scatterSymbol));
+                if (mechanics?.respins) recordCount("mechanics.respins", count(mechanics.respins.trigger.symbolId));
+                if (mechanics?.weightedBonus) recordCount("mechanics.weightedBonus", count(mechanics.weightedBonus.trigger.symbolId));
+                if (mechanics?.holdAndWin) recordCount("mechanics.holdAndWin", evaluated.flat().filter(symbol => Reflect.apply(Object.prototype.hasOwnProperty, mechanics.holdAndWin!.symbolEffects, [symbol])).length);
+                if (mechanics?.jackpot) recordCount("mechanics.jackpot", count(mechanics.jackpot.trigger.symbolId));
+                if (mechanics?.collection) recordCount("mechanics.collection", count(mechanics.collection.symbolId));
                 if (!mechanics?.cascade && !mechanics?.modifiers) {
                     if (free && (free.awardsByCount[String(count(free.scatterSymbol))] ?? 0) > 0) targets.set("mechanics.freeGames", true);
                     if (mechanics?.respins && mechanics.respins.grant > 0 && count(mechanics.respins.trigger.symbolId) >= mechanics.respins.trigger.minimumCount) targets.set("mechanics.respins", true);
@@ -378,7 +406,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                     reachabilityMessage = "Stateful entry reachability is unresolved by this adapter.";
                 }
             }
-            report.checks.push({id: "reachability.feature", path: target, status: reachabilityStatus, severity: reachabilitySeverity, message: reachabilityMessage, assumptions: report.assumptions, evidence: {target, completeScreenSupport: true, exploredOutcomes: budget.work.outcomes, blockingCondition: "Feature entry predicate", geometry: model.screenGeometry ?? {reels: model.reels, rows: model.rows}}});
+            await this.add(report, budget, {id: "reachability.feature", path: target, status: reachabilityStatus, severity: reachabilitySeverity, message: reachabilityMessage, assumptions: report.assumptions, evidence: {target, completeScreenSupport: true, exploredOutcomes: budget.work.outcomes, blockingCondition: "No supported entry satisfies the declared predicate in this closed region", declaration: Reflect.get(model.mechanics ?? {}, target.split(".")[1]), attainableTriggerCounts: [...(attainableCounts.get(target) ?? [])].sort((a, b) => a - b), ...(target === "mechanics.collection" ? {reachableEntryValues: [...collectionValues].sort((a, b) => a - b)} : {}), supportRegion: alternatives.map((variants, reel) => ({reel, variants: variants.map(variant => ({id: variant.id, stopCount: variant.symbols.length})), allCircularStops: true})), geometry: model.screenGeometry ?? {reels: model.reels, rows: model.rows}}});
         }
         if (targets.size === 0) report.checks.push({id: "reachability.feature", path: "mechanics", status: "pass", severity: "info", message: "No feature targets are declared.", assumptions: report.assumptions});
         if (!nonterminating) report.checks.push({id: "termination.all-path", path: "mechanics", status: "pass", severity: "info", message: "All explored logical rounds completed or explicitly rejected at a declared runtime bound. Built-in respins consume a lifetime maxRespins budget; HoldAndWin resets require a new lock on a finite board.", assumptions: report.assumptions});

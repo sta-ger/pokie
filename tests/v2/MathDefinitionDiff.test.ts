@@ -116,7 +116,7 @@ describe("canonical math definition diff", () => {
         setAt(right, keys, value);
         const diff = await api.compareMathDefinitions(source(left), source(right));
         const failingReachability = ["free games", "mode cost"].includes(_family);
-        const boundedOrModifier = ["modifier", "cascade", "respin grant", "respin reset", "collection", "hold continuation", "hold payout units"].includes(_family);
+        const boundedOrModifier = ["modifier", "cascade", "respin grant", "respin reset", "collection", "hold continuation", "hold payout units", "forced free games"].includes(_family);
         if (failingReachability) expect(diff.status).toBe("invalid");
         else if (boundedOrModifier) {
             expect(["partial", "invalid"]).toContain(diff.status);
@@ -143,7 +143,8 @@ describe("canonical math definition diff", () => {
         left.symbolWeights = {A: 5, B: 5};
         const right = {...left, symbolWeights: {A: 4, B: 6}};
         const diff = await api.compareMathDefinitions(source(left), source(right));
-        expect(diff.status).toBe("different");
+        expect(diff.status).toBe("partial");
+        expect([diff.left.advanced?.status, diff.right.advanced?.status]).toContain("budget-exhausted");
         expect(diff.changes.some((change) => change.path.startsWith("/reelStrips") && change.mathematical)).toBe(true);
         expect(diff.changes.find((change) => change.path === "/symbolWeights/A")).toMatchObject({
             classification: "representation",
