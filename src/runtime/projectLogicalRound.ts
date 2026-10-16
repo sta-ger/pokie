@@ -5,7 +5,7 @@ import {cloneSessionData} from "./internal/cloneSessionData.js";
 
 /** Public progress deliberately excludes executable state, RNG, debug and generated coordinates. */
 export function projectLogicalRound(round: LogicalRound) {
-    const last = round.subrounds[round.cursor - 1];
+    const last = round.subrounds[round.subrounds.length - 1];
     const step = last.artifacts?.[Math.max(0, round.stageCursor - 1)];
     return cloneSessionData({...(step ? {currentStep: projectPublicRoundStep(step)} : {}), roundId: round.id, cursor: round.deliveryCursor, mathematicalCursor: round.cursor, mathematicalStatus: round.mathematicalStatus, stageCursor: round.stageCursor, status: round.status,
         entry: {bet: round.bet, ...(round.mode ? {mode: round.mode} : {})},

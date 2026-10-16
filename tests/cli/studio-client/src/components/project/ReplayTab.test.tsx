@@ -37,7 +37,7 @@ describe("ReplayTab renders a real captured Studio Replay round through the actu
         return JSON.parse(readFileSync(fixturePath, "utf-8")) as StudioReplayJobView;
     }
 
-    it("shows the 3x3 grid, the top-row line-1 win highlighted at [[0,0],[1,0],[2,0]], and the A/5 win detail", async () => {
+    it.each([false, true])("shows the reel-major captured grid and optional portable sequence observations=%s", async (weighted) => {
         const user = userEvent.setup();
         const job = loadFixtureJob();
         expect(job.status).toBe("completed");
@@ -48,6 +48,13 @@ describe("ReplayTab renders a real captured Studio Replay round through the actu
             throw new Error("Expected the fixture replay to include its completed descriptor.");
         }
         job.descriptor = {...job.descriptor, credits: 1004};
+        if (weighted) {
+            job.descriptor.sequenceSelections = [{reelIndex: 0, variantId: "First", context: "logical:entry"}];
+            job.descriptor.sequenceStatistics = [{reelIndex: 0, context: "logical-round", model: "test-model", selections: 2, variants: [
+                {id: "First", weight: 1, probability: 0.25, count: 1, frequency: 0.5, uncovered: false},
+                {id: "first", weight: 3, probability: 0.75, count: 1, frequency: 0.5, uncovered: false},
+            ]}];
+        }
         const progress = describeReplayProgress(job);
         const result = describeReplayResult(job);
         expect(result).toBeDefined();
@@ -102,6 +109,11 @@ describe("ReplayTab renders a real captured Studio Replay round through the actu
         await user.click(run);
 
         expect(await screen.findByText("line")).toBeInTheDocument();
+        if (weighted) {
+            expect(screen.getByRole("region", {name: "Reel sequence selections"})).toBeVisible();
+            expect(screen.getByText("First: configured 0.25, observed 0.5 (1)")).toBeVisible();
+            expect(screen.getByText("first: configured 0.75, observed 0.5 (1)")).toBeVisible();
+        }
         const lifecycleResult = container.querySelector('[data-pokie-lifecycle-result="replay"]');
         expect(lifecycleResult).toHaveAttribute("data-pokie-lifecycle-terminal", "completed");
         expect(lifecycleResult).toHaveAttribute("data-pokie-lifecycle-result-control", "replay-run");

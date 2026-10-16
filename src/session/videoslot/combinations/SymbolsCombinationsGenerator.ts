@@ -1,3 +1,4 @@
+import {PortableRandomNumberGenerator} from "./internal/PortableRandomNumberGenerator.js";
 import {selectWeightedBonus, type WeightedBonus} from "../authored/WeightedBonus.js";
 import {isWeightedSymbolsSequence, validateWeightedReelDefinitions} from "./WeightedSymbolsSequence.js";
 import type {ReelSequenceSelection, ReelSequenceStatistics, WeightedSequenceVariant} from "./WeightedSequenceVariant.js";
@@ -82,11 +83,13 @@ implements SymbolsCombinationsGenerating<T> {
         if (!Number.isSafeInteger(state.implicitGeneration) || state.implicitGeneration < 0) throw new Error("Invalid implicit generation counter.");
         if (state.context.startsWith("implicit:") && (!Number.isSafeInteger(Number(state.context.slice(9))) || Number(state.context.slice(9)) > state.implicitGeneration)) throw new Error("Unreserved implicit generation context.");
         const seen = new Set<number>();
+        let priorReel = -1;
         for (const selection of state.selections) {
             const sequence = this.config.getSymbolsSequences()[selection.reelIndex];
-            if (!Number.isSafeInteger(selection.reelIndex) || seen.has(selection.reelIndex) || selection.context !== state.context || !(isWeightedSymbolsSequence(sequence))) throw new Error("Invalid retained weighted selection.");
+            if (!Number.isSafeInteger(selection.reelIndex) || selection.reelIndex <= priorReel || seen.has(selection.reelIndex) || selection.context !== state.context || !(isWeightedSymbolsSequence(sequence))) throw new Error("Invalid retained weighted selection.");
             sequence.resolve(selection.variantId);
             seen.add(selection.reelIndex);
+            priorReel = selection.reelIndex;
         }
         Array.from(state.counts).forEach((counts, reelIndex) => {
             const sequence = this.config.getSymbolsSequences()[reelIndex];
@@ -151,14 +154,14 @@ implements SymbolsCombinationsGenerating<T> {
     }
 
     public isRandomStateRestorable(): boolean {
-        return this.constructor === SymbolsCombinationsGenerator && this.rng.constructor === SeededRandomNumberGenerator;
+        return this.constructor === SymbolsCombinationsGenerator && (this.rng.constructor === SeededRandomNumberGenerator || this.rng.constructor === PortableRandomNumberGenerator);
     }
 
-    public getRandomStateCodec(): "seeded" | "opaque" {
+    public getRandomStateCodec(): "seeded" | "opaque" | "portable-host" {
         // The RNG reports its own codec even when injected from the other public module format.
         // Subclass snapshots remain opaque unless their codec is explicitly supplied.
         if (this.constructor !== SymbolsCombinationsGenerator) return "opaque";
-        return (this.rng as {getRandomStateCodec?: () => "seeded" | "opaque"}).getRandomStateCodec?.() ?? "opaque";
+        return (this.rng as {getRandomStateCodec?: () => "seeded" | "opaque" | "portable-host"}).getRandomStateCodec?.() ?? "opaque";
     }
 
     public selectBonus(table: WeightedBonus): WeightedBonus["outcomes"][number] {

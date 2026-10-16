@@ -28,13 +28,13 @@ export function setSimulationModelIdentity(session: GameSessionHandling, modelId
     }
 }
 type Active = {duration: number; win: number; known: boolean; entryPosition: number};
-type ObserverState = {
+export type SessionFeatureAnalyticsState = {
     position: number;
     source: string;
     active: Partial<Record<AnalyticsFeature, Active>>;
     logicalKnown?: boolean;
 };
-const states = new WeakMap<GameSessionHandling, ObserverState>();
+const states = new WeakMap<GameSessionHandling, SessionFeatureAnalyticsState>();
 export type SessionFeatureAnalyticsBeforePlay = {
     pending: boolean;
     freeNum: number;
@@ -88,7 +88,7 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
     private readonly holdGrant: number | undefined;
     private readonly envelope: AnalyticsEnvelope;
     private readonly session: GameSessionHandling;
-    private readonly state: ObserverState;
+    private readonly state: SessionFeatureAnalyticsState;
     constructor(session: GameSessionHandling) {
         this.session = session;
         this.envelope = sessionAnalyticsEnvelope(session);
@@ -99,6 +99,18 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             states.set(session, state);
         }
         this.state = state;
+    }
+    public toState(): SessionFeatureAnalyticsState {
+        return JSON.parse(JSON.stringify(this.state)) as SessionFeatureAnalyticsState;
+    }
+    public restoreState(value: SessionFeatureAnalyticsState): void {
+        if (!value || Object.keys(value).some(key => !["position", "source", "active", "logicalKnown"].includes(key)) ||
+            !Number.isSafeInteger(value.position) || value.position < 0 || typeof value.source !== "string" || !value.source || value.source.length > 1024 ||
+            (value.logicalKnown !== undefined && typeof value.logicalKnown !== "boolean") || !value.active || typeof value.active !== "object" || Array.isArray(value.active) ||
+            Object.entries(value.active).some(([feature, active]) => !this.envelope.supportedFeatures.includes(feature as AnalyticsFeature) || !active ||
+                !Number.isSafeInteger(active.duration) || active.duration < 0 || !Number.isFinite(active.win) || active.win < 0 || typeof active.known !== "boolean" ||
+                !Number.isSafeInteger(active.entryPosition) || active.entryPosition < 0 || active.entryPosition > value.position)) throw new Error("Invalid active feature analytics continuation.");
+        Object.assign(this.state, JSON.parse(JSON.stringify(value)));
     }
     public getEnvelope(): AnalyticsEnvelope {
         return {...this.envelope, supportedFeatures: [...this.envelope.supportedFeatures]};

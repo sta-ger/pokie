@@ -203,7 +203,7 @@ describe("V2C-14 authored bounded mechanics", () => {
         for (; seed < 10000; seed++) {
             const probe = boundedSession(game, seed);
             try {
-                probe.play(); 
+                probe.play();
             } catch (error) {
                 if (!(error instanceof api.MaxCascadeStepsExceededError)) throw error;
                 continue;
@@ -211,7 +211,7 @@ describe("V2C-14 authored bounded mechanics", () => {
             if (probe.getBoundedMechanicObservation()!.cascade!.winningCascades === 2) break;
         }
         expect(seed).toBeLessThan(10000);
-        const session = boundedSession(game, seed), 
+        const session = boundedSession(game, seed),
             runtime = new api.SessionRuntime(session);
         const command: api.SessionCommand = {kind: "spin", roundId: "bound", delivery: "composite"};
         const result = played(runtime.execute(command));
@@ -228,7 +228,7 @@ describe("V2C-14 authored bounded mechanics", () => {
         exhaustedBlueprint.reelStrips = [["A"], ["A"], ["A"]];
         exhaustedBlueprint.mechanics!.cascade!.maxCascades = 2;
         const exhausted = boundedSession(generatedMechanicsGame(exhaustedBlueprint));
-        const before = exhausted.toSessionState(), 
+        const before = exhausted.toSessionState(),
             credits = exhausted.getCreditsAmount();
         for (let retry = 0; retry < 2; retry++) {
             expect(() => new api.SessionRuntime(exhausted).execute(command)).toThrow(api.MaxCascadeStepsExceededError);
@@ -325,14 +325,14 @@ describe("V2C-14 authored bounded mechanics", () => {
     it.each(["none", "reset"] as const)("restores only reachable %s respin progress before nested mutation or durable effects", async retrigger => {
         const blueprint = constant("respins");
         blueprint.mechanics!.respins!.retrigger = retrigger;
-        const game = generatedMechanicsGame(blueprint), 
+        const game = generatedMechanicsGame(blueprint),
             session = boundedSession(game);
         const initial = api.captureInitialPokieSessionState({seed: 31}, session, game.getSessionSerializer!(), true, game);
-        const before = session.toSessionState(), 
+        const before = session.toSessionState(),
             credits = session.getCreditsAmount();
-        const repository = new api.InMemorySessionRepository(), 
+        const repository = new api.InMemorySessionRepository(),
             wallet = new api.InMemoryWallet(10000);
-        const debit = jest.spyOn(wallet, "debit"), 
+        const debit = jest.spyOn(wallet, "debit"),
             credit = jest.spyOn(wallet, "credit");
         const invalid = [{remaining: 1, executed: 0}, {remaining: 0, executed: 1},
             ...(retrigger === "none" ? [{remaining: 2, executed: 6}, {remaining: 0, executed: 8}] : [])];
@@ -363,8 +363,8 @@ describe("V2C-14 authored bounded mechanics", () => {
     });
 
     it("separates a carried prefix and unfinished tail across snapshots, chunk merges and cancellation", async () => {
-        const blueprint = constant("respins"), 
-            game = generatedMechanicsGame(blueprint), 
+        const blueprint = constant("respins"),
+            game = generatedMechanicsGame(blueprint),
             session = boundedSession(game);
         const prefix = new api.AggregateSimulationRunner(session, 1).run();
         const middle = await runChunkedSimulation(session, 9, 2);
@@ -384,15 +384,15 @@ describe("V2C-14 authored bounded mechanics", () => {
         new api.AggregateSimulationRunner(cancelledSession, 1).run();
         let stop = false;
         await expect(runChunkedSimulation(cancelledSession, 100, 9, {shouldStop: () => stop, onChunkComplete: () => {
-            stop = true; 
+            stop = true;
         }})).rejects.toMatchObject({observedPrefix: {rounds: 9, logicalSampling: {carriedSubrounds: 1, excludedSubrounds: 1}}});
     });
 
     it("legacy Simulation and convergence use completed bounded samples while retaining actual money and tails", () => {
         const blueprint = constant("respins");
         blueprint.paytable = {C: {3: 2}};
-        const game = generatedMechanicsGame(blueprint), 
-            session = boundedSession(game), 
+        const game = generatedMechanicsGame(blueprint),
+            session = boundedSession(game),
             config = new api.SimulationConfig();
         config.setNumberOfRounds(10);
         const simulation = new api.Simulation(session, config);
@@ -407,7 +407,7 @@ describe("V2C-14 authored bounded mechanics", () => {
         expect(simulation.getTotalPayoutAmount()).toBeCloseTo(1);
         expect(simulation.getPayoutsStandardDeviation()).toBe(0);
         const checker = new api.SimulationConvergenceChecker({minRounds: 2, rtpTolerance: 0.01, checkIntervalRounds: 1, stableChecks: 1});
-        const other = boundedSession(game), 
+        const other = boundedSession(game),
             accumulator = new api.AggregateSimulationRunner(other, 8).run();
         expect(checker.check(accumulator, 8).converged).toBe(false);
         accumulator.merge(new api.AggregateSimulationRunner(other, 9).run());
@@ -586,7 +586,7 @@ describe("V2C-14 authored bounded mechanics", () => {
             } finally {
                 await play.reset();
             }
-            expect(() => api.resolveCanonicalWasmGameModel(blueprint)).toThrow(/bounded/);
+            expect(api.resolveCanonicalWasmGameModel(blueprint).features?.blueprint).toEqual(blueprint);
             expect(game.createExactEnumerationSession).toBeUndefined();
         } finally {
             log.mockRestore();
@@ -848,7 +848,7 @@ describe("V2C-14 authored bounded mechanics", () => {
     it("real multiple workers isolate collection trajectories and retain cancellation checkpoints", async () => {
         const runtime = emitPublicRuntime();
         try {
-            const blueprint = constant("respins-collection"), 
+            const blueprint = constant("respins-collection"),
                 game = generatedMechanicsGame(blueprint);
             const packageRoot = path.join(runtime.directory, "bounded-workers");
             fs.mkdirSync(packageRoot);
@@ -868,7 +868,7 @@ describe("V2C-14 authored bounded mechanics", () => {
                 expect(merged).toMatchObject({rounds: 20, totalPayout: 120, totalBet: 0.2, logicalRoundMetrics: {rounds: 2}, logicalSampling: {carriedSubrounds: 0, excludedSubrounds: 2}});
                 expect(new api.SimulationReportBuilder().build({manifest: blueprint.manifest, requestedRounds: 20, statistics: merged, durationMs: 1, workers: 2})).toMatchObject({rounds: 2, sampling: {acceptedSubrounds: 20, excludedSubrounds: 2, trajectories: "independent-session-per-worker"}});
             }
-            const controller = new AbortController(), 
+            const controller = new AbortController(),
                 checkpoints = new Map<number, api.SimulationAccumulatorSnapshot>();
             const threadIds = new Set<number>();
             const coordinator = new api.SimulationWorkerCoordinator(workerEntryUrl, request => {
@@ -882,7 +882,7 @@ describe("V2C-14 authored bounded mechanics", () => {
             await expect(new api.ParallelSimulationRunner(packageRoot, 20, {workers: 2, seed: "31", chunkSize: 10, signal: controller.signal,
                 createWorkerCoordinator: () => coordinator,
                 onProgress: () => {
-                    if (checkpoints.size === 2) controller.abort(); 
+                    if (checkpoints.size === 2) controller.abort();
                 },}).run()).rejects.toMatchObject({observedPrefix: {rounds: 20, totalPayout: 120, logicalRoundMetrics: {rounds: 2}, logicalSampling: {carriedSubrounds: 0, excludedSubrounds: 2}}});
             expect(threadIds.size).toBe(2);
             expect(checkpoints.size).toBe(2);

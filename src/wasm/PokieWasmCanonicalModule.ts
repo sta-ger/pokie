@@ -1,4 +1,4 @@
-import {assertPlayableSharedSlotMathModel, compileSharedSlotArtifact, type SharedSlotMathModel} from "./math/SharedSlotMath.js";
+import {assertCanonicalWasmGameModel, compileCanonicalWasmArtifact, type CanonicalWasmGameModel} from "./DeclarativeWasmModel.js";
 import {assessWasmComponentCompatibility} from "../project/wasm/assessWasmComponentCompatibility.js";
 import {satisfiesMinimumSemverLite} from "../project/wasm/internal/compareSemverLite.js";
 import {POKIE_WASM_ABI_VERSION, POKIE_WASM_ADAPTER, type PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
@@ -40,7 +40,7 @@ export type CanonicalPokieWasmComponentDescriptor = {
     };
 };
 
-export type PokieWasmGameModel = SharedSlotMathModel;
+export type PokieWasmGameModel = CanonicalWasmGameModel;
 
 export type CanonicalPokieWasmModule = {
     readonly module: WebAssembly.Module;
@@ -59,7 +59,7 @@ export type CanonicalPokieWasmModule = {
 export function describeUnsupportedCanonicalWasmRuntimeContract(manifest: Pick<PokieWasmComponentManifest, "serialization" | "host">): string | undefined {
     if (manifest.serialization.session !== POKIE_WASM_SESSION_SERIALIZATION ||
         manifest.serialization.play !== POKIE_WASM_PLAY_SERIALIZATION ||
-        manifest.serialization.state !== POKIE_WASM_STATE_SERIALIZATION) {
+        ![POKIE_WASM_STATE_SERIALIZATION, "pokie.state.v4"].includes(manifest.serialization.state)) {
         return `unsupported serialization identifiers; canonical POKIE WASM requires session=${POKIE_WASM_SESSION_SERIALIZATION}, play=${POKIE_WASM_PLAY_SERIALIZATION}, and state=${POKIE_WASM_STATE_SERIALIZATION}`;
     }
     if (manifest.host.rng !== POKIE_WASM_RNG_PROTOCOL) {
@@ -252,7 +252,7 @@ export function readCanonicalPokieWasmModule(bytes: BufferSource): CanonicalPoki
     } catch {
         throw new Error("POKIE WASM artifact has a malformed game model section.");
     }
-    assertPlayableSharedSlotMathModel(model);
+    assertCanonicalWasmGameModel(model);
     const descriptorSections = WebAssembly.Module.customSections(module, POKIE_WASM_COMPONENT_DESCRIPTOR_SECTION);
     if (descriptorSections.length !== 1) throw new Error(`POKIE WASM artifact must contain exactly one ${POKIE_WASM_COMPONENT_DESCRIPTOR_SECTION} component descriptor section.`);
     const descriptorBytes = new Uint8Array(descriptorSections[0]);
@@ -263,10 +263,12 @@ export function readCanonicalPokieWasmModule(bytes: BufferSource): CanonicalPoki
         throw new Error("POKIE WASM artifact has a malformed component descriptor section.");
     }
     if (!isCanonicalDescriptor(descriptor)) throw new Error("POKIE WASM artifact has an unsupported component descriptor section.");
-    // Canonical ABI 2 is a closed lowering, not a claim made by arbitrary code.
+    if (descriptor.artifact.abiVersion !== POKIE_WASM_ABI_VERSION) throw new Error(`Unsupported POKIE WASM ABI "${descriptor.artifact.abiVersion}"; this runtime requires POKIE WASM ABI "${POKIE_WASM_ABI_VERSION}".`);
+    if (descriptor.serialization.state !== (model.features ? "pokie.state.v4" : "pokie.state.v3")) throw new Error("WASM model and state schema are incompatible.");
+    // Canonical ABI 3 is a closed lowering, not a claim made by arbitrary code.
     // Re-emission binds all executable sections, memory limits/data and exports to
     // this exact model and descriptor, including internally rehashed artifacts.
-    const expected = compileSharedSlotArtifact(model, descriptor);
+    const expected = compileCanonicalWasmArtifact(model, descriptor);
     if (binary.length !== expected.length || !binary.every((byte, i) => byte === expected[i])) {
         throw new Error("POKIE WASM executable does not match its supported shared math lowering/model identity.");
     }
@@ -308,5 +310,6 @@ export async function readIntegrityBoundCanonicalPokieWasmArtifact(bytes: Buffer
     // contract: otherwise an edited sidecar can obscure the useful integrity
     // diagnostic with a host-protocol or serialization error.
     assertSupportedCanonicalWasmRuntimeContract(manifest);
+    if (manifest.serialization.state !== (canonical.model.features ? "pokie.state.v4" : "pokie.state.v3")) throw new Error("WASM model and state schema are incompatible.");
     return canonical;
 }

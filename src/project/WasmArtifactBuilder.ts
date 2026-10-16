@@ -1,5 +1,6 @@
+import {assertDeclarativeWasmBlueprint, compileCanonicalWasmArtifact} from "../wasm/DeclarativeWasmModel.js";
 import {resolveSharedSlotMathModel} from "../generated/resolveSharedSlotMathModel.js";
-import {assertPlayableSharedSlotMathModel, compileSharedSlotArtifact, stableSlotMathJson} from "../wasm/math/SharedSlotMath.js";
+import {assertPlayableSharedSlotMathModel, stableSlotMathJson} from "../wasm/math/SharedSlotMath.js";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -20,9 +21,6 @@ import {type CanonicalPokieWasmComponentDescriptor, type PokieWasmGameModel} fro
 
 /** The one Blueprint-to-portable-model boundary used by preview, validation, and publication. */
 export function resolveCanonicalWasmGameModel(blueprint: GameBlueprint): PokieWasmGameModel {
-    if (blueprint.mechanics?.modifiers !== undefined) throw new Error("Canonical WASM does not support mechanics.modifiers. Build a TypeScript package to preserve modifier semantics.");
-    if (blueprint.reelSequences !== undefined) throw new Error("Canonical WASM does not support reelSequences. Build a TypeScript package to preserve whole-sequence variants.");
-    assertSupportedCanonicalWasmSemantics(blueprint);
     const resolution = resolveReelStripGeneration(blueprint);
     if (!resolution.success) {
         const failedReels = resolution.reels.filter((reel) => !reel.success).map((reel) => `reel ${reel.reelIndex}: ${reel.diagnostics.flatMap((diagnostic) => diagnostic.violations.map((violation) => violation.message)).join("; ")}`).join(" | ");
@@ -34,24 +32,13 @@ export function resolveCanonicalWasmGameModel(blueprint: GameBlueprint): PokieWa
     } catch (error) {
         throw new Error(`Blueprint "${blueprint.manifest.id}" cannot materialize its reel strips for the canonical WASM model. ${error instanceof Error ? error.message : String(error)} Next: use valid literal/generated strips or repair the authored symbol weights.`);
     }
-    const strips = materialized.reelStrips ?? [];
+    assertDeclarativeWasmBlueprint(materialized);
+    const strips = materialized.reelSequences?.map(reel => reel.type === "exact" ? reel.symbols : reel.variants[0].symbols) ?? materialized.reelStrips ?? [];
     if (strips.length !== blueprint.reels || strips.some((strip) => strip === undefined || strip.length === 0)) throw new Error(`Blueprint "${blueprint.manifest.id}" cannot materialize one executable strip per reel for the canonical WASM model.`);
     const model = resolveSharedSlotMathModel(materialized);
     assertPlayableSharedSlotMathModel(model);
-    return model;
-}
-
-function assertSupportedCanonicalWasmSemantics(blueprint: GameBlueprint): void {
-    if (blueprint.screenGeometry !== undefined) throw new Error("Canonical WASM does not support screenGeometry. Build a TypeScript package to preserve coordinate semantics.");
-    if (blueprint.mechanics?.weightedBonus) throw new Error("WASM cannot preserve weighted bonus selection, payout or duration. Build a tsPackage instead.");
-    if (blueprint.mechanics?.cascade || blueprint.mechanics?.respins || blueprint.mechanics?.collection) throw new Error("This target cannot preserve bounded cascade, respin or collection semantics. Build a tsPackage instead.");
-    if (blueprint.mechanics?.holdAndWin || blueprint.mechanics?.jackpot) throw new Error("Canonical POKIE WASM does not implement mechanics.holdAndWin or mechanics.jackpot. Build a tsPackage instead.");
-    if (blueprint.mechanics?.freeGames !== undefined) {
-        throw new Error(`Blueprint "${blueprint.manifest.id}" uses mechanics.freeGames, which canonical POKIE WASM does not implement. Next: remove mechanics.freeGames before building this portable artifact.`);
-    }
-    if (blueprint.betModes !== undefined && blueprint.betModes.length > 0) {
-        throw new Error(`Blueprint "${blueprint.manifest.id}" declares betModes, which canonical POKIE WASM does not implement. Next: remove betModes and use availableBets for supported stake selection.`);
-    }
+    return materialized.screenGeometry || materialized.reelSequences || materialized.betModes?.length || Object.values(materialized.mechanics ?? {}).some(value => value !== undefined)
+        ? {...model, features: {schemaVersion: "pokie.features.v1", blueprint: materialized}} : model;
 }
 
 export type WasmArtifactPublication = {
@@ -93,7 +80,7 @@ export class WasmArtifactBuilder implements ArtifactBuilder {
             if (source.type !== "blueprint") throw new Error("A canonical WASM artifact requires a Game Blueprint source.");
             const blueprint = loadGameBlueprint(source.rootPath) as GameBlueprint;
             const errors = new GameBlueprintValidator().validate(blueprint).filter((issue) => issue.severity === "error");
-            if (errors.length > 0) throw new Error(`Blueprint "${source.rootPath}" has ${errors.length} error(s): ${errors.map((issue) => issue.code).join(", ")}`);
+            if (errors.length > 0) throw new Error(`Blueprint "${source.rootPath}" has ${errors.length} error(s): ${errors.map((issue) => `${issue.code} at ${issue.path ?? "$"}: ${issue.message}`).join("; ")}`);
             resolveCanonicalWasmGameModel(blueprint);
         });
     }
@@ -120,18 +107,18 @@ export class WasmArtifactBuilder implements ArtifactBuilder {
                 schemaVersion: POKIE_WASM_CONTRACT_VERSION,
                 component: {id: blueprint.manifest.id, version: blueprint.manifest.version},
                 minPokieVersion: this.pokieVersion,
-                serialization: {session: "pokie.session.v2", play: "pokie.play.v2", state: "pokie.state.v3"},
+                serialization: {session: "pokie.session.v2", play: "pokie.play.v2", state: parsedModel.features !== undefined ? "pokie.state.v4" : "pokie.state.v3"},
                 host: {rng: "pokie.rng.v2", services: []},
                 capabilities: ["runtime.play", "runtime.serialize", "runtime.replay", "artifact.inspect"],
                 artifact: {format: "pokie.wasm.v1", abiVersion: POKIE_WASM_ABI_VERSION, adapter: POKIE_WASM_ADAPTER, configurationHash},
             });
-            const moduleBytes = compileSharedSlotArtifact(parsedModel, descriptor);
+            const moduleBytes = compileCanonicalWasmArtifact(parsedModel, descriptor);
             const hash = `sha256:${crypto.createHash("sha256").update(moduleBytes).digest("hex")}`;
             const manifest: PokieWasmComponentManifest = {
                 schemaVersion: POKIE_WASM_CONTRACT_VERSION,
                 component: {id: blueprint.manifest.id, version: blueprint.manifest.version},
                 minPokieVersion: this.pokieVersion,
-                serialization: {session: "pokie.session.v2", play: "pokie.play.v2", state: "pokie.state.v3"},
+                serialization: {session: "pokie.session.v2", play: "pokie.play.v2", state: parsedModel.features !== undefined ? "pokie.state.v4" : "pokie.state.v3"},
                 host: {rng: "pokie.rng.v2", services: []},
                 capabilities: ["runtime.play", "runtime.serialize", "runtime.replay", "artifact.inspect"],
                 artifact: {format: "pokie.wasm.v1", sha256: hash, bytes: moduleBytes.byteLength, abiVersion: POKIE_WASM_ABI_VERSION, adapter: POKIE_WASM_ADAPTER, configurationHash},

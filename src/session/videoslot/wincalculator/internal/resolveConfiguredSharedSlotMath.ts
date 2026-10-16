@@ -1,6 +1,9 @@
 import {assertSharedSlotMathModel, lowerSharedSlotMath, stableSlotMathJson, type SharedSlotMathModel} from "../../../../wasm/math/SharedSlotMath.js";
 import type {VideoSlotConfigDescribing} from "../../VideoSlotConfigDescribing.js";
 import {VideoSlotConfig} from "../../VideoSlotConfig.js";
+import {isWeightedSymbolsSequence} from "../../combinations/WeightedSymbolsSequence.js";
+import {ScreenProjection} from "../../coordinates/ScreenProjection.js";
+import {VideoSlotWithFreeGamesConfig} from "../../VideoSlotWithFreeGamesConfig.js";
 import {SymbolsSequence} from "../../combinations/SymbolsSequence.js";
 import {LeftToRightLinesPatterns} from "../../linespatterns/LeftToRightLinesPatterns.js";
 
@@ -8,10 +11,8 @@ import {LeftToRightLinesPatterns} from "../../linespatterns/LeftToRightLinesPatt
 export function resolveConfiguredSharedSlotMath<T extends string | number | symbol>(
     config: VideoSlotConfigDescribing<T>, winModel: SharedSlotMathModel["winModel"], bet: number,
 ): SharedSlotMathModel {
-    if (!(config instanceof VideoSlotConfig) || !config.isResolvedForSessionRestoration() ||
-        config.getScreenGeometry() || config.getScreenModifiers() ||
-        Reflect.ownKeys(config.getWildSubstitutions()).length ||
-        config.getSymbolsSequences().some(strip => strip.constructor !== SymbolsSequence) ||
+    if (!(config instanceof VideoSlotConfig || config instanceof VideoSlotWithFreeGamesConfig) || !config.isResolvedForSessionRestoration() ||
+        config.getSymbolsSequences().some(strip => strip.constructor !== SymbolsSequence && !isWeightedSymbolsSequence(strip)) ||
         !config.getAvailableBets().length || !config.getAvailableBets().every(amount => Number.isFinite(amount) && amount > 0) ||
         !config.getAvailableBets().includes(bet) || config.getLinesPatterns().constructor !== LeftToRightLinesPatterns ||
         stableSlotMathJson(config.getLinesPatterns().toArray()) !== stableSlotMathJson(new LeftToRightLinesPatterns(config.getReelsNumber()).toArray())) {
@@ -19,11 +20,12 @@ export function resolveConfiguredSharedSlotMath<T extends string | number | symb
     }
     const model: SharedSlotMathModel = {
         schemaVersion: "pokie.game.v2", mathVersion: "pokie.math.v2",
-        reels: config.getReelsNumber(), rows: config.getReelsSymbolsNumber(),
+        reels: config.getReelsNumber(), rows: config.getScreenGeometry?.() ? new ScreenProjection(config.getScreenGeometry()!).getRows("evaluated") : config.getReelsSymbolsNumber(),
         symbols: config.getAvailableSymbols() as string[], winModel,
-        reelStrips: config.getSymbolsSequences().map(strip => strip.toArray()) as string[][],
+        reelStrips: config.getSymbolsSequences().map(strip => isWeightedSymbolsSequence(strip) ? strip.getVariants()[0].symbols : strip.toArray()) as string[][],
         paylines: config.getLinesDefinitions().getLinesIds().map(id => config.getLinesDefinitions().getLineDefinition(id)),
         wilds: config.getWildSymbols() as string[], scatters: config.getScatterSymbols() as string[],
+        ...(Reflect.ownKeys(config.getWildSubstitutions()).length || config.getScreenModifiers?.() ? {wildSubstitutions: config.getWildSubstitutions() as Record<string, string[]>} : {}),
         // The public Paytable stores exact stake-scaled amounts, including bet-specific edits.
         // Evaluate those amounts at unit stake: dividing back to multipliers loses precision.
         paytable: config.getPaytable().toMap()[bet] ?? {}, availableBets: [1],

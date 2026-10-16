@@ -37,6 +37,32 @@ import type {StudioReplayJobView} from "../../../../cli/studio/replay/StudioRepl
 import {createCanonicalWasmFixture} from "../../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
+it("replays portable purchase entries as logical rounds and rejects changed simulation configurations", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "v2c21-replay-"));
+    const artifact = path.join(directory, "game.wasm");
+    const blueprint = replayModesBlueprint();
+    blueprint.paytable.A = {3: 2};
+    const fixture = createCanonicalWasmFixture({blueprint});
+    fs.writeFileSync(artifact, fixture.bytes);
+    fs.writeFileSync(`${artifact}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+    const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository());
+    try {
+        const started = service.start(artifact, {round: 2, seed: "purchase", unit: "logical-round", entryCommands: [
+            {kind: "spin", bet: 0.05, mode: "buy", roundId: "first"}, {kind: "spin", bet: 0.05, mode: "buy", roundId: "second"},
+        ]});
+        if (started.status !== "created") throw new Error(JSON.stringify(started));
+        const job = await waitForTerminal(service, artifact, started.job.id);
+        expect(job).toMatchObject({status: "completed", descriptor: {totalBet: 1, totalWin: 0.4, logicalRound: {id: "second", status: "completed"}, screen: [["A"], ["A"], ["A"]]}});
+        expect(job.descriptor?.totalPayout).toBeCloseTo(0.4);
+        const stale = service.start(artifact, {round: 1, seed: "purchase", expectedConfigHash: "old-model"});
+        if (stale.status !== "created") throw new Error(JSON.stringify(stale));
+        expect(await waitForTerminal(service, artifact, stale.job.id)).toMatchObject({status: "failed", error: expect.stringContaining("model changed")});
+    } finally {
+        await service.cancelAll();
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
 // FNV-1a, same hashing trick the "playable-game" fixture uses to turn a --seed string into a
 // deterministic 32-bit int.
 function hashSeed(seed: string | undefined): number {

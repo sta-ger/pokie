@@ -90,6 +90,8 @@ function formatScreenGrid(screen: readonly (readonly (string | number)[])[]): st
 }
 
 export type ReplayResultView = {
+    sequenceSelections?: ReplayDescriptor["sequenceSelections"];
+    sequenceStatistics?: ReplayDescriptor["sequenceStatistics"];
     auditStatus?: ReplayDescriptor["auditStatus"];
     auditCompletion?: ReplayDescriptor["auditCompletion"];
     // The replay job id (StudioReplayJobView.id) -- what onInspectStored/onCompareStored/
@@ -145,6 +147,7 @@ export function describeReplayResult(job: StudioReplayJobView): ReplayResultView
         game: descriptor.game,
         round: descriptor.round,
         seed: descriptor.seed,
+        sequenceSelections: descriptor.sequenceSelections, sequenceStatistics: descriptor.sequenceStatistics,
         totalBet: descriptor.totalBet,
         totalWin: descriptor.totalWin,
         auditStatus: descriptor.auditStatus,

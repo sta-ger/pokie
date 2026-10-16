@@ -922,7 +922,10 @@ const api = require("@fromstan/pokie");
             } finally {
                 await play.reset();
             }
-            expect(() => api.resolveCanonicalWasmGameModel(blueprint)).toThrow(/weighted bonus/);
+            expect(api.resolveCanonicalWasmGameModel(blueprint).features?.blueprint).toEqual(blueprint);
+            const wasm = path.join(directory, "supported.wasm");
+            expect(await new BuildCommand("1.3.0").run([source, "--target", "wasm", "--out", wasm])).toBe(0);
+            expect(fs.existsSync(wasm)).toBe(true);
             expect(game.createExactEnumerationSession).toBeUndefined();
             expect(() => api.estimateExactOutcomeSpaceSize(game)).toThrow(/weighted bonus/);
             const enumeration = jest.fn(() => mechanicsSession(game));
@@ -932,7 +935,7 @@ const api = require("@fromstan/pokie");
             expect(enumeration).not.toHaveBeenCalled();
             const project = await new api.ProjectTargetResolver().resolve(source);
             if (!project) throw new Error("Expected the authored Blueprint project.");
-            for (const targetKind of ["wasm", "outcomeLibrary", "stakeAdapter"] as const) {
+            for (const targetKind of ["outcomeLibrary", "stakeAdapter"] as const) {
                 const target = path.join(directory, `unsupported-${targetKind}`);
                 await expect(
                     new BuildCommand("1.3.0").run([source, "--target", targetKind, "--out", target]),

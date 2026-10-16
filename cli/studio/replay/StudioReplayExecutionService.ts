@@ -1,3 +1,5 @@
+import {projectPokieWasmRoundArtifact} from "../../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
+import {advancePokieWasmReplay} from "../../../src/wasm/PokieWasmCommands.js";
 import type {SessionCommandResult} from "../../../src/runtime/SessionRuntimeHandling.js";
 import {deepFreeze} from "../../../src/internal/deepFreeze.js";
 import {
@@ -195,7 +197,7 @@ export class StudioReplayExecutionService {
             request = {...request, recording: deepFreeze(toCanonicalJson(request.recording)) as unknown as NonNullable<ValidatedReplayRequest["recording"]>};
         }
         if (request.recording && (isWasmComponentFile(projectRoot) || outcomeSourceProject)) return {status: "unsupported", message: "Recorded package audit is unavailable for WASM and outcome libraries; use their existing replay profiles."};
-        if (request.unit === "logical-round" && (isWasmComponentFile(projectRoot) || outcomeSourceProject)) return {status: "unsupported", message: "This runtime cannot replay feature logical rounds."};
+        if (request.unit === "logical-round" && outcomeSourceProject) return {status: "unsupported", message: "This runtime cannot replay feature logical rounds."};
         // Keep the no-job WASM boundary inside the shared lifecycle as well as
         // StudioServer. A direct caller must not be able to queue work that
         // can only fail after attempting runtime preparation.
@@ -579,14 +581,11 @@ export class StudioReplayExecutionService {
         let runtime;
         try {
             runtime = await this.loadWasmRuntime(record.projectRoot, new SeededPokieWasmHost(record.seed));
-            if (record.modeName !== undefined) {
-                this.fail(record, new Error("WASM does not support package bet-mode selection."));
-                return;
-            }
             if (record.abortController.signal.aborted) {
                 this.cancelRecord(record);
                 return;
             }
+            if (record.expectedConfigHash !== undefined && runtime.manifest.artifact?.configurationHash !== record.expectedConfigHash) throw new Error("The project model changed since this simulation; run a new simulation before sampling it.");
             this.markRunning(record);
             record.game = {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version};
             record.configHash = runtime.manifest.artifact?.configurationHash;
@@ -594,6 +593,7 @@ export class StudioReplayExecutionService {
             let state: import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmRestorableState = {schemaVersion: "pokie.state.v2", seed: record.seed, drawCount: 0, sequence: 0, credits: 1000};
             let totalBet = 0;
             let totalWin = 0;
+            let totalPayout = 0;
             let finalRound;
             let stateBefore: Record<string, unknown> | undefined;
             for (let index = 0; index < record.round; index += this.chunkSize) {
@@ -601,31 +601,43 @@ export class StudioReplayExecutionService {
                     this.cancelRecord(record);
                     return;
                 }
-                const commands = Array.from({length: Math.min(this.chunkSize, record.round - index)}, () => ({}));
-                const replay = await runtime.replay(state, commands);
-                state = replay.stateAfter;
-                finalRound = replay.rounds[replay.rounds.length - 1];
-                if (index + commands.length === record.round && replay.stateBeforeFinal !== undefined) {
-                    stateBefore = replay.stateBeforeFinal as unknown as Record<string, unknown>;
+                const chunk = Math.min(this.chunkSize, record.round - index);
+                for (let offset = 0; offset < chunk; offset++) {
+                    if (record.abortController.signal.aborted) {
+                        this.cancelRecord(record);
+                        return;
+                    }
+                    const replay = await advancePokieWasmReplay(runtime, state, {mode: record.modeName, unit: record.unit, entry: record.entryCommands?.[index + offset], index: index + offset});
+                    state = replay.stateAfter;
+                    finalRound = replay.rounds[replay.rounds.length - 1];
+                    if (replay.stateBeforeFinal) stateBefore = replay.stateBeforeFinal as unknown as Record<string, unknown>;
+                    totalBet += finalRound.stake;
+                    totalWin += finalRound.win ?? finalRound.payout;
+                    totalPayout += finalRound.payout;
                 }
-                totalBet += replay.rounds.reduce((total, round) => total + round.stake, 0);
-                totalWin += replay.rounds.reduce((total, round) => total + round.payout, 0);
-                const completedRounds = index + commands.length;
+                const completedRounds = index + chunk;
                 this.updateReplayProgress(record, completedRounds);
                 if (completedRounds < record.round && completedRounds % this.chunkSize === 0) await this.yieldToEventLoop();
             }
             record.status = "completed";
             record.descriptor = {
+                ...(finalRound?.network ?? {}),
                 sessionId: this.createId(),
                 game: record.game,
                 seed: record.seed,
                 round: record.round,
                 totalBet,
-                totalWin,
+                totalWin, totalPayout,
+                ...(record.unit ? {unit: record.unit} : {}),
+                ...(record.entryCommands ? {commands: record.entryCommands} : {}),
+                ...(record.modeName ? {modePolicy: {betModeId: record.modeName, selection: "repeat-when-available" as const}} : {}),
                 credits: finalRound?.credits ?? state.credits,
                 // PokieWasmRound.screen is reel-major, the same DTO shape ReplayDescriptor
                 // receives from ordinary sessions. Preserve each reel instead of transposing it.
                 screen: finalRound === undefined ? null : finalRound.screen.map((reel) => [...reel]),
+                ...(finalRound && runtime.manifest.capabilities.includes("artifact.inspect") ? {artifact: projectPokieWasmRoundArtifact(finalRound, {game: record.game, pokieVersion: this.pokieVersion, ...(record.configHash ? {configHash: record.configHash} : {})}, `wasm:replay:${record.seed}:${record.round}`)} : {}),
+                ...(finalRound?.logicalRound ? {logicalRound: finalRound.logicalRound} : {}),
+                ...(finalRound?.sequenceSelections ? {sequenceSelections: finalRound.sequenceSelections, sequenceStatistics: finalRound.sequenceStatistics} : {}),
                 timestamp: record.startedAt,
                 durationMs: record.durationMs,
                 ...(canSerialize && stateBefore !== undefined ? {stateBefore} : {}),

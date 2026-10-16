@@ -80,8 +80,10 @@ export function RoundArtifactInspector({
     stateAfter,
     credits,
     paytable,
+    sequenceStatistics,
 }: {
     artifact: RoundArtifactDisplayView;
+    sequenceStatistics?: readonly import("../../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceStatistics[];
     comparison?: ReplayComparisonView;
     stateBefore?: unknown;
     stateAfter?: unknown;
@@ -149,7 +151,7 @@ export function RoundArtifactInspector({
 
             <RoundDetailsTable artifact={artifact} />
 
-            <GameScreenView
+            <GameScreenView sequenceStatistics={sequenceStatistics}
                 visibleRowCoverage={artifact.steps[artifact.steps.length - 1]?.visibleRowCoverage}
                 screen={artifact.screen}
                 wins={artifact.wins}

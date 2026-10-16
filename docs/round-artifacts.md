@@ -401,3 +401,14 @@ See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
 payout/duration units, authoring/interchange, restoration/replay, statistics and
 custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
 maps every mandatory family separately from arbitrary custom callbacks.
+
+## Portable feature results (V2C-21)
+
+Supported WASM feature results carry the shared logical-round observations and
+canonical mathematical artifacts. CLI/Studio adapters project those observations
+without calculating wins again. A complete requested composite can fold its finite
+returned subrounds with `buildLogicalRoundArtifact`; a compact restored checkpoint
+can expose its latest mathematical subround and logical totals without inventing
+missing history. Generated/visible/evaluated coordinates and selected variant IDs
+remain bound to their original artifact. Mathematical win and wallet payout are
+separate; delivery-only cascade frames add neither a stake nor another sample.

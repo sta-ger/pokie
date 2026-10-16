@@ -24,6 +24,8 @@ export type LogicalSubround = {
 
 /** Required continuation data, independent of optional debug capture and transport projection. */
 export type LogicalRound = {
+    /** Portable retention keeps only the active/last mathematical subround. */
+    readonly retention?: "latest";
     readonly id: string;
     readonly entry: SessionCommand;
     readonly bet: number;
@@ -46,6 +48,8 @@ export interface LogicalRoundProgressProviding {
 
 export function validateLogicalRound(value: unknown): string | undefined {
     try {
+        const round = value as LogicalRound;
+        if (round?.retention === "latest") return validateCompactLogicalRound(round);
         return validateLogicalRoundStructure(value);
     } catch {
         return "Malformed retained logical round.";
@@ -113,4 +117,21 @@ function validWin(value: unknown): boolean {
         item && typeof item.source === "string" && !!item.source && validPositions(item.positions) && Array.isArray(item.values) &&
         item.values.every(Number.isFinite) && Number.isFinite(item.combinedMultiplier)) &&
         typeof win.metadata === "object" && win.metadata !== null && !Array.isArray(win.metadata);
+}
+
+/** Same mathematical-step validator, rebased over the sole retained subround.
+ * Aggregate history is deliberately absent; totals and current progress remain executable.
+ */
+function validateCompactLogicalRound(round: LogicalRound): string | undefined {
+    const last = round.subrounds?.[0];
+    if (!last || round.subrounds.length !== 1 || !Number.isSafeInteger(round.cursor) || round.cursor < 1 ||
+        round.cursor > round.deliveryCursor || round.deliveryCursor > 10000 || last.index !== round.cursor - 1 || last.id !== `${round.id}:${last.index}` ||
+        ![round.totalStake, round.totalWin, round.totalPayout].every(n => Number.isFinite(n) && n >= 0) ||
+        round.totalStake < last.stake || round.totalWin < last.win || round.totalPayout < last.payout ||
+        (round.cursor > 1 && (last.stake !== 0 || last.command.continuation?.roundId !== round.id ||
+            last.command.continuation.cursor !== round.deliveryCursor - Math.max(1, round.stageCursor)))) return "Invalid compact logical progress.";
+    if (round.cursor === 1 && (round.totalStake !== last.stake || round.totalWin !== last.win || round.totalPayout !== last.payout || JSON.stringify(last.command) !== JSON.stringify(round.entry))) return "Compact entry totals differ.";
+    return validateLogicalRoundStructure({...round, retention: undefined, cursor: 1, deliveryCursor: Math.max(1, round.stageCursor),
+        totalStake: last.stake, totalWin: last.win, totalPayout: last.payout,
+        subrounds: [{...last, id: `${round.id}:0`, index: 0, command: round.entry}]});
 }

@@ -381,7 +381,7 @@ this contract. Variable-height and resizable generators reject weighted inputs
 before drawing. Custom generators must explicitly declare support and own the
 corresponding context/capture contract; forced-grid enumeration declares support
 without claiming a runtime selection. Canonical PAR preserves exact and weighted `reelSequences` through the
-`ReelSequences` sheet. WASM still rejects this source before publishing an output. Generated TypeScript game
+`ReelSequences` sheet. Canonical WASM preserves this source and its contextual selection without flattening. Generated TypeScript game
 packages preserve all alternatives and IDs.
 
 Outcome Library bundles have a separate positive-integer frequency contract.

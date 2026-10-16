@@ -921,6 +921,7 @@ export function ReplayTab({
 
                                     {selectedSpin.screen ? (
                                         <GameScreenView
+                                            sequenceSelections={selectedSpin.sequenceSelections} sequenceStatistics={selectedSpin.sequenceStatistics}
                                             screen={describeRuntimeScreen(selectedSpin.screen) ?? []}
                                             credits={selectedSpin.credits}
                                             totalWin={selectedSpin.win}
@@ -1202,6 +1203,7 @@ export function ReplayTab({
                                 <div data-pokie-lifecycle-artifact="replay-descriptor">
                                     <RoundArtifactInspector
                                         artifact={result.artifact}
+                                        sequenceStatistics={result.sequenceStatistics}
                                         comparison={findMethod === "artifact" ? comparison : undefined}
                                         stateBefore={result.stateBefore}
                                         stateAfter={result.stateAfter}
@@ -1234,7 +1236,7 @@ export function ReplayTab({
                                         </Table.Tbody>
                                     </Table>
                                     {result.screen ? (
-                                        <GameScreenView screen={result.screen} />
+                                        <GameScreenView screen={result.screen} sequenceSelections={result.sequenceSelections} sequenceStatistics={result.sequenceStatistics} />
                                     ) : (
                                         <Text size="sm" c="dimmed">
                                             No screen available — this game&apos;s session doesn&apos;t expose a symbols combination.

@@ -19,6 +19,7 @@ export type SharedSlotMathModel = {
     readonly paytable: Readonly<Record<string, Readonly<Record<string, number>>>>;
     readonly wilds?: readonly string[];
     readonly scatters?: readonly string[];
+    readonly wildSubstitutions?: Readonly<Record<string, readonly string[]>>;
     readonly availableBets: readonly number[];
 };
 export function stableSlotMathJson(value: unknown): string {
@@ -36,7 +37,7 @@ export function assertSharedSlotMathModel(value: unknown): asserts value is Shar
     };
     if (!value || typeof value !== "object") fail();
     const model = value as SharedSlotMathModel;
-    const supportedKeys = ["schemaVersion", "mathVersion", "reels", "rows", "symbols", "winModel", "reelStrips", "paylines", "paytable", "wilds", "scatters", "availableBets"];
+    const supportedKeys = ["schemaVersion", "mathVersion", "reels", "rows", "symbols", "winModel", "reelStrips", "paylines", "paytable", "wilds", "scatters", "wildSubstitutions", "availableBets"];
     if (Object.keys(model).some(key => !supportedKeys.includes(key))) fail();
     const integer = (n: number, max: number): boolean => Number.isSafeInteger(n) && n > 0 && n <= max;
     if (model.schemaVersion !== SHARED_SLOT_MODEL_VERSION || model.mathVersion !== SHARED_SLOT_MATH_VERSION || "screenGeometry" in model ||
@@ -56,6 +57,8 @@ export function assertSharedSlotMathModel(value: unknown): asserts value is Shar
         !Object.entries(model.paytable).every(([symbol, entries]) => model.symbols.includes(symbol) && entries && typeof entries === "object" && !Array.isArray(entries) &&
             Object.entries(entries).every(([count, amount]) => Number.isSafeInteger(Number(count)) && Number(count) >= 0 && Number(count) <= model.reels * model.rows && typeof amount === "number" && Number.isFinite(amount) && amount >= 0)) ||
         ![model.wilds, model.scatters].every(list => list === undefined || Array.isArray(list) && new Set(list).size === list.length && list.every(s => model.symbols.includes(s))) ||
+        (model.wildSubstitutions !== undefined && (!model.wildSubstitutions || typeof model.wildSubstitutions !== "object" || Array.isArray(model.wildSubstitutions) ||
+            !Object.entries(model.wildSubstitutions).every(([wild, targets]) => model.wilds?.includes(wild) && Array.isArray(targets) && targets.every(target => model.symbols.includes(target))))) ||
         !Array.isArray(model.availableBets) || !model.availableBets.length || !model.availableBets.every(bet => Number.isFinite(bet) && bet > 0)) fail();
 }
 /** Portable execution always validates; Node retains its pipeline diagnostics and opt-out. */
@@ -98,6 +101,7 @@ export function lowerSharedSlotMath(model: SharedSlotMathModel): SharedSlotMathL
     const order = allocate(model.symbols.length * 4);
     const scatterOrder = allocate(model.symbols.length * 4);
     const bets = allocate(model.availableBets.length * 8);
+    const substitutions = allocate(model.symbols.length * model.symbols.length * 4);
     const dataEnd = cursor;
     const stops = allocate(model.reels * 4);
     const screen = allocate(cells * 4);
@@ -120,6 +124,7 @@ export function lowerSharedSlotMath(model: SharedSlotMathModel): SharedSlotMathL
     put(104, model.availableBets.length);
     put(108, bets);
     put(112, scatterOrder);
+    put(116, substitutions);
     model.availableBets.forEach((bet, i) => view.setFloat64(bets + i * 8, bet, true));
     model.reelStrips.forEach((strip, reel) => {
         put(reelTable + reel * 8, strip.length);
@@ -130,6 +135,8 @@ export function lowerSharedSlotMath(model: SharedSlotMathModel): SharedSlotMathL
     model.symbols.forEach((symbol, i) => {
         put(wilds + i * 4, model.wilds?.includes(symbol) ? 1 : 0);
         put(scatters + i * 4, model.scatters?.includes(symbol) ? 1 : 0);
+        model.symbols.forEach((target, j) => put(substitutions + (i * model.symbols.length + j) * 4,
+            model.wilds?.includes(symbol) && (model.wildSubstitutions?.[symbol] === undefined || model.wildSubstitutions[symbol].includes(target)) ? 1 : 0));
         for (const [count, amount] of Object.entries(model.paytable[symbol] ?? {})) view.setFloat64(payouts + (i * (cells + 1) + Number(count)) * 8, amount, true);
     });
     // Object.values() in the existing component adapters enumerates integer keys first.
@@ -250,6 +257,7 @@ export class SharedSlotMath implements SharedSlotMathCalculating {
     public readonly model: SharedSlotMathModel;
     private readonly instance: WebAssembly.Instance;
     private readonly layout: SharedSlotMathLayout;
+    private disposed = false;
     public constructor(model: SharedSlotMathModel) {
         this.model = deepFreeze(JSON.parse(JSON.stringify(model)) as SharedSlotMathModel);
         this.layout = lowerSharedSlotMath(this.model);
@@ -257,7 +265,12 @@ export class SharedSlotMath implements SharedSlotMathCalculating {
             throw new Error("Screen evaluation does not request RNG.");
         }}});
     }
+    public dispose(): void {
+        this.disposed = true;
+        new Uint8Array((this.instance.exports.memory as WebAssembly.Memory).buffer).fill(0);
+    }
     public evaluate(screen: readonly (readonly string[])[], bet: number): SharedSlotMathResult {
+        if (this.disposed) throw new Error("Shared WASM math was disposed.");
         if (!this.model.availableBets.includes(bet) || screen.length !== this.model.reels || !screen.every(reel => reel.length === this.model.rows && reel.every(symbol => this.model.symbols.includes(symbol)))) throw new Error("Shared math requires an available bet and a reel-major screen matching its model.");
         const memory = this.instance.exports.memory as WebAssembly.Memory;
         const view = new DataView(memory.buffer);

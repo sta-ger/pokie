@@ -425,3 +425,23 @@ it("weighted bonus Play shows the actual identity, pending duration and continua
         await service.reset();
     }
 });
+
+it("renders portable selection identity and configured versus observed frequency through the Play summary", () => {
+    const session: StudioRuntimeSessionView = {
+        sessionId: "portable", game: {id: "weighted", name: "Weighted", version: "1"}, credits: 999, bet: 1, win: 0, screen: [["B"], ["A"]],
+        logicalRoundDeliverySupported: true,
+        sequenceSelections: [{reelIndex: 0, variantId: "First", context: "logical:entry"}],
+        sequenceStatistics: [{reelIndex: 0, context: "logical-round", model: "weighted-test", selections: 1, variants: [
+            {id: "First", weight: 1, probability: 0.25, probabilityRatio: {numerator: "1", denominator: "4"}, count: 1, frequency: 1, uncovered: false},
+            {id: "first", weight: 3, probability: 0.75, probabilityRatio: {numerator: "3", denominator: "4"}, count: 0, frequency: 0, uncovered: true},
+        ]}], debug: {artifactUnavailableReason: "No inspection declaration"},
+    };
+    const onSpin = jest.fn();
+    render(<MantineProvider><PlayTab session={{status: "ok", session}} sessionId="portable" onNewSession={jest.fn()} onSpin={onSpin}
+        onFindAnyWin={jest.fn()} onFindSymbolWin={jest.fn()} onFindFreeGames={jest.fn()} /></MantineProvider>);
+    expect(screen.getByRole("region", {name: "Reel sequence selections"})).toHaveTextContent("Reel 1: First (logical:entry)");
+    expect(screen.getByText("First: configured 0.25, observed 1 (1)")).toBeVisible();
+    expect(screen.getByText("first: configured 0.75, observed 0 (0)")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", {name: "Spin"}));
+    expect(onSpin).toHaveBeenCalledWith(1, undefined, "stepwise");
+});

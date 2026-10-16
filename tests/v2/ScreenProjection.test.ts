@@ -614,7 +614,7 @@ describe("Generated / visible / evaluated screen contracts", () => {
         generator.generateSymbolsCombination.mockReturnValue(valid);
         const session = new VideoSlotSession(config, generator);
         session.play();
-        const credits = session.getCreditsAmount(), 
+        const credits = session.getCreditsAmount(),
             screen = session.getSymbolsCombination().toMatrix();
         generator.generateSymbolsCombination.mockReturnValue(returned);
         expect(() => session.play()).toThrow(/coordinate contract|generated coordinate space/);
@@ -633,7 +633,7 @@ describe("Generated / visible / evaluated screen contracts", () => {
             new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2}),
         ]));
         session.setBetMode("ante");
-        const state = session.toSessionState(), 
+        const state = session.toSessionState(),
             credits = session.getCreditsAmount();
         generator.generateSymbolsCombination.mockClear();
         expect(() => session.play()).toThrow(/does not support overscan/);
@@ -685,7 +685,7 @@ describe("Generated / visible / evaluated screen contracts", () => {
         const session = decorated ? new VideoSlotWithBetModesSession(base) : base;
         session.play();
         const serializer = new VideoSlotSessionSerializer();
-        const initial = serializer.getInitialData(session), 
+        const initial = serializer.getInitialData(session),
             evaluated = session.getEvaluatedSymbolsCombination?.().toMatrix();
         const next = {...overscanGeometry, visible: {rowOffset: 1, rows: 4}, evaluated: {rowOffset: 2, rows: 4}};
         config.setReelsSymbolsNumber(4);
@@ -711,7 +711,7 @@ describe("Generated / visible / evaluated screen contracts", () => {
         const base = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, {getRandomInt: () => 2}));
         const session = new VideoSlotWithBetModesSession(base);
         session.play();
-        const serializer = new VideoSlotSessionSerializer(), 
+        const serializer = new VideoSlotSessionSerializer(),
             initial = serializer.getInitialData(session);
         config.setReelsSymbolsNumber(4);
         config.setScreenGeometry({...overscanGeometry, visible: {rowOffset: 1, rows: 4}, evaluated: {rowOffset: 2, rows: 4}});
@@ -1043,7 +1043,7 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(preview.reels).toMatchObject({data: {gameWindow: {grid: Array.from({length: 5}, () => [
             {symbolId: "W", isWild: true, isScatter: false}, {symbolId: "B", isWild: false, isScatter: false}, {symbolId: "B", isWild: false, isScatter: false},
         ])}}});
-        expect(() => resolveCanonicalWasmGameModel(blueprint)).toThrow(/screenGeometry/);
+        expect(resolveCanonicalWasmGameModel(blueprint).features?.blueprint.screenGeometry).toEqual(overscanGeometry);
         expect(prepareBlueprintForParSheetExport(blueprint).issues.some(issue => issue.code === "parsheet-screen-geometry-unsupported")).toBe(true);
     });
 
@@ -1124,8 +1124,8 @@ describe("Generated / visible / evaluated screen contracts", () => {
             return malformed ? {...payload, reelsSymbols: (session as VideoSlotSessionHandling).getSymbolsCombination().toMatrix()} : payload;
         }});
         const session = game.createSession({seed: "7"});
-        const repository = new InMemorySessionRepository(), 
-            wallet = new InMemoryWallet(), 
+        const repository = new InMemorySessionRepository(),
+            wallet = new InMemoryWallet(),
             operations = new InMemorySpinOperationLog();
         const initial = captureInitialPokieSessionState({seed: "7"}, session, game.getSessionSerializer(), false, game);
         await repository.save("s", initial);
@@ -1171,7 +1171,7 @@ describe("Generated / visible / evaluated screen contracts", () => {
         Reflect.deleteProperty(game, "getConfigHash");
         let reads = 0;
         const signal = {get aborted() {
-            return ++reads > 3; 
+            return ++reads > 3;
         }} as unknown as AbortSignal;
         let cancelled: WeightedOutcomeLibraryGenerationCancelledError | undefined;
         try {

@@ -1,3 +1,5 @@
+import {projectPokieWasmRoundArtifact} from "../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
+import {advancePokieWasmReplay} from "../../src/wasm/PokieWasmCommands.js";
 import {Command} from "commander";
 import {
     validateAuditReplayDescriptor,
@@ -115,7 +117,7 @@ export class ReplayCommand implements CliCommandHandling {
             throw describeRuntimePackageLoadError(options.packageRoot, error);
         }
         if (options.recording && (project?.type === "wasm" || project?.type === "outcomeLibrary" || project?.type === "stakeAdapter")) throw new Error("Recorded package audit requires a compatible game package; WASM and outcome libraries retain their existing replay profiles.");
-        if (options.unit === "logical-round" && (project?.type === "wasm" || project?.type === "outcomeLibrary" || project?.type === "stakeAdapter")) throw new Error("Logical-round replay is supported only by game packages declaring logical progress.");
+        if (options.unit === "logical-round" && (project?.type === "outcomeLibrary" || project?.type === "stakeAdapter")) throw new Error("Logical-round replay is supported only by game packages declaring logical progress.");
         if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
             await this.runOutcomeSourceReplay(project, options);
             return;
@@ -164,34 +166,43 @@ export class ReplayCommand implements CliCommandHandling {
             if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
             throw new Error("This WASM component is inspection-only and cannot be replayed.");
         }
-        if (options.mode !== undefined) {
-            throw new Error("Canonical WASM replay does not support --mode; replay its portable session directly.");
-        }
         const seed = options.seed ?? "pokie-wasm-replay";
         const startedAt = Date.now();
         const runtime = await loadPokieWasmFileRuntime(project.rootPath, new SeededPokieWasmHost(seed));
         try {
-            const replay = await runtime.replay(
-                {schemaVersion: "pokie.state.v2", seed, drawCount: 0, sequence: 0, credits: 1000},
-                Array.from({length: options.round}, () => ({})),
-            );
-            const finalRound = replay.rounds[replay.rounds.length - 1];
-            const totalBet = replay.rounds.reduce((total, round) => total + round.stake, 0);
-            const totalWin = replay.rounds.reduce((total, round) => total + round.payout, 0);
+            let state: import("../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmRestorableState = {schemaVersion: "pokie.state.v2", seed, drawCount: 0, sequence: 0, credits: 1000};
+            let stateBeforeFinal;
+            let finalRound;
+            let totalBet = 0,
+                totalWin = 0,
+                totalPayout = 0;
+            for (let index = 0; index < options.round; index++) {
+                const replay = await advancePokieWasmReplay(runtime, state, {mode: options.mode, unit: options.unit, index});
+                stateBeforeFinal = replay.stateBeforeFinal;
+                state = replay.stateAfter;
+                finalRound = replay.rounds[replay.rounds.length - 1];
+                totalBet += finalRound.stake;
+                totalWin += finalRound.win ?? finalRound.payout;
+                totalPayout += finalRound.payout;
+            }
             const canSerialize = runtime.manifest.capabilities.includes("runtime.serialize");
             const descriptor = {
+                ...(finalRound?.network ?? {}),
                 sessionId: `wasm-${seed}-${options.round}`,
                 game: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version},
                 seed,
                 round: options.round,
                 totalBet,
-                totalWin,
+                totalWin, totalPayout,
                 credits: finalRound?.credits ?? 1000,
                 screen: finalRound === undefined ? null : finalRound.screen.map((reel) => [...reel]),
+                ...(finalRound && runtime.manifest.capabilities.includes("artifact.inspect") ? {artifact: projectPokieWasmRoundArtifact(finalRound, {game: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version}, pokieVersion: "1.3.0", ...(runtime.manifest.artifact?.configurationHash ? {configHash: runtime.manifest.artifact.configurationHash} : {})}, `wasm:replay:${seed}:${options.round}`)} : {}),
+                ...(finalRound?.logicalRound ? {logicalRound: finalRound.logicalRound} : {}),
+                ...(finalRound?.sequenceSelections ? {sequenceSelections: finalRound.sequenceSelections} : {}),
                 timestamp: startedAt,
                 durationMs: Date.now() - startedAt,
-                ...(canSerialize && replay.stateBeforeFinal !== undefined ? {stateBefore: replay.stateBeforeFinal as unknown as Record<string, unknown>} : {}),
-                ...(canSerialize ? {stateAfter: replay.stateAfter as unknown as Record<string, unknown>} : {}),
+                ...(canSerialize && stateBeforeFinal !== undefined ? {stateBefore: stateBeforeFinal as unknown as Record<string, unknown>} : {}),
+                ...(canSerialize ? {stateAfter: state as unknown as Record<string, unknown>} : {}),
             };
             const json = JSON.stringify(descriptor, null, 4);
             if (options.out) this.writeFile(options.out, json);
@@ -243,7 +254,7 @@ export class ReplayCommand implements CliCommandHandling {
             })
             .option("--mode <modeName>", "package bet mode to select repeatedly at available entries (step replay only); required for native outcome-library replay")
             .addHelpText("after", "\nPackage --mode uses the shared simulation policy: repeat selection at available entries, leaving zero-stake purchase continuations uncharged. The descriptor retains modePolicy and executed commands. It cannot be combined with --unit logical-round or --recording.\n")
-            .addHelpText("after", "\nCanonical WASM: --round N replays N rounds and reports cumulative totalBet/totalWin.\nUse the same explicit --seed as run/sim; --mode is unavailable.\nExample: pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json\n         pokie replay game.wasm --round 6 --seed demo\n")
+            .addHelpText("after", "\nCanonical WASM: --round N replays N rounds and reports cumulative totalBet/totalWin.\nUse the same explicit --seed as run/sim; declared features support --mode and --unit logical-round.\nExample: pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json\n         pokie replay game.wasm --round 6 --seed demo\n")
             .action(
                 (packageRoot: string, excess: string[], options: {seed?: string; round?: number; out?: string; format?: string; mode?: string; unit?: "step" | "logical-round"; recording?: string}) => {
                     if (excess.length > 0) {

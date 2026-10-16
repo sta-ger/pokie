@@ -674,7 +674,7 @@ describe("V2C-13 finite modifier authoring", () => {
                 status: "available",
                 data: blueprint.mechanics,
             });
-            expect(() => api.resolveCanonicalWasmGameModel(blueprint)).toThrow(/modifiers/);
+            expect(api.resolveCanonicalWasmGameModel(blueprint).features?.blueprint).toEqual(blueprint);
             if (id === "sticky") expect(game.createExactEnumerationSession).toBeUndefined();
             else expect(game.createExactEnumerationSession).toBeDefined();
         },

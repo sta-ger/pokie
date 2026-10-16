@@ -5,6 +5,9 @@ import type {RoundArtifactJson} from "../artifact/RoundArtifactJson.js";
 import type {PreGeneratedRoundReplayDescriptor} from "../pregenerated/PreGeneratedRoundReplayDescriptor.js";
 
 export type ReplayDescriptor = {
+    totalPayout?: number;
+    sequenceSelections?: readonly import("../session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceSelection[];
+    sequenceStatistics?: readonly import("../session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceStatistics[];
     // The identity of the actual game session this replay created and played forward -- minted fresh
     // each run, independent of any job/request id a caller (e.g. Studio's StudioReplayExecutionService)
     // tracks the run itself under. Two runs of the same seed/round produce two different sessionIds,

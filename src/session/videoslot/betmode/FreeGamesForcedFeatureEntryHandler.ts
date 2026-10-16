@@ -42,6 +42,13 @@ implements ForcedFeatureEntryHandling<T> {
         if (!this.supportsFreeGamesState(session)) {
             return;
         }
+        // A completed bank has already been released. Start a fresh purchase before
+        // extending the grant, while retaining additive grants during an active feature.
+        if (session.getFreeGamesNum() === session.getFreeGamesSum()) {
+            session.setFreeGamesBank(0);
+            session.setFreeGamesNum(0);
+            session.setFreeGamesSum(0);
+        }
         session.setFreeGamesSum(session.getFreeGamesSum() + this.freeGamesToGrant);
     }
 
@@ -49,6 +56,6 @@ implements ForcedFeatureEntryHandling<T> {
         session: VideoSlotSessionHandling<T>,
     ): session is VideoSlotSessionHandling<T> & FreeGamesStateSetting & FreeGamesStateDetermining {
         const candidate = session as Partial<FreeGamesStateSetting & FreeGamesStateDetermining>;
-        return typeof candidate.setFreeGamesSum === "function" && typeof candidate.getFreeGamesSum === "function";
+        return [candidate.setFreeGamesSum, candidate.getFreeGamesSum, candidate.setFreeGamesNum, candidate.getFreeGamesNum, candidate.setFreeGamesBank].every(method => typeof method === "function");
     }
 }

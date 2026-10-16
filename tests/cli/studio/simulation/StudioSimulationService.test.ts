@@ -40,6 +40,38 @@ import {StudioSimulationService} from "../../../../cli/studio/simulation/StudioS
 import {FileStudioJobRepository} from "../../../../cli/studio/jobs/FileStudioJobRepository.js";
 import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {createCanonicalWasmFixture} from "../../../fixtures/wasm/createCanonicalWasmFixture.js";
+
+it("samples actual portable purchase stake, lifecycle and weighted selections across all modes", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "v2c21-simulation-"));
+    const artifact = path.join(directory, "game.wasm");
+    const blueprint = replayModesBlueprint(true);
+    blueprint.reelSequences!.forEach(reel => {
+        if (reel.type === "weighted") reel.variants = reel.variants.map(variant => ({...variant, weight: variant.id === "first" ? 1 : 0}));
+    });
+    blueprint.paytable.A = {3: 2};
+    const fixture = createCanonicalWasmFixture({blueprint});
+    fs.writeFileSync(artifact, fixture.bytes);
+    fs.writeFileSync(`${artifact}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+    const service = new StudioSimulationService(new InMemoryStudioSimulationRepository());
+    try {
+        const started = service.start(artifact, {rounds: 4, seed: "purchase", modeName: "all"});
+        if (started.status !== "created") throw new Error(JSON.stringify(started));
+        const job = await waitForTerminal(service, started.job.id);
+        if (job.status !== "completed") throw new Error(JSON.stringify(job));
+        const result = service.getReport(artifact, started.job.id);
+        if (result.status !== "ok" || !isSimulationReportSet(result.report)) throw new Error(JSON.stringify(result));
+        expect(Object.keys(result.report.modes)).toEqual(["base", "ante", "buy", "buy-more"]);
+        expect(result.report.modes.buy).toMatchObject({rounds: 2, totalBet: 1, totalWin: 0.4});
+        expect(result.report.modes.buy.reelSequences).toHaveLength(3);
+        expect(result.report.modes.buy.reelSequences?.map(reel => reel.selections)).toEqual([2, 2, 2]);
+        expect(result.report.modes.buy.sampling).toMatchObject({acceptedSubrounds: 4, excludedSubrounds: 0});
+        expect(result.report.modes.buy.logicalRounds).toMatchObject({rounds: 2, totalStake: 1, totalWin: 0.4});
+    } finally {
+        await service.cancelAll();
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
 
 function createFakeSession(options: {failOnRound?: number; stopAfterRounds?: number} = {}): GameSessionHandling {
     let credits = 1000;

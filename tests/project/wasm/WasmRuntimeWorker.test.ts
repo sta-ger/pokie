@@ -275,3 +275,26 @@ describe("PokieWasmWorkerProtocol", () => {
             .resolves.toMatchObject({ok: false, error: expect.stringMatching(/does not declare runtime\.replay/i)});
     });
 });
+
+it("retains clone-safe feature checkpoints across Worker restore, replay, rejected commands and cancellation", async () => {
+    const {weightedBonusBlueprint} = await import("../../v2/fixtures/WeightedBonusGame.js");
+    const blueprint = weightedBonusBlueprint();
+    blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const worker = new PokieWasmWorkerProtocol();
+    expect(await worker.handle({id: "start", type: "instantiate", ...fixture, seed: "feature-worker", traceCapacity: 4})).toMatchObject({ok: true});
+    expect(await worker.handle({id: "entry", type: "play", command: {bet: 0.05, roundId: "bonus", delivery: "stepwise"}})).toMatchObject({ok: true, result: {win: 0.35, stake: 0.05}});
+    const snapshot = await worker.handle({id: "state", type: "serialize"});
+    if (!snapshot.ok) throw new Error(snapshot.error);
+    const checkpoint = JSON.parse(JSON.stringify(snapshot.result));
+    expect(await worker.handle({id: "invalid", type: "play", command: {bet: 7.5, continuation: {roundId: "bonus", cursor: 1}}})).toMatchObject({ok: false});
+    expect(await worker.handle({id: "unchanged", type: "serialize"})).toEqual({id: "unchanged", ok: true, result: checkpoint});
+    expect(await worker.handle({id: "restore", type: "restore", state: checkpoint})).toMatchObject({ok: true});
+    const command = {delivery: "stepwise", continuation: {roundId: "bonus", cursor: 1}};
+    const expected = await worker.handle({id: "continue", type: "play", command});
+    expect(expected).toMatchObject({ok: true, result: {stake: 0, network: {boundedMechanics: {weightedBonus: {selectedNow: false, remaining: 1}}}}});
+    const replay = await worker.handle({id: "replay", type: "replay", state: checkpoint, commands: [command], traceCapacity: 1});
+    expect(replay).toMatchObject({ok: true, result: {rounds: [expected.ok ? expected.result : undefined], trace: {status: "completed"}}});
+    expect(await worker.handle({id: "cancel", type: "cancel"})).toEqual({id: "cancel", ok: true});
+    expect(await worker.handle({id: "gone", type: "serialize"})).toMatchObject({ok: false});
+});

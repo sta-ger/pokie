@@ -296,7 +296,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         const screenGeometry = this.config.getScreenGeometry?.();
         const weightedReels = this.getSymbolsSequences().flatMap((strip, reelIndex) => isWeightedSymbolsSequence(strip) ? [{reelIndex, variants: strip.getVariants() as unknown as import("./combinations/WeightedSequenceVariant.js").WeightedSequenceVariant<string | number>[]}] : []);
         const modifiers = this.config.getScreenModifiers?.();
-        return {kind: "seeded-video-slot", ...(modifiers ? {modifiers: modifiers as unknown as import("./modifiers/ScreenModifiers.js").ScreenModifiers<string | number>, reels: this.config.getReelsNumber(), rows: this.config.getReelsSymbolsNumber(), symbols: this.config.getAvailableSymbols() as (string | number)[], wilds: this.config.getWildSymbols() as (string | number)[]} : {}), ...(weightedReels.length ? {weightedReels} : {}), ...(screenGeometry ? {screenGeometry} : {})};
+        return {kind: "seeded-video-slot", ...(this.getRandomStateCodec() === "portable-host" ? {rngCodec: "portable-host" as const} : {}), ...(modifiers ? {modifiers: modifiers as unknown as import("./modifiers/ScreenModifiers.js").ScreenModifiers<string | number>, reels: this.config.getReelsNumber(), rows: this.config.getReelsSymbolsNumber(), symbols: this.config.getAvailableSymbols() as (string | number)[], wilds: this.config.getWildSymbols() as (string | number)[]} : {}), ...(weightedReels.length ? {weightedReels} : {}), ...(screenGeometry ? {screenGeometry} : {})};
     }
 
     public isSessionStateRestorable(): boolean {
@@ -308,8 +308,8 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
             this.winCalculator instanceof VideoSlotWinCalculator && this.winCalculator.usesConfig(this.config) && this.winCalculator.isStatelessForSessionRestoration();
     }
 
-    public getRandomStateCodec(): "seeded" | "opaque" {
-        return (this.combinationsGenerator as {getRandomStateCodec?: () => "seeded" | "opaque"}).getRandomStateCodec?.() ?? "opaque";
+    public getRandomStateCodec(): "seeded" | "opaque" | "portable-host" {
+        return (this.combinationsGenerator as {getRandomStateCodec?: () => "seeded" | "opaque" | "portable-host"}).getRandomStateCodec?.() ?? "opaque";
     }
 
     public toSessionState(): {rngState?: unknown; reelStrips?: T[][]; sequenceState?: unknown; implicitRound?: number; selectionContext?: string; modifierState?: ScreenModifierState<T>} {
@@ -340,7 +340,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
             });
         } else if ((state as {sequenceState?: unknown}).sequenceState !== undefined) throw new Error("Unexpected weighted selection state.");
         if (strips.length !== this.config.getReelsNumber() || !strips.every(strip => strip.every(symbol => this.config.getAvailableSymbols().includes(symbol)))) throw new Error("Resolved reels do not match the selected model's dimensions or symbols.");
-        if (typeof rngState !== "number" || !Number.isSafeInteger(rngState) || rngState < 0 || rngState > 0xffffffff) {
+        if (typeof rngState !== "number" || !Number.isSafeInteger(rngState) || rngState < 0 || rngState > (this.getRandomStateCodec() === "portable-host" ? Number.MAX_SAFE_INTEGER : 0xffffffff)) {
             throw new Error("Video-slot state requires a valid seeded RNG snapshot.");
         }
     }

@@ -5,8 +5,8 @@ export const POKIE_WASM_RUNTIME_VERSION = "1.3.0";
 /** The same initial session ledger used by an ordinary POKIE game session. */
 export const POKIE_WASM_DEFAULT_CREDITS = 1000;
 
-/** Runtime-owned continuation contains no historical evidence. Artifact ABI is v2. */
-export type PokieWasmSessionState = {
+/** Runtime-owned continuation contains no historical evidence. Artifact ABI is v3. */
+export type PokieWasmOrdinarySessionState = {
     readonly schemaVersion: "pokie.state.v3";
     readonly artifactIdentity: string;
     readonly seed: string;
@@ -16,6 +16,20 @@ export type PokieWasmSessionState = {
     readonly credits: number;
     readonly rngState?: PokieWasmHostState;
 };
+/** Artifact-bound feature continuation retains one delivery, never a completed history. */
+export type PokieWasmFeatureSessionState = Omit<PokieWasmOrdinarySessionState, "schemaVersion"> & {
+    readonly schemaVersion: "pokie.state.v4";
+    readonly feature: {
+        readonly bet: number;
+        readonly state: unknown;
+        readonly initialStops?: readonly number[];
+        readonly logicalRound?: import("../runtime/LogicalRound.js").LogicalRound;
+        readonly lastRound?: PokieWasmRound;
+        readonly pendingCommand?: {readonly command: import("../runtime/SessionCommand.js").SessionCommand; readonly advanced: number};
+        readonly analytics?: import("../simulation/SessionFeatureAnalyticsObserver.js").SessionFeatureAnalyticsState;
+    };
+};
+export type PokieWasmSessionState = PokieWasmOrdinarySessionState | PokieWasmFeatureSessionState;
 /** v1 draws always means complete consumed history; importing omits that evidence. */
 export type PokieWasmLegacySessionState = {
     readonly schemaVersion: "pokie.state.v1";
@@ -26,9 +40,9 @@ export type PokieWasmLegacySessionState = {
     readonly rngState?: PokieWasmHostState;
 };
 /** Only an empty v2 origin is accepted; later unbound compact snapshots must be regenerated. */
-export type PokieWasmInitialCompactState = Omit<PokieWasmSessionState, "schemaVersion" | "artifactIdentity"> & {readonly schemaVersion: "pokie.state.v2"};
+export type PokieWasmInitialCompactState = Omit<PokieWasmOrdinarySessionState, "schemaVersion" | "artifactIdentity"> & {readonly schemaVersion: "pokie.state.v2"};
 export type PokieWasmRestorableState = PokieWasmSessionState | PokieWasmLegacySessionState | PokieWasmInitialCompactState;
-export const POKIE_WASM_RUNTIME_API_VERSION = "2.0.0";
+export const POKIE_WASM_RUNTIME_API_VERSION = "2.1.0";
 
 export type PokieWasmTraceEntry = {
     readonly kind: "initialization" | "round" | "replay";
@@ -116,10 +130,23 @@ export type PokieWasmRound = {
     /** Ledger after settling this round's stake and payout. */
     readonly credits: number;
     readonly command: Record<string, unknown>;
+    /** Mathematical award differs from wallet release during banked features. */
+    readonly win?: number;
+    readonly analytics?: import("../simulation/FeatureAnalytics.js").FeatureAnalyticsObservation;
+    /** Finite composite response evidence, omitted from compact continuation. */
+    readonly deliveries?: readonly PokieWasmRound[];
+    readonly deliveryOnly?: boolean;
+    readonly logicalRound?: import("../runtime/LogicalRound.js").LogicalRound;
+    readonly network?: import("../net/videoslot/VideoSlotNetworkData.js").VideoSlotRoundNetworkData;
+    readonly sequenceSelections?: readonly import("../session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceSelection[];
+    readonly sequenceStatistics?: readonly import("../session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceStatistics[];
+    readonly weightedBonusStatistics?: import("../session/videoslot/authored/WeightedBonus.js").WeightedBonusStatistics;
+
 };
 export type PokieWasmRuntimeSession = {
-    play(command?: Record<string, unknown>): Promise<PokieWasmRound>;
+    play(command?: Record<string, unknown>, options?: {readonly signal?: AbortSignal}): Promise<PokieWasmRound>;
     serialize(): PokieWasmSessionState;
+    getInitialData?(): import("../net/videoslot/VideoSlotNetworkData.js").VideoSlotInitialNetworkData;
     setTraceCollector(trace?: BoundedPokieWasmTraceCollector): void;
     dispose(): void;
 };
@@ -136,6 +163,7 @@ export type PokieWasmReplayResult = {
 export type PokieWasmRuntime = {
     readonly manifest: PokieWasmComponentManifest;
     getDiagnostics(): PokieWasmRuntimeDiagnostics;
+    getBetModes?(): readonly import("../gamepackage/BetMode.js").BetMode[];
     createSession(seed: string, options?: {readonly credits?: number} & PokieWasmTraceOptions): PokieWasmRuntimeSession;
     restoreSession(state: PokieWasmRestorableState, options?: PokieWasmTraceOptions): PokieWasmRuntimeSession;
     replay(state: PokieWasmRestorableState, commands: readonly Record<string, unknown>[], options?: PokieWasmTraceOptions): Promise<PokieWasmReplayResult>;
@@ -144,4 +172,4 @@ export type PokieWasmRuntime = {
 
 // Browser-safe prose shared by the product contract and Studio. This describes
 // current mechanics, not a capability grant or a compiler acceptance test.
-export const WASM_EXECUTION_BOUNDARY = "Shared execution: generated Node and portable artifacts use the same pokie.math.v2 WebAssembly evaluator. ABI 2.0 selects stops from raw host draws, builds reel-major screens and evaluates lines, ways or clusters with per-component stake multiplication. Stops use a bounded i32 array in module memory, with no total-bit cap. Host owns RNG continuation, ledger and IO. Limits: 64 reels, 64 rows, 1024 cells, 128 symbols, 1024 paylines, 65536 stops per reel, 262144 total stops and 8 MiB memory. Rejects mechanics.freeGames, mechanics.holdAndWin, mechanics.jackpot, modifiers, weighted sequences, screenGeometry and nonempty betModes. Blueprint is canonical; PAR and complete declared public package models use model-preserving extraction. Arbitrary TypeScript/Node behavior is not compiled. Legacy metadata-only components remain inspection-only.";
+export const WASM_EXECUTION_BOUNDARY = "Shared execution: generated Node and portable artifacts use the pokie.math.v2 WebAssembly evaluator (ABI 3.0), with the same declarative session decorators for feature progression and settlement. Supports lines/ways/clusters, all 36 launch catalogue rows, compatible weighted whole sequences, projections, explicit bet modes, and stepwise/composite delivery. Ordinary play selects stops in WASM; feature orchestration uses the shared contextual generator and evaluates its projected/modified screens in WASM. Host owns RNG continuation, ledger and IO. Limits: 64 reels, 64 evaluation rows, 1024 evaluation cells, 128 symbols, 1024 paylines, 65536 stops per reel, 262144 total stops and 8 MiB evaluator memory. Feature state v4 binds compact executable progress and the latest delivery to the artifact; ordinary state v3 remains compact. Feature execution requires a bounded serializable/restorable RNG host. Custom callbacks, custom evaluators/generators, opaque wrappers and external wallet/shared-progressive services are unsupported. Incompatible mechanic compositions remain errors. Blueprint is canonical; supported PAR and complete declared public package models use model-preserving extraction. Arbitrary TypeScript/Node behavior is not compiled. Legacy metadata-only components remain inspection-only.";

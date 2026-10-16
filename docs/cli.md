@@ -68,6 +68,13 @@ pokie run game.wasm --seed demo
 
 `--seed` defaults to `pokie-wasm-cli`. The command prints the played round's sequence, draw, and seed. Use [`pokie validate`](#pokie-validate-project) first when a component has not yet been checked, and use [`pokie inspect`](#pokie-inspect-packageroot) for its manifest, capabilities, and available next actions.
 
+Feature-aware artifacts also accept `--bet`, `--mode`, `--round-id` and
+`--delivery stepwise|composite`. For example, `pokie run game.wasm --seed demo
+--bet 0.05 --mode buy --delivery composite --format json` returns the actual
+stake, mathematical win, wallet payout, reel-major observations and a restorable
+checkpoint when `runtime.serialize` is declared. Ordinary arithmetic artifacts
+retain their single-spin contract. The portable API owns continuation cursors.
+
 ## `pokie --help` / `pokie -h`
 
 Prints the general usage line, the full list of commands with their descriptions, and the next workflow choices,
@@ -523,7 +530,7 @@ and inspecting a package never rewrites it or replaces its Studio identity. Open
 Blueprint explicitly to edit it through the existing save/apply flow.
 
 Package -> package/PAR/WASM uses the same extraction stage through Blueprint and retains its evidence.
-Destination-specific restrictions still apply (for example weighted variants cannot enter WASM).
+Destination-specific restrictions still apply; supported weighted variants retain their identities in WASM.
 The normal runtime Outcome/Stake routes keep their existing behavior. See the
 [descriptor and evidence contract](game-packages.md#public-package-model-extraction) for support
 boundaries and the difference between declaration fidelity and arbitrary-code losslessness.
@@ -3845,7 +3852,7 @@ for sheet columns, context versions and provenance.
 and selection denominators. `pokie diff` explains sequence order, weight, symbol-array
 and context/model changes independently of payout differences. Weighted outcome
 libraries retain their capability-directed report/diff routes; they are not reel
-variants or per-symbol weights. WASM remains unsupported for `reelSequences`.
+variants or per-symbol weights. Canonical WASM preserves `reelSequences` and eligible selection counts.
 
 
 ## Package extraction preview and save (V2C-11)
@@ -3890,7 +3897,7 @@ Declared structural fidelity and bounded seeded comparisons do not prove arbitra
 behavioral equivalence. The extraction evidence is historical provenance; editing the saved Blueprint
 does not update its original extraction hash or rewrite the source package.
 
-Hold&Win, fixed/session-local accumulating jackpots and executable base/ante/free-game purchase modes use the existing authoring, `validate`, `build SOURCE --target tsPackage|blueprint|parWorkbook`, `par`, `sim --mode <id|all>`, `report` and `replay` commands. Extended mechanic configuration survives package extraction and XLSX conversion. WASM and paid-grid outcome-library/Stake targets fail with a support diagnostic for feature histories they cannot preserve. There is no top-level export command. See [authored mechanics](game-packages.md#authored-holdwin-jackpot-and-bet-modes).
+Hold&Win, fixed/session-local accumulating jackpots and executable base/ante/free-game purchase modes use the existing authoring, `validate`, `build SOURCE --target tsPackage|blueprint|parWorkbook`, `par`, `sim --mode <id|all>`, `report` and `replay` commands. Extended mechanic configuration survives package extraction and XLSX conversion. Canonical WASM supports these declared feature histories; paid-grid outcome-library/Stake targets still fail with a support diagnostic for histories they cannot preserve. There is no top-level export command. See [authored mechanics](game-packages.md#authored-holdwin-jackpot-and-bet-modes).
 
 ## Bounded authored mechanics (V2C-14)
 
