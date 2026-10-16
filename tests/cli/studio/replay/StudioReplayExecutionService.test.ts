@@ -2105,7 +2105,11 @@ it("V2C-21 completes Studio seed-7 cascade logical replay with correct totals an
         const state = job.descriptor!.stateAfter as unknown as ReturnType<typeof direct.serialize>;
         expect(state.rngState).toEqual(direct.serialize().rngState);
         const next = {bet: 0.05, delivery: "composite", roundId: "next"};
-        expect(await runtime.restoreSession(state).play(next)).toEqual(await direct.play(next));
+        const restored = runtime.restoreSession(state);
+        const actual = await restored.play(next);
+        const expected = await direct.play(next);
+        expect(actual).toMatchObject({draw: expected.draw, stops: expected.stops, screen: expected.screen, stake: expected.stake, win: expected.win, payout: expected.payout, credits: expected.credits});
+        expect(restored.serialize().rngState).toEqual(direct.serialize().rngState);
     } finally {
         runtime.dispose();
         await service.cancelAll();

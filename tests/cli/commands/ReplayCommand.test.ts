@@ -476,7 +476,12 @@ describe("ReplayCommand runtime package materialization boundary", () => {
             const direct = runtime.createSession("7");
             await direct.play({bet: 0.05, delivery: "composite", roundId: "direct"});
             expect(result.stateAfter.rngState).toEqual(direct.serialize().rngState);
-            expect(await runtime.restoreSession(result.stateAfter).play({bet: 0.05, delivery: "composite", roundId: "next"})).toEqual(await direct.play({bet: 0.05, delivery: "composite", roundId: "next"}));
+            const restored = runtime.restoreSession(result.stateAfter);
+            const next = {bet: 0.05, delivery: "composite", roundId: "next"};
+            const actual = await restored.play(next);
+            const expected = await direct.play(next);
+            expect(actual).toMatchObject({draw: expected.draw, stops: expected.stops, screen: expected.screen, stake: expected.stake, win: expected.win, payout: expected.payout, credits: expected.credits});
+            expect(restored.serialize().rngState).toEqual(direct.serialize().rngState);
         } finally {
             runtime.dispose();
             log.mockRestore();

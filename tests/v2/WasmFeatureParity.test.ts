@@ -217,7 +217,7 @@ it("V2C-21 classifies seed-7 cascades across stepwise, composite, resumed and re
         },
     });
     try {
-        const command = {bet: 0.05, delivery: "composite", roundId: "cascade"};
+        const command = {bet: 0.05, delivery: "composite", roundId: "cascade", maxSubrounds: 10000};
         const session = runtime.createSession("7");
         const initial = session.serialize();
         const composite = await session.play(command);
@@ -239,6 +239,10 @@ it("V2C-21 classifies seed-7 cascades across stepwise, composite, resumed and re
             expect(frame).toMatchObject({deliveryOnly: true, stake: 0, win: 0, payout: 0});
             const snapshot = stepwise.serialize();
             expect(await runtime.restoreSession(snapshot).play(next)).toEqual(frame);
+            if (snapshot.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
+            const corrupt = JSON.parse(JSON.stringify(snapshot)) as typeof snapshot;
+            Object.assign(corrupt.feature.lastRound!, {deliveryOnly: false});
+            expect(() => runtime.restoreSession(corrupt)).toThrow(/logical delivery/);
         }
         expect(stepwise.serialize()).toMatchObject({rngState: saved.rngState, credits: composite.credits});
         const interrupted = runtime.restoreSession(initial);
