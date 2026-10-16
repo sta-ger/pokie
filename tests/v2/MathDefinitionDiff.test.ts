@@ -608,3 +608,70 @@ it("does not trust a direct snapshot's complete label when model data or policy 
     Reflect.deleteProperty(model.effective as object, "maxWinPolicy");
     expect(differ.diff(model, model).status).toBe("partial");
 });
+
+
+describe("reviewed field semantics", () => {
+    it.each(["label", "targetRtp", "ignored paylines", "default factor"])("retains %s as representation with literal reels", async (field) => {
+        const left = field === "default factor" ? clone(modifierExample) : modes();
+        if (field === "default factor") Reflect.deleteProperty(left.mechanics!.modifiers!.wilds[0], "factor");
+        if (field === "ignored paylines") left.winModel = {type: "ways"};
+        const right = clone(left);
+        if (field === "label") right.betModes![0].label = "Renamed";
+        if (field === "targetRtp") right.betModes![0].targetRtp = 0.96;
+        if (field === "ignored paylines") right.paylines = [[1, 1, 1]];
+        if (field === "default factor") right.mechanics!.modifiers!.wilds[0].factor = 1;
+        const diff = await api.compareMathDefinitions(source(left), source(right));
+        expect(diff.status).toBe("different");
+        expect(diff.changes.length).toBeGreaterThan(0);
+        expect(diff.changes.every((change) => !change.mathematical)).toBe(true);
+        if (field === "default factor") {
+            right.mechanics!.modifiers!.wilds[0].factor = 2;
+            expect((await api.compareMathDefinitions(source(left), source(right))).changes).toContainEqual(
+                expect.objectContaining({path: "/mechanics/modifiers/wilds/0/factor", mathematical: true}),
+            );
+        }
+    });
+
+    it("does not invent unsupported paylines and propagates unknown ancestor authority before defaults", async () => {
+        const model = base();
+        Reflect.deleteProperty(model, "paylines");
+        const snapshot = await new api.MathDefinitionSourceReader().read({
+            getManifest: () => model.manifest,
+            getModelDescriptor: () => ({descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model,
+                maxWinPolicy: {type: "none", scope: "logical-round", authority: "custom declaration"},
+                unsupported: [{path: "paylines", code: "custom-lines", message: "Unknown custom lines"}],}),
+            createSession: () => {
+                throw new Error("No session");
+            },
+        });
+        expect(snapshot.effective).not.toHaveProperty("paylines");
+        const known = clone(snapshot);
+        (known.effective as Record<string, api.DefinitionJson>).paylines = [[1, 1, 1]];
+        known.fields = known.fields.filter((field) => field.status !== "unsupported");
+        const diff = new api.MathDefinitionDiffer().diff(known, snapshot);
+        const change = diff.changes.find((change) => change.path.startsWith("/paylines"))!;
+        expect(change.after).toMatchObject({present: false, provenance: {status: "unknown", authority: "custom-lines"}});
+        expect(change.mathematical).toBe(false);
+        const child = clone(known);
+        child.fields.push({path: "paytable", status: "unsupported", authority: "opaque calculator"});
+        (child.effective as typeof model).paytable.A[3] = 9;
+        expect(new api.MathDefinitionDiffer().diff(known, child).changes).toContainEqual(expect.objectContaining({
+            path: "/paytable/A/3", mathematical: false,
+            after: expect.objectContaining({provenance: expect.objectContaining({status: "unknown", authority: "opaque calculator"})}),
+        }));
+    });
+
+    it.each([
+        [() => clone(modifierExample), "mechanics.modifiers.wilds.0.factor"],
+        [() => clone(weightedBlueprint), "reelSequences.0.variants.0.weight"],
+        [modes, "betModes.0.runtimeType"],
+    ] as const)("traverses equal-value provenance inside arrays (%s, %s)", async (fixture, path) => {
+        const left = await new api.MathDefinitionSourceReader().read(source(fixture()));
+        const right = clone(left);
+        right.fields.find((field) => field.path === path)!.authority = "replacement authority";
+        expect(new api.MathDefinitionDiffer().diff(left, right).changes).toEqual([expect.objectContaining({
+            path: "/" + path.split(".").join("/"), classification: "provenance", mathematical: false,
+            after: expect.objectContaining({provenance: expect.objectContaining({authority: "replacement authority"})}),
+        })]);
+    });
+});

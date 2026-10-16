@@ -1,3 +1,4 @@
+import {definitionFieldAuthority} from "./internal/definitionFieldAuthority.js";
 import fs from "fs";
 import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import {validateMathDefinitionMaxWinPolicy} from "./validateMathDefinitionMaxWinPolicy.js";
@@ -38,7 +39,7 @@ function diagnostic(
 ): MathDefinitionDiagnostic {
     return {code, message: message.slice(0, 2000), severity, path};
 }
-function effectiveDefaults(model: Partial<GameBlueprint>): Record<string, unknown> {
+function effectiveDefaults(model: Partial<GameBlueprint>, fields: PackageBlueprintExtractionResult["fields"]): Record<string, unknown> {
     const result = {...model} as Record<string, unknown>;
     for (const key of ["wilds", "scatters", "betModes"]) if (result[key] === undefined) result[key] = [];
     result.mechanics ??= {};
@@ -56,7 +57,33 @@ function effectiveDefaults(model: Partial<GameBlueprint>): Record<string, unknow
     );
     if (model.mechanics?.freeGames) result.mechanics = {...model.mechanics, freeGames: {retriggerPolicy: "additive", ...model.mechanics.freeGames}};
     if (model.betModes) result.betModes = model.betModes.map((mode) => ({costMultiplier: 1, isDefault: false, ...mode}));
-    return result;
+    if (model.mechanics?.modifiers && Array.isArray(model.mechanics.modifiers.wilds)) result.mechanics = {
+        ...(result.mechanics as object),
+        modifiers: {
+            ...model.mechanics.modifiers,
+            wilds: model.mechanics.modifiers.wilds.map((wild) => ({factor: 1, ...wild})),
+        },
+    };
+    // Retain declarations, but never fill an unknown collaborator with generated-runtime behavior.
+    const filterDefaults = (authored: unknown, effective: unknown, keys: string[]): unknown => {
+        if (definitionFieldAuthority(fields, keys)?.status === "unsupported") return authored;
+        if (authored === undefined && fields.some((field) => field.status === "unsupported" &&
+            field.path.startsWith(keys.join(".") + ".")) && Array.isArray(effective)) return undefined;
+        if (Array.isArray(effective)) return effective.map((value, index) =>
+            filterDefaults(Array.isArray(authored) ? authored[index] : undefined, value, [...keys, String(index)]));
+        if (effective !== null && typeof effective === "object") return Object.fromEntries(
+            Object.entries(effective).map(([key, value]) => [key,
+                filterDefaults(authored && typeof authored === "object" ? Reflect.get(authored, key) : undefined, value, [...keys, key]),
+            ]).filter(([, value]) => value !== undefined),
+        );
+        return effective;
+    };
+    if (fields.some((field) => field.status === "unsupported" &&
+        ["winModel", "screenGeometry"].some((dependency) => field.path === dependency || field.path.startsWith(dependency + ".")))) {
+        // Horizontal lines also depend on a known evaluator and evaluated geometry.
+        if (model.paylines === undefined) Reflect.deleteProperty(result, "paylines");
+    }
+    return filterDefaults(model, result, []) as Record<string, unknown>;
 }
 
 /** Authoritative server-side readers. Outcome artifacts deliberately have no inverse model reader. */
@@ -367,7 +394,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
             diagnostic("max-win-policy-unknown", policy.authority, "warning", "/maxWinPolicy"),
         );
         snapshot.effective = {
-            ...(extraction.source.descriptorVersion === 1 ? effectiveDefaults(model) : model),
+            ...(extraction.source.descriptorVersion === 1 ? effectiveDefaults(model, extraction.fields) : model),
             maxWinPolicy: policy,
         } as DefinitionJson;
         return snapshot;

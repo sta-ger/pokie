@@ -454,7 +454,7 @@ export class DiffCommand implements CliCommandHandling {
             console.log(`Statistical Diff (all modes): ${setDiff.game.right.name} (id: "${setDiff.game.right.id}")`);
         } else {
             console.log(
-                `Diff (all modes): ${setDiff.game.left.name} (id: "${setDiff.game.left.id}") -> ` +
+                `Statistical Diff (all modes): ${setDiff.game.left.name} (id: "${setDiff.game.left.id}") -> ` +
                     `${setDiff.game.right.name} (id: "${setDiff.game.right.id}")`,
             );
         }

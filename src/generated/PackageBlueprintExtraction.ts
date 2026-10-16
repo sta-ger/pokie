@@ -29,7 +29,9 @@ export interface PackageBlueprintExtractionResult {
     };
     /** Partial known data is inspectable, never eligible for automatic generation. */
     model?: Partial<GameBlueprint>;
+    /** Present only when converting the declaration would preserve its policy. */
     blueprint?: GameBlueprint;
+    conversionDiagnostics?: PackageExtractionDiagnostic[];
     blueprintHash?: string;
     fields: PackageExtractionField[];
     diagnostics: PackageExtractionDiagnostic[];
@@ -387,8 +389,16 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
             else if (result.diagnostics.some((issue) => issue.severity === undefined || issue.severity === "error")) result.status = "unsupported";
             else {
                 result.status = "complete";
-                result.blueprint = model as GameBlueprint;
-                result.blueprintHash = computeGameBlueprintHash(result.blueprint);
+                if (result.maxWinPolicy && result.maxWinPolicy.type !== "none") {
+                    result.conversionDiagnostics = [{
+                        path: "maxWinPolicy",
+                        code: "max-win-policy-not-representable",
+                        message: "Blueprint conversion cannot preserve a declared or explicitly unknown max-win policy. Keep the original package; no payout cap is implemented by Blueprint.",
+                    }];
+                } else {
+                    result.blueprint = model as GameBlueprint;
+                    result.blueprintHash = computeGameBlueprintHash(result.blueprint);
+                }
             }
             if (cancelled()) {
                 Reflect.deleteProperty(result, "blueprint");

@@ -372,7 +372,7 @@ export class ArtifactBuilderRegistry {
             plannedSource = {...source, configurationProvenance: {...source.configurationProvenance, inputBindingHash, configurationHash: extraction.blueprintHash}};
             let plan: ArtifactConversionPlan = {...this.planner.plan(plannedSource, target, planningOptions), packageExtraction: extraction};
             let boundary: string | undefined;
-            if (extraction.status !== "complete") boundary = `Package extraction ${extraction.status}: ${extraction.diagnostics.map(issue => `${issue.path}: ${issue.code}: ${issue.message}`).join("; ")}`;
+            if (extraction.status !== "complete" || !extraction.blueprint) boundary = `Package extraction ${extraction.status}: ${[...extraction.diagnostics, ...(extraction.conversionDiagnostics ?? [])].map(issue => `${issue.path}: ${issue.code}: ${issue.message}`).join("; ")}`;
             else if (target === "wasm") {
                 try {
                     resolveCanonicalWasmGameModel(extraction.blueprint!);

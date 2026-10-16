@@ -136,6 +136,6 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
     }
 
     private assertComplete(result: PackageBlueprintExtractionResult): void {
-        if (result.status !== "complete" || !result.blueprint) throw new Error(`Package extraction ${result.status}: ${result.diagnostics.map(issue => `${issue.path}: ${issue.code}: ${issue.message}`).join("; ")}`);
+        if (result.status !== "complete" || !result.blueprint) throw new Error(`Package extraction ${result.status}: ${[...result.diagnostics, ...(result.conversionDiagnostics ?? [])].map(issue => `${issue.path}: ${issue.code}: ${issue.message}`).join("; ")}`);
     }
 }

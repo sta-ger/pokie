@@ -1,3 +1,4 @@
+import {definitionFieldAuthority} from "./internal/definitionFieldAuthority.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {validateMathDefinitionMaxWinPolicy} from "./validateMathDefinitionMaxWinPolicy.js";
 import {detachPackageModelData} from "../generated/PackageBlueprintExtraction.js";
@@ -38,7 +39,7 @@ function side(
     keys: string[],
 ): MathDefinitionValue {
     const authored = valueAt(snapshot.authored, keys);
-    const field = snapshot.fields.find((entry) => entry.path === keys.join("."));
+    const field = definitionFieldAuthority(snapshot.fields, keys);
     let status: MathDefinitionValue["provenance"]["status"] = "effective";
     if (field?.status === "unsupported") status = "unknown";
     else if (field?.status === "inferred") status = "effective";
@@ -171,7 +172,17 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
                 (keys[0] === "paytable" || keys.slice(0, 3).join("/") === "mechanics/freeGames/awardsByCount") &&
                 ((a === undefined && (b === 0 || (isRecord(b) && Object.keys(b).length === 0))) ||
                     (b === undefined && (a === 0 || (isRecord(a) && Object.keys(a).length === 0))));
+            const descriptiveModeField = keys[0] === "betModes" && ["label", "targetRtp"].includes(keys[2]);
+            const ignoredPaylines = keys[0] === "paylines" && [left, right].every((snapshot) => {
+                const type = valueAt(snapshot.effective, ["winModel", "type"]);
+                return type.present && (type.value === "ways" || type.value === "clusters");
+            });
+            const unknown = [left, right].some((snapshot) =>
+                definitionFieldAuthority(snapshot.fields, keys)?.status === "unsupported");
             const mathematical =
+                !unknown &&
+                !descriptiveModeField &&
+                !ignoredPaylines &&
                 !zeroOmission &&
                 !representation &&
                 keys[0] !== "manifest" &&
@@ -222,7 +233,8 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
             const before = valueAt(left.effective, keys);
             const after = valueAt(right.effective, keys);
             if (!before.present || !after.present) return;
-            if (isRecord(before.value) && isRecord(after.value)) {
+            if ((isRecord(before.value) && isRecord(after.value)) ||
+                (Array.isArray(before.value) && Array.isArray(after.value))) {
                 for (const key of Object.keys(before.value).sort()) provenance([...keys, key]);
                 return;
             }

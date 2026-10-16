@@ -488,6 +488,21 @@ describe("DiffCommand (SimulationReportSet -- diffing two `pokie sim --mode all`
         };
     }
 
+    it.each([false, true])("labels report-set summaries as statistical (changed game: %s)", async changed => {
+        const a = buildSet({});
+        const b = buildSet({});
+        if (changed) b.game = {...b.game, name: "Renamed game", version: "2"};
+        const command = new DiffCommand(createStubReadFile({"left.json": JSON.stringify(a), "right.json": JSON.stringify(b)}));
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            await command.run(["left.json", "right.json"]);
+            expect(log.mock.calls[0][0]).toMatch(/^Statistical Diff \(all modes\):/);
+            if (changed) expect(log.mock.calls[0][0]).toContain("Renamed game");
+        } finally {
+            log.mockRestore();
+        }
+    });
+
     it("diffs each common mode independently, reusing the same per-mode diff logic as a plain single-report diff", async () => {
         const leftSet = buildSet({});
         const rightSet = buildSet({ante: buildSetReport("ante", 0.99)});
@@ -883,6 +898,32 @@ describe("DiffCommand canonical definitions through dispatch", () => {
         expect(await run([a, path.join(root, "missing"), "--comparison", "definition", "--ci"])).toBe(2);
         expect(await run([a, b, "--comparison", "statistics", "--ci"])).toBe(2);
     });
+    it.each(["label", "targetRtp", "paylines", "factor"])("keeps %s representation edits out of CI math failures", async field => {
+        const model = field === "factor"
+            ? JSON.parse(fs.readFileSync("examples/blueprints/wild-expanding.blueprint.json", "utf8"))
+            : {...fractionalBetBlueprint([0.05], true), betModes: [{id: "base", runtimeType: "base", isDefault: true}]};
+        if (field === "factor") Reflect.deleteProperty(model.mechanics.modifiers.wilds[0], "factor");
+        if (field === "paylines") {
+            model.rows = 2;
+            model.winModel = {type: "ways"};
+        }
+        fs.writeFileSync(a, JSON.stringify(model));
+        if (field === "factor") model.mechanics.modifiers.wilds[0].factor = 1;
+        if (field === "label") model.betModes[0].label = "Display only";
+        if (field === "targetRtp") model.betModes[0].targetRtp = 0.96;
+        if (field === "paylines") model.paylines = [[1, 1, 1]];
+        fs.writeFileSync(b, JSON.stringify(model));
+        expect(await run([a, b, "--ci", "--format", "json"])).toBe(0);
+        const diff = JSON.parse(log.mock.calls[0][0]);
+        expect(diff.status).toBe("different");
+        expect(diff.changes.every((change: {mathematical: boolean}) => !change.mathematical)).toBe(true);
+        if (field === "factor") {
+            model.mechanics.modifiers.wilds[0].factor = 2;
+            fs.writeFileSync(b, JSON.stringify(model));
+            expect(await run([a, b, "--ci"])).toBe(1);
+        }
+    });
+
     it("maps SIGINT cancellation through dispatch without publishing an equality result", async () => {
         const read = fs.readFileSync.bind(fs);
         let cancelled = false;

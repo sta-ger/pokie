@@ -412,3 +412,16 @@ runtime cap. This is evidence about the declared model, not a mechanism to insta
 or change payout caps. The exact declaration forms, schema, provenance/default
 rules and limitations are documented in
 [math-modeling.md](math-modeling.md#max-win-declaration-and-custom-boundary).
+
+
+Extraction `status: "complete"` describes the declared model, separately from
+Blueprint conversion eligibility. A declared max-win cap remains available for
+comparison; a `declared` or explicitly `unknown` policy prevents extraction from
+emitting a `blueprint`/`blueprintHash` and supplies `conversionDiagnostics` with
+`max-win-policy-not-representable`. Both direct Blueprint publication and registry
+plans for Blueprint, regenerated package, PAR and WASM refuse to discard it.
+CLI build and Studio conversion preview/build share this registry boundary.
+A declared absence (`type: "none"`) remains representable. This comparison
+contract does not implement a payout cap. Explicit unsupported field authority
+also overrides generated defaults and applies to descendants, including fields
+inside arrays.

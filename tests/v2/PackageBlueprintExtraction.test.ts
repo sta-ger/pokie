@@ -786,7 +786,16 @@ describe("comparison-only max-win declarations", () => {
         };
         const result = await new PackageBlueprintExtraction().extract(game);
         expect(result.status).toBe("complete");
+        expect(result.blueprint).toBeUndefined();
+        expect(result.blueprintHash).toBeUndefined();
+        expect(result.conversionDiagnostics).toEqual([expect.objectContaining({code: "max-win-policy-not-representable"})]);
         expect(result.maxWinPolicy).toEqual(game.getModelDescriptor().maxWinPolicy);
         expect(result.model).toEqual(model);
+        const uncapped = await new PackageBlueprintExtraction().extract({...game, getModelDescriptor: () => ({
+            ...game.getModelDescriptor(), maxWinPolicy: {type: "none", scope: "logical-round", authority: "no custom cap"},
+        })});
+        expect(uncapped.status).toBe("complete");
+        expect(uncapped.blueprint).toEqual(model);
+        expect(uncapped.conversionDiagnostics).toBeUndefined();
     });
 });

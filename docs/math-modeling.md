@@ -289,7 +289,11 @@ versus explicit zero, and missing versus empty symbol tables, remain visible
 without asserting a payout change. Generated effective reels and authoring
 instructions are separate: changing metadata or generation representation can
 change hash-derived materialized strips, in which case the strip changes are
-mathematical. Generated packages cannot recover discarded generation instructions.
+mathematical. With literal reels held fixed, mode labels and descriptive `targetRtp`,
+paylines ignored by ways/cluster evaluators, and omitted modifier wild `factor`
+versus explicit `1` remain visible representation changes without mathematical CI
+failure. Actual wild multipliers and payout amounts remain mathematical.
+Generated packages cannot recover discarded generation instructions.
 
 Ordered arrays are retained. Permutations are `order` changes, with a separate
 mathematical flag; reel positions, modifier execution and cumulative weighted
@@ -333,10 +337,21 @@ policy declaration. Declared value/unit/scope changes are mathematical;
 authority-only changes are representation/provenance information. Unknown extra
 policy fields and malformed policies are rejected.
 
+Comparison completeness does not grant conversion eligibility. Extraction retains a
+valid declared max-win policy for comparison, but emits no `blueprint` or
+`blueprintHash` for `declared` or explicitly `unknown` policies; its separate
+`conversionDiagnostics` explains `max-win-policy-not-representable`. Artifact
+planning and publication refuse these conversions, including intermediate
+Blueprints for package/PAR/WASM builds. A declared `none` policy permits the
+existing conversion contract. No payout cap is added.
+
 A custom descriptor declares representable behavior; it cannot prove arbitrary
 executable fidelity. Unsupported collaborators, unknown fields, absent descriptors,
 incompatible versions, throwing getters and asynchronous rejection retain explicit
-boundaries. Known partial fields are still compared. PAR comparison covers only
+boundaries. Unsupported field authority overrides defaults and exact evidence at
+all descendants. Unknown fields retain declarations without fabricated effective
+defaults or asserted mathematical changes; provenance traversal includes array
+elements in modifiers, variants and modes. Known partial fields are still compared. PAR comparison covers only
 what its importer represents and carries conversion diagnostics/limits. Canonical
 WASM compares embedded strips, payouts and stop widths with partial status because
 original symbol inventory/authoring presence is unavailable. Legacy WASM metadata

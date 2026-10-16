@@ -76,6 +76,38 @@ describe("definition comparison public Studio route", () => {
             }
         }
     });
+    it("shares corrected metadata/default semantics and unknown custom authority with CLI and the direct API", async () => {
+        const model = {...fractionalBetBlueprint([0.05], true), rows: 2, winModel: {type: "ways" as const},
+            betModes: [{id: "base", runtimeType: "base" as const, isDefault: true}]};
+        fs.writeFileSync(left, JSON.stringify(model));
+        fs.writeFileSync(right, JSON.stringify({...model, paylines: [[1, 1, 1]], betModes: [
+            {...model.betModes[0], label: "Display only", targetRtp: 0.96},
+        ]}));
+        const custom = writeDescriptorPackage(root, {model: {...model, winModel: {type: "ways"}, paylines: undefined}, descriptorBody:
+            'return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model, maxWinPolicy: {type: "unknown", authority: "custom cap"}, unsupported: [{path: "paylines", code: "custom-lines", message: "Unknown custom evaluator"}]};',});
+        for (const [a, b] of [[left, right], [custom, left]]) {
+            const result = await post({leftPath: a, rightPath: b, revision: 0});
+            expect(result.status).toBe(200);
+            expect(result.body).toEqual(await compareMathDefinitions(a, b));
+            const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+            try {
+                await new DiffCommand().run([a, b, "--comparison", "definition", "--format", "json"]);
+                expect(JSON.parse(log.mock.calls[0][0])).toEqual(result.body);
+            } finally {
+                log.mockRestore();
+            }
+            if (a === left) {
+                expect(result.body.status).toBe("different");
+                expect(result.body.changes.every(change => !change.mathematical)).toBe(true);
+            } else {
+                expect(result.body.status).toBe("partial");
+                expect(result.body.left.effective).not.toHaveProperty("paylines");
+                expect(result.body.changes.filter(change => change.path.startsWith("/paylines"))
+                    .every(change => !change.mathematical && change.before.provenance.status === "unknown")).toBe(true);
+            }
+        }
+    });
+
     it("compares saved versus draft without writes, builds or session construction", async () => {
         const bytes = fs.readFileSync(left);
         const draft = fractionalBetBlueprint([0.05, 7.5, 1e-7], true);
