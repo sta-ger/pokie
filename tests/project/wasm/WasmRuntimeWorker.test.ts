@@ -3,6 +3,8 @@ import {instantiatePokieWasm, SeededPokieWasmHost} from "../../../src/wasm/Pokie
 import {sha256CanonicalWasmBytes} from "../../../src/wasm/PokieWasmCanonicalModule.js";
 import {evaluatorValidationCases, createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
+type WorkerEventListener = (event: MessageEvent & ErrorEvent) => void;
+
 describe("PokieWasmWorkerProtocol", () => {
     it.each(evaluatorValidationCases)("retains a settled session after rejected $kind replacement and accepts a corrected retry", async ({fixture, repaired, code}) => {
         const worker = new PokieWasmWorkerProtocol();
@@ -760,5 +762,195 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s wei
             await worker.handle({id: "dispose", type: "dispose"});
             await fresh.handle({id: "dispose", type: "dispose"});
         }
+    }
+});
+
+it("runs bounded simulation with accepted progress through the shared accumulator and supports active cancellation", async () => {
+    const fixture = createCanonicalWasmFixture({paytable: {A: {2: 0}}, availableBets: [0.05, 7.5, 1e-7]});
+    const progress: number[] = [];
+    const worker = new PokieWasmWorkerProtocol((_id, value) => progress.push(value.completed));
+    expect(await worker.handle({id: "init", type: "instantiate", ...fixture, seed: "0"})).toMatchObject({ok: true});
+    const result = await worker.handle({id: "simulation", type: "simulate", seed: "0", rounds: 257, bet: 1e-7});
+    expect(result).toMatchObject({ok: true, result: [{statistics: {rounds: 257, totalPayout: 0}}]});
+    expect(progress).toEqual([128, 256, 257]);
+    if (!result.ok) throw new Error(result.error);
+    const statistics = (result.result as {statistics: {totalBet: number}}[])[0].statistics;
+    expect(statistics.totalBet).toBeCloseTo(257e-7, 14);
+    const state = await worker.handle({id: "state", type: "serialize"});
+    expect(JSON.stringify(state).length).toBeLessThan(500);
+    await worker.handle({id: "dispose", type: "dispose"});
+
+    let cancel: Promise<unknown> | undefined;
+    const active = new PokieWasmWorkerProtocol((_id, value) => {
+        if (value.completed === 128) cancel = active.handle({id: "cancel", type: "cancel"});
+    });
+    expect(await active.handle({id: "init", type: "instantiate", ...fixture, seed: "0"})).toMatchObject({ok: true});
+    expect(await active.handle({id: "long", type: "simulate", seed: "0", rounds: 1000000})).toMatchObject({ok: false, error: expect.stringMatching(/cancelled|disposed/)});
+    await cancel;
+    expect(await active.handle({id: "after", type: "serialize"})).toMatchObject({ok: false});
+    expect(await active.handle({id: "retry", type: "instantiate", ...fixture, seed: "0"})).toMatchObject({ok: true});
+    expect(await active.handle({id: "play", type: "play"})).toMatchObject({ok: true, result: {sequence: 1}});
+    await active.handle({id: "dispose", type: "dispose"});
+});
+
+it("offers replay-only initialization and rejects unavailable operations without allocating a play session", async () => {
+    const fixture = createCanonicalWasmFixture({capabilities: ["runtime.replay"]});
+    const worker = new PokieWasmWorkerProtocol();
+    try {
+        expect(await worker.handle({id: "init", type: "instantiate", ...fixture, seed: "0"})).toMatchObject({ok: true});
+        expect(await worker.handle({id: "sim", type: "simulate", seed: "0", rounds: 5})).toMatchObject({ok: false, error: expect.stringContaining("runtime.play")});
+        expect(await worker.handle({id: "state", type: "serialize"})).toMatchObject({ok: false, error: expect.stringContaining("runtime.serialize")});
+        expect(await worker.handle({id: "replay", type: "replay-target", options: {seed: "0", round: 3}})).toMatchObject({ok: true, result: {finalRound: {sequence: 3}}});
+    } finally {
+        await worker.handle({id: "dispose", type: "dispose"});
+    }
+});
+
+it("settles every pending transport request on errors, message errors, malformed and stale responses", async () => {
+    const {PokieWasmWorkerClient} = await import("../../../src/wasm/PokieWasmWorkerClient.js");
+    const scope = {project: "game.wasm", generation: "generation", artifact: "sha256:artifact", job: "job"};
+    for (const failure of ["error", "messageerror", "malformed", "stale"]) {
+        const listeners = new Map<string, WorkerEventListener>();
+        let sent: {request: {id: string}} | undefined;
+        let terminations = 0;
+        const client = new PokieWasmWorkerClient(() => ({
+            addEventListener: (type, listener) => listeners.set(type, listener),
+            removeEventListener: type => {
+                listeners.delete(type); 
+            },
+            terminate: () => {
+                terminations++; 
+            },
+            postMessage: message => {
+                sent = message as typeof sent; 
+            },
+        }), scope);
+        const first = client.request({type: "serialize"});
+        const second = client.request({type: "trace"});
+        const rejected = Promise.all([expect(first).rejects.toThrow(/Worker/), expect(second).rejects.toThrow(/Worker/)]);
+        const type = failure === "error" || failure === "messageerror" ? failure : "message";
+        listeners.get(type)!({message: "Worker failed", data: failure === "stale" ? {scope: {...scope, generation: "old"}, id: sent!.request.id, ok: true, type: "response"} : {scope, id: sent!.request.id, type: "invalid"}} as MessageEvent & ErrorEvent);
+        await rejected;
+        expect(client.getDiagnostics()).toEqual({pending: 0, disposed: true});
+        expect(terminations).toBe(1);
+        expect(listeners.size).toBe(0);
+        client.dispose();
+        expect(terminations).toBe(1);
+    }
+    expect(() => new PokieWasmWorkerClient(() => {
+        throw new Error("Worker construction failed"); 
+    }, scope)).toThrow("Worker construction failed");
+});
+
+it("connects the browser API owner to durable Play, restore, report and replay DTOs using production transport dispatch", async () => {
+    // This is a transport/boundary unit test; the installed Chromium workflow is controller-owned.
+    const fs = await import("fs");
+    const path = await import("path");
+    const {BrowserWasmStudioApi} = await import("../../../cli/studio-client/src/wasm/BrowserWasmStudioApi.js");
+    const {installPokieWasmWorker} = await import("../../../src/wasm/PokieWasmWorkerClient.js");
+    const {StudioWasmBrowserService} = await import("../../../cli/studio/wasm/StudioWasmBrowserService.js");
+    const {StudioJobService} = await import("../../../cli/studio/jobs/StudioJobService.js");
+    const {FileStudioJobRepository} = await import("../../../cli/studio/jobs/FileStudioJobRepository.js");
+    const {StudioRoundRecorder} = await import("../../../cli/studio/runtime/StudioRoundRecorder.js");
+    const {StudioSimulationService} = await import("../../../cli/studio/simulation/StudioSimulationService.js");
+    const {StudioReplayExecutionService} = await import("../../../cli/studio/replay/StudioReplayExecutionService.js");
+    const api = await import("../../../cli/studio-client/src/api/apiClient.js");
+    const directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/wasm-owner-"));
+    const file = path.join(directory, "game.wasm");
+    const fixture = createCanonicalWasmFixture({availableBets: [0.05, 7.5, 1e-7], paytable: {A: {2: 0}}});
+    fs.writeFileSync(file, fixture.bytes);
+    fs.writeFileSync(`${file}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+    const context = {mode: "project" as const, projectRoot: file};
+    const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
+    const broker = new StudioWasmBrowserService(jobs, new StudioRoundRecorder());
+    const simulation = new StudioSimulationService();
+    simulation.attachJobService(jobs);
+    const replay = new StudioReplayExecutionService();
+    replay.attachJobService(jobs);
+    let liveWorkers = 0;
+    const owner = new BrowserWasmStudioApi(async (url, init) => {
+        let result: {status: number; body: unknown};
+        if (url === "/api/project/context") result = {status: 200, body: {status: "loaded", type: "wasm", projectRoot: file}};
+        else if (url.startsWith("/api/project/wasm/")) result = await broker.handle(init?.method ?? "GET", url, init?.body ? JSON.parse(init.body) : undefined, context);
+        else if (url.startsWith("/api/project/simulations/")) result = {status: 200, body: simulation.getStatusForProject(file, url.split("/").pop()!)};
+        else if (url.startsWith("/api/project/replays/")) result = {status: 200, body: replay.getStatus(file, url.split("/").pop()!)};
+        else throw new Error(`Unexpected boundary ${url}`);
+        return {ok: result.status < 300, status: result.status, json: () => Promise.resolve(result.body)};
+    }, () => {
+        liveWorkers++;
+        let terminated = false;
+        let receive!: (event: MessageEvent & ErrorEvent) => void;
+        const listeners = new Map<string, WorkerEventListener>();
+        installPokieWasmWorker({
+            addEventListener: (_type, listener) => {
+                receive = listener; 
+            },
+            postMessage: data => queueMicrotask(() => {
+                if (!terminated) listeners.get("message")?.({data: structuredClone(data)} as MessageEvent & ErrorEvent); 
+            }),
+        });
+        return {
+            postMessage: data => queueMicrotask(() => {
+                if (!terminated) receive({data: structuredClone(data)} as MessageEvent & ErrorEvent); 
+            }),
+            addEventListener: (type, listener) => {
+                listeners.set(type, listener); 
+            },
+            removeEventListener: type => {
+                listeners.delete(type); 
+            },
+            terminate: () => {
+                if (!terminated) liveWorkers--;
+                terminated = true; 
+            },
+        };
+    });
+    try {
+        await owner.fetch("/api/project/context");
+        const created = await api.createPlaySession(owner.fetch, "0");
+        expect(created.status).toBe("ok");
+        if (created.status !== "ok") throw new Error("Play not admitted");
+        const id = created.session.sessionId;
+        for (const bet of [0.05, 7.5, 1e-7]) expect(await api.spinPlaySession(owner.fetch, id, bet)).toMatchObject({status: "ok", session: {bet, win: 0}});
+        const settled = await api.spinPlaySession(owner.fetch, id, 0.05, undefined, {requestId: "last"});
+        expect(await api.spinPlaySession(owner.fetch, id, 0.05, undefined, {requestId: "last"})).toEqual(settled);
+        expect(await api.spinPlaySession(owner.fetch, id, 7.5, undefined, {requestId: "last"})).toMatchObject({status: "error", code: "invalid-command"});
+        expect(await api.spinPlaySession(owner.fetch, id, 0.1)).toMatchObject({status: "error", code: "invalid-command"});
+        if (settled.status !== "ok") throw new Error("No settled Play state");
+        const state = settled.session.debug!.stateAfter;
+        await expect(api.createPlaySession(owner.fetch, undefined, undefined, {...state as object, artifactIdentity: "foreign"})).rejects.toThrow(/incompatible artifact/);
+        expect(await api.spinPlaySession(owner.fetch, id, 0.05)).toMatchObject({status: "ok"});
+        const restored = await api.createPlaySession(owner.fetch, undefined, undefined, JSON.parse(JSON.stringify(state)));
+        expect(restored).toMatchObject({status: "ok"});
+        expect(liveWorkers).toBe(1);
+        const started = await api.startSimulation(owner.fetch, 256, "0", 1);
+        if (started.status !== "created") throw new Error("Simulation conflict");
+        let view;
+        const deadline = Date.now() + 3000;
+        do {
+            if (Date.now() > deadline) throw new Error("Browser simulation did not settle.");
+            await new Promise(resolve => {
+                setTimeout(resolve, 5);
+            });
+            view = await api.getSimulation(owner.fetch, started.job.id);
+        } while (view.status === "running" || view.status === "queued");
+        expect(view).toMatchObject({status: "completed", roundsCompleted: 256, report: {rounds: 256, seed: "0"}});
+        const reproduced = await api.runReplay(owner.fetch, 3, "0");
+        if (reproduced.status !== "created") throw new Error("Replay conflict");
+        let replayView;
+        const replayDeadline = Date.now() + 3000;
+        do {
+            if (Date.now() > replayDeadline) throw new Error("Browser replay did not settle.");
+            await new Promise(resolve => {
+                setTimeout(resolve, 5);
+            });
+            replayView = await api.getReplay(owner.fetch, reproduced.job.id);
+        } while (replayView.status === "running" || replayView.status === "queued");
+        expect(replayView).toMatchObject({status: "completed", descriptor: {round: 3, seed: "0", totalBet: 0.15000000000000002}});
+    } finally {
+        owner.dispose();
+        await broker.shutdown();
+        expect(liveWorkers).toBe(0);
+        fs.rmSync(directory, {recursive: true, force: true});
     }
 });

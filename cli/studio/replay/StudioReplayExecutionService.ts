@@ -1,5 +1,5 @@
 import {projectPokieWasmRoundArtifact} from "../../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
-import {advancePokieWasmReplay} from "../../../src/wasm/PokieWasmCommands.js";
+import {collectPokieWasmReplay} from "../../../src/wasm/PokieWasmReplay.js";
 import type {SessionCommandResult} from "../../../src/runtime/SessionRuntimeHandling.js";
 import {deepFreeze} from "../../../src/internal/deepFreeze.js";
 import {
@@ -590,36 +590,13 @@ export class StudioReplayExecutionService {
             record.game = {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version};
             record.configHash = runtime.manifest.artifact?.configurationHash;
             const canSerialize = runtime.manifest.capabilities.includes("runtime.serialize");
-            let state: import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmRestorableState = {schemaVersion: "pokie.state.v2", seed: record.seed, drawCount: 0, sequence: 0, credits: 1000};
-            let totalBet = 0;
-            let totalWin = 0;
-            let totalPayout = 0;
-            let finalRound;
-            let stateBefore: Record<string, unknown> | undefined;
-            for (let index = 0; index < record.round; index += this.chunkSize) {
-                if (record.abortController.signal.aborted) {
-                    this.cancelRecord(record);
-                    return;
-                }
-                const chunk = Math.min(this.chunkSize, record.round - index);
-                for (let offset = 0; offset < chunk; offset++) {
-                    if (record.abortController.signal.aborted) {
-                        this.cancelRecord(record);
-                        return;
-                    }
-                    const replay = await advancePokieWasmReplay(runtime, state, {mode: record.modeName, unit: record.unit, entry: record.entryCommands?.[index + offset], index: index + offset});
-                    state = replay.stateAfter;
-                    finalRound = replay.rounds[replay.rounds.length - 1];
-                    if (replay.stateBeforeFinal) stateBefore = replay.stateBeforeFinal as unknown as Record<string, unknown>;
-                    totalBet += finalRound.stake;
-                    totalWin += finalRound.win ?? finalRound.payout;
-                    totalPayout += finalRound.payout;
-                }
-                const completedRounds = index + chunk;
-                this.updateReplayProgress(record, completedRounds);
-                if (completedRounds < record.round && completedRounds % this.chunkSize === 0) await this.yieldToEventLoop();
-            }
-            record.status = "completed";
+            const observed = await collectPokieWasmReplay(runtime, {seed: record.seed, round: record.round, modeName: record.modeName, unit: record.unit, entryCommands: record.entryCommands}, {
+                signal: record.abortController.signal, yieldToHost: this.yieldToEventLoop,
+                onProgress: completed => this.updateReplayProgress(record, completed),
+            });
+            const {stateAfter: state, finalRound, totalBet, totalWin, totalPayout} = observed;
+            const stateBefore = observed.stateBefore as unknown as Record<string, unknown> | undefined;
+            this.markWasmReplayCompleted(record);
             record.descriptor = {
                 ...(finalRound?.network ?? {}),
                 sessionId: this.createId(),
@@ -650,6 +627,10 @@ export class StudioReplayExecutionService {
         } finally {
             await runtime?.dispose();
         }
+    }
+
+    private markWasmReplayCompleted(record: StudioReplayJobRecord): void {
+        record.status = "completed";
     }
 
     private updateReplayProgress(record: StudioReplayJobRecord, completedRounds: number): void {

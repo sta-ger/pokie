@@ -146,6 +146,12 @@ export class StudioJobService {
         return this.terminal(id, "cancelled", {...(result === undefined ? {} : {result}), ...(recovery === undefined ? {} : {recovery})});
     }
 
+    /** A lost external executor cannot attest to drainage. Keep its prefix for recovery. */
+    public requireRecovery(id: string, recovery: StudioJobRecoveryView, result?: StudioJobResultView): StudioJobView | undefined {
+        this.executorCleanupFailed = true;
+        return this.terminal(id, "recovery-required", {recovery, ...(result === undefined ? {} : {result})});
+    }
+
     /**
      * Refines a retained recovery decision after an operation-specific
      * checkpoint has been inspected.  Terminal outcome remains immutable;

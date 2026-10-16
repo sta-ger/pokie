@@ -6,6 +6,7 @@ import {
     describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
     hasDeclaredCanonicalWasmArtifact,
+    hasDeclaredCanonicalWasmOperation,
     isWasmComponentFile,
     loadPokieWasmFileRuntime,
     loadPokieGame,
@@ -166,6 +167,9 @@ export class StudioSimulationService {
         // normal project and must not be rejected from its pathname alone.
         if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmArtifact(projectRoot)) {
             return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "simulate game rounds")};
+        }
+        if (isWasmComponentFile(projectRoot) && (!hasDeclaredCanonicalWasmOperation(projectRoot, "runtime.play") || (request.workers ?? 1) !== 1)) {
+            return {status: "unsupported", message: "WASM simulation requires runtime.play, one Worker and a fixed round budget. Rebuild with play support and set workers to 1."};
         }
         if (request.convergence && (outcomeSourceProject !== undefined || isWasmComponentFile(projectRoot))) {
             return {status: "unsupported", message: "Adaptive stopping is supported only for executable package simulations; outcome-library and WASM samplers use fixed budgets."};

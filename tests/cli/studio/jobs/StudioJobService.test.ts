@@ -230,3 +230,75 @@ describe("StudioJobService", () => {
         expect(restarted.get("/project-a", "job-3")).toEqual(expect.objectContaining({status: "recovery-required", recovery: expect.objectContaining({action: "retry"}), durationMs: 80}));
     });
 });
+
+it("admits integrity-bound browser jobs, preserves cancellation prefixes and rejects stale publication", async () => {
+    const {StudioWasmBrowserService} = await import("../../../../cli/studio/wasm/StudioWasmBrowserService.js");
+    const {StudioRoundRecorder} = await import("../../../../cli/studio/runtime/StudioRoundRecorder.js");
+    const {createCanonicalWasmFixture} = await import("../../../fixtures/wasm/createCanonicalWasmFixture.js");
+    const {PokieWasmWorkerProtocol} = await import("../../../../src/wasm/worker.js");
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "wasm-browser-jobs-"));
+    const artifactPath = path.join(directory, "game.wasm");
+    const fixture = createCanonicalWasmFixture();
+    fs.writeFileSync(artifactPath, fixture.bytes);
+    fs.writeFileSync(`${artifactPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+    const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
+    const browser = new StudioWasmBrowserService(jobs, new StudioRoundRecorder(), 2000);
+    const context = {mode: "project" as const, projectRoot: artifactPath};
+    const artifact = await browser.artifact(context);
+    const binding = {owner: "tab-1", generation: artifact.generation, artifactIdentity: artifact.manifest.artifact!.sha256};
+    const start = (request = {rounds: 5, seed: "0", workers: 1}) => browser.handle("POST", "/api/project/wasm/jobs", {...binding, projectRoot: artifactPath, operation: "simulation", request}, context);
+    const worker = new PokieWasmWorkerProtocol();
+    try {
+        const accepted = await start();
+        const {job} = accepted.body as {job: {id: string; projectId: string}};
+        expect(accepted.status).toBe(201);
+        expect(await start()).toMatchObject({status: 409});
+        expect((await browser.handle("POST", `/api/project/wasm/jobs/${job.id}/heartbeat`, {...binding, owner: "other"}, context)).status).toBe(409);
+        await worker.handle({id: "init", type: "instantiate", ...fixture, seed: "0"});
+        const output = await worker.handle({id: "sim", type: "simulate", rounds: 5, seed: "0"});
+        if (!output.ok) throw new Error(output.error);
+        expect(await browser.handle("POST", `/api/project/wasm/jobs/${job.id}/finish`, {...binding, cleanup: true, status: "completed", output: output.result}, context)).toMatchObject({status: 200, body: {status: "completed", result: {provenance: {execution: "browser-worker"}, detail: {report: {rounds: 5}}}}});
+        const restarted = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
+        expect(restarted.get(job.projectId, job.id)?.result?.detail?.report).toBeDefined();
+        const cancelled = (await start({rounds: 1000, seed: "0", workers: 1})).body as {job: {id: string}};
+        jobs.cancel(job.projectId, cancelled.job.id);
+        await browser.handle("POST", `/api/project/wasm/jobs/${cancelled.job.id}/finish`, {...binding, cleanup: true, status: "completed", progress: {completed: 3, statistics: {rounds: 3}}}, context);
+        expect(jobs.get(job.projectId, cancelled.job.id)).toMatchObject({status: "cancelled", result: {detail: {rounds: 3, observedPrefix: {rounds: 3}}}});
+        const stale = (await start()).body as {job: {id: string}};
+        const replacement = createCanonicalWasmFixture({id: "replacement"});
+        fs.writeFileSync(artifactPath, replacement.bytes);
+        fs.writeFileSync(`${artifactPath}.pokie-wasm.json`, JSON.stringify(replacement.manifest));
+        await expect(browser.handle("POST", `/api/project/wasm/jobs/${stale.job.id}/finish`, {...binding, cleanup: true, status: "completed", output: output.result}, context)).rejects.toThrow(/changed/);
+        expect(jobs.get(job.projectId, stale.job.id)).toMatchObject({status: "failed"});
+        await expect(start()).rejects.toThrow(/changed/);
+    } finally {
+        await worker.handle({id: "dispose", type: "dispose"});
+        await browser.shutdown();
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
+it("marks a lost browser owner recovery-required and blocks a false graceful shutdown", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "wasm-lost-owner-"));
+    const {StudioWasmBrowserService} = await import("../../../../cli/studio/wasm/StudioWasmBrowserService.js");
+    const {StudioRoundRecorder} = await import("../../../../cli/studio/runtime/StudioRoundRecorder.js");
+    const {createCanonicalWasmFixture} = await import("../../../fixtures/wasm/createCanonicalWasmFixture.js");
+    const fixture = createCanonicalWasmFixture();
+    const file = path.join(directory, "game.wasm");
+    fs.writeFileSync(file, fixture.bytes);
+    fs.writeFileSync(`${file}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+    const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
+    const browser = new StudioWasmBrowserService(jobs, new StudioRoundRecorder(), 20);
+    const context = {mode: "project" as const, projectRoot: file};
+    try {
+        const artifact = await browser.artifact(context);
+        const result = await browser.handle("POST", "/api/project/wasm/jobs", {owner: "lost-tab", projectRoot: file, generation: artifact.generation, artifactIdentity: fixture.manifest.artifact!.sha256, operation: "simulation", request: {rounds: 1000, seed: "0", workers: 1}}, context);
+        const {job} = result.body as {job: {id: string; projectId: string}};
+        await browser.shutdown();
+        expect(jobs.get(job.projectId, job.id)).toMatchObject({status: "recovery-required", recovery: {action: "retry"}});
+        await expect(jobs.completeGracefulShutdown()).rejects.toThrow(/cleanup/);
+    } finally {
+        await browser.shutdown();
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});

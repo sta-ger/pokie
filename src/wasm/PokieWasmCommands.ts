@@ -47,6 +47,7 @@ export class PokieWasmSimulationObserver {
 }
 
 export type PokieWasmSimulationOptions = {
+    readonly bet?: number;
     readonly mode?: string;
     readonly signal?: AbortSignal;
     readonly chunkSize?: number;
@@ -82,7 +83,8 @@ export async function collectPokieWasmSimulation(runtime: import("./PokieWasmRun
             while (accepted < rounds) {
                 if (options.signal?.aborted) throw new SimulationCancelledError(accumulator.getStatistics());
                 const features = runtime.manifest.serialization?.state === "pokie.state.v4";
-                const round = await session.play(features ? nextPokieWasmPlayCommand(previous, true, mode) : {...(mode === undefined ? {} : {mode})});
+                const command = features ? nextPokieWasmPlayCommand(previous, true, mode) : {...(mode === undefined ? {} : {mode})};
+                const round = await session.play({...command, ...(options.bet === undefined || (features && previous?.logicalRound?.status === "pending") ? {} : {bet: options.bet})});
                 previous = round;
                 observer.observe(accumulator, round, runtime.manifest.artifact?.configurationHash ?? null);
                 if (!round.deliveryOnly) {

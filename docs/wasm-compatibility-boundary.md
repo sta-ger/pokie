@@ -244,10 +244,7 @@ reads clone-safe evidence, and replay may return a finite `trace` field.
 Restore replaces the session and ends its collector. Cancel/dispose also
 invalidate pending initialization before it can publish a replacement.
 
-CLI and Studio simulation use collector-free sessions and aggregate results,
-with the existing in-process `workers=1` boundary. Replay `rounds` are explicit
-request-sized output; CLI retains its requested command/result batch, while
-Studio uses chunk-sized batches. Neither is cumulative continuation history.
+CLI and direct server simulation use collector-free sessions and aggregate results with `workers=1`. The Studio browser executes fixed-budget simulation in a production module Worker, reusing `collectPokieWasmSimulation`, shared command sequencing and `SimulationAccumulator`. Replay reuses `collectPokieWasmReplay` and the existing replay runtime, keeping only the final requested observation. CLI retains its requested command/result batch. Neither path keeps cumulative continuation history.
 See [P9-02 measurements](audit-corrections/compact-wasm-state.md) for bounds,
 accounting and focused regression commands.
 
@@ -288,3 +285,14 @@ See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
 payout/duration units, authoring/interchange, restoration/replay, statistics and
 custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
 maps every mandatory family separately from arbitrary custom callbacks.
+
+
+## Studio browser ownership (V2C-22)
+
+`pokie game.wasm` opens Project Studio, including Home/recent/registered reopening. `inspect` remains explicit CLI inspection. `/api/project/wasm/artifact` delivers a matching byte/sidecar pair scoped to the active Project generation. Canonical integrity and compatibility checks run before admission, in browser loading, at Worker initialization and before publication. Same-path replacement invalidates an active Play session and stale job output. No package loader handles a failed WASM artifact.
+
+`PokieWasmWorkerClient` correlates requests and progress with Project, generation, artifact and job identities. The Vite module Worker is emitted with installed Studio assets, including dynamic simulation imports. Both public browser exports keep filesystem code in the Node adapter. Worker load/error/messageerror/malformed response/trap failures settle requests and release the Worker. Long loops yield to the Worker event loop; Studio active cancellation uses termination, so it can interrupt initialization and long execution. Progress retains only the latest accepted prefix; cancelled/failed jobs publish no completed report.
+
+A tab owns its Workers; `StudioJobService` owns durable jobs and downloads. Reload/pagehide disposes owned Workers and reports cancellation. A lost owner expires to `recovery-required` with an explicit retry; another tab discovers that job rather than resubmitting it. Play retains one idle session Worker until reset, replacement, pagehide or connection loss. Checkpoint restore creates and validates a replacement before releasing a valid session. Restore controls require `runtime.serialize`; Play/Simulation require `runtime.play`; Replay requires `runtime.replay`; detail projection requires `artifact.inspect`. The combined `wasm.runtime.execute` capability is never required to grant an individual operation. Unsupported adaptive stopping or multiple simulation Workers fail before admission.
+
+Installed/rendered browser verification, same-candidate packaging and controller gates are independent requirements. Source tests and the standalone Chromium runtime fixture support that verification; they do not establish installed workflow approval.

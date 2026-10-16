@@ -43,14 +43,14 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     const spinGuard = useDoubleSubmitGuard();
 
     const newSession = useCallback(
-        (seed?: string, modeName?: string) => {
+        (seed?: string, modeName?: string, checkpoint?: unknown) => {
             if (!newSessionGuard.begin()) {
                 return;
             }
             const requestId = ++requestIdRef.current;
             const previousSession = activeSessionRef.current;
             setSession({status: "loading", ...(previousSession === undefined ? {} : {previousSession})});
-            createPlaySession(fetchImpl, seed, modeName)
+            createPlaySession(fetchImpl, seed, modeName, checkpoint)
                 .then((result) => {
                     if (requestId !== requestIdRef.current) {
                         return;
@@ -195,5 +195,5 @@ export function usePlaySession(onRoundRecorded?: () => void) {
         setSessionId(undefined);
     }, []);
 
-    return {session, sessionId, newSession, spin, findAnyWin, findSymbolWin, findFreeGames, resetForProjectSwitch};
+    return {session, sessionId, newSession, restore: (state: unknown) => newSession(undefined, undefined, state), spin, findAnyWin, findSymbolWin, findFreeGames, resetForProjectSwitch};
 }

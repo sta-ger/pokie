@@ -1,3 +1,4 @@
+import {StudioWasmBrowserService} from "./wasm/StudioWasmBrowserService.js";
 import {readValidationSourceRevision} from "../validation/readValidationSourceRevision.js";
 import {AdvancedModelSourceValidator} from "../../src/validation/AdvancedModelSourceValidator.js";
 import {compareMathDefinitions} from "../../src/diff/MathDefinitionSourceReader.js";
@@ -302,6 +303,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly stakeEngineExportService: StudioStakeEngineExportService;
     private readonly artifactBuildService: StudioArtifactBuildService;
     private readonly jobService: StudioJobService;
+    private readonly wasmBrowserService: StudioWasmBrowserService;
     // The persistent Studio project registry -- see StudioServerOptions.projectRegistrationService's own
     // doc comment for the default's FileStudioProjectRegistry-vs-app-data-unresolved fallback story.
     private readonly projectRegistrationService: StudioProjectRegistrationService;
@@ -394,6 +396,7 @@ export class StudioServer implements StudioServerHandling {
             );
         this.replayService.attachJobService(this.jobService);
         this.roundRecorder = options.roundRecorder ?? new StudioRoundRecorder();
+        this.wasmBrowserService = new StudioWasmBrowserService(this.jobService, this.roundRecorder);
         this.playService =
             options.playService ??
             new StudioPlayService(this.loadGame, this.resolveRuntimePackageRoot, this.pokieVersion, undefined, undefined, undefined, this.roundRecorder);
@@ -505,6 +508,12 @@ export class StudioServer implements StudioServerHandling {
     }
 
     public async stop(): Promise<void> {
+        let browserDrainError: unknown;
+        try {
+            await this.wasmBrowserService.shutdown();
+        } catch (error) {
+            browserDrainError = error;
+        }
         const server = this.server;
         this.server = undefined;
         const listenerClosed = new Promise<void>((resolve, reject) => {
@@ -534,6 +543,7 @@ export class StudioServer implements StudioServerHandling {
         // Request every domain cancellation before waiting for any executor.
         // Listener closure alone cannot attest to worker or staging cleanup.
         const drains = await Promise.allSettled([
+            browserDrainError === undefined ? Promise.resolve() : Promise.reject(browserDrainError),
             listenerClosed,
             Promise.allSettled([...this.advancedValidations.values()]),
             Promise.allSettled([...this.definitionPreviews.values()]),
@@ -576,6 +586,7 @@ export class StudioServer implements StudioServerHandling {
             await Promise.allSettled([...this.definitionPreviews.values()]);
             if (this.currentContext.mode === "project") {
                 const projectId = this.canonicalPathIdentity(this.currentContext.projectRoot);
+                await this.wasmBrowserService.drain(projectId);
                 this.simulationService.cancelActiveForProject(projectId);
                 this.replayService.cancelActiveForProject(projectId);
                 this.artifactBuildService.cancelActiveForProject(projectId);
@@ -1135,7 +1146,24 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (url.pathname.startsWith("/api/project/wasm/")) {
+            try {
+                const context = this.currentContext;
+                const result = await this.wasmBrowserService.handle(method, url.pathname, method === "GET" ? undefined : await this.readJsonBody(req), context, () => this.currentContext === context);
+                if (this.currentContext !== context) throw new StudioHttpRequestError(409, "The WASM Project changed during this request. Reopen and retry.");
+                this.sendJson(res, result.status, result.body);
+            } catch (error) {
+                this.sendJson(res, 409, {error: error instanceof Error ? error.message : String(error)});
+            }
+            return;
+        }
+
         if (method === "GET" && url.pathname === "/api/project/context") {
+            const context = this.currentContext;
+            if (context.mode === "project" && this.isWasmPath(context.projectRoot) && this.projectDashboard?.status !== "loading") {
+                const dashboard = await loadProjectDashboardContext(context.projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeProjectLocation);
+                if (this.currentContext === context) this.projectDashboard = dashboard;
+            }
             this.sendJson(res, 200, this.projectDashboard ?? {status: "empty"});
             return;
         }
@@ -2400,7 +2428,7 @@ export class StudioServer implements StudioServerHandling {
             game: {id: manifest.component.id, name: manifest.component.id, version: manifest.component.version},
             errors: [],
             warnings: [],
-            information: [],
+            information: [{code: "wasm-integrity-compatibility", severity: "info", message: "Verified module SHA-256 and byte count, embedded descriptor and configuration hash, manifest shape, runtime version, ABI, serialization and host bindings. This validates artifact integrity and compatibility; it does not certify game mathematics."}],
             suggestions: [],
         };
     }

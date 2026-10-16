@@ -58,7 +58,7 @@ import type {
     StudioStakeEngineExportModeInput,
     StudioStakeEngineExportValidateView,
     StudioStakeEngineExportView,
-} from "./types";
+} from "./types.js";
 
 export async function listProjectJobs(fetchImpl: FetchLike, signal?: AbortSignal): Promise<StudioJobView[]> {
     const response = await fetchImpl("/api/project/jobs", {cache: "no-store", ...(signal === undefined ? {} : {signal})});
@@ -765,7 +765,7 @@ export async function runReplay(
     simulationId?: string,
     modeName?: string,
     outcomeSource?: OutcomeSourceReplayDescriptorView,
-    recording?: import("./types").ReplayDescriptor,
+    recording?: import("./types.js").ReplayDescriptor,
 ): Promise<StartReplayResult> {
     const response = await fetchImpl("/api/project/replays", {
         method: "POST",
@@ -825,14 +825,14 @@ export function buildReplayDownloadUrl(id: string): string {
 }
 
 export type InspectReplayArtifactResult = {
-    recording?: import("./types").ReplayDescriptor;
+    recording?: import("./types.js").ReplayDescriptor;
     auditStatus?: "recorded";
     round: number;
     seed?: string;
     modeName?: string;
-    outcomeSource?: import("./types").OutcomeSourceReplayDescriptorView;
+    outcomeSource?: import("./types.js").OutcomeSourceReplayDescriptorView;
     // Server-normalized artifact, including canonical native descriptors with only a nested artifact.
-    artifact?: import("./types").RoundArtifactJson;
+    artifact?: import("./types.js").RoundArtifactJson;
     artifactWarnings: string[];
 };
 
@@ -891,7 +891,7 @@ export type PlaySpinResult =
 // Studio's own API, never PokieDevServer's own HTTP contract (see StudioPlayService's own doc comment).
 // Every outcome is a typed result, never thrown -- "no-active-project" is the one precondition this
 // route actually has (a project being open at all).
-export async function createPlaySession(fetchImpl: FetchLike, seed?: string | number, modeName?: string): Promise<PlaySessionResult> {
+export async function createPlaySession(fetchImpl: FetchLike, seed?: string | number, modeName?: string, checkpoint?: unknown): Promise<PlaySessionResult> {
     const requestBody: Record<string, unknown> = {};
     if (seed !== undefined) {
         requestBody.seed = seed;
@@ -899,10 +899,10 @@ export async function createPlaySession(fetchImpl: FetchLike, seed?: string | nu
     if (modeName !== undefined) {
         requestBody.modeName = modeName;
     }
-    const response = await fetchImpl("/api/project/play/session", {
+    const response = await fetchImpl(checkpoint === undefined ? "/api/project/play/session" : "/api/project/play/session/restore", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify(checkpoint === undefined ? requestBody : {state: checkpoint}),
     });
     if (response.status === 409) {
         return {status: "no-active-project"};
@@ -1439,9 +1439,9 @@ export async function cancelArtifactBuild(fetchImpl: FetchLike, id: string): Pro
 /** Preview only. The response is the shared server differ's versioned machine result. */
 export async function previewMathDefinitionDiff(fetchImpl: FetchLike, request: {
     leftPath: string; rightPath?: string; draft?: unknown; projectRoot?: string; revision: number;
-}, signal?: AbortSignal): Promise<import("./types").MathDefinitionDiff> {
+}, signal?: AbortSignal): Promise<import("./types.js").MathDefinitionDiff> {
     const response = await fetchImpl("/api/math-definition-diff/preview", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(request), signal});
     const body = await response.json();
     if (!response.ok) throw new Error((body as {error?: string}).error ?? `Comparison failed (HTTP ${response.status}).`);
-    return body as import("./types").MathDefinitionDiff;
+    return body as import("./types.js").MathDefinitionDiff;
 }

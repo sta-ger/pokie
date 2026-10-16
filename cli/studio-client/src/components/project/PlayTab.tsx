@@ -31,6 +31,7 @@ export function PlayTab({
     onFindSymbolWin,
     onFindFreeGames,
     availableModes,
+    onRestore,
 }: {
     session: PlaySessionView;
     sessionId: string | undefined;
@@ -48,7 +49,10 @@ export function PlayTab({
     // notion of an outcome-library mode at all. When present, New session/Reset draw against whichever
     // of these real modes is selected below, never the manifest's own first mode by default silently.
     availableModes?: string[];
+    onRestore?: (state: unknown) => void;
 }) {
+    const [checkpoint, setCheckpoint] = useState("");
+    const [checkpointError, setCheckpointError] = useState<string>();
     const [seed, setSeed] = useState("");
     const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
     const [selectedMode, setSelectedMode] = useState<string | null>(null);
@@ -223,6 +227,20 @@ export function PlayTab({
                 {(!loading || playedRound !== undefined) && roundResult}
             </PageSection>
 
+            {onRestore && <PageSection legend="WASM checkpoint">
+                <TextInput label="JSON checkpoint" value={checkpoint} onChange={event => setCheckpoint(event.currentTarget.value)} />
+                <Button disabled={loading || !checkpoint.trim()} onClick={() => {
+                    try {
+                        const state: unknown = JSON.parse(checkpoint);
+                        setCheckpointError(undefined);
+                        onRestore(state);
+                    } catch {
+                        setCheckpointError("Supply valid checkpoint JSON. The current session is preserved after a rejected restore.");
+                    }
+                }}>Restore checkpoint</Button>
+                {activeSession?.debug?.stateAfter !== undefined && <Button onClick={() => setCheckpoint(JSON.stringify(activeSession.debug!.stateAfter))}>Copy current checkpoint to input</Button>}
+                {checkpointError && <Text role="alert">{checkpointError}</Text>}
+            </PageSection>}
             <PageSection legend="Session">
                 {modeField}
                 {deliveryField}

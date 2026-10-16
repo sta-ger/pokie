@@ -1,10 +1,15 @@
+import {collectPokieWasmSimulation} from "./PokieWasmCommands.js";
+import {collectPokieWasmReplay, type PokieWasmReplayOptions} from "./PokieWasmReplay.js";
 import {instantiatePokieWasm, SeededPokieWasmHost} from "./PokieWasmRuntime.js";
 import {BoundedPokieWasmTraceCollector, type PokieWasmHost, type PokieWasmHostState, type PokieWasmRuntime, type PokieWasmRestorableState} from "./PokieWasmRuntimeApi.js";
-import {sha256CanonicalWasmBytes} from "./PokieWasmCanonicalModule.js";
+import {readCanonicalPokieWasmModule, sha256CanonicalWasmBytes} from "./PokieWasmCanonicalModule.js";
 import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
 
 export type PokieWasmWorkerRequest =
     | {readonly id: string; readonly type: "instantiate"; readonly bytes: Uint8Array; readonly manifest: PokieWasmComponentManifest; readonly draws?: readonly number[]; readonly seed?: string; readonly credits?: number; readonly traceCapacity?: number}
+    | {readonly id: string; readonly type: "view"}
+    | {readonly id: string; readonly type: "simulate"; readonly rounds: number; readonly seed: string; readonly mode?: string; readonly bet?: number}
+    | {readonly id: string; readonly type: "replay-target"; readonly options: PokieWasmReplayOptions}
     | {readonly id: string; readonly type: "play"; readonly command?: Record<string, unknown>}
     | {readonly id: string; readonly type: "restore"; readonly state: PokieWasmRestorableState}
     | {readonly id: string; readonly type: "serialize"}
@@ -12,16 +17,24 @@ export type PokieWasmWorkerRequest =
     | {readonly id: string; readonly type: "replay"; readonly state: PokieWasmRestorableState; readonly commands: readonly Record<string, unknown>[]; readonly traceCapacity?: number}
     | {readonly id: string; readonly type: "cancel"}
     | {readonly id: string; readonly type: "dispose"};
-export type PokieWasmWorkerResponse = {readonly id: string; readonly ok: true; readonly result?: unknown} | {readonly id: string; readonly ok: false; readonly error: string};
+export type PokieWasmWorkerResponse = {readonly id: string; readonly ok: true; readonly result?: unknown} | {readonly id: string; readonly ok: false; readonly error: string; readonly fatal?: boolean};
 
 /** State owner used by a real Web Worker entry or directly by browser hosts. */
 export class PokieWasmWorkerProtocol {
+    private initialData: Record<string, unknown> | undefined;
     private runtime: PokieWasmRuntime | undefined;
     private session: ReturnType<PokieWasmRuntime["createSession"]> | undefined;
 
     private generation = 0;
+    private operation: AbortController | undefined;
+
     private trace: BoundedPokieWasmTraceCollector | undefined;
     private tapeMetrics = {inputTapeLength: 0, verificationDraws: 0, legacyPrefixDraws: 0};
+
+    private readonly onProgress?: (id: string, progress: {completed: number; total?: number; statistics?: import("../simulation/SimulationStatistics.js").SimulationStatistics}) => void;
+    public constructor(onProgress?: (id: string, progress: {completed: number; total?: number; statistics?: import("../simulation/SimulationStatistics.js").SimulationStatistics}) => void) {
+        this.onProgress = onProgress;
+    }
 
     public getDiagnostics(): object {
         return {...this.tapeMetrics, ...this.runtime?.getDiagnostics()};
@@ -42,13 +55,13 @@ export class PokieWasmWorkerProtocol {
                 const trace = request.traceCapacity === undefined ? undefined : new BoundedPokieWasmTraceCollector(request.traceCapacity);
                 let session: ReturnType<PokieWasmRuntime["createSession"]>;
                 try {
-                    session = runtime.createSession(seed ?? "worker", {credits: request.credits, trace});
+                    session = (runtime.manifest.capabilities.includes("runtime.play") || runtime.manifest.capabilities.includes("runtime.serialize")) ? runtime.createSession(seed ?? "worker", {credits: request.credits, trace}) : undefined!;
                 } catch (error) {
                     runtime.dispose();
                     throw error;
                 }
                 if (generation !== this.generation) {
-                    session.dispose();
+                    session?.dispose();
                     runtime.dispose();
                     throw new Error("The WASM worker initialization was cancelled or replaced.");
                 }
@@ -56,6 +69,7 @@ export class PokieWasmWorkerProtocol {
                 // session. Malformed/unsupported instantiate requests leave it
                 // usable for the caller's next valid command.
                 this.release();
+                this.initialData = {availableBets: [...readCanonicalPokieWasmModule(portableBytes).model.availableBets], availableSymbols: [...readCanonicalPokieWasmModule(portableBytes).model.symbols]};
                 this.runtime = runtime;
                 this.session = session;
                 this.trace = trace;
@@ -74,6 +88,34 @@ export class PokieWasmWorkerProtocol {
                 const result = await this.runtime.replay(request.state, request.commands, {trace});
                 return {id: request.id, ok: true, result: {...result, ...(trace === undefined ? {} : {trace: {entries: trace.entries, dropped: trace.dropped, status: trace.status}})}};
             }
+            if (request.type === "simulate" || request.type === "replay-target") {
+                const runtime = this.runtime;
+                const generation = this.generation;
+                const capability = request.type === "simulate" ? "runtime.play" : "runtime.replay";
+                if (!runtime.manifest.capabilities.includes(capability)) throw new Error(`POKIE WASM artifact does not declare ${capability}. Rebuild with the required operation.`);
+                if (this.operation) throw new Error("A WASM Worker operation is already running.");
+                const controller = new AbortController();
+                this.operation = controller;
+                runtimeOperationInvoked = true;
+                const yieldToHost = () => new Promise<void>(resolve => {
+                    setTimeout(resolve, 0);
+                });
+                try {
+                    const result = request.type === "simulate"
+                        ? await collectPokieWasmSimulation(runtime, request.seed, request.rounds, {mode: request.mode, bet: request.bet, signal: controller.signal, chunkSize: 128, yieldToHost,
+                            onProgress: (completed, _mode, modeCount, statistics) => {
+                                if (completed % 128 === 0 || completed === request.rounds * modeCount) this.onProgress?.(request.id, {completed, total: request.rounds * modeCount, statistics});
+                            }})
+                        : await collectPokieWasmReplay(runtime, request.options, {signal: controller.signal, yieldToHost,
+                            onProgress: completed => this.onProgress?.(request.id, {completed, total: request.options.round})});
+                    if (generation !== this.generation || controller.signal.aborted) throw new Error("The WASM Worker operation was cancelled or replaced.");
+                    return {id: request.id, ok: true, result};
+                } finally {
+                    if (this.operation === controller) this.operation = undefined;
+                }
+            }
+            if (request.type === "play" && !this.runtime.manifest.capabilities.includes("runtime.play")) throw new Error("POKIE WASM artifact does not declare runtime.play; it cannot play a session round.");
+            if ((request.type === "serialize" || request.type === "restore") && !this.runtime.manifest.capabilities.includes("runtime.serialize")) throw new Error("POKIE WASM artifact does not declare runtime.serialize; serialize/restore is unavailable.");
             if (this.session === undefined) throw new Error("Instantiate a POKIE WASM runtime before sending this worker command.");
             if (request.type === "play") {
                 if (!this.runtime.manifest.capabilities.includes("runtime.play")) {
@@ -89,6 +131,8 @@ export class PokieWasmWorkerProtocol {
                 this.trace = undefined;
                 return {id: request.id, ok: true, result: this.session.serialize()};
             }
+            if (request.type === "view") return {id: request.id, ok: true, result: {initialData: this.session.getInitialData?.() ?? this.initialData,
+                ...(this.runtime.manifest.capabilities.includes("runtime.serialize") ? {state: this.session.serialize()} : {})}};
             if (request.type === "trace") return {id: request.id, ok: true, result: this.trace === undefined ? null : {entries: this.trace.entries, dropped: this.trace.dropped, status: this.trace.status}};
             if (request.type === "serialize") return {id: request.id, ok: true, result: this.session.serialize()};
             throw new Error(`Unsupported POKIE WASM worker request type ${JSON.stringify(request.type)}.`);
@@ -98,16 +142,18 @@ export class PokieWasmWorkerProtocol {
             // happen before a module trap, so callers can correct them and
             // continue using the active runtime.
             if (runtimeOperationInvoked && isWasmRuntimeTrap(error)) this.release();
-            return {id, ok: false, error: error instanceof Error ? error.message : String(error)};
+            return {id, ok: false, error: error instanceof Error ? error.message : String(error), ...(runtimeOperationInvoked && isWasmRuntimeTrap(error) ? {fatal: true} : {})};
         }
     }
 
     private release(): void {
+        this.operation?.abort();
         this.session?.dispose();
         this.runtime?.dispose();
         this.session = undefined;
         this.runtime = undefined;
         this.trace = undefined;
+        this.initialData = undefined;
         this.tapeMetrics = {inputTapeLength: 0, verificationDraws: 0, legacyPrefixDraws: 0};
     }
 }
@@ -143,6 +189,16 @@ function assertValidWorkerRequest(value: unknown): asserts value is PokieWasmWor
         case "restore":
             if (!isRecord(value.state)) throw new Error("Malformed POKIE WASM restore request: state must be an object.");
             return;
+        case "simulate":
+            if (!Number.isSafeInteger(value.rounds) || (value.rounds as number) < 1 || (value.rounds as number) > 100000000 || typeof value.seed !== "string" || value.seed.length === 0 ||
+                (value.mode !== undefined && typeof value.mode !== "string") || (value.bet !== undefined && (typeof value.bet !== "number" || !Number.isFinite(value.bet) || value.bet <= 0))) throw new Error("Malformed WASM simulation request: supply a bounded round count, seed, optional mode and positive fractional bet.");
+            return;
+        case "replay-target":
+            if (!isRecord(value.options) || typeof value.options.seed !== "string" || !value.options.seed.length || !Number.isSafeInteger(value.options.round) || (value.options.round as number) < 1 || (value.options.round as number) > 1000000 ||
+                (value.options.unit !== undefined && value.options.unit !== "step" && value.options.unit !== "logical-round") || (value.options.modeName !== undefined && typeof value.options.modeName !== "string") ||
+                (value.options.entryCommands !== undefined && (!Array.isArray(value.options.entryCommands) || !value.options.entryCommands.every(isRecord)))) throw new Error("Malformed WASM replay target request.");
+            return;
+        case "view":
         case "serialize":
         case "trace":
         case "cancel":

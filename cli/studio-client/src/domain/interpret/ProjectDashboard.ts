@@ -71,7 +71,7 @@ const PROJECT_OPEN_FAILURE_MESSAGE =
 // sidecar are already the product contract's safe recovery guidance. They can
 // arrive during direct launch or history restore before a project type exists,
 // so identify the contract wording rather than relying on a typed dashboard.
-const WASM_CONTRACT_FAILURE = /(?:WASM target|WASM component|PokieWasmComponentManifest)/i;
+const WASM_CONTRACT_FAILURE = /(?:WASM (?:target|component|artifact|manifest|runtime|Project)|PokieWasmComponentManifest)/i;
 
 // Project-context failures can originate while Studio starts directly in a workspace, restores a
 // project-scoped browser-history entry, or reloads the active project. Those are all the same
