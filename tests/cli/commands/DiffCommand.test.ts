@@ -965,15 +965,15 @@ describe("DiffCommand canonical definitions through dispatch", () => {
     });
 
     it("maps SIGINT cancellation through dispatch without publishing an equality result", async () => {
-        const read = fs.readFileSync.bind(fs);
+        const open = fs.openSync.bind(fs);
         let cancelled = false;
-        jest.spyOn(fs, "readFileSync").mockImplementation((...args) => {
-            const contents = read(...args);
+        jest.spyOn(fs, "openSync").mockImplementation((...args) => {
+            const descriptor = open(...args);
             if (!cancelled && String(args[0]) === a) {
                 cancelled = true;
                 process.emit("SIGINT");
             }
-            return contents;
+            return descriptor;
         });
         const count = process.listenerCount("SIGINT");
         expect(await run([a, b, "--comparison", "definition", "--format", "json", "--ci"])).toBe(2);

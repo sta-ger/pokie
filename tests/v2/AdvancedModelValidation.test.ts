@@ -255,3 +255,31 @@ it.each(["denomination", "counter"])("reports cross-transition %s violations eve
     const report = await new AdvancedModelValidator().validate(model);
     expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.transition-state", path: "transitions.0", status: "violation", message: expect.stringContaining(field === "denomination" ? "expected 0.05, actual 7.5" : "expected 1, actual 2"), evidence: expect.objectContaining({before, after})}));
 });
+
+it.each(["identity", "context", "duration", "completion"])("retains a concrete weighted-selection %s counterexample from a real runtime snapshot", async field => {
+    const {weightedBonusBlueprint} = await import("./fixtures/WeightedBonusGame.js");
+    const {generatedMechanicsGame} = await import("./fixtures/ExistingMechanicsGame.js");
+    const game = generatedMechanicsGame(weightedBonusBlueprint());
+    let state: import("../../src/session/videoslot/authored/BoundedVideoSlotSession.js").BoundedSessionState | undefined;
+    let schema: DeclaredTransitionModel["schema"];
+    for (let seed = 0; seed < 20; seed++) {
+        const session = game.createSession({seed}) as import("../../src/session/videoslot/authored/BoundedVideoSlotSession.js").BoundedVideoSlotSession;
+        session.setBet(0.05);
+        session.setCreditsAmount(100);
+        session.play();
+        if (session.toSessionState().remaining > 0) {
+            state = session.toSessionState();
+            schema = session.getSessionStateSchema();
+            break;
+        }
+    }
+    expect(state?.remaining).toBeGreaterThan(0);
+    const corrupt = JSON.parse(JSON.stringify(state)) as NonNullable<typeof state>;
+    if (field === "identity") corrupt.bonus!.selection!.outcomeId = "absent";
+    if (field === "context") corrupt.bonus!.selection!.context = "logical:foreign";
+    if (field === "duration") corrupt.remaining--;
+    if (field === "completion") corrupt.bonus!.completed++;
+    const model: DeclaredTransitionModel = {kind: "declared-transitions", initial: "bad", states: [{id: "bad", state: corrupt}], transitions: [{from: "bad", to: "bad"}], schema};
+    const report = await new AdvancedModelValidator().validate(model);
+    expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.executable-state", status: "violation", path: "states.0.state", message: expect.stringMatching(/identity|context|duration|completion/), evidence: expect.objectContaining({actual: expect.objectContaining({bonus: corrupt.bonus})})}));
+});
