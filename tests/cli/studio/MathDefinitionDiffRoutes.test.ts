@@ -156,6 +156,60 @@ describe("definition comparison public Studio route", () => {
         },
     );
 
+    it.each(["betModes[0].costMultiplier", "/betModes/0/costMultiplier", "literal symbol", "retained declarations"])(
+        "shares segment authority and retained provenance for %s through saved-source CLI/Studio", async field => {
+            const model = {...fractionalBetBlueprint([0.05], true), betModes: [{id: "custom", costMultiplier: 2}]};
+            if (field === "literal symbol") {
+                model.symbols.push("A.B");
+                model.paytable["A.B"] = {3: 2};
+            }
+            if (field === "retained declarations") {
+                model.reelSequences = model.reelStrips!.map(symbols => ({type: "exact", symbols}));
+                Reflect.deleteProperty(model, "reelStrips");
+                Reflect.deleteProperty(model.paytable, "B");
+            }
+            const changed = JSON.parse(JSON.stringify(model)) as typeof model;
+            if (field === "literal symbol") changed.paytable["A.B"][3] = 9;
+            else if (field !== "retained declarations") changed.betModes[0].costMultiplier = 7.5;
+            const declaration = (boundary: string) => `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model,
+                maxWinPolicy: {type: "none", scope: "logical-round", authority: "declared policy"},
+                unsupported: [{path: ${JSON.stringify(boundary)}, code: "custom-field", message: "Unavailable custom collaborator"}]};`;
+            const a = field === "retained declarations" ? left : writeDescriptorPackage(root, {name: "authority-left", model,
+                descriptorBody: declaration(field === "literal symbol" ? "paytable.A" : field)});
+            const b = writeDescriptorPackage(root, {name: "authority-right", model: changed,
+                descriptorBody: field === "retained declarations"
+                    ? 'return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model};'
+                    : declaration(field === "literal symbol" ? "paytable.A" : field)});
+            fs.writeFileSync(left, JSON.stringify(model));
+            for (const [before, after] of [[a, b], [b, a]]) {
+                const result = await post({leftPath: before, rightPath: after, revision: 0});
+                expect(result.status).toBe(200);
+                expect(result.body).toEqual(await compareMathDefinitions(before, after));
+                const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+                try {
+                    expect(await dispatch([new DiffCommand()], ["node", "pokie", "diff", before, after, "--ci", "--format", "json"]))
+                        .toBe(field === "retained declarations" ? 0 : 2);
+                    expect(JSON.parse(log.mock.calls[0][0])).toEqual(result.body);
+                } finally {
+                    log.mockRestore();
+                }
+                if (field === "retained declarations") {
+                    for (const path of ["/reelSequences", "/reelSequences/0", "/reelSequences/0/type", "/reelSequences/0/symbols"]) {
+                        expect(result.body.changes).toContainEqual(expect.objectContaining({path, classification: "provenance", mathematical: false}));
+                    }
+                    for (const path of ["/paytable/B", "/paytable/A/2", "/mechanics/freeGames"]) {
+                        expect(result.body.changes).toContainEqual(expect.objectContaining({path, classification: "provenance", mathematical: false,
+                            before: expect.objectContaining({present: false}), after: expect.objectContaining({present: false}),}));
+                    }
+                } else expect(result.body.changes).toContainEqual(expect.objectContaining({
+                    path: field === "literal symbol" ? "/paytable/A.B/3" : "/betModes/0/costMultiplier",
+                    mathematical: field === "literal symbol",
+                    after: expect.objectContaining({provenance: expect.objectContaining({status: field === "literal symbol" ? "authored" : "unknown"})}),
+                }));
+            }
+        },
+    );
+
     it("compares saved versus draft without writes, builds or session construction", async () => {
         const bytes = fs.readFileSync(left);
         const draft = fractionalBetBlueprint([0.05, 7.5, 1e-7], true);

@@ -1,5 +1,6 @@
+import {modelFieldPathSegments} from "../generated/internal/modelFieldPath.js";
 import {definitionDiagnostics} from "./internal/definitionDiagnostics.js";
-import {definitionFieldAuthority} from "./internal/definitionFieldAuthority.js";
+import {definitionFieldAuthority, definitionFieldUnsupported} from "./internal/definitionFieldAuthority.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {validateMathDefinitionMaxWinPolicy} from "./validateMathDefinitionMaxWinPolicy.js";
 import {detachPackageModelData} from "../generated/PackageBlueprintExtraction.js";
@@ -91,8 +92,7 @@ function isRecord(value: unknown): value is Record<string, DefinitionJson> {
 function exactSequenceStrips(snapshot: MathDefinitionSnapshot): DefinitionJson[][] | undefined {
     const model = snapshot.effective;
     if (!isRecord(model) || model.reelStrips !== undefined || !Array.isArray(model.reelSequences) ||
-        !model.reelSequences.length || definitionFieldAuthority(snapshot.fields, ["reelSequences"])?.status === "unsupported" ||
-        snapshot.fields.some(field => field.status === "unsupported" && field.path.startsWith("reelSequences."))) return undefined;
+        !model.reelSequences.length || definitionFieldUnsupported(snapshot.fields, ["reelSequences"])) return undefined;
     const strips: DefinitionJson[][] = [];
     for (const reel of model.reelSequences) {
         if (!isRecord(reel) || reel.type !== "exact" || !Array.isArray(reel.symbols) ||
@@ -273,18 +273,27 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
                     ),
             );
         changes.push(...authoredChanges);
+        // Provenance belongs to retained declarations, not the normalized reel representation.
+        // Include recorded omissions without constructing any effective value for them.
+        const visited = new Set<string>();
         const provenance = (keys: string[]): void => {
-            const before = valueAt(leftModel, keys);
-            const after = valueAt(rightModel, keys);
-            if (!before.present || !after.present) return;
-            const container = (isRecord(before.value) && isRecord(after.value)) ||
-                (Array.isArray(before.value) && Array.isArray(after.value));
-            if (container) {
-                for (const key of Object.keys(before.value as object).sort()) provenance([...keys, key]);
-            }
+            const identity = JSON.stringify(keys);
+            if (visited.has(identity)) return;
+            visited.add(identity);
+            const before = valueAt(left.effective, keys);
+            const after = valueAt(right.effective, keys);
+            const beforeValue = before.present ? before.value : undefined;
+            const afterValue = after.present ? after.value : undefined;
+            const container = (isRecord(beforeValue) && isRecord(afterValue)) ||
+                (Array.isArray(beforeValue) && Array.isArray(afterValue));
+            const childKeys = [...new Set([
+                ...Object.keys(beforeValue !== null && typeof beforeValue === "object" ? beforeValue : {}),
+                ...Object.keys(afterValue !== null && typeof afterValue === "object" ? afterValue : {}),
+            ])].sort();
+            for (const key of childKeys) provenance([...keys, key]);
             const path = keys.length ? "/" + keys.map(definitionPointerPart).join("/") : "";
             if (
-                (!container && canonicalDefinitionJson(before.value) !== canonicalDefinitionJson(after.value)) ||
+                (before.present !== after.present || (!container && canonicalDefinitionJson(beforeValue) !== canonicalDefinitionJson(afterValue))) ||
                 changes.some(
                     (change) =>
                         change.path === path ||
@@ -292,8 +301,8 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
                         (!container && change.path.startsWith(path + "/")),
                 )
             ) return;
-            const a = side(left, before, keys, true);
-            const b = side(right, after, keys, true);
+            const a = side(left, before, keys);
+            const b = side(right, after, keys);
             // A child representation change already discloses adding/removing the declaration.
             // Independent container authority changes still need their own precise path.
             if (container && a.provenance.authored.present !== b.provenance.authored.present &&
@@ -308,6 +317,10 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
             });
         };
         provenance([]);
+        for (const field of [...left.fields, ...right.fields]) {
+            const keys = modelFieldPathSegments(field.path);
+            if (keys) provenance(keys);
+        }
         const diagnostics = (snapshot: MathDefinitionSnapshot): Map<string, DefinitionJson[]> => {
             const groups = new Map<string, DefinitionJson[]>();
             for (const issue of snapshot.diagnostics) {

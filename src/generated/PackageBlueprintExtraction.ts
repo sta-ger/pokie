@@ -1,3 +1,4 @@
+import {appendModelFieldPath} from "./internal/modelFieldPath.js";
 import {detachPackageModelData} from "./internal/detachPackageModelData.js";
 export {detachPackageModelData} from "./internal/detachPackageModelData.js";
 import {validateMathDefinitionMaxWinPolicy} from "../diff/validateMathDefinitionMaxWinPolicy.js";
@@ -12,6 +13,7 @@ import {PACKAGE_MODEL_DESCRIPTOR_VERSION} from "./PackageModelDescriptor.js";
 
 export type PackageExtractionDiagnostic = {path: string; code: string; message: string; severity?: ValidationIssueSeverity};
 export type PackageExtractionField = {
+    /** Dotted/numeric paths retain their spelling; literal property names use JSON-string brackets. */
     path: string;
     status: "exact" | "inferred" | "defaulted" | "unsupported";
     authority: string;
@@ -244,14 +246,14 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                 "betModes",
             ]);
             for (const key of Object.keys(model)) if (!known.has(key)) result.diagnostics.push({
-                path: key,
+                path: appendModelFieldPath("", key),
                 code: "unsupported-model-field",
                 message: "This field is outside the effective Blueprint model contract.",
             });
             const checkKeys = (value: unknown, field: string, allowed: string[]): void => {
                 if (value && typeof value === "object" && !Array.isArray(value)) for (const key of Object.keys(value)) {
                     if (!allowed.includes(key)) result.diagnostics.push({
-                        path: `${field}.${key}`,
+                        path: appendModelFieldPath(field, key),
                         code: "unsupported-model-field",
                         message: "Custom model behavior is outside the Blueprint representation.",
                     });
@@ -343,12 +345,12 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                 if (maximum * model.symbols.length > 1000000) throw new Error("Field evidence exceeds extraction limits");
                 for (const symbol of model.symbols) {
                     if (!hasOwn(model.paytable, symbol)) result.fields.push({
-                        path: `paytable.${symbol}`,
+                        path: appendModelFieldPath("paytable", symbol),
                         status: "exact",
                         authority: "descriptor: authored symbol table absent; no payouts",
                     });
                     else for (let count = 1; count <= maximum; count++) if (!hasOwn(model.paytable[symbol], String(count))) result.fields.push({
-                        path: `paytable.${symbol}.${count}`,
+                        path: appendModelFieldPath(appendModelFieldPath("paytable", symbol), String(count)),
                         status: "exact",
                         authority: "descriptor: authored payout absent; effective zero",
                     });
@@ -452,7 +454,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
 
     private recordFields(value: unknown, field: string, authority: string, fields: PackageExtractionField[]): void {
         if (field) fields.push({path: field, status: "exact", authority});
-        if (typeof value === "object" && value !== null) for (const [key, child] of Object.entries(value)) this.recordFields(child, field ? `${field}.${key}` : key, authority, fields);
+        if (typeof value === "object" && value !== null) for (const [key, child] of Object.entries(value)) this.recordFields(child, appendModelFieldPath(field, key), authority, fields);
     }
 }
 

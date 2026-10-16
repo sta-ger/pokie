@@ -1,6 +1,7 @@
 import {definitionDiagnostics} from "./internal/definitionDiagnostics.js";
-import {definitionFieldAuthority} from "./internal/definitionFieldAuthority.js";
+import {definitionFieldAuthority, definitionFieldUnsupported} from "./internal/definitionFieldAuthority.js";
 import fs from "fs";
+import {modelFieldPathContains, modelFieldPathSegments} from "../generated/internal/modelFieldPath.js";
 import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import {validateMathDefinitionMaxWinPolicy} from "./validateMathDefinitionMaxWinPolicy.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
@@ -65,26 +66,25 @@ function effectiveDefaults(model: Partial<GameBlueprint>, fields: PackageBluepri
             wilds: model.mechanics.modifiers.wilds.map((wild) => ({factor: 1, ...wild})),
         },
     };
-    // Retain declarations, but never fill an unknown collaborator with generated-runtime behavior.
-    const filterDefaults = (authored: unknown, effective: unknown, keys: string[]): unknown => {
-        if (definitionFieldAuthority(fields, keys)?.status === "unsupported") return authored;
-        if (authored === undefined && fields.some((field) => field.status === "unsupported" &&
-            field.path.startsWith(keys.join(".") + ".")) && Array.isArray(effective)) return undefined;
-        if (Array.isArray(effective)) return effective.map((value, index) =>
-            filterDefaults(Array.isArray(authored) ? authored[index] : undefined, value, [...keys, String(index)]));
-        if (effective !== null && typeof effective === "object") return Object.fromEntries(
-            Object.entries(effective).map(([key, value]) => [key,
-                filterDefaults(authored && typeof authored === "object" ? Reflect.get(authored, key) : undefined, value, [...keys, key]),
-            ]).filter(([, value]) => value !== undefined),
-        );
-        return effective;
-    };
-    if (fields.some((field) => field.status === "unsupported" &&
-        ["winModel", "screenGeometry"].some((dependency) => field.path === dependency || field.path.startsWith(dependency + ".")))) {
+    if (["winModel", "screenGeometry"].some(dependency => definitionFieldUnsupported(fields, [dependency]))) {
         // Horizontal lines also depend on a known evaluator and evaluated geometry.
         if (model.paylines === undefined) Reflect.deleteProperty(result, "paylines");
     }
-    return filterDefaults(model, result, []) as Record<string, unknown>;
+    return result;
+}
+
+// Retain declarations, but never fill an unknown collaborator with generated-runtime behavior.
+function filterDefaults(authored: unknown, effective: unknown, keys: string[], fields: PackageBlueprintExtractionResult["fields"]): unknown {
+    if (definitionFieldAuthority(fields, keys)?.status === "unsupported") return authored;
+    if (authored === undefined && definitionFieldUnsupported(fields, keys) && Array.isArray(effective)) return undefined;
+    if (Array.isArray(effective)) return effective.map((value, index) =>
+        filterDefaults(Array.isArray(authored) ? authored[index] : undefined, value, [...keys, String(index)], fields));
+    if (effective !== null && typeof effective === "object") return Object.fromEntries(
+        Object.entries(effective).map(([key, value]) => [key,
+            filterDefaults(authored && typeof authored === "object" ? Reflect.get(authored, key) : undefined, value, [...keys, key], fields),
+        ]).filter(([, value]) => value !== undefined),
+    );
+    return effective;
 }
 
 /** Authoritative server-side readers. Outcome artifacts deliberately have no inverse model reader. */
@@ -226,7 +226,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
                         if (result.effective && typeof result.effective === "object") Reflect.deleteProperty(result.effective, "symbols");
                         if (result.authored && typeof result.authored === "object") Reflect.deleteProperty(result.authored, "symbols");
                         result.fields = result.fields.filter(
-                            (field) => field.path !== "symbols" && !field.path.startsWith("symbols."),
+                            (field) => !modelFieldPathContains(["symbols"], modelFieldPathSegments(field.path) ?? []),
                         );
                         result.fields.push({
                             path: "symbols",
@@ -324,8 +324,8 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
                 ? ({...authored, maxWinPolicy: input.maxWinPolicy} as unknown as DefinitionJson)
                 : snapshot.authored;
             for (const field of result.fields) {
-                if (field.status === "exact" && !field.path.startsWith("maxWinPolicy")) field.authority = "Blueprint source declaration";
-                if (field.path === "reelStrips" || field.path.startsWith("reelStrips.")) {
+                if (field.status === "exact" && !modelFieldPathContains(["maxWinPolicy"], modelFieldPathSegments(field.path) ?? [])) field.authority = "Blueprint source declaration";
+                if (modelFieldPathContains(["reelStrips"], modelFieldPathSegments(field.path) ?? [])) {
                     if (!authored.reelStrips) {
                         field.authority = "Deterministic authored reel materialization";
                         field.status = "inferred";
@@ -386,10 +386,10 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
         if (policy.type === "unknown") snapshot.diagnostics.push(
             diagnostic("max-win-policy-unknown", policy.authority, "warning", "/maxWinPolicy"),
         );
-        snapshot.effective = {
+        snapshot.effective = filterDefaults(snapshot.authored, {
             ...(extraction.source.descriptorVersion === 1 ? effectiveDefaults(model, extraction.fields) : model),
             maxWinPolicy: policy,
-        } as DefinitionJson;
+        }, [], extraction.fields) as DefinitionJson;
         snapshot.diagnostics = definitionDiagnostics(snapshot.diagnostics);
         return snapshot;
     }

@@ -318,13 +318,27 @@ models. Whole-sequence selection retains `logical-round-v1` /
 policy, target references, payout units and forced free games are compared even
 when current payouts agree.
 
+Authority evidence accepts equivalent dotted (`betModes.0.costMultiplier`),
+numeric bracket (`betModes[0].costMultiplier`) and RFC 6901 pointer
+(`/betModes/0/costMultiplier`) paths; `$` or an empty path denotes the root.
+Matching uses complete segments. A dot denotes nesting, so `paytable.A` never
+covers the distinct symbol `A.B`. Literal property names can use JSON-string
+brackets (`paytable["A.B"].3`) or escaped pointers (`/paytable/A.B/3`). Extraction
+keeps existing simple dotted paths and uses JSON-string brackets for ambiguous
+literal keys. Unsupported ancestors override exact/default evidence at every
+descendant; default filtering and normalization use the same path identity.
+
 Provenance is compared at containers as well as leaves, including empty objects
-and arrays. A container authority change has its own pointer even when child
+and arrays. Retained all-exact sequence declarations also retain authority-only
+changes at `/reelSequences`, individual reels, `type`, and `symbols`, even though
+mathematical values compare through effective strips. Recorded absent symbol
+tables, payout entries and omitted feature fields retain their own provenance
+changes with `present: false` on both sides. This never supplies missing values. A container authority change has its own pointer even when child
 fields have independent authority. A child representation change that already
 discloses adding/removing a default declaration avoids redundant parent entries.
 
 Diagnostic paths use JSON Pointers, with `""` for the root. Source validator dotted
-paths and numeric brackets are adapted at the comparison boundary; already
+paths and numeric/JSON-string brackets are adapted at the comparison boundary; already
 escaped pointers remain unchanged. Missing validator paths use the same field
 fallback as extraction (or the root when no field is known). Exact normalized
 `(path, code, severity, message)` copies are deduplicated, preserving all distinct

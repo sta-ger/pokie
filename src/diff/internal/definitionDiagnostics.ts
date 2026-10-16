@@ -1,4 +1,5 @@
 import type {MathDefinitionDiagnostic} from "../MathDefinitionDiff.js";
+import {modelFieldPathSegments} from "../../generated/internal/modelFieldPath.js";
 
 function pointerPart(key: string): string {
     return key.replace(/~/g, "~0").replace(/\//g, "~1");
@@ -15,8 +16,8 @@ export function definitionDiagnostics(issues: MathDefinitionDiagnostic[]): MathD
                 .find(field => issue.code.startsWith(`blueprint-${field.toLowerCase()}`));
             path = field ?? "";
         }
-        if (path && !path.startsWith("/")) path = "/" + path.replace(/^\$\.?/, "")
-            .replace(/\[(\d+)\]/g, ".$1").split(".").map(pointerPart).join("/");
+        const keys = modelFieldPathSegments(path);
+        if (keys) path = keys.length ? "/" + keys.map(pointerPart).join("/") : "";
         const normalized = {...issue, path};
         unique.set(JSON.stringify([path, issue.code, issue.severity, issue.message]), normalized);
     }

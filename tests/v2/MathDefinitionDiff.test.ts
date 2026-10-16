@@ -834,3 +834,133 @@ describe("remaining comparison information loss", () => {
         expect(bad.betModes[0].costMultiplier).toBe("7.5");
     });
 });
+
+
+describe("segment authority and retained provenance", () => {
+    const customSource = (model: api.GameBlueprint, path: string): api.PokieGame => ({
+        getManifest: () => model.manifest,
+        getModelDescriptor: () => ({descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model,
+            maxWinPolicy: {type: "none", scope: "logical-round", authority: "declared policy"},
+            unsupported: [{path, code: "custom-field", message: "Unavailable custom collaborator"}],}),
+        createSession: () => {
+            throw new Error("No session during comparison");
+        },
+    });
+
+    it.each([
+        "betModes.0.costMultiplier", "betModes[0].costMultiplier", '$.betModes[0]["costMultiplier"]',
+        "/betModes/0/costMultiplier",
+    ])("shares %s authority through extraction, defaults and both direct comparison APIs", async path => {
+        const reader = new api.MathDefinitionSourceReader();
+        const model = {...base(), betModes: [{id: "custom"}]};
+        const changed = clone(model);
+        changed.betModes[0] = {...changed.betModes[0], ...{costMultiplier: 7.5}};
+        const a = customSource(model, path),
+            b = customSource(changed, path);
+        const left = await reader.read(a),
+            right = await reader.read(b);
+        expect((left.effective as unknown as api.GameBlueprint).betModes![0]).not.toHaveProperty("costMultiplier");
+        expect(left.diagnostics).toContainEqual(expect.objectContaining({path: "/betModes/0/costMultiplier", code: "custom-field"}));
+        for (const [before, after, x, y] of [[left, right, a, b], [right, left, b, a]] as const) {
+            const result = new api.MathDefinitionDiffer().diff(before, after);
+            expect(await api.compareMathDefinitions(x, y, {reader})).toEqual(result);
+            expect(result.status).toBe("unsupported");
+            expect(result.changes).toContainEqual(expect.objectContaining({
+                path: "/betModes/0/costMultiplier", mathematical: false,
+                before: expect.objectContaining({provenance: expect.objectContaining({status: "unknown", authority: "custom-field"})}),
+                after: expect.objectContaining({provenance: expect.objectContaining({status: "unknown", authority: "custom-field"})}),
+            }));
+        }
+        const repaired = clone(changed);
+        for (let use = 0; use < 2; use++) {
+            const known = await reader.read(source(repaired));
+            expect(new api.MathDefinitionDiffer().diff(known, known).status).toBe("identical");
+        }
+    });
+
+    it.each(["winModel.type", 'winModel["type"]', "/winModel/type", "screenGeometry.evaluated.rows", "/screenGeometry/evaluated/rows", "paylines[0][1]"])(
+        "does not infer dependent horizontal lines from unsupported %s", async path => {
+            const model = base();
+            Reflect.deleteProperty(model, "paylines");
+            const snapshot = await new api.MathDefinitionSourceReader().read(customSource(model, path));
+            expect(snapshot.effective).not.toHaveProperty("paylines");
+            if (path.includes("winModel")) expect(snapshot.effective).not.toHaveProperty("winModel.type");
+        },
+    );
+
+    it.each(["$", "/maxWinPolicy", 'maxWinPolicy["type"]'])("filters synthesized policy evidence under unsupported %s", async path => {
+        const model = base();
+        const snapshot = await new api.MathDefinitionSourceReader().read({
+            ...customSource(model, path),
+            getModelDescriptor: () => ({descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model,
+                unsupported: [{path, code: "custom-field", message: "Unavailable collaborator"}],}),
+        });
+        if (path.endsWith('["type"]')) expect(snapshot.effective).not.toHaveProperty("maxWinPolicy.type");
+        else expect(snapshot.effective).not.toHaveProperty("maxWinPolicy");
+        expect(snapshot.authored).toEqual(model);
+    });
+
+    it.each(["A.B", "A/B~C", 'A[0]"\\', "$"])("keeps literal symbol %s distinct from nested authority", async symbol => {
+        const model = base();
+        model.symbols.push(symbol);
+        model.paytable[symbol] = {3: 2};
+        const changed = clone(model);
+        changed.paytable[symbol][3] = 9;
+        const reader = new api.MathDefinitionSourceReader();
+        const left = await reader.read(customSource(model, "paytable.A"));
+        const right = await reader.read(customSource(changed, "paytable.A"));
+        const path = "/paytable/" + symbol.replace(/~/g, "~0").replace(/\//g, "~1") + "/3";
+        expect(new api.MathDefinitionDiffer().diff(left, right).changes).toContainEqual(expect.objectContaining({
+            path, mathematical: true,
+            after: expect.objectContaining({provenance: expect.objectContaining({status: "authored"})}),
+        }));
+        for (const authorityPath of [`paytable[${JSON.stringify(symbol)}]`, "/paytable/" + symbol.replace(/~/g, "~0").replace(/\//g, "~1")]) {
+            const result = await api.compareMathDefinitions(customSource(model, authorityPath), customSource(changed, authorityPath));
+            expect(result.changes).toContainEqual(expect.objectContaining({
+                path, mathematical: false,
+                after: expect.objectContaining({provenance: expect.objectContaining({status: "unknown"})}),
+            }));
+        }
+    });
+
+    it.each(["reelSequences", "reelSequences.0", "reelSequences.0.type", "reelSequences.0.symbols", "reelSequences.0.symbols.0",
+        "paytable.B", "paytable.A.2", "mechanics.freeGames"])(
+        "retains authority-only changes at %s in both directions without inventing values", async field => {
+            const model = base();
+            model.reelSequences = model.reelStrips!.map(symbols => ({type: "exact", symbols}));
+            Reflect.deleteProperty(model, "reelStrips");
+            Reflect.deleteProperty(model.paytable, "B");
+            const left = await new api.MathDefinitionSourceReader().read(source(model));
+            expect(left.support).toBe("complete");
+            const right = clone(left);
+            right.fields.find(entry => entry.path === field)!.authority = "replacement retained authority";
+            for (const [a, b] of [[left, right], [right, left]]) {
+                const result = new api.MathDefinitionDiffer().diff(a, b);
+                expect(result.status).toBe("different");
+                const absent = !field.startsWith("reelSequences");
+                expect(result.changes).toEqual([expect.objectContaining({
+                    path: "/" + field.split(".").join("/"), classification: "provenance", mathematical: false,
+                    before: expect.objectContaining({present: !absent}), after: expect.objectContaining({present: !absent}),
+                })]);
+                if (absent) expect(JSON.stringify(result.changes)).not.toContain('"value":');
+            }
+            expect(new api.MathDefinitionDiffer().diff(left, clone(left)).changes).toEqual([]);
+            const respelled = clone(left);
+            respelled.fields.find(entry => entry.path === field)!.path = "/" + field.split(".").join("/");
+            expect(new api.MathDefinitionDiffer().diff(left, respelled).changes).toEqual([]);
+        },
+    );
+
+    it.each(["reelSequences[0].symbols", "/reelSequences/0/type"])("does not normalize unknown exact sequence evidence at %s", async path => {
+        const model = base();
+        model.reelSequences = model.reelStrips!.map(symbols => ({type: "exact", symbols}));
+        Reflect.deleteProperty(model, "reelStrips");
+        const left = await new api.MathDefinitionSourceReader().read(customSource(model, path));
+        const right = clone(left);
+        (right.effective as unknown as api.GameBlueprint).reelSequences![0] = {type: "exact", symbols: ["B", "A"]};
+        const result = new api.MathDefinitionDiffer().diff(left, right);
+        expect(result.changes.every(change => !change.path.startsWith("/reelStrips"))).toBe(true);
+        if (path.includes("symbols")) expect(result.changes.filter(change => change.path.startsWith("/reelSequences/0/symbols"))
+            .every(change => !change.mathematical && change.after.provenance.status === "unknown")).toBe(true);
+    });
+});
