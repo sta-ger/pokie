@@ -58,13 +58,19 @@ async function click(label) {
 }
 async function input(label, value) {
     const locator = `(() => {const labels=[...document.querySelectorAll('label')];const node=labels.find(value=>value.textContent.startsWith(${JSON.stringify(label)}));return node&&document.getElementById(node.htmlFor);})()`;
-    assert.equal(await evaluate(`(() => {const node=${locator}; if(!node)return false;node.focus();return true;})()`), true, `input ${label}`);
-    await call("Input.dispatchKeyEvent", {type: "keyDown", key: "a", code: "KeyA", modifiers: 2}, sessionId);
-    await call("Input.dispatchKeyEvent", {type: "keyUp", key: "a", code: "KeyA", modifiers: 2}, sessionId);
+    // Select the native input's existing contents before native insertion. A key/code-only
+    // Ctrl+A dispatch does not establish that Chromium selected the previous checkpoint.
+    assert.equal(await evaluate(`(() => {const node=${locator}; if(!node)return false;node.focus();node.select();return document.activeElement===node&&node.selectionStart===0&&node.selectionEnd===node.value.length;})()`), true, `selected input ${label}`);
     await call("Input.insertText", {text: String(value)}, sessionId);
+    assert.equal(await evaluate(`(${locator}).value`), String(value), `native ${label} input readback`);
 }
 const jobs = async () => (await api("/api/project/jobs")).jobs;
-const latest = operation => waitFor(jobs, rows => rows.some(row => row.operation === operation), operation).then(rows => rows.filter(row => row.operation === operation).sort((left,right)=>left.createdAt-right.createdAt).at(-1));
+async function submitJob(operation, label) {
+    const previous = new Set((await jobs()).map(row => row.id));
+    await click(label);
+    return waitFor(jobs, rows => rows.some(row => row.operation === operation && !previous.has(row.id)), `new ${operation} after ${label}`)
+        .then(rows => rows.find(row => row.operation === operation && !previous.has(row.id)));
+}
 async function jobTerminal(job) { return waitFor(async () => (await jobs()).find(row => row.id === job.id), row => row && ["completed", "failed", "cancelled", "recovery-required"].includes(row.status), `job ${job.id}`); }
 async function startSimulation(rounds) {
     await click("Simulation");
@@ -109,29 +115,47 @@ try {
     }
     const requests = await evaluate("window.__wasm.requests");
     for (const round of expected) assert(requests.some(row => row.type === "play" && row.bet === round.bet));
-    await click("Copy current checkpoint to input");
+    // Syntax rejection is local and must neither submit a job nor mutate the live Worker.
+    const beforeMalformed = (await jobs()).map(row => row.id).sort();
+    await input("JSON checkpoint", "{");
     await click("Restore checkpoint");
-    await waitFor(jobs, rows => rows.filter(row => row.operation === "browser-play").sort((left,right)=>left.createdAt-right.createdAt).at(-1)?.status === "completed", "rendered JSON checkpoint restore");
-    const invalid = JSON.parse(await evaluate("[...document.querySelectorAll('input')].find(node=>node.labels?.[0]?.textContent==='JSON checkpoint').value"));
+    await rendered("Supply valid checkpoint JSON");
+    assert.deepEqual((await jobs()).map(row => row.id).sort(), beforeMalformed);
+    await click("Copy current checkpoint to input");
+    const checkpointValue = () => evaluate("[...document.querySelectorAll('input')].find(node=>node.labels?.[0]?.textContent==='JSON checkpoint').value");
+    const checkpoint = JSON.parse(await checkpointValue());
+    const recordedBefore = (await api("/api/project/rounds")).length;
+    const restore = await submitJob("browser-play", "Restore checkpoint");
+    assert.equal((await jobTerminal(restore)).status, "completed");
+    assert.equal((await api("/api/project/rounds")).length, recordedBefore, "restoration is not a spin");
+    const invalid = {...checkpoint};
     invalid.artifactIdentity = "foreign";
     await input("JSON checkpoint", JSON.stringify(invalid));
-    await click("Restore checkpoint");
-    await waitFor(jobs, rows => rows.filter(row => row.operation === "browser-play").sort((left,right)=>left.createdAt-right.createdAt).at(-1)?.status === "failed", "rejected foreign checkpoint");
-    await waitFor(() => evaluate("!!document.querySelector('[role=alert]')"), Boolean, "rendered restore diagnostic");
-    await click("Spin");
+    const rejected = await jobTerminal(await submitJob("browser-play", "Restore checkpoint"));
+    assert.equal(rejected.status, "failed");
+    assert.deepEqual(rejected.request.state, invalid, "the exact foreign checkpoint reached admission");
+    assert.match(rejected.error, /incompatible artifact identity/);
+    await rendered("Checkpoint restore failed. Supply a valid checkpoint from this WASM artifact and matching version");
+    assert.equal((await api("/api/project/rounds")).length, recordedBefore, "rejection is not a spin");
+    await click("Copy current checkpoint to input");
+    assert.deepEqual(JSON.parse(await checkpointValue()), checkpoint, "rejection preserves the confirmed checkpoint");
+    const reused = await jobTerminal(await submitJob("browser-play", "Spin"));
+    assert.equal(reused.status, "completed");
+    assert.equal(reused.result.detail.session.debug.stateAfter.sequence, checkpoint.sequence + 1);
     const simulation = await startSimulation(4096);
     assert.equal((await jobTerminal(simulation)).status, "completed");
     const report = await api(`/api/project/reports/${simulation.id}`);
-    assert(report.report.rounds > 0);
+    assert.equal(report.report.rounds, 4096);
     assert.equal((await fetch(`${base}/api/project/reports/${simulation.id}/download?format=json`)).status, 200);
     await click("Replay");
     await input("Seed", "0");
     await input("Target round number", 3);
     await click("Load");
-    await click("Run again");
-    const replay = await latest("replay");
+    const replay = await submitJob("replay", "Run again");
     assert.equal((await jobTerminal(replay)).status, "completed");
     assert.equal((await fetch(`${base}/api/project/replays/${replay.id}/download`)).status, 200);
+    const retried = await submitJob("replay", "Run again with the same parameters");
+    assert.equal((await jobTerminal(retried)).status, "completed");
     const active = await startSimulation(2000000);
     await waitFor(() => evaluate("window.__wasm.progress"), rows => rows.length > 0, "actual Worker progress");
     await click("Cancel");

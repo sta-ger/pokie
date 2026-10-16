@@ -1,9 +1,11 @@
-import {act, renderHook, waitFor} from "@testing-library/react";
+import {act, fireEvent, render, renderHook, screen, waitFor} from "@testing-library/react";
+import {MantineProvider} from "@mantine/core";
 import {StrictMode, type ReactNode} from "react";
 import type {FetchLike} from "../../../../../cli/studio-client/src/api/apiClient";
 import type {StudioRuntimeSessionView} from "../../../../../cli/studio-client/src/api/types";
 import {StudioApiProvider} from "../../../../../cli/studio-client/src/context/StudioApiProvider";
 import {usePlaySession} from "../../../../../cli/studio-client/src/hooks/usePlaySession";
+import {PlayTab} from "../../../../../cli/studio-client/src/components/project/PlayTab";
 
 const GAME = {id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"};
 
@@ -202,4 +204,57 @@ it("continues a restored pending feature using its saved public delivery cursor"
     expect(bodies[0]).toEqual({requestId: expect.any(String), delivery: "composite", continuation: {roundId: logicalRound.roundId, cursor: logicalRound.cursor}});
     expect(bodies[0]).not.toHaveProperty("roundId");
     expect(bodies[0]).not.toHaveProperty("bet");
+});
+
+it("renders local JSON rejection, executed restore rejection, retained Play and explicit corrected restore through the real Play tab", async () => {
+    const state = {schemaVersion: "pokie.state.v3", artifactIdentity: "sha256:original", seed: "0", sequence: 3, credits: 992.4499999, drawCount: 8, rngState: 123};
+    const foreign = {...state, artifactIdentity: "foreign"};
+    const settled = session("stable", {credits: state.credits, bet: 0.05, availableBets: [0.05], debug: {stateAfter: state}});
+    const requests: {url: string; body: Record<string, unknown>}[] = [];
+    let current: ReturnType<typeof usePlaySession>;
+    const fetchImpl: FetchLike = (url, init) => {
+        const body = JSON.parse(init?.body ?? "{}");
+        requests.push({url, body});
+        if (url.endsWith("/restore")) {
+            if (body.state.artifactIdentity === "foreign") return Promise.resolve({ok: false, status: 400, json: () => Promise.resolve({error: "POKIE WASM state belongs to an incompatible artifact identity."})});
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", session: {...settled, sessionId: "restored"}})});
+        }
+        return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", session: settled})});
+    };
+    function Page() {
+        current = usePlaySession();
+        return <PlayTab session={current.session} sessionId={current.sessionId} onNewSession={current.newSession}
+            onSpin={current.spin} onFindAnyWin={current.findAnyWin} onFindSymbolWin={current.findSymbolWin}
+            onFindFreeGames={current.findFreeGames} onRestore={current.restore} />;
+    }
+    render(<MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><Page /></StudioApiProvider></MantineProvider>);
+    fireEvent.click(screen.getByRole("button", {name: "New Play session"}));
+    await screen.findByRole("button", {name: "Reset Play session"});
+    const input = screen.getByLabelText("JSON checkpoint");
+    fireEvent.change(input, {target: {value: "{"}});
+    fireEvent.click(screen.getByRole("button", {name: "Restore checkpoint"}));
+    expect(screen.getByRole("alert")).toHaveTextContent("Supply valid checkpoint JSON");
+    expect(requests).toHaveLength(1);
+    expect(current!.sessionId).toBe("stable");
+    fireEvent.change(input, {target: {value: JSON.stringify(foreign)}});
+    fireEvent.click(screen.getByRole("button", {name: "Restore checkpoint"}));
+    expect(screen.getByRole("button", {name: "Restore checkpoint"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Spin"})).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Checkpoint restore failed. Supply a valid checkpoint from this WASM artifact and matching version"));
+    expect(screen.getByRole("alert")).toHaveTextContent("incompatible artifact identity");
+    expect(current!.sessionId).toBe("stable");
+    expect(current!.session).toMatchObject({status: "error", subject: "Checkpoint restore", previousSession: settled});
+    expect(requests[1]).toEqual({url: "/api/project/play/session/restore", body: {state: foreign}});
+    for (let index = 0; index < 2; index++) {
+        fireEvent.click(screen.getByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(current!.session.status).toBe("ok"));
+        expect(requests.at(-1)?.url).toBe("/api/project/play/sessions/stable/spin");
+    }
+    fireEvent.click(screen.getByRole("button", {name: "Copy current checkpoint to input"}));
+    expect(input).toHaveValue(JSON.stringify(state));
+    fireEvent.click(screen.getByRole("button", {name: "Restore checkpoint"}));
+    await waitFor(() => expect(current!.sessionId).toBe("restored"));
+    expect(requests.at(-1)).toEqual({url: "/api/project/play/session/restore", body: {state}});
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
 });

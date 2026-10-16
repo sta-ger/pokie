@@ -49,6 +49,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
             }
             const requestId = ++requestIdRef.current;
             const previousSession = activeSessionRef.current;
+            const subject = checkpoint === undefined ? "This session" : "Checkpoint restore";
             setSession({status: "loading", ...(previousSession === undefined ? {} : {previousSession})});
             createPlaySession(fetchImpl, seed, modeName, checkpoint)
                 .then((result) => {
@@ -67,7 +68,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                         // Session creation can fail after a previously confirmed session has completed a
                         // round. That failed reset has not invalidated the confirmed session, so retain
                         // its identity and round while giving the designer actionable recovery copy.
-                        setSession({status: "error", message: result.message, subject: "This session", ...(previousSession === undefined ? {} : {previousSession})});
+                        setSession({status: "error", message: result.message, subject, ...(previousSession === undefined ? {} : {previousSession})});
                         return;
                     }
                     // "No active project" means the old session is no longer safely actionable.
@@ -79,7 +80,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                 })
                 .catch((error: unknown) => {
                     if (requestId === requestIdRef.current) {
-                        setSession({status: "error", message: errorMessage(error), ...(previousSession === undefined ? {} : {previousSession})});
+                        setSession({status: "error", message: errorMessage(error), subject, ...(previousSession === undefined ? {} : {previousSession})});
                     }
                 })
                 .finally(() => newSessionGuard.end());

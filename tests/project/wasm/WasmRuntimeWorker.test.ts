@@ -1071,6 +1071,63 @@ async function browserOwner(fixture = createCanonicalWasmFixture()) {
         fs.rmSync(directory, {recursive: true, force: true});
     }};
 }
+it("V2C-22-RESTORE-REJECTION retains an executed foreign-checkpoint failure and the original playable owner", async () => {
+    const fixture = createCanonicalWasmFixture({availableBets: [0.05, 7.5, 1e-7]});
+    const test = await browserOwner(fixture);
+    const reference = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("0"));
+    const worker = new PokieWasmWorkerProtocol();
+    const fresh = new PokieWasmWorkerProtocol();
+    try {
+        for (const target of [worker, fresh]) expect(await target.handle({id: "start", type: "instantiate", ...fixture, seed: "0"})).toMatchObject({ok: true});
+        const created = await test.api.createPlaySession(test.owner.fetch, "0");
+        if (created.status !== "ok") throw new Error("Creation rejected");
+        const native = reference.createSession("0");
+        for (const bet of [0.05, 7.5, 1e-7]) {
+            await native.play({bet});
+            expect(await worker.handle({id: "play", type: "play", command: {bet}})).toMatchObject({ok: true});
+            expect(await test.api.spinPlaySession(test.owner.fetch, created.session.sessionId, bet)).toMatchObject({status: "ok"});
+        }
+        const saved = JSON.parse(JSON.stringify(native.serialize()));
+        const restored = await test.api.createPlaySession(test.owner.fetch, undefined, undefined, saved);
+        if (restored.status !== "ok") throw new Error("Restore rejected");
+        const priorJobs = new Set(test.jobs.list().map(job => job.id));
+        const foreign = {...saved, artifactIdentity: "foreign"};
+        expect(() => reference.restoreSession(foreign)).toThrow(/incompatible artifact identity/);
+        for (const target of [worker, fresh]) {
+            expect(await target.handle({id: "bad", type: "restore", state: foreign})).toMatchObject({ok: false, error: expect.stringMatching(/incompatible artifact identity/)});
+            expect(await target.handle({id: "bad", type: "replay", state: foreign, commands: [{bet: 0.05}]})).toMatchObject({ok: false, error: expect.stringMatching(/incompatible artifact identity/)});
+        }
+        expect(await worker.handle({id: "retained", type: "serialize"})).toMatchObject({ok: true, result: saved});
+        await expect(test.api.createPlaySession(test.owner.fetch, undefined, undefined, foreign)).rejects.toThrow(/incompatible artifact identity/);
+        const failed = test.jobs.list().filter(job => !priorJobs.has(job.id));
+        expect(failed).toHaveLength(1);
+        expect(failed[0]).toMatchObject({operation: "browser-play", status: "failed", request: {action: "restore", state: foreign}, error: expect.stringMatching(/incompatible artifact identity/)});
+        expect(failed[0].result?.detail?.session).toBeUndefined();
+        expect(test.controls.live).toBe(1);
+        expect(test.recorder.list()).toHaveLength(3);
+        for (const bet of [0.05, 7.5]) {
+            const expected = await native.play({bet});
+            expect(await worker.handle({id: "reuse", type: "play", command: {bet}})).toMatchObject({ok: true, result: expected});
+            expect(await test.api.spinPlaySession(test.owner.fetch, restored.session.sessionId, bet)).toMatchObject({status: "ok", session: {credits: expected.credits, win: expected.payout, debug: {stateAfter: native.serialize()}}});
+        }
+        const explicit = await test.api.createPlaySession(test.owner.fetch, undefined, undefined, saved);
+        if (explicit.status !== "ok") throw new Error("Explicit restore rejected");
+        expect(explicit.session.debug?.stateAfter).toEqual(saved);
+        expect(test.controls.live).toBe(1);
+        const restoredNative = reference.restoreSession(saved);
+        const expected = await restoredNative.play({bet: 0.05});
+        for (const target of [worker, fresh]) {
+            expect(await target.handle({id: "explicit", type: "restore", state: saved})).toMatchObject({ok: true, result: saved});
+            expect(await target.handle({id: "reuse", type: "play", command: {bet: 0.05}})).toMatchObject({ok: true, result: expected});
+        }
+        expect(await test.api.spinPlaySession(test.owner.fetch, explicit.session.sessionId, 0.05)).toMatchObject({status: "ok", session: {credits: expected.credits, win: expected.payout, debug: {stateAfter: restoredNative.serialize()}}});
+    } finally {
+        for (const target of [worker, fresh]) await target.handle({id: "dispose", type: "dispose"});
+        reference.dispose();
+        await test.close();
+    }
+});
+
 it.each(["stepwise", "composite"] as const)("V2C-22-RESTORE-CURSOR projects pending %s progress without recording a new spin", async delivery => {
     const {weightedBonusBlueprint} = await import("../../v2/fixtures/WeightedBonusGame.js");
     const blueprint = weightedBonusBlueprint();
