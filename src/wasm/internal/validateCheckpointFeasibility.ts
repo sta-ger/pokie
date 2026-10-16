@@ -5,7 +5,7 @@ import type {PokieWasmFeatureSessionState} from "../PokieWasmRuntimeApi.js";
 type Bounds = {lower: bigint; upper: bigint};
 type NativeState = {base?: NativeState; executed?: number; remaining?: number; freeGamesNum?: number; chargedBetModeId?: string; bonus?: WeightedBonusState;
     sequenceState?: {context: string; contextRequested: boolean; implicitGeneration: number; selections: {reelIndex: number; variantId: string}[]; counts: Record<string, number>[]}};
-const ceil = (value: bigint, divisor: bigint): bigint => (value + divisor - 1n) / divisor;
+const ceil = (value: bigint, divisor: bigint): bigint => (value + divisor - BigInt(1)) / divisor;
 const within = (value: bigint, bounds: Bounds): boolean => value >= bounds.lower && value <= bounds.upper;
 
 /** Model-sized strip analysis, never a Cartesian screen enumeration or a session replay.
@@ -70,8 +70,8 @@ export function validateCheckpointFeasibility(model: GameBlueprint, checkpoint: 
         leaf = leaf.base;
     }
     const rules = model.mechanics;
-    let minimumLength = 1n,
-        maximumLength: bigint | undefined = 1n;
+    let minimumLength = BigInt(1),
+        maximumLength: bigint | undefined = BigInt(1);
     const bounded = layers.find(layer => layer.executed !== undefined);
     if (rules?.weightedBonus) {
         const table = rules.weightedBonus;
@@ -99,30 +99,30 @@ export function validateCheckpointFeasibility(model: GameBlueprint, checkpoint: 
     } else if (rules?.holdAndWin) {
         // Every reset locks at least one previously empty cell. Even the longest
         // possible completed feature therefore has a model-bounded lifetime.
-        maximumLength = 1n + BigInt(model.reels) * BigInt(model.rows) * BigInt(rules.holdAndWin.initialRespins);
+        maximumLength = BigInt(1) + BigInt(model.reels) * BigInt(model.rows) * BigInt(rules.holdAndWin.initialRespins);
     }
     if (maximumLength !== undefined && elapsed >= maximumLength) throw invalid();
     // The current entry began at entryPosition. Partition its preceding plays into
     // completed entries, each occupying [minimumLength, maximumLength] plays.
-    const prior = p - elapsed - 1n;
+    const prior = p - elapsed - BigInt(1);
     const minimumEntries = maximumLength === undefined ? Number(prior > 0) + 1 : undefined;
-    const entries: Bounds = {lower: minimumEntries === undefined ? ceil(prior, maximumLength!) + 1n : BigInt(minimumEntries),
-        upper: prior / minimumLength + 1n};
+    const entries: Bounds = {lower: minimumEntries === undefined ? ceil(prior, maximumLength!) + BigInt(1) : BigInt(minimumEntries),
+        upper: prior / minimumLength + BigInt(1)};
     if (entries.lower > entries.upper) throw invalid();
     if (rules?.weightedBonus) {
         const table = rules.weightedBonus,
             bonus = bounded!.bonus!,
             remaining = BigInt(bounded!.remaining!);
-        const selections = bonus.counts.reduce((sum, count) => sum + BigInt(count), 0n);
-        const continuations = bonus.counts.reduce((sum, count, index) => sum + BigInt(count) * BigInt(table.outcomes[index].duration), 0n) - remaining;
+        const selections = bonus.counts.reduce((sum, count) => sum + BigInt(count), BigInt(0));
+        const continuations = bonus.counts.reduce((sum, count, index) => sum + BigInt(count) * BigInt(table.outcomes[index].duration), BigInt(0)) - remaining;
         const acceptedEntries = p - continuations;
         const trigger = symbolBounds(model, table.trigger.symbolId);
-        const selectionBounds: Bounds = {lower: trigger.lower >= table.trigger.minimumCount ? entries.lower : 0n,
-            upper: trigger.upper < table.trigger.minimumCount ? 0n : entries.upper};
+        const selectionBounds: Bounds = {lower: trigger.lower >= table.trigger.minimumCount ? entries.lower : BigInt(0),
+            upper: trigger.upper < table.trigger.minimumCount ? BigInt(0) : entries.upper};
         if (trigger.lower >= table.trigger.minimumCount && !bonus.selection) throw new Error("Weighted bonus selection presence contradicts model-feasible paid entry.");
-        const incomplete = remaining > 0 ? 1n : 0n;
+        const incomplete = remaining > 0 ? BigInt(1) : BigInt(0);
         const completionBounds = {lower: selectionBounds.lower - incomplete, upper: selectionBounds.upper - incomplete};
-        if (continuations < 0n || !within(acceptedEntries, entries) || !within(selections, selectionBounds) ||
+        if (continuations < BigInt(0) || !within(acceptedEntries, entries) || !within(selections, selectionBounds) ||
             !within(BigInt(bonus.completed), completionBounds) || BigInt(bonus.completed) !== selections - incomplete ||
             selections > acceptedEntries || trigger.lower >= table.trigger.minimumCount && selections !== acceptedEntries) throw invalid("bonus");
         // Per-outcome durations conserve the exact reel-entry denominator even for
@@ -136,7 +136,7 @@ export function validateCheckpointFeasibility(model: GameBlueprint, checkpoint: 
     for (const [reel, definition] of (model.reelSequences ?? []).entries()) {
         if (definition.type !== "weighted") continue;
         const counts = selection.counts[reel];
-        const count = Object.values(counts).reduce((sum, value) => sum + BigInt(value), 0n);
+        const count = Object.values(counts).reduce((sum, value) => sum + BigInt(value), BigInt(0));
         const selected = selection.selections.find(item => item.reelIndex === reel);
         if (!within(count, entries) || total !== undefined && count !== total || !selected || !(counts[selected.variantId] > 0)) throw invalid();
         total = count;
