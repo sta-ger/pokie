@@ -82,10 +82,10 @@ export async function assertWorkflowRejections(blueprint: api.GameBlueprint, dir
     expect(session.toSessionState()).toEqual(before);
 
     const descriptor = await game.getModelDescriptor!();
-    descriptor.model.mechanics = malformed.mechanics;
+    const rejectedDescriptor = {...descriptor, model: {...descriptor.model, mechanics: malformed.mechanics}};
     const create = jest.spyOn(game, "createSession");
     try {
-        const extracted = await new api.PackageBlueprintExtraction().extract({...game, getModelDescriptor: () => descriptor});
+        const extracted = await new api.PackageBlueprintExtraction().extract({...game, getModelDescriptor: () => rejectedDescriptor});
         expect(extracted.status).not.toBe("complete");
         expect(extracted.blueprint).toBeUndefined();
         expect(extracted.diagnostics.length).toBeGreaterThan(0);

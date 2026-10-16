@@ -47,7 +47,7 @@ describe("StudioArtifactBuildService", () => {
         expect(fs.readFileSync(source)).toEqual(input);
         fs.writeFileSync(destination, "competing module");
         fs.writeFileSync(`${destination}.pokie-wasm.json`, "competing sidecar");
-        expect(await service.build(source, "wasm", destination)).toMatchObject({status: "conflict"});
+        expect(await service.build(source, "wasm", destination)).toMatchObject({status: "unsupported", message: expect.stringContaining(code)});
         expect(fs.readFileSync(destination, "utf8")).toBe("competing module");
         expect(fs.readFileSync(`${destination}.pokie-wasm.json`, "utf8")).toBe("competing sidecar");
         fs.rmSync(destination);

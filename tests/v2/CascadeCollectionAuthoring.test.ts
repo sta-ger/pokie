@@ -860,7 +860,9 @@ describe("V2C-14 authored bounded mechanics", () => {
             fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: "bounded-workers", version: "1.0.0", pokie: {entry: "./index.cjs"}}));
             fs.writeFileSync(path.join(packageRoot, "index.cjs"), api.renderBuiltGameModule(blueprint, "1.3.0"));
             const workerEntryUrl = pathToFileURL(path.join(runtime.directory, "node_modules/@fromstan/pokie/dist/esm/simulation/parallel/internal/simulationWorkerEntry.js"));
-            const reference = new api.AggregateSimulationRunner(boundedSession(game), 10).run().getStatistics();
+            const referenceSession = boundedSession(game);
+            api.setSimulationModelIdentity(referenceSession, game.getConfigHash?.());
+            const reference = new api.AggregateSimulationRunner(referenceSession, 10).run().getStatistics();
             for (const chunkSize of [2, 10]) {
                 const results = await new api.SimulationWorkerCoordinator(workerEntryUrl).run([0, 1].map(workerIndex => ({workerIndex, totalWorkers: 2, packageRoot, rounds: 10, seed: String(31 + workerIndex), progressChunkSize: chunkSize})));
                 expect(results).toHaveLength(2);

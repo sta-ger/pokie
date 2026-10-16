@@ -57,7 +57,7 @@ describe("saved whole-sequence artifact targets", () => {
                 });
             }
             expect(targets.find(({target}) => target === "wasm")).toMatchObject({
-                supported: false, plan: {status: "unavailable", diagnostic: {code: "unsupported-boundary"}},
+                supported: true, state: "supported", plan: {status: "planned"},
             });
         }
         expect(fs.readdirSync(directory)).toEqual(["blueprint.json"]);

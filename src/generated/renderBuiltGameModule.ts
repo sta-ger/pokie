@@ -354,7 +354,7 @@ module.exports = {
         return blueprint.manifest;
     },
     getModelDescriptor() {
-        return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model: JSON.parse(JSON.stringify(blueprint))};
+        return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model: blueprint};
     },
     getSessionStateSchema() {
         return ${stateSchemaExpression};
