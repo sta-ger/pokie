@@ -152,6 +152,16 @@ export class StudioJobService {
         return this.terminal(id, "recovery-required", {recovery, ...(result === undefined ? {} : {result})});
     }
 
+    /** Retain a lost idle owner's cleanup failure even after execution admission closes. */
+    public recordCleanupFailure(input: StudioJobStartInput, recovery: StudioJobRecoveryView): StudioJobView {
+        this.executorCleanupFailed = true;
+        const job: StudioJobView = {id: this.createId(), projectId: input.projectId, operation: input.operation,
+            request: input.request, conflictKey: input.conflictKey, status: "recovery-required",
+            createdAt: this.now(), completedAt: this.now(), durationMs: 0, recovery};
+        this.repository.save(job);
+        return job;
+    }
+
     /**
      * Refines a retained recovery decision after an operation-specific
      * checkpoint has been inspected.  Terminal outcome remains immutable;

@@ -85,7 +85,7 @@ export class PokieWasmWorkerClient implements PokieWasmWorkerTransporting {
         }
         this.pending.delete(value.id);
         if (value.ok) pending.resolve(value.result);
-        else pending.reject(new Error(value.error as string));
+        else pending.reject(Object.assign(new Error(value.error as string), value.committedProgress === undefined ? {} : {committedProgress: value.committedProgress}));
     };
     private readonly error = (event: ErrorEvent): void => this.fail(new Error(event.message || "WASM Worker failed to load or execute. Retry the operation."));
     private readonly messageerror = (): void => this.fail(new Error("WASM Worker message could not be deserialized. Retry the operation."));

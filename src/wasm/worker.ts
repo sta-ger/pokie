@@ -1,7 +1,7 @@
 import {collectPokieWasmSimulation} from "./PokieWasmCommands.js";
 import {collectPokieWasmReplay, type PokieWasmReplayOptions} from "./PokieWasmReplay.js";
 import {instantiatePokieWasm, SeededPokieWasmHost} from "./PokieWasmRuntime.js";
-import {BoundedPokieWasmTraceCollector, type PokieWasmHost, type PokieWasmHostState, type PokieWasmRuntime, type PokieWasmRestorableState} from "./PokieWasmRuntimeApi.js";
+import {BoundedPokieWasmTraceCollector, type PokieWasmHost, type PokieWasmHostState, type PokieWasmRuntime, type PokieWasmRestorableState, type PokieWasmRound} from "./PokieWasmRuntimeApi.js";
 import {readCanonicalPokieWasmModule, sha256CanonicalWasmBytes} from "./PokieWasmCanonicalModule.js";
 import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
 
@@ -17,7 +17,8 @@ export type PokieWasmWorkerRequest =
     | {readonly id: string; readonly type: "replay"; readonly state: PokieWasmRestorableState; readonly commands: readonly Record<string, unknown>[]; readonly traceCapacity?: number}
     | {readonly id: string; readonly type: "cancel"}
     | {readonly id: string; readonly type: "dispose"};
-export type PokieWasmWorkerResponse = {readonly id: string; readonly ok: true; readonly result?: unknown} | {readonly id: string; readonly ok: false; readonly error: string; readonly fatal?: boolean};
+export type PokieWasmCommittedProgress = {readonly round: PokieWasmRound; readonly continuation: {readonly roundId: string; readonly cursor: number}};
+export type PokieWasmWorkerResponse = {readonly id: string; readonly ok: true; readonly result?: unknown} | {readonly id: string; readonly ok: false; readonly error: string; readonly fatal?: boolean; readonly committedProgress?: PokieWasmCommittedProgress};
 
 /** State owner used by a real Web Worker entry or directly by browser hosts. */
 export class PokieWasmWorkerProtocol {
@@ -142,7 +143,8 @@ export class PokieWasmWorkerProtocol {
             // happen before a module trap, so callers can correct them and
             // continue using the active runtime.
             if (runtimeOperationInvoked && isWasmRuntimeTrap(error)) this.release();
-            return {id, ok: false, error: error instanceof Error ? error.message : String(error), ...(runtimeOperationInvoked && isWasmRuntimeTrap(error) ? {fatal: true} : {})};
+            const committedProgress = isRecord(error) ? error.committedProgress : undefined;
+            return {id, ok: false, ...(isRecord(committedProgress) ? {committedProgress: committedProgress as PokieWasmCommittedProgress} : {}), error: error instanceof Error ? error.message : String(error), ...(runtimeOperationInvoked && isWasmRuntimeTrap(error) ? {fatal: true} : {})};
         }
     }
 

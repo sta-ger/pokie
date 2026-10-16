@@ -183,3 +183,23 @@ it("shows a committed prefix on successor error while retaining the original int
     await waitFor(() => expect(result.current.session.status).toBe("error"));
     expect(bodies[1]).toEqual(bodies[0]);
 });
+
+it("continues a restored pending feature using its saved public delivery cursor", async () => {
+    const {boundedPlayChain} = await import("../../../studio/runtime/fixtures/boundedPlayChain");
+    const logicalRound = (await boundedPlayChain("cascade-respins-collection", 26))[1].logicalRound!;
+    const restored = session("restored", {logicalRoundDeliverySupported: true, logicalRound});
+    const bodies: Record<string, unknown>[] = [];
+    const fetchImpl: FetchLike = (url, init) => {
+        if (url.endsWith("/restore")) return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", session: restored})});
+        bodies.push(JSON.parse(String(init?.body)));
+        return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", session: restored})});
+    };
+    const {result} = renderHook(() => usePlaySession(), {wrapper: strictModeWrapper(fetchImpl)});
+    act(() => result.current.restore({checkpoint: "validated by Worker"}));
+    await waitFor(() => expect(result.current.sessionId).toBe("restored"));
+    act(() => result.current.spin(7.5, "buy", "composite"));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toEqual({requestId: expect.any(String), delivery: "composite", continuation: {roundId: logicalRound.roundId, cursor: logicalRound.cursor}});
+    expect(bodies[0]).not.toHaveProperty("roundId");
+    expect(bodies[0]).not.toHaveProperty("bet");
+});

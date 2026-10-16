@@ -22,7 +22,7 @@ import type {StudioRuntimeSessionView} from "../runtime/StudioRuntimeSessionView
 import type {StudioRoundRecorder} from "../runtime/StudioRoundRecorder.js";
 import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
 
-type Lease = {job: StudioJobView; owner: string; artifact: PokieWasmBrowserArtifact; context: StudioContext; timer: ReturnType<typeof setTimeout>; prefix?: SimulationStatistics; completed: number; settle: () => void; drained: Promise<void>};
+type Lease = {job: StudioJobView; owner: string; artifact: PokieWasmBrowserArtifact; context: StudioContext; timer: ReturnType<typeof setTimeout>; prefix?: SimulationStatistics; completed: number; settle: () => void; drained: Promise<void>; publication?: Promise<Reply>};
 type SessionLease = {id: string; owner: string; artifact: PokieWasmBrowserArtifact; context: StudioContext; cancelled: boolean; timer: ReturnType<typeof setTimeout>; settle: () => void; drained: Promise<void>};
 type Reply = {status: number; body: unknown};
 const recovery = {action: "retry" as const, reason: "The browser Worker was interrupted. No execution survives a reload; retry explicitly with the captured inputs."};
@@ -91,9 +91,16 @@ export class StudioWasmBrowserService {
         const route = (/^\/api\/project\/wasm\/jobs\/([A-Za-z0-9_-]+)\/(heartbeat|finish)$/).exec(path);
         if (!route) return {status: 404, body: {error: "Unknown WASM browser execution route."}};
         const lease = this.leases.get(route[1]);
+        if (!lease && route[2] === "finish") {
+            const retained = this.jobs.list().find(job => job.id === route[1]);
+            if (retained && isStudioJobTerminal(retained.status) && retained.request.browserOwner === value.owner && retained.request.browserGeneration === value.generation && retained.request.artifactIdentity === value.artifactIdentity) return {status: 200, body: retained};
+        }
         if (!lease || lease.owner !== value.owner || lease.artifact.generation !== value.generation || lease.artifact.manifest.artifact!.sha256 !== value.artifactIdentity) return {status: 409, body: {error: "The WASM execution owner, generation or artifact changed. Retry from the current Project."}};
         const job = this.jobs.get(lease.job.projectId, lease.job.id)!;
-        if (route[2] === "finish") return this.finish(lease, value, context, isCurrent);
+        if (route[2] === "finish") {
+            lease.publication ??= this.finish(lease, value, context, isCurrent);
+            return lease.publication;
+        }
         if (context !== lease.context || !this.accepting) this.jobs.cancel(job.projectId, job.id);
         // A changed artifact must cancel queued/active computation before publication as well.
         try {
@@ -155,7 +162,7 @@ export class StudioWasmBrowserService {
             request = {...value.request};
         }
         request.seed = String(request.seed ?? crypto.randomUUID());
-        const started = this.jobs.start({projectId: canonicalStudioProjectIdentity(artifact.projectRoot), operation, request: {...request, artifactIdentity: artifact.manifest.artifact!.sha256, browserOwner: value.owner}, conflictKey: `${operation}:${canonicalStudioProjectIdentity(artifact.projectRoot)}`, recoveryOnRestart: recovery});
+        const started = this.jobs.start({projectId: canonicalStudioProjectIdentity(artifact.projectRoot), operation, request: {...request, artifactIdentity: artifact.manifest.artifact!.sha256, browserOwner: value.owner, browserGeneration: artifact.generation}, conflictKey: `${operation}:${canonicalStudioProjectIdentity(artifact.projectRoot)}`, recoveryOnRestart: recovery});
         if (started.status !== "created") return {status: 409, body: {activeJobId: started.status === "conflict" ? started.activeJobId : started.job.id, error: "An execution already owns this operation. Observe or cancel the retained job; another tab cannot resubmit it."}};
         let settle!: () => void;
         const drained = new Promise<void>(resolve => {
@@ -228,7 +235,7 @@ export class StudioWasmBrowserService {
             this.jobs.progress(job.id, {stage: "Completed browser Worker", unit: "rounds", current: job.request.round as number, total: job.request.round as number});
             return {summary: "Browser Worker replay completed.", provenance, outputs: [{label: "Replay", downloadPath: `/api/project/replays/${job.id}/download`}], detail: {descriptor}};
         }
-        const round = output.round as PokieWasmRound | undefined;
+        const round = (output.round ?? (job.request.action === "restore" ? output.restoredRound : undefined)) as PokieWasmRound | undefined;
         const sessionId = job.request.sessionId as string ?? job.id;
         if (!this.sessions.has(sessionId)) {
             let settle!: () => void;
@@ -250,7 +257,7 @@ export class StudioWasmBrowserService {
             scenarioCapabilities: {findAnyWin: "WASM browser sessions support direct Spin; use a bounded simulation to explore wins.", findSymbolWin: "WASM browser sessions support direct Spin; use a bounded simulation to explore wins.", findFreeGames: "WASM browser sessions support direct Spin; use a bounded simulation to explore features."},
             debug: {...(manifest.capabilities.includes("runtime.serialize") ? {stateBefore: output.stateBefore, stateAfter: output.stateAfter ?? output.state} : {}),
                 ...roundDetail}, wasm: provenance};
-        if (round) {
+        if (output.round && round) {
             session.studioRequestId = (job.request.command as Record<string, unknown>)?.requestId as string | undefined;
             this.recorder.record(session, {source: "play", operation: "spin", projectRoot: artifact.projectRoot, seed: job.request.seed as string});
         }
@@ -260,11 +267,17 @@ export class StudioWasmBrowserService {
     private armSession(session: SessionLease): void {
         clearTimeout(session.timer);
         session.timer = setTimeout(() => {
+            if (this.sessions.get(session.id) !== session) return;
+            clearTimeout(session.timer);
             this.lostSessionCleanup = true;
-            const started = this.jobs.start({projectId: canonicalStudioProjectIdentity(session.artifact.projectRoot), operation: "browser-worker-cleanup", request: {sessionId: session.id, artifactIdentity: session.artifact.manifest.artifact!.sha256}, conflictKey: `browser-worker-cleanup:${session.id}`, recoveryOnRestart: recovery});
-            if (started.status === "created") this.jobs.requireRecovery(started.job.id, {action: "new-session", reason: "Idle browser Worker owner stopped responding. Close that tab, reopen Studio and explicitly start a new session."});
-            this.sessions.delete(session.id);
-            session.settle();
+            try {
+                this.jobs.recordCleanupFailure({projectId: canonicalStudioProjectIdentity(session.artifact.projectRoot), operation: "browser-worker-cleanup", request: {sessionId: session.id, artifactIdentity: session.artifact.manifest.artifact!.sha256}, conflictKey: `browser-worker-cleanup:${session.id}`}, {action: "new-session", reason: "Idle browser Worker owner stopped responding. Close that tab, reopen Studio and explicitly start a new session."});
+            } catch {
+                // shutdown still fails closed when durable storage is unavailable.
+            } finally {
+                this.sessions.delete(session.id);
+                session.settle();
+            }
         }, this.leaseMs);
     }
     private arm(lease: Lease): void {

@@ -4341,6 +4341,45 @@ describe("StudioServer", () => {
             expect(jobs.get(wasmFile, job.id)?.status).toBe("cancelled");
         });
 
+        it("V2C-22-IDLE-SHUTDOWN settles an unresponsive idle lease after admission closes and retains recovery", async () => {
+            const wasmFile = path.join(wasmStudioRoot, "idle.wasm");
+            const fixture = createCanonicalWasmFixture();
+            fs.writeFileSync(wasmFile, fixture.bytes);
+            fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+            const jobs = createIsolatedJobService(wasmStudioRoot);
+            const homeService = new StudioHomeService("1.3.0");
+            wasmServer = new StudioServer({pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: wasmStudioRoot,
+                jobService: jobs, homeService, blueprintService: new StudioBlueprintService("1.3.0", wasmStudioRoot, homeService),
+                initialContext: {mode: "project", projectRoot: wasmFile}});
+            const address = await wasmServer.start();
+            const base = `http://${address.host}:${address.port}`;
+            const artifactResponse = await get(`${base}/api/project/wasm/artifact`);
+            const binding = {owner: "lost-idle-tab", projectRoot: wasmFile, generation: (artifactResponse.body as {generation: string}).generation, artifactIdentity: fixture.manifest.artifact!.sha256};
+            const started = await post(`${base}/api/project/wasm/jobs`, {...binding, operation: "browser-play", request: {action: "new", seed: "0"}});
+            const id = (started.body as {job: {id: string}}).job.id;
+            let expire: (() => void) | undefined;
+            const nativeTimeout = global.setTimeout;
+            const timer = jest.spyOn(global, "setTimeout").mockImplementation(((callback: () => void, ms?: number, ...args: unknown[]) => {
+                if (ms === 10000) expire = callback;
+                return nativeTimeout(callback, ms, ...args);
+            }) as typeof setTimeout);
+            try {
+                expect((await post(`${base}/api/project/wasm/jobs/${id}/finish`, {...binding, cleanup: true, status: "completed", output: {state: {credits: 1000}}})).status).toBe(200);
+                expect(expire).toBeDefined();
+                const serverToStop = wasmServer;
+                wasmServer = undefined;
+                const stopping = serverToStop.stop();
+                const rejected = expect(stopping).rejects.toThrow(/idle browser Worker cleanup/);
+                expect(() => expire!()).not.toThrow();
+                await rejected;
+                expect(jobs.list().find(job => job.operation === "browser-worker-cleanup")).toMatchObject({status: "recovery-required", request: {sessionId: id}, recovery: {action: "new-session"}});
+                expect(jobs.get(wasmFile, id)?.status).toBe("completed");
+                await expect(jobs.completeGracefulShutdown()).rejects.toThrow(/could not confirm executor cleanup/);
+            } finally {
+                timer.mockRestore(); 
+            }
+        });
+
         it("exposes only the WASM component's own manifest identity, never inventing symbols/reels/paytable", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-gamemodel-wasm-work-test-"));
             try {

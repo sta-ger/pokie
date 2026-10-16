@@ -302,3 +302,23 @@ it("marks a lost browser owner recovery-required and blocks a false graceful shu
         fs.rmSync(directory, {recursive: true, force: true});
     }
 });
+
+it("retains idle Worker cleanup failure after admission closes and refuses graceful drainage", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-idle-cleanup-"));
+    try {
+        const repository = new FileStudioJobRepository(directory);
+        const service = new StudioJobService(repository);
+        service.beginShutdown();
+        const input = {projectId: "/game.wasm", operation: "browser-worker-cleanup", request: {sessionId: "idle", artifactIdentity: "bound"}, conflictKey: "cleanup:idle"};
+        expect(() => service.start(input)).toThrow(/shutting down/);
+        const failure = service.recordCleanupFailure(input, {action: "new-session", reason: "Idle Worker stopped responding; cleanup could not be confirmed."});
+        expect(failure).toMatchObject({status: "recovery-required", request: {sessionId: "idle", artifactIdentity: "bound"}});
+        expect(service.signal(failure.id)).toBeUndefined();
+        await expect(service.completeGracefulShutdown()).rejects.toThrow(/could not confirm executor cleanup/);
+        expect(repository.getProcessState()?.status).toBe("running");
+        const restarted = new StudioJobService(repository);
+        expect(restarted.list()).toEqual([failure]);
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true}); 
+    }
+});
