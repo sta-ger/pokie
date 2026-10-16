@@ -1,6 +1,7 @@
 import {act, fireEvent, render, renderHook, screen, waitFor} from "@testing-library/react";
 import {MantineProvider} from "@mantine/core";
 import {StrictMode, type ReactNode} from "react";
+import {webcrypto} from "node:crypto";
 import type {FetchLike} from "../../../../../cli/studio-client/src/api/apiClient";
 import type {StudioRuntimeSessionView} from "../../../../../cli/studio-client/src/api/types";
 import {StudioApiProvider} from "../../../../../cli/studio-client/src/context/StudioApiProvider";
@@ -27,7 +28,17 @@ it.each([true, false])("V2C-22-BET-COMMITMENT renders the exact selection before
     const fixture = createCanonicalWasmFixture({id: GAME.id, availableBets: bets,
         reelStrips: [["A", "B", "C"], ["A", "B", "C"], ["A", "B", "C"]], paytable: {A: {3: 5}, B: {3: 0}},
         capabilities: ["runtime.play", "runtime.serialize", ...(inspect ? ["artifact.inspect"] : [])]});
-    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("0"));
+    // jsdom supplies crypto without SubtleCrypto. Use Node's real implementation
+    // for the portable loader's integrity check, then restore the browser test global.
+    const subtle = Reflect.getOwnPropertyDescriptor(globalThis.crypto, "subtle");
+    Reflect.defineProperty(globalThis.crypto, "subtle", {configurable: true, value: webcrypto.subtle});
+    let runtime: Awaited<ReturnType<typeof instantiatePokieWasm>>;
+    try {
+        runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("0"));
+    } finally {
+        if (subtle) Reflect.defineProperty(globalThis.crypto, "subtle", subtle);
+        else Reflect.deleteProperty(globalThis.crypto, "subtle");
+    }
     const native = runtime.createSession("0");
     const requests: Record<string, unknown>[] = [];
     let publish: (() => void) | undefined;
