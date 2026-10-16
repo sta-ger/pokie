@@ -146,7 +146,7 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             const continuing = observed.executed > 0;
             if (before[feature === "weightedBonus" ? "bonus" : "respins"] !== continuing) throw invalid();
             const retained = this.state.active[feature];
-            if (retained && (retained.duration !== observed.executed - 1 || retained.known && retained.entryPosition !== this.state.position - retained.duration)) throw invalid();
+            if (retained?.known && (retained.duration !== observed.executed - 1 || retained.entryPosition !== this.state.position - retained.duration)) throw invalid();
         }
     }
     public getEnvelope(): AnalyticsEnvelope {

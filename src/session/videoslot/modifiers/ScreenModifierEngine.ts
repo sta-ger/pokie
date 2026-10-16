@@ -69,10 +69,20 @@ export class ScreenModifierEngine<T extends string | number | symbol = string> i
                 if (!this.projection.map(position, "evaluated", "evaluated")) throw invalid();
                 return allowed.findIndex(candidate => JSON.stringify(candidate) === JSON.stringify(position));
             });
-            if (indexes.some((item, index) => item < 0 || index > 0 && item <= indexes[index - 1])) throw invalid();
+            if (indexes.some(item => item < 0)) throw invalid();
+            if (rule.type === "expand") {
+                // Triggering cells can encounter a reel later than its first configured cell.
+                const reels = [...new Set(observed.positions.map(position => position[0]))];
+                if (JSON.stringify(observed.positions) !== JSON.stringify(allRows(reels))) throw invalid();
+                let previous = -1;
+                for (const reel of reels) {
+                    const index = configured.findIndex((position, index) => index > previous && position[0] === reel);
+                    if (index < 0) throw invalid();
+                    previous = index;
+                }
+            } else if (indexes.some((item, index) => index > 0 && item <= indexes[index - 1])) throw invalid();
             if (rule.type === "sticky" && JSON.stringify(observed.positions) !== JSON.stringify(observation.sticky.filter(cell => cell.ruleId === rule.id).map(cell => cell.position))) throw invalid();
             if (rule.type === "reel" && JSON.stringify(observed.positions) !== JSON.stringify(allowed)) throw invalid();
-            if (rule.type === "expand" && observed.positions.length !== new Set(observed.positions.map(position => position[0])).size * this.projection.getRows("evaluated")) throw invalid();
         }
     }
     public execute(

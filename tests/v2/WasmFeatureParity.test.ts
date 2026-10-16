@@ -509,3 +509,61 @@ it.each([1, 3])("preserves ordered overlapping modifiers and lifetime %s expiry 
         fresh.dispose();
     }
 });
+
+it("restores expansion in triggering-cell order when configured reels are interleaved", async () => {
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    const blueprint = JSON.parse(fs.readFileSync("examples/blueprints/wild-sticky.blueprint.json", "utf8"));
+    blueprint.rows = 2;
+    blueprint.reelStrips = [["A", "W2"], ["W2", "A"], ["W3", "W3"]];
+    blueprint.mechanics.modifiers.rules = [{id: "expand", type: "expand", space: "evaluated", positions: [[0, 0], [1, 0], [0, 1]], symbol: "W2"}];
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => 0, serializeState: () => 0, restoreState: () => undefined});
+    try {
+        const session = runtime.createSession("interleaved");
+        const command = {bet: 0.05, roundId: "x", delivery: "stepwise"};
+        const played = await session.play(command);
+        expect(played.network?.modifiers?.rules).toEqual([{id: "expand", positions: [[1, 0], [1, 1], [0, 0], [0, 1]]}]);
+        expect(played.screen).toEqual([["W2", "W2"], ["W2", "W2"], ["W3", "W3"]]);
+        const saved = session.serialize();
+        expect(await runtime.restoreSession(saved).play(command)).toEqual(played);
+        expect((await runtime.replay(saved, [command])).rounds).toEqual([played]);
+    } finally {
+        runtime.dispose();
+    }
+});
+
+it("restores carried plain respins after an exhausted cascade and preserves excluded completion", async () => {
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    const blueprint = boundedBlueprint("cascade-respins");
+    blueprint.reelStrips = [["A", "C", "B"], ["A", "C", "B"], ["A", "C", "B"]];
+    blueprint.mechanics!.cascade!.maxCascades = 1;
+    blueprint.mechanics!.respins = {trigger: {symbolId: "C", minimumCount: 1}, grant: 4, maxRespins: 4, retrigger: "none"};
+    // Initialization, entry/grant, winning continuation/refill at the bound, then losing tails.
+    const draws = [0.9, 0.4, 0, 0, 0.9, 0.9, 0.9].flatMap(draw => [draw, draw, draw]);
+    const makeHost = () => {
+        let cursor = 0;
+        return {nextRandom: () => draws[cursor++] ?? 0.9, serializeState: () => cursor, restoreState: (value: unknown) => {
+            cursor = value as number;
+        }};
+    };
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, makeHost());
+    const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, makeHost());
+    try {
+        const session = runtime.createSession("carried");
+        for (let index = 0; index < 5; index++) {
+            const played = await session.play({bet: 0.05, roundId: `plain:${index}`});
+            if (index === 1) expect(played.analytics?.features).toContainEqual(expect.objectContaining({feature: "respins", abandonedEntryPosition: 1}));
+            if (index === 4) expect(played.analytics).toMatchObject({carriedSubround: true, logicalCompletion: false, features: [expect.objectContaining({feature: "respins", excludedCompletion: true})]});
+            const saved = JSON.parse(JSON.stringify(session.serialize()));
+            const restored = fresh.restoreSession(saved);
+            expect(await restored.play({bet: 0.05, roundId: `plain:${index}`})).toEqual(played);
+            const next = {bet: 0.05};
+            expect((await runtime.replay(saved, [next])).rounds).toEqual([await restored.play(next)]);
+            restored.dispose();
+        }
+    } finally {
+        runtime.dispose();
+        fresh.dispose();
+    }
+});
