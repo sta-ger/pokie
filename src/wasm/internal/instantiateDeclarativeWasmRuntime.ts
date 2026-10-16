@@ -22,6 +22,12 @@ import {BoundedPokieWasmTraceCollector, POKIE_WASM_DEFAULT_CREDITS, type PokieWa
 type NativeSession = VideoSlotSessionHandling & SessionStateRestoring & {toSessionState(): unknown; fromSessionState(value: unknown): unknown};
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const bytes = (value: unknown): number => new TextEncoder().encode(JSON.stringify(value)).length;
+// A plain feature tail can retain its paid entry's weighted selection context.
+// Artifact identity follows that mathematical context, independently of retry identity.
+function plainRoundId(command: SessionCommand, sequence: number, selections: PokieWasmRound["sequenceSelections"]): string {
+    const context = selections?.[0]?.context;
+    return typeof context === "string" && context.startsWith("logical:") ? context.slice(8) : command.roundId ?? `plain:${sequence}`;
+}
 
 /** Portable orchestration of the same public session decorators used by generated Node games.
  * A settled checkpoint is authoritative; rebuilding never consumes the host or replays a prefix.
@@ -175,7 +181,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                 if (start || prefix || last.deliveryOnly || command.delivery || command.continuation) throw new Error("Retained result requires accepted logical delivery.");
                 const math = state.feature.plainMath;
                 if (!math || stableSlotMathJson(math.command) !== stableSlotMathJson(command) || new RoundArtifactValidator().validate(math.artifact).length || !amount(math.payout) || math.credits !== state.credits ||
-                    math.artifact.roundId !== (command.roundId ?? `plain:${state.sequence}`) || last.stake !== math.artifact.stake || last.win !== math.artifact.totalWin || last.payout !== math.payout ||
+                    math.artifact.roundId !== plainRoundId(command, state.sequence, last.sequenceSelections) || last.stake !== math.artifact.stake || last.win !== math.artifact.totalWin || last.payout !== math.payout ||
                     last.network?.totalWin !== math.artifact.totalWin) throw new Error("Retained plain money contradicts its accepted mathematical artifact.");
             }
         }
@@ -273,7 +279,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                     ...((native as Partial<import("../../session/videoslot/cascade/CascadeResultProviding.js").CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded
                         ? {finalScreen: (native as NativeSession & import("../../session/videoslot/cascade/CascadeResultProviding.js").CascadeResultProviding).getCascadeResult().getFinalScreen()} : {}),
                     artifact: buildRoundArtifactFromSession(native!, {
-                        roundId: command.roundId ?? `plain:${round.sequence}`, stake: result.stake, betMode: result.mode,
+                        roundId: plainRoundId(command, round.sequence, round.sequenceSelections), stake: result.stake, betMode: result.mode,
                         provenance: {game: {id: "runtime", name: "Runtime", version: "1"}, pokieVersion: "unknown"},
                     }), payout, credits: round.credits};
             }

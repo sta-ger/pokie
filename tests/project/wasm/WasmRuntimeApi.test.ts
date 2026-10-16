@@ -482,7 +482,7 @@ it.each(["plain", "anonymous", "composite", "bounded"])("rejects coordinated %s 
                 Object.assign(corrupt.feature.lastRound!, {win: 0, winMultiplier: 0});
                 if (logical) Object.assign(corrupt.feature.deliveryStart!, {totalWin: corrupt.feature.logicalRound!.totalWin});
             } else if (mutation === "payout") {
-                Object.assign(corrupt.feature.lastRound!, {payout: 0, creditsBefore: saved.credits});
+                Object.assign(corrupt.feature.lastRound!, {payout: 0, creditsBefore: saved.credits + result.stake});
                 if (logical) Object.assign(corrupt.feature.deliveryStart!, {credits: saved.credits, totalPayout: corrupt.feature.logicalRound!.totalPayout});
             } else {
                 const screen = [["A"], ["A"], ["A"]];

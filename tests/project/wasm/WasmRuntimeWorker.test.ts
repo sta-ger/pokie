@@ -378,7 +378,7 @@ it.each(["plain", "anonymous", "composite", "bounded"])("rejects coordinated %s 
                 Object.assign(corrupt.feature.lastRound, {win: 0, winMultiplier: 0});
                 if (logical) corrupt.feature.deliveryStart.totalWin = corrupt.feature.logicalRound.totalWin;
             } else if (mutation === "payout") {
-                Object.assign(corrupt.feature.lastRound, {payout: 0, creditsBefore: state.credits});
+                Object.assign(corrupt.feature.lastRound, {payout: 0, creditsBefore: state.credits + state.feature.lastRound.stake});
                 if (logical) Object.assign(corrupt.feature.deliveryStart, {credits: state.credits, totalPayout: corrupt.feature.logicalRound.totalPayout});
             } else {
                 const screen = [["A"], ["A"], ["A"]];
@@ -424,21 +424,27 @@ it.each(["stepwise", "composite"])("restores Worker checkpoints after completed 
             if (!result.ok) throw new Error(result.error);
             round = result.result as typeof round;
         }
-        for (const roundId of [undefined, "plain", undefined]) {
-            expect(await worker.handle({id: "play", type: "play", command: {bet: 0.05, ...(roundId ? {roundId} : {})}})).toMatchObject({ok: true});
-            const saved = await worker.handle({id: "state", type: "serialize"});
-            if (!saved.ok) throw new Error(saved.error);
-            const state = JSON.parse(JSON.stringify(saved.result));
-            expect(state.feature.logicalRound).toBeUndefined();
-            for (const target of [worker, fresh]) expect(await target.handle({id: "restore", type: "restore", state})).toMatchObject({ok: true});
-            const next = {bet: 0.05};
-            const replay = await fresh.handle({id: "replay", type: "replay", state, commands: [next]});
-            expect(replay).toMatchObject({ok: true});
-            const expected = await fresh.handle({id: "next", type: "play", command: next});
-            expect(await worker.handle({id: "next", type: "play", command: next})).toEqual(expected);
-            if (!expected.ok) throw new Error(expected.error);
-            expect(replay).toMatchObject({result: {rounds: [expected.result]}});
-            expect(await worker.handle({id: "state", type: "serialize"})).toEqual(await fresh.handle({id: "state", type: "serialize"}));
+        const completed = await worker.handle({id: "state", type: "serialize"});
+        if (!completed.ok) throw new Error(completed.error);
+        for (const entryId of [undefined, "plain"]) {
+            for (const target of [worker, fresh]) expect(await target.handle({id: "restore", type: "restore", state: completed.result as never})).toMatchObject({ok: true});
+            for (let index = 0; index < 3; index++) {
+                const before = await worker.handle({id: "state", type: "serialize"});
+                if (!before.ok) throw new Error(before.error);
+                const command = {bet: 0.05, ...(index === 0 && entryId ? {roundId: entryId} : {})};
+                const expected = await fresh.handle({id: "play", type: "play", command});
+                expect(expected).toMatchObject({ok: true});
+                expect(await worker.handle({id: "play", type: "play", command})).toEqual(expected);
+                if (!expected.ok) throw new Error(expected.error);
+                const saved = await worker.handle({id: "state", type: "serialize"});
+                if (!saved.ok) throw new Error(saved.error);
+                const state = JSON.parse(JSON.stringify(saved.result));
+                expect(state.feature.logicalRound).toBeUndefined();
+                const replay = await fresh.handle({id: "replay", type: "replay", state: before.result as never, commands: [command]});
+                expect(replay).toMatchObject({ok: true, result: {rounds: [expected.result], stateAfter: state}});
+                for (const target of [worker, fresh]) expect(await target.handle({id: "restore", type: "restore", state})).toMatchObject({ok: true});
+                expect(await worker.handle({id: "state", type: "serialize"})).toEqual(await fresh.handle({id: "state", type: "serialize"}));
+            }
         }
     } finally {
         await worker.handle({id: "dispose", type: "dispose"});
