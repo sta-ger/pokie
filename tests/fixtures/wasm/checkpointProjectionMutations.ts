@@ -1,6 +1,8 @@
 /** Exact reviewer reproducers plus sibling public projection/analytics fields. */
 export const checkpointProjectionMutations: readonly (readonly [string, unknown?])[] = [
     ["acceptedBounded.payout", -123],
+    ["acceptedBounded.omitted"],
+    ["acceptedModifiers", {space: "evaluated", rules: [], sticky: []}],
     ["lastRound.network.totalWin", -123],
     ["lastRound.network.totalWin", "invalid"],
     ["lastRound.network.bet", 999],
@@ -45,14 +47,18 @@ export const checkpointProjectionMutations: readonly (readonly [string, unknown?
 
 export function mutateCheckpointProjection<T>(saved: T, [path, value]: readonly [string, unknown?]): T {
     const corrupt = JSON.parse(JSON.stringify(saved));
-    if (path === "acceptedBounded.payout") {
+    if (["acceptedBounded.payout", "acceptedBounded.omitted", "acceptedModifiers"].includes(path)) {
         const feature = corrupt.feature;
-        feature.lastRound.network.boundedMechanics.weightedBonus.payout = value;
+        if (path === "acceptedBounded.payout") feature.lastRound.network.boundedMechanics.weightedBonus.payout = value;
+        else if (path === "acceptedBounded.omitted") Reflect.deleteProperty(feature.lastRound.network, "boundedMechanics");
+        else feature.lastRound.network.modifiers = value;
         const artifact = feature.plainMath?.artifact;
         const steps = feature.logicalRound?.subrounds[0].artifacts ?? artifact.steps;
         for (const events of [steps[steps.length - 1].featureEvents, artifact?.featureEvents]) {
             const event = events?.find((event: {type: string}) => event.type === "boundedMechanics");
-            if (event) event.data.weightedBonus.payout = value;
+            if (path === "acceptedModifiers") events?.push({type: "screenModifiers", data: value});
+            else if (path === "acceptedBounded.omitted" && event) events.splice(events.indexOf(event), 1);
+            else if (event) event.data.weightedBonus.payout = value;
         }
         if (feature.logicalRound) feature.lastRound.logicalRound = feature.logicalRound;
         return corrupt as T;

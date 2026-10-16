@@ -471,8 +471,8 @@ it.each(["stepwise", "composite", "plain"] as const)("rejects nested %s checkpoi
             const corrupt = mutateCheckpointProjection(state, mutation);
             if (JSON.stringify(corrupt) === JSON.stringify(state)) continue;
             const diagnostics = worker.getDiagnostics();
-            expect(await worker.handle({id: "bad", type: "restore", state: corrupt})).toMatchObject({ok: false, error: expect.stringMatching(/network|analytics|plain money|boundedMechanics/i)});
-            expect(await worker.handle({id: "bad", type: "replay", state: corrupt, commands: [command]})).toMatchObject({ok: false, error: expect.stringMatching(/network|analytics|plain money|boundedMechanics/i)});
+            expect(await worker.handle({id: "bad", type: "restore", state: corrupt})).toMatchObject({ok: false, error: expect.stringMatching(/network|analytics|plain money|boundedMechanics|weighted bonus|screenModifiers/i)});
+            expect(await worker.handle({id: "bad", type: "replay", state: corrupt, commands: [command]})).toMatchObject({ok: false, error: expect.stringMatching(/network|analytics|plain money|boundedMechanics|weighted bonus|screenModifiers/i)});
             expect(worker.getDiagnostics()).toEqual(diagnostics);
             expect(await worker.handle({id: "state", type: "serialize"})).toEqual(saved);
         }

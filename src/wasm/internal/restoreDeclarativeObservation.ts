@@ -27,7 +27,9 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
     const bounded = event("boundedMechanics") as BoundedMechanicObservation | undefined;
     const modifiers = event("screenModifiers") as ScreenModifierObservation<string> | undefined;
     const mechanics = blueprint.mechanics;
-    if ((mechanics?.cascade || mechanics?.respins || mechanics?.collection || mechanics?.weightedBonus) && !bounded || mechanics?.modifiers && !modifiers) throw new Error("Missing required retained feature observation.");
+    const boundedModel = !!(mechanics?.cascade || mechanics?.respins || mechanics?.collection || mechanics?.weightedBonus);
+    if (boundedModel !== !!bounded || bounded && (typeof bounded !== "object" || Array.isArray(bounded))) throw new Error("Missing or unexpected retained boundedMechanics observation for artifact model.");
+    if (!!mechanics?.modifiers !== !!modifiers || modifiers && (typeof modifiers !== "object" || Array.isArray(modifiers))) throw new Error("Missing or unexpected retained screenModifiers observation for artifact model.");
     for (const retained of last.featureEvents ?? []) {
         if (["boundedMechanics", "screenModifiers", "holdAndWin", "jackpot", "chargedBetMode"].includes(retained.type) &&
             stableSlotMathJson(retained.data ?? {}) !== stableSlotMathJson(projectPublicFeatureEvent(retained).data ?? {})) throw new Error(`Invalid retained ${retained.type} observation fields.`);
