@@ -207,7 +207,10 @@ Additional cells cover all modifier/evaluator/denomination pairs, declared
 modifier/free-game/purchase/jackpot/weighted combinations, full-board Hold&Win,
 both bonus payout units/zero duration, exact cascade terminal delivery, binary64
 weighted mass and projected/fractional viewports with hidden wilds/scatters.
-Each catalogue row has a bounded 128-play restore loop. Executable snapshots
+The public matrix contains 137 cells, including weighted Hold&Win, all seven
+bounded combinations and weighted bonus through their supported evaluators, plus
+known weighted cascade refill/draw accounting. Every catalogue row and four
+representative weighted models have bounded 128-play restore loops. Executable snapshots
 retain current progress and one delivery, with no completed-round history.
 
 This adds supported portable cells; it does not widen incompatible compositions,
