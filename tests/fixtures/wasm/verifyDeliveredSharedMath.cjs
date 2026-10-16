@@ -36,10 +36,20 @@ fixtures.push({name: 'explicit-lines-circular', model: {...base, paylines: [[2, 
 fixtures.push({name: 'cluster-min-five', model: {...base, winModel: {type: 'clusters', minimumClusterSize: 5}}});
 fixtures.push({name: 'scatter-order', model: {...base, symbols: ['A', 'S', 'T'], scatters: ['T', 'S'], wilds: [], reelStrips: [['A', 'S', 'T'], ['A', 'S', 'T'], ['A', 'S', 'T']], paytable: {A: {3: 0.7}, S: {3: 0.1}, T: {3: 0.3}}}});
 fixtures.push({name: 'default-bets', model: {...base, availableBets: undefined}});
+// A de Bruijn prefix plus an unused terminal symbol gives unique circular
+// two-cell windows. A Node screen therefore identifies one exact stop, even
+// when the total exceeds 32 bits; repeated-symbol strips cannot mask truncation.
+const stopSymbols = Array.from({length: 128}, (_, i) => `X${i}`);
+const pairs = [];
+for (let a = 0; a < 127; a++) {
+    pairs.push(a);
+    for (let b = a + 1; b < 127; b++) pairs.push(a, b);
+}
 for (const lengths of [[1024, 1024, 1024], [1025, 1024, 1024], [1025, 1025, 1025, 5]]) {
-    fixtures.push({name: `stops-${lengths.join('-')}`, model: {...base, reels: lengths.length, rows: 2,
-        reelStrips: lengths.map((length, reel) => Array.from({length}, (_, i) => inventory[(i + reel) % inventory.length])),
-        paytable: {A: {2: 0, 3: 0.3, 4: 0.7}, B: {2: 0.1, 3: 0.7, 4: 1.1}, S: {2: 0.1, 3: 0.3}}}});
+    const reelStrips = lengths.map((length, reel) => [...pairs.slice(0, length - 1).map(i => stopSymbols[(i + reel) % 127]), stopSymbols[127]]);
+    for (const strip of reelStrips) assert.equal(new Set(strip.map((symbol, i) => `${symbol}/${strip[(i + 1) % strip.length]}`)).size, strip.length);
+    fixtures.push({name: `stops-${lengths.join('-')}`, model: {...base, reels: lengths.length, rows: 2, symbols: stopSymbols, wilds: [], scatters: [], reelStrips,
+        paytable: {X0: {2: 0, 3: 0.3, 4: 0.7}, X1: {2: 0.1, 3: 0.7, 4: 1.1}}}});
 }
 for (const fixture of fixtures) {
     if (fixture.model.winModel?.type !== 'clusters') fixture.model.paytable = Object.fromEntries(Object.entries(fixture.model.paytable).map(([symbol, entries]) => [symbol,
@@ -96,12 +106,23 @@ async function main() {
         const wasm = runtime.createSession('0');
         const rawHost = new pokie.SeededPokieWasmHost('0');
         let rawDraws = 0;
-        const {instance} = await WebAssembly.instantiate(bytes, {pokie: {next_random() {rawDraws++; return rawHost.nextRandom();}}});
+        const rawDrawTape = [];
+        const {instance} = await WebAssembly.instantiate(bytes, {pokie: {next_random() {rawDraws++; const draw = rawHost.nextRandom(); rawDrawTape.push(draw); return draw;}}});
         const canonical = pokie.readCanonicalPokieWasmModule(bytes);
         const bets = model.availableBets ?? [...pokie.SHARED_SLOT_DEFAULT_BETS];
         // Constructor initialization: same untouched seed, no restoration/offset to manufacture parity.
         const initialized = pokie.readSharedSlotMathResult(instance, canonical.model, instance.exports.play(bets[0]));
+        function stopsFromNodeScreen(screen) {
+            return screen.map((window, reel) => {
+                const strip = model.reelStrips[reel];
+                const candidates = strip.flatMap((symbol, stop) => symbol === window[0] && strip[(stop + 1) % strip.length] === window[1] ? [stop] : []);
+                assert.equal(candidates.length, 1, 'the real Node screen must identify one exact stop');
+                return candidates[0];
+            });
+        }
         assert.deepEqual(initialized.screen, node.getSymbolsCombination().toMatrix(), name);
+        assert.deepEqual(initialized.stops, rawDrawTape.map((draw, reel) => Math.floor(draw * model.reelStrips[reel].length)));
+        if (name.startsWith('stops-')) assert.deepEqual(initialized.stops, stopsFromNodeScreen(node.getSymbolsCombination().toMatrix()));
         assert.equal(rawDraws, model.reels);
         assert.equal(wasm.serialize().drawCount, model.reels);
         assert.equal(rawHost.serializeState(), node.toSessionState().rngState);
@@ -118,6 +139,8 @@ async function main() {
             reference.calculateWin(bet, new pokie.SymbolsCombination().fromMatrix(screen));
             assert.deepEqual(round.screen, screen, name); assert.deepEqual(raw.screen, screen, name);
             assert.deepEqual(raw.stops, round.stops, name);
+            assert.deepEqual(round.stops, rawDrawTape.slice(-model.reels).map((draw, reel) => Math.floor(draw * model.reelStrips[reel].length)));
+            if (name.startsWith('stops-')) assert.deepEqual(round.stops, stopsFromNodeScreen(screen));
             assert.deepEqual(recompiled.getSymbolsCombination().toMatrix(), screen); assert.equal(recompiled.getWinAmount(), node.getWinAmount());
             assert.equal(round.payout, node.getWinAmount(), name); assert.equal(raw.payout, round.payout, name);
             assert.equal(reference.getWinAmount(), round.payout, `existing evaluator ${name}`);
