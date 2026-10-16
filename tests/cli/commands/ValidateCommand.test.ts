@@ -798,7 +798,7 @@ it("rejects a Blueprint replaced after advanced acquisition instead of combining
     fs.writeFileSync(file, JSON.stringify(model));
     const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
     const validate = AdvancedModelSourceValidator.prototype.validate;
-    const acquisition = jest.spyOn(AdvancedModelSourceValidator.prototype, "validate").mockImplementationOnce(async function (this: AdvancedModelSourceValidator, input, options) {
+    const acquisition = jest.spyOn(AdvancedModelSourceValidator.prototype, "validate").mockImplementationOnce(async function (this: import("../../../src/validation/AdvancedModelSourceValidator.js").AdvancedModelSourceValidator, input, options) {
         const report = await Reflect.apply(validate, this, [input, options]);
         fs.writeFileSync(file, JSON.stringify({...model, paytable: {A: {3: 7.5}}}));
         return report;
