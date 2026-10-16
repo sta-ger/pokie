@@ -405,12 +405,16 @@ export async function mutateCheckpointTransition(saved: import("../../../src/was
         await session.play(command);
         const alternative = session.serialize();
         if (alternative.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
+        expect(() => runtime.restoreSession(alternative)).not.toThrow();
         // Neither model identity nor the fixed pool display is the alleged authority.
         // Keep them original while the native award/statistics/ledger copies agree.
         const record = JSON.parse(JSON.stringify(alternative));
         record.artifactIdentity = saved.artifactIdentity;
         if (fixture.mutation[0] === "acceptedTransition.alternativeDenomination") record.feature.state.entryBet = 1;
         record.feature.lastRound.analytics.envelope = saved.feature.lastRound!.analytics!.envelope;
+        if (record.feature.lastRound.weightedBonusStatistics) {
+            record.feature.lastRound.weightedBonusStatistics.model = saved.feature.lastRound!.weightedBonusStatistics!.model;
+        }
         if (fixture.id === "transition-jackpot-payout") {
             const displays = [record.feature.lastRound.network.jackpot,
                 record.feature.logicalRound?.subrounds[0].artifacts[0].featureEvents.find((event: {type: string}) => event.type === "jackpot")?.data,

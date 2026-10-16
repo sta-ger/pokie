@@ -619,7 +619,7 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s aut
             const corrupt = await mutateCheckpointTransition(saved, test, command);
             const diagnostics = worker.getDiagnostics();
             for (const target of [worker, fresh]) {
-                const error = expect.stringMatching(/HoldAndWin.*(payout|entry)|Jackpot.*(award|payout)|bonus.*(selection|observation)|Collection.*transition/i);
+                const error = expect.stringMatching(test.id === "transition-bonus-entry" ? /Weighted bonus selection presence/i : /HoldAndWin.*(payout|entry)|Jackpot.*(award|payout)|bonus.*(selection|observation)|Collection.*transition/i);
                 expect(await target.handle({id: "bad", type: "restore", state: corrupt})).toMatchObject({ok: false, error});
                 expect(await target.handle({id: "bad", type: "replay", state: corrupt, commands: [command]})).toMatchObject({ok: false, error});
             }

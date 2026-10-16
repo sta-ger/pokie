@@ -937,6 +937,7 @@ it.each(["plain", "stepwise", "composite"] as const)("rejects coordinated %s aut
             if (test.id.includes("hold")) expected = /HoldAndWin.*(payout|entry)/i;
             if (test.id.includes("jackpot")) expected = /Jackpot.*(award|payout)/i;
             if (test.id.includes("bonus")) expected = /bonus.*(selection|observation)/i;
+            if (test.id === "transition-bonus-entry") expected = /Weighted bonus selection presence/i;
             const before = host.serializeState();
             const calls = restore.mock.calls.length;
             // Exercise the same malformed input at the stateless authority, then its
