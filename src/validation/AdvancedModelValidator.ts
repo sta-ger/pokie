@@ -153,6 +153,7 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                     await this.add(report, budget, {id: "transitions.target", path: `transitions.${index}`, status: "violation", severity: "error", message: state.terminal ? "A terminal state declares an executable transition." : "Transition target does not exist.", assumptions: report.assumptions, evidence: {path: [...path], transition: edge, before: edge.before ?? state.state ?? {}, after: edge.after ?? states.get(edge.to)?.state ?? {}, expected: "Existing target from a nonterminal owner", actual: edge.to}});
                     continue;
                 }
+                let unsupported: string[] = [];
                 try {
                     if (edge.before && canonicalDefinitionJson(edge.before) !== canonicalDefinitionJson(state.state ?? {})) throw new Error("Transition before-state differs from its source owner.");
                     if (edge.after && canonicalDefinitionJson(edge.after) !== canonicalDefinitionJson(states.get(edge.to)?.state ?? {})) throw new Error("Transition after-state differs from its target owner.");
@@ -160,17 +161,16 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                         const beforeState = edge.before ?? state.state;
                         const afterState = edge.after ?? states.get(edge.to)?.state;
                         if (afterState) validateExecutableState(afterState, model.schema);
-                        if (beforeState && afterState) {
-                            const unsupported = validateDeclaredContinuation(beforeState, afterState, model.schema);
-                            if (unsupported.length) {
-                                snapshotsComplete = false;
-                                await this.add(report, budget, {id: "invariants.transition-support", path: `transitions.${index}`, status: "unknown", severity: "warning", message: "Some transition relationships lack production evidence.", assumptions: report.assumptions, evidence: {path: [...path, edge.to], unsupported}});
-                            }
-                        }
+                        if (beforeState && afterState) unsupported = validateDeclaredContinuation(beforeState, afterState, model.schema);
                     }
                 } catch (error) {
                     invariant = true;
                     await this.add(report, budget, {id: "invariants.transition-state", path: `transitions.${index}`, status: "violation", severity: "error", message: error instanceof Error ? error.message : String(error), assumptions: report.assumptions, evidence: {path: [...path, edge.to], transition: edge, before: edge.before ?? state.state ?? {}, after: edge.after ?? states.get(edge.to)?.state ?? {}, expected: error instanceof DeclaredContinuationError ? {property: error.property, relationship: error.expected} : "Owned source/target snapshots and executable-state invariants", actual: error instanceof DeclaredContinuationError ? error.actual : edge}});
+                }
+                // Retention exhaustion is an analysis stop, never a failed state relationship.
+                if (unsupported.length) {
+                    snapshotsComplete = false;
+                    await this.add(report, budget, {id: "invariants.transition-support", path: `transitions.${index}`, status: "unknown", severity: "warning", message: "Some transition relationships lack production evidence.", assumptions: report.assumptions, evidence: {path: [...path, edge.to], unsupported}});
                 }
                 const money = edge.accounting;
                 if (!money) accountingComplete = false;

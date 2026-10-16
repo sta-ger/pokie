@@ -570,3 +570,15 @@ it("retains per-check unknowns for sibling respin resets, cascades, free-game gr
     const broken = await validator.validate(declaration);
     expect(broken.checks).toContainEqual(expect.objectContaining({id: "invariants.transition-state", path: "transitions.0", status: "violation", evidence: expect.objectContaining({before: nestedBefore, after: nestedAfter, expected: {property: "state.lastOutcome.baseWinAmount", relationship: {exact: 2}}, actual: 0})}));
 });
+
+it("does not turn interrupted unsupported-witness retention into a feature violation", async () => {
+    const state = {rngState: 1, reelStrips: [["A"]]};
+    const model: DeclaredTransitionModel = {kind: "declared-transitions", initial: "a", schema: {kind: "seeded-video-slot"}, states: [{id: "a", state}, {id: "done", terminal: true, state}], transitions: [{from: "a", to: "done"}]};
+    const validator = new AdvancedModelValidator();
+    const interrupted = await validator.validate(model, {limits: {evidenceNodes: 1}});
+    expect(interrupted).toMatchObject({status: "budget-exhausted", verdict: "inconclusive"});
+    expect(interrupted.checks.filter(check => check.status === "violation")).toEqual([]);
+    const retried = await validator.validate(model);
+    expect(retried).toMatchObject({status: "unsupported", verdict: "inconclusive"});
+    expect(retried.checks).toContainEqual(expect.objectContaining({id: "invariants.transition-support", path: "transitions.0", status: "unknown"}));
+});
