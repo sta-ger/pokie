@@ -436,7 +436,7 @@ it.each(["zero", "subtract-threshold"] as const)("rejects zero-contribution coll
 
 async function holdAndWinTrace(): Promise<DeclaredTransitionModel> {
     const {generatedMechanicsGame} = await import("./fixtures/ExistingMechanicsGame.js");
-    const model: GameBlueprint = {...blueprint(), reels: 2, symbols: ["A", "C"], availableBets: [1], reelStrips: [["C"], ["A"]], mechanics: {holdAndWin: {minimumCount: 1, initialRespins: 2, retriggerPolicy: "reset-on-new-lock", symbolEffects: {C: {kind: "value", amount: 2}}, payout: {type: "sum-with-multiplier", amountsAreBetMultiples: false}}}};
+    const model: GameBlueprint = {...blueprint(), reels: 2, symbols: ["A", "C"], scatters: [], availableBets: [1], reelStrips: [["C"], ["A"]], mechanics: {holdAndWin: {minimumCount: 1, initialRespins: 2, retriggerPolicy: "reset-on-new-lock", symbolEffects: {C: {kind: "value", amount: 2}}, payout: {type: "sum-with-multiplier", amountsAreBetMultiples: false}}}};
     const session = generatedMechanicsGame(model).createSession({seed: 1}) as import("../../src/session/videoslot/holdandwin/VideoSlotWithHoldAndWinSession.js").VideoSlotWithHoldAndWinSession<string>;
     session.setBet(1);
     session.setCreditsAmount(10);
@@ -524,7 +524,7 @@ it.each([0, 2])("binds production weighted currency awards to entry accounting (
 
 it.each(["zero", "subtract-threshold"] as const)("retains real collection %s accumulation/reset and currency payout as partially supported", async reset => {
     const {generatedMechanicsGame} = await import("./fixtures/ExistingMechanicsGame.js");
-    const model: GameBlueprint = {...blueprint(), reels: 3, symbols: ["A", "C"], availableBets: [1], reelStrips: [["C"], ["C"], ["C"]], mechanics: {collection: {symbolId: "C", contribution: 1, threshold: 2, cap: 5, reset, payout: 3}}};
+    const model: GameBlueprint = {...blueprint(), reels: 3, symbols: ["A", "C"], scatters: [], availableBets: [1], reelStrips: [["C"], ["C"], ["C"]], mechanics: {collection: {symbolId: "C", contribution: 1, threshold: 2, cap: 5, reset, payout: 3}}};
     const session = generatedMechanicsGame(model).createSession({seed: 1}) as import("../../src/session/videoslot/authored/BoundedVideoSlotSession.js").BoundedVideoSlotSession;
     session.setBet(1);
     session.setCreditsAmount(10);
