@@ -55,6 +55,11 @@ describe("V2C-22-SIDECAR-DIAGNOSTICS: rendered Home recovery", () => {
         writeFileSync(location, fixture.bytes);
         writeFileSync(sidecar, JSON.stringify(fixture.manifest));
     };
+    function replaceWithUnsupported(options: Parameters<typeof createCanonicalWasmFixture>[0]): void {
+        const replacement = createCanonicalWasmFixture(options);
+        writeFileSync(location, replacement.bytes);
+        writeFileSync(sidecar, JSON.stringify(replacement.manifest));
+    }
     const contents = (): Buffer[] => [readFileSync(location), ...(readFileSyncOrAbsent(sidecar))];
     function readFileSyncOrAbsent(file: string): Buffer[] {
         try {
@@ -132,6 +137,10 @@ describe("V2C-22-SIDECAR-DIAGNOSTICS: rendered Home recovery", () => {
         {category: "stale", cause: "does not match its manifest", guidance: "Rebuild the artifact; do not copy a sidecar", breakArtifact: () => writeFileSync(location, createCanonicalWasmFixture({id: "replacement"}).bytes)},
         {category: "incompatible schema", cause: "not compatible with this POKIE build", guidance: "Update the incompatible sidecar", breakArtifact: () => writeFileSync(sidecar, JSON.stringify({...fixture.manifest, schemaVersion: "99.0.0"}))},
         {category: "incompatible runtime", cause: "requires POKIE 99.0.0 or newer", guidance: "Update POKIE or rebuild the artifact", breakArtifact: () => writeFileSync(sidecar, JSON.stringify({...fixture.manifest, minPokieVersion: "99.0.0"}))},
+        {category: "incompatible ABI", cause: 'declares ABI "99.0.0"', guidance: "Update the incompatible sidecar", breakArtifact: () => writeFileSync(sidecar, JSON.stringify({...fixture.manifest, artifact: {...fixture.manifest.artifact, abiVersion: "99.0.0"}}))},
+        {category: "incompatible serialization", cause: "unsupported serialization identifiers", guidance: "Rebuild the artifact for the supported portable runtime contract", breakArtifact: () => replaceWithUnsupported({serialization: {session: "pokie.session.v2", play: "pokie.play.v2", state: "other.state.v1"}})},
+        {category: "incompatible RNG", cause: "unsupported RNG protocol", guidance: "Rebuild the artifact for the supported portable runtime contract", breakArtifact: () => replaceWithUnsupported({host: {rng: "other.rng.v1", services: []}})},
+        {category: "incompatible host service", cause: "unsupported required host service", guidance: "Rebuild the artifact for the supported portable runtime contract", breakArtifact: () => replaceWithUnsupported({host: {rng: "pokie.rng.v2", services: ["pokie.clock.v1"]}})},
     ];
 
     async function expectDiagnostic(failure: typeof failures[number]): Promise<void> {
@@ -139,7 +148,7 @@ describe("V2C-22-SIDECAR-DIAGNOSTICS: rendered Home recovery", () => {
         expect(alert).toHaveTextContent(failure.cause);
         expect(alert).toHaveTextContent(failure.guidance);
         expect(alert).toHaveTextContent(location);
-        if (failure.category !== "stale" && failure.category !== "incompatible runtime") expect(alert).toHaveTextContent(sidecar);
+        if (failure.category.startsWith("malformed") || ["missing", "incompatible schema", "incompatible ABI"].includes(failure.category)) expect(alert).toHaveTextContent(sidecar);
         expect(alert).toHaveTextContent(diagnostics[diagnostics.length - 1]);
         expect(screen.getByText("Preserved game")).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Add to projects"})).not.toBeInTheDocument();

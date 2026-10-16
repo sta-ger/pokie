@@ -6,7 +6,9 @@ import {describeProjectActionError} from "./projectActionError";
 // a pathname or stale preview's type as authority for preserving the diagnostic.
 export function isWasmProjectDiagnostic(message: string): boolean {
     return (/\b(?:WASM (?:target|component|artifact|manifest|module|sidecar|runtime|Project)|PokieWasmComponentManifest)\b/i).test(message)
-        || (/\bPOKIE \S+ cannot run "[^"]+\.wasm": it requires POKIE\b/i).test(message);
+        // The resolver's rejection envelope also covers minimum runtime,
+        // serialization and host-service failures without a WASM keyword.
+        || (/^POKIE (?:\S+ )?cannot run "[^"]+\.wasm": /i).test(message);
 }
 
 // Scoped to Project resolution actions. Shared path/project helpers also serve
