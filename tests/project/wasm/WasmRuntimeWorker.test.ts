@@ -510,7 +510,7 @@ it("initializes required feature analytics from the Worker empty replay origin",
     }
 });
 
-it.each(["stepwise", "composite", "plain"] as const)("rejects coordinated %s modifier and sibling artifact events before replacing the Worker session", async policy => {
+it.each(["stepwise", "composite", "plain"] as const)("rejects coordinated %s awards, grants, modifiers and sibling artifact events before replacing the Worker session", async policy => {
     const {checkpointFeatureObservationFixtures, mutateCheckpointProjection} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
     for (const {blueprint, mutations, seed = "probe", maxSubrounds} of checkpointFeatureObservationFixtures()) {
         const fixture = createCanonicalWasmFixture({blueprint});
@@ -527,8 +527,8 @@ it.each(["stepwise", "composite", "plain"] as const)("rejects coordinated %s mod
                 const corrupt = mutateCheckpointProjection(state, mutation);
                 const diagnostics = worker.getDiagnostics();
                 for (const target of [worker, fresh]) {
-                    expect(await target.handle({id: "bad", type: "restore", state: corrupt})).toMatchObject({ok: false, error: expect.stringMatching(/modifier|sticky|holdAndWin|jackpot|chargedBetMode|win|position|logical|stops|draw|plain money|canonical feature|freeGamesTriggered/i)});
-                    expect(await target.handle({id: "bad", type: "replay", state: corrupt, commands: [command]})).toMatchObject({ok: false, error: expect.stringMatching(/modifier|sticky|holdAndWin|jackpot|chargedBetMode|win|position|logical|stops|draw|plain money|canonical feature|freeGamesTriggered/i)});
+                    expect(await target.handle({id: "bad", type: "restore", state: corrupt})).toMatchObject({ok: false, error: expect.stringMatching(/modifier|sticky|holdAndWin|jackpot|chargedBetMode|win|position|logical|stops|draw|plain money|canonical feature|freeGamesTriggered|respins|bonus/i)});
+                    expect(await target.handle({id: "bad", type: "replay", state: corrupt, commands: [command]})).toMatchObject({ok: false, error: expect.stringMatching(/modifier|sticky|holdAndWin|jackpot|chargedBetMode|win|position|logical|stops|draw|plain money|canonical feature|freeGamesTriggered|respins|bonus/i)});
                 }
                 expect(worker.getDiagnostics()).toEqual(diagnostics);
                 expect(await worker.handle({id: "state", type: "serialize"})).toEqual(saved);

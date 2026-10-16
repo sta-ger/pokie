@@ -44,6 +44,7 @@ export type SessionFeatureAnalyticsBeforePlay = {
     locks: number;
     holdRemaining: number;
     respins: boolean;
+    respinsRemaining?: number;
     bonus: boolean;
 };
 export interface SessionFeatureAnalyticsObserving {
@@ -118,7 +119,7 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
     /** The caller supplies entry identity from accepted mathematics, never from analytics copies. */
     public validateAcceptedTransition(before: SessionFeatureAnalyticsBeforePlay, entry: boolean, logicalContinuation: boolean, accepted?: {entryPosition: number; roundingScale?: number; wins: Partial<Record<AnalyticsFeature, number>>}): void {
         const invalid = () => new Error("Analytics prior state contradicts its accepted mathematical entry or continuation.");
-        if (!before || Object.keys(before).sort().join(",") !== "bonus,free,freeNum,freeSum,hold,holdRemaining,locks,pending,respins" ||
+        if (!before || Object.keys(before).filter(key => key !== "respinsRemaining").sort().join(",") !== "bonus,free,freeNum,freeSum,hold,holdRemaining,locks,pending,respins" ||
             ![before.pending, before.free, before.hold, before.respins, before.bonus].every(value => typeof value === "boolean") ||
             ![before.freeNum, before.freeSum, before.locks, before.holdRemaining].every(value => Number.isSafeInteger(value) && value >= 0) ||
             before.pending === entry || before.free !== (before.freeSum > before.freeNum) || before.freeNum > before.freeSum ||
@@ -130,6 +131,8 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             before.respins !== (before.pending && supported("respins")) || before.bonus !== (before.pending && supported("weightedBonus")) ||
             !supported("freeGames") && (before.freeNum !== 0 || before.freeSum !== 0) ||
             !supported("holdAndWin") && (before.locks !== 0 || before.holdRemaining !== 0)) throw invalid();
+        if (supported("respins") ? !Number.isSafeInteger(before.respinsRemaining) || before.respinsRemaining! < 0 ||
+            before.respins !== (before.respinsRemaining! > 0) : before.respinsRemaining !== undefined) throw invalid();
         const active = {freeGames: before.free, holdAndWin: before.hold, respins: before.respins, weightedBonus: before.bonus};
         if (Object.keys(this.state.active).some(feature => Reflect.get(active, feature) !== true)) throw invalid();
         for (const [feature, wasActive] of Object.entries(active)) {
@@ -176,6 +179,7 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             locks: hold.getLockedHoldAndWinSymbols?.().length ?? 0,
             holdRemaining: hold.getHoldAndWinRespinsRemaining?.() ?? 0,
             respins: bounded?.respins ? bounded.respins.remaining > 0 : pending && this.envelope.supportedFeatures.includes("respins"),
+            ...(bounded?.respins ? {respinsRemaining: bounded.respins.remaining} : {}),
             bonus: bounded?.weightedBonus ? bounded.weightedBonus.remaining > 0 : pending && this.envelope.supportedFeatures.includes("weightedBonus"),
         };
     }

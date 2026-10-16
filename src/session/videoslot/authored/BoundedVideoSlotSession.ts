@@ -1,4 +1,4 @@
-import {weightedBonusModel, type WeightedBonusState, type WeightedBonusStatistics, type WeightedBonusProviding} from "./WeightedBonus.js";
+import {weightedBonusPayout, weightedBonusModel, type WeightedBonusState, type WeightedBonusStatistics, type WeightedBonusProviding} from "./WeightedBonus.js";
 import {cloneSessionData} from "../../../runtime/internal/cloneSessionData.js";
 import {validateAuthoredMechanics} from "../../../generated/validateAuthoredMechanics.js";
 import {validateExecutableState} from "../../../runtime/validateExecutableState.js";
@@ -15,7 +15,7 @@ import {CascadingSpinResolver} from "../cascade/CascadingSpinResolver.js";
 import {ValueWinComponent} from "../winevaluation/ValueWinComponent.js";
 import {WinningValue} from "../WinningValue.js";
 import {WinEvaluationResult} from "../winevaluation/WinEvaluationResult.js";
-import type {BoundedMechanics, BoundedMechanicObservation, BoundedMechanicsProviding} from "./BoundedMechanics.js";
+import {resolveRespinTransition, type BoundedMechanics, type BoundedMechanicObservation, type BoundedMechanicsProviding} from "./BoundedMechanics.js";
 
 export type BoundedSessionState = {base: unknown; value: number; remaining: number; executed: number; entryBet: number; bonus?: WeightedBonusState};
 
@@ -199,14 +199,14 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
             }
             const respins = this.rules.respins;
             let granted = 0;
-            if (continuing) {
+            if (respins) {
+                const transition = resolveRespinTransition(respins, this.remaining, this.executed, count(respins.trigger.symbolId));
+                this.executed = transition.executed;
+                this.remaining = transition.remaining;
+                granted = transition.granted;
+            } else if (continuing) {
                 this.executed++;
                 this.remaining--;
-            }
-            if (respins && count(respins.trigger.symbolId) >= respins.trigger.minimumCount && (!continuing || respins.retrigger === "reset")) {
-                const next = Math.min(respins.grant, respins.maxRespins - this.executed);
-                granted = Math.max(0, next - this.remaining);
-                this.remaining = next;
             }
             const table = this.rules.weightedBonus;
             let bonusPayout = 0;
@@ -219,7 +219,7 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
                     this.bonus.counts[index]++;
                     this.bonus.selection = {tableId: table.id, outcomeId: outcome.id, context: this.generator.getSelectionState().context, model: weightedBonusModel(table)};
                     this.remaining = outcome.duration;
-                    bonusPayout = outcome.payout * (outcome.payoutUnits === "bet-multiple" ? this.entryBet : 1);
+                    bonusPayout = weightedBonusPayout(outcome, this.entryBet);
                     selectedNow = true;
                     const component = new ValueWinComponent(new WinningValue(table.feature.id, [], bonusPayout));
                     evaluation = new WinEvaluationResult({winComponents: [...evaluation.getWinComponents(), component]});

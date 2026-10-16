@@ -1,3 +1,6 @@
+import {restoreWinEvaluation} from "../../../src/session/videoslot/winevaluation/WinEvaluationSnapshot.js";
+import {serializeWinEvaluationResult} from "../../../src/net/videoslot/serializeWinEvaluationResult.js";
+import type {RoundArtifactWin} from "../../../src/artifact/RoundArtifactWin.js";
 import fs from "node:fs";
 import {weightedBonusBlueprint} from "../../v2/fixtures/WeightedBonusGame.js";
 import {AUTHORED_MECHANIC_CATALOG} from "../../../src/generated/AuthoredMechanicCatalog.js";
@@ -56,6 +59,51 @@ export const checkpointProjectionMutations: readonly (readonly [string, unknown?
 
 export function mutateCheckpointProjection<T>(saved: T, [path, value]: readonly [string, unknown?]): T {
     const corrupt = JSON.parse(JSON.stringify(saved));
+    if (path.startsWith("acceptedAward.")) {
+        const feature = corrupt.feature;
+        const artifact = feature.plainMath?.artifact;
+        const steps = feature.logicalRound?.subrounds[0].artifacts ?? artifact.steps;
+        const original: RoundArtifactWin[] = steps.flatMap((step: {wins: RoundArtifactWin[]}) => step.wins);
+        if (path === "acceptedAward.respinGrant") {
+            for (const events of [steps[steps.length - 1].featureEvents, artifact?.featureEvents]) {
+                if (events) events.find((event: {type: string}) => event.type === "boundedMechanics").data.respins.granted = 1;
+            }
+            feature.lastRound.network.boundedMechanics.respins.granted = 1;
+            feature.lastRound.analytics.features.find((event: {feature: string}) => event.feature === "respins").granted = 1;
+        } else {
+            if (original.length !== 2 || original[0].winAmount !== 0.1 ||
+                original[1].winAmount !== (path === "acceptedAward.bonus" ? 0.25 : 0.1)) throw new Error("Expected exact reviewer component awards");
+            const omit = path === "acceptedAward.omit";
+            const bonus = path === "acceptedAward.bonus";
+            const amounts = omit ? [0.2] : [0.05, 0.15];
+            if (bonus) amounts.splice(0, 2, 0.35 - 0.2, 0.2);
+            const alter = (wins: RoundArtifactWin[]) => wins.filter((_win, index) => !omit || index === 0).map((win, index) => ({...win, winAmount: amounts[index]}));
+            for (const step of steps) step.wins = alter(step.wins);
+            if (artifact) artifact.wins = steps.flatMap((step: {wins: RoundArtifactWin[]}) => step.wins);
+            const wins: RoundArtifactWin[] = steps.flatMap((step: {wins: RoundArtifactWin[]}) => step.wins);
+            const network = feature.lastRound.network;
+            const result = restoreWinEvaluation({components: wins.map(win => ({type: win.type, id: win.id, symbolId: win.symbolId!, amount: win.winAmount,
+                positions: win.winningPositions as number[][], multipliers: [], metadata: win.metadata})), metadata: network.winEvaluationResult.metadata});
+            network.winEvaluationResult = serializeWinEvaluationResult(result);
+            network.winningPositions = result.getWinningPositions();
+            for (const [kind, field, group] of [["line", "winningLines", "lineWins"], ["scatter", "winningScatters", "scatterWins"],
+                ["ways", "winningWays", "waysWins"], ["cluster", "winningClusters", "clusterWins"], ["value", "winningValues", "valueWins"]]) {
+                if (network[field]) network[field] = Object.fromEntries(wins.filter(win => win.type === kind).map((win, index) => [kind === "line" || kind === "cluster" ? win.id : win.symbolId, network.winEvaluationResult[group][index]]));
+            }
+            const components = feature.lastRound.analytics.components;
+            feature.lastRound.analytics.components = wins.map(win => ({...components.find((item: {type: string; id: string}) => item.type === win.type && item.id === win.id), amount: win.winAmount}));
+            if (bonus) {
+                for (const events of [steps[steps.length - 1].featureEvents, artifact?.featureEvents]) {
+                    if (events) events.find((event: {type: string}) => event.type === "boundedMechanics").data.weightedBonus.payout = 0.2;
+                }
+                network.boundedMechanics.weightedBonus.payout = 0.2;
+                feature.accounting.baseWin = 0.35 - 0.2;
+                feature.analytics.active.weightedBonus.win = 0.2;
+            }
+        }
+        if (feature.logicalRound) feature.lastRound.logicalRound = feature.logicalRound;
+        return corrupt as T;
+    }
     if (path.startsWith("acceptedEvents.")) {
         const feature = corrupt.feature;
         const artifact = feature.plainMath?.artifact;
@@ -193,6 +241,7 @@ export function checkpointFeatureObservationFixtures(): {id: string; blueprint: 
         {id: "cascade", blueprint: cascade, seed: "7", mutations: [
             ["acceptedEvents.freeGamesTriggered"], ["acceptedEvents.foreign"],
         ]},
+        ...checkpointAwardFixtures(wins),
         {id: "wins", blueprint: wins, mutations: [
             ["acceptedEvents.freeGamesTriggered"], ["acceptedEvents.foreign"],
             ["acceptedWin.symbol", "INVALID"], ["acceptedWin.symbol", "B"], ["acceptedWin.positions", [[999, 999]]],
@@ -246,4 +295,26 @@ export function checkpointAccountingFixtures(): {id: string; blueprint: GameBlue
         reelStrips: [["C"], ["C"], ["C"]], paytable: {C: {3: 2}}};
     return [{id: "weightedBonus", blueprint: weighted, completion: 0.44999999999999996}, {id: "freeGames", blueprint: free, mode: "buy", completion: 0.30000000000000004}, {id: "holdAndWin", blueprint: hold, completion: 2},
         {id: "respins", blueprint: respins, completion: 0.2}];
+}
+
+/** Coordinated money/grant changes preserve aggregate money and every returned copy. */
+function checkpointAwardFixtures(base: GameBlueprint): ReturnType<typeof checkpointFeatureObservationFixtures> {
+    const respinBase = {...base};
+    Reflect.deleteProperty(respinBase, "betModes");
+    const twoRows = {...base, rows: 2, paylines: [[0, 0, 0], [1, 1, 1]]};
+    const weighted = weightedBonusBlueprint();
+    weighted.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    return [
+        {id: "award-lines", blueprint: twoRows, mutations: [["acceptedAward.redistribute"], ["acceptedAward.omit"]]},
+        {id: "award-ways", blueprint: {...twoRows, reelStrips: [["A", "B"], ["A", "B"], ["A", "B"]], paytable: {A: {3: 2}, B: {3: 2}},
+            winModel: {type: "ways"}}, mutations: [["acceptedAward.redistribute"]]},
+        {id: "award-scatters", blueprint: {...twoRows, reelStrips: [["A", "B"], ["A", "B"], ["A", "B"]], scatters: ["A", "B"],
+            paytable: {A: {3: 2}, B: {3: 2}}}, mutations: [["acceptedAward.redistribute"]]},
+        {id: "award-clusters", blueprint: {...base, rows: 3, reelStrips: [["A"], ["B"], ["A"]],
+            winModel: {type: "clusters", minimumClusterSize: 3}}, mutations: [["acceptedAward.redistribute"]]},
+        {id: "award-bonus", blueprint: weighted, maxSubrounds: 1, mutations: [["acceptedAward.bonus"]]},
+        {id: "award-respins", blueprint: {...respinBase, mechanics: {respins: {trigger: {symbolId: "A", minimumCount: 1}, grant: 2, retrigger: "none", maxRespins: 2}}},
+            maxSubrounds: 1, mutations: [["acceptedAward.respinGrant"], ["analyticsCheckpoint.before.respinsRemaining", -1],
+                ["analyticsCheckpoint.before.respinsRemaining", 999], ["analyticsCheckpoint.before.respinsRemaining", "2"], ["analyticsCheckpoint.before.respinsRemaining"]]},
+    ];
 }

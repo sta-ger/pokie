@@ -604,3 +604,87 @@ it.each(["plain", "stepwise", "composite"] as const)("retains valid %s natural f
         }
     }
 });
+
+it.each(["plain", "stepwise", "composite"] as const)("restores %s model-derived respin grants through entry, retrigger, exhaustion and new entry", async policy => {
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    const {checkpointFeatureObservationFixtures} = await import("../fixtures/wasm/checkpointProjectionMutations.js");
+    for (const retrigger of ["none", "reset"] as const) {
+        const blueprint = checkpointFeatureObservationFixtures().find(fixture => fixture.id === "award-respins")!.blueprint;
+        Object.assign(blueprint.mechanics!.respins!, {retrigger, maxRespins: 4});
+        const fixture = createCanonicalWasmFixture({blueprint});
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("probe"));
+        const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("fresh"));
+        try {
+            const session = runtime.createSession("probe");
+            const expected = retrigger === "none" ? [[2, 0, 2], [1, 1, 0], [0, 2, 0], [2, 0, 2]]
+                : [[2, 0, 2], [2, 1, 1], [2, 2, 1], [1, 3, 0], [0, 4, 0], [2, 0, 2]];
+            for (const [index, [remaining, executed, granted]] of expected.entries()) {
+                const saved = session.serialize();
+                const progress = saved.schemaVersion === "pokie.state.v4" ? saved.feature.logicalRound : undefined;
+                const command = policy === "plain" ? {bet: 0.05} : {delivery: policy, maxSubrounds: 1,
+                    ...(progress?.status === "pending" ? {continuation: {roundId: progress.id, cursor: progress.deliveryCursor}} : {bet: 0.05, roundId: `respins:${index}`})};
+                const restored = fresh.restoreSession(saved);
+                const result = await session.play(command);
+                expect(result.network?.boundedMechanics?.respins).toEqual({remaining, executed, granted, limit: 4});
+                expect(result.stake).toBe(executed === 0 ? 0.05 : 0);
+                expect(result.win).toBe(0.1);
+                expect(await restored.play(command)).toEqual(result);
+                expect((await runtime.replay(saved, [command])).rounds).toEqual([result]);
+                expect(restored.serialize()).toEqual(session.serialize());
+                const checkpoint = session.serialize();
+                const corrupt = JSON.parse(JSON.stringify(checkpoint));
+                corrupt.feature.analyticsCheckpoint.before.respinsRemaining = executed === 0 ? 1 : 0;
+                expect(() => runtime.restoreSession(corrupt)).toThrow(/respins|analytics/i);
+                // Rejected restoration leaves the used owner available for explicit restore.
+                const verified = runtime.restoreSession(checkpoint);
+                expect(verified.serialize()).toEqual(checkpoint);
+                restored.dispose();
+                verified.dispose();
+            }
+        } finally {
+            runtime.dispose();
+            fresh.dispose();
+        }
+    }
+});
+
+it("retains the complete coordinated award/grant reproducer set", async () => {
+    const {checkpointFeatureObservationFixtures} = await import("../fixtures/wasm/checkpointProjectionMutations.js");
+    expect(checkpointFeatureObservationFixtures().filter(fixture => fixture.id.startsWith("award-")).map(({id, mutations}) => [id, mutations.map(([path]) => path)])).toEqual([
+        ["award-lines", ["acceptedAward.redistribute", "acceptedAward.omit"]],
+        ["award-ways", ["acceptedAward.redistribute"]],
+        ["award-scatters", ["acceptedAward.redistribute"]],
+        ["award-clusters", ["acceptedAward.redistribute"]],
+        ["award-bonus", ["acceptedAward.bonus"]],
+        ["award-respins", ["acceptedAward.respinGrant", "analyticsCheckpoint.before.respinsRemaining", "analyticsCheckpoint.before.respinsRemaining",
+            "analyticsCheckpoint.before.respinsRemaining", "analyticsCheckpoint.before.respinsRemaining"]],
+    ]);
+});
+
+it.each(["currency", "bet-multiple"] as const)("restores authored %s bonus awards including zero at each fractional stake", async units => {
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    for (const payout of [0, 5]) {
+        const blueprint = weightedBonusBlueprint();
+        blueprint.mechanics!.weightedBonus!.outcomes = [{id: "selected", weight: 1, targetId: "bonus-respins", payout, payoutUnits: units, duration: 0}];
+        const fixture = createCanonicalWasmFixture({blueprint});
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("probe"));
+        try {
+            for (const bet of [0.05, 7.5, 1e-7]) {
+                const session = runtime.createSession("probe");
+                const command = {bet, roundId: `award:${bet}`, delivery: "stepwise"};
+                const played = await session.play(command);
+                expect(played.win).toBe(2 * bet + payout * (units === "bet-multiple" ? bet : 1));
+                expect(played.network?.winEvaluationResult?.valueWins).toEqual([{symbolId: "bonus-respins", symbolsPositions: [], winAmount: payout * (units === "bet-multiple" ? bet : 1)}]);
+                const saved = session.serialize();
+                const restored = runtime.restoreSession(saved);
+                expect(await restored.play(command)).toEqual(played);
+                expect((await runtime.replay(saved, [command])).rounds).toEqual([played]);
+                expect(await restored.play({bet})).toEqual(await session.play({bet}));
+                session.dispose();
+                restored.dispose();
+            }
+        } finally {
+            runtime.dispose();
+        }
+    }
+});

@@ -626,7 +626,7 @@ it("initializes required feature analytics once for a supported empty replay ori
     }
 });
 
-it.each(["stepwise", "composite", "plain"] as const)("binds %s artifact feature events to model/native state across direct restore, replay and recovery", async policy => {
+it.each(["stepwise", "composite", "plain"] as const)("binds %s artifact awards, grants and feature events to model/native state across direct restore, replay and recovery", async policy => {
     const {checkpointFeatureObservationFixtures, mutateCheckpointProjection} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
     const {ScreenModifierEngine} = await import("../../../src/session/videoslot/modifiers/ScreenModifierEngine.js");
     for (const {id, blueprint, mutations, seed = "probe", maxSubrounds} of checkpointFeatureObservationFixtures()) {
@@ -646,23 +646,37 @@ it.each(["stepwise", "composite", "plain"] as const)("binds %s artifact feature 
             const {createAuthoredSession} = await import("../../../src/generated/createAuthoredSession.js");
             const {SeededRandomNumberGenerator} = await import("../../../src/session/videoslot/combinations/SeededRandomNumberGenerator.js");
             const {restoreDeclarativeObservation} = await import("../../../src/wasm/internal/restoreDeclarativeObservation.js");
-            const nativeFree = id === "freeGames" ? createAuthoredSession(blueprint, new SeededRandomNumberGenerator(seed)) : undefined;
-            if (nativeFree) {
-                nativeFree.session.setBet(0.05);
-                for (let index = 0; index < (policy === "composite" ? maxSubrounds! : 1); index++) nativeFree.session.play();
+            const nativeObservation = id === "freeGames" || id.startsWith("award-") ? createAuthoredSession(blueprint, new SeededRandomNumberGenerator(seed)) : undefined;
+            if (nativeObservation) {
+                nativeObservation.session.setBet(0.05);
+                for (let index = 0; index < (policy === "composite" ? maxSubrounds ?? 1 : 1); index++) {
+                    nativeObservation.session.setSelectionContext?.("logical:x");
+                    nativeObservation.session.play();
+                }
             }
             const native = saved.feature.state as {modifierState: import("../../../src/session/videoslot/modifiers/ScreenModifiers.js").ScreenModifierState};
             const engine = blueprint.mechanics?.modifiers && new ScreenModifierEngine({modifiers: blueprint.mechanics.modifiers, symbols: blueprint.symbols,
                 wilds: blueprint.wilds ?? [], reels: blueprint.reels, rows: blueprint.rows, screenGeometry: blueprint.screenGeometry});
             for (const mutation of mutations) {
                 const corrupt = mutateCheckpointProjection(saved, mutation);
-                const calls = restore.mock.calls.length;
-                const error = /modifier|sticky|holdAndWin|jackpot|chargedBetMode|win|position|logical|stops|draw|plain money|canonical feature|freeGamesTriggered/i;
-                if (nativeFree) {
+                if (id.startsWith("award-")) {
                     const steps = corrupt.feature.logicalRound?.subrounds[0].artifacts ?? corrupt.feature.plainMath!.artifact.steps;
-                    expect(() => restoreDeclarativeObservation(nativeFree.session, blueprint, steps!, receipt.screen!.map(reel => [...reel]), receipt.win!, undefined)).toThrow(error);
+                    expect(steps!.flatMap(step => step.wins).reduce((sum, win) => sum + win.winAmount, 0)).toBe(receipt.win);
+                    expect(corrupt.feature.lastRound!.network!.totalWin).toBe(receipt.network!.totalWin);
+                    if (id === "award-respins") expect(corrupt.feature.lastRound!.network!.boundedMechanics!.respins).toMatchObject({remaining: 2, executed: 0, granted: mutation[0] === "acceptedAward.respinGrant" ? 1 : 2});
+                    else {
+                        const expected = mutation[0] === "acceptedAward.omit" ? [0.2] : [0.05, 0.15];
+                        if (id === "award-bonus") expected.splice(0, 2, 0.35 - 0.2, 0.2);
+                        expect(steps!.flatMap(step => step.wins).map(win => win.winAmount)).toEqual(expected);
+                    }
+                }
+                const calls = restore.mock.calls.length;
+                const error = /modifier|sticky|holdAndWin|jackpot|chargedBetMode|win|position|logical|stops|draw|plain money|canonical feature|freeGamesTriggered|respins|bonus/i;
+                if (nativeObservation) {
+                    const steps = corrupt.feature.logicalRound?.subrounds[0].artifacts ?? corrupt.feature.plainMath!.artifact.steps;
+                    expect(() => restoreDeclarativeObservation(nativeObservation.session, blueprint, steps!, receipt.screen!.map(reel => [...reel]), receipt.win!, undefined, nativeObservation.calculator, corrupt.feature.analyticsCheckpoint?.before)).toThrow(error);
                     const validSteps = saved.feature.logicalRound?.subrounds[0].artifacts ?? saved.feature.plainMath!.artifact.steps;
-                    expect(() => restoreDeclarativeObservation(nativeFree.session, blueprint, validSteps!, receipt.screen!.map(reel => [...reel]), receipt.win!, undefined)).not.toThrow();
+                    expect(() => restoreDeclarativeObservation(nativeObservation.session, blueprint, validSteps!, receipt.screen!.map(reel => [...reel]), receipt.win!, undefined, nativeObservation.calculator, saved.feature.analyticsCheckpoint?.before)).not.toThrow();
                 }
                 expect(() => runtime.restoreSession(corrupt)).toThrow(error);
                 expect(() => fresh.restoreSession(corrupt)).toThrow(error);
@@ -676,7 +690,7 @@ it.each(["stepwise", "composite", "plain"] as const)("binds %s artifact feature 
                 expect(session.serialize()).toEqual(saved);
                 expect(await session.play(command)).toEqual(receipt);
             }
-            nativeFree?.dispose();
+            nativeObservation?.dispose();
             // Rejection recovery uses the existing owner. Explicit restoration below is separate.
             const reference = fresh.restoreSession(saved);
             const nextCommand = (state: ReturnType<typeof session.serialize>) => state.schemaVersion === "pokie.state.v4" && state.feature.logicalRound?.status === "pending"

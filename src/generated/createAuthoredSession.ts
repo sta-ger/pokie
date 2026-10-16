@@ -73,5 +73,5 @@ export function createAuthoredSession(blueprint: GameBlueprint, random: SeededRa
     })), modes.defaultModeId), new PerModeForcedFeatureEntryHandler(new Map(modes.buyFeatureModes.map(mode => [mode.id, new FreeGamesForcedFeatureEntryHandler(mode.forcedFreeGames)]))));
     const jackpot = blueprint.mechanics?.jackpot;
     if (jackpot) session = new VideoSlotWithJackpotSession(session, [jackpot.pool.type === "fixed" ? new FixedJackpotPool(jackpot.pool.id, jackpot.pool.amount) : new AccumulatingJackpotPool(jackpot.pool.id, jackpot.pool.seedValue)], new PercentageOfBetJackpotContributor(jackpot.contribution.percentage), new SymbolCountJackpotTrigger(jackpot.trigger.symbolId, jackpot.trigger.minimumCount), new SingleTierJackpotAwarding());
-    return {session, generator, dispose: () => calculator.disposeSharedMath()};
+    return {session, generator, calculator, dispose: () => calculator.disposeSharedMath()};
 }

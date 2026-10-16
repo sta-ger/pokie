@@ -240,7 +240,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                 const plainArtifact = state.feature.plainMath?.artifact;
                 const mathematicalWin = round?.subrounds[0].win ?? state.feature.plainMath!.artifact.totalWin;
                 const final = round?.subrounds[0].finalScreen ?? state.feature.plainMath?.finalScreen ?? artifacts[artifacts.length - 1]?.generatedScreen ?? last.screen!;
-                const observation = restoreDeclarativeObservation(check.session, blueprint, artifacts, final as string[][], mathematicalWin, state.feature.componentAmounts);
+                const observation = restoreDeclarativeObservation(check.session, blueprint, artifacts, final as string[][], mathematicalWin, state.feature.componentAmounts, check.calculator, state.feature.analyticsCheckpoint?.before);
                 // The shared owner has now validated the complete canonical event set
                 // against the model/native observations. Bind the plain aggregate to it;
                 // equality between two unchecked retained copies is insufficient.

@@ -145,6 +145,11 @@ export function weightedBonusModel(table: WeightedBonus): string {
     ]);
 }
 
+/** The selected outcome owns its units at the paid entry denomination. */
+export function weightedBonusPayout(outcome: WeightedBonus["outcomes"][number], entryBet: number): number {
+    return outcome.payout * (outcome.payoutUnits === "bet-multiple" ? entryBet : 1);
+}
+
 /** Rejection sampling consumes the same session RNG as the reels. */
 export function selectWeightedBonus(
     table: WeightedBonus,

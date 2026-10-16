@@ -1,14 +1,16 @@
+import type {VideoSlotWinCalculator} from "../../session/videoslot/wincalculator/VideoSlotWinCalculator.js";
+import type {SessionFeatureAnalyticsBeforePlay} from "../../simulation/SessionFeatureAnalyticsObserver.js";
+import {ValueWinComponent} from "../../session/videoslot/winevaluation/ValueWinComponent.js";
+import {WinningValue} from "../../session/videoslot/WinningValue.js";
 import {validateArtifactCoordinates} from "../../artifact/validateArtifactCoordinates.js";
 import {buildRoundStepArtifact} from "../../artifact/buildRoundStepArtifact.js";
 import {deriveStandardFeatureEvents} from "../../artifact/buildRoundArtifactFromSession.js";
 import {SymbolsCombinationsAnalyzer} from "../../session/videoslot/combinations/SymbolsCombinationsAnalyzer.js";
 import type {WonFreeGamesNumberDetermining} from "../../session/WonFreeGamesNumberDetermining.js";
-import {MultiplierResolver} from "../../session/videoslot/winevaluation/MultiplierResolver.js";
-import {WinEvaluationContext} from "../../session/videoslot/winevaluation/WinEvaluationContext.js";
 import {ScreenModifierEngine} from "../../session/videoslot/modifiers/ScreenModifierEngine.js";
 import {observeVideoSlotFeatures} from "../../net/videoslot/observeVideoSlotFeatures.js";
 import {projectPublicFeatureEvent} from "../../artifact/PublicRoundArtifactProjector.js";
-import {validateWeightedBonusObservation} from "../../session/videoslot/authored/WeightedBonus.js";
+import {weightedBonusPayout, validateWeightedBonusObservation} from "../../session/videoslot/authored/WeightedBonus.js";
 import type {BoundedSessionState} from "../../session/videoslot/authored/BoundedVideoSlotSession.js";
 import {WinningWay} from "../../session/videoslot/WinningWay.js";
 import {WinningCluster} from "../../session/videoslot/WinningCluster.js";
@@ -22,15 +24,15 @@ import {SymbolsCombination} from "../../session/videoslot/combinations/SymbolsCo
 import {CascadeResult} from "../../session/videoslot/cascade/CascadeResult.js";
 import {CascadeStep} from "../../session/videoslot/cascade/CascadeStep.js";
 import {CascadeGridTransformer} from "../../session/videoslot/combinations/CascadeGridTransformer.js";
-import type {BoundedMechanicObservation} from "../../session/videoslot/authored/BoundedMechanics.js";
+import {resolveRespinTransition, type BoundedMechanicObservation} from "../../session/videoslot/authored/BoundedMechanics.js";
 import type {ScreenModifierObservation, ScreenModifierState} from "../../session/videoslot/modifiers/ScreenModifiers.js";
 import {stableSlotMathJson} from "../math/SharedSlotMath.js";
 import {ScreenProjection} from "../../session/videoslot/coordinates/ScreenProjection.js";
 
 /** Rehydrate accepted observations for the existing serializers/analytics observer.
- * No evaluator, RNG, wallet effect or session-prefix replay is involved.
+ * Existing stateless math validates retained screens; no RNG, wallet effect or prefix replay.
  */
-export function restoreDeclarativeObservation(session: VideoSlotSessionHandling, blueprint: GameBlueprint, artifacts: readonly RoundStepArtifact[], finalScreen: string[][], win: number, componentAmounts: PokieWasmFeatureSessionState["feature"]["componentAmounts"]): VideoSlotSessionHandling {
+export function restoreDeclarativeObservation(session: VideoSlotSessionHandling, blueprint: GameBlueprint, artifacts: readonly RoundStepArtifact[], finalScreen: string[][], win: number, componentAmounts: PokieWasmFeatureSessionState["feature"]["componentAmounts"], calculator: VideoSlotWinCalculator, before?: SessionFeatureAnalyticsBeforePlay): VideoSlotSessionHandling {
     const last = artifacts[artifacts.length - 1];
     if (!last) throw new Error("Missing retained mathematical observation.");
     const event = (type: string) => last.featureEvents?.find(event => event.type === type)?.data;
@@ -71,14 +73,21 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
         if (Object.keys(bounded).sort().join(",") !== keys.sort().join(",")) throw new Error("Missing or unexpected required bounded feature observation.");
         validateWeightedBonusObservation(state, bounded.weightedBonus);
         if (bounded.weightedBonus) {
-            const payouts = last.wins.filter(win => win.type === "value" && win.id === mechanics!.weightedBonus!.feature.id);
-            if (typeof bounded.weightedBonus.selectedNow !== "boolean" || bounded.weightedBonus.selectedNow !== (payouts.length > 0) ||
-                bounded.weightedBonus.payout !== payouts.reduce((sum, win) => sum + win.winAmount, 0)) throw new Error("Weighted bonus observation contradicts its accepted award.");
+            const observed = bounded.weightedBonus;
+            const table = mechanics!.weightedBonus!;
+            const outcome = table.outcomes.find(outcome => outcome.id === state.bonus!.selection!.outcomeId)!;
+            const selectedNow = state.executed === 0;
+            if (observed.selectedNow !== selectedNow || observed.payout !== (selectedNow ? weightedBonusPayout(outcome, state.entryBet) : 0) ||
+                selectedNow && finalScreen.flat().filter(symbol => symbol === table.trigger.symbolId).length < table.trigger.minimumCount) throw new Error("Weighted bonus observation contradicts its model award and accepted transition.");
         }
         if (mechanics?.respins) {
-            const observed = bounded.respins!;
-            if (observed.remaining !== state.remaining || observed.executed !== state.executed || observed.limit !== mechanics.respins.maxRespins ||
-                !Number.isSafeInteger(observed.granted) || observed.granted < 0 || observed.granted > observed.remaining) throw new Error("Respins observation contradicts executable state or its model.");
+            const priorRemaining = before?.respinsRemaining;
+            if (!Number.isSafeInteger(priorRemaining) || before!.respins !== (priorRemaining! > 0)) throw new Error("Missing accepted respins prior transition.");
+            const priorExecuted = priorRemaining! > 0 ? state.executed - 1 : 0;
+            const expected = resolveRespinTransition(mechanics.respins, priorRemaining!, priorExecuted,
+                finalScreen.flat().filter(symbol => symbol === mechanics.respins!.trigger.symbolId).length);
+            if (expected.remaining !== state.remaining || expected.executed !== state.executed ||
+                stableSlotMathJson(bounded.respins) !== stableSlotMathJson(expected)) throw new Error("Respins observation contradicts its accepted model transition.");
         }
         if (mechanics?.collection) {
             const observed = bounded.collection!;
@@ -98,7 +107,7 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
     const restored = evaluation(artifacts);
     const hold = session as VideoSlotSessionHandling & {getHoldAndWinLastRoundOutcome?: () => {kind: string}; getJackpotLastRoundOutcome?: () => {kind: string; baseWinEvaluationResult?: WinEvaluationResult}};
     const retainedOutcome = hold.getJackpotLastRoundOutcome?.().kind === "awarded" || hold.getHoldAndWinLastRoundOutcome?.().kind === "completed" || hold.getHoldAndWinLastRoundOutcome?.().kind === "suppressed";
-    validateRetainedWins(session, blueprint, artifacts, retainedOutcome);
+    const expectedAmounts = validateRetainedWins(session, blueprint, artifacts, retainedOutcome, calculator, bounded, before);
     const wrapped = !!blueprint.mechanics?.cascade || bounded?.weightedBonus?.selectedNow || bounded?.collection?.triggered;
     let result = restored;
     if (wrapped) result = new WinEvaluationResult({winComponents: restored.getWinComponents()});
@@ -112,18 +121,10 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
     const holdLegacy = holdOutcome?.kind === "completed" || holdOutcome?.kind === "suppressed";
     // The legacy fallback displays the underlying ways/cluster amount, whereas the
     // evaluation DTO reports its multiplied component. Zero factors are not invertible:
-    // retain just those accepted base amounts, never recalculate a paytable award.
+    // retain those display amounts only after comparison with the model calculation.
     if (mechanics?.modifiers) {
         if (!componentAmounts || Object.keys(componentAmounts).sort().join(",") !== "clusters,ways") throw new Error("Missing accepted component presentation amounts.");
-        for (const [type, components, amounts] of [["ways", result.getWaysWins(), componentAmounts.ways], ["cluster", result.getClusterWins(), componentAmounts.clusters]] as const) {
-            if (!Array.isArray(amounts) || amounts.length !== components.length) throw new Error("Invalid accepted component presentation amounts.");
-            const wins = artifacts.flatMap(step => step.wins.filter(win => win.type === type));
-            for (const [index, amount] of amounts.entries()) {
-                const win = wins[index];
-                const factor = win.multiplierBreakdown.reduce((factor, item) => factor * item.combinedMultiplier, 1);
-                if (!Number.isFinite(amount) || amount < 0 || !Number.isFinite(factor) || amount * factor !== win.winAmount) throw new Error("Component presentation amount contradicts its accepted multiplier attribution.");
-            }
-        }
+        if (stableSlotMathJson(componentAmounts) !== stableSlotMathJson(expectedAmounts)) throw new Error("Component presentation amounts contradict their model award before multiplication.");
     } else if (componentAmounts) throw new Error("Unexpected component presentation amounts.");
     let cascade: CascadeResult | undefined;
     if (blueprint.mechanics?.cascade) {
@@ -174,78 +175,39 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
     return observation;
 }
 
-/** Attribution validation only: amounts stay owned by the accepted evaluation.
- * Uses the existing coordinate and multiplier contracts, without evaluating paytables.
+/** Compare the complete canonical winning set, using the execution calculator.
+ * Native decorators retain authority over their special terminal/suppressed results.
  */
-function validateRetainedWins(session: VideoSlotSessionHandling, blueprint: GameBlueprint, steps: readonly RoundStepArtifact[], nativeOutcome: boolean): void {
-    if (nativeOutcome) {
-        const native = buildRoundStepArtifact(0, {screen: steps[0].screen, winEvaluationResult: session.getWinEvaluationResult(),
-            ...(steps[0].geometry ? {geometry: steps[0].geometry, generatedScreen: steps[0].generatedScreen} : {})});
-        if (stableSlotMathJson(steps.flatMap(step => step.wins)) !== stableSlotMathJson(native.wins)) throw new Error("Retained win attribution contradicts its executable award.");
-    }
-    const factors = Object.fromEntries((blueprint.mechanics?.modifiers?.wilds ?? []).filter(wild => wild.factor !== undefined).map(wild => [wild.symbol, wild.factor!]));
-    const resolver = new MultiplierResolver(factors, {source: "authored-wild-product", uniquePositions: true, supportedComponentTypes: ["line", "ways", "cluster"]});
-    for (const step of steps) {
+function validateRetainedWins(session: VideoSlotSessionHandling, blueprint: GameBlueprint, steps: readonly RoundStepArtifact[], nativeOutcome: boolean,
+    calculator: VideoSlotWinCalculator, bounded: BoundedMechanicObservation | undefined, before?: SessionFeatureAnalyticsBeforePlay): {ways: number[]; clusters: number[]} {
+    const amounts = {ways: [] as number[], clusters: [] as number[]};
+    for (const [index, step] of steps.entries()) {
         validateArtifactCoordinates(step);
         const combination = new SymbolsCombination().fromMatrix((step.generatedScreen ?? step.screen) as string[][]);
-        const tagged = step.geometry ? combination.withCoordinates(step.geometry) : combination;
-        const context = new WinEvaluationContext(session.getBet(), tagged, session);
-        const matrix = context.getSymbolsCombination().toMatrix();
-        for (const win of step.wins) {
-            const invalid = () => new Error(`Retained win ${win.type}.${win.id} contradicts its model, screen or multiplier attribution.`);
-            // Native decorators own their special award attribution. Their ordinary base
-            // components still have to satisfy the model/screen checks below.
-            if (nativeOutcome && ["value", "jackpot"].includes(win.type)) continue;
-            const symbol = win.symbolId;
-            if (typeof symbol !== "string") throw invalid();
-            const bonusAward = win.type === "value" && symbol === blueprint.mechanics?.weightedBonus?.feature.id;
-            const collectionAward = win.type === "value" && symbol === blueprint.mechanics?.collection?.symbolId;
-            if (bonusAward || collectionAward) {
-                if (win.id !== symbol || win.winningPositions.length || win.multiplierBreakdown.length) throw invalid();
-                continue;
+        calculator.calculateWin(session.getBet(), step.geometry ? combination.withCoordinates(step.geometry) : combination);
+        let result = calculator.getWinEvaluationResult();
+        if (nativeOutcome) {
+            const native = session.getWinEvaluationResult();
+            const expected = buildRoundStepArtifact(step.index, {screen: step.screen, winEvaluationResult: native,
+                ...(step.geometry ? {geometry: step.geometry, generatedScreen: step.generatedScreen} : {})});
+            if (stableSlotMathJson(step.wins) !== stableSlotMathJson(expected.wins)) throw new Error("Retained winning set contradicts its native award.");
+            // Hold respins deliberately suppress ordinary math, including on completion.
+            // Paid entry (even immediate completion) retains its full ordinary winning set.
+            const ordinary = blueprint.mechanics?.holdAndWin && before?.hold ? [] : result.getWinComponents();
+            result = new WinEvaluationResult({winComponents: [...ordinary, ...native.getWinComponents().filter(component => ["value", "jackpot"].includes(component.getType()))]});
+        } else {
+            const special: ValueWinComponent[] = [];
+            if (index === steps.length - 1) {
+                if (bounded?.collection?.triggered) special.push(new ValueWinComponent(new WinningValue(blueprint.mechanics!.collection!.symbolId, [], bounded.collection.payout)));
+                if (bounded?.weightedBonus?.selectedNow) special.push(new ValueWinComponent(new WinningValue(blueprint.mechanics!.weightedBonus!.feature.id, [], bounded.weightedBonus.payout)));
             }
-            if (!blueprint.symbols.includes(symbol) || !win.winningPositions.length || new Set(win.winningPositions.map(position => JSON.stringify(position))).size !== win.winningPositions.length) throw invalid();
-            const matches = (actual: string) => actual === symbol || (blueprint.wilds?.includes(actual) &&
-                win.type !== "scatter" && (blueprint.mechanics?.modifiers?.wilds.find(wild => wild.symbol === actual)?.substitutes?.includes(symbol) ?? true));
-            if (win.winningPositions.some(([reel, row]) => !matches(matrix[reel]?.[row]))) throw invalid();
-            const count = win.type === "ways" ? new Set(win.winningPositions.map(([reel]) => reel)).size : win.winningPositions.length;
-            if (!(blueprint.paytable[symbol]?.[count] > 0) || win.type !== "scatter" && blueprint.wilds?.includes(symbol) || ["line", "ways"].includes(win.type) && blueprint.scatters?.includes(symbol)) throw invalid();
-            if (win.type === "line") {
-                if ((blueprint.winModel?.type ?? "lines") !== "lines" || !session.getLinesDefinitions().getLinesIds().includes(win.id)) throw invalid();
-                const definition = session.getLinesDefinitions().getLineDefinition(win.id);
-                const reels = win.winningPositions.map(([reel]) => reel);
-                const metadata = {definition, pattern: Array.from({length: blueprint.reels}, (_, reel) => reels.includes(reel) ? 1 : 0),
-                    symbolsPositions: reels, wildSymbolsPositions: win.winningPositions.filter(([reel, row]) => blueprint.wilds?.includes(matrix[reel][row])).map(([reel]) => reel)};
-                if (win.winningPositions.some(([reel, row], index) => reel !== index || definition[reel] !== row) || stableSlotMathJson(win.metadata) !== stableSlotMathJson(metadata)) throw invalid();
-            } else if (win.type === "scatter") {
-                const positions = matrix.flatMap((reel, r) => reel.flatMap((actual, row) => actual === symbol ? [[r, row]] : []));
-                if (!blueprint.scatters?.includes(symbol) || win.id !== symbol || stableSlotMathJson(positions) !== stableSlotMathJson(win.winningPositions)) throw invalid();
-            } else if (win.type === "ways") {
-                if (blueprint.winModel?.type !== "ways" || win.id !== symbol) throw invalid();
-                const positions = matrix.slice(0, count).flatMap((reel, r) => reel.flatMap((actual, row) => matches(actual) ? [[r, row]] : []));
-                const ways = Array.from({length: count}, (_, reel) => positions.filter(position => position[0] === reel).length).reduce((product, size) => product * size, 1);
-                if (stableSlotMathJson(positions) !== stableSlotMathJson(win.winningPositions) || win.metadata.waysCount !== ways || stableSlotMathJson(win.metadata.symbolsPositions) !== stableSlotMathJson(positions)) throw invalid();
-            } else if (win.type === "cluster") {
-                if (blueprint.winModel?.type !== "clusters" || !(/^(0|[1-9][0-9]*)$/).test(win.id) || Number(win.id) >= blueprint.reels * matrix[0].length ||
-                    count < (blueprint.winModel.minimumClusterSize ?? 5) || stableSlotMathJson(win.metadata.symbolsPositions) !== stableSlotMathJson(win.winningPositions)) throw invalid();
-                const cells = new Set(win.winningPositions.map(([reel, row]) => `${reel}:${row}`));
-                const connected = new Set<string>();
-                const pending = [win.winningPositions[0]];
-                while (pending.length) {
-                    const [reel, row] = pending.pop()!;
-                    const key = `${reel}:${row}`;
-                    if (connected.has(key)) continue;
-                    connected.add(key);
-                    for (const position of [[reel - 1, row], [reel + 1, row], [reel, row - 1], [reel, row + 1]]) {
-                        const neighbor = `${position[0]}:${position[1]}`;
-                        if (cells.has(neighbor) && !connected.has(neighbor)) pending.push(position);
-                    }
-                }
-                if (connected.size !== count) throw invalid();
-            } else throw invalid();
-            const component = restoreWinEvaluation({components: [{type: win.type, id: win.id, symbolId: symbol, amount: 0, positions: win.winningPositions as number[][], multipliers: [], metadata: win.metadata}], metadata: {}}).getWinComponents()[0];
-            const expected = blueprint.mechanics?.modifiers && resolver.supportsComponentType(win.type) ? resolver.resolve(component, context).breakdown : [];
-            if (stableSlotMathJson(win.multiplierBreakdown) !== stableSlotMathJson(expected)) throw invalid();
+            if (special.length) result = new WinEvaluationResult({winComponents: [...result.getWinComponents(), ...special]});
         }
+        const expected = buildRoundStepArtifact(step.index, {screen: step.screen, winEvaluationResult: result,
+            ...(step.geometry ? {geometry: step.geometry, generatedScreen: step.generatedScreen} : {})});
+        if (stableSlotMathJson(step.wins) !== stableSlotMathJson(expected.wins)) throw new Error("Retained winning set or component award contradicts its model, screen, denomination or multipliers.");
+        amounts.ways.push(...result.getWaysWins().map(component => component.getWinningWay().getWinAmount()));
+        amounts.clusters.push(...result.getClusterWins().map(component => component.getWinningCluster().getWinAmount()));
     }
+    return amounts;
 }
