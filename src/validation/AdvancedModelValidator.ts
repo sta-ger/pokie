@@ -1,3 +1,4 @@
+import {validateDeclaredContinuation} from "./internal/validateDeclaredContinuation.js";
 import {canonicalDefinitionJson} from "../diff/MathDefinitionDiffer.js";
 import {modelFieldPathSegments} from "../generated/internal/modelFieldPath.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
@@ -138,7 +139,12 @@ export class AdvancedModelValidator implements AdvancedModelValidating {
                 try {
                     if (edge.before && canonicalDefinitionJson(edge.before) !== canonicalDefinitionJson(state.state ?? {})) throw new Error("Transition before-state differs from its source owner.");
                     if (edge.after && canonicalDefinitionJson(edge.after) !== canonicalDefinitionJson(states.get(edge.to)?.state ?? {})) throw new Error("Transition after-state differs from its target owner.");
-                    if (model.schema && model.schema.kind !== "custom" && edge.after) validateExecutableState(edge.after, model.schema);
+                    if (model.schema && model.schema.kind !== "custom") {
+                        const beforeState = edge.before ?? state.state;
+                        const afterState = edge.after ?? states.get(edge.to)?.state;
+                        if (afterState) validateExecutableState(afterState, model.schema);
+                        if (beforeState && afterState) validateDeclaredContinuation(beforeState, afterState, model.schema);
+                    }
                 } catch (error) {
                     invariant = true;
                     await this.add(report, budget, {id: "invariants.transition-state", path: `transitions.${index}`, status: "violation", severity: "error", message: error instanceof Error ? error.message : String(error), assumptions: report.assumptions, evidence: {path: [...path, edge.to], transition: edge, before: edge.before ?? state.state ?? {}, after: edge.after ?? states.get(edge.to)?.state ?? {}, expected: "Owned source/target snapshots and executable-state invariants", actual: edge}});

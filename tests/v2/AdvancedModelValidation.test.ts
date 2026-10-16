@@ -242,3 +242,16 @@ it("rejects false completion and compares owned snapshots independently of objec
     expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.terminal-state", status: "violation", path: "states.1.state", evidence: expect.objectContaining({actual: {remaining: 1, entryBet: 0.05}})}));
     expect(report.checks.some(check => check.id === "invariants.transition-state")).toBe(false);
 });
+
+it("rejects malformed budget containers without acquisition", async () => {
+    const validator = new AdvancedModelValidator();
+    for (const limits of [null, [], "100", {states: NaN}, {unexpected: 1}]) await expect(validator.validate({kind: "blueprint", model: blueprint()}, {limits: limits as never})).rejects.toThrow(/Invalid analysis limit/);
+});
+
+it.each(["denomination", "counter"])("reports cross-transition %s violations even when both snapshots are independently valid", async field => {
+    const before = {base: {}, value: 0, remaining: 3, executed: 0, entryBet: 0.05};
+    const after = {...before, remaining: 1, executed: 2, entryBet: field === "denomination" ? 7.5 : 0.05};
+    const model: DeclaredTransitionModel = {kind: "declared-transitions", initial: "a", states: [{id: "a", state: before}, {id: "b", state: after}, {id: "done", terminal: true, state: {...after, remaining: 0, executed: 3}}], transitions: [{from: "a", to: "b"}, {from: "b", to: "done"}], schema: {kind: "bounded-mechanics", bets: [0.05, 7.5], rules: {respins: {trigger: {symbolId: "A", minimumCount: 1}, grant: 3, maxRespins: 3, retrigger: "none"}}, base: {kind: "base"}}};
+    const report = await new AdvancedModelValidator().validate(model);
+    expect(report.checks).toContainEqual(expect.objectContaining({id: "invariants.transition-state", path: "transitions.0", status: "violation", message: expect.stringContaining(field === "denomination" ? "expected 0.05, actual 7.5" : "expected 1, actual 2"), evidence: expect.objectContaining({before, after})}));
+});
