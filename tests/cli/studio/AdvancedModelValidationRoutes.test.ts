@@ -49,30 +49,32 @@ it("shares candidate-bound library, draft Studio and CLI JSON reports, with corr
             log.mockRestore();
         }
         expect(fs.readFileSync(file, "utf8")).toBe(bytes);
-        // A separate source writer replaces the file after acquisition, before the report returns.
-        const open = fs.openSync.bind(fs);
-        const close = fs.closeSync.bind(fs);
-        const descriptors = new Set<number>();
-        let replaced = false;
-        const opening = jest.spyOn(fs, "openSync").mockImplementation((...args) => {
-            const descriptor = open(...args);
-            if (String(args[0]) === file) descriptors.add(descriptor);
-            return descriptor;
-        });
-        const closing = jest.spyOn(fs, "closeSync").mockImplementation(descriptor => {
-            close(descriptor);
-            if (descriptors.delete(descriptor) && !replaced) {
-                replaced = true;
-                fs.writeFileSync(file, JSON.stringify({...model, paytable: {A: {3: 7.5}}}));
+        // A writer can replace either acquisition, including the final structural reread.
+        for (const replaceAt of [1, 2]) {
+            fs.writeFileSync(file, bytes);
+            const open = fs.openSync.bind(fs);
+            const close = fs.closeSync.bind(fs);
+            const descriptors = new Set<number>();
+            let reads = 0;
+            const opening = jest.spyOn(fs, "openSync").mockImplementation((...args) => {
+                const descriptor = open(...args);
+                if (String(args[0]) === file) descriptors.add(descriptor);
+                return descriptor;
+            });
+            const closing = jest.spyOn(fs, "closeSync").mockImplementation(descriptor => {
+                close(descriptor);
+                if (descriptors.delete(descriptor) && ++reads === replaceAt) {
+                    fs.writeFileSync(file, JSON.stringify({...model, paytable: {A: {3: 7.5}}}));
+                }
+            });
+            try {
+                const stale = await fetch(url + "/api/project/validate");
+                expect(stale.status).toBe(409);
+                expect(await stale.json()).toEqual({error: "Source changed during validation. Retry against the current source."});
+            } finally {
+                opening.mockRestore();
+                closing.mockRestore();
             }
-        });
-        try {
-            const stale = await fetch(url + "/api/project/validate");
-            expect(stale.status).toBe(409);
-            expect(await stale.json()).toEqual({error: "Source changed during validation. Retry against the current source."});
-        } finally {
-            opening.mockRestore();
-            closing.mockRestore();
         }
     } finally {
         await server.stop();

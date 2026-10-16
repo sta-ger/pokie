@@ -2330,6 +2330,7 @@ export class StudioServer implements StudioServerHandling {
             if (advanced.adapter === "blueprint-runtime-v1" && advanced.sourceRevision) {
                 const current = loadGameBlueprint(root, {preserveInvalidAuthoredContent: true, maxBytes: 400000});
                 if (computeGameBlueprintHash(current) !== advanced.sourceRevision) throw new StudioHttpRequestError(409, "Source changed during validation. Retry against the current source.");
+                assertCurrent();
                 return {packageRoot: root, valid: advanced.structuralValid === true, game: readBlueprintGameIdentity(current), errors: advanced.issues.filter(issue => issue.severity === "error"), warnings: advanced.issues.filter(issue => issue.severity === "warning"), information: advanced.issues.filter(issue => issue.severity === "info"), suggestions: advanced.issues.flatMap(issue => issue.suggestion ? [issue.suggestion] : []), advanced};
             }
             const structural = await this.validateProjectContract(root);
