@@ -183,7 +183,8 @@ export class StudioWasmBrowserService {
             if (record(value.progress.statistics)) lease.prefix = value.progress.statistics as SimulationStatistics;
         }
         try {
-            if (value.status === "completed" && !this.jobs.signal(job.id)?.aborted) {
+            const committedPrefix = value.status === "failed" && job.operation === "browser-play" && record(value.output) && value.output.committedProgress === true && record(value.output.round);
+            if ((value.status === "completed" || committedPrefix) && !this.jobs.signal(job.id)?.aborted) {
                 const current = await this.artifact(context);
                 if (!isCurrent() || context !== lease.context || current.generation !== lease.artifact.generation || current.manifest.artifact!.sha256 !== lease.artifact.manifest.artifact!.sha256) throw new Error("WASM Project or artifact changed before completion. Discarded the stale Worker result; reopen and retry.");
                 if (this.jobs.signal(job.id)?.aborted) {
@@ -191,7 +192,8 @@ export class StudioWasmBrowserService {
                     return {status: 200, body: this.jobs.get(job.projectId, job.id)};
                 }
                 const result = this.result(lease, value.output);
-                this.jobs.complete(job.id, result);
+                if (committedPrefix) this.jobs.fail(job.id, typeof value.error === "string" ? value.error : "Browser Play failed after committed progress.", recovery, result);
+                else this.jobs.complete(job.id, result);
                 return {status: 200, body: this.jobs.get(job.projectId, job.id)};
             }
             const result = {summary: "Browser Worker stopped after its observed prefix.", detail: {rounds: lease.completed, observedPrefix: lease.prefix}};
@@ -261,7 +263,7 @@ export class StudioWasmBrowserService {
             session.studioRequestId = (job.request.command as Record<string, unknown>)?.requestId as string | undefined;
             this.recorder.record(session, {source: "play", operation: "spin", projectRoot: artifact.projectRoot, seed: job.request.seed as string});
         }
-        return {summary: "Browser Worker Play completed.", provenance, detail: {session}};
+        return {summary: output.committedProgress === true ? "Browser Worker Play retained its committed prefix." : "Browser Worker Play completed.", provenance, detail: {session}};
     }
 
     private armSession(session: SessionLease): void {

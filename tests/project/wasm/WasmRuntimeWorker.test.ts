@@ -968,6 +968,7 @@ function controlled<T>() {
     return {promise, resolve, reject};
 }
 async function browserOwner(fixture = createCanonicalWasmFixture()) {
+    const {cloneSessionData} = await import("../../../src/runtime/internal/cloneSessionData.js");
     const fs = await import("fs");
     const path = await import("path");
     const {BrowserWasmStudioApi} = await import("../../../cli/studio-client/src/wasm/BrowserWasmStudioApi.js");
@@ -1029,7 +1030,12 @@ async function browserOwner(fixture = createCanonicalWasmFixture()) {
                     workerRequests.push(new Promise<void>(resolve => {
                         pending.set(message.request.id, resolve);
                     }));
-                    receive({data: structuredClone(data)} as MessageEvent & ErrorEvent);
+                    const transferred = structuredClone(data) as {request: {state?: unknown}};
+                    // Native structuredClone runs outside Jest's realm. Real Worker messages
+                    // arrive with destination-realm objects; preserve every checkpoint value
+                    // while giving JSON-safety validation that same destination prototype.
+                    if (transferred.request.state) transferred.request.state = cloneSessionData(transferred.request.state);
+                    receive({data: transferred} as MessageEvent & ErrorEvent);
                 };
                 if (controls.dispatch) controls.dispatch(data, deliver);
                 else deliver();
@@ -1144,6 +1150,7 @@ it("V2C-22-PUBLICATION-RECOVERY carries a real committed feature prefix through 
         expect(failure).toMatchObject({status: "error", retryDisposition: "safe-to-retry", committedProgress: {roundId: "prefix", cursor: 1, requestId: "prefix"}, session: {logicalRound: {status: "pending", totalStake: 0.05, cursor: 1}}});
         if (failure.status !== "error") throw new Error("Missing prefix");
         expect(failure.session!.credits).toBeCloseTo(1000.3, 10);
+        expect(test.jobs.list().find(job => job.request.action === "spin")).toMatchObject({status: "failed", result: {detail: {session: failure.session}}});
         const state = failure.session!.debug!.stateAfter;
         expect(state).toMatchObject({sequence: 1, feature: {pendingCommand: {advanced: 1}}});
         const result = await test.api.spinPlaySession(test.owner.fetch, created.session.sessionId, 0.05, undefined, command);
@@ -1179,6 +1186,7 @@ it.each(["cancel", "reject"] as const)("V2C-22-ASYNC-OWNERSHIP ignores a delayed
         };
         const first = test.api.spinPlaySession(test.owner.fetch, created.session.sessionId, 1, undefined, {requestId: "first"});
         await entered.promise;
+        expect(await test.api.spinPlaySession(test.owner.fetch, created.session.sessionId, 1, undefined, {requestId: "overlapping"})).toMatchObject({status: "error", code: "recovery-required", retryDisposition: "safe-to-retry"});
         await jest.advanceTimersByTimeAsync(250);
         expect(heartbeatSent).toBe(true);
         held.resolve();

@@ -217,7 +217,7 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
             const view = await execution.client.request({type: "view"}) as Record<string, unknown>;
             const restoredRound = restoring ? (view.state as PokieWasmFeatureSessionState)?.feature?.lastRound : undefined;
             const publication: Publication = {url, binding: JSON.stringify(input), execution, view, fresh, old, failure,
-                output: {...view, round, restoredRound, stateBefore: before?.state, stateAfter: view.state}};
+                output: {...view, round, restoredRound, ...(failure ? {committedProgress: true} : {}), stateBefore: before?.state, stateAfter: view.state}};
             // Retain the accepted output before touching the network, including artifacts
             // with no serialization capability. Retry publishes this execution, never plays again.
             this.publication = publication;
@@ -235,7 +235,7 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
         const {execution, fresh, old, view, failure} = publication;
         let terminal: StudioJobView;
         try {
-            terminal = await this.finish(execution, "completed", publication.output);
+            terminal = await this.finish(execution, failure ? "failed" : "completed", publication.output, failure?.message);
         } catch (error) {
             throw new PlayFailure(message(error), {retryDisposition: "safe-to-retry"});
         }
@@ -246,7 +246,7 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
             await this.network(`/api/project/wasm/sessions/${sessionId}/dispose`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(this.binding(execution))}).catch(() => undefined);
             throw new PlayFailure("The WASM Play owner changed before publication completed.", {retryDisposition: "safe-to-retry"});
         }
-        if (terminal.status !== "completed" || !terminal.result?.detail?.session) {
+        if ((terminal.status !== "completed" && !(failure && terminal.status === "failed")) || !terminal.result?.detail?.session) {
             execution.client.dispose();
             if (this.session?.client === execution.client) this.releaseSession();
             throw new PlayFailure(terminal.error ?? "WASM Play was interrupted. Start a new session.", {retryDisposition: "safe-to-retry"});
