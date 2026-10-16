@@ -3865,15 +3865,19 @@ export class StudioServer implements StudioServerHandling {
         return `Replay "${id}" has no descriptor (status: ${jobStatus}).`;
     }
 
-    // Replay & Debug's "Session Spin" find method -- an empty list (nothing played yet, or the project
-    // was since switched) is still a valid 200, same as StudioSimulationService.listReports()/
+    // Replay & Debug's "Session Spin" find method -- retained history belongs to its recorded
+    // Project, even after a switch. An empty list is still a valid 200, same as StudioSimulationService.listReports()/
     // StudioReplayExecutionService.listJobs() returning [] rather than erroring for "nothing yet".
     private handleListRecentSpins(res: ServerResponse): void {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        this.sendJson(res, 200, this.roundRecorder.list());
+        const projectId = this.canonicalPathIdentity(this.currentContext.projectRoot);
+        const rounds = this.roundRecorder.list().filter((round) =>
+            round.studioProjectRoot !== undefined && this.canonicalPathIdentity(round.studioProjectRoot) === projectId,
+        );
+        this.sendJson(res, 200, rounds);
     }
 
     // The Play tab's own two handlers -- POST /api/project/play/session (new/reset), POST

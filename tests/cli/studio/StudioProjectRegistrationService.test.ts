@@ -24,6 +24,7 @@ import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {toStudioReplayJobView} from "../../../cli/studio/replay/toStudioReplayJobView.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
+import {StudioRoundRecorder} from "../../../cli/studio/runtime/StudioRoundRecorder.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function fakeResolver(byPath: Record<string, PokieProject>): ProjectResolving {
@@ -986,10 +987,12 @@ describe("Studio Project runtime state isolation", () => {
         const studioRoot = path.join(directory, "studio");
         const projectA = path.join(directory, "project-a");
         const projectB = path.join(directory, "project-b");
+        const projectAlias = path.join(directory, "project-a-alias");
+        const recorder = new StudioRoundRecorder();
         let server: StudioServer | undefined;
 
         const gameFor = (projectRoot: string): PokieGame => {
-            const name = path.resolve(projectRoot) === projectA ? "Project A" : "Project B";
+            const name = fs.realpathSync(projectRoot) === projectA ? "Project A" : "Project B";
             return {
                 getManifest: () => ({id: name.toLowerCase().replace(" ", "-"), name, version: "0.1.0"}),
                 createSession: () => {
@@ -1014,9 +1017,9 @@ describe("Studio Project runtime state isolation", () => {
         const loadGame = (projectRoot: string): Promise<PokieGame> => Promise.resolve(gameFor(projectRoot));
         const passthroughRuntime = (projectRoot: string) => Promise.resolve({runtimePath: projectRoot, release: () => Promise.resolve()});
 
-        async function get(url: string): Promise<{status: number; body: Record<string, unknown>}> {
+        async function get<T = Record<string, unknown>>(url: string): Promise<{status: number; body: T}> {
             const response = await fetch(url);
-            return {status: response.status, body: (await response.json()) as Record<string, unknown>};
+            return {status: response.status, body: (await response.json()) as T};
         }
 
         async function post(url: string, body: unknown): Promise<{status: number; body: Record<string, unknown>}> {
@@ -1026,6 +1029,9 @@ describe("Studio Project runtime state isolation", () => {
 
         try {
             fs.mkdirSync(studioRoot, {recursive: true});
+            fs.mkdirSync(projectA);
+            fs.mkdirSync(projectB);
+            fs.symlinkSync(projectA, projectAlias, "dir");
             fs.writeFileSync(path.join(studioRoot, "index.html"), "<html>studio</html>");
             fs.writeFileSync(path.join(studioRoot, "main.js"), "console.log('studio');");
             fs.writeFileSync(path.join(studioRoot, "style.css"), "body {}");
@@ -1047,6 +1053,7 @@ describe("Studio Project runtime state isolation", () => {
                 resolveRuntimePackageRoot: passthroughRuntime,
                 projectRegistrationService: registration,
                 simulationService,
+                roundRecorder: recorder,
             });
             const address = await server.start();
             const baseUrl = `http://${address.host}:${address.port}`;
@@ -1059,6 +1066,8 @@ describe("Studio Project runtime state isolation", () => {
             expect(aSession.status).toBe(201);
             const aSessionId = (aSession.body.session as {sessionId: string}).sessionId;
             expect((await post(`${baseUrl}/api/project/play/sessions/${aSessionId}/spin`, {})).status).toBe(200);
+            const aRounds = (await get<unknown[]>(`${baseUrl}/api/project/rounds`)).body;
+            expect(aRounds).toEqual([expect.objectContaining({sessionId: aSessionId, studioProjectRoot: projectA, studioRound: 1, credits: 99})]);
 
             const aSimulation = await post(`${baseUrl}/api/project/simulations`, {rounds: 1});
             expect(aSimulation.status).toBe(202);
@@ -1080,18 +1089,50 @@ describe("Studio Project runtime state isolation", () => {
             expect(openedB.status).toBe(200);
             expect((openedB.body.context as {projectRoot: string}).projectRoot).toBe(projectB);
             expect((await get(`${baseUrl}/api/project/rounds`)).body).toEqual([]);
+            expect(recorder.list()).toHaveLength(1);
             expect((await get(`${baseUrl}/api/project/simulations/${aSimulationId}`)).status).toBe(404);
             expect((await post(`${baseUrl}/api/project/play/sessions/${aSessionId}/spin`, {})).status).toBe(404);
 
             const bSession = await post(`${baseUrl}/api/project/play/session`, {});
             expect(bSession.status).toBe(201);
             expect(((bSession.body.session as {game: {name: string}}).game.name)).toBe("Project B");
+            const bSessionId = (bSession.body.session as {sessionId: string}).sessionId;
+            expect((await post(`${baseUrl}/api/project/play/sessions/${bSessionId}/spin`, {})).status).toBe(200);
+            const bRounds = (await get(`${baseUrl}/api/project/rounds`)).body;
+            expect(bRounds).toEqual([expect.objectContaining({sessionId: bSessionId, studioProjectRoot: projectB, studioRound: 1, credits: 99})]);
 
             const reopenedA = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: projectA});
             expect(reopenedA.status).toBe(200);
             // Run history persists by its owning Project, while Play sessions intentionally do not.
             expect((await get(`${baseUrl}/api/project/simulations/${aSimulationId}`)).body).toMatchObject({status: "failed", error: "Project A run failed."});
             expect((await post(`${baseUrl}/api/project/play/sessions/${aSessionId}/spin`, {})).status).toBe(404);
+            expect((await get(`${baseUrl}/api/project/rounds`)).body).toEqual(aRounds);
+            expect((await post(`${baseUrl}/api/project/play/sessions/${bSessionId}/spin`, {})).status).toBe(404);
+
+            const freshA = await post(`${baseUrl}/api/project/play/session`, {});
+            expect(freshA.status).toBe(201);
+            const freshAId = (freshA.body.session as {sessionId: string}).sessionId;
+            expect(freshAId).not.toBe(aSessionId);
+            for (const credits of [99, 98]) {
+                expect(await post(`${baseUrl}/api/project/play/sessions/${freshAId}/spin`, {})).toMatchObject({status: 200, body: {session: {credits}}});
+            }
+            const retainedA = (await get(`${baseUrl}/api/project/rounds`)).body;
+            expect(retainedA).toEqual([
+                expect.objectContaining({sessionId: freshAId, studioRound: 2, credits: 98}),
+                expect.objectContaining({sessionId: freshAId, studioRound: 1, credits: 99}),
+                ...aRounds,
+            ]);
+            // Aliases share history without changing the accepted records or reviving a session.
+            expect((await post(`${baseUrl}/api/home/projects/open`, {projectRoot: projectAlias})).status).toBe(200);
+            expect((await get(`${baseUrl}/api/project/rounds`)).body).toEqual(retainedA);
+            expect((await post(`${baseUrl}/api/project/play/sessions/${freshAId}/spin`, {})).status).toBe(404);
+            expect((await post(`${baseUrl}/api/projects/close`, {})).status).toBe(200);
+            expect((await get(`${baseUrl}/api/project/rounds`)).status).toBe(409);
+            expect((await post(`${baseUrl}/api/home/projects/open`, {projectRoot: projectB})).status).toBe(200);
+            expect((await get(`${baseUrl}/api/project/rounds`)).body).toEqual(bRounds);
+            expect((await post(`${baseUrl}/api/home/projects/open`, {projectRoot: projectA})).status).toBe(200);
+            expect((await get(`${baseUrl}/api/project/rounds`)).body).toEqual(retainedA);
+            expect(recorder.list()).toHaveLength(4);
         } finally {
             await server?.stop();
             fs.rmSync(directory, {recursive: true, force: true});

@@ -110,9 +110,8 @@ export class StudioRoundRecorder {
         return [...this.records];
     }
 
-    // Discards every recorded round regardless of source -- used when the whole project is going away (a
-    // project switch, or Studio shutdown): every producer's history refers to sessions/games that no
-    // longer exist, so nothing here should survive into the next project.
+    // Discards every recorded round regardless of source at Studio shutdown. Project switches retain
+    // accepted history; the Project-scoped HTTP reader selects records by their recorded provenance.
     public clearAll(): void {
         this.identities.clear();
         this.records = [];
