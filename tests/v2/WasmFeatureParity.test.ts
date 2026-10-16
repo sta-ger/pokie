@@ -701,6 +701,7 @@ it("retains every native payout, required entry and collection-transition reprod
         "transition-bonus-balances-false", "transition-bonus-balances-zero", "transition-collection-carry", "transition-collection-reset",
         "transition-free-natural-bank", "transition-free-purchased-bank", "transition-free-natural-sum", "transition-free-purchased-sum",
         "transition-free-natural-continuation-bank", "transition-free-purchased-continuation-bank",
+        "transition-free-natural-coordinated-prior-sum", "transition-free-purchased-coordinated-prior-sum",
         "transition-free-prior-bank-0", "transition-free-prior-bank-1", "transition-free-prior-bank-2", "transition-free-prior-bank-3", "transition-hold-premature-completion",
     ]);
     const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");

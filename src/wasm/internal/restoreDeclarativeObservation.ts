@@ -252,8 +252,14 @@ function validateNativeFeatureTransition(session: VideoSlotSessionHandling, blue
         const priorBank = balances!.freeGamesBank;
         if (!before || !Number.isSafeInteger(before.freeNum) || !Number.isSafeInteger(before.freeSum) || before.freeNum < 0 || before.freeSum < before.freeNum || before.free !== (before.freeSum > before.freeNum) || typeof priorBank !== "number" || !Number.isFinite(priorBank) || priorBank < 0) throw new Error("Invalid free-games accepted bank transition.");
         const modeId = observeVideoSlotFeatures(session).chargedBetModeId;
-        const mode = stake > 0 ? blueprint.betModes?.find(mode => mode.id === modeId) : undefined;
-        const forcedGrant = mode?.runtimeType === "buyFeature" ? mode.forcedFreeGames ?? 0 : 0;
+        const mode = blueprint.betModes?.find(mode => mode.id === modeId);
+        const purchasedGrant = mode?.runtimeType === "buyFeature" ? mode.forcedFreeGames ?? 0 : 0;
+        const forcedGrant = stake > 0 ? purchasedGrant : 0;
+        // Prior counters must be reachable even when both sides of their transition
+        // are edited. Each executed free spin can grant at most the authored maximum;
+        // natural entry has one additional paid opportunity to acquire its grant.
+        const maximumGrant = Math.max(0, ...Object.values(mechanics.freeGames.awardsByCount));
+        if (before.free && (before.freeSum < purchasedGrant || before.freeSum > purchasedGrant + maximumGrant * (before.freeNum + (purchasedGrant > 0 ? 0 : 1)))) throw new Error("Free-games prior counters contradict reachable authored grants.");
         const entry = resolveFreeGamesEntry(before.freeNum, before.freeSum, priorBank, forcedGrant);
         const jackpot = observeVideoSlotFeatures(session).jackpot?.award?.amount ?? 0;
         const next = resolveFreeGamesRound(entry.num, entry.sum, entry.bank, bankableWin, grant);

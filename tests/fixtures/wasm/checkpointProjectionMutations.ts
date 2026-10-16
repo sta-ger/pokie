@@ -65,6 +65,7 @@ export function mutateCheckpointProjection<T>(saved: T, [path, value]: readonly 
         while (!(field in native)) native = native.base;
         native[field] = 999;
         corrupt.feature.lastRound.network[field] = 999;
+        if (path.endsWith("SumPrior")) corrupt.feature.analyticsCheckpoint.before.freeSum = 999 - (native.wonFreeGamesNumber ?? 0);
         if (path.endsWith("Sum") && corrupt.feature.lastRound.analytics) {
             const event = corrupt.feature.lastRound.analytics.features.find((event: {feature: string}) => event.feature === "freeGames");
             if (path.includes("Purchased")) event.granted = 999;
@@ -417,6 +418,8 @@ export function checkpointTransitionFixtures(): {id: string; blueprint: GameBlue
         {id: "transition-free-purchased-sum", blueprint: purchased, mode: "buy", mutation: ["acceptedTransition.freePurchasedSum"], expectedWin: 0, expectedPayout: 0, expectedSum: 3},
         {id: "transition-free-natural-continuation-bank", blueprint: natural, continuation: true, mutation: ["acceptedTransition.freeNaturalBank"], expectedWin: 0, expectedPayout: 0, expectedSum: 4},
         {id: "transition-free-purchased-continuation-bank", blueprint: purchased, mode: "buy", continuation: true, mutation: ["acceptedTransition.freePurchasedBank"], expectedWin: 0, expectedPayout: 0, expectedSum: 3},
+        {id: "transition-free-natural-coordinated-prior-sum", blueprint: natural, continuation: true, mutation: ["acceptedTransition.freeNaturalSumPrior"], expectedWin: 0, expectedPayout: 0, expectedSum: 4},
+        {id: "transition-free-purchased-coordinated-prior-sum", blueprint: purchased, mode: "buy", continuation: true, mutation: ["acceptedTransition.freePurchasedSumPrior"], expectedWin: 0, expectedPayout: 0, expectedSum: 3},
         ...([undefined, null, "0", -1] as const).map((value, index) => ({id: `transition-free-prior-bank-${index}`, blueprint: purchased, mode: "buy",
             mutation: ["analyticsCheckpoint.balances.freeGamesBank", value] as const, expectedWin: 0, expectedPayout: 0, expectedSum: 3})),
         {id: "transition-hold-premature-completion", blueprint: continuingHold, alternative: exhaustedHold, continuation: true,

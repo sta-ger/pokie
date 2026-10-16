@@ -140,6 +140,9 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
             if (retained && !wasActive || logicalContinuation && wasActive && (!retained || !retained.known)) throw invalid();
         }
         if (accepted) {
+            // Canonical restoration supplies accepted accounting. A native carried
+            // observer without that authority keeps its existing partial-duration contract.
+            if (before.free && this.state.active.freeGames?.duration !== before.freeNum) throw invalid();
             for (const [feature, retained] of Object.entries(this.state.active)) {
                 const expected = accepted.wins[feature as AnalyticsFeature];
                 const tolerance = 32 * Number.EPSILON * Math.max(1, accepted.roundingScale ?? 0, Math.abs(expected ?? 0), retained!.win);
