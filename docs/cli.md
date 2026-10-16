@@ -3957,3 +3957,17 @@ Outcome Library, outcome-source project and Stake analysis results add
 rules and per-mode semantics remain. Consumers should allow additive fields.
 Exact aggregate artifact statistics are not sampled simulation observations and
 neither kind establishes definition equality.
+
+`pokie validate SOURCE` includes the shared advanced declared-model report in
+human and JSON output. Existing `valid` is structural/contract validity. Advanced
+checks retain unknown outcomes, assumptions, work/limits and witnesses. Exit 0:
+proved within assumptions; 1: structural error/counterexample; 2: inconclusive;
+3: advanced operational failure after structural success; 130: cancellation
+after structural success. `--deep` still means outcome-library deep validation.
+`--out` uses a new unused path outside source directories and never replaces an
+existing report or input. Write failures leave no partial report.
+
+Definition `diff` includes advanced validation changes. Its existing opt-in
+`--ci` policy treats unresolved advanced analysis as exit 2, rather than accepting
+an unchanged unknown source. [V2C-19](v2-completion/V2C-19.md) lists assumptions,
+adapter support and the separate structural save/build gates.

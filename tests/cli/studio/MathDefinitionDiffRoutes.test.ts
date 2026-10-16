@@ -137,7 +137,7 @@ describe("definition comparison public Studio route", () => {
                 const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
                 try {
                     expect(await dispatch([new DiffCommand()], ["node", "pokie", "diff", a, b, "--ci", "--format", "json"]))
-                        .toBe(field === "invalid cost" ? 2 : 0);
+                        .toBe(field === "invalid cost" || field === "container authority" ? 2 : 0);
                     expect(JSON.parse(log.mock.calls[0][0])).toEqual(result.body);
                 } finally {
                     log.mockRestore(); 

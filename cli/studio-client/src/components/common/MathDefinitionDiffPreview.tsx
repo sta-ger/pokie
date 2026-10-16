@@ -1,3 +1,4 @@
+import {AdvancedValidationPanel} from "./AdvancedValidationPanel";
 import {useEffect, useRef, useState} from "react";
 import {previewMathDefinitionDiff} from "../../api/apiClient";
 import type {MathDefinitionDiff} from "../../api/types";
@@ -110,6 +111,7 @@ export function MathDefinitionDiffPreview({
                                 <p>
                                     {side}: {source.support}
                                 </p>
+                                <AdvancedValidationPanel report={source.advanced} />
                                 {source.limits.map((limit, i) => (
                                     <p key={i}>Limit: {limit}</p>
                                 ))}

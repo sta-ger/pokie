@@ -913,14 +913,14 @@ describe("DiffCommand canonical definitions through dispatch", () => {
         if (field === "targetRtp") model.betModes[0].targetRtp = 0.96;
         if (field === "paylines") model.paylines = [[1, 1, 1]];
         fs.writeFileSync(b, JSON.stringify(model));
-        expect(await run([a, b, "--ci", "--format", "json"])).toBe(0);
+        expect(await run([a, b, "--ci", "--format", "json"])).toBe(field === "factor" ? 2 : 0);
         const diff = JSON.parse(log.mock.calls[0][0]);
-        expect(diff.status).toBe("different");
+        expect(diff.status).toBe(field === "factor" ? "partial" : "different");
         expect(diff.changes.every((change: {mathematical: boolean}) => !change.mathematical)).toBe(true);
         if (field === "factor") {
             model.mechanics.modifiers.wilds[0].factor = 2;
             fs.writeFileSync(b, JSON.stringify(model));
-            expect(await run([a, b, "--ci"])).toBe(1);
+            expect(await run([a, b, "--ci"])).toBe(2);
         }
     });
 
@@ -965,15 +965,15 @@ describe("DiffCommand canonical definitions through dispatch", () => {
     });
 
     it("maps SIGINT cancellation through dispatch without publishing an equality result", async () => {
-        const read = fs.readFileSync.bind(fs);
+        const open = fs.openSync.bind(fs);
         let cancelled = false;
-        jest.spyOn(fs, "readFileSync").mockImplementation((...args) => {
-            const contents = read(...args);
+        jest.spyOn(fs, "openSync").mockImplementation((...args) => {
+            const descriptor = open(...args);
             if (!cancelled && String(args[0]) === a) {
                 cancelled = true;
                 process.emit("SIGINT");
             }
-            return contents;
+            return descriptor;
         });
         const count = process.listenerCount("SIGINT");
         expect(await run([a, b, "--comparison", "definition", "--format", "json", "--ci"])).toBe(2);
@@ -1048,6 +1048,44 @@ it("reserves definition JSON stdout while executable descriptors log diagnostics
         expect(process.stdout.write).toBe(stdoutWrite);
     } finally {
         stderr.mockRestore();
+        log.mockRestore();
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});
+
+it("keeps unknown advanced validation incomplete under CI even with identical definitions", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "diff-advanced-unknown-"));
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+        const source = writeDescriptorPackage(root);
+        expect(await new DiffCommand().run([source, source, "--comparison", "definition", "--format", "json", "--ci"])).toBe(2);
+        const report = JSON.parse(log.mock.calls[0][0]);
+        expect(report).toMatchObject({status: "partial", left: {advanced: {verdict: "inconclusive", executableFidelity: "unverified"}}, right: {advanced: {verdict: "inconclusive"}}});
+    } finally {
+        log.mockRestore();
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});
+
+it("rejects oversized shared weights through real CLI validation and definition comparison", async () => {
+    const {ValidateCommand} = await import("../../../cli/commands/ValidateCommand.js");
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cli-preprocessing-bound-"));
+    const file = path.join(root, "model.blueprint.json");
+    const model = fractionalBetBlueprint([0.05], true);
+    Reflect.deleteProperty(model, "reelStrips");
+    model.symbolWeights = {A: 1000000000};
+    fs.writeFileSync(file, JSON.stringify(model));
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+        expect(await new ValidateCommand().run([file, "--format", "json"])).toBe(2);
+        expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({advanced: {status: "budget-exhausted", structuralValid: null, verdict: "inconclusive"}});
+        log.mockClear();
+        expect(await new DiffCommand().run([file, file, "--comparison", "definition", "--format", "json", "--ci"])).toBe(2);
+        expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({status: "unsupported", left: {advanced: {status: "budget-exhausted"}}, right: {advanced: {status: "budget-exhausted"}}});
+        log.mockClear();
+        fs.writeFileSync(file, JSON.stringify(fractionalBetBlueprint([0.05], true)));
+        expect(await new ValidateCommand().run([file, "--format", "json"])).toBe(0);
+    } finally {
         log.mockRestore();
         fs.rmSync(root, {recursive: true, force: true});
     }

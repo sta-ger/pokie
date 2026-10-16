@@ -1,3 +1,5 @@
+import {definitionPreprocessingWork} from "../validation/internal/definitionPreprocessingWork.js";
+import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {modelFieldPathSegments} from "../generated/internal/modelFieldPath.js";
 import {definitionDiagnostics} from "./internal/definitionDiagnostics.js";
 import {definitionFieldAuthority, definitionFieldUnsupported} from "./internal/definitionFieldAuthority.js";
@@ -126,6 +128,11 @@ function verifyCompleteness(snapshot: MathDefinitionSnapshot): void {
             message:
                 "Complete support requires an effective model, resolved reels, declared policy and no unsupported fields.",
         });
+        return;
+    }
+    if (definitionPreprocessingWork(snapshot.authored as Partial<GameBlueprint>) > 100000) {
+        snapshot.support = "unsupported";
+        snapshot.diagnostics.push({code: "definition-acquisition-budget-exhausted", severity: "warning", path: "", message: "Definition preprocessing exceeds its bounded normalization work limit."});
         return;
     }
     const typedModel = model as Record<string, DefinitionJson>;
@@ -324,6 +331,16 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
         }
         const diagnostics = (snapshot: MathDefinitionSnapshot): Map<string, DefinitionJson[]> => {
             const groups = new Map<string, DefinitionJson[]>();
+            if (snapshot.advanced) {
+                const {checks, ...summary} = snapshot.advanced;
+                groups.set("/validation/advanced/report", [summary as unknown as DefinitionJson]);
+                for (const check of checks) {
+                    const path = `/validation/advanced/${definitionPointerPart(check.path)}/${definitionPointerPart(check.id)}`;
+                    const group = groups.get(path) ?? [];
+                    group.push(check as unknown as DefinitionJson);
+                    groups.set(path, group);
+                }
+            }
             for (const issue of snapshot.diagnostics) {
                 const path = `/validation/${definitionPointerPart(issue.path)}/${definitionPointerPart(issue.code)}`;
                 const group = groups.get(path) ?? [];
@@ -367,6 +384,9 @@ export class MathDefinitionDiffer implements MathDefinitionDiffing {
         changes.sort((a, b) => (a.path < b.path ? -1 : Number(a.path > b.path)));
         let status: MathDefinitionDiff["status"] = changes.length ? "different" : "identical";
         const supports = [left.support, right.support];
+        if (!left.advanced || !right.advanced) status = "partial";
+        if ([left, right].some(source => source.advanced && source.advanced.verdict === "inconclusive")) status = "partial";
+        if ([left, right].some(source => source.advanced?.verdict === "violated")) status = "invalid";
         if (supports.includes("partial") || supports.includes("unsupported")) status = "partial";
         if (supports.every((support) => support === "unsupported")) status = "unsupported";
         for (const failure of ["invalid", "cancelled", "failed"] as const) if (supports.includes(failure)) status = failure;

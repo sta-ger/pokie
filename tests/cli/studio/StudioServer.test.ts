@@ -149,6 +149,41 @@ async function post(url: string, body?: unknown): Promise<{status: number; body:
     return {status: response.status, body: await response.json()};
 }
 
+// These generated-strip fixtures exceed the default outcome budget. Structural validity
+// remains useful, but an unfinished advanced analysis must never become a safety proof.
+function blueprintBudgetReport() {
+    return expect.objectContaining({
+        schemaVersion: 1, scope: "declared-model", adapter: "blueprint-runtime-v1",
+        status: "budget-exhausted", structuralValid: true, verdict: "inconclusive",
+        executableFidelity: "declarative-runtime-contract", supportedChecks: [], termination: "all-path",
+        sourceRevision: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+        issues: [], limitations: ["Analysis outcomes limit exhausted."],
+        checks: [
+            ...["reachability", "termination", "invariants"].map(id => expect.objectContaining({
+                id: `${id}.unresolved`, path: "$", status: "unknown", severity: "warning",
+            })),
+            expect.objectContaining({id: "analysis.completion", path: "$", status: "unknown", severity: "warning", message: "Analysis outcomes limit exhausted."}),
+        ],
+        work: expect.objectContaining({outcomes: 1000}),
+    });
+}
+
+function unsupportedDeclarationReport(kind: "tsPackage" | "outcomeLibrary" | "stakeAdapter") {
+    return expect.objectContaining({
+        schemaVersion: 1, scope: "declared-model", adapter: `${kind}-declaration-v1`,
+        declarationAuthority: `${kind} reader: retained declaration only`,
+        status: "unsupported", structuralValid: null, verdict: "inconclusive",
+        executableFidelity: "unverified", supportedChecks: [], termination: "all-path",
+        issues: kind === "tsPackage" ? [
+            expect.objectContaining({code: "legacy-model-unavailable", severity: "warning"}),
+            expect.objectContaining({code: "max-win-policy-unknown", path: "/maxWinPolicy", severity: "warning"}),
+        ] : [expect.objectContaining({code: "outcome-only-definition-unavailable", severity: "warning"})],
+        checks: ["reachability.source-support", "termination.source-support", "invariants.source-support", "source.executable-fidelity"].map(id => expect.objectContaining({
+            id, path: "$", status: "unknown", severity: "warning",
+        })),
+    });
+}
+
 function runtimeSnapshotsForPackage(packageName: string): string[] {
     return fs
         .readdirSync(os.tmpdir())
@@ -2596,7 +2631,7 @@ describe("StudioServer", () => {
                 const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/validate`, {blueprint: buildBlueprint()});
 
                 expect(status).toBe(200);
-                expect(body).toEqual({status: "ok", warnings: []});
+                expect(body).toEqual({status: "ok", warnings: [], advanced: blueprintBudgetReport()});
             });
 
             it("returns ok with warnings for a valid-but-unusual blueprint", async () => {
@@ -2630,7 +2665,7 @@ describe("StudioServer", () => {
 
                 const fixed = await post(`${homeBaseUrl}/api/home/blueprints/validate`, {blueprint: buildBlueprint()});
                 expect(fixed.status).toBe(200);
-                expect(fixed.body).toEqual({status: "ok", warnings: []});
+                expect(fixed.body).toEqual({status: "ok", warnings: [], advanced: blueprintBudgetReport()});
 
                 const brokenAgain = await post(`${homeBaseUrl}/api/home/blueprints/validate`, {blueprint: buildBlueprint({reels: 0})});
                 expect(brokenAgain.body).toMatchObject({status: "invalid"});
@@ -3527,15 +3562,21 @@ describe("StudioServer", () => {
             expect(body).toEqual({error: "No active project."});
         });
 
+        let sampleSlotRoot: string;
+
         async function openSampleSlot(): Promise<void> {
+            // The advanced reader consumes disk source before the injected contract validator.
+            // A legacy package has no declared transition model, but still receives its contract report.
+            sampleSlotRoot = writeDescriptorPackage(studioRoot, {name: "sample-slot", legacy: true});
             loadGame.mockResolvedValue(createFakeGame({id: "sample-slot", name: "Sample Slot", version: "0.1.0"}));
-            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./sample-slot"});
+            const opened = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: sampleSlotRoot});
+            expect(opened.status).toBe(200);
         }
 
         it("forwards a fully valid validation report", async () => {
             await openSampleSlot();
             const report: PokieGamePackageValidationReport = {
-                packageRoot: "./sample-slot",
+                packageRoot: sampleSlotRoot,
                 valid: true,
                 game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                 errors: [],
@@ -3548,14 +3589,14 @@ describe("StudioServer", () => {
             const {status, body} = await get(`${baseUrl}/api/project/validate`);
 
             expect(status).toBe(200);
-            expect(body).toEqual(report);
-            expect(validate).toHaveBeenCalledWith(path.resolve("./sample-slot"));
+            expect(body).toEqual({...report, advanced: unsupportedDeclarationReport("tsPackage")});
+            expect(validate).toHaveBeenCalledWith(sampleSlotRoot);
         });
 
         it("forwards a validation report with errors", async () => {
             await openSampleSlot();
             const report: PokieGamePackageValidationReport = {
-                packageRoot: "./sample-slot",
+                packageRoot: sampleSlotRoot,
                 valid: false,
                 game: null,
                 errors: [{code: "pokie-package-load-failed", severity: "error", message: "boom"}],
@@ -3567,14 +3608,15 @@ describe("StudioServer", () => {
             const {status, body} = await get(`${baseUrl}/api/project/validate`);
 
             expect(status).toBe(200);
-            expect(body).toEqual(report);
+            expect(body).toEqual({...report, advanced: unsupportedDeclarationReport("tsPackage")});
+            expect(validate).toHaveBeenCalledWith(sampleSlotRoot);
             expect(JSON.stringify(body)).not.toContain("\\n    at ");
         });
 
         it("forwards a validation report with only warnings (still valid)", async () => {
             await openSampleSlot();
             const report: PokieGamePackageValidationReport = {
-                packageRoot: "./sample-slot",
+                packageRoot: sampleSlotRoot,
                 valid: true,
                 game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                 errors: [],
@@ -3586,13 +3628,31 @@ describe("StudioServer", () => {
             const {status, body} = await get(`${baseUrl}/api/project/validate`);
 
             expect(status).toBe(200);
-            expect(body).toEqual(report);
+            expect(body).toEqual({...report, advanced: unsupportedDeclarationReport("tsPackage")});
+            expect(validate).toHaveBeenCalledWith(sampleSlotRoot);
+        });
+
+        it("reports failed source acquisition before attempting contract validation", async () => {
+            const missingRoot = path.join(studioRoot, "missing-slot");
+            loadGame.mockResolvedValue(createFakeGame({id: "sample-slot", name: "Sample Slot", version: "0.1.0"}));
+            expect((await post(`${baseUrl}/api/home/projects/open`, {projectRoot: missingRoot})).status).toBe(200);
+
+            const {status, body} = await get(`${baseUrl}/api/project/validate`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual({
+                packageRoot: missingRoot, valid: false, game: null,
+                errors: [{code: "definition-read-failed", severity: "error", path: "", message: "Source declaration could not be read. Check the input and retry."}],
+                warnings: [], suggestions: [],
+                advanced: expect.objectContaining({status: "failed", structuralValid: false, verdict: "inconclusive", executableFidelity: "unverified", supportedChecks: []}),
+            });
+            expect(validate).not.toHaveBeenCalled();
         });
 
         it("keeps Studio responsive after a validation error", async () => {
             await openSampleSlot();
             validate.mockResolvedValue({
-                packageRoot: "./sample-slot",
+                packageRoot: sampleSlotRoot,
                 valid: false,
                 game: null,
                 errors: [{code: "pokie-package-load-failed", severity: "error", message: "boom"}],
@@ -3600,7 +3660,10 @@ describe("StudioServer", () => {
                 suggestions: [],
             });
 
-            await get(`${baseUrl}/api/project/validate`);
+            const validation = await get(`${baseUrl}/api/project/validate`);
+            expect(validation.status).toBe(200);
+            expect(validation.body).toMatchObject({valid: false, errors: [{code: "pokie-package-load-failed"}], advanced: unsupportedDeclarationReport("tsPackage")});
+            expect(validate).toHaveBeenCalledWith(sampleSlotRoot);
             const health = await get(`${baseUrl}/api/health`);
 
             expect(health.status).toBe(200);
@@ -3893,7 +3956,9 @@ describe("StudioServer", () => {
                 warnings: [],
                 information: [],
                 suggestions: [],
+                advanced: blueprintBudgetReport(),
             });
+            expect(fs.readFileSync(blueprintPath, "utf8")).toBe(JSON.stringify(buildBlueprint()));
         });
 
         it("reports GameBlueprintValidator's own structural errors for a broken blueprint, never PokieGamePackageValidator's package.json-oriented errors", async () => {
@@ -4003,7 +4068,7 @@ describe("StudioServer", () => {
                 const {status, body} = await get(`${projectBaseUrl}/api/project/validate`);
 
                 expect(status).toBe(200);
-                expect(body).toEqual({packageRoot: bundleDir, valid: true, game: null, errors: [], warnings: [], information: [], suggestions: []});
+                expect(body).toEqual({packageRoot: bundleDir, valid: true, game: null, errors: [], warnings: [], information: [], suggestions: [], advanced: unsupportedDeclarationReport("outcomeLibrary")});
                 expect(libraryValidate).not.toHaveBeenCalled();
             });
 
@@ -4044,7 +4109,7 @@ describe("StudioServer", () => {
                 const {status, body} = await get(`${projectBaseUrl}/api/project/validate`);
 
                 expect(status).toBe(200);
-                expect(body).toEqual({packageRoot: stakeDir, valid: true, game: null, errors: [], warnings: [], information: [], suggestions: []});
+                expect(body).toEqual({packageRoot: stakeDir, valid: true, game: null, errors: [], warnings: [], information: [], suggestions: [], advanced: unsupportedDeclarationReport("stakeAdapter")});
                 expect(libraryValidate).not.toHaveBeenCalled();
             });
         });

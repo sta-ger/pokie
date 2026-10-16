@@ -229,9 +229,10 @@ export function describeCapability(capability: StudioProjectCapability): string 
     return CAPABILITY_LABEL[capability] ?? capability;
 }
 
-export type ValidationIssueView = {code: string; message: string};
+export type ValidationIssueView = Pick<PokieGamePackageValidationReport["errors"][number], "code" | "message"> & Partial<PokieGamePackageValidationReport["errors"][number]>;
 
 export type ValidationSummaryView = {
+    advanced?: PokieGamePackageValidationReport["advanced"];
     valid: boolean;
     errors: ValidationIssueView[];
     warnings: ValidationIssueView[];
@@ -250,9 +251,10 @@ export type ValidationSummaryView = {
 export function describeValidationSummary(report: PokieGamePackageValidationReport): ValidationSummaryView {
     return {
         valid: report.valid,
-        errors: report.errors.map((issue) => ({code: issue.code, message: issue.message})),
-        warnings: report.warnings.map((issue) => ({code: issue.code, message: issue.message})),
-        information: (report.information ?? []).map((issue) => ({code: issue.code, message: issue.message})),
+        ...(report.advanced ? {advanced: report.advanced} : {}),
+        errors: report.errors.map((issue) => ({...issue})),
+        warnings: report.warnings.map((issue) => ({...issue})),
+        information: (report.information ?? []).map((issue) => ({...issue})),
         suggestions: report.suggestions,
         hasIssues: report.errors.length > 0 || report.warnings.length > 0,
         blocking: !report.valid || report.errors.length > 0,

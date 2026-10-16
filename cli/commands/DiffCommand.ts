@@ -274,6 +274,10 @@ export class DiffCommand implements CliCommandHandling {
             for (const change of diff.changes) console.log(`${change.path} [${change.classification}${change.seededTraceImpact ? "; seeded trace may change" : ""}] ${JSON.stringify(change.before)} -> ${JSON.stringify(change.after)} context=${JSON.stringify(change.context)}`);
             for (const [side, source] of [["left", diff.left], ["right", diff.right]] as const) {
                 console.log(`${side}: ${source.support}`);
+                if (source.advanced) {
+                    console.log(`Advanced ${source.advanced.status}: ${source.advanced.verdict}`);
+                    for (const check of source.advanced.checks) console.log(`${check.status} ${check.id} [${check.path}]: ${check.message} ${JSON.stringify(check.evidence ?? {})}`);
+                }
                 for (const issue of source.diagnostics) console.log(`${issue.severity} ${issue.code} ${issue.path}: ${issue.message}`);
                 for (const limit of source.limits) console.log(`Limit: ${limit}`);
             }

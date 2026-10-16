@@ -1,3 +1,4 @@
+import type {AdvancedModelValidationReport} from "../validation/AdvancedModelValidation.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import type {PackageExtractionField} from "../generated/PackageBlueprintExtraction.js";
 
@@ -28,6 +29,7 @@ export type MathDefinitionValue = ({present: false} | {present: true; value: Def
     provenance: MathDefinitionProvenance;
 };
 export type MathDefinitionSnapshot = {
+    advanced?: AdvancedModelValidationReport;
     identity: {
         kind: string;
         location?: string;

@@ -190,7 +190,7 @@ describe("describeValidationSummary", () => {
         const summary = describeValidationSummary(report);
         expect(summary.valid).toBe(false);
         expect(summary.hasIssues).toBe(true);
-        expect(summary.errors).toEqual([{code: "pokie-package-load-failed", message: "boom"}]);
+        expect(summary.errors).toEqual([{code: "pokie-package-load-failed", severity: "error", message: "boom"}]);
     });
 
     it("summarizes a report with only warnings (still valid)", () => {
@@ -206,7 +206,7 @@ describe("describeValidationSummary", () => {
         const summary = describeValidationSummary(report);
         expect(summary.valid).toBe(true);
         expect(summary.hasIssues).toBe(true);
-        expect(summary.warnings).toEqual([{code: "pokie-game-description-missing", message: "No description set."}]);
+        expect(summary.warnings).toEqual([{code: "pokie-game-description-missing", severity: "warning", message: "No description set."}]);
         expect(summary.suggestions).toEqual(["Add a description to the manifest."]);
     });
 
@@ -222,6 +222,6 @@ describe("describeValidationSummary", () => {
         });
 
         expect(summary).toMatchObject({valid: true, warnings: [], hasIssues: false, blocking: false});
-        expect(summary.information).toEqual([{code: "parsheet-provenance-present", message: "The recorded hash matches the imported data."}]);
+        expect(summary.information).toEqual([{code: "parsheet-provenance-present", severity: "info", message: "The recorded hash matches the imported data."}]);
     });
 });

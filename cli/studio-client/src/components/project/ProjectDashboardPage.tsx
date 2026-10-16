@@ -628,17 +628,26 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // makes a failed re-validation correctly clear a stale successful result instead of silently leaving
     // it displayed with no error shown -- see ProjectValidationView's own doc comment.
     const [validation, setValidation] = useState<ProjectValidationView>({status: "idle"});
-    const validateGuard = useDoubleSubmitGuard();
+    const validationRequestRef = useRef(0);
+    const validationAbortRef = useRef<AbortController | undefined>(undefined);
+    useEffect(() => () => {
+        validationRequestRef.current++;
+        validationAbortRef.current?.abort();
+    }, [projectKey]);
     const runValidate = useCallback(() => {
-        if (!validateGuard.begin()) {
-            return;
-        }
+        const requestId = ++validationRequestRef.current;
+        const controller = new AbortController();
+        validationAbortRef.current?.abort();
+        validationAbortRef.current = controller;
+        const current = () => requestId === validationRequestRef.current && !controller.signal.aborted;
         setValidation({status: "loading"});
-        validateProject(fetchImpl)
-            .then((report) => setValidation({status: "success", summary: describeValidationSummary(report)}))
-            .catch((error: unknown) => setValidation({status: "error", message: errorMessage(error)}))
-            .finally(() => validateGuard.end());
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        validateProject(fetchImpl, controller.signal)
+            .then(report => {
+                if (current()) setValidation({status: "success", summary: describeValidationSummary(report)});
+            })
+            .catch((error: unknown) => {
+                if (current()) setValidation({status: "error", message: errorMessage(error)});
+            });
     }, [fetchImpl]);
 
     const simulation = useSimulationPoll();

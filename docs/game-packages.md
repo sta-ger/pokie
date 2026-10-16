@@ -425,3 +425,11 @@ A declared absence (`type: "none"`) remains representable. This comparison
 contract does not implement a payout cap. Explicit unsupported field authority
 also overrides generated defaults and applies to descendants, including fields
 inside arrays.
+
+Advanced analysis of a package is analysis of its declared model. It does not
+instantiate custom sessions to infer a theorem. A complete descriptor, a
+`sourceKind: "generated"` label, package-contract validity or restorable codec
+cannot establish arbitrary TypeScript executable fidelity. Undeclared max-win
+policy and unsupported nested collaborators remain unknown. Source-path
+acquisition owns and releases its snapshot; a direct supplied game remains
+caller-owned. See [V2C-19](v2-completion/V2C-19.md) for supported checks and limits.

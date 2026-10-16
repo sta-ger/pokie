@@ -1,3 +1,4 @@
+import {AdvancedModelSourceValidator} from "../../../src/validation/AdvancedModelSourceValidator.js";
 import {
     ArtifactConversionPlanner,
     ArtifactBuilderRegistry,
@@ -46,7 +47,7 @@ import type {StudioBlueprintLoadView} from "./StudioBlueprintLoadView.js";
 import type {StudioBlueprintRandomView} from "./StudioBlueprintRandomView.js";
 import type {StudioBlueprintSaveManagedView} from "./StudioBlueprintSaveManagedView.js";
 import type {StudioBlueprintSaveView} from "./StudioBlueprintSaveView.js";
-import type {StudioBlueprintValidationView} from "./StudioBlueprintValidationView.js";
+import type {StudioBlueprintAdvancedValidationView, StudioBlueprintValidationView} from "./StudioBlueprintValidationView.js";
 import type {StudioParSheetExportView} from "./StudioParSheetExportView.js";
 import type {StudioParSheetConversionEvidence, StudioParSheetImportView} from "./StudioParSheetImportView.js";
 import type {StudioReelStripGenerationReelView, StudioReelStripGenerationView} from "./StudioReelStripGenerationView.js";
@@ -266,6 +267,14 @@ export class StudioBlueprintService {
         const generator = resolvedPreset === "variant" ? this.variantRandomBlueprintGenerator : this.randomBlueprintGenerator;
         const {blueprint, seed: usedSeed, provenance} = generator.generate({seed, overrides: name ? {name} : undefined});
         return {status: "ok", blueprint, seed: usedSeed, preset: resolvedPreset, provenance};
+    }
+
+    public async validateAdvanced(blueprint: unknown, signal?: AbortSignal): Promise<StudioBlueprintAdvancedValidationView> {
+        const advanced = await new AdvancedModelSourceValidator().validate({kind: "blueprint", model: blueprint}, {signal});
+        const errors = advanced.issues.filter(issue => issue.severity === "error");
+        const warnings = advanced.issues.filter(issue => issue.severity !== "error");
+        if (advanced.structuralValid === null || advanced.status === "cancelled" || advanced.status === "failed") return {status: "inconclusive", errors, warnings, advanced};
+        return advanced.structuralValid ? {status: "ok", warnings, advanced} : {status: "invalid", errors, warnings, advanced};
     }
 
     public validate(blueprint: unknown): StudioBlueprintValidationView {

@@ -398,3 +398,25 @@ WASM compares embedded strips, payouts and stop widths with partial status becau
 original symbol inventory/authoring presence is unavailable. Legacy WASM metadata
 and outcome-only artifacts cannot reconstruct a definition. These limitations
 cannot be upgraded to equality by matching report totals or matching subsets.
+
+### Advanced declared-model validation
+
+Use `AdvancedModelValidator.validate({kind: "blueprint", model}, {limits, signal})`
+or `AdvancedModelSourceValidator.validate(source, {limits, signal})` for explicit
+asynchronous reachability, all-path termination and invariant analysis. A finite
+`kind: "declared-transitions"` table can retain reachable state/transition and
+cycle witnesses; its completeness is an explicit assumption, not a proof of the
+code which supplied it. Reports distinguish pass, violation and unknown checks,
+structural validity, operational status, assumptions, budgets and executable
+fidelity. Exhausted frontiers/depth and cancellation are inconclusive.
+
+Blueprint analysis enumerates attainable circular windows and positive-weight
+alternatives and exercises existing runtime handlers. It preserves fractional
+stakes and authored missing/zero payouts and grants. Additive free-game grants
+can violate all-path termination even when almost-sure termination is possible;
+no probability claim follows from a cycle with an exit. Respins retain their
+lifetime cap; cascade bound failures are explicit. Collection currency state is
+closed over reachable entry values; persistent jackpot/modifier state and
+lifetime wallet/counter overflow retain limitations. Max-win declarations are
+checked in their declared units/scope and never install an enforcement cap.
+See [the full source/mechanic boundary](v2-completion/V2C-19.md).

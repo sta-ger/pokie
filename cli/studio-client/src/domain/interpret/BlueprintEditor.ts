@@ -4,7 +4,6 @@ import type {
     StudioBlueprintSaveView,
     StudioBlueprintValidationView,
     StudioReelStripGenerationView,
-    ValidationIssue,
 } from "../../api/types";
 
 // Pure view-model transforms for the Blueprint Editor tab — same role as interpretHome.ts's own
@@ -25,8 +24,7 @@ export type BlueprintValidationView =
     | {status: "stale"}
     | {status: "loading"}
     | {status: "error"; message: string}
-    | {status: "ok"; warnings: ValidationIssue[]}
-    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]};
+    | StudioBlueprintValidationView;
 
 export function describeValidation(result: StudioBlueprintValidationView): BlueprintValidationView {
     return result;

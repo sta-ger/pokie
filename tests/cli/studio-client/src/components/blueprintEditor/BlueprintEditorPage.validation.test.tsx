@@ -1,4 +1,4 @@
-import {fireEvent, screen, waitFor} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -238,3 +238,58 @@ describe("Guided Design Game: automatic validation freshness", () => {
         expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument();
     }, 60000);
 });
+
+it("renders warnings and advanced unknown paths even when structural validation is invalid", async () => {
+    const {advancedUnknownReport} = await import("../../../../../v2/fixtures/AdvancedModelReport");
+    const fetchImpl: FetchLike = (url, init) => url.split("?")[0] === "/api/home/blueprints/validate" && init?.method === "POST"
+        ? respond({status: "invalid", errors: [{code: "invalid", severity: "error", message: "Invalid declaration"}], warnings: [{code: "retained", severity: "warning", message: "Retained alongside errors", path: "paytable.A"}], advanced: advancedUnknownReport()})
+        : respond([]);
+    renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+    expect((await screen.findAllByText(/Retained alongside errors/)).length).toBeGreaterThan(0);
+    expect(screen.getByText(/budget-exhausted — inconclusive/)).toBeInTheDocument();
+    expect(screen.getByText(/Path: mechanics.respins/)).toBeInTheDocument();
+    expect(screen.getByText(/respin-2/)).toBeInTheDocument();
+});
+
+it("keeps structurally inconclusive reports distinct from valid reports and disables creation", async () => {
+    const {advancedUnknownReport} = await import("../../../../../v2/fixtures/AdvancedModelReport");
+    const advanced = {...advancedUnknownReport(), structuralValid: null};
+    const fetchImpl: FetchLike = (url, init) => url.split("?")[0] === "/api/home/blueprints/validate" && init?.method === "POST"
+        ? respond({status: "inconclusive", warnings: [], advanced}) : respond([]);
+    renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+    expect(await screen.findByText(/Inconclusive — structural validation did not complete/)).toBeInTheDocument();
+    expect(screen.queryByText("Valid — no issues found.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Retry validation"})).toBeEnabled();
+});
+
+it("revalidates an edited revision after a delayed stale response under the real StrictMode lifecycle", async () => {
+    const user = userEvent.setup();
+    const ids: string[] = [];
+    let finishFirst: (() => void) | undefined;
+    let firstSignal: AbortSignal | undefined;
+    const fetchImpl: FetchLike = (url, init) => {
+        if (url.split("?")[0] !== "/api/home/blueprints/validate" || init?.method !== "POST") return respond([]);
+        const body = JSON.parse(String(init.body)) as {blueprint: {manifest: {id: string}}};
+        ids.push(body.blueprint.manifest.id);
+        if (ids.length === 1) {
+            firstSignal = init.signal;
+            return new Promise(resolve => {
+                finishFirst = () => resolve({ok: true, status: 200, json: () => Promise.resolve({status: "invalid", errors: [{code: "stale", severity: "error", message: "Stale strict result"}], warnings: []})});
+            });
+        }
+        return respond({status: "ok", warnings: []});
+    };
+    renderRoutedApp({fetchImpl, initialEntries: ["/home/design"], strictMode: true});
+    await waitFor(() => expect(finishFirst).toBeDefined());
+    await dirtyGameId(user, "strict-edited");
+    await act(async () => {
+        await new Promise<void>(resolve => {
+            setTimeout(resolve, 750);
+        });
+    });
+    expect(firstSignal?.aborted).toBe(true);
+    finishFirst?.();
+    await waitFor(() => expect(ids).toContain("strict-edited"));
+    expect(await screen.findByText("Valid — no issues found.")).toBeInTheDocument();
+    expect(screen.queryByText(/Stale strict result/)).not.toBeInTheDocument();
+}, 60000);

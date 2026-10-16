@@ -1,3 +1,5 @@
+import {definitionPreprocessingWork} from "../validation/internal/definitionPreprocessingWork.js";
+import {validateMathDefinitionSnapshot} from "../validation/validateMathDefinitionSnapshot.js";
 import {definitionDiagnostics} from "./internal/definitionDiagnostics.js";
 import {definitionFieldAuthority, definitionFieldUnsupported} from "./internal/definitionFieldAuthority.js";
 import fs from "fs";
@@ -13,7 +15,7 @@ import {
 } from "../generated/PackageBlueprintExtraction.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
-import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
+import {GameBlueprintReadBudgetExceededError, loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import {materializeReelStrips} from "../generated/materializeReelStrips.js";
 import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
@@ -31,7 +33,7 @@ import {MathDefinitionDiffer} from "./MathDefinitionDiffer.js";
 
 export type MathDefinitionInput = string | PokieProject | PokieGame | MathDefinitionBlueprintInput;
 export interface MathDefinitionSourceReading {
-    read(input: MathDefinitionInput, options?: {signal?: AbortSignal}): Promise<MathDefinitionSnapshot>;
+    read(input: MathDefinitionInput, options?: {signal?: AbortSignal; analysisOnly?: boolean; maxSourceBytes?: number}): Promise<MathDefinitionSnapshot>;
 }
 function diagnostic(
     code: string,
@@ -95,7 +97,14 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
         this.extraction = extraction;
     }
 
-    public async read(input: MathDefinitionInput, options?: {signal?: AbortSignal}): Promise<MathDefinitionSnapshot> {
+    /** Reading a definition is an explicit analysis boundary; extraction/build callers never enter here. */
+    public async read(input: MathDefinitionInput, options?: {signal?: AbortSignal; analysisOnly?: boolean; maxSourceBytes?: number}): Promise<MathDefinitionSnapshot> {
+        const snapshot = await this.readDefinition(input, options);
+        if (!options?.analysisOnly) snapshot.advanced = await validateMathDefinitionSnapshot(snapshot, options);
+        return snapshot;
+    }
+
+    private async readDefinition(input: MathDefinitionInput, options?: {signal?: AbortSignal; analysisOnly?: boolean; maxSourceBytes?: number}): Promise<MathDefinitionSnapshot> {
         const snapshot: MathDefinitionSnapshot = {
             identity: {kind: "unknown"},
             support: "unsupported",
@@ -113,7 +122,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
                 {
                     kind: "blueprint",
                     location: input,
-                    model: loadGameBlueprint(input, {preserveInvalidAuthoredContent: true}),
+                    model: loadGameBlueprint(input, {preserveInvalidAuthoredContent: true, maxBytes: options?.maxSourceBytes ?? 400000}),
                 },
                 options,
             );
@@ -131,7 +140,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
                         {
                             kind: "blueprint",
                             location: input,
-                            model: loadGameBlueprint(input, {preserveInvalidAuthoredContent: true}),
+                            model: loadGameBlueprint(input, {preserveInvalidAuthoredContent: true, maxBytes: options?.maxSourceBytes ?? 400000}),
                         },
                         options,
                     );
@@ -146,7 +155,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
                             {
                                 kind: "blueprint",
                                 location: project.rootPath,
-                                model: loadGameBlueprint(project.rootPath, {preserveInvalidAuthoredContent: true}),
+                                model: loadGameBlueprint(project.rootPath, {preserveInvalidAuthoredContent: true, maxBytes: options?.maxSourceBytes ?? 400000}),
                             },
                             options,
                         );
@@ -256,6 +265,12 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
             const malformedJson =
                 error instanceof Error &&
                 (error.message.startsWith("Could not parse") || error.message.includes("must contain a JSON object"));
+            if (error instanceof GameBlueprintReadBudgetExceededError) {
+                snapshot.support = "unsupported";
+                snapshot.limits.push(error.message);
+                snapshot.diagnostics.push(diagnostic("definition-acquisition-budget-exhausted", error.message, "warning"));
+                return snapshot;
+            }
             snapshot.support = options?.signal?.aborted ? "cancelled" : "failed";
             if (!options?.signal?.aborted && malformedJson) snapshot.support = "invalid";
             snapshot.diagnostics.push(
@@ -270,7 +285,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
 
     private async blueprint(
         input: MathDefinitionBlueprintInput,
-        options?: {signal?: AbortSignal},
+        options?: {signal?: AbortSignal; analysisOnly?: boolean; maxSourceBytes?: number},
     ): Promise<MathDefinitionSnapshot> {
         const snapshot: MathDefinitionSnapshot = {
             identity: {kind: "blueprint", ...(input.location ? {location: input.location} : {})},
@@ -283,6 +298,18 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
             const authored = detachPackageModelData(input.model) as GameBlueprint;
             snapshot.authored = authored as unknown as DefinitionJson;
             snapshot.identity.revision = computeGameBlueprintHash(authored);
+            if (options?.analysisOnly) {
+                const policy = input.maxWinPolicy ?? {type: "none" as const, scope: "logical-round" as const, authority: "Blueprint runtime has no payout cap"};
+                snapshot.effective = {...authored, maxWinPolicy: policy} as unknown as DefinitionJson;
+                return snapshot;
+            }
+            if (definitionPreprocessingWork(authored) > 100000) {
+                snapshot.support = "unsupported";
+                snapshot.effective = snapshot.authored;
+                snapshot.limits.push("Definition preprocessing exceeds its bounded normalization work limit.");
+                snapshot.diagnostics.push(diagnostic("definition-acquisition-budget-exhausted", snapshot.limits[0], "warning"));
+                return snapshot;
+            }
             snapshot.diagnostics = new GameBlueprintValidator().validate(authored).map((issue) => ({
                 code: issue.code,
                 severity: issue.severity,
@@ -372,7 +399,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
         const policy = validateMathDefinitionMaxWinPolicy(
             declared ??
                 extraction.maxWinPolicy ??
-                (extraction.source.kind === "generated"
+                (identity.kind === "blueprint"
                     ? {type: "none", scope: "logical-round", authority: "POKIE generated runtime: no payout cap"}
                     : {type: "unknown", authority: "Custom executable cap policy is undeclared"}),
         );
@@ -386,6 +413,13 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
         if (policy.type === "unknown") snapshot.diagnostics.push(
             diagnostic("max-win-policy-unknown", policy.authority, "warning", "/maxWinPolicy"),
         );
+        if (definitionPreprocessingWork(model) > 100000) {
+            if (snapshot.support !== "failed") snapshot.support = "unsupported";
+            snapshot.effective = snapshot.authored;
+            snapshot.limits.push("Definition preprocessing exceeds its bounded normalization work limit.");
+            snapshot.diagnostics.push(diagnostic("definition-acquisition-budget-exhausted", snapshot.limits[snapshot.limits.length - 1], "warning"));
+            return snapshot;
+        }
         snapshot.effective = filterDefaults(snapshot.authored, {
             ...(extraction.source.descriptorVersion === 1 ? effectiveDefaults(model, extraction.fields) : model),
             maxWinPolicy: policy,
@@ -423,5 +457,8 @@ export async function compareMathDefinitions(
             },
     );
     if (options?.signal?.aborted) for (const snapshot of snapshots) if (snapshot.support !== "failed") snapshot.support = "cancelled";
+    await Promise.all(snapshots.map(async snapshot => {
+        (snapshot as MathDefinitionSnapshot).advanced ??= await validateMathDefinitionSnapshot(snapshot, options);
+    }));
     return new MathDefinitionDiffer().diff(snapshots[0], snapshots[1]);
 }

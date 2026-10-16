@@ -1674,3 +1674,23 @@ describe("StudioBlueprintService", () => {
         });
     });
 });
+
+it("does not enter the synchronous feasibility path before a bounded or cancelled advanced validation", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "advanced-service-budget-"));
+    const home = new StudioHomeService("1.3.0", new InMemoryRecentProjectsRepository());
+    const service = new StudioBlueprintService("1.3.0", root, home);
+    const structural = jest.spyOn(service, "validate").mockImplementation(() => {
+        throw new Error("Unbounded feasibility must not start");
+    });
+    try {
+        const model: GameBlueprint = {manifest: {id: "budget", name: "Budget", version: "1"}, reels: 1, rows: 1, symbols: ["A"], paytable: {}, reelStripGeneration: [{type: "generated", length: 1000000, seed: 1, symbolCounts: {A: 1000000}, maxAttempts: 1000000}]};
+        expect((await service.validateAdvanced(model)).advanced).toMatchObject({status: "budget-exhausted", verdict: "inconclusive"});
+        const controller = new AbortController();
+        controller.abort();
+        expect(await service.validateAdvanced(model, controller.signal)).toMatchObject({status: "inconclusive", advanced: {status: "cancelled"}});
+        expect(structural).not.toHaveBeenCalled();
+    } finally {
+        structural.mockRestore();
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});

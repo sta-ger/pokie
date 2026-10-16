@@ -115,7 +115,13 @@ describe("canonical math definition diff", () => {
             right = clone(left);
         setAt(right, keys, value);
         const diff = await api.compareMathDefinitions(source(left), source(right));
-        expect(diff.status).toBe("different");
+        const failingReachability = ["free games", "mode cost"].includes(_family);
+        const boundedOrModifier = ["modifier", "cascade", "respin grant", "respin reset", "collection", "hold continuation", "hold payout units", "forced free games"].includes(_family);
+        if (failingReachability) expect(diff.status).toBe("invalid");
+        else if (boundedOrModifier) {
+            expect(["partial", "invalid"]).toContain(diff.status);
+            expect([diff.left.advanced?.verdict, diff.right.advanced?.verdict]).not.toEqual(["proved-within-assumptions", "proved-within-assumptions"]);
+        } else expect(diff.status).toBe("different");
         const change = diff.changes.find((entry) => entry.path === "/" + keys.join("/"));
         expect(change).toMatchObject({
             classification: "mathematical",
@@ -137,7 +143,8 @@ describe("canonical math definition diff", () => {
         left.symbolWeights = {A: 5, B: 5};
         const right = {...left, symbolWeights: {A: 4, B: 6}};
         const diff = await api.compareMathDefinitions(source(left), source(right));
-        expect(diff.status).toBe("different");
+        expect(diff.status).toBe("partial");
+        expect([diff.left.advanced?.status, diff.right.advanced?.status]).toContain("budget-exhausted");
         expect(diff.changes.some((change) => change.path.startsWith("/reelStrips") && change.mathematical)).toBe(true);
         expect(diff.changes.find((change) => change.path === "/symbolWeights/A")).toMatchObject({
             classification: "representation",
@@ -186,7 +193,7 @@ describe("canonical math definition diff", () => {
         const right = {...left, winModel: {type: "lines" as const}};
         const diff = await api.compareMathDefinitions(source(left), source(right));
         expect(diff.status).toBe("different");
-        expect(diff.changes).toEqual([
+        expect(diff.changes.filter(change => change.classification !== "validation")).toEqual([
             expect.objectContaining({
                 path: "/winModel/type",
                 classification: "representation",
@@ -359,7 +366,7 @@ describe("canonical math definition diff", () => {
             model,
             maxWinPolicy: {type: "none", scope: "logical-round", authority: "declared custom runtime"},
         });
-        expect((await api.compareMathDefinitions(game, game)).status).toBe("identical");
+        expect((await api.compareMathDefinitions(game, game)).status).toBe("partial");
         game.getModelDescriptor = () => ({
             descriptorVersion: 1,
             blueprintSchemaVersion: 1,
@@ -621,7 +628,7 @@ describe("reviewed field semantics", () => {
         if (field === "ignored paylines") right.paylines = [[1, 1, 1]];
         if (field === "default factor") right.mechanics!.modifiers!.wilds[0].factor = 1;
         const diff = await api.compareMathDefinitions(source(left), source(right));
-        expect(diff.status).toBe("different");
+        expect(diff.status).toBe(field === "default factor" ? "partial" : "different");
         expect(diff.changes.length).toBeGreaterThan(0);
         expect(diff.changes.every((change) => !change.mathematical)).toBe(true);
         if (field === "default factor") {
@@ -990,4 +997,44 @@ it("keeps unsupported literal feature extensions separate from supported nested 
         path: "/mechanics/freeGames/awardsByCount/3", mathematical: true,
         after: expect.objectContaining({provenance: expect.objectContaining({status: "authored"})}),
     }));
+});
+
+it("bounds shared-weight preprocessing through source reads, comparisons and direct snapshots", async () => {
+    const model = {...base(), reels: 1, rows: 1, symbolWeights: {A: 1000000000}};
+    Reflect.deleteProperty(model, "reelStrips");
+    expect(await new api.AdvancedModelValidator().validate({kind: "blueprint", model})).toMatchObject({status: "budget-exhausted", verdict: "inconclusive"});
+    const reader = new api.MathDefinitionSourceReader();
+    const read = await reader.read(source(model));
+    expect(read).toMatchObject({support: "unsupported", advanced: {status: "budget-exhausted", verdict: "inconclusive", structuralValid: null}});
+    expect(read.diagnostics).toContainEqual(expect.objectContaining({code: "definition-acquisition-budget-exhausted"}));
+    const compared = await api.compareMathDefinitions(source(model), source(base()));
+    expect(compared.left.advanced?.status).toBe("budget-exhausted");
+    expect(compared.status).toBe("partial");
+    const forged = clone(await reader.read(source(base())));
+    forged.authored = model as unknown as api.DefinitionJson;
+    expect(new api.MathDefinitionDiffer().diff(forged, forged).left).toMatchObject({support: "unsupported", diagnostics: expect.arrayContaining([expect.objectContaining({code: "definition-acquisition-budget-exhausted"})])});
+    expect((await reader.read(source(base()))).advanced?.status).toBe("complete");
+});
+
+it("diffs advanced witness additions, removals, support assumptions and escaped identities losslessly", async () => {
+    const original = await new api.MathDefinitionSourceReader().read(source(base()));
+    const left = clone(original);
+    const right = clone(original);
+    const diagnostic = {id: "check/~id", path: "/mechanics/a~b", status: "unknown" as const, severity: "warning" as const, message: "Same text", assumptions: ["Before authority"], evidence: {path: ["entry", "cycle"], before: {balance: 10}}};
+    left.advanced!.checks = [diagnostic, {...diagnostic, id: "removed/~"}];
+    right.advanced!.checks = [{...diagnostic, assumptions: ["After authority"], evidence: {path: ["entry", "exit"], before: {balance: 100}}}, {...diagnostic, id: "added/~"}];
+    for (const snapshot of [left, right]) Object.assign(snapshot.advanced!, {status: "unsupported", verdict: "inconclusive", supportedChecks: [], assumptions: [snapshot === left ? "Before scope" : "After scope"]});
+    const diff = new api.MathDefinitionDiffer().diff(left, right);
+    expect(diff.status).toBe("partial");
+    const changed = diff.changes.find(change => change.path === "/validation/advanced/~1mechanics~1a~0b/check~1~0id");
+    expect(changed).toMatchObject({classification: "validation", mathematical: false, before: {present: true, value: diagnostic}, after: {present: true, value: right.advanced!.checks[0]}});
+    expect(diff.changes).toContainEqual(expect.objectContaining({path: "/validation/advanced/~1mechanics~1a~0b/removed~1~0", before: {present: true, value: left.advanced!.checks[1], provenance: expect.anything()}, after: {present: false, provenance: expect.anything()}}));
+    expect(diff.changes).toContainEqual(expect.objectContaining({path: "/validation/advanced/~1mechanics~1a~0b/added~1~0", before: {present: false, provenance: expect.anything()}, after: {present: true, value: right.advanced!.checks[1], provenance: expect.anything()}}));
+    expect(diff.changes).toContainEqual(expect.objectContaining({path: "/validation/advanced/report", before: expect.objectContaining({value: expect.objectContaining({assumptions: ["Before scope"]})}), after: expect.objectContaining({value: expect.objectContaining({assumptions: ["After scope"]})})}));
+    // Colliding messages/severities retain distinct complete identities rather than overwriting.
+    right.advanced!.checks.push({...right.advanced!.checks[0], severity: "info", message: "Other text"});
+    const collision = new api.MathDefinitionDiffer().diff(left, right).changes.filter(change => change.path.startsWith("/validation/advanced/~1mechanics~1a~0b/check~1~0id/"));
+    expect(collision).toHaveLength(3);
+    expect(collision.filter(change => change.after.present)).toHaveLength(2);
+    expect(new api.MathDefinitionDiffer().diff(right, right)).toMatchObject({status: "partial", changes: []});
 });
