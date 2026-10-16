@@ -123,7 +123,10 @@ try {
     assert.deepEqual((await jobs()).map(row => row.id).sort(), beforeMalformed);
     await click("Copy current checkpoint to input");
     const checkpointValue = () => evaluate("[...document.querySelectorAll('input')].find(node=>node.labels?.[0]?.textContent==='JSON checkpoint').value");
-    const checkpoint = JSON.parse(await checkpointValue());
+    const checkpoint = JSON.parse(await waitFor(checkpointValue, value => {
+        try { return typeof JSON.parse(value)?.artifactIdentity === "string"; }
+        catch { return false; }
+    }, "copied current checkpoint"));
     const recordedBefore = (await api("/api/project/rounds")).length;
     const restore = await submitJob("browser-play", "Restore checkpoint");
     assert.equal((await jobTerminal(restore)).status, "completed");
@@ -138,6 +141,7 @@ try {
     await rendered("Checkpoint restore failed. Supply a valid checkpoint from this WASM artifact and matching version");
     assert.equal((await api("/api/project/rounds")).length, recordedBefore, "rejection is not a spin");
     await click("Copy current checkpoint to input");
+    await waitFor(checkpointValue, value => value === JSON.stringify(checkpoint), "preserved checkpoint after rejected restore");
     assert.deepEqual(JSON.parse(await checkpointValue()), checkpoint, "rejection preserves the confirmed checkpoint");
     const reused = await jobTerminal(await submitJob("browser-play", "Spin"));
     assert.equal(reused.status, "completed");

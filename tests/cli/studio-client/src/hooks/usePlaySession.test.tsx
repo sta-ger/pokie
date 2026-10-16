@@ -213,6 +213,7 @@ it("renders local JSON rejection, executed restore rejection, retained Play and 
     const requests: {url: string; body: Record<string, unknown>}[] = [];
     let current: ReturnType<typeof usePlaySession>;
     const fetchImpl: FetchLike = (url, init) => {
+        if (url === "/api/project/symbol-artwork") return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({artwork: {}})});
         const body = JSON.parse(init?.body ?? "{}");
         requests.push({url, body});
         if (url.endsWith("/restore")) {
