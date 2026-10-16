@@ -57,9 +57,12 @@ describe("WasmArtifactBuilder", () => {
         expect(() => resolveCanonicalWasmGameModel(invalid)).toThrow(/Next:/);
         await expect(builder.validate(source)).rejects.toThrow(code);
         await expect(registry.validate("wasm", source)).rejects.toThrow(code);
+        await expect(builder.build(source, outputPath)).rejects.toThrow(code);
+        expect(fs.existsSync(outputPath)).toBe(false);
+        expect(fs.existsSync(sidecar)).toBe(false);
         fs.writeFileSync(outputPath, "");
         fs.writeFileSync(sidecar, "");
-        await expect(builder.build(source, outputPath)).rejects.toThrow(code);
+        await expect(builder.build(source, outputPath)).rejects.toThrow(/already exists/);
         expect(fs.readFileSync(outputPath, "utf8")).toBe("");
         expect(fs.readFileSync(sidecar, "utf8")).toBe("");
         expect(fs.readFileSync(sourcePath)).toEqual(input);

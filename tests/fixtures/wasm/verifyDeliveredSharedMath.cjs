@@ -140,7 +140,7 @@ async function main() {
         let draws = 0; const host = {nextRandom() {draws++; return 0.5;}};
         for (const exports of [pokie, esm, browser, portable]) await assert.rejects(exports.instantiatePokieWasm(binary, sidecar, host), diagnostic);
         const worker = new pokie.PokieWasmWorkerProtocol();
-        const rejected = await worker.handle({id: kind, type: 'instantiate', bytes: binary, manifest: sidecar});
+        const rejected = await worker.handle({id: kind, type: 'instantiate', bytes: binary, manifest: sidecar, seed: '0'});
         assert.equal(rejected.ok, false); assert.match(rejected.error, diagnostic);
         fs.writeFileSync(artifact, binary); fs.writeFileSync(`${artifact}.pokie-wasm.json`, JSON.stringify(sidecar));
         await assert.rejects(pokie.loadPokieWasmFileRuntime(artifact, host), diagnostic);
@@ -317,7 +317,7 @@ async function main() {
                 await assert.rejects(browser.instantiatePokieWasm(binary, sidecar, host));
                 await assert.rejects(portable.instantiatePokieWasm(binary, sidecar, host));
                 const worker = new pokie.PokieWasmWorkerProtocol();
-                assert.equal((await worker.handle({id: label, type: 'instantiate', bytes: binary, manifest: sidecar})).ok, false);
+                assert.equal((await worker.handle({id: label, type: 'instantiate', bytes: binary, manifest: sidecar, seed: '0'})).ok, false);
                 const target = path.join(folder, `${label}.wasm`); fs.writeFileSync(target, binary); fs.writeFileSync(`${target}.pokie-wasm.json`, JSON.stringify(sidecar));
                 await assert.rejects(pokie.loadPokieWasmFileRuntime(target, host));
                 await assert.rejects(new pokie.ProjectTargetResolver().resolve(target));
