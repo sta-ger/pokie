@@ -25,6 +25,15 @@ describe("canonical weighted whole sequences", () => {
         expect(() => generator.setSelectionState({...saved, selections: [...saved.selections].reverse()})).toThrow("Invalid retained weighted selection");
         expect(generator.getSelectionState()).toEqual(saved);
     });
+    it("rejects a zero-mass initialized selection without replacing the retained choice", () => {
+        const config = weightedConfig();
+        config.setSymbolsSequences([new api.WeightedSymbolsSequence([...variants, {id: "zero", symbols: ["A", "B"], weight: 0}], ["A", "B"]), new api.SymbolsSequence().fromArray(["A"])]);
+        const generator = new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(0));
+        generator.generateSymbolsCombination();
+        const saved = generator.getSelectionState();
+        expect(() => generator.setSelectionState({...saved, selections: saved.selections.map(selection => ({...selection, variantId: "zero"}))})).toThrow("zero-weight variant ID");
+        expect(generator.getSelectionState()).toEqual(saved);
+    });
     it("selects anew for a base round and successive purchased features across direct, restored and audited delivery", () => {
         const blueprint = json(weightedBlueprint);
         blueprint.scatters = ["S"];

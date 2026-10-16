@@ -95,7 +95,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
         }
         return result;
     }
-    function checkpoint(native: NativeSession, runtime: SessionRuntime, prior: PokieWasmFeatureSessionState, round?: PokieWasmRound): PokieWasmFeatureSessionState {
+    function checkpoint(native: NativeSession, runtime: Pick<SessionRuntime, "getLogicalRound">, prior: PokieWasmFeatureSessionState, round?: PokieWasmRound): PokieWasmFeatureSessionState {
         if (!Number.isSafeInteger(prior.drawCount + currentDraws.length)) throw new Error("POKIE WASM draw counter is exhausted.");
         const rngState = hostState();
         const logicalRound = runtime.getLogicalRound();
@@ -302,18 +302,15 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
         host.resetSeed?.(seed);
         currentDraws = [];
         const built = assemble(seed, false);
-        const delivery = new SessionRuntime(built.session, undefined, undefined, {retention: "latest"});
         try {
             built.session.setCreditsAmount(credits);
             const origin: PokieWasmFeatureSessionState = {schemaVersion: "pokie.state.v4", artifactIdentity, seed, sequence: 0, drawCount: 0, credits, feature: {bet: built.session.getBet(), state: {}}};
-            const captured = checkpoint(built.session, delivery, origin);
+            const captured = checkpoint(built.session, {getLogicalRound: () => undefined}, origin);
             const state = {...captured, feature: {...captured.feature, initialStops: built.generator.getLastStopPositions()}};
             return {built, state};
         } catch (error) {
             built.dispose();
             throw error;
-        } finally {
-            delivery.release();
         }
     }
     const runtime: PokieWasmRuntime = {
@@ -356,17 +353,17 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
         replay: async (input, commands, options = {}) => {
             declared("runtime.replay");
             if (!Array.isArray(commands) || !commands.every(command => command && typeof command === "object" && !Array.isArray(command))) throw new Error("Malformed POKIE WASM replay commands.");
-            if (input?.schemaVersion === "pokie.state.v2" && input.sequence === 0 && input.drawCount === 0 && typeof input.seed === "string" && Number.isFinite(input.credits) && input.credits >= 0) {
-                const initialized = initialize(input.seed, input.credits);
-                input = initialized.state;
-                initialized.built.dispose();
-                currentDraws = [];
-            }
-            validate(input);
             acquire(options.trace);
             let built: ReturnType<typeof assemble> | undefined;
             let session: PokieWasmRuntimeSession | undefined;
             try {
+                if (input?.schemaVersion === "pokie.state.v2" && input.sequence === 0 && input.drawCount === 0 && typeof input.seed === "string" && Number.isFinite(input.credits) && input.credits >= 0) {
+                    const initialized = initialize(input.seed, input.credits);
+                    input = initialized.state;
+                    initialized.built.dispose();
+                    record(options.trace, "initialization", 0);
+                }
+                validate(input);
                 built = assemble(input.seed, true);
                 built.session.setBet(input.feature.bet);
                 built.session.fromSessionState(decode(input.feature.state));

@@ -60,7 +60,7 @@ export function describeUnsupportedCanonicalWasmRuntimeContract(manifest: Pick<P
     if (manifest.serialization.session !== POKIE_WASM_SESSION_SERIALIZATION ||
         manifest.serialization.play !== POKIE_WASM_PLAY_SERIALIZATION ||
         ![POKIE_WASM_STATE_SERIALIZATION, "pokie.state.v4"].includes(manifest.serialization.state)) {
-        return `unsupported serialization identifiers; canonical POKIE WASM requires session=${POKIE_WASM_SESSION_SERIALIZATION}, play=${POKIE_WASM_PLAY_SERIALIZATION}, and state=${POKIE_WASM_STATE_SERIALIZATION}`;
+        return `unsupported serialization identifiers; canonical POKIE WASM requires session=${POKIE_WASM_SESSION_SERIALIZATION}, play=${POKIE_WASM_PLAY_SERIALIZATION}, and state=${POKIE_WASM_STATE_SERIALIZATION} (ordinary) or pokie.state.v4 (declarative features)`;
     }
     if (manifest.host.rng !== POKIE_WASM_RNG_PROTOCOL) {
         return `unsupported RNG protocol ${JSON.stringify(manifest.host.rng)}; canonical POKIE WASM requires ${POKIE_WASM_RNG_PROTOCOL}`;
@@ -263,6 +263,7 @@ export function readCanonicalPokieWasmModule(bytes: BufferSource): CanonicalPoki
         throw new Error("POKIE WASM artifact has a malformed component descriptor section.");
     }
     if (!isCanonicalDescriptor(descriptor)) throw new Error("POKIE WASM artifact has an unsupported component descriptor section.");
+    assertSupportedCanonicalWasmRuntimeContract(descriptor);
     if (descriptor.artifact.abiVersion !== POKIE_WASM_ABI_VERSION) throw new Error(`Unsupported POKIE WASM ABI "${descriptor.artifact.abiVersion}"; this runtime requires POKIE WASM ABI "${POKIE_WASM_ABI_VERSION}".`);
     if (descriptor.serialization.state !== (model.features ? "pokie.state.v4" : "pokie.state.v3")) throw new Error("WASM model and state schema are incompatible.");
     // Canonical ABI 3 is a closed lowering, not a claim made by arbitrary code.

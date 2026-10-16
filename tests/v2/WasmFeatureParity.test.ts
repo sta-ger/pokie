@@ -60,6 +60,8 @@ it("covers the frozen 36 launch rows through fresh public CJS/TypeScript/browser
         if (result.stdout) console.log(result.stdout.trim());
         expect({status: result.status, error: result.error?.message, stderr: result.stderr}).toEqual({status: 0, error: undefined, stderr: ""});
         const report = JSON.parse(result.stdout.trim());
+        expect(report.catalogueIds).toHaveLength(36);
+        expect(report.catalogueIds.join(",")).toBe("free-games,modes,hold-flat,hold-flat-modes,hold-bet,hold-bet-modes,fixed-base,fixed-base-modes,fixed-freeGames,fixed-freeGames-modes,fixed-holdAndWin,fixed-holdAndWin-modes,fixed-holdAndWin-bet,fixed-holdAndWin-bet-modes,accumulating-base,accumulating-base-modes,accumulating-freeGames,accumulating-freeGames-modes,accumulating-holdAndWin,accumulating-holdAndWin-modes,accumulating-holdAndWin-bet,accumulating-holdAndWin-bet-modes,modifier-expanding,modifier-sticky,modifier-restricted,modifier-multiplier,modifier-transform,modifier-reel,bounded-cascade,bounded-respins,bounded-collection,bounded-cascade-collection,bounded-respins-collection,bounded-cascade-respins,bounded-cascade-respins-collection,weighted-bonus");
         expect(report.catalogueIds).toEqual(AUTHORED_WORKFLOW_SUPPORT_CATALOG.map(row => row.id));
         const crossProducts = [
             ...AUTHORED_MODIFIER_CATALOG.flatMap(variant => ["lines", "ways", "clusters"].flatMap(type => [0.05, 7.5, 1e-7].map(bet => `modifier-${variant}-${type}-${bet}`))),

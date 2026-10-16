@@ -2,6 +2,31 @@ import {evaluatorValidationCases, binarySections, sha256, createCanonicalWasmFix
 import {sharedSlotCustomSection, stableSlotMathJson, lowerSharedSlotMath, readSharedSlotMathResult} from "../../../src/wasm/math/SharedSlotMath.js";
 import {SeededPokieWasmHost, instantiatePokieWasm} from "../../../src/wasm/PokieWasmRuntime.js";
 import {readCanonicalPokieWasmModule} from "../../../src/wasm/PokieWasmCanonicalModule.js";
+import {weightedBonusBlueprint} from "../../v2/fixtures/WeightedBonusGame.js";
+
+it("rejects malformed feature progress before host restoration and keeps the settled checkpoint executable", async () => {
+    const blueprint = weightedBonusBlueprint();
+    blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const host = new SeededPokieWasmHost("feature-corruption");
+    const restore = jest.spyOn(host, "restoreState");
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
+    try {
+        const session = runtime.createSession("feature-corruption");
+        await session.play({bet: 0.05, roundId: "bonus", delivery: "stepwise"});
+        const saved = session.serialize();
+        if (saved.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
+        const corrupt = JSON.parse(JSON.stringify(saved)) as typeof saved;
+        (corrupt.feature.state as {remaining: number}).remaining = -1;
+        const calls = restore.mock.calls.length;
+        expect(() => runtime.restoreSession(corrupt)).toThrow();
+        expect(restore).toHaveBeenCalledTimes(calls);
+        expect(session.serialize()).toEqual(saved);
+        expect(await session.play({delivery: "stepwise", continuation: {roundId: "bonus", cursor: 1}})).toMatchObject({stake: 0, win: 0.1});
+    } finally {
+        runtime.dispose();
+    }
+});
 
 const fixture = createCanonicalWasmFixture({id: "fixture", reelStrips: [["A", "B"]], capabilities: ["runtime.play", "runtime.serialize"]});
 const {bytes, manifest} = fixture;
