@@ -115,6 +115,40 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
         Reflect.deleteProperty(this.state, "logicalKnown");
         Object.assign(this.state, restored);
     }
+    /** The caller supplies entry identity from accepted mathematics, never from analytics copies. */
+    public validateAcceptedTransition(before: SessionFeatureAnalyticsBeforePlay, entry: boolean, logicalContinuation: boolean): void {
+        const invalid = () => new Error("Analytics prior state contradicts its accepted mathematical entry or continuation.");
+        if (!before || Object.keys(before).sort().join(",") !== "bonus,free,freeNum,freeSum,hold,holdRemaining,locks,pending,respins" ||
+            ![before.pending, before.free, before.hold, before.respins, before.bonus].every(value => typeof value === "boolean") ||
+            ![before.freeNum, before.freeSum, before.locks, before.holdRemaining].every(value => Number.isSafeInteger(value) && value >= 0) ||
+            before.pending === entry || before.free !== (before.freeSum > before.freeNum) || before.freeNum > before.freeSum ||
+            before.pending !== (before.free || before.hold || before.respins || before.bonus) ||
+            !before.pending && (this.state.logicalKnown === true || Object.keys(this.state.active).length > 0) ||
+            logicalContinuation && this.state.logicalKnown !== true) throw invalid();
+        const supported = (name: AnalyticsFeature) => this.envelope.supportedFeatures.includes(name);
+        if (before.free !== (before.pending && supported("freeGames")) || before.hold !== (before.pending && supported("holdAndWin")) ||
+            before.respins !== (before.pending && supported("respins")) || before.bonus !== (before.pending && supported("weightedBonus")) ||
+            !supported("freeGames") && (before.freeNum !== 0 || before.freeSum !== 0) ||
+            !supported("holdAndWin") && (before.locks !== 0 || before.holdRemaining !== 0)) throw invalid();
+        const active = {freeGames: before.free, holdAndWin: before.hold, respins: before.respins, weightedBonus: before.bonus};
+        for (const [feature, wasActive] of Object.entries(active)) {
+            const retained = this.state.active[feature as AnalyticsFeature];
+            if (retained && !wasActive || logicalContinuation && wasActive && (!retained || !retained.known)) throw invalid();
+        }
+        const after = this.beforePlay();
+        const grant = (this.session as Partial<WonFreeGamesNumberDetermining>).getWonFreeGamesNumber?.() ?? 0;
+        if (before.free && (after.freeNum !== before.freeNum + 1 || after.freeSum !== before.freeSum + grant)) throw invalid();
+        if (before.hold && (before.locks > after.locks || before.holdRemaining < 1 || before.holdRemaining > this.holdGrant! ||
+            after.hold && after.holdRemaining !== (after.locks > before.locks ? this.holdGrant : before.holdRemaining - 1))) throw invalid();
+        const bounded = observeVideoSlotFeatures(this.session).boundedMechanics;
+        for (const [feature, observed] of [["weightedBonus", bounded?.weightedBonus], ["respins", bounded?.respins]] as const) {
+            if (!observed) continue;
+            const continuing = observed.executed > 0;
+            if (before[feature === "weightedBonus" ? "bonus" : "respins"] !== continuing) throw invalid();
+            const retained = this.state.active[feature];
+            if (retained && (retained.duration !== observed.executed - 1 || retained.known && retained.entryPosition !== this.state.position - retained.duration)) throw invalid();
+        }
+    }
     public getEnvelope(): AnalyticsEnvelope {
         return {...this.envelope, supportedFeatures: [...this.envelope.supportedFeatures]};
     }

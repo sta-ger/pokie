@@ -1,3 +1,5 @@
+import {ScreenModifierEngine} from "../../session/videoslot/modifiers/ScreenModifierEngine.js";
+import {observeVideoSlotFeatures} from "../../net/videoslot/observeVideoSlotFeatures.js";
 import {projectPublicFeatureEvent} from "../../artifact/PublicRoundArtifactProjector.js";
 import {validateWeightedBonusObservation} from "../../session/videoslot/authored/WeightedBonus.js";
 import type {BoundedSessionState} from "../../session/videoslot/authored/BoundedVideoSlotSession.js";
@@ -14,7 +16,7 @@ import {CascadeResult} from "../../session/videoslot/cascade/CascadeResult.js";
 import {CascadeStep} from "../../session/videoslot/cascade/CascadeStep.js";
 import {CascadeGridTransformer} from "../../session/videoslot/combinations/CascadeGridTransformer.js";
 import type {BoundedMechanicObservation} from "../../session/videoslot/authored/BoundedMechanics.js";
-import type {ScreenModifierObservation} from "../../session/videoslot/modifiers/ScreenModifiers.js";
+import type {ScreenModifierObservation, ScreenModifierState} from "../../session/videoslot/modifiers/ScreenModifiers.js";
 import {stableSlotMathJson} from "../math/SharedSlotMath.js";
 
 /** Rehydrate accepted observations for the existing serializers/analytics observer.
@@ -33,6 +35,21 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
     for (const retained of last.featureEvents ?? []) {
         if (["boundedMechanics", "screenModifiers", "holdAndWin", "jackpot", "chargedBetMode"].includes(retained.type) &&
             stableSlotMathJson(retained.data ?? {}) !== stableSlotMathJson(projectPublicFeatureEvent(retained).data ?? {})) throw new Error(`Invalid retained ${retained.type} observation fields.`);
+    }
+    const current = observeVideoSlotFeatures(session);
+    for (const [type, expected] of [["holdAndWin", current.holdAndWin], ["jackpot", current.jackpot],
+        ["chargedBetMode", current.chargedBetModeId ? {id: current.chargedBetModeId} : undefined]] as const) {
+        const retained = artifacts.flatMap(step => step.featureEvents ?? []).filter(event => event.type === type);
+        if (retained.length !== (expected ? 1 : 0) || stableSlotMathJson(event(type)) !== stableSlotMathJson(expected)) throw new Error(`Retained ${type} event contradicts its executable observation.`);
+    }
+    for (const type of ["boundedMechanics", "screenModifiers"]) {
+        if (artifacts.flatMap(step => step.featureEvents ?? []).filter(event => event.type === type).length !== (event(type) ? 1 : 0)) throw new Error(`Duplicate or misplaced retained ${type} event.`);
+    }
+    if (mechanics?.modifiers) {
+        let native = (session as VideoSlotSessionHandling & {toSessionState(): {base?: unknown; modifierState?: ScreenModifierState}}).toSessionState();
+        while (native.base) native = native.base as typeof native;
+        new ScreenModifierEngine({modifiers: mechanics.modifiers, symbols: blueprint.symbols, wilds: blueprint.wilds ?? [],
+            reels: blueprint.reels, rows: blueprint.rows, screenGeometry: blueprint.screenGeometry}).validateObservation(modifiers, native.modifierState!);
     }
     if (bounded) {
         const state = (session as VideoSlotSessionHandling & {toSessionState(): BoundedSessionState}).toSessionState();

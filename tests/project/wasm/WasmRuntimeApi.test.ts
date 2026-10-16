@@ -625,3 +625,97 @@ it("initializes required feature analytics once for a supported empty replay ori
         runtime.dispose();
     }
 });
+
+it.each(["stepwise", "composite", "plain"] as const)("binds %s artifact feature events to model/native state across direct restore, replay and recovery", async policy => {
+    const {checkpointFeatureObservationFixtures, mutateCheckpointProjection} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
+    const {ScreenModifierEngine} = await import("../../../src/session/videoslot/modifiers/ScreenModifierEngine.js");
+    for (const {blueprint, mutations} of checkpointFeatureObservationFixtures()) {
+        const fixture = createCanonicalWasmFixture({blueprint});
+        const host = new SeededPokieWasmHost("probe");
+        const restore = jest.spyOn(host, "restoreState");
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
+        const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("receiving"));
+        try {
+            const session = runtime.createSession("probe");
+            const command = {bet: 0.05, roundId: "x", ...(policy === "plain" ? {} : {delivery: policy})};
+            const {deliveries: _deliveries, ...receipt} = await session.play(command);
+            const saved = session.serialize();
+            if (saved.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
+            const before = host.serializeState();
+            const native = saved.feature.state as {modifierState: import("../../../src/session/videoslot/modifiers/ScreenModifiers.js").ScreenModifierState};
+            const engine = blueprint.mechanics?.modifiers && new ScreenModifierEngine({modifiers: blueprint.mechanics.modifiers, symbols: blueprint.symbols,
+                wilds: blueprint.wilds ?? [], reels: blueprint.reels, rows: blueprint.rows, screenGeometry: blueprint.screenGeometry});
+            for (const mutation of mutations) {
+                const corrupt = mutateCheckpointProjection(saved, mutation);
+                const calls = restore.mock.calls.length;
+                const error = /modifier|sticky|holdAndWin|jackpot|chargedBetMode/i;
+                expect(() => runtime.restoreSession(corrupt)).toThrow(error);
+                expect(() => fresh.restoreSession(corrupt)).toThrow(error);
+                await expect(runtime.replay(corrupt, [command])).rejects.toThrow(error);
+                if (engine && !mutation[0].endsWith("duplicate")) {
+                    expect(() => engine.validateObservation(corrupt.feature.lastRound!.network!.modifiers, native.modifierState)).toThrow(error);
+                    expect(() => engine.validateObservation(receipt.network!.modifiers, native.modifierState)).not.toThrow();
+                }
+                expect(restore).toHaveBeenCalledTimes(calls);
+                expect(host.serializeState()).toEqual(before);
+                expect(session.serialize()).toEqual(saved);
+                expect(await session.play(command)).toEqual(receipt);
+            }
+            // Rejection recovery uses the existing owner. Explicit restoration below is separate.
+            const reference = fresh.restoreSession(saved);
+            const nextCommand = (state: ReturnType<typeof session.serialize>) => state.schemaVersion === "pokie.state.v4" && state.feature.logicalRound?.status === "pending"
+                ? {delivery: "stepwise", continuation: {roundId: "x", cursor: state.feature.logicalRound.deliveryCursor}} : {bet: 0.05};
+            for (let index = 0; index < 2; index++) {
+                const command = nextCommand(session.serialize());
+                expect(await session.play(command)).toEqual(await reference.play(command));
+                expect(session.serialize()).toEqual(reference.serialize());
+            }
+            for (const target of [runtime, fresh]) {
+                const restored = target.restoreSession(saved);
+                expect(await restored.play(command)).toEqual(receipt);
+                expect(await restored.play(command)).toEqual(receipt);
+                restored.dispose();
+            }
+            expect((await runtime.replay(saved, [command])).rounds).toEqual([receipt]);
+        } finally {
+            runtime.dispose();
+            fresh.dispose();
+        }
+    }
+});
+
+it("binds the analytics owner's prior state to real paid entries and continuations without changing observation behavior", async () => {
+    const {createAuthoredSession} = await import("../../../src/generated/createAuthoredSession.js");
+    const {SeededRandomNumberGenerator} = await import("../../../src/session/videoslot/combinations/SeededRandomNumberGenerator.js");
+    const {SessionFeatureAnalyticsObserver} = await import("../../../src/simulation/SessionFeatureAnalyticsObserver.js");
+    const {SessionRuntime} = await import("../../../src/runtime/SessionRuntime.js");
+    const blueprint = weightedBonusBlueprint();
+    blueprint.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    const built = createAuthoredSession(blueprint, new SeededRandomNumberGenerator("probe"));
+    const runtime = new SessionRuntime(built.session);
+    const observer = new SessionFeatureAnalyticsObserver(built.session);
+    built.session.setBet(0.05);
+    try {
+        for (const cursor of [0, 1, 2]) {
+            const before = observer.beforePlay();
+            const prior = observer.toState();
+            const command = cursor === 0 ? {kind: "spin" as const, bet: 0.05, roundId: "x", delivery: "stepwise" as const}
+                : {kind: "spin" as const, delivery: "stepwise" as const, continuation: {roundId: "x", cursor}};
+            const result = runtime.execute(command);
+            if (result.status !== "played") throw new Error(result.reason);
+            const corrupt = {...before, pending: true};
+            observer.restoreState({...prior, logicalKnown: false});
+            expect(() => observer.validateAcceptedTransition(corrupt, cursor === 0, cursor > 0)).toThrow("Analytics prior state contradicts");
+            expect(observer.toState()).toEqual({...prior, logicalKnown: false});
+            observer.restoreState(prior);
+            expect(() => observer.validateAcceptedTransition(before, cursor === 0, cursor > 0)).not.toThrow();
+            const accepted = observer.afterPlay(before, result.win, result.mode);
+            expect(accepted).toMatchObject({logicalEntry: cursor === 0, carriedSubround: false, logicalCompletion: cursor === 2});
+            if (cursor === 2) expect(accepted.features).toEqual([{feature: "weightedBonus", entry: false, retrigger: false, granted: 0, entryExecuted: false,
+                completion: {duration: 2, win: 0.44999999999999996, entryPosition: 1}}]);
+        }
+    } finally {
+        runtime.release();
+        built.dispose();
+    }
+});

@@ -43,32 +43,36 @@ export class ScreenModifierEngine<T extends string | number | symbol = string> i
             state.identity !== this.identity ||
             !Array.isArray(state.cells)
         ) throw new Error("Modifier state differs from the selected model.");
-        const seen = new Set<string>();
-        for (const cell of state.cells) {
-            const rule = this.model.modifiers.rules.find((rule) => rule.id === cell?.ruleId);
-            if (
-                !cell ||
-                Object.keys(cell).some(
-                    (key) => !["ruleId", "position", "symbol", "factor", "remaining"].includes(key),
-                ) ||
-                rule?.type !== "sticky" ||
-                cell.symbol !== rule.symbol ||
-                cell.factor !== this.factor(rule.symbol) ||
-                !Number.isSafeInteger(cell.remaining) ||
-                cell.remaining < 1 ||
-                cell.remaining >= rule.lifetime
-            ) throw new Error("Invalid sticky modifier state.");
-            const key = JSON.stringify([cell.ruleId, cell.position]);
-            if (
-                !this.projection.map(cell.position, "evaluated", "evaluated") ||
-                !rule.positions.some(
-                    (position) =>
-                        JSON.stringify(this.projection.map(position, rule.space, "evaluated")) ===
-                        JSON.stringify(cell.position),
-                ) ||
-                seen.has(key)
-            ) throw new Error("Invalid retained sticky coordinate.");
-            seen.add(key);
+        this.validateCells(state.cells, 1);
+    }
+    /** Validate the last public observation against the same model as executable cells.
+     * Expiring cells remain observable at zero for their final executed step.
+     */
+    public validateObservation(value: unknown, state: ScreenModifierState<T>): void {
+        this.validateState(state);
+        const observation = value as ScreenModifierObservation<T>;
+        const invalid = () => new Error("Invalid screenModifiers observation for its model or retained state.");
+        if (!observation || Object.keys(observation).sort().join(",") !== "rules,space,sticky" ||
+            observation.space !== "evaluated" || !Array.isArray(observation.rules) || !Array.isArray(observation.sticky) ||
+            observation.rules.length !== this.model.modifiers.rules.length) throw invalid();
+        this.validateCells(observation.sticky, 0);
+        if (JSON.stringify(canonical(observation.sticky.filter(cell => cell.remaining > 0))) !== JSON.stringify(canonical(state.cells))) throw invalid();
+        for (const [index, rule] of this.model.modifiers.rules.entries()) {
+            const observed = observation.rules[index];
+            if (!observed || Object.keys(observed).sort().join(",") !== "id,positions" || observed.id !== rule.id || !Array.isArray(observed.positions)) throw invalid();
+            const configured = rule.positions.map(position => this.projection.map(position, rule.space, "evaluated")).filter(position => position !== null);
+            const allRows = (reels: number[]) => reels.flatMap(reel => Array.from({length: this.projection.getRows("evaluated")}, (_, row) => [reel, row]));
+            let allowed: readonly (readonly number[])[] = configured;
+            if (rule.type === "expand") allowed = allRows([...new Set(configured.map(position => position[0]))]);
+            if (rule.type === "reel") allowed = allRows(rule.reels);
+            const indexes = observed.positions.map(position => {
+                if (!this.projection.map(position, "evaluated", "evaluated")) throw invalid();
+                return allowed.findIndex(candidate => JSON.stringify(candidate) === JSON.stringify(position));
+            });
+            if (indexes.some((item, index) => item < 0 || index > 0 && item <= indexes[index - 1])) throw invalid();
+            if (rule.type === "sticky" && JSON.stringify(observed.positions) !== JSON.stringify(observation.sticky.filter(cell => cell.ruleId === rule.id).map(cell => cell.position))) throw invalid();
+            if (rule.type === "reel" && JSON.stringify(observed.positions) !== JSON.stringify(allowed)) throw invalid();
+            if (rule.type === "expand" && observed.positions.length !== new Set(observed.positions.map(position => position[0])).size * this.projection.getRows("evaluated")) throw invalid();
         }
     }
     public execute(
@@ -146,6 +150,19 @@ export class ScreenModifierEngine<T extends string | number | symbol = string> i
             }),
         );
         return {matrix: result, state: {identity: this.identity, cells: next}, observation};
+    }
+    private validateCells(cells: StickyModifierCell<T>[], minimum: number): void {
+        const seen = new Set<string>();
+        for (const cell of cells) {
+            const rule = this.model.modifiers.rules.find(rule => rule.id === cell?.ruleId);
+            if (!cell || Object.keys(cell).some(key => !["ruleId", "position", "symbol", "factor", "remaining"].includes(key)) ||
+                rule?.type !== "sticky" || cell.symbol !== rule.symbol || cell.factor !== this.factor(rule.symbol) ||
+                !Number.isSafeInteger(cell.remaining) || cell.remaining < minimum || cell.remaining >= rule.lifetime) throw new Error("Invalid sticky modifier state.");
+            const key = JSON.stringify([cell.ruleId, cell.position]);
+            if (!this.projection.map(cell.position, "evaluated", "evaluated") ||
+                !rule.positions.some(position => JSON.stringify(this.projection.map(position, rule.space, "evaluated")) === JSON.stringify(cell.position)) || seen.has(key)) throw new Error("Invalid retained sticky coordinate.");
+            seen.add(key);
+        }
     }
     private factor(symbol: T): number {
         return this.model.modifiers.wilds.find((wild) => wild.symbol === symbol)?.factor ?? 1;

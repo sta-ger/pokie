@@ -237,6 +237,8 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                     if (stableSlotMathJson(last.screen) !== stableSlotMathJson(visible)) throw new Error("Last screen contradicts its accepted mathematical artifact.");
                 }
                 const artifacts = round?.subrounds[0].artifacts ?? state.feature.plainMath?.artifact.steps ?? [];
+                const plainArtifact = state.feature.plainMath?.artifact;
+                if (plainArtifact && stableSlotMathJson(plainArtifact.featureEvents ?? []) !== stableSlotMathJson(artifacts.flatMap(step => step.featureEvents ?? []))) throw new Error("Plain feature events contradict their mathematical steps.");
                 const mathematicalWin = round?.subrounds[0].win ?? state.feature.plainMath!.artifact.totalWin;
                 const final = round?.subrounds[0].finalScreen ?? state.feature.plainMath?.finalScreen ?? artifacts[artifacts.length - 1]?.generatedScreen ?? last.screen!;
                 const observation = restoreDeclarativeObservation(check.session, blueprint, artifacts, final as string[][], mathematicalWin, state.feature.componentAmounts);
@@ -246,15 +248,14 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                     if (stableSlotMathJson(Reflect.get(last.network, key)) !== stableSlotMathJson(Reflect.get(expectedNetwork, key))) throw new Error(`Retained network.${key} contradicts its accepted mathematical observation or executable state.`);
                 }
                 const checkpoint = state.feature.analyticsCheckpoint;
-                if (!checkpoint || Object.keys(checkpoint).some(key => !["state", "before"].includes(key)) || !checkpoint.before ||
-                    Object.keys(checkpoint.before).sort().join(",") !== "bonus,free,freeNum,freeSum,hold,holdRemaining,locks,pending,respins" ||
-                    ![checkpoint.before.pending, checkpoint.before.free, checkpoint.before.hold, checkpoint.before.respins, checkpoint.before.bonus].every(value => typeof value === "boolean") ||
-                    ![checkpoint.before.freeNum, checkpoint.before.freeSum, checkpoint.before.locks, checkpoint.before.holdRemaining].every(value => Number.isSafeInteger(value) && value >= 0)) throw new Error("Missing or malformed accepted analytics checkpoint.");
+                if (!checkpoint || Object.keys(checkpoint).some(key => !["state", "before"].includes(key))) throw new Error("Missing or malformed accepted analytics checkpoint.");
                 setSimulationModelIdentity(observation, manifest.artifact?.configurationHash);
                 // Construct after binding identity so its envelope is artifact-owned.
                 const verifier = new SessionFeatureAnalyticsObserver(observation);
                 verifier.restoreState(checkpoint.state);
                 if (checkpoint.state.source !== state.feature.analytics.source || checkpoint.state.position + 1 !== state.feature.analytics.position) throw new Error("Analytics source/position contradicts its accepted checkpoint.");
+                const mathematicalEntry = round ? round.subrounds[0].index === 0 : state.feature.plainMath!.artifact.stake > 0;
+                verifier.validateAcceptedTransition(checkpoint.before, mathematicalEntry, !!round && !mathematicalEntry);
                 const expectedAnalytics = verifier.afterPlay(checkpoint.before, mathematicalWin, round?.mode ?? (blueprint.betModes ? state.feature.plainMath?.artifact.betMode : undefined));
                 const finalIsPresentation = !!round && round.stageCursor > 1;
                 if (stableSlotMathJson(verifier.toState()) !== stableSlotMathJson(state.feature.analytics) ||

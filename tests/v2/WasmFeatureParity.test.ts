@@ -471,3 +471,41 @@ it.each(["ways", "clusters"] as const)("restores %s base display amounts separat
         }
     }
 });
+
+it.each([1, 3])("preserves ordered overlapping modifiers and lifetime %s expiry through JSON restore/replay", async lifetime => {
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    const blueprint = JSON.parse(fs.readFileSync("examples/blueprints/wild-sticky.blueprint.json", "utf8"));
+    blueprint.rows = 2;
+    blueprint.reelStrips = [["A", "A"], ["B", "B"], ["W3", "W3"]];
+    blueprint.mechanics.modifiers.rules = [
+        {id: "make", type: "transform", space: "evaluated", positions: [[1, 0]], from: "B", to: "W2"},
+        {id: "expand", type: "expand", space: "evaluated", positions: [[1, 0]], symbol: "W2"},
+        {id: "retain", type: "sticky", space: "evaluated", positions: [[1, 1]], symbol: "W2", lifetime},
+    ];
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("expiry"));
+    const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("receiving"));
+    try {
+        const session = runtime.createSession("expiry");
+        for (let index = 0; index < 4; index++) {
+            const command = {bet: 0.05, roundId: `expiry:${index}`, delivery: "stepwise"};
+            const played = await session.play(command);
+            const remaining = lifetime === 1 ? 0 : [2, 1, 0, 2][index];
+            expect(played.network?.modifiers).toEqual({space: "evaluated", rules: [
+                {id: "make", positions: [[1, 0]]}, {id: "expand", positions: [[1, 0], [1, 1]]}, {id: "retain", positions: [[1, 1]]},
+            ], sticky: [{ruleId: "retain", position: [1, 1], symbol: "W2", factor: 2, remaining}]});
+            const saved = JSON.parse(JSON.stringify(session.serialize()));
+            expect(saved.feature.state.modifierState.cells).toHaveLength(remaining > 0 ? 1 : 0);
+            const restored = fresh.restoreSession(saved);
+            expect(await restored.play(command)).toEqual(played);
+            expect((await runtime.replay(saved, [command])).rounds).toEqual([played]);
+            const next = {bet: 0.05, roundId: `next:${index}`, delivery: "stepwise"};
+            const expected = await restored.play(next);
+            expect((await runtime.replay(saved, [next])).rounds).toEqual([expected]);
+            restored.dispose();
+        }
+    } finally {
+        runtime.dispose();
+        fresh.dispose();
+    }
+});

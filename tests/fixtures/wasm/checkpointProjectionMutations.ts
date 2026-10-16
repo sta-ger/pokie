@@ -1,3 +1,8 @@
+import fs from "node:fs";
+import {AUTHORED_MECHANIC_CATALOG} from "../../../src/generated/AuthoredMechanicCatalog.js";
+import {existingMechanicsBlueprint} from "../../v2/fixtures/ExistingMechanicsGame.js";
+import type {GameBlueprint} from "../../../src/generated/GameBlueprint.js";
+
 /** Exact reviewer reproducers plus sibling public projection/analytics fields. */
 export const checkpointProjectionMutations: readonly (readonly [string, unknown?])[] = [
     ["acceptedBounded.payout", -123],
@@ -43,10 +48,59 @@ export const checkpointProjectionMutations: readonly (readonly [string, unknown?
     ["lastRound.analytics.features", []],
     ["lastRound.analytics.envelope.modelId", "foreign"],
     ["analyticsCheckpoint"],
+    ["analyticsTransition.carriedPaidEntry"],
+    ["analyticsTransition.foreignPriorEntry"],
+
 ];
 
 export function mutateCheckpointProjection<T>(saved: T, [path, value]: readonly [string, unknown?]): T {
     const corrupt = JSON.parse(JSON.stringify(saved));
+    if (path.startsWith("analyticsTransition.")) {
+        const feature = corrupt.feature;
+        if (path === "analyticsTransition.carriedPaidEntry") {
+            feature.analyticsCheckpoint.before.pending = true;
+            feature.analyticsCheckpoint.state.logicalKnown = false;
+            feature.analytics.logicalKnown = false;
+            if (feature.lastRound.analytics) {
+                feature.lastRound.analytics.logicalEntry = false;
+                feature.lastRound.analytics.carriedSubround = true;
+                feature.lastRound.analytics.components.forEach((component: {partition: string}) => component.partition = "feature");
+            }
+        } else {
+            for (const state of [feature.analyticsCheckpoint.state, feature.analytics]) {
+                for (const active of Object.values(state.active) as {known: boolean; entryPosition: number}[]) {
+                    active.known = false;
+                    active.entryPosition = 0;
+                }
+            }
+            if (feature.lastRound.analytics) {
+                feature.lastRound.analytics.activeKnownFeatures = [];
+                feature.lastRound.analytics.activeCarriedFeatures = ["weightedBonus"];
+                feature.lastRound.analytics.activeEntryPositions = {};
+            }
+        }
+        return corrupt as T;
+    }
+    if (path.startsWith("acceptedFeature.")) {
+        const feature = corrupt.feature;
+        const artifact = feature.plainMath?.artifact;
+        const steps = feature.logicalRound?.subrounds[0].artifacts ?? artifact.steps;
+        const [type, ...parts] = path.slice("acceptedFeature.".length).split(".");
+        for (const events of [steps[steps.length - 1].featureEvents, artifact?.featureEvents]) {
+            if (!events) continue;
+            const event = events.find((event: {type: string}) => event.type === type);
+            if (!event) throw new Error(`Fixture requires ${type}`);
+            if (!parts.length) events.splice(events.indexOf(event), 1);
+            else if (parts[0] === "duplicate") events.push(JSON.parse(JSON.stringify(event)));
+            else setPath(event.data, parts, value);
+        }
+        if (type === "screenModifiers") {
+            if (!parts.length) Reflect.deleteProperty(feature.lastRound.network, "modifiers");
+            else if (parts[0] !== "duplicate") setPath(feature.lastRound.network.modifiers, parts, value);
+        }
+        if (feature.logicalRound) feature.lastRound.logicalRound = feature.logicalRound;
+        return corrupt as T;
+    }
     if (["acceptedBounded.payout", "acceptedBounded.omitted", "acceptedModifiers"].includes(path)) {
         const feature = corrupt.feature;
         if (path === "acceptedBounded.payout") feature.lastRound.network.boundedMechanics.weightedBonus.payout = value;
@@ -70,4 +124,41 @@ export function mutateCheckpointProjection<T>(saved: T, [path, value]: readonly 
     if (value === undefined) Reflect.deleteProperty(parent, key);
     else parent[key] = value;
     return corrupt as T;
+}
+
+function setPath(parent: Record<string, unknown>, parts: string[], value: unknown): void {
+    for (const key of parts.slice(0, -1)) parent = parent[key] as Record<string, unknown>;
+    if (value === undefined) Reflect.deleteProperty(parent, parts[parts.length - 1]);
+    else parent[parts[parts.length - 1]] = value;
+}
+
+/** Actual model fixtures used by the reviewer; mutations preserve the receipt's other copies. */
+export function checkpointFeatureObservationFixtures(): {id: string; blueprint: GameBlueprint; mutations: readonly (readonly [string, unknown?])[]}[] {
+    const model = (id: string) => existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
+    return [
+        {id: "sticky", blueprint: JSON.parse(fs.readFileSync("examples/blueprints/wild-sticky.blueprint.json", "utf8")), mutations: [
+            ["acceptedFeature.screenModifiers.sticky.0.remaining", 999],
+            ["acceptedFeature.screenModifiers.sticky.0.remaining", 0],
+            ["acceptedFeature.screenModifiers.sticky.0.symbol", "INVALID"],
+            ["acceptedFeature.screenModifiers.sticky.0.position", [999, 999]],
+            ["acceptedFeature.screenModifiers.sticky.0.factor", 999],
+            ["acceptedFeature.screenModifiers.sticky.0.ruleId", "foreign"],
+            ["acceptedFeature.screenModifiers.rules.0.id", "foreign"],
+            ["acceptedFeature.screenModifiers.rules.0.positions", [[999, 999]]],
+            ["acceptedFeature.screenModifiers.rules.0.positions", []],
+            ["acceptedFeature.screenModifiers.sticky", [{ruleId: "sticky", position: [999, 999], symbol: "W2", factor: 2, remaining: 999}]],
+            ["acceptedFeature.screenModifiers.duplicate"],
+            ["acceptedFeature.screenModifiers"],
+        ]},
+        {id: "hold", blueprint: model("hold-flat"), mutations: [
+            ["acceptedFeature.holdAndWin.payout", 999], ["acceptedFeature.holdAndWin.locks.0.position", [999, 999]],
+            ["acceptedFeature.holdAndWin.duplicate"], ["acceptedFeature.holdAndWin"],
+        ]},
+        {id: "jackpot", blueprint: model("fixed-base"), mutations: [
+            ["acceptedFeature.jackpot.pools.0.value", 999], ["acceptedFeature.jackpot.duplicate"], ["acceptedFeature.jackpot"],
+        ]},
+        {id: "mode", blueprint: model("modes"), mutations: [
+            ["acceptedFeature.chargedBetMode.id", "foreign"], ["acceptedFeature.chargedBetMode.duplicate"], ["acceptedFeature.chargedBetMode"],
+        ]},
+    ];
 }
