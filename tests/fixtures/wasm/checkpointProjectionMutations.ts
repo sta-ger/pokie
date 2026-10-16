@@ -174,6 +174,8 @@ export function checkpointFeatureObservationFixtures(): {id: string; blueprint: 
         {id: "wins", blueprint: wins, mutations: [
             ["acceptedWin.symbol", "INVALID"], ["acceptedWin.symbol", "B"], ["acceptedWin.positions", [[999, 999]]],
             ["acceptedWin.id", "foreign"], ["acceptedWin.multiplier", [{source: "foreign", positions: [[999, 999]], values: [999], combinedMultiplier: 999}]],
+            ["acceptedWin.multiplier", [{source: "foreign", positions: [[0, 0]], values: [999], combinedMultiplier: 999}]],
+            ["acceptedWin.multiplier", [{source: "authored-wild-product", positions: [[0, 0]], values: [2], combinedMultiplier: 2}]],
         ]},
         {id: "generation", blueprint: {...wins, reelStrips: [["A", "B"], ["A", "B"], ["A", "B"]]}, mutations: [
             ["lastRound.stops.0", 0], ["lastRound.draw", 0],

@@ -163,7 +163,6 @@ function validateRetainedWins(session: VideoSlotSessionHandling, blueprint: Game
         const native = buildRoundStepArtifact(0, {screen: steps[0].screen, winEvaluationResult: session.getWinEvaluationResult(),
             ...(steps[0].geometry ? {geometry: steps[0].geometry, generatedScreen: steps[0].generatedScreen} : {})});
         if (stableSlotMathJson(steps.flatMap(step => step.wins)) !== stableSlotMathJson(native.wins)) throw new Error("Retained win attribution contradicts its executable award.");
-        return;
     }
     const factors = Object.fromEntries((blueprint.mechanics?.modifiers?.wilds ?? []).filter(wild => wild.factor !== undefined).map(wild => [wild.symbol, wild.factor!]));
     const resolver = new MultiplierResolver(factors, {source: "authored-wild-product", uniquePositions: true, supportedComponentTypes: ["line", "ways", "cluster"]});
@@ -175,6 +174,9 @@ function validateRetainedWins(session: VideoSlotSessionHandling, blueprint: Game
         const matrix = context.getSymbolsCombination().toMatrix();
         for (const win of step.wins) {
             const invalid = () => new Error(`Retained win ${win.type}.${win.id} contradicts its model, screen or multiplier attribution.`);
+            // Native decorators own their special award attribution. Their ordinary base
+            // components still have to satisfy the model/screen checks below.
+            if (nativeOutcome && ["value", "jackpot"].includes(win.type)) continue;
             const symbol = win.symbolId;
             if (typeof symbol !== "string") throw invalid();
             const bonusAward = win.type === "value" && symbol === blueprint.mechanics?.weightedBonus?.feature.id;
