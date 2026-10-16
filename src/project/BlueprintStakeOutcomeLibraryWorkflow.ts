@@ -5,6 +5,7 @@ import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {materializeReelStrips} from "../generated/materializeReelStrips.js";
 import {renderBuiltGameModule} from "../generated/renderBuiltGameModule.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
+import {resolveSharedSlotMathModel} from "../generated/resolveSharedSlotMathModel.js";
 import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
 import {loadPokieGame, releasePokieGame} from "../gamepackage/loadPokieGame.js";
@@ -89,6 +90,7 @@ const GENERATED_RUNTIME = {
     PerModeForcedFeatureEntryHandler,
     Paytable,
     ReelsSymbolsSequencesGenerator,
+    resolveSharedSlotMathModel,
     SeededRandomNumberGenerator,
     SelectedEvaluatorGroupWinAggregationPolicy,
     SymbolsCombinationsGenerator,

@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
-import {ArtifactBuildCancelledError, ArtifactBuilderRegistry, ArtifactConversionPlanner, ManagedOutcomeProjectService, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, resolvePokieGameEntryModule, type ArtifactTargetType, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "@fromstan/pokie";
+import {ArtifactBuildCancelledError, ArtifactBuilderRegistry, ArtifactConversionPlanner, computeGameBlueprintHash, loadWeightedOutcomeLibraryFromBundle, ManagedOutcomeProjectService, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, resolvePokieGameEntryModule, type ArtifactTargetType, type GameBlueprint, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
@@ -1302,6 +1302,51 @@ describe("StudioArtifactBuildService", () => {
             expect(result.outputPath).toBe(path.join(workDir, "outcomeLibrary"));
             expect(registeredProjects).toEqual([result.outputPath]);
             expect(fs.existsSync(path.join(result.outputPath, "manifest.json"))).toBe(true);
+        });
+
+        it.each(["lines", "ways", "clusters"] as const)("publishes current %s math and provenance after preview, rejection and repair", async type => {
+            const blueprint: GameBlueprint = {
+                manifest: {id: "shared-math", name: "Shared Math", version: "0.1.0"},
+                reels: 3, rows: 1, symbols: ["A"], reelStrips: [["A"], ["A"], ["A"]],
+                availableBets: [0.05], paytable: {A: {3: 2}},
+                winModel: {type, ...(type === "clusters" ? {minimumClusterSize: 3} : {})},
+            };
+            const source = writeBlueprintFile(blueprint);
+            const hashes: string[] = [];
+            for (const payout of [2, 9]) {
+                blueprint.paytable.A[3] = payout;
+                fs.writeFileSync(source, JSON.stringify(blueprint));
+                const destination = path.join(workDir, `outcome-${payout}`);
+                expect(await service.preview(source, "outcomeLibrary", destination)).toMatchObject({status: "ok"});
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(await service.build(source, "outcomeLibrary", destination)).toMatchObject({status: "ok"});
+                // Read the published records through the production reader, after real exact-session play.
+                const library = await loadWeightedOutcomeLibraryFromBundle(destination, "base");
+                expect(library.outcomes).toHaveLength(1);
+                const artifact = library.outcomes[0].artifact;
+                expect(artifact.screen).toEqual([["A"], ["A"], ["A"]]);
+                expect(artifact.stake).toBe(0.05);
+                expect(artifact.totalWin).toBe(payout * 0.05);
+                const hash = computeGameBlueprintHash(blueprint);
+                expect(artifact.provenance.configHash).toBe(hash);
+                expect(JSON.parse(fs.readFileSync(path.join(destination, "manifest.json"), "utf8"))).toMatchObject({configHash: hash});
+                hashes.push(hash);
+
+                // A publication conflict must preserve settled output and allow the next build.
+                const manifest = fs.readFileSync(path.join(destination, "manifest.json"));
+                const rejected = path.join(workDir, `rejected-${payout}`);
+                fs.mkdirSync(rejected);
+                fs.writeFileSync(path.join(rejected, "unrelated.bin"), "competing output");
+                expect(await service.preview(source, "outcomeLibrary", rejected)).toMatchObject({status: "conflict"});
+                expect(await service.build(source, "outcomeLibrary", rejected)).toMatchObject({status: "conflict"});
+                expect(fs.readFileSync(path.join(rejected, "unrelated.bin"), "utf8")).toBe("competing output");
+                expect(fs.readFileSync(path.join(destination, "manifest.json"))).toEqual(manifest);
+            }
+            expect(hashes[0]).not.toBe(hashes[1]);
+            fs.writeFileSync(source, JSON.stringify(blueprint));
+            expect(await service.build(source, "outcomeLibrary", path.join(workDir, "recovered"))).toMatchObject({status: "ok"});
+            const recovered = await loadWeightedOutcomeLibraryFromBundle(path.join(workDir, "recovered"), "base");
+            expect(recovered.outcomes[0].artifact.totalWin).toBe(9 * 0.05);
         });
 
         it("builds an explicit Blueprint Outcome destination even when a compatible managed project exists", async () => {
