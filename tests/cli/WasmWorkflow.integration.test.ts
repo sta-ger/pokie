@@ -28,6 +28,21 @@ const blueprint = {
     symbols: ["A", "B", "C"], reelStrips: [["A", "B", "C"], ["B", "C", "A"], ["C", "A", "B"]], paytable: {A: {3: 2}},
 };
 
+async function waitForProjectContext(address: string, projectRoot: string): Promise<Record<string, unknown>> {
+    const deadline = Date.now() + 5_000;
+    do {
+        const response = await fetch(`${address}/api/project/context`);
+        expect(response.ok).toBe(true);
+        const context = await response.json() as Record<string, unknown>;
+        if (context.status !== "loading") return context;
+        expect(context.projectRoot).toBe(projectRoot);
+        await new Promise<void>(resolve => {
+            setTimeout(resolve, 10);
+        });
+    } while (Date.now() < deadline);
+    throw new Error(`Timed out waiting for Studio to load ${projectRoot}.`);
+}
+
 describe("canonical WASM CLI workflow", () => {
     let directory: string;
     let artifact: string;
@@ -182,7 +197,7 @@ describe("canonical WASM CLI workflow", () => {
             const address = output.join("\n").match(/POKIE Studio listening on (http:\/\/127\.0\.0\.1:\d+)/)?.[1];
             expect(address).toBeDefined();
             expect(openBrowser).not.toHaveBeenCalled();
-            expect(await (await fetch(`${address}/api/project/context`)).json()).toMatchObject({status: "loaded", type: "wasm", projectRoot: target});
+            expect(await waitForProjectContext(address!, target)).toMatchObject({status: "loaded", type: "wasm", projectRoot: target});
             const artifactResponse = await fetch(`${address}/api/project/wasm/artifact`);
             expect(artifactResponse.ok).toBe(true);
             expect(await artifactResponse.json()).toMatchObject({projectRoot: target, manifest: {artifact: {abiVersion: "3.0.0"}}});
