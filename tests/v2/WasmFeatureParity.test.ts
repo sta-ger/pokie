@@ -696,8 +696,8 @@ it.each(["currency", "bet-multiple"] as const)("restores authored %s bonus award
 it("retains every native payout, required entry and collection-transition reproducer with valid known answers", async () => {
     const {checkpointTransitionFixtures} = await import("../fixtures/wasm/checkpointProjectionMutations.js");
     expect(checkpointTransitionFixtures().map(({id}) => id)).toEqual([
-        "transition-hold-payout", "transition-jackpot-payout", "transition-hold-entry", "transition-jackpot-entry",
-        "transition-bonus-entry", "transition-collection-carry", "transition-collection-reset",
+        "transition-hold-payout", "transition-hold-denomination", "transition-jackpot-payout", "transition-hold-entry", "transition-jackpot-entry",
+        "transition-bonus-entry", "transition-bonus-denomination", "transition-collection-carry", "transition-collection-reset",
     ]);
     const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
     for (const test of checkpointTransitionFixtures()) {

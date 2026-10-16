@@ -90,6 +90,7 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
     if (bounded) {
         const state = (session as VideoSlotSessionHandling & {toSessionState(): BoundedSessionState}).toSessionState();
         const keys = ["cascade", "respins", "collection"].filter(key => !!Reflect.get(mechanics!, key));
+        if (state.entryBet !== session.getBet()) throw new Error("Bounded bonus/collection/respins observation contradicts its accepted entry denomination.");
         const table = mechanics?.weightedBonus;
         const selectionRequired = table && (before?.bonus || shouldSelectWeightedBonus(table, false, finalScreen));
         if (selectionRequired) keys.push("weightedBonus");
@@ -252,7 +253,8 @@ function validateNativeFeatureTransition(session: VideoSlotSessionHandling, blue
         const triggered = new MinimumCountHoldAndWinTrigger(hold.minimumCount).isTriggered(candidates);
         if (!before || !before.hold && (native.isHoldAndWinActive() || outcome.kind === "completed") !== triggered ||
             (before.hold || triggered) && stableSlotMathJson([...locks].sort((a, b) => a.position[0] - b.position[0] || a.position[1] - b.position[1])) !== stableSlotMathJson(candidates)) throw new Error("HoldAndWin entry or locks contradict its accepted screen and model trigger.");
-        if (outcome.kind === "completed" && outcome.payout !== new SumWithMultiplierHoldAndWinPayoutAggregator(hold.payout.amountsAreBetMultiples).aggregate(locks, native.getHoldAndWinEntryBet())) throw new Error("HoldAndWin payout contradicts its authored payout contract.");
+        if ((before.hold || triggered) && native.getHoldAndWinEntryBet() !== session.getBet()) throw new Error("HoldAndWin entry denomination contradicts its accepted play.");
+        if (outcome.kind === "completed" && outcome.payout !== new SumWithMultiplierHoldAndWinPayoutAggregator(hold.payout.amountsAreBetMultiples).aggregate(locks, session.getBet())) throw new Error("HoldAndWin payout contradicts its authored payout contract.");
     }
     const jackpot = mechanics?.jackpot;
     if (jackpot) {

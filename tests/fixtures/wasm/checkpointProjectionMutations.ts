@@ -59,6 +59,10 @@ export const checkpointProjectionMutations: readonly (readonly [string, unknown?
 
 export function mutateCheckpointProjection<T>(saved: T, [path, value]: readonly [string, unknown?]): T {
     const corrupt = JSON.parse(JSON.stringify(saved));
+    if (path === "acceptedTransition.entryBet") {
+        corrupt.feature.state.entryBet = value;
+        return corrupt as T;
+    }
     if (path === "acceptedTransition.collection") {
         corrupt.feature.state.value = value;
         const visit = (item: unknown): void => {
@@ -346,6 +350,7 @@ export function checkpointTransitionFixtures(): {id: string; blueprint: GameBlue
     const hold = model("hold-flat");
     hold.reelStrips = [["C"], ["C"], ["C"]];
     hold.mechanics!.holdAndWin!.payout.amountsAreBetMultiples = true;
+    hold.availableBets = [...hold.availableBets!, 1];
     const holdFlat = clone(hold);
     holdFlat.mechanics!.holdAndWin!.payout.amountsAreBetMultiples = false;
     const jackpot = model("fixed-base");
@@ -373,10 +378,12 @@ export function checkpointTransitionFixtures(): {id: string; blueprint: GameBlue
     };
     return [
         {id: "transition-hold-payout", blueprint: hold, alternative: holdFlat, mutation: ["acceptedTransition.alternative"], expectedWin: 0.30000000000000004},
+        {id: "transition-hold-denomination", blueprint: hold, alternative: holdFlat, mutation: ["acceptedTransition.alternativeDenomination"], expectedWin: 0.30000000000000004},
         {id: "transition-jackpot-payout", blueprint: jackpot, alternative: jackpot11, mutation: ["acceptedTransition.alternative"], expectedWin: 10},
         {id: "transition-hold-entry", blueprint: oneHold, alternative: threshold2(oneHold, "holdAndWin"), mutation: ["acceptedTransition.alternative"], expectedWin: 0},
         {id: "transition-jackpot-entry", blueprint: jackpot, alternative: threshold2(jackpot, "jackpot"), mutation: ["acceptedTransition.alternative"], expectedWin: 10},
         {id: "transition-bonus-entry", blueprint: bonus, alternative: threshold2(bonus, "weightedBonus"), mutation: ["acceptedTransition.alternative"], expectedWin: 0.25},
+        {id: "transition-bonus-denomination", blueprint: bonus, mutation: ["acceptedTransition.entryBet", 7.5], expectedWin: 0.25},
         {id: "transition-collection-carry", blueprint: collection, mutation: ["acceptedTransition.collection", 0], expectedWin: 0, nextWin: 10},
         {id: "transition-collection-reset", blueprint: zero, mutation: ["acceptedTransition.collection", 1], expectedWin: 10, nextWin: 10},
     ];
@@ -399,6 +406,7 @@ export async function mutateCheckpointTransition(saved: import("../../../src/was
         // Keep them original while the native award/statistics/ledger copies agree.
         const record = JSON.parse(JSON.stringify(alternative));
         record.artifactIdentity = saved.artifactIdentity;
+        if (fixture.mutation[0] === "acceptedTransition.alternativeDenomination") record.feature.state.entryBet = 1;
         record.feature.lastRound.analytics.envelope = saved.feature.lastRound!.analytics!.envelope;
         if (fixture.id === "transition-jackpot-payout") {
             const displays = [record.feature.lastRound.network.jackpot,
