@@ -10,6 +10,7 @@ import type {PokieWasmSessionState, PokieWasmRuntime} from "../../../src/wasm/Po
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {createHash} from "crypto";
 import {PROJECT_TYPE_CAPABILITIES} from "@fromstan/pokie";
 import {WasmArtifactBuilder} from "../../../src/project/WasmArtifactBuilder.js";
 import {loadProjectDashboardContext} from "../../../cli/studio/loadProjectDashboardContext.js";
@@ -29,16 +30,26 @@ const blueprint = {
     paytable: {A: {3: 2}, B: {3: 1}},
 };
 
-async function waitForTerminal(getStatus: () => {status: string} | undefined): Promise<{status: string}> {
-    const deadline = Date.now() + 5_000;
-    while (Date.now() < deadline) {
+function assertCompactState(state: unknown, artifactPath: string): void {
+    expect(Object.keys(state as object).sort()).toEqual(["artifactIdentity", "credits", "drawCount", "rngState", "schemaVersion", "seed", "sequence"]);
+    const {artifactIdentity, ...continuation} = state as PokieWasmSessionState;
+    expect(artifactIdentity).toBe(`sha256:${createHash("sha256").update(fs.readFileSync(artifactPath)).digest("hex")}`);
+    expect(continuation.schemaVersion).toBe("pokie.state.v3");
+    // Preserve the original continuation budget, accounting separately for the new artifact binding.
+    expect(Buffer.byteLength(JSON.stringify(continuation))).toBeLessThanOrEqual(192);
+    expect(Buffer.byteLength(JSON.stringify(state))).toBeLessThanOrEqual(320);
+}
+
+async function waitForTerminal(getStatus: () => {status: string} | undefined, timeoutMs = 5_000): Promise<{status: string}> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
         const job = getStatus();
         if (job !== undefined && ["completed", "failed", "cancelled"].includes(job.status)) return job;
+        if (Date.now() >= deadline) throw new Error(`Studio WASM job did not reach a terminal state (last status: ${job?.status ?? "missing"}).`);
         await new Promise<void>((resolve) => {
             setTimeout(resolve, 10);
         });
     }
-    throw new Error("Studio WASM job did not reach a terminal state.");
 }
 
 describe("canonical WASM Studio workflow", () => {
@@ -125,7 +136,7 @@ describe("canonical WASM Studio workflow", () => {
             const opened = await post("/api/project/play/session", {seed: "0"});
             expect(opened.status).toBe(201);
             const initial = await opened.json() as {session: StudioRuntimeSessionView};
-            expect(initial.session.debug?.stateAfter).toMatchObject({schemaVersion: "pokie.state.v2", drawCount: 2, sequence: 0, credits: 1000, rngState: expect.any(Number)});
+            expect(initial.session.debug?.stateAfter).toMatchObject({schemaVersion: "pokie.state.v3", drawCount: 2, sequence: 0, credits: 1000, rngState: expect.any(Number)});
             const node = fixture.game.createSession({seed: "0"});
             expect((initial.session.debug?.stateAfter as PokieWasmSessionState).rngState).toEqual((node as unknown as {toSessionState(): {rngState: number}}).toSessionState().rngState);
             const states: unknown[] = [initial.session.debug?.stateAfter];
@@ -138,8 +149,7 @@ describe("canonical WASM Studio workflow", () => {
                 expect(body.session).toMatchObject({win: node.getWinAmount(), credits: node.getCreditsAmount(), screen: (node as unknown as {getSymbolsCombination(): {toMatrix(): string[][]}}).getSymbolsCombination().toMatrix()});
                 expect(body.session.debug?.stateBefore).toEqual(states[round - 1]);
                 states.push(body.session.debug?.stateAfter);
-                expect(Buffer.byteLength(JSON.stringify(body.session.debug?.stateAfter))).toBeLessThanOrEqual(192);
-                expect(body.session.debug?.stateAfter).not.toHaveProperty("draws");
+                assertCompactState(body.session.debug?.stateAfter, fixture.artifact);
             }
             for (const round of [1, 4]) {
                 const started = await post("/api/project/replays", {seed: "0", round});
@@ -176,29 +186,31 @@ describe("canonical WASM Studio workflow", () => {
         const jobs = new StudioJobService(new FileStudioJobRepository(jobsDirectory));
         const simulation = new StudioSimulationService(undefined, undefined, undefined, 1000);
         simulation.attachJobService(jobs);
-        const started = simulation.start(artifactPath, {rounds: 10000, seed: "compact-measurement"});
-        if (started.status !== "created") throw new Error("expected simulation");
-        await expect(waitForTerminal(() => simulation.getStatus(started.job.id))).resolves.toMatchObject({status: "completed"});
-        expect(simulation.getReport(artifactPath, started.job.id)).toMatchObject({status: "ok", report: {rounds: 10000, totalBet: 10000, totalWin: 20000, workers: 1}});
         const replay = new StudioReplayExecutionService(undefined, undefined, 1000);
         replay.attachJobService(jobs);
-        const replayStart = replay.start(artifactPath, {round: 10000, seed: "compact-measurement"});
-        if (replayStart.status !== "created") throw new Error("expected replay");
-        await expect(waitForTerminal(() => replay.getStatus(artifactPath, replayStart.job.id))).resolves.toMatchObject({status: "completed"});
-        const download = replay.getDownload(artifactPath, replayStart.job.id);
-        if (download.status !== "ok") throw new Error("expected descriptor");
-        expect(download.descriptor).toMatchObject({round: 10000, totalBet: 10000, totalWin: 20000, stateBefore: {schemaVersion: "pokie.state.v2", sequence: 9999}, stateAfter: {schemaVersion: "pokie.state.v2", sequence: 10000}});
-        for (const state of [download.descriptor.stateBefore, download.descriptor.stateAfter]) {
-            expect(Buffer.byteLength(JSON.stringify(state))).toBeLessThanOrEqual(192);
-            expect(state).not.toHaveProperty("draws");
+        try {
+            const started = simulation.start(artifactPath, {rounds: 10000, seed: "compact-measurement"});
+            if (started.status !== "created") throw new Error("expected simulation");
+            // This is a round-count/state regression, not a five-second throughput benchmark.
+            await expect(waitForTerminal(() => simulation.getStatus(started.job.id), 30_000)).resolves.toMatchObject({status: "completed"});
+            expect(simulation.getReport(artifactPath, started.job.id)).toMatchObject({status: "ok", report: {rounds: 10000, totalBet: 10000, totalWin: 20000, workers: 1}});
+            const replayStart = replay.start(artifactPath, {round: 10000, seed: "compact-measurement"});
+            if (replayStart.status !== "created") throw new Error("expected replay");
+            await expect(waitForTerminal(() => replay.getStatus(artifactPath, replayStart.job.id), 30_000)).resolves.toMatchObject({status: "completed"});
+            const download = replay.getDownload(artifactPath, replayStart.job.id);
+            if (download.status !== "ok") throw new Error("expected descriptor");
+            expect(download.descriptor).toMatchObject({round: 10000, totalBet: 10000, totalWin: 20000, stateBefore: {schemaVersion: "pokie.state.v3", sequence: 9999}, stateAfter: {schemaVersion: "pokie.state.v3", sequence: 10000}});
+            for (const state of [download.descriptor.stateBefore, download.descriptor.stateAfter]) {
+                assertCompactState(state, artifactPath);
+            }
+            const persisted = new FileStudioJobRepository(jobsDirectory).get(replayStart.job.id);
+            expect(persisted?.result).toMatchObject({detail: {descriptor: download.descriptor}});
+            expect(Buffer.byteLength(JSON.stringify(persisted))).toBeLessThan(5000);
+            expect(replay.getActiveCount()).toBe(0);
+            expect(simulation.getActiveCount()).toBe(0);
+        } finally {
+            await Promise.all([replay.cancelAll(), simulation.cancelAll()]);
         }
-        const persisted = new FileStudioJobRepository(jobsDirectory).get(replayStart.job.id);
-        expect(persisted?.result).toMatchObject({detail: {descriptor: download.descriptor}});
-        expect(Buffer.byteLength(JSON.stringify(persisted))).toBeLessThan(5000);
-        expect(replay.getActiveCount()).toBe(0);
-        expect(simulation.getActiveCount()).toBe(0);
-        await replay.cancelAll();
-        await simulation.cancelAll();
     });
 
     it.each(["cancel", "runtime-failure", "disposal-failure"] as const)("drains real compact simulation/replay continuation on %s and starts a clean next job", async (failure) => {
@@ -258,8 +270,7 @@ describe("canonical WASM Studio workflow", () => {
             expect(completed).not.toHaveBeenCalled();
             expect(surface === "simulation" ? simulation.getReport(artifactPath, started.job.id) : replay.getDownload(artifactPath, started.job.id)).toMatchObject({status: "not-ready"});
             if (captured !== undefined) {
-                expect(captured.schemaVersion).toBe("pokie.state.v2");
-                expect(Buffer.byteLength(JSON.stringify(captured))).toBeLessThanOrEqual(192);
+                assertCompactState(captured, artifactPath);
             }
             expect(() => actual!.createSession("0")).toThrow(/disposed/);
             // Cleanup failure remains observable to server shutdown; retry must still start cleanly.

@@ -1,99 +1,39 @@
-import crypto from "crypto";
+import {evaluatorValidationCases, binarySections, sha256, createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
+import {sharedSlotCustomSection, stableSlotMathJson, lowerSharedSlotMath, readSharedSlotMathResult} from "../../../src/wasm/math/SharedSlotMath.js";
 import {SeededPokieWasmHost, instantiatePokieWasm} from "../../../src/wasm/PokieWasmRuntime.js";
 import {readCanonicalPokieWasmModule} from "../../../src/wasm/PokieWasmCanonicalModule.js";
-import type {PokieWasmComponentManifest} from "../../../src/project/wasm/PokieWasmComponentManifest.js";
-import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
-const abiBytes = new Uint8Array([
-    0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
-    0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7f,
-    0x02, 0x15, 0x01, 0x05, 0x70, 0x6f, 0x6b, 0x69, 0x65, 0x0b, 0x6e, 0x65, 0x78, 0x74, 0x5f, 0x72, 0x61, 0x6e, 0x64, 0x6f, 0x6d, 0x00, 0x00,
-    0x03, 0x02, 0x01, 0x00,
-    0x07, 0x08, 0x01, 0x04, 0x70, 0x6c, 0x61, 0x79, 0x00, 0x01,
-    0x0a, 0x06, 0x01, 0x04, 0x00, 0x10, 0x00, 0x0b,
-]);
-const model = new TextEncoder().encode(JSON.stringify({
-    schemaVersion: "pokie.game.v1", reels: 1, rows: 1, reelStrips: [["A", "B"]], paylines: [[0]], paytable: {A: {1: 2}, B: {1: 1}}, stopWidths: [1],
-}));
-const descriptor = new TextEncoder().encode(JSON.stringify({
-    schemaVersion: "1.0.0", component: {id: "fixture", version: "1.0.0"},
-    serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
-    host: {rng: "pokie.rng.v1", services: []}, capabilities: ["runtime.play", "runtime.serialize"],
-    artifact: {format: "pokie.wasm.v1", abiVersion: "1.0.0", adapter: "@fromstan/pokie/wasm", configurationHash: `sha256:${crypto.createHash("sha256").update(model).digest("hex")}`},
-}));
-const descriptorName = new TextEncoder().encode("pokie.component.v1");
-const bytes = new Uint8Array([
-    ...abiBytes,
-    0x00, ...encodeUnsigned(model.length + 14), 0x0d, 0x70, 0x6f, 0x6b, 0x69, 0x65, 0x2e, 0x67, 0x61, 0x6d, 0x65, 0x2e, 0x76, 0x31, ...model,
-    0x00, ...encodeUnsigned(descriptor.length + descriptorName.length + 1), descriptorName.length, ...descriptorName, ...descriptor,
-]);
-
-function encodeUnsigned(value: number): number[] {
-    const bytes: number[] = [];
-    do {
-        let byte = value & 0x7f;
-        value >>>= 7;
-        if (value !== 0) byte |= 0x80;
-        bytes.push(byte);
-    } while (value !== 0);
-    return bytes;
-}
-function manifestFor(moduleBytes: Uint8Array, modelBytes: Uint8Array = model): PokieWasmComponentManifest {
-    return {
-        schemaVersion: "1.0.0",
-        component: {id: "fixture", version: "1.0.0"},
-        serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
-        host: {rng: "pokie.rng.v1", services: []},
-        capabilities: ["runtime.play", "runtime.serialize"],
-        artifact: {
-            format: "pokie.wasm.v1",
-            sha256: `sha256:${crypto.createHash("sha256").update(moduleBytes).digest("hex")}`,
-            bytes: moduleBytes.byteLength,
-            abiVersion: "1.0.0",
-            adapter: "@fromstan/pokie/wasm",
-            configurationHash: `sha256:${crypto.createHash("sha256").update(modelBytes).digest("hex")}`,
-        },
-    };
-}
-
-const manifest = manifestFor(bytes);
+const fixture = createCanonicalWasmFixture({id: "fixture", reelStrips: [["A", "B"]], capabilities: ["runtime.play", "runtime.serialize"]});
+const {bytes, manifest} = fixture;
 
 describe("Pokie WASM runtime API", () => {
-    it("rejects integrity-consistent canonical bytes above 30 total stop bits at the direct reader and runtime, while accepting exactly 30", async () => {
-        function fixture(stopWidths: readonly number[]) {
-            // Bypass the builder: each reel width and strip passes individually.
-            // The only model difference between the accepted/rejected bytes is the total budget.
-            const gameModel = {
-                schemaVersion: "pokie.game.v1", reels: 2, rows: 1,
-                reelStrips: [["A", "B"], ["A", "B"]], paylines: [[0, 0]], paytable: {A: {2: 2}}, stopWidths,
-            };
-            expect(stopWidths.every((width, index) => Number.isSafeInteger(width) && width > 0 && width <= 30 && gameModel.reelStrips[index].length <= (1 << width))).toBe(true);
-            const modelBytes = new TextEncoder().encode(JSON.stringify(gameModel));
-            const configurationHash = `sha256:${crypto.createHash("sha256").update(modelBytes).digest("hex")}`;
-            const componentDescriptor = JSON.parse(new TextDecoder().decode(descriptor));
-            componentDescriptor.artifact.configurationHash = configurationHash;
-            const descriptorBytes = new TextEncoder().encode(JSON.stringify(componentDescriptor));
-            const moduleBytes = new Uint8Array([
-                ...abiBytes,
-                0x00, ...encodeUnsigned(modelBytes.length + 14), 0x0d, ...new TextEncoder().encode("pokie.game.v1"), ...modelBytes,
-                0x00, ...encodeUnsigned(descriptorBytes.length + descriptorName.length + 1), descriptorName.length, ...descriptorName, ...descriptorBytes,
-            ]);
-            expect(WebAssembly.validate(moduleBytes)).toBe(true);
-            return {bytes: moduleBytes, manifest: manifestFor(moduleBytes, modelBytes)};
-        }
-        const exact = fixture([15, 15]);
-        expect(readCanonicalPokieWasmModule(exact.bytes).model.stopWidths).toEqual([15, 15]);
-        const runtime = await instantiatePokieWasm(exact.bytes, exact.manifest, {nextRandom: () => 0});
+    it.each(evaluatorValidationCases)("rejects integrity-consistent $kind before draws and permits corrected loading on the same host", async ({fixture, repaired, code}) => {
+        const nextRandom = jest.fn(() => 0.5);
+        const host = {nextRandom};
+        expect(WebAssembly.validate(fixture.bytes)).toBe(true);
+        expect(sha256(fixture.bytes)).toBe(fixture.manifest.artifact!.sha256);
+        expect(() => readCanonicalPokieWasmModule(fixture.bytes)).toThrow(code);
+        await expect(instantiatePokieWasm(fixture.bytes, fixture.manifest, host)).rejects.toThrow(code);
+        expect(nextRandom).not.toHaveBeenCalled();
+        const runtime = await instantiatePokieWasm(repaired.bytes, repaired.manifest, host);
         try {
-            expect(await runtime.createSession("thirty-bits").play()).toMatchObject({screen: [["A"], ["A"]], payout: 2});
+            const session = runtime.createSession("repaired");
+            for (const sequence of [1, 2]) expect(await session.play()).toMatchObject({sequence, payout: 2, credits: 1000 + sequence});
+            expect(nextRandom).toHaveBeenCalledTimes(6);
         } finally {
             runtime.dispose();
         }
-        const over = fixture([15, 16]);
-        expect(() => readCanonicalPokieWasmModule(over.bytes)).toThrow(/unsupported game model section/);
-        const nextRandom = jest.fn(() => 0);
-        await expect(instantiatePokieWasm(over.bytes, over.manifest, {nextRandom})).rejects.toThrow(/unsupported game model section/);
-        expect(nextRandom).not.toHaveBeenCalled();
+    });
+
+    it("accepts independent stop arrays above 32 total bits at the direct loader", async () => {
+        const exact = createCanonicalWasmFixture({stripLengths: [1025, 1025, 1025]});
+        expect(readCanonicalPokieWasmModule(exact.bytes).model.reelStrips.map(strip => strip.length)).toEqual([1025, 1025, 1025]);
+        const runtime = await instantiatePokieWasm(exact.bytes, exact.manifest, {nextRandom: () => 0.9999});
+        try {
+            expect(await runtime.createSession("thirty-three-bits").play()).toMatchObject({stops: [1024, 1024, 1024], payout: 2});
+        } finally {
+            runtime.dispose();
+        }
     });
 
     it("preserves nextRandom-only live execution and diagnoses unavailable deterministic restoration", async () => {
@@ -103,7 +43,7 @@ describe("Pokie WASM runtime API", () => {
         expect(await session.play({bet: 1})).toMatchObject({sequence: 1, draw: 0.125, creditsBefore: 1000, credits: 999, command: {bet: 1}});
         expect(() => runtime.restoreSession(session.serialize())).toThrow(/missing.*continuation/);
         expect(await session.play()).toMatchObject({sequence: 2, draw: 0.875});
-        expect(session.serialize()).toEqual({schemaVersion: "pokie.state.v2", seed: "seed", drawCount: 2, sequence: 2, credits: 998});
+        expect(session.serialize()).toEqual({schemaVersion: "pokie.state.v3", artifactIdentity: manifest.artifact!.sha256, seed: "seed", drawCount: 2, sequence: 2, credits: 998});
         runtime.dispose();
         await expect(session.play()).rejects.toThrow(/disposed/);
     });
@@ -249,7 +189,7 @@ describe("Pokie WASM runtime API", () => {
         ["byte count", {...manifest, artifact: {...manifest.artifact!, bytes: manifest.artifact!.bytes + 1}}, /byte count/],
         ["module SHA-256", {...manifest, artifact: {...manifest.artifact!, sha256: `sha256:${"0".repeat(64)}`}}, /SHA-256/],
         ["configuration hash", {...manifest, artifact: {...manifest.artifact!, configurationHash: `sha256:${"0".repeat(64)}`}}, /configuration hash/],
-        ["ABI declaration", {...manifest, artifact: {...manifest.artifact!, abiVersion: "2.0.0"}}, /ABI/],
+        ["ABI declaration", {...manifest, artifact: {...manifest.artifact!, abiVersion: "999.0.0"}}, /ABI/],
         ["embedded descriptor", {...manifest, component: {id: "other", version: manifest.component.version}}, /descriptor/],
     ])("rejects a direct runtime %s mismatch before instantiation", async (_name, mismatchedManifest, error) => {
         await expect(instantiatePokieWasm(bytes, mismatchedManifest, {nextRandom: () => 0.5})).rejects.toThrow(error);
@@ -263,7 +203,7 @@ describe("Pokie WASM runtime API", () => {
     it.each([
         ["serialization", {serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "other.state.v1"}}, /unsupported serialization identifiers/i],
         ["RNG protocol", {host: {rng: "other.rng.v1", services: []}}, /unsupported RNG protocol/i],
-        ["host service", {host: {rng: "pokie.rng.v1", services: ["pokie.clock.v1"]}}, /unsupported required host service/i],
+        ["host service", {host: {rng: "pokie.rng.v2", services: ["pokie.clock.v1"]}}, /unsupported required host service/i],
     ])("rejects an unsupported canonical %s before execution", async (_name, options, error) => {
         const fixture = createCanonicalWasmFixture(options);
         await expect(instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => 0.5})).rejects.toThrow(error);
@@ -313,7 +253,7 @@ describe("Pokie WASM runtime API", () => {
         const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom});
         const state = {schemaVersion: "pokie.state.v1" as const, seed: "serialize-only", draws: [], sequence: 0, credits: 1000};
         const session = runtime.createSession("serialize-only");
-        expect(session.serialize()).toEqual({schemaVersion: "pokie.state.v2", seed: "serialize-only", drawCount: 0, sequence: 0, credits: 1000});
+        expect(session.serialize()).toEqual({schemaVersion: "pokie.state.v3", artifactIdentity: fixture.manifest.artifact!.sha256, seed: "serialize-only", drawCount: 0, sequence: 0, credits: 1000});
         expect(() => runtime.restoreSession(state)).toThrow(/cannot restore deterministic/);
         await expect(session.play()).rejects.toThrow(/does not declare runtime\.play/i);
         await expect(runtime.replay(state, [])).rejects.toThrow(/does not declare runtime\.replay/i);
@@ -327,28 +267,80 @@ describe("Pokie WASM runtime API", () => {
         await expect(runtime.createSession("x").play()).rejects.toThrow(/RNG/);
     });
 
-    it("rejects an otherwise valid module with a non-canonical ABI result signature before instantiation", async () => {
-        const wrongSignature = bytes.slice();
-        // The fixture's sole function type is () -> i32. Changing it to i64
-        // leaves the binary valid but must not turn it into a POKIE ABI match.
-        wrongSignature[14] = 0x7e;
-        await expect(instantiatePokieWasm(wrongSignature, manifestFor(wrongSignature), {nextRandom: () => 0.5})).rejects.toThrow(/next_random signature/i);
+    it("rejects internally rehashed executable changes before any host draw", async () => {
+        const corrupt = createCanonicalWasmFixture({trapping: true});
+        expect(WebAssembly.validate(corrupt.bytes)).toBe(true);
+        const nextRandom = jest.fn(() => 0.5);
+        expect(() => readCanonicalPokieWasmModule(corrupt.bytes)).toThrow(/lowering\/model identity/);
+        await expect(instantiatePokieWasm(corrupt.bytes, corrupt.manifest, {nextRandom})).rejects.toThrow(/lowering\/model identity/);
+        expect(nextRandom).not.toHaveBeenCalled();
+    });
+    it("rejects unsupported models, duplicate/malformed sections, missing exports and corrupt layouts after rehashing", async () => {
+        const canonical = readCanonicalPokieWasmModule(bytes);
+        const withoutCustom = binarySections(bytes).filter(section => section.id !== 0).flatMap(section => [...bytes.slice(section.header, section.end)]);
+        const fromModel = (model: unknown): Uint8Array<ArrayBuffer> => new Uint8Array([...bytes.slice(0, 8), ...withoutCustom,
+            ...sharedSlotCustomSection("pokie.game.v2", typeof model === "string" ? model : stableSlotMathJson(model)),
+            ...sharedSlotCustomSection("pokie.component.v2", stableSlotMathJson(canonical.descriptor))]);
+        const duplicate = new Uint8Array([...bytes, ...sharedSlotCustomSection("pokie.game.v2", stableSlotMathJson(canonical.model))]);
+        const changedExport = bytes.slice();
+        const exportSection = binarySections(changedExport).find(section => section.id === 7)!;
+        const playName = new TextEncoder().encode("play");
+        const playOffset = changedExport.findIndex((_, i) => i >= exportSection.start && i < exportSection.end && playName.every((byte, j) => changedExport[i + j] === byte));
+        changedExport[playOffset + 1] = "r".charCodeAt(0);
+        const invalidLayout = bytes.slice();
+        const dataSection = binarySections(invalidLayout).find(section => section.id === 11)!;
+        let start = dataSection.start + 5;
+        while (invalidLayout[start++] & 128) { /* consume image length */ }
+        new DataView(invalidLayout.buffer).setUint32(start + 52, 0xffffffff, true);
+        const invalidMemory = bytes.slice();
+        const memorySection = binarySections(invalidMemory).find(section => section.id === 5)!;
+        invalidMemory[memorySection.start + 2] = 0;
+        const missingMemory = bytes.slice();
+        const memoryName = new TextEncoder().encode("memory");
+        const memoryOffset = missingMemory.findIndex((_, i) => i >= exportSection.start && i < exportSection.end && memoryName.every((byte, j) => missingMemory[i + j] === byte));
+        missingMemory[memoryOffset + 5] = "z".charCodeAt(0);
+        const cases = [
+            duplicate, fromModel("{"), fromModel({...canonical.model, mathVersion: "pokie.math.v999"}),
+            fromModel({...canonical.model, reels: 65}), changedExport, missingMemory, invalidLayout, invalidMemory,
+        ];
+        for (const binary of cases) {
+            const nextRandom = jest.fn(() => 0);
+            const rehashed = {...manifest, artifact: {...manifest.artifact!, bytes: binary.length, sha256: sha256(binary)}};
+            expect(() => readCanonicalPokieWasmModule(binary)).toThrow();
+            await expect(instantiatePokieWasm(binary, rehashed, {nextRandom})).rejects.toThrow();
+            expect(nextRandom).not.toHaveBeenCalled();
+        }
     });
 
-    it("independently rejects a valid module whose play signature differs from the canonical ABI", async () => {
-        const playI64Abi = new Uint8Array([
-            0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
-            0x01, 0x09, 0x02, 0x60, 0x00, 0x01, 0x7f, 0x60, 0x00, 0x01, 0x7e,
-            0x02, 0x15, 0x01, 0x05, 0x70, 0x6f, 0x6b, 0x69, 0x65, 0x0b, 0x6e, 0x65, 0x78, 0x74, 0x5f, 0x72, 0x61, 0x6e, 0x64, 0x6f, 0x6d, 0x00, 0x00,
-            0x03, 0x02, 0x01, 0x01, 0x07, 0x08, 0x01, 0x04, 0x70, 0x6c, 0x61, 0x79, 0x00, 0x01,
-            0x0a, 0x06, 0x01, 0x04, 0x00, 0x42, 0x00, 0x0b,
-        ]);
-        const wrongPlaySignature = new Uint8Array([
-            ...playI64Abi,
-            0x00, ...encodeUnsigned(model.length + 14), 0x0d, 0x70, 0x6f, 0x6b, 0x69, 0x65, 0x2e, 0x67, 0x61, 0x6d, 0x65, 0x2e, 0x76, 0x31, ...model,
-            0x00, ...encodeUnsigned(descriptor.length + descriptorName.length + 1), descriptorName.length, ...descriptorName, ...descriptor,
-        ]);
-        expect(WebAssembly.validate(wrongPlaySignature)).toBe(true);
-        await expect(instantiatePokieWasm(wrongPlaySignature, manifestFor(wrongPlaySignature), {nextRandom: () => 0.5})).rejects.toThrow(/play signature/i);
+    it.each(["random", "play"] as const)("checks the exact %s signature on a structurally valid negative module", async wrong => {
+        const section = (id: number, data: number[]): number[] => [id, data.length, ...data];
+        const name = (value: string): number[] => [value.length, ...new TextEncoder().encode(value)];
+        const randomResult = wrong === "random" ? 0x7f : 0x7c;
+        const playType = wrong === "play" ? [0x60, 0, 1, 0x7f] : [0x60, 1, 0x7c, 1, 0x7c];
+        const body = wrong === "play" ? [0, 0x41, 0, 0x0b] : [0, 0x20, 0, 0x0b];
+        const binary = new Uint8Array([...bytes.slice(0, 8),
+            ...section(1, [2, 0x60, 0, 1, randomResult, ...playType]),
+            ...section(2, [1, ...name("pokie"), ...name("next_random"), 0, 0]),
+            ...section(3, [1, 1]), ...section(7, [1, ...name("play"), 0, 1]), ...section(10, [1, body.length, ...body])]);
+        expect(WebAssembly.validate(binary)).toBe(true);
+        const nextRandom = jest.fn(() => 0);
+        const rehashed = {...manifest, artifact: {...manifest.artifact!, bytes: binary.length, sha256: sha256(binary)}};
+        await expect(instantiatePokieWasm(binary, rehashed, {nextRandom})).rejects.toThrow(/signature/);
+        expect(nextRandom).not.toHaveBeenCalled();
     });
+
+    it("validates result cardinality and stop bounds without modulo repair", async () => {
+        const canonical = readCanonicalPokieWasmModule(bytes);
+        const {instance} = await WebAssembly.instantiate(bytes, {pokie: {"next_random": () => 0.5}});
+        const layout = lowerSharedSlotMath(canonical.model);
+        const payout = (instance.exports.play as (bet: number) => number)(1);
+        const memory = instance.exports.memory as WebAssembly.Memory;
+        const view = new DataView(memory.buffer);
+        view.setUint32(layout.stops, canonical.model.reelStrips[0].length, true);
+        expect(() => readSharedSlotMathResult(instance, canonical.model, payout)).toThrow(/out-of-range/);
+        view.setUint32(layout.stops, 0, true);
+        view.setUint32(72, layout.capacity + 1, true);
+        expect(() => readSharedSlotMathResult(instance, canonical.model, payout)).toThrow(/too many components/);
+    });
+
 });

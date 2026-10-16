@@ -171,6 +171,55 @@ describe("WASM runtime parity golden", () => {
             fs.rmSync(directory, {recursive: true, force: true});
         }
     });
+    it.each(["lines", "ways", "clusters"] as const)("retains real generated %s multi-component fractional goldens and draw continuation", async type => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-shared-golden-"));
+        const clusters = type === "clusters";
+        let reelStrips = [["A"], ["A"], ["A"]];
+        if (type === "ways") reelStrips = [["A", "B"], ["A", "B"], ["A", "B"]];
+        if (clusters) reelStrips = [["A"], ["A"], ["A"], ["B"], ["B"], ["B"]];
+        const model = {
+            manifest: {id: "shared-golden", name: "Shared golden", version: "1.0.0"},
+            reels: clusters ? 6 : 3, rows: clusters ? 1 : 2, symbols: ["A", "B"],
+            winModel: {type, ...(clusters ? {minimumClusterSize: 3} : {})},
+            availableBets: [...FRACTIONAL_BET_STAKES],
+            reelStrips,
+            paytable: {A: {3: 0.3}, B: {3: 0.7}},
+        };
+        const fixture = await createProductionParityFixture(directory, model);
+        const runtime = await loadPokieWasmFileRuntime(fixture.artifact, new SeededPokieWasmHost("0"));
+        try {
+            const node = fixture.game.createSession({seed: "0"}) as VideoSlotSession;
+            const trace = new BoundedPokieWasmTraceCollector(8);
+            const wasm = runtime.createSession("0", {trace});
+            const reference = new SeededRandomNumberGenerator("0");
+            const draws = Array.from({length: model.reels}, () => reference.getRandomInt(0, 0x100000000) / 0x100000000);
+            expect(wasm.serialize().rngState).toBe(node.toSessionState().rngState);
+            expect(wasm.serialize().rngState).toBe(reference.toSessionState());
+            for (const bet of FRACTIONAL_BET_STAKES) {
+                node.setBet(bet);
+                node.play();
+                const round = await wasm.play({bet});
+                const paidDraws = Array.from({length: model.reels}, () => reference.getRandomInt(0, 0x100000000) / 0x100000000);
+                draws.push(...paidDraws);
+                expect(round.stops).toEqual(paidDraws.map((draw, reel) => Math.floor(draw * model.reelStrips[reel].length)));
+                expect(round.screen).toEqual(node.getSymbolsCombination().toMatrix());
+                const amount = type === "lines" ? 0.3 * bet + 0.3 * bet : 0.3 * bet + 0.7 * bet;
+                expect(round.payout).toBe(amount);
+                expect(node.getWinAmount()).toBe(amount);
+                expect(node.getWinEvaluationResult().getWinComponents()).toHaveLength(2);
+                expect(round.credits).toBe(node.getCreditsAmount());
+                expect(wasm.serialize().rngState).toBe(reference.toSessionState());
+                expect(wasm.serialize().rngState).toBe(node.toSessionState().rngState);
+            }
+            expect(trace.entries.flatMap(entry => entry.draws)).toEqual(draws);
+            expect(wasm.serialize().drawCount).toBe((FRACTIONAL_BET_STAKES.length + 1) * model.reels);
+        } finally {
+            runtime.dispose();
+            await fixture.release();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
     it("runs the reviewed fixture independently through the Node session runtime and canonical WASM runtime", async () => {
         const golden = PORTABLE_RUNTIME_GOLDEN;
         const node = runNodeReference(golden.seed, golden.commands);
@@ -208,7 +257,7 @@ describe("WASM runtime parity golden", () => {
         expect({draws: trace.entries.flatMap(entry => entry.draws), rounds: wasmRounds.map(canonicalRound), state: wasmState, continuation: canonicalRound(continuation)}).toEqual({
             draws: golden.expected.draws,
             rounds: golden.expected.rounds,
-            state: compact(golden.expected.state),
+            state: {...compact(golden.expected.state), artifactIdentity: fixture.manifest.artifact!.sha256},
             continuation: golden.expected.continuation,
         });
         expect(replay.rounds.map(canonicalRound)).toEqual([golden.expected.continuation]);
@@ -267,7 +316,7 @@ describe("WASM runtime parity golden", () => {
         expect({draws: trace.entries.flatMap(entry => entry.draws), rounds: rounds.map(canonicalRound), state, continuation: canonicalRound(continuation)}).toEqual({
             draws: golden.expected.draws,
             rounds: golden.expected.rounds,
-            state: compact(golden.expected.state),
+            state: {...compact(golden.expected.state), artifactIdentity: fixture.manifest.artifact!.sha256},
             continuation: golden.expected.continuation,
         });
         expect(replay.rounds.map(canonicalRound)).toEqual([golden.expected.continuation]);
@@ -300,7 +349,7 @@ describe("WASM runtime parity golden", () => {
 
         expect(round).toMatchObject({screen: golden.expected.screen, payout: golden.expected.payout, credits: golden.expected.credits});
         expect(canonicalRound(round)).toEqual(node.rounds[0]);
-        expect(serialized).toEqual(compact(node.state));
+        expect(serialized).toEqual({...compact(node.state), artifactIdentity: fixture.manifest.artifact!.sha256});
         expect(trace.entries.flatMap(entry => entry.draws)).toEqual(node.state.draws);
         expect(canonicalRound(continuation)).toEqual(nodeContinuation);
         expect(canonicalRound(replay.rounds[0])).toEqual(nodeContinuation);
@@ -318,9 +367,13 @@ describe("WASM runtime parity golden", () => {
         runtime.dispose();
 
         const trappingFixture = createCanonicalWasmFixture({id: "golden-trap", trapping: true});
-        const trappingRuntime = await instantiatePokieWasm(trappingFixture.bytes, trappingFixture.manifest, new SeededPokieWasmHost("trap"));
-        await expect(trappingRuntime.createSession("trap").play()).rejects.toThrow(/unreachable|trap/i);
-        trappingRuntime.dispose();
+        await expect(instantiatePokieWasm(trappingFixture.bytes, trappingFixture.manifest, new SeededPokieWasmHost("trap"))).rejects.toThrow(/lowering\/model identity/);
+        const trappingRuntime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => {
+            throw new WebAssembly.RuntimeError("host trap");
+        }});
+        const trappedSession = trappingRuntime.createSession("trap");
+        await expect(trappedSession.play()).rejects.toThrow(/trap/);
+        expect(() => trappedSession.serialize()).toThrow(/disposed/);
     });
 });
 
@@ -427,5 +480,5 @@ function canonicalRound(round: Pick<PokieWasmRound, "sequence" | "draw" | "stops
 }
 
 function compact(state: {seed: string; draws: readonly number[]; sequence: number; credits: number; rngState?: unknown}) {
-    return {schemaVersion: "pokie.state.v2", seed: state.seed, drawCount: state.draws.length, sequence: state.sequence, credits: state.credits, rngState: state.rngState};
+    return {schemaVersion: "pokie.state.v3", seed: state.seed, drawCount: state.draws.length, sequence: state.sequence, credits: state.credits, rngState: state.rngState};
 }

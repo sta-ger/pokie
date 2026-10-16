@@ -1,3 +1,4 @@
+import {assertPlayableSharedSlotMathModel, compileSharedSlotArtifact, type SharedSlotMathModel} from "./math/SharedSlotMath.js";
 import {assessWasmComponentCompatibility} from "../project/wasm/assessWasmComponentCompatibility.js";
 import {satisfiesMinimumSemverLite} from "../project/wasm/internal/compareSemverLite.js";
 import {POKIE_WASM_ABI_VERSION, POKIE_WASM_ADAPTER, type PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
@@ -6,13 +7,13 @@ import {POKIE_WASM_RUNTIME_VERSION} from "./PokieWasmRuntimeApi.js";
 export const POKIE_WASM_IMPORT_MODULE = "pokie";
 export const POKIE_WASM_RANDOM_IMPORT = "next_random";
 export const POKIE_WASM_PLAY_EXPORT = "play";
-export const POKIE_WASM_GAME_MODEL_SECTION = "pokie.game.v1";
-export const POKIE_WASM_COMPONENT_DESCRIPTOR_SECTION = "pokie.component.v1";
+export const POKIE_WASM_GAME_MODEL_SECTION = "pokie.game.v2";
+export const POKIE_WASM_COMPONENT_DESCRIPTOR_SECTION = "pokie.component.v2";
 
-export const POKIE_WASM_SESSION_SERIALIZATION = "pokie.session.v1";
-export const POKIE_WASM_PLAY_SERIALIZATION = "pokie.play.v1";
-export const POKIE_WASM_STATE_SERIALIZATION = "pokie.state.v1";
-export const POKIE_WASM_RNG_PROTOCOL = "pokie.rng.v1";
+export const POKIE_WASM_SESSION_SERIALIZATION = "pokie.session.v2";
+export const POKIE_WASM_PLAY_SERIALIZATION = "pokie.play.v2";
+export const POKIE_WASM_STATE_SERIALIZATION = "pokie.state.v3";
+export const POKIE_WASM_RNG_PROTOCOL = "pokie.rng.v2";
 export const POKIE_WASM_RUNTIME_PLAY_DECLARATION = "runtime.play";
 export const POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION = "runtime.serialize";
 export const POKIE_WASM_RUNTIME_REPLAY_DECLARATION = "runtime.replay";
@@ -39,18 +40,7 @@ export type CanonicalPokieWasmComponentDescriptor = {
     };
 };
 
-export type PokieWasmGameModel = {
-    readonly schemaVersion: "pokie.game.v1";
-    readonly reels: number;
-    readonly rows: number;
-    readonly reelStrips: readonly (readonly string[])[];
-    readonly paylines: readonly (readonly number[])[];
-    readonly paytable: Readonly<Record<string, Readonly<Record<string, number>>>>;
-    readonly stopWidths: readonly number[];
-    readonly wilds?: readonly string[];
-    readonly scatters?: readonly string[];
-    readonly availableBets?: readonly number[];
-};
+export type PokieWasmGameModel = SharedSlotMathModel;
 
 export type CanonicalPokieWasmModule = {
     readonly module: WebAssembly.Module;
@@ -122,28 +112,6 @@ export function assertCanonicalWasmDescriptorMatchesManifest(descriptor: Canonic
         descriptor.artifact.adapter !== artifact.adapter || descriptor.artifact.configurationHash !== artifact.configurationHash) {
         throw new Error("the canonical component descriptor embedded in the WASM module does not agree with its manifest");
     }
-}
-
-function isPositiveSafeInteger(value: unknown): value is number {
-    return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
-}
-
-function isGameModel(value: unknown): value is PokieWasmGameModel {
-    if (typeof value !== "object" || value === null) return false;
-    if ("screenGeometry" in value) return false;
-    const model = value as Partial<PokieWasmGameModel>;
-    if (model.schemaVersion !== "pokie.game.v1" || !isPositiveSafeInteger(model.reels) || !isPositiveSafeInteger(model.rows) ||
-        !Array.isArray(model.reelStrips) || model.reelStrips.length !== model.reels || !Array.isArray(model.paylines) ||
-        !Array.isArray(model.stopWidths) || model.stopWidths.length !== model.reels) return false;
-    if (!model.reelStrips.every((strip) => Array.isArray(strip) && strip.length > 0 && strip.every((symbol) => typeof symbol === "string" && symbol.length > 0))) return false;
-    if (!model.stopWidths.every((width, index) => isPositiveSafeInteger(width) && width <= 30 && model.reelStrips![index].length <= (1 << width))) return false;
-    if (model.stopWidths.reduce((total, width) => total + width, 0) > 30) return false;
-    if (!model.paylines.every((line) => Array.isArray(line) && line.length === model.reels && line.every((row) => Number.isSafeInteger(row) && row >= 0 && row < model.rows!))) return false;
-    if (typeof model.paytable !== "object" || model.paytable === null) return false;
-    if (!Object.values(model.paytable).every((wins) => typeof wins === "object" && wins !== null && Object.values(wins).every((multiplier) => typeof multiplier === "number" && Number.isFinite(multiplier)))) return false;
-    if (model.wilds !== undefined && (!Array.isArray(model.wilds) || !model.wilds.every((symbol) => typeof symbol === "string" && symbol.length > 0))) return false;
-    if (model.scatters !== undefined && (!Array.isArray(model.scatters) || !model.scatters.every((symbol) => typeof symbol === "string" && symbol.length > 0))) return false;
-    return model.availableBets === undefined || (Array.isArray(model.availableBets) && model.availableBets.length > 0 && model.availableBets.every((bet) => typeof bet === "number" && Number.isFinite(bet) && bet > 0));
 }
 
 function isCanonicalDescriptor(value: unknown): value is CanonicalPokieWasmComponentDescriptor {
@@ -269,11 +237,11 @@ export function readCanonicalPokieWasmModule(bytes: BufferSource): CanonicalPoki
         throw new Error(`POKIE WASM artifact is missing its canonical ${POKIE_WASM_PLAY_EXPORT} export.`);
     }
     const signatures = readCanonicalFunctionSignatures(binary);
-    if (!hasSignature(signatures.nextRandom, [], [0x7f])) {
-        throw new Error(`POKIE WASM artifact has an invalid ${POKIE_WASM_IMPORT_MODULE}.${POKIE_WASM_RANDOM_IMPORT} signature; canonical artifacts require () -> i32.`);
+    if (!hasSignature(signatures.nextRandom, [], [0x7c])) {
+        throw new Error(`POKIE WASM artifact has an invalid ${POKIE_WASM_IMPORT_MODULE}.${POKIE_WASM_RANDOM_IMPORT} signature; canonical artifacts require () -> f64.`);
     }
-    if (!hasSignature(signatures.play, [], [0x7f])) {
-        throw new Error(`POKIE WASM artifact has an invalid ${POKIE_WASM_PLAY_EXPORT} signature; canonical artifacts require () -> i32.`);
+    if (!hasSignature(signatures.play, [0x7c], [0x7c])) {
+        throw new Error(`POKIE WASM artifact has an invalid ${POKIE_WASM_PLAY_EXPORT} signature; canonical artifacts require (f64) -> f64.`);
     }
     const sections = WebAssembly.Module.customSections(module, POKIE_WASM_GAME_MODEL_SECTION);
     if (sections.length !== 1) throw new Error(`POKIE WASM artifact must contain exactly one ${POKIE_WASM_GAME_MODEL_SECTION} game model section.`);
@@ -284,7 +252,7 @@ export function readCanonicalPokieWasmModule(bytes: BufferSource): CanonicalPoki
     } catch {
         throw new Error("POKIE WASM artifact has a malformed game model section.");
     }
-    if (!isGameModel(model)) throw new Error("POKIE WASM artifact has an unsupported game model section.");
+    assertPlayableSharedSlotMathModel(model);
     const descriptorSections = WebAssembly.Module.customSections(module, POKIE_WASM_COMPONENT_DESCRIPTOR_SECTION);
     if (descriptorSections.length !== 1) throw new Error(`POKIE WASM artifact must contain exactly one ${POKIE_WASM_COMPONENT_DESCRIPTOR_SECTION} component descriptor section.`);
     const descriptorBytes = new Uint8Array(descriptorSections[0]);
@@ -295,6 +263,13 @@ export function readCanonicalPokieWasmModule(bytes: BufferSource): CanonicalPoki
         throw new Error("POKIE WASM artifact has a malformed component descriptor section.");
     }
     if (!isCanonicalDescriptor(descriptor)) throw new Error("POKIE WASM artifact has an unsupported component descriptor section.");
+    // Canonical ABI 2 is a closed lowering, not a claim made by arbitrary code.
+    // Re-emission binds all executable sections, memory limits/data and exports to
+    // this exact model and descriptor, including internally rehashed artifacts.
+    const expected = compileSharedSlotArtifact(model, descriptor);
+    if (binary.length !== expected.length || !binary.every((byte, i) => byte === expected[i])) {
+        throw new Error("POKIE WASM executable does not match its supported shared math lowering/model identity.");
+    }
     return {module, model, modelBytes, descriptor, descriptorBytes};
 }
 

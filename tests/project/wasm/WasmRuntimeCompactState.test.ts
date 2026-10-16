@@ -9,9 +9,9 @@ const bankroll = 1000000;
 const checkpoints = new Set([0, 10000, 100000]);
 const bytes = (state: unknown): number => Buffer.byteLength(JSON.stringify(state), "utf8");
 
-function assertCompact(state: PokieWasmSessionState, rounds: number, ceiling = 192): void {
-    expect(Object.keys(state).sort()).toEqual(["credits", "drawCount", "rngState", "schemaVersion", "seed", "sequence"]);
-    expect(state).toMatchObject({schemaVersion: "pokie.state.v2", sequence: rounds, drawCount: 2 + 2 * rounds});
+function assertCompact(state: PokieWasmSessionState, rounds: number, ceiling = 320): void {
+    expect(Object.keys(state).sort()).toEqual(["artifactIdentity", "credits", "drawCount", "rngState", "schemaVersion", "seed", "sequence"]);
+    expect(state).toMatchObject({schemaVersion: "pokie.state.v3", sequence: rounds, drawCount: 2 + 2 * rounds});
     expect(bytes(state)).toBeLessThanOrEqual(ceiling);
 }
 
@@ -63,7 +63,7 @@ it("measures bounded direct and in-process Worker continuation at 10000/100000 p
         expect(direct.getDiagnostics()).toMatchObject({generatedDraws: 200002, hostRestorations: 100000});
         // Scalar payload counters expose per-round growing serialize/copy work without heap/GC assumptions.
         expect(direct.getDiagnostics().hostPayloadBytes).toBeLessThanOrEqual(11 * 100001);
-        expect(direct.getDiagnostics().snapshotPayloadBytes).toBeLessThanOrEqual(3 * 192);
+        expect(direct.getDiagnostics().snapshotPayloadBytes).toBeLessThanOrEqual(3 * 320);
         expect(worker.getDiagnostics()).toMatchObject({generatedDraws: 200002, hostRestorations: 100000, inputTapeLength: 0, verificationDraws: 0, legacyPrefixDraws: 0});
         expect(await worker.handle({id: "trace", type: "trace"})).toMatchObject({ok: true, result: null});
         direct.dispose();
@@ -105,7 +105,7 @@ it("accounts for explicit tape input once and never rescans its prefix during or
     }
     const response = await worker.handle({id: "state", type: "serialize"});
     if (!response.ok) throw new Error(response.error);
-    assertCompact(response.result as PokieWasmSessionState, 10000, 384);
+    assertCompact(response.result as PokieWasmSessionState, 10000, 480);
     expect(worker.getDiagnostics()).toMatchObject({inputTapeLength: 20002, verificationDraws: 20002, legacyPrefixDraws: 0});
     const metrics = worker.getDiagnostics() as {hostPayloadBytes: number};
     expect(metrics.hostPayloadBytes).toBeLessThanOrEqual(256 * 10001);

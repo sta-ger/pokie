@@ -1,9 +1,11 @@
+import {evaluatorValidationCases} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
+import {loadPokieWasmFileRuntime} from "../../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
 import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
-import {ArtifactBuildCancelledError, ArtifactBuilderRegistry, ArtifactConversionPlanner, ManagedOutcomeProjectService, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, resolvePokieGameEntryModule, type ArtifactTargetType, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "@fromstan/pokie";
+import {ArtifactBuildCancelledError, ArtifactBuilderRegistry, ArtifactConversionPlanner, computeGameBlueprintHash, loadWeightedOutcomeLibraryFromBundle, ManagedOutcomeProjectService, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, resolvePokieGameEntryModule, type ArtifactTargetType, type GameBlueprint, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
@@ -32,6 +34,36 @@ describe("StudioArtifactBuildService", () => {
 
     afterEach(() => {
         fs.rmSync(workDir, {recursive: true, force: true});
+    });
+
+    it.each(evaluatorValidationCases)("agrees on $kind preview/build rejection, preserves files and publishes corrected retries", async ({blueprint, corrected, code}) => {
+        const source = path.join(workDir, "validation.blueprint.json");
+        const destination = path.join(workDir, "validation.wasm");
+        fs.writeFileSync(source, JSON.stringify(blueprint));
+        const input = fs.readFileSync(source);
+        expect(await service.preview(source, "wasm", destination)).toMatchObject({status: "unsupported", message: expect.stringContaining(code)});
+        expect(await service.build(source, "wasm", destination)).toMatchObject({status: "error", message: expect.stringContaining(code)});
+        expect(fs.readdirSync(workDir)).toEqual([path.basename(source)]);
+        expect(fs.readFileSync(source)).toEqual(input);
+        fs.writeFileSync(destination, "competing module");
+        fs.writeFileSync(`${destination}.pokie-wasm.json`, "competing sidecar");
+        expect(await service.build(source, "wasm", destination)).toMatchObject({status: "conflict"});
+        expect(fs.readFileSync(destination, "utf8")).toBe("competing module");
+        expect(fs.readFileSync(`${destination}.pokie-wasm.json`, "utf8")).toBe("competing sidecar");
+        fs.rmSync(destination);
+        fs.rmSync(`${destination}.pokie-wasm.json`);
+        fs.writeFileSync(source, JSON.stringify(corrected));
+        expect(await service.preview(source, "wasm", destination)).toMatchObject({status: "ok"});
+        expect(fs.existsSync(destination)).toBe(false);
+        expect(await service.build(source, "wasm", destination)).toMatchObject({status: "ok"});
+        const runtime = await loadPokieWasmFileRuntime(destination, {nextRandom: () => 0.5});
+        try {
+            const session = runtime.createSession("studio-retry");
+            for (const sequence of [1, 2]) expect(await session.play()).toMatchObject({sequence, payout: 2, screen: [["A"], ["A"], ["A"]]});
+        } finally {
+            runtime.dispose();
+        }
+        expect(fs.readFileSync(source, "utf8")).toBe(JSON.stringify(corrected));
     });
 
     async function terminal(packageService: StudioArtifactBuildService, source: string, id: string) {
@@ -589,24 +621,34 @@ describe("StudioArtifactBuildService", () => {
         return filePath;
     }
 
-    it("exposes the shared hybrid WASM boundary on target discovery", async () => {
+    it("exposes the shared WASM boundary on target discovery", async () => {
         const targets = await service.listTargets(writeBlueprintFile());
         const target = targets.find((candidate) => candidate.target === "wasm");
-        expect(target?.unsupportedNotes.join(" ")).toMatch(/separate JavaScript evaluateWinMultiplier/);
-        expect(target?.unsupportedNotes.join(" ")).toMatch(/30 total stop bits across all reels/);
-        expect(target?.unsupportedNotes.join(" ")).toMatch(/Rejects ways, clusters, mechanics.freeGames, mechanics.holdAndWin, mechanics.jackpot, and nonempty betModes/);
+        expect(target?.unsupportedNotes.join(" ")).toMatch(/same pokie.math.v2 WebAssembly evaluator/);
+        expect(target?.unsupportedNotes.join(" ")).toMatch(/no total-bit cap/);
+        expect(target?.unsupportedNotes.join(" ")).toMatch(/Rejects mechanics.freeGames, mechanics.holdAndWin, mechanics.jackpot/);
     });
 
     it.each([
         {winModel: {type: "ways"}},
-        {winModel: {type: "clusters", minClusterSize: 3}},
+        {winModel: {type: "clusters", minimumClusterSize: 3}},
+        {symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(1025).fill("A"), Array<string>(1025).fill("A"), Array<string>(1025).fill("A")]},
+    ])("previews and publishes shared WASM launch models: %j", async model => {
+        const source = writeBlueprintFile(buildBlueprint(model));
+        const destination = path.join(workDir, "shared.wasm");
+        expect(await service.preview(source, "wasm", destination)).toMatchObject({status: "ok"});
+        expect(await service.build(source, "wasm", destination)).toMatchObject({status: "ok", outputPath: destination});
+        expect(WebAssembly.validate(new Uint8Array(fs.readFileSync(destination)))).toBe(true);
+    });
+
+    it.each([
         {scatters: ["B"], mechanics: {freeGames: {scatterSymbol: "B", awardsByCount: {3: 5}}}},
-        {symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(1025).fill("A"), Array<string>(1024).fill("A"), Array<string>(1024).fill("A")]},
+        {symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(65537).fill("A"), Array<string>(1024).fill("A"), Array<string>(1024).fill("A")]},
     ])("diagnoses unsupported WASM models before publication and permits supported retry: %j", async (model) => {
         const source = writeBlueprintFile(buildBlueprint(model));
         const destination = path.join(workDir, "unsupported.wasm");
         const preview = await service.preview(source, "wasm", destination);
-        expect(preview).toMatchObject({status: "unsupported", message: expect.stringMatching(/does not implement|stop bits/)});
+        expect(preview).toMatchObject({status: "unsupported", message: expect.stringMatching(/does not implement|Limits:/)});
         const result = await service.build(source, "wasm", destination);
         expect(result.status).not.toBe("ok");
         expect(fs.existsSync(destination)).toBe(false);
@@ -1292,6 +1334,51 @@ describe("StudioArtifactBuildService", () => {
             expect(result.outputPath).toBe(path.join(workDir, "outcomeLibrary"));
             expect(registeredProjects).toEqual([result.outputPath]);
             expect(fs.existsSync(path.join(result.outputPath, "manifest.json"))).toBe(true);
+        });
+
+        it.each(["lines", "ways", "clusters"] as const)("publishes current %s math and provenance after preview, rejection and repair", async type => {
+            const blueprint: GameBlueprint = {
+                manifest: {id: "shared-math", name: "Shared Math", version: "0.1.0"},
+                reels: 3, rows: 1, symbols: ["A"], reelStrips: [["A"], ["A"], ["A"]],
+                availableBets: [0.05], paytable: {A: {3: 2}},
+                winModel: {type, ...(type === "clusters" ? {minimumClusterSize: 3} : {})},
+            };
+            const source = writeBlueprintFile(blueprint);
+            const hashes: string[] = [];
+            for (const payout of [2, 9]) {
+                blueprint.paytable.A[3] = payout;
+                fs.writeFileSync(source, JSON.stringify(blueprint));
+                const destination = path.join(workDir, `outcome-${payout}`);
+                expect(await service.preview(source, "outcomeLibrary", destination)).toMatchObject({status: "ok"});
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(await service.build(source, "outcomeLibrary", destination)).toMatchObject({status: "ok"});
+                // Read the published records through the production reader, after real exact-session play.
+                const library = await loadWeightedOutcomeLibraryFromBundle(destination, "base");
+                expect(library.outcomes).toHaveLength(1);
+                const artifact = library.outcomes[0].artifact;
+                expect(artifact.screen).toEqual([["A"], ["A"], ["A"]]);
+                expect(artifact.stake).toBe(0.05);
+                expect(artifact.totalWin).toBe(payout * 0.05);
+                const hash = computeGameBlueprintHash(blueprint);
+                expect(artifact.provenance.configHash).toBe(hash);
+                expect(JSON.parse(fs.readFileSync(path.join(destination, "manifest.json"), "utf8"))).toMatchObject({configHash: hash});
+                hashes.push(hash);
+
+                // A publication conflict must preserve settled output and allow the next build.
+                const manifest = fs.readFileSync(path.join(destination, "manifest.json"));
+                const rejected = path.join(workDir, `rejected-${payout}`);
+                fs.mkdirSync(rejected);
+                fs.writeFileSync(path.join(rejected, "unrelated.bin"), "competing output");
+                expect(await service.preview(source, "outcomeLibrary", rejected)).toMatchObject({status: "conflict"});
+                expect(await service.build(source, "outcomeLibrary", rejected)).toMatchObject({status: "conflict"});
+                expect(fs.readFileSync(path.join(rejected, "unrelated.bin"), "utf8")).toBe("competing output");
+                expect(fs.readFileSync(path.join(destination, "manifest.json"))).toEqual(manifest);
+            }
+            expect(hashes[0]).not.toBe(hashes[1]);
+            fs.writeFileSync(source, JSON.stringify(blueprint));
+            expect(await service.build(source, "outcomeLibrary", path.join(workDir, "recovered"))).toMatchObject({status: "ok"});
+            const recovered = await loadWeightedOutcomeLibraryFromBundle(path.join(workDir, "recovered"), "base");
+            expect(recovered.outcomes[0].artifact.totalWin).toBe(9 * 0.05);
         });
 
         it("builds an explicit Blueprint Outcome destination even when a compatible managed project exists", async () => {

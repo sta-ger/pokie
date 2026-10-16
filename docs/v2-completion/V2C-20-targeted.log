@@ -1,0 +1,106 @@
+
+> @fromstan/pokie@1.3.0 test:targeted
+> mkdir -p "$PWD/node_modules/.cache/pokie-tmp" && TMPDIR="$PWD/node_modules/.cache/pokie-tmp" NODE_OPTIONS=--experimental-vm-modules node --max-old-space-size=1408 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath tests/browser/WasmRuntimeApi.test.ts tests/cli/studio/StudioArtifactBuildService.test.ts tests/project/ArtifactBuilderRegistry.test.ts tests/project/WasmArtifactBuilder.test.ts tests/project/readWasmComponentManifest.test.ts tests/project/wasm/PokieWasmComponentManifestValidator.test.ts tests/project/wasm/WasmArtifactBudget.test.ts tests/project/wasm/WasmRuntimeApi.test.ts tests/project/wasm/WasmRuntimeCompactState.test.ts tests/project/wasm/WasmRuntimeParity.golden.test.ts tests/project/wasm/WasmRuntimeTrace.test.ts tests/project/wasm/WasmRuntimeWorker.test.ts tests/project/wasm/assessWasmComponentCompatibility.test.ts tests/session/videoslot/wincalculator/ClusterWinCalculator.test.ts tests/session/videoslot/wincalculator/WaysWinCalculator.test.ts tests/v2/PackageBlueprintExtraction.test.ts tests/v2/WasmSharedMath.test.ts
+
+PASS pokie tests/project/ArtifactBuilderRegistry.test.ts (58.424 s)
+PASS pokie tests/v2/WasmSharedMath.test.ts (38.694 s)
+  ● Console
+
+    console.log
+      {"native":true,"runtime":"v24.18.0","negatives":["changed-bytes","swapped-component","old-abi","rehashed-code","rehashed-model-code"],"receipts":[{"name":"lines-mixed","artifact":"sha256:9a6c9e27460d0b301da06427a02095e258788cfe6f60c79ef801961fe6dd1e66","model":"sha256:0d10347e259224a19bcc801d6c7ef8078cd73ba8f41850a149db38f933872178","bytes":3262,"rounds":36,"draws":111,"multi":true},{"name":"lines-all-wild","artifact":"sha256:fffdb1ae6779dcb37de71c817be4eb401e72693871624cc45c5d055cff06fd9a","model":"sha256:f5127a42977a1cc990be560f1c45d9044268c8ce03a968626bfc746766920c80","bytes":3166,"rounds":36,"draws":111,"multi":false},{"name":"lines-multi","artifact":"sha256:ca5624e10c5e683094abddf837cb0d5bc38ea4498c8eb05d3aaeb420372afb68","model":"sha256:065d59e0fb38b2e567e4f7d6d0b59003872d0f85b4aa732e99959955bbed0cc0","bytes":3214,"rounds":36,"draws":111,"multi":true},{"name":"lines-missing","artifact":"sha256:5ed7401d406410e075eb61dc8264f45c8bbb0392c5aa4ca4fd077885c6e95f65","model":"sha256:7421a2da925c89851e6563ddfa3717f9cc5b12a376e3093f960093f7186ae1e4","bytes":3124,"rounds":36,"draws":111,"multi":false},{"name":"lines-missing-symbol","artifact":"sha256:d7f90322c2d3892276ad6edc54cb63fe81bbf4534ada45e2b3c5c73ed0af855f","model":"sha256:97fb5cfc14dcfac488879b29c6582062e3bd24105c65cd45c3440c37bdf7b9a9","bytes":3097,"rounds":36,"draws":111,"multi":false},{"name":"lines-zero","artifact":"sha256:ecf730f56587b043fdf4867438994575b54c7e3b79d8643f3f7a313e3c0a5556","model":"sha256:401b2a0bac90caee6a9b46dd9f1b6ef809696a5b4a4cb7998ccbad126b2179cb","bytes":3116,"rounds":36,"draws":111,"multi":false},{"name":"lines-scatter","artifact":"sha256:f534850694fec062ac5f7755a17dbf011925409e7b4ea72d5de46b691a2b7e68","model":"sha256:52d2583263c5c3c14d66495e0cf64d50dae8128e4905cbcd8db1321215b0f797","bytes":3110,"rounds":36,"draws":111,"multi":false},{"name":"lines-scatter-zero","artifact":"sha256:4293c923feb6f801feb3a925a4106ce0f392729cf0d3df106033386a7587f8c6","model":"sha256:121ef68d5a003ef78f9d2937c38fcf8c24dec17a0500aecfdf53f41586e2ab8d","bytes":3108,"rounds":36,"draws":111,"multi":false},{"name":"lines-scatter-missing","artifact":"sha256:4d1f9f73941502adc00879aaae4d20ac87153489ac60a1ba28ef06b148ed207d","model":"sha256:477fc39b7401d48bfaf13004616f4671dd2e83e53c75e2db0d65fc32a5a4f8f6","bytes":3110,"rounds":36,"draws":111,"multi":false},{"name":"ways-mixed","longSession":{"samples":[{"rounds":10000,"bytes":224,"rngState":3547524478},{"rounds":100000,"bytes":226,"rngState":3782573038}],"milliseconds":4657.753284},"artifact":"sha256:d08bd9ba45d033d0d3d7e694a35e458f43b5332ac0b602980d23d9bf4a4057ce","model":"sha256:0ddcfe9c2ddb63e3ae802021ada362d5bf261cd228478204cc903dc7d92b3fb9","bytes":3261,"rounds":36,"draws":111,"multi":true},{"name":"ways-all-wild","artifact":"sha256:cb4aa939a59d3b0885307f4fa247cce7793d7a8dae2912ba808e6699b7f24e03","model":"sha256:8dedb5813437889b080b9bd2b77ed7a5d704e5574fc4215f7e7035579c55a287","bytes":3165,"rounds":36,"draws":111,"multi":true},{"name":"ways-multi","artifact":"sha256:8d7d66493c72624a3810bee47cf28cc1404b345bbb7be24c8ce70ba6c2af8cd3","model":"sha256:f480e4be7b31591ff2434ca22e84854cb681bd3b2562ad19776187a17b48fee1","bytes":3213,"rounds":36,"draws":111,"multi":true},{"name":"ways-missing","artifact":"sha256:b6e45da95a1d5a0add0747f97b779f7eb19e1b44da5abef04764b622d19da884","model":"sha256:ceaaf78838a6a11050aff2df6567e172e21740b838a9c23f69df9dad976066a5","bytes":3123,"rounds":36,"draws":111,"multi":false},{"name":"ways-missing-symbol","artifact":"sha256:3b056676d649c588580e6e94acae21aae2c839681ee698bc5ea5b230fbc88e09","model":"sha256:84bcfd8afe747aa76c55a7bd35c68867abe500561deea0bd15b4a9c7fb9b6d6d","bytes":3096,"rounds":36,"draws":111,"multi":false},{"name":"ways-zero","artifact":"sha256:d122cee0defb157d0c46962aa83b753c08e837b2446a7aaa7505905145120fe8","model":"sha256:d34c8f0979e64ef267efe7b7891994260d945f581fb489328c0cf5495416b1dc","bytes":3115,"rounds":36,"draws":111,"multi":false},{"name":"ways-scatter","artifact":"sha256:7b5349d04d3826f6413f075c86589fab15893ccba3e98504427612f7720b88d7","model":"sha256:3ad18bccea98b98a4e4cb8c5319efedef3a979ef3b8e416a466c12da571ebcb0","bytes":3109,"rounds":36,"draws":111,"multi":false},{"name":"ways-scatter-zero","artifact":"sha256:c652d1ecd0652e88e4e2733bf56444ee4263de751c8b2452aa316c2a1c090ca8","model":"sha256:fbcdac53f1db5df08ea982d40aeb12bd6d19aa0cb7a164e8a6def0f408338cde","bytes":3107,"rounds":36,"draws":111,"multi":false},{"name":"ways-scatter-missing","artifact":"sha256:f193db49cfeee0db238bf864e41740472d50836781467332806229d7fb88ac1b","model":"sha256:74a617024b2d78dd04bcfad6d5056cd5363c63cb0b4c3b1300ef0e8b7bf1ec40","bytes":3109,"rounds":36,"draws":111,"multi":false},{"name":"clusters-mixed","longSession":{"samples":[{"rounds":10000,"bytes":224,"rngState":3547524478},{"rounds":100000,"bytes":225,"rngState":3782573038}],"milliseconds":4504.604847},"artifact":"sha256:074cf7703b1aea6c1ff694bdd6aea7b57185b7df5f97919663f0ec855d590a73","model":"sha256:c594bc63cb9a1767b8f55b30a3d949ad84baaa72bb8b78c30b7a50872c197309","bytes":3384,"rounds":36,"draws":111,"multi":true},{"name":"clusters-all-wild","artifact":"sha256:c672caf06add6eeb174bee233856a6244cf5d5a157cee7e6bac4bd1f7fb21aee","model":"sha256:e09f932944d1e6fcb890dedf2538e5897c1fd5bfb54668bc621947da4f622c20","bytes":3288,"rounds":36,"draws":111,"multi":false},{"name":"clusters-multi","artifact":"sha256:594b7156b280a5c05f1e6f8be4d4243a0819a533556a710204bffa0287b13c8f","model":"sha256:c3547423035bef2bfe4e99eb6010175b29be6c45c89574afc85581e726121cd9","bytes":3336,"rounds":36,"draws":111,"multi":true},{"name":"clusters-missing","artifact":"sha256:7f63c60d9b93a720ed5549b68972a26f1057276ae59925fd0dcf7fd926fdfa82","model":"sha256:4ec9f05aee1ad1cfe87a1a2487b0005b13d84a506dfe5f00da51cf2da916ee3e","bytes":3150,"rounds":36,"draws":111,"multi":false},{"name":"clusters-missing-symbol","artifact":"sha256:c59e8b8ab17b4a57f29b3acdbd3670baaf33a07e326ae977cf506f8b05921ee3","model":"sha256:60fba4a52c11961da79cda2c54ab224a863194e088835052723fc96fb5463b52","bytes":3123,"rounds":36,"draws":111,"multi":false},{"name":"clusters-zero","artifact":"sha256:b93ab5c15945fcce6e5f40990a41c78fb3f1db29bc5365792cbecd7382ef9683","model":"sha256:0c69e5a39b30235c55ea6ee3a854e9f21cd7cfc834badaede5ad2115cfee9549","bytes":3148,"rounds":36,"draws":111,"multi":false},{"name":"clusters-scatter","artifact":"sha256:5d9b210382aa661dfdb1bcf7cab2f4732d9f09c0122698743beb9d4a66fb12f4","model":"sha256:9890efc29c168c8c8be453327d835575d136b535c9eb72d09a291f58e270dda6","bytes":3136,"rounds":36,"draws":111,"multi":false},{"name":"clusters-scatter-zero","artifact":"sha256:b6daa4316eefe79651f646a271c3e0cb2da9bd877451cf20a7ea43bd4f556980","model":"sha256:2b9f48203968c6bd2f3706e310dc50822f50a6230309e6f3c3aedb9e25429d92","bytes":3134,"rounds":36,"draws":111,"multi":false},{"name":"clusters-scatter-missing","artifact":"sha256:d2bc40cbbca278407f678524364dcf5a25254d2d637d4fa4763a8c862f10d0e5","model":"sha256:5121beb40bc9c64c6d7be5adf3a297cd20aa83e8fb34181087737ba7f9aa2a1c","bytes":3136,"rounds":36,"draws":111,"multi":false},{"name":"explicit-lines-circular","artifact":"sha256:071e88006c2d17f70a110a5217715a46dbff06b95cc3c880efffe399cb3a1f15","model":"sha256:367e57cf3f3269c1967963d27d5e7bc29ebe9210836dd5cfcdfb86b40863265a","bytes":3262,"rounds":36,"draws":111,"multi":true},{"name":"cluster-min-five","artifact":"sha256:41cee617bc765d9c75e71dc5a33d14f23afa526e2c3b5a1f4db0b4df0f851603","model":"sha256:73cf3c9283566b20d2ab0c57c9ed05af985b54eaeff332d41d14a4958a051ef9","bytes":3384,"rounds":36,"draws":111,"multi":false},{"name":"scatter-order","artifact":"sha256:0f035aca27700784eeda826558c171216b14c5b9f4af464508c41708bd8c61f5","model":"sha256:03eab9193527da20450a3333cc22022cb181ae78abf98bd5edc850a9d905374b","bytes":3103,"rounds":36,"draws":111,"multi":true},{"name":"default-bets","artifact":"sha256:3ae4e4ea0e685f0423100ce24a5dc25a0e394b0d7be57f800604614b20f3e0d0","model":"sha256:a1ab51e4af36c57c77b7657217049a1a624dd25461e076beeec5f12f6d8349f0","bytes":3341,"rounds":36,"draws":111,"multi":true},{"name":"stops-1024-1024-1024","artifact":"sha256:7c125b3aab7b88e51be7f1f8b0206ca7836d366ca4d546db5f5eac9292fc9c27","model":"sha256:42290dd03596fb7e2c272c277693bb26c60d3d81c37518cef6cdd7524af560b9","bytes":42082,"rounds":36,"draws":111,"multi":false},{"name":"stops-1025-1024-1024","artifact":"sha256:7ee69db44a36fe3db19aea6c1770c6f947f89d2339d4d53467bd3ef2e904e98b","model":"sha256:7f15287b569fcf3a2d5398e4ba191198ab1582a8abfabf53b0ee0d2c43d4cdf7","bytes":42095,"rounds":36,"draws":111,"multi":false},{"name":"stops-1025-1025-1025-5","artifact":"sha256:f4b37e4a6d262c708c67fad9e573259a4e287e72a10025e86d8986cb8e0b63ad","model":"sha256:40a6dfbed7bba3f17d0ab9f56ecce33ea4570bc8bb25d7121826db84c7116e33","bytes":44258,"rounds":36,"draws":148,"multi":false}]}
+
+      at Object.<anonymous> (tests/v2/WasmSharedMath.test.ts:9:36)
+
+PASS pokie tests/cli/studio/StudioArtifactBuildService.test.ts (32.446 s)
+PASS pokie tests/project/wasm/WasmRuntimeCompactState.test.ts (16.029 s)
+  ● Console
+
+    console.log
+      {"surface":"direct","repetition":1,"runtime":"v24.18.0","fixture":"sha256:9253841f412635775f20e9aa9b85c173cb03277aa6218dbbd8ec6cea525eee8f","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":0,"bytes":223,"elapsedMs":0.05925999999453779,"roundsPerSecond":null,"totalPayout":0}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"direct","repetition":1,"runtime":"v24.18.0","fixture":"sha256:9253841f412635775f20e9aa9b85c173cb03277aa6218dbbd8ec6cea525eee8f","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":10000,"bytes":230,"elapsedMs":192.80162100000598,"roundsPerSecond":51866.78383787909,"totalPayout":7425}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"direct","repetition":1,"runtime":"v24.18.0","fixture":"sha256:9253841f412635775f20e9aa9b85c173cb03277aa6218dbbd8ec6cea525eee8f","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":100000,"bytes":232,"elapsedMs":1724.8872300000075,"roundsPerSecond":57974.80453258359,"totalPayout":75019}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":1,"runtime":"v24.18.0","fixture":"sha256:9253841f412635775f20e9aa9b85c173cb03277aa6218dbbd8ec6cea525eee8f","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":0,"bytes":223,"elapsedMs":0.05066499998793006,"roundsPerSecond":null,"totalPayout":0}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":1,"runtime":"v24.18.0","fixture":"sha256:9253841f412635775f20e9aa9b85c173cb03277aa6218dbbd8ec6cea525eee8f","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":10000,"bytes":230,"elapsedMs":237.58366199999,"roundsPerSecond":42090.4363364869,"totalPayout":7425}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":1,"runtime":"v24.18.0","fixture":"sha256:9253841f412635775f20e9aa9b85c173cb03277aa6218dbbd8ec6cea525eee8f","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":100000,"bytes":232,"elapsedMs":2334.824250000005,"roundsPerSecond":42829.7761598115,"totalPayout":75019}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"direct","repetition":2,"runtime":"v24.18.0","fixture":"sha256:9253841f412635775f20e9aa9b85c173cb03277aa6218dbbd8ec6cea525eee8f","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":0,"bytes":223,"elapsedMs":0.02209199999924749,"roundsPerSecond":null,"totalPayout":0}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"direct","repetition":2,"runtime":"v24.18.0","fixture":"sha256:9253841f412635775f20e9aa9b85c173cb03277aa6218dbbd8ec6cea525eee8f","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":10000,"bytes":230,"elapsedMs":216.8003280000121,"roundsPerSecond":46125.39147080738,"totalPayout":7425}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"direct","repetition":2,"runtime":"v24.18.0","fixture":"sha256:9253841f412635775f20e9aa9b85c173cb03277aa6218dbbd8ec6cea525eee8f","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":100000,"bytes":232,"elapsedMs":1760.46749000001,"roundsPerSecond":56803.09381913064,"totalPayout":75019}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":2,"runtime":"v24.18.0","fixture":"sha256:9253841f412635775f20e9aa9b85c173cb03277aa6218dbbd8ec6cea525eee8f","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":0,"bytes":223,"elapsedMs":0.041299000004073605,"roundsPerSecond":null,"totalPayout":0}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":2,"runtime":"v24.18.0","fixture":"sha256:9253841f412635775f20e9aa9b85c173cb03277aa6218dbbd8ec6cea525eee8f","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":10000,"bytes":230,"elapsedMs":226.46311499999138,"roundsPerSecond":44157.301289441246,"totalPayout":7425}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":2,"runtime":"v24.18.0","fixture":"sha256:9253841f412635775f20e9aa9b85c173cb03277aa6218dbbd8ec6cea525eee8f","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":100000,"bytes":232,"elapsedMs":2255.551513000013,"roundsPerSecond":44335.05482966969,"totalPayout":75019}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"collector-paired","completedRounds":100000,"capacity":8,"retainedEntries":8,"dropped":99993,"bytes":232,"elapsedMs":7487.5776679999835,"roundsPerSecond":26710.908236017305}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:91:13
+
+    console.log
+      {"surface":"explicit-tape","completedRounds":10000,"continuationBytes":414,"inputTapeDraws":20002,"inputTapeBytes":385412,"elapsedMs":324.51661399999284,"diagnostics":{"inputTapeLength":20002,"verificationDraws":20002,"legacyPrefixDraws":0,"generatedDraws":20002,"hostRestorations":10000,"hostPayloadBytes":1932057,"snapshotPayloadBytes":414}}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:112:13
+
+PASS pokie tests/v2/PackageBlueprintExtraction.test.ts
+PASS pokie tests/project/wasm/WasmRuntimeParity.golden.test.ts
+PASS pokie tests/browser/WasmRuntimeApi.test.ts
+PASS pokie tests/project/WasmArtifactBuilder.test.ts
+PASS pokie tests/session/videoslot/wincalculator/ClusterWinCalculator.test.ts
+PASS pokie tests/session/videoslot/wincalculator/WaysWinCalculator.test.ts
+PASS pokie tests/project/readWasmComponentManifest.test.ts
+PASS pokie tests/project/wasm/WasmRuntimeApi.test.ts
+PASS pokie tests/project/wasm/WasmRuntimeWorker.test.ts
+PASS pokie tests/project/wasm/WasmRuntimeTrace.test.ts
+PASS pokie tests/project/wasm/WasmArtifactBudget.test.ts
+PASS pokie tests/project/wasm/PokieWasmComponentManifestValidator.test.ts
+PASS pokie tests/project/wasm/assessWasmComponentCompatibility.test.ts
+
+Test Suites: 17 passed, 17 total
+Tests:       520 passed, 520 total
+Snapshots:   0 total
+Time:        153.849 s, estimated 155 s
+Ran all test suites within paths "tests/browser/WasmRuntimeApi.test.ts", "tests/cli/studio/StudioArtifactBuildService.test.ts", "tests/project/ArtifactBuilderRegistry.test.ts", "tests/project/WasmArtifactBuilder.test.ts", "tests/project/readWasmComponentManifest.test.ts", "tests/project/wasm/PokieWasmComponentManifestValidator.test.ts", "tests/project/wasm/WasmArtifactBudget.test.ts", "tests/project/wasm/WasmRuntimeApi.test.ts", "tests/project/wasm/WasmRuntimeCompactState.test.ts", "tests/project/wasm/WasmRuntimeParity.golden.test.ts", "tests/project/wasm/WasmRuntimeTrace.test.ts", "tests/project/wasm/WasmRuntimeWorker.test.ts", "tests/project/wasm/assessWasmComponentCompatibility.test.ts", "tests/session/videoslot/wincalculator/ClusterWinCalculator.test.ts", "tests/session/videoslot/wincalculator/WaysWinCalculator.test.ts", "tests/v2/PackageBlueprintExtraction.test.ts", "tests/v2/WasmSharedMath.test.ts".

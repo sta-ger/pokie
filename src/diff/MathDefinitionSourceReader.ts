@@ -201,21 +201,13 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
                             );
                             return snapshot;
                         }
-                        const {schemaVersion: _schema, stopWidths, ...model} = read.canonical.model;
+                        const {schemaVersion: _schema, mathVersion: _mathVersion, ...model} = read.canonical.model;
                         const result = await this.blueprint(
                             {
                                 kind: "blueprint",
                                 location: project.rootPath,
                                 model: {
                                     ...model,
-                                    symbols: [
-                                        ...new Set([
-                                            ...model.reelStrips.flat(),
-                                            ...Object.keys(model.paytable),
-                                            ...(model.wilds ?? []),
-                                            ...(model.scatters ?? []),
-                                        ]),
-                                    ],
                                     manifest: {
                                         id: read.manifest.component.id,
                                         name: read.manifest.component.id,
@@ -226,26 +218,10 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
                             options,
                         );
                         result.identity.kind = "wasm";
-                        // Canonical WASM retains its exact sampling widths, but not discarded
-                        // authoring tables/symbol inventory. Never claim full cross-format equality.
-                        result.effective = {
-                            ...(result.effective as Record<string, DefinitionJson>),
-                            stopWidths: [...stopWidths],
-                        };
-                        if (result.effective && typeof result.effective === "object") Reflect.deleteProperty(result.effective, "symbols");
-                        if (result.authored && typeof result.authored === "object") Reflect.deleteProperty(result.authored, "symbols");
-                        result.fields = result.fields.filter(
-                            (field) => !modelFieldPathContains(["symbols"], modelFieldPathSegments(field.path) ?? []),
-                        );
-                        result.fields.push({
-                            path: "symbols",
-                            status: "unsupported",
-                            authority: "Canonical WASM does not retain an authored symbol inventory",
-                        });
+                        // The effective model includes symbols and win selection. Original
+                        // authoring omissions/default choices are not reconstructed from it.
                         result.support = result.support === "complete" ? "partial" : result.support;
-                        result.limits.push(
-                            "Canonical WASM contains effective strips, stop widths and payouts; original symbol inventory and authored omissions are unavailable.",
-                        );
+                        result.limits.push("Canonical WASM contains the effective shared math model; original authored omissions are unavailable.");
                         return result;
                     }
                     default:

@@ -1,16 +1,25 @@
+import {evaluatorValidationCases} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {
     WinEvaluationPipeline, WinEvaluationContext, ValueWinComponent,
     AggregateSimulationRunner,
     CascadeGridTransformer,
     CascadingSpinResolver,
     ClusterWinCalculator,
+    CustomLinesDefinitions,
     ErrorOnIncompatibleWinAggregationPolicy,
     GameSessionConfig,
     LeftToRightLinesPatterns,
     LineWinCalculator,
+    Paytable,
+    RightToLeftLinesPatterns,
+    ScatteredLinesPatterns,
+    resolveSharedSlotMathModel,
+    SymbolsSequence,
     MaxCascadeStepsExceededError,
     MultiplierResolver,
     ScatterWinCalculator,
+    SharedSlotMath,
+    SharedSlotMathWinEvaluator,
     ScatterWinCalculating,
     SeededRandomNumberGenerator,
     SelectedEvaluatorGroupWinAggregationPolicy,
@@ -32,7 +41,168 @@ import {
     WinningScatterDescribing,
     WinningValue,
     WinningWay,
+    type SharedSlotMathModel,
+    type VideoSlotWinCalculatorOptions,
 } from "@fromstan/pokie";
+
+describe("shared calculator configuration authority", () => {
+    function fixture(winModel: SharedSlotMathModel["winModel"] = {type: "lines"}, options: VideoSlotWinCalculatorOptions = {}, symbols = ["A", "B", "W", "S"]) {
+        const config = new VideoSlotConfig();
+        config.setAvailableBets([0.05, 7.5, 1e-7]);
+        config.setReelsNumber(3);
+        config.setReelsSymbolsNumber(1);
+        config.setWildSymbols(["W"]);
+        config.setScatterSymbols(["S"]);
+        config.setAvailableSymbols(symbols);
+        config.setSymbolsSequences(Array.from({length: 3}, () => new SymbolsSequence().fromArray(["A", "W", "S"].filter(symbol => symbols.includes(symbol)))));
+        const paytable = new Paytable<string>(config.getAvailableBets());
+        paytable.setPayoutForSymbol(symbols[0], 3, 2);
+        config.setPaytable(paytable);
+        const model = resolveSharedSlotMathModel({manifest: {id: "authority", name: "Authority", version: "1.0.0"},
+            reels: 3, rows: 1, symbols, wilds: ["W"], scatters: ["S"], availableBets: config.getAvailableBets(),
+            reelStrips: config.getSymbolsSequences().map(strip => strip.toArray()), paytable: {[symbols[0]]: {3: 2}}, winModel});
+        const create = (declared = model): VideoSlotWinCalculator => new VideoSlotWinCalculator(config, undefined, undefined, undefined, undefined, undefined, {...options, sharedMathModel: declared});
+        return {config, model, create};
+    }
+
+    test.each(["lines", "ways", "clusters"] as const)("%s executes current public payouts, including exact bet-specific amounts and replacement configs", type => {
+        const {config, create} = fixture({type, ...(type === "clusters" ? {minimumClusterSize: 3} : {})});
+        const calculator = create();
+        const screen = new SymbolsCombination().fromMatrix([["A"], ["A"], ["A"]]);
+        calculator.calculateWin(0.05, screen);
+        expect(calculator.getWinAmount()).toBe(2 * 0.05);
+        config.getPaytable().setPayoutForSymbol("A", 3, 9);
+        for (const bet of config.getAvailableBets()) {
+            calculator.calculateWin(bet, screen);
+            expect(calculator.getWinAmount()).toBe(config.getPaytable().getWinAmountForSymbol("A", 3, bet));
+        }
+        // A division to recover a multiplier would round this authored absolute amount.
+        const map = config.getPaytable().toMap();
+        map[0.05].A[3] = 0.12345678901234566;
+        config.getPaytable().fromMap(map);
+        calculator.calculateWin(0.05, screen);
+        expect(calculator.getWinAmount()).toBe(map[0.05].A[3]);
+        const replacement = new Paytable<string>([0.05]);
+        replacement.setPayoutForSymbol("A", 3, 0);
+        config.setPaytable(replacement);
+        calculator.calculateWin(0.05, screen);
+        expect(calculator.getWinAmount()).toBe(0);
+        expect(calculator.isStatelessForSessionRestoration()).toBe(true);
+    });
+
+    test.each(["paytable", "paylines", "reels", "wilds", "bets", "strips"])("rejects initially mismatched %s declarations", field => {
+        const {model, create} = fixture();
+        const changed = JSON.parse(JSON.stringify(model)) as SharedSlotMathModel;
+        let mismatch = changed;
+        if (field === "paytable") mismatch = {...changed, paytable: {A: {3: 9}}};
+        if (field === "paylines") mismatch = {...changed, paylines: []};
+        if (field === "reels") mismatch = {...changed, rows: 2};
+        if (field === "wilds") mismatch = {...changed, wilds: []};
+        if (field === "bets") mismatch = {...changed, availableBets: [1]};
+        if (field === "strips") mismatch = {...changed, reelStrips: [["W"], ["W"], ["W"]]};
+        expect(() => create(mismatch)).toThrow(/does not match/);
+    });
+
+    test.each(["right-to-left", "scattered", "custom-minimum", "mutated-pattern", "wild-substitution", "modifiers", "custom-pattern-strategy"])("rejects unsupported %s at construction and after mutation, including restoration", rule => {
+        const {config, create} = fixture();
+        const calculator = create();
+        if (rule === "right-to-left") config.setLinesPatterns(new RightToLeftLinesPatterns(3));
+        if (rule === "scattered") config.setLinesPatterns(new ScatteredLinesPatterns(3));
+        if (rule === "custom-minimum") config.setLinesPatterns(new LeftToRightLinesPatterns(3, 3));
+        if (rule === "mutated-pattern") config.getLinesPatterns().toArray()[0][0] = 0;
+        if (rule === "wild-substitution") config.setWildSubstitutions({W: ["B"]});
+        if (rule === "modifiers") config.setScreenModifiers({wilds: [{symbol: "W", factor: 2}], rules: []});
+        if (rule === "custom-pattern-strategy") config.setLinesPatterns({toArray: () => new LeftToRightLinesPatterns(3).toArray()});
+        expect(() => create()).toThrow(/cannot lower/);
+        expect(() => calculator.calculateWin(0.05, new SymbolsCombination().fromMatrix([["A"], ["A"], ["A"]]))).toThrow(/cannot lower/);
+        expect(calculator.isStatelessForSessionRestoration()).toBe(false);
+    });
+
+    test("relowers supported paylines and wild updates and preserves public line identifiers", () => {
+        const {config, create} = fixture();
+        const calculator = create();
+        const lines = new CustomLinesDefinitions();
+        lines.setLineDefinition("authored-line", [0, 0, 0]);
+        config.setLinesDefinitions(lines);
+        const screen = new SymbolsCombination().fromMatrix([["W"], ["A"], ["A"]]);
+        calculator.calculateWin(0.05, screen);
+        expect(Object.keys(calculator.getWinningLines())).toEqual(["authored-line"]);
+        expect(calculator.getWinAmount()).toBe(0.1);
+        config.setWildSymbols([]);
+        calculator.calculateWin(0.05, screen);
+        expect(calculator.getWinAmount()).toBe(0);
+        expect(calculator.isStatelessForSessionRestoration()).toBe(true);
+    });
+
+    test.each([true, false])("retains cluster and ways preflight validation with validateOnEvaluate=%s", validateOnEvaluate => {
+        for (const kind of ["clusters", "ways"] as const) {
+            const {create} = fixture({type: kind, ...(kind === "clusters" ? {minimumClusterSize: 4} : {})}, {validateOnEvaluate}, kind === "ways" ? ["W", "S"] : undefined);
+            const calculator = create();
+            const screen = new SymbolsCombination().fromMatrix(Array.from({length: 3}, () => [kind === "ways" ? "W" : "A"]));
+            const codes = calculator.validateWinEvaluation(0.05, screen).getIssues().map(issue => issue.code);
+            expect(codes).toContain(kind === "clusters" ? "cluster-grid-too-small" : "ways-no-payable-symbols");
+            expect(calculator.getWinEvaluationPipeline().getOptions().validateOnEvaluate).toBe(validateOnEvaluate);
+            if (validateOnEvaluate) expect(() => calculator.calculateWin(0.05, screen)).toThrow(kind === "clusters" ? /requires at least 4 cells/ : /no payable/);
+            else expect(() => calculator.calculateWin(0.05, screen)).not.toThrow();
+        }
+    });
+
+    test.each(evaluatorValidationCases)("keeps $kind Node diagnostics and opt-out, then evaluates corrected config on the same calculator", ({blueprint, code}) => {
+        for (const validateOnEvaluate of [true, false]) {
+            const model = resolveSharedSlotMathModel(blueprint);
+            const config = new VideoSlotConfig();
+            config.setAvailableBets([...model.availableBets]);
+            config.setReelsNumber(model.reels);
+            config.setReelsSymbolsNumber(model.rows);
+            config.setAvailableSymbols([...model.symbols]);
+            config.setWildSymbols([...(model.wilds ?? [])]);
+            config.setScatterSymbols([...(model.scatters ?? [])]);
+            config.setSymbolsSequences(model.reelStrips.map(strip => new SymbolsSequence().fromArray([...strip])));
+            const paytable = new Paytable<string>(config.getAvailableBets());
+            for (const [symbol, entries] of Object.entries(model.paytable)) for (const [count, amount] of Object.entries(entries)) paytable.setPayoutForSymbol(symbol, Number(count), amount);
+            config.setPaytable(paytable);
+            const calculator = new VideoSlotWinCalculator(config, undefined, undefined, undefined, undefined, undefined, {sharedMathModel: model, validateOnEvaluate});
+            const screen = new SymbolsCombination().fromMatrix(blueprint.reelStrips!.map(strip => [strip[0]]));
+            expect(calculator.validateWinEvaluation(1, screen).getIssues()).toEqual(expect.arrayContaining([expect.objectContaining({code, severity: "error"})]));
+            if (validateOnEvaluate) expect(() => calculator.calculateWin(1, screen)).toThrow(blueprint.winModel!.type === "ways" ? /no payable/ : /requires at least/);
+            else expect(() => calculator.calculateWin(1, screen)).not.toThrow();
+            const ways = blueprint.winModel!.type === "ways";
+            if (ways) config.setAvailableSymbols(["A", "W", "S"]);
+            else config.setReelsSymbolsNumber(2);
+            config.getPaytable().setPayoutForSymbol("A", ways ? 3 : 6, 2);
+            const corrected = new SymbolsCombination().fromMatrix(Array.from({length: 3}, () => ways ? ["A"] : ["A", "A"]));
+            expect(calculator.validateWinEvaluation(1, corrected).getIssues().filter(issue => issue.severity === "error")).toEqual([]);
+            for (let round = 0; round < 2; round++) {
+                calculator.calculateWin(1, corrected);
+                expect(calculator.getWinAmount()).toBe(2);
+            }
+        }
+    });
+
+    test("rejects contradictory minimum-size options rather than discarding them", () => {
+        const {create} = fixture({type: "clusters", minimumClusterSize: 3}, {minimumClusterSize: 4});
+        expect(() => create()).toThrow(/minimumClusterSize/);
+    });
+
+    test("rejects unsupported model declarations instead of ignoring extra semantics", () => {
+        const {model, create} = fixture();
+        expect(() => create({...model, winModel: {type: "lines", minimumClusterSize: 3}})).toThrow(/Unsupported shared/);
+        expect(() => create({...model, winModel: {type: "lines", patterns: "right-to-left"} as unknown as SharedSlotMathModel["winModel"]})).toThrow(/Unsupported shared/);
+    });
+
+    test("direct shared evaluators and retained pipelines cannot consume a different config", () => {
+        const {config, model, create} = fixture();
+        const screen = new SymbolsCombination().fromMatrix([["A"], ["A"], ["A"]]);
+        const evaluator = new SharedSlotMathWinEvaluator(new SharedSlotMath(model));
+        expect(evaluator.evaluate(new WinEvaluationContext(0.05, screen, config))).toHaveLength(1);
+        config.getPaytable().setPayoutForSymbol("A", 3, 9);
+        expect(() => evaluator.evaluate(new WinEvaluationContext(0.05, screen, config))).toThrow(/does not match/);
+        const other = fixture();
+        const pipeline = other.create().getWinEvaluationPipeline();
+        expect(() => pipeline.evaluate(new WinEvaluationContext(0.05, screen, config))).toThrow(/context does not match/);
+        expect(() => create()).toThrow(/does not match/);
+    });
+});
 
 describe("WinRuntimeContract", () => {
     test("WinEvaluationResult totalWin equals the sum of components", () => {

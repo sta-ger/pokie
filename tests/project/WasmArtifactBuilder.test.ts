@@ -1,10 +1,14 @@
+import {evaluatorValidationCases} from "../fixtures/wasm/createCanonicalWasmFixture.js";
+import {resolveSharedSlotMathModel} from "../../src/generated/resolveSharedSlotMathModel.js";
+import {assertPlayableSharedSlotMathModel} from "../../src/wasm/math/SharedSlotMath.js";
+import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
 import {AUTHORED_MECHANIC_CATALOG} from "@fromstan/pokie";
 import {existingMechanicsBlueprint} from "../v2/fixtures/ExistingMechanicsGame.js";
 import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {WasmArtifactBuilder} from "../../src/project/WasmArtifactBuilder.js";
+import {WasmArtifactBuilder, resolveCanonicalWasmGameModel} from "../../src/project/WasmArtifactBuilder.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 import {readWasmComponentManifest} from "../../src/project/readWasmComponentManifest.js";
 import {ProjectTargetResolver} from "../../src/project/ProjectTargetResolver.js";
@@ -39,6 +43,51 @@ describe("WasmArtifactBuilder", () => {
 
     afterEach(() => fs.rmSync(workDir, {recursive: true, force: true}));
 
+    it.each(evaluatorValidationCases)("rejects $kind before publication and accepts corrected retry without changing existing contents", async ({blueprint: invalid, corrected, code}) => {
+        const sourcePath = path.join(workDir, "validation.blueprint.json");
+        const outputPath = path.join(workDir, "validation.wasm");
+        const sidecar = `${outputPath}.pokie-wasm.json`;
+        const source = {type: "blueprint" as const, rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"};
+        const builder = new WasmArtifactBuilder("1.3.0");
+        const registry = new ArtifactBuilderRegistry("1.3.0");
+        fs.writeFileSync(sourcePath, JSON.stringify(invalid));
+        const input = fs.readFileSync(sourcePath);
+        // The Node lowering remains available; the portable authority rejects the same model.
+        expect(() => assertPlayableSharedSlotMathModel(resolveSharedSlotMathModel(invalid))).toThrow(code);
+        expect(() => resolveCanonicalWasmGameModel(invalid)).toThrow(/Next:/);
+        await expect(builder.validate(source)).rejects.toThrow(code);
+        await expect(registry.validate("wasm", source)).rejects.toThrow(code);
+        await expect(builder.build(source, outputPath)).rejects.toThrow(code);
+        expect(fs.existsSync(outputPath)).toBe(false);
+        expect(fs.existsSync(sidecar)).toBe(false);
+        fs.writeFileSync(outputPath, "");
+        fs.writeFileSync(sidecar, "");
+        await expect(builder.build(source, outputPath)).rejects.toThrow(/already exists/);
+        expect(fs.readFileSync(outputPath, "utf8")).toBe("");
+        expect(fs.readFileSync(sidecar, "utf8")).toBe("");
+        expect(fs.readFileSync(sourcePath)).toEqual(input);
+        expect(fs.readdirSync(workDir).sort()).toEqual([path.basename(sourcePath), path.basename(outputPath), path.basename(sidecar)].sort());
+        fs.writeFileSync(outputPath, "competing module");
+        fs.writeFileSync(sidecar, "competing manifest");
+        await expect(builder.build(source, outputPath)).rejects.toThrow(/already exists/);
+        expect(fs.readFileSync(outputPath, "utf8")).toBe("competing module");
+        expect(fs.readFileSync(sidecar, "utf8")).toBe("competing manifest");
+        fs.rmSync(outputPath);
+        fs.rmSync(sidecar);
+        fs.writeFileSync(sourcePath, JSON.stringify(corrected));
+        await expect(builder.validate(source)).resolves.toBeUndefined();
+        await expect(registry.validate("wasm", source)).resolves.toBeUndefined();
+        await builder.build(source, outputPath);
+        const runtime = await loadPokieWasmFileRuntime(outputPath, {nextRandom: () => 0.5});
+        try {
+            const session = runtime.createSession("retry");
+            for (const sequence of [1, 2]) expect(await session.play()).toMatchObject({sequence, payout: 2, screen: [["A"], ["A"], ["A"]]});
+        } finally {
+            runtime.dispose();
+        }
+        expect(fs.readFileSync(sourcePath, "utf8")).toBe(JSON.stringify(corrected));
+    });
+
     it("publishes a valid integrity-bound canonical artifact that resolves and reads back", async () => {
         const sourcePath = path.join(workDir, "fixture.blueprint.json");
         const outputPath = path.join(workDir, "game.wasm");
@@ -64,7 +113,7 @@ describe("WasmArtifactBuilder", () => {
         fs.writeFileSync(sourcePath, JSON.stringify({...blueprint, symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: Array.from({length: 3}, () => Array<string>(1024).fill("A"))}));
         await new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, outputPath);
         const module = readCanonicalPokieWasmModule(new Uint8Array(fs.readFileSync(outputPath)));
-        expect(module.model.stopWidths).toEqual([10, 10, 10]);
+        expect(module.model.reelStrips.map(strip => strip.length)).toEqual([1024, 1024, 1024]);
         const runtime = await loadPokieWasmFileRuntime(outputPath, {nextRandom: () => 0.5});
         try {
             expect(await runtime.createSession("boundary").play()).toMatchObject({screen: [["A"], ["A"], ["A"]], payout: 2});
@@ -73,17 +122,20 @@ describe("WasmArtifactBuilder", () => {
         }
     });
 
-    it("rejects 31 total stop bits before allocating a module or sidecar", async () => {
+    it("accepts 31 total stop bits with independent array entries", async () => {
         const sourcePath = path.join(workDir, "thirty-one.blueprint.json");
         const outputPath = path.join(workDir, "thirty-one.wasm");
         fs.writeFileSync(sourcePath, JSON.stringify({...blueprint, symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(1025).fill("A"), Array<string>(1024).fill("A"), Array<string>(1024).fill("A")]}));
         const source = {type: "blueprint" as const, rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"};
         const builder = new WasmArtifactBuilder("1.3.0");
-        await expect(builder.validate(source)).rejects.toThrow(/30 total stop bits across all reels.*Next:/);
-        await expect(builder.build(source, outputPath)).rejects.toThrow(/30 total stop bits across all reels/);
-        expect(fs.existsSync(outputPath)).toBe(false);
-        expect(fs.existsSync(`${outputPath}.pokie-wasm.json`)).toBe(false);
-        expect(fs.readdirSync(workDir)).toEqual(["thirty-one.blueprint.json"]);
+        await builder.validate(source);
+        await builder.build(source, outputPath);
+        const runtime = await loadPokieWasmFileRuntime(outputPath, {nextRandom: () => 0.999});
+        try {
+            expect(await runtime.createSession("above-boundary").play()).toMatchObject({stops: [1023, 1022, 1022], payout: 2});
+        } finally {
+            runtime.dispose();
+        }
     });
 
     it("rejects a swapped module during resolution", async () => {
@@ -168,8 +220,6 @@ describe("WasmArtifactBuilder", () => {
     });
 
     it.each([
-        ["ways", {...blueprint, winModel: {type: "ways"}}],
-        ["clusters", {...blueprint, winModel: {type: "clusters"}}],
         ["free games", {...blueprint, symbols: ["A", "B", "C", "S"], scatters: ["S"], reelStrips: [["A", "B", "S"], ["B", "C", "S"], ["C", "A", "S"]], paytable: {A: {3: 2}, B: {3: 1}, C: {3: 1}, S: {3: 1}}, mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 5}}}}],
         ["bet modes", {...blueprint, betModes: [{id: "base"}]}],
     ])("rejects unsupported canonical WASM %s semantics with a recovery action", async (_name, unsupported) => {
@@ -245,16 +295,16 @@ describe("WasmArtifactBuilder", () => {
             manifest.minPokieVersion = "1.0.0";
         }],
         ["serialization", (manifest: MutableManifestDeclaration) => {
-            manifest.serialization.play = "pokie.play.v2";
+            manifest.serialization.play = "pokie.play.v99";
         }],
         ["host", (manifest: MutableManifestDeclaration) => {
-            manifest.host.rng = "pokie.rng.v2";
+            manifest.host.rng = "pokie.rng.v99";
         }],
         ["capabilities", (manifest: MutableManifestDeclaration) => {
             manifest.capabilities.push("runtime.extra");
         }],
         ["ABI", (manifest: MutableManifestDeclaration) => {
-            manifest.artifact.abiVersion = "1.0.1";
+            manifest.artifact.abiVersion = "2.0.1";
         }],
     ])("rejects an individually edited %s declaration", async (_category, edit) => {
         const sourcePath = path.join(workDir, "fixture.blueprint.json");

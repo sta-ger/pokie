@@ -5,9 +5,10 @@ export const POKIE_WASM_RUNTIME_VERSION = "1.3.0";
 /** The same initial session ledger used by an ordinary POKIE game session. */
 export const POKIE_WASM_DEFAULT_CREDITS = 1000;
 
-/** Runtime-owned continuation contains no historical evidence. Artifact ABI remains v1. */
+/** Runtime-owned continuation contains no historical evidence. Artifact ABI is v2. */
 export type PokieWasmSessionState = {
-    readonly schemaVersion: "pokie.state.v2";
+    readonly schemaVersion: "pokie.state.v3";
+    readonly artifactIdentity: string;
     readonly seed: string;
     /** Total consumed draws, including unpaid seeded initialization. */
     readonly drawCount: number;
@@ -24,8 +25,10 @@ export type PokieWasmLegacySessionState = {
     readonly credits: number;
     readonly rngState?: PokieWasmHostState;
 };
-export type PokieWasmRestorableState = PokieWasmSessionState | PokieWasmLegacySessionState;
-export const POKIE_WASM_RUNTIME_API_VERSION = "1.2.0";
+/** Only an empty v2 origin is accepted; later unbound compact snapshots must be regenerated. */
+export type PokieWasmInitialCompactState = Omit<PokieWasmSessionState, "schemaVersion" | "artifactIdentity"> & {readonly schemaVersion: "pokie.state.v2"};
+export type PokieWasmRestorableState = PokieWasmSessionState | PokieWasmLegacySessionState | PokieWasmInitialCompactState;
+export const POKIE_WASM_RUNTIME_API_VERSION = "2.0.0";
 
 export type PokieWasmTraceEntry = {
     readonly kind: "initialization" | "round" | "replay";
@@ -141,4 +144,4 @@ export type PokieWasmRuntime = {
 
 // Browser-safe prose shared by the product contract and Studio. This describes
 // current mechanics, not a capability grant or a compiler acceptance test.
-export const WASM_EXECUTION_BOUNDARY = "Hybrid execution: the WASM module produces packed reel stops using host randomness; PokieWasmRuntime.ts evaluates wins in a separate JavaScript evaluateWinMultiplier implementation. Supports line wins, wild substitution, scatter payouts, and availableBets stake selection. Rejects ways, clusters, mechanics.freeGames, mechanics.holdAndWin, mechanics.jackpot, and nonempty betModes. ABI 1.0 allows at most 30 total stop bits across all reels. Blueprint is canonical; PAR uses model-preserving import. Arbitrary TypeScript/Node packages are not converted to WASM. A supported source route still requires model validation; narrow parity does not prove full mechanics or one shared calculation path.";
+export const WASM_EXECUTION_BOUNDARY = "Shared execution: generated Node and portable artifacts use the same pokie.math.v2 WebAssembly evaluator. ABI 2.0 selects stops from raw host draws, builds reel-major screens and evaluates lines, ways or clusters with per-component stake multiplication. Stops use a bounded i32 array in module memory, with no total-bit cap. Host owns RNG continuation, ledger and IO. Limits: 64 reels, 64 rows, 1024 cells, 128 symbols, 1024 paylines, 65536 stops per reel, 262144 total stops and 8 MiB memory. Rejects mechanics.freeGames, mechanics.holdAndWin, mechanics.jackpot, modifiers, weighted sequences, screenGeometry and nonempty betModes. Blueprint is canonical; PAR and complete declared public package models use model-preserving extraction. Arbitrary TypeScript/Node behavior is not compiled. Legacy metadata-only components remain inspection-only.";

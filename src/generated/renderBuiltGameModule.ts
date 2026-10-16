@@ -1,3 +1,5 @@
+import {resolveSharedSlotMathModel} from "./resolveSharedSlotMathModel.js";
+import type {SharedSlotMathModel} from "../wasm/math/SharedSlotMath.js";
 import {GameBlueprintValidator} from "./GameBlueprintValidator.js";
 import {validateBlueprintReelSequences} from "./validateBlueprintReelSequences.js";
 import type {GameBlueprint} from "./GameBlueprint.js";
@@ -49,6 +51,11 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     const hasBounded = bounded !== undefined && Object.keys(bounded).length > 0;
     const hasBetModes = (blueprint.betModes?.length ?? 0) > 0;
 
+    let sharedMathModel: SharedSlotMathModel | undefined;
+    try {
+        sharedMathModel = resolveSharedSlotMathModel(blueprint);
+    } catch { /* Other generated mechanics keep their existing extension pipeline. */ }
+
     const requireNames = [
         "computeGameBlueprintHash",
         "CustomLinesDefinitions",
@@ -63,7 +70,8 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
         "VideoSlotSessionSerializer",
         "validateExecutableState",
     ];
-    if (winModel.type === "ways" || winModel.type === "clusters") {
+    if (sharedMathModel) requireNames.push("VideoSlotWinCalculator", "resolveSharedSlotMathModel");
+    if (!sharedMathModel && (winModel.type === "ways" || winModel.type === "clusters")) {
         requireNames.push("VideoSlotWinCalculator", "SelectedEvaluatorGroupWinAggregationPolicy");
         requireNames.push(winModel.type === "ways" ? "WaysWinCalculator" : "ClusterWinCalculator");
     }
@@ -88,7 +96,12 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     // Built once here (not inline in createConfig/createSession) since both the config-wrapping and
     // the session/win-calculator construction below need to agree on it.
     let winCalculatorDeclaration = "";
-    if (winModel.type === "ways") {
+    if (sharedMathModel) {
+        winCalculatorDeclaration = `    const winCalculator = new VideoSlotWinCalculator(config, undefined, undefined, undefined, undefined, undefined, {
+        sharedMathModel: resolveSharedSlotMathModel(blueprint),
+    });
+`;
+    } else if (winModel.type === "ways") {
         winCalculatorDeclaration = `    const winCalculator = new VideoSlotWinCalculator(config, undefined, undefined, undefined, undefined, new WaysWinCalculator(config), {
         aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy("ways"),
     });
@@ -100,7 +113,7 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     });
 `;
     }
-    const winCalculatorArgs = winModel.type === "lines" ? "" : ", winCalculator";
+    const winCalculatorArgs = winModel.type === "lines" && !sharedMathModel ? "" : ", winCalculator";
     const sessionClassName = freeGames ? "VideoSlotWithFreeGamesSession" : "VideoSlotSession";
     const baseConstruction = hasBounded
         ? `new BoundedVideoSlotSession(config, combinationsGenerator, ${JSON.stringify(bounded)}, ${winModel.type === "lines" ? "new VideoSlotWinCalculator(config)" : "winCalculator"})`
@@ -238,6 +251,8 @@ ${winCalculatorDeclaration}        return ${wrapJackpot(sessionConstructionExpre
     const holdStateSchema = holdAndWin ? {kind: "hold-and-win", reels: blueprint.reels, rows: blueprint.rows, bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], symbolEffects: holdAndWin.symbolEffects, initialRespins: holdAndWin.initialRespins, base: featureStateSchema} : featureStateSchema;
     const modeStateSchema = betModeWiring ? {kind: "bet-modes", ...(blueprint.betModes!.some(mode => (mode.costMultiplier ?? 1) !== 1 || mode.runtimeType === "buyFeature") ? {stakeModifying: true} : {}), base: holdStateSchema} : holdStateSchema;
     const stateSchema = jackpot ? {kind: "jackpot", pools: [jackpot.pool], base: modeStateSchema} : modeStateSchema;
+    const stateSchemaExpression = sharedMathModel ? `{kind: "seeded-video-slot", reels: blueprint.reels, symbols: blueprint.symbols}` : JSON.stringify(stateSchema);
+    const commandCapabilitiesExpression = sharedMathModel ? `{bets: blueprint.availableBets ?? ${JSON.stringify([1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100])}}` : JSON.stringify({bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], ...(betModeWiring !== undefined ? {modes: blueprint.betModes!.map(mode => mode.id)} : {})});
     const blueprintDeclaration =
         format === "ts"
             ? `const blueprint: GameBlueprint = ${JSON.stringify(blueprint, null, 4)};`
@@ -341,13 +356,13 @@ module.exports = {
         return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model: blueprint};
     },
     getSessionStateSchema() {
-        return ${JSON.stringify(stateSchema)};
+        return ${stateSchemaExpression};
     },
     getSessionCommandCapabilities() {
-        return ${JSON.stringify({bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], ...(betModeWiring !== undefined ? {modes: blueprint.betModes!.map(mode => mode.id)} : {})})};
+        return ${commandCapabilitiesExpression};
     },
     validateLiveSessionState(${format === "ts" ? "state: unknown" : "state"}, ${contextParam}) {
-        validateExecutableState(state, ${JSON.stringify(stateSchema)}, undefined, context?.seed === undefined);
+        validateExecutableState(state, ${stateSchemaExpression}, undefined, context?.seed === undefined);
     },
     createSession(${contextParam}) {
 ${createSessionBody}    },
