@@ -1,4 +1,4 @@
-import {assertSharedSlotMathModel, compileSharedSlotArtifact, type SharedSlotMathModel} from "./math/SharedSlotMath.js";
+import {assertPlayableSharedSlotMathModel, compileSharedSlotArtifact, type SharedSlotMathModel} from "./math/SharedSlotMath.js";
 import {assessWasmComponentCompatibility} from "../project/wasm/assessWasmComponentCompatibility.js";
 import {satisfiesMinimumSemverLite} from "../project/wasm/internal/compareSemverLite.js";
 import {POKIE_WASM_ABI_VERSION, POKIE_WASM_ADAPTER, type PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
@@ -252,7 +252,7 @@ export function readCanonicalPokieWasmModule(bytes: BufferSource): CanonicalPoki
     } catch {
         throw new Error("POKIE WASM artifact has a malformed game model section.");
     }
-    assertSharedSlotMathModel(model);
+    assertPlayableSharedSlotMathModel(model);
     const descriptorSections = WebAssembly.Module.customSections(module, POKIE_WASM_COMPONENT_DESCRIPTOR_SECTION);
     if (descriptorSections.length !== 1) throw new Error(`POKIE WASM artifact must contain exactly one ${POKIE_WASM_COMPONENT_DESCRIPTOR_SECTION} component descriptor section.`);
     const descriptorBytes = new Uint8Array(descriptorSections[0]);

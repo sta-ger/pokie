@@ -1,9 +1,33 @@
 import {PokieWasmWorkerProtocol} from "../../../src/wasm/worker.js";
 import {instantiatePokieWasm, SeededPokieWasmHost} from "../../../src/wasm/PokieWasmRuntime.js";
 import {sha256CanonicalWasmBytes} from "../../../src/wasm/PokieWasmCanonicalModule.js";
-import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
+import {evaluatorValidationCases, createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 describe("PokieWasmWorkerProtocol", () => {
+    it.each(evaluatorValidationCases)("retains a settled session after rejected $kind replacement and accepts a corrected retry", async ({fixture, repaired, code}) => {
+        const worker = new PokieWasmWorkerProtocol();
+        const fresh = new PokieWasmWorkerProtocol();
+        const start = {id: "start", type: "instantiate" as const, bytes: repaired.bytes, manifest: repaired.manifest, draws: Array(30).fill(0.5) as number[]};
+        expect(await worker.handle(start)).toMatchObject({ok: true});
+        expect(await worker.handle({id: "first", type: "play"})).toMatchObject({ok: true, result: {sequence: 1, payout: 2}});
+        const before = await worker.handle({id: "state", type: "serialize"});
+        if (!before.ok) throw new Error(before.error);
+        expect(await worker.handle({...start, bytes: fixture.bytes, manifest: fixture.manifest})).toMatchObject({ok: false, error: expect.stringContaining(code)});
+        expect(await worker.handle({id: "state", type: "serialize"})).toEqual(before);
+        // Rejection recovery keeps the used session; explicit restore is a separate operation.
+        const continued = await worker.handle({id: "next", type: "play"});
+        expect(continued).toMatchObject({ok: true, result: {sequence: 2, payout: 2}});
+        expect(await worker.handle({id: "restore", type: "restore", state: before.result})).toMatchObject({ok: true});
+        expect(await worker.handle({id: "next", type: "play"})).toEqual(continued);
+        expect(await fresh.handle(start)).toMatchObject({ok: true});
+        expect(await fresh.handle({id: "restore", type: "restore", state: before.result})).toMatchObject({ok: true});
+        expect(await fresh.handle({id: "next", type: "play"})).toEqual(continued);
+        expect(await worker.handle(start)).toMatchObject({ok: true});
+        for (const sequence of [1, 2]) expect(await worker.handle({id: "retry", type: "play"})).toMatchObject({ok: true, result: {sequence, payout: 2}});
+        await worker.handle({id: "dispose", type: "dispose"});
+        await fresh.handle({id: "dispose", type: "dispose"});
+    });
+
     it("owns transfer-safe bytes, host-issued draws, state restoration, and disposal", async () => {
         const fixture = createCanonicalWasmFixture({id: "worker-fixture", capabilities: ["runtime.play", "runtime.serialize"]});
         const protocol = new PokieWasmWorkerProtocol();

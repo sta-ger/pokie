@@ -86,6 +86,78 @@ async function main() {
     const receipts = [];
     const negatives = [];
     const configurationChecks = [];
+    // The same invalid models must keep Node diagnostics and fail portable preflight/loading.
+    for (const kind of ['clusters', 'explicit-clusters', 'ways']) {
+        const ways = kind === 'ways';
+        const invalid = {manifest: {id: `invalid-${kind}`, name: 'Evaluator validation', version: '1.0.0'},
+            reels: 3, rows: 1, symbols: ways ? ['W', 'S'] : ['A'],
+            reelStrips: Array.from({length: 3}, () => ways ? ['W', 'S'] : ['A']),
+            paytable: ways ? {W: {3: 2}, S: {3: 2}} : {A: {3: 2}}, wilds: ways ? ['W'] : [], scatters: ways ? ['S'] : [],
+            winModel: ways ? {type: 'ways'} : {type: 'clusters', ...(kind === 'explicit-clusters' ? {minimumClusterSize: 4} : {})}};
+        const corrected = {...invalid, symbols: ['A', ...(ways ? ['W', 'S'] : [])], reelStrips: [['A'], ['A'], ['A']], paytable: {A: {3: 2}},
+            winModel: ways ? {type: 'ways'} : {type: 'clusters', minimumClusterSize: 3}};
+        const code = ways ? 'ways-no-payable-symbols' : 'cluster-grid-too-small';
+        const diagnostic = ways ? /no payable non-wild non-scatter symbols/ : new RegExp(`requires at least ${kind === 'clusters' ? 5 : 4} cells`);
+        const folder = path.join(directory, `invalid-${kind}`); fs.mkdirSync(folder);
+        const source = path.join(folder, 'game.blueprint.json'), artifact = path.join(folder, 'game.wasm');
+        fs.writeFileSync(source, JSON.stringify(invalid));
+        const sourceBytes = fs.readFileSync(source);
+        const project = {type: 'blueprint', rootPath: source, capabilities: pokie.PROJECT_TYPE_CAPABILITIES.blueprint, provenance: 'native validation regression'};
+        const builder = new pokie.WasmArtifactBuilder('1.3.0');
+        const model = pokie.resolveSharedSlotMathModel(invalid);
+        for (const exports of [pokie, esm, browser, portable]) assert.throws(() => exports.assertPlayableSharedSlotMathModel(model), diagnostic);
+        assert.throws(() => pokie.resolveCanonicalWasmGameModel(invalid), new RegExp(code));
+        await assert.rejects(builder.validate(project), diagnostic);
+        await assert.rejects(builder.build(project, artifact), diagnostic);
+        assert.deepEqual(fs.readFileSync(source), sourceBytes);
+        assert.equal(fs.existsSync(artifact), false); assert.equal(fs.existsSync(`${artifact}.pokie-wasm.json`), false);
+        const generated = new pokie.GamePackageGenerator('1.3.0').generate(invalid, folder);
+        const ts = nativeRequire('typescript'), recompiled = path.join(generated.projectRoot, 'dist/recompiled.cjs');
+        fs.writeFileSync(recompiled, ts.transpileModule(fs.readFileSync(path.join(generated.projectRoot, 'src/index.ts'), 'utf8'),
+            {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022}}).outputText);
+        for (const entry of [path.join(generated.projectRoot, 'dist/index.js'), recompiled]) {
+            const game = nativeRequire(entry);
+            const sessions = () => [game.createSession({seed: '0'}), game.createExactEnumerationSession({
+                generateSymbolsCombination: () => new pokie.SymbolsCombination().fromMatrix(invalid.reelStrips.map(strip => [strip[0]])),
+            })];
+            for (const session of sessions()) assert.throws(() => session.play(), diagnostic);
+            Object.assign(game.getModelDescriptor().model, corrected);
+            // New sessions use the corrected declarations in both factories, without a separate model.
+            const exact = game.createExactEnumerationSession({generateSymbolsCombination: () => new pokie.SymbolsCombination().fromMatrix([['A'], ['A'], ['A']])});
+            for (const session of [game.createSession({seed: '0'}), exact]) for (let round = 0; round < 2; round++) {
+                session.play(); assert.equal(session.getWinAmount(), 2);
+            }
+        }
+        // Compile a fully consistent rejected model independently of the publisher.
+        const configurationHash = hash(new TextEncoder().encode(pokie.stableSlotMathJson(model)));
+        const descriptor = {schemaVersion: '1.0.0', component: {id: invalid.manifest.id, version: '1.0.0'},
+            serialization: {session: 'pokie.session.v2', play: 'pokie.play.v2', state: 'pokie.state.v3'}, host: {rng: 'pokie.rng.v2', services: []},
+            capabilities: ['runtime.play', 'runtime.serialize', 'runtime.replay'],
+            artifact: {format: 'pokie.wasm.v1', abiVersion: '2.0.0', adapter: '@fromstan/pokie/wasm', configurationHash}};
+        const binary = pokie.compileSharedSlotArtifact(model, descriptor);
+        const sidecar = {...descriptor, artifact: {...descriptor.artifact, bytes: binary.length, sha256: hash(binary)}};
+        assert.equal(WebAssembly.validate(binary), true);
+        let draws = 0; const host = {nextRandom() {draws++; return 0.5;}};
+        for (const exports of [pokie, esm, browser, portable]) await assert.rejects(exports.instantiatePokieWasm(binary, sidecar, host), diagnostic);
+        const worker = new pokie.PokieWasmWorkerProtocol();
+        const rejected = await worker.handle({id: kind, type: 'instantiate', bytes: binary, manifest: sidecar});
+        assert.equal(rejected.ok, false); assert.match(rejected.error, diagnostic);
+        fs.writeFileSync(artifact, binary); fs.writeFileSync(`${artifact}.pokie-wasm.json`, JSON.stringify(sidecar));
+        await assert.rejects(pokie.loadPokieWasmFileRuntime(artifact, host), diagnostic);
+        await assert.rejects(new pokie.ProjectTargetResolver().resolve(artifact), diagnostic);
+        await assert.rejects(pokie.readWasmComponentManifest({type: 'wasm', rootPath: artifact, capabilities: pokie.PROJECT_TYPE_CAPABILITIES.wasm, provenance: 'direct readback'}), diagnostic);
+        assert.deepEqual(fs.readFileSync(artifact), Buffer.from(binary));
+        assert.deepEqual(JSON.parse(fs.readFileSync(`${artifact}.pokie-wasm.json`)), sidecar);
+        assert.equal(draws, 0);
+        fs.rmSync(artifact); fs.rmSync(`${artifact}.pokie-wasm.json`);
+        fs.writeFileSync(source, JSON.stringify(corrected));
+        await builder.validate(project); await builder.build(project, artifact);
+        const runtime = await pokie.loadPokieWasmFileRuntime(artifact, host);
+        const session = runtime.createSession('0');
+        for (const sequence of [1, 2]) assert.deepEqual([ (await session.play()).sequence, session.serialize().credits ], [sequence, 1000 + sequence]);
+        runtime.dispose();
+        negatives.push(code + (kind === 'explicit-clusters' ? '-explicit' : ''));
+    }
     for (const type of ['lines', 'ways', 'clusters']) {
         const folder = path.join(directory, `config-${type}`); fs.mkdirSync(folder);
         const model = {...base, rows: 1, availableBets: [1], reelStrips: [['A'], ['A'], ['A']], paytable: {A: {3: 2}},

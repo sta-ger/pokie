@@ -58,6 +58,18 @@ export function assertSharedSlotMathModel(value: unknown): asserts value is Shar
         ![model.wilds, model.scatters].every(list => list === undefined || Array.isArray(list) && new Set(list).size === list.length && list.every(s => model.symbols.includes(s))) ||
         !Array.isArray(model.availableBets) || !model.availableBets.length || !model.availableBets.every(bet => Number.isFinite(bet) && bet > 0)) fail();
 }
+/** Portable execution always validates; Node retains its pipeline diagnostics and opt-out. */
+export function assertPlayableSharedSlotMathModel(value: unknown): asserts value is SharedSlotMathModel {
+    assertSharedSlotMathModel(value);
+    if (value.winModel.type === "clusters") {
+        const minimum = value.winModel.minimumClusterSize ?? 5;
+        const cells = value.reels * value.rows;
+        if (minimum > cells) throw new Error(`cluster-grid-too-small: Cluster evaluator requires at least ${minimum} cells, but the grid has only ${cells}. Next: reduce winModel.minimumClusterSize or increase reels/rows.`);
+    }
+    if (value.winModel.type === "ways" && !value.symbols.some(symbol => !value.wilds?.includes(symbol) && !value.scatters?.includes(symbol))) {
+        throw new Error("ways-no-payable-symbols: Ways evaluation is enabled, but the config has no payable non-wild non-scatter symbols. Next: add a non-wild non-scatter symbol to symbols or select another winModel.");
+    }
+}
 export type SharedSlotMathLayout = {
     readonly data: Uint8Array<ArrayBuffer>;
     readonly pages: number;

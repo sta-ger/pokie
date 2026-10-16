@@ -1,7 +1,7 @@
 import {HorizontalLines} from "../session/videoslot/linesdefinitions/HorizontalLines.js";
 import type {GameBlueprint} from "./GameBlueprint.js";
 import {lowerSharedSlotMath, SHARED_SLOT_DEFAULT_BETS, type SharedSlotMathModel} from "../wasm/math/SharedSlotMath.js";
-/** Requires already-materialized strips; never guesses custom or feature semantics. */
+/** Structural lowering only: Node's evaluation pipeline owns validation and its explicit opt-out. */
 export function resolveSharedSlotMathModel(blueprint: GameBlueprint): SharedSlotMathModel {
     if (blueprint.screenGeometry || blueprint.reelSequences || blueprint.betModes?.length ||
         (blueprint.mechanics && Object.values(blueprint.mechanics).some(value => value !== undefined))) throw new Error("This model requires nonportable mechanics; shared math supports ordinary lines, ways and clusters.");

@@ -1,10 +1,14 @@
+import {evaluatorValidationCases} from "../fixtures/wasm/createCanonicalWasmFixture.js";
+import {resolveSharedSlotMathModel} from "../../src/generated/resolveSharedSlotMathModel.js";
+import {assertPlayableSharedSlotMathModel} from "../../src/wasm/math/SharedSlotMath.js";
+import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
 import {AUTHORED_MECHANIC_CATALOG} from "@fromstan/pokie";
 import {existingMechanicsBlueprint} from "../v2/fixtures/ExistingMechanicsGame.js";
 import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {WasmArtifactBuilder} from "../../src/project/WasmArtifactBuilder.js";
+import {WasmArtifactBuilder, resolveCanonicalWasmGameModel} from "../../src/project/WasmArtifactBuilder.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 import {readWasmComponentManifest} from "../../src/project/readWasmComponentManifest.js";
 import {ProjectTargetResolver} from "../../src/project/ProjectTargetResolver.js";
@@ -38,6 +42,48 @@ describe("WasmArtifactBuilder", () => {
     });
 
     afterEach(() => fs.rmSync(workDir, {recursive: true, force: true}));
+
+    it.each(evaluatorValidationCases)("rejects $kind before publication and accepts corrected retry without changing existing contents", async ({blueprint: invalid, corrected, code}) => {
+        const sourcePath = path.join(workDir, "validation.blueprint.json");
+        const outputPath = path.join(workDir, "validation.wasm");
+        const sidecar = `${outputPath}.pokie-wasm.json`;
+        const source = {type: "blueprint" as const, rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"};
+        const builder = new WasmArtifactBuilder("1.3.0");
+        const registry = new ArtifactBuilderRegistry("1.3.0");
+        fs.writeFileSync(sourcePath, JSON.stringify(invalid));
+        const input = fs.readFileSync(sourcePath);
+        // The Node lowering remains available; the portable authority rejects the same model.
+        expect(() => assertPlayableSharedSlotMathModel(resolveSharedSlotMathModel(invalid))).toThrow(code);
+        expect(() => resolveCanonicalWasmGameModel(invalid)).toThrow(/Next:/);
+        await expect(builder.validate(source)).rejects.toThrow(code);
+        await expect(registry.validate("wasm", source)).rejects.toThrow(code);
+        fs.writeFileSync(outputPath, "");
+        fs.writeFileSync(sidecar, "");
+        await expect(builder.build(source, outputPath)).rejects.toThrow(code);
+        expect(fs.readFileSync(outputPath, "utf8")).toBe("");
+        expect(fs.readFileSync(sidecar, "utf8")).toBe("");
+        expect(fs.readFileSync(sourcePath)).toEqual(input);
+        expect(fs.readdirSync(workDir).sort()).toEqual([path.basename(sourcePath), path.basename(outputPath), path.basename(sidecar)].sort());
+        fs.writeFileSync(outputPath, "competing module");
+        fs.writeFileSync(sidecar, "competing manifest");
+        await expect(builder.build(source, outputPath)).rejects.toThrow(/already exists/);
+        expect(fs.readFileSync(outputPath, "utf8")).toBe("competing module");
+        expect(fs.readFileSync(sidecar, "utf8")).toBe("competing manifest");
+        fs.rmSync(outputPath);
+        fs.rmSync(sidecar);
+        fs.writeFileSync(sourcePath, JSON.stringify(corrected));
+        await expect(builder.validate(source)).resolves.toBeUndefined();
+        await expect(registry.validate("wasm", source)).resolves.toBeUndefined();
+        await builder.build(source, outputPath);
+        const runtime = await loadPokieWasmFileRuntime(outputPath, {nextRandom: () => 0.5});
+        try {
+            const session = runtime.createSession("retry");
+            for (const sequence of [1, 2]) expect(await session.play()).toMatchObject({sequence, payout: 2, screen: [["A"], ["A"], ["A"]]});
+        } finally {
+            runtime.dispose();
+        }
+        expect(fs.readFileSync(sourcePath, "utf8")).toBe(JSON.stringify(corrected));
+    });
 
     it("publishes a valid integrity-bound canonical artifact that resolves and reads back", async () => {
         const sourcePath = path.join(workDir, "fixture.blueprint.json");

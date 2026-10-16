@@ -1,4 +1,4 @@
-import {binarySections, sha256, createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
+import {evaluatorValidationCases, binarySections, sha256, createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {sharedSlotCustomSection, stableSlotMathJson, lowerSharedSlotMath, readSharedSlotMathResult} from "../../../src/wasm/math/SharedSlotMath.js";
 import {SeededPokieWasmHost, instantiatePokieWasm} from "../../../src/wasm/PokieWasmRuntime.js";
 import {readCanonicalPokieWasmModule} from "../../../src/wasm/PokieWasmCanonicalModule.js";
@@ -7,6 +7,24 @@ const fixture = createCanonicalWasmFixture({id: "fixture", reelStrips: [["A", "B
 const {bytes, manifest} = fixture;
 
 describe("Pokie WASM runtime API", () => {
+    it.each(evaluatorValidationCases)("rejects integrity-consistent $kind before draws and permits corrected loading on the same host", async ({fixture, repaired, code}) => {
+        const nextRandom = jest.fn(() => 0.5);
+        const host = {nextRandom};
+        expect(WebAssembly.validate(fixture.bytes)).toBe(true);
+        expect(sha256(fixture.bytes)).toBe(fixture.manifest.artifact!.sha256);
+        expect(() => readCanonicalPokieWasmModule(fixture.bytes)).toThrow(code);
+        await expect(instantiatePokieWasm(fixture.bytes, fixture.manifest, host)).rejects.toThrow(code);
+        expect(nextRandom).not.toHaveBeenCalled();
+        const runtime = await instantiatePokieWasm(repaired.bytes, repaired.manifest, host);
+        try {
+            const session = runtime.createSession("repaired");
+            for (const sequence of [1, 2]) expect(await session.play()).toMatchObject({sequence, payout: 2, credits: 1000 + sequence});
+            expect(nextRandom).toHaveBeenCalledTimes(6);
+        } finally {
+            runtime.dispose();
+        }
+    });
+
     it("accepts independent stop arrays above 32 total bits at the direct loader", async () => {
         const exact = createCanonicalWasmFixture({stripLengths: [1025, 1025, 1025]});
         expect(readCanonicalPokieWasmModule(exact.bytes).model.reelStrips.map(strip => strip.length)).toEqual([1025, 1025, 1025]);

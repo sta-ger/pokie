@@ -1,3 +1,5 @@
+import {evaluatorValidationCases} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
+import {loadPokieWasmFileRuntime} from "../../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
 import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
@@ -32,6 +34,36 @@ describe("StudioArtifactBuildService", () => {
 
     afterEach(() => {
         fs.rmSync(workDir, {recursive: true, force: true});
+    });
+
+    it.each(evaluatorValidationCases)("agrees on $kind preview/build rejection, preserves files and publishes corrected retries", async ({blueprint, corrected, code}) => {
+        const source = path.join(workDir, "validation.blueprint.json");
+        const destination = path.join(workDir, "validation.wasm");
+        fs.writeFileSync(source, JSON.stringify(blueprint));
+        const input = fs.readFileSync(source);
+        expect(await service.preview(source, "wasm", destination)).toMatchObject({status: "unsupported", message: expect.stringContaining(code)});
+        expect(await service.build(source, "wasm", destination)).toMatchObject({status: "error", message: expect.stringContaining(code)});
+        expect(fs.readdirSync(workDir)).toEqual([path.basename(source)]);
+        expect(fs.readFileSync(source)).toEqual(input);
+        fs.writeFileSync(destination, "competing module");
+        fs.writeFileSync(`${destination}.pokie-wasm.json`, "competing sidecar");
+        expect(await service.build(source, "wasm", destination)).toMatchObject({status: "conflict"});
+        expect(fs.readFileSync(destination, "utf8")).toBe("competing module");
+        expect(fs.readFileSync(`${destination}.pokie-wasm.json`, "utf8")).toBe("competing sidecar");
+        fs.rmSync(destination);
+        fs.rmSync(`${destination}.pokie-wasm.json`);
+        fs.writeFileSync(source, JSON.stringify(corrected));
+        expect(await service.preview(source, "wasm", destination)).toMatchObject({status: "ok"});
+        expect(fs.existsSync(destination)).toBe(false);
+        expect(await service.build(source, "wasm", destination)).toMatchObject({status: "ok"});
+        const runtime = await loadPokieWasmFileRuntime(destination, {nextRandom: () => 0.5});
+        try {
+            const session = runtime.createSession("studio-retry");
+            for (const sequence of [1, 2]) expect(await session.play()).toMatchObject({sequence, payout: 2, screen: [["A"], ["A"], ["A"]]});
+        } finally {
+            runtime.dispose();
+        }
+        expect(fs.readFileSync(source, "utf8")).toBe(JSON.stringify(corrected));
     });
 
     async function terminal(packageService: StudioArtifactBuildService, source: string, id: string) {

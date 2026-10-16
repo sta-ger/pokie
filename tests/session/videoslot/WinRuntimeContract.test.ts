@@ -1,3 +1,4 @@
+import {evaluatorValidationCases} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {
     WinEvaluationPipeline, WinEvaluationContext, ValueWinComponent,
     AggregateSimulationRunner,
@@ -143,6 +144,38 @@ describe("shared calculator configuration authority", () => {
             expect(calculator.getWinEvaluationPipeline().getOptions().validateOnEvaluate).toBe(validateOnEvaluate);
             if (validateOnEvaluate) expect(() => calculator.calculateWin(0.05, screen)).toThrow(kind === "clusters" ? /requires at least 4 cells/ : /no payable/);
             else expect(() => calculator.calculateWin(0.05, screen)).not.toThrow();
+        }
+    });
+
+    test.each(evaluatorValidationCases)("keeps $kind Node diagnostics and opt-out, then evaluates corrected config on the same calculator", ({blueprint, code}) => {
+        for (const validateOnEvaluate of [true, false]) {
+            const model = resolveSharedSlotMathModel(blueprint);
+            const config = new VideoSlotConfig();
+            config.setAvailableBets([...model.availableBets]);
+            config.setReelsNumber(model.reels);
+            config.setReelsSymbolsNumber(model.rows);
+            config.setAvailableSymbols([...model.symbols]);
+            config.setWildSymbols([...(model.wilds ?? [])]);
+            config.setScatterSymbols([...(model.scatters ?? [])]);
+            config.setSymbolsSequences(model.reelStrips.map(strip => new SymbolsSequence().fromArray([...strip])));
+            const paytable = new Paytable<string>(config.getAvailableBets());
+            for (const [symbol, entries] of Object.entries(model.paytable)) for (const [count, amount] of Object.entries(entries)) paytable.setPayoutForSymbol(symbol, Number(count), amount);
+            config.setPaytable(paytable);
+            const calculator = new VideoSlotWinCalculator(config, undefined, undefined, undefined, undefined, undefined, {sharedMathModel: model, validateOnEvaluate});
+            const screen = new SymbolsCombination().fromMatrix(blueprint.reelStrips!.map(strip => [strip[0]]));
+            expect(calculator.validateWinEvaluation(1, screen).getIssues()).toEqual(expect.arrayContaining([expect.objectContaining({code, severity: "error"})]));
+            if (validateOnEvaluate) expect(() => calculator.calculateWin(1, screen)).toThrow(blueprint.winModel!.type === "ways" ? /no payable/ : /requires at least/);
+            else expect(() => calculator.calculateWin(1, screen)).not.toThrow();
+            const ways = blueprint.winModel!.type === "ways";
+            if (ways) config.setAvailableSymbols(["A", "W", "S"]);
+            else config.setReelsSymbolsNumber(2);
+            config.getPaytable().setPayoutForSymbol("A", ways ? 3 : 6, 2);
+            const corrected = new SymbolsCombination().fromMatrix(Array.from({length: 3}, () => ways ? ["A"] : ["A", "A"]));
+            expect(calculator.validateWinEvaluation(1, corrected).getIssues().filter(issue => issue.severity === "error")).toEqual([]);
+            for (let round = 0; round < 2; round++) {
+                calculator.calculateWin(1, corrected);
+                expect(calculator.getWinAmount()).toBe(2);
+            }
         }
     });
 

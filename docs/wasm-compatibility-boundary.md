@@ -37,6 +37,12 @@ or a second payout evaluator. A directly supplied shared model must initially ma
 Custom/nondefault line patterns, restricted wild substitutions, modifiers and other unsupported strategies
 are rejected on the shared path, including after mutation; they cannot claim supported restoration.
 Cluster/ways validation and `validateOnEvaluate` remain part of the public evaluation pipeline.
+Canonical publication and portable loading always enforce evaluator preconditions: the effective
+cluster minimum (default 5) must fit the grid, and ways require an inventory symbol that is neither
+wild nor scatter. Rejection includes the evaluator diagnostic code and a correction action, before
+host draws or session creation, even for an integrity-consistent artifact. Node retains its
+pipeline diagnostics and explicit `validateOnEvaluate=false` option; structural lowering alone
+does not assert that an evaluator is playable.
 
 ABI **2.0.0** imports `pokie.next_random: () -> f64`, a raw finite draw in `[0,1)`.
 `play(stake: f64) -> f64` validates an available stake before drawing, consumes exactly one draw per reel,

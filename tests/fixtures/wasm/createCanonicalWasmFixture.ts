@@ -2,6 +2,7 @@ import crypto from "crypto";
 import type {PokieWasmComponentManifest} from "../../../src/project/wasm/PokieWasmComponentManifest.js";
 import {compileSharedSlotArtifact, stableSlotMathJson} from "../../../src/wasm/math/SharedSlotMath.js";
 import {resolveSharedSlotMathModel} from "../../../src/generated/resolveSharedSlotMathModel.js";
+import type {GameBlueprint} from "../../../src/generated/GameBlueprint.js";
 
 type CanonicalWasmFixtureOptions = {
     readonly id?: string;
@@ -12,6 +13,7 @@ type CanonicalWasmFixtureOptions = {
     readonly wilds?: readonly string[];
     readonly scatters?: readonly string[];
     readonly paytable?: Readonly<Record<string, Readonly<Record<string, number>>>>;
+    readonly winModel?: GameBlueprint["winModel"];
     readonly serialization?: {readonly session: string; readonly play: string; readonly state: string};
     readonly host?: {readonly rng: string; readonly services: readonly string[]};
 };
@@ -27,7 +29,7 @@ export function createCanonicalWasmFixture(options: CanonicalWasmFixtureOptions 
     const paytable = options.paytable ?? {A: {[String(reelStrips.length)]: 2}, B: {[String(reelStrips.length)]: 1}};
     const symbols = [...new Set([...reelStrips.flat(), ...(options.wilds ?? []), ...(options.scatters ?? []), ...Object.keys(paytable)])];
     const model = resolveSharedSlotMathModel({manifest: {...component, name: component.id}, reels: reelStrips.length, rows: 1, symbols,
-        reelStrips: reelStrips.map(strip => [...strip]), paytable, wilds: options.wilds ? [...options.wilds] : undefined, scatters: options.scatters ? [...options.scatters] : undefined});
+        reelStrips: reelStrips.map(strip => [...strip]), paytable, winModel: options.winModel, wilds: options.wilds ? [...options.wilds] : undefined, scatters: options.scatters ? [...options.scatters] : undefined});
     const configurationHash = sha256(new TextEncoder().encode(stableSlotMathJson(model)));
     const descriptor = {schemaVersion: "1.0.0", component, serialization, host, capabilities,
         artifact: {format: "pokie.wasm.v1" as const, abiVersion: "2.0.0", adapter: "@fromstan/pokie/wasm" as const, configurationHash}};
@@ -40,6 +42,27 @@ export function createCanonicalWasmFixture(options: CanonicalWasmFixtureOptions 
     }
     return {bytes, manifest: {...descriptor, artifact: {...descriptor.artifact, sha256: sha256(bytes), bytes: bytes.byteLength}}};
 }
+
+/** Integrity-consistent negatives intentionally use structural lowering, bypassing publication. */
+export const evaluatorValidationCases = ["clusters", "explicit-clusters", "ways"].map(kind => {
+    const ways = kind === "ways";
+    const blueprint: GameBlueprint = {
+        manifest: {id: `invalid-${kind}`, name: "Evaluator validation", version: "1.0.0"},
+        reels: 3, rows: 1, symbols: ways ? ["W", "S"] : ["A"],
+        reelStrips: Array.from({length: 3}, () => ways ? ["W", "S"] : ["A"]),
+        paytable: ways ? {W: {3: 2}, S: {3: 2}} : {A: {3: 2}},
+        wilds: ways ? ["W"] : [], scatters: ways ? ["S"] : [],
+        winModel: ways ? {type: "ways"} : {type: "clusters", ...(kind === "explicit-clusters" ? {minimumClusterSize: 4} : {})},
+    };
+    const corrected: GameBlueprint = {...blueprint, symbols: ["A", ...(ways ? ["W", "S"] : [])],
+        reelStrips: [["A"], ["A"], ["A"]], paytable: {A: {3: 2}},
+        winModel: ways ? {type: "ways"} : {type: "clusters", minimumClusterSize: 3}};
+    const fixture = createCanonicalWasmFixture({id: blueprint.manifest.id, reelStrips: blueprint.reelStrips,
+        paytable: blueprint.paytable, wilds: blueprint.wilds, scatters: blueprint.scatters, winModel: blueprint.winModel});
+    const repaired = createCanonicalWasmFixture({id: corrected.manifest.id, reelStrips: corrected.reelStrips,
+        paytable: corrected.paytable, wilds: corrected.wilds, scatters: corrected.scatters, winModel: corrected.winModel});
+    return {kind, blueprint, corrected, fixture, repaired, code: ways ? "ways-no-payable-symbols" : "cluster-grid-too-small"};
+});
 
 export function sha256(bytes: Uint8Array): string {
     return `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`;

@@ -1,5 +1,5 @@
 import {resolveSharedSlotMathModel} from "../generated/resolveSharedSlotMathModel.js";
-import {compileSharedSlotArtifact, stableSlotMathJson} from "../wasm/math/SharedSlotMath.js";
+import {assertPlayableSharedSlotMathModel, compileSharedSlotArtifact, stableSlotMathJson} from "../wasm/math/SharedSlotMath.js";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -36,7 +36,9 @@ export function resolveCanonicalWasmGameModel(blueprint: GameBlueprint): PokieWa
     }
     const strips = materialized.reelStrips ?? [];
     if (strips.length !== blueprint.reels || strips.some((strip) => strip === undefined || strip.length === 0)) throw new Error(`Blueprint "${blueprint.manifest.id}" cannot materialize one executable strip per reel for the canonical WASM model.`);
-    return resolveSharedSlotMathModel(materialized);
+    const model = resolveSharedSlotMathModel(materialized);
+    assertPlayableSharedSlotMathModel(model);
+    return model;
 }
 
 function assertSupportedCanonicalWasmSemantics(blueprint: GameBlueprint): void {
