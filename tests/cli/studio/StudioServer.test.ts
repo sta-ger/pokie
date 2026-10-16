@@ -168,12 +168,16 @@ function blueprintBudgetReport() {
     });
 }
 
-function unsupportedDeclarationReport(kind: "package" | "outcomeLibrary" | "stakeAdapter") {
+function unsupportedDeclarationReport(kind: "tsPackage" | "outcomeLibrary" | "stakeAdapter") {
     return expect.objectContaining({
         schemaVersion: 1, scope: "declared-model", adapter: `${kind}-declaration-v1`,
         declarationAuthority: `${kind} reader: retained declaration only`,
         status: "unsupported", structuralValid: null, verdict: "inconclusive",
         executableFidelity: "unverified", supportedChecks: [], termination: "all-path",
+        issues: kind === "tsPackage" ? [
+            expect.objectContaining({code: "legacy-model-unavailable", severity: "warning"}),
+            expect.objectContaining({code: "max-win-policy-unknown", path: "/maxWinPolicy", severity: "warning"}),
+        ] : [expect.objectContaining({code: "outcome-only-definition-unavailable", severity: "warning"})],
         checks: ["reachability.source-support", "termination.source-support", "invariants.source-support", "source.executable-fidelity"].map(id => expect.objectContaining({
             id, path: "$", status: "unknown", severity: "warning",
         })),
@@ -3585,7 +3589,7 @@ describe("StudioServer", () => {
             const {status, body} = await get(`${baseUrl}/api/project/validate`);
 
             expect(status).toBe(200);
-            expect(body).toEqual({...report, advanced: unsupportedDeclarationReport("package")});
+            expect(body).toEqual({...report, advanced: unsupportedDeclarationReport("tsPackage")});
             expect(validate).toHaveBeenCalledWith(sampleSlotRoot);
         });
 
@@ -3604,7 +3608,7 @@ describe("StudioServer", () => {
             const {status, body} = await get(`${baseUrl}/api/project/validate`);
 
             expect(status).toBe(200);
-            expect(body).toEqual({...report, advanced: unsupportedDeclarationReport("package")});
+            expect(body).toEqual({...report, advanced: unsupportedDeclarationReport("tsPackage")});
             expect(validate).toHaveBeenCalledWith(sampleSlotRoot);
             expect(JSON.stringify(body)).not.toContain("\\n    at ");
         });
@@ -3624,8 +3628,25 @@ describe("StudioServer", () => {
             const {status, body} = await get(`${baseUrl}/api/project/validate`);
 
             expect(status).toBe(200);
-            expect(body).toEqual({...report, advanced: unsupportedDeclarationReport("package")});
+            expect(body).toEqual({...report, advanced: unsupportedDeclarationReport("tsPackage")});
             expect(validate).toHaveBeenCalledWith(sampleSlotRoot);
+        });
+
+        it("reports failed source acquisition before attempting contract validation", async () => {
+            const missingRoot = path.join(studioRoot, "missing-slot");
+            loadGame.mockResolvedValue(createFakeGame({id: "sample-slot", name: "Sample Slot", version: "0.1.0"}));
+            expect((await post(`${baseUrl}/api/home/projects/open`, {projectRoot: missingRoot})).status).toBe(200);
+
+            const {status, body} = await get(`${baseUrl}/api/project/validate`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual({
+                packageRoot: missingRoot, valid: false, game: null,
+                errors: [{code: "definition-read-failed", severity: "error", path: "", message: "Source declaration could not be read. Check the input and retry."}],
+                warnings: [], suggestions: [],
+                advanced: expect.objectContaining({status: "failed", structuralValid: false, verdict: "inconclusive", executableFidelity: "unverified", supportedChecks: []}),
+            });
+            expect(validate).not.toHaveBeenCalled();
         });
 
         it("keeps Studio responsive after a validation error", async () => {
@@ -3641,7 +3662,7 @@ describe("StudioServer", () => {
 
             const validation = await get(`${baseUrl}/api/project/validate`);
             expect(validation.status).toBe(200);
-            expect(validation.body).toMatchObject({valid: false, errors: [{code: "pokie-package-load-failed"}], advanced: unsupportedDeclarationReport("package")});
+            expect(validation.body).toMatchObject({valid: false, errors: [{code: "pokie-package-load-failed"}], advanced: unsupportedDeclarationReport("tsPackage")});
             expect(validate).toHaveBeenCalledWith(sampleSlotRoot);
             const health = await get(`${baseUrl}/api/health`);
 
