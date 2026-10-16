@@ -1,5 +1,5 @@
-import {SharedSlotMath, lowerSharedSlotMath, stableSlotMathJson} from "../../../wasm/math/SharedSlotMath.js";
-import {assertSharedSlotMathConfig, resolveConfiguredSharedSlotMath} from "./internal/resolveConfiguredSharedSlotMath.js";
+import {SharedSlotMath, stableSlotMathJson} from "../../../wasm/math/SharedSlotMath.js";
+import {assertConfiguredSharedSlotMathStructure, assertSharedSlotMathConfig, resolveConfiguredSharedSlotMath} from "./internal/resolveConfiguredSharedSlotMath.js";
 import {SharedSlotMathWinEvaluator} from "./SharedSlotMathWinEvaluator.js";
 import type {ScreenModifiers} from "../modifiers/ScreenModifiers.js";
 import {MultiplierResolver} from "../winevaluation/MultiplierResolver.js";
@@ -109,8 +109,7 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
     public isStatelessForSessionRestoration(): boolean {
         if (this.sharedMath) {
             try {
-                lowerSharedSlotMath(resolveConfiguredSharedSlotMath(this.config, this.sharedMath.model.winModel, this.config.getAvailableBets()[0]));
-                for (const bet of this.config.getAvailableBets()) resolveConfiguredSharedSlotMath(this.config, this.sharedMath.model.winModel, bet);
+                assertConfiguredSharedSlotMathStructure(this.config, this.sharedMath.model.winModel);
             } catch {
                 return false;
             }
@@ -236,7 +235,7 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
 
     public getWinEvaluationPipeline(): WinEvaluationPipeline<T> {
         if (this.sharedMath) {
-            resolveConfiguredSharedSlotMath(this.config, this.sharedMath.model.winModel, this.config.getAvailableBets()[0]);
+            assertConfiguredSharedSlotMathStructure(this.config, this.sharedMath.model.winModel);
             return new WinEvaluationPipeline<T>([new SharedSlotMathWinEvaluator<T>(this.sharedMath, context => {
                 if (context.getConfig() !== this.config) throw new Error("Shared math evaluation context does not match the calculator config.");
                 return this.getConfiguredSharedMath(context.getBet());
@@ -261,7 +260,10 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
         if (cached?.key === key) return cached.math;
         const math = new SharedSlotMath(model);
         // Keep only current bet entries; a mutable config must not accumulate old models.
-        for (const previous of this.configuredSharedMath.keys()) if (!this.config.getAvailableBets().includes(previous)) this.configuredSharedMath.delete(previous);
+        for (const previous of this.configuredSharedMath.keys()) if (!this.config.getAvailableBets().includes(previous)) {
+            this.configuredSharedMath.get(previous)!.math.dispose();
+            this.configuredSharedMath.delete(previous);
+        }
         cached?.math.dispose();
         this.configuredSharedMath.set(bet, {key, math});
         return math;

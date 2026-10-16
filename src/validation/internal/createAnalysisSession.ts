@@ -81,7 +81,7 @@ export function createAnalysisSession(model: GameBlueprint, strips: string[][], 
     const calculator = new VideoSlotWinCalculator(actualConfig, undefined, undefined,
         win?.type === "clusters" ? new ClusterWinCalculator(actualConfig, win.minimumClusterSize ?? 5) : undefined,
         undefined, win?.type === "ways" ? new WaysWinCalculator(actualConfig) : undefined,
-        win?.type === "ways" || win?.type === "clusters" ? {aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy(win.type === "ways" ? "ways" : "cluster")} : {});
+        win?.type === "ways" || win?.type === "clusters" ? {aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy(win.type === "ways" ? "ways" : "cluster"), ...(win.type === "clusters" ? {minimumClusterSize: win.minimumClusterSize ?? 5} : {})} : {});
     const bounded = Object.fromEntries(Object.entries(model.mechanics ?? {}).filter(([key]) => ["cascade", "respins", "collection", "weightedBonus"].includes(key)));
     let session: VideoSlotSessionHandling<string>;
     if (Object.keys(bounded).length) session = new BoundedVideoSlotSession(config, generator, bounded, calculator);

@@ -38,5 +38,10 @@ export function emitPublicRuntime(): {directory: string; legacyGame: typeof lega
     const nativeRequire = createRequire(path.join(directory, "consumer.cjs"));
     const {legacyComposedGame: legacyGame} = nativeRequire("./game.cjs") as {legacyComposedGame: typeof legacyComposedGame};
     const {legacyRoundGame: roundGame} = nativeRequire("./extension.cjs") as {legacyRoundGame: typeof legacyRoundGame};
-    return {directory, legacyGame, roundGame, dispose: () => fs.rmSync(directory, {recursive: true, force: true})};
+    return {directory, legacyGame, roundGame, dispose: () => {
+        // Native resolution deliberately bypasses Jest's module registry. Release
+        // only this emission's entries before removing its disposable files.
+        for (const id of Object.keys(nativeRequire.cache)) if (id.startsWith(`${directory}${path.sep}`)) Reflect.deleteProperty(nativeRequire.cache, id);
+        fs.rmSync(directory, {recursive: true, force: true});
+    }};
 }

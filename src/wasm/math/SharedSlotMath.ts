@@ -212,7 +212,8 @@ export type SharedSlotMathResult = {
 /** Output validation is independent of caller input; no modulo repair or packed shifts. */
 export function readSharedSlotMathResult(instance: WebAssembly.Instance, model: SharedSlotMathModel, payout: unknown, layout = lowerSharedSlotMath(model)): SharedSlotMathResult {
     const memory = instance.exports.memory;
-    if (!(memory instanceof WebAssembly.Memory) || memory.buffer.byteLength !== layout.pages * 65536 || typeof payout !== "number" || !Number.isFinite(payout) || payout < 0) throw new Error("Malformed shared WASM math memory/result.");
+    if (!(memory instanceof WebAssembly.Memory) || memory.buffer.byteLength !== layout.pages * 65536 || typeof payout !== "number" || payout < 0) throw new Error("Malformed shared WASM math memory/result.");
+    if (!Number.isFinite(payout)) throw new Error("Shared WASM math payout overflow or non-finite result.");
     const view = new DataView(memory.buffer);
     const get = (p: number): number => view.getUint32(p, true);
     if (!layout.data.every((byte, i) => i >= 72 && i < 88 || byte === view.getUint8(i))) throw new Error("Shared WASM math modified its immutable model/layout.");

@@ -506,7 +506,12 @@ describe("V2C-14 authored bounded mechanics", () => {
         fs.writeFileSync(source, JSON.stringify(blueprint));
         const original = fs.readFileSync(source, "utf8");
         try {
-            expect(await new ValidateCommand().run([source])).toBe(0);
+            const validationCode = await new ValidateCommand().run([source, "--format", "json"]);
+            const validation = JSON.parse(jest.mocked(console.log).mock.calls.slice(-1)[0][0] as string);
+            expect(validation).toMatchObject({valid: true, errors: [], advanced: {structuralValid: true}});
+            expect(validationCode).toBe(id.includes("cascade") ? 1 : 2);
+            expect(validation.advanced.verdict).toBe(id.includes("cascade") ? "violated" : "inconclusive");
+            if (id.includes("cascade")) expect(validation.advanced.checks).toContainEqual(expect.objectContaining({id: "invariants.runtime-transition", status: "violation", message: expect.stringContaining("Maximum cascade steps exceeded")}));
             const destination = path.join(directory, "cli-package");
             fs.mkdirSync(destination);
             expect(await new BuildCommand("1.3.0").run([source, "--target", "tsPackage", "--out", destination])).toBe(0);

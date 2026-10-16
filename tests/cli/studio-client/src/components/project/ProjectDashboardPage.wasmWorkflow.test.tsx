@@ -75,7 +75,7 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
         expect(screen.getByText("1.2.3")).toBeInTheDocument();
         expect(screen.getAllByText("1.0.0").length).toBeGreaterThan(1);
         expect(screen.getByText(/same pokie.math.v2 WebAssembly evaluator/)).toHaveTextContent("no total-bit cap");
-        expect(screen.getByText(/same pokie.math.v2 WebAssembly evaluator/)).toHaveTextContent("Rejects mechanics.freeGames, mechanics.holdAndWin, mechanics.jackpot");
+        expect(screen.getByText(/same pokie.math.v2 WebAssembly evaluator/)).toHaveTextContent("all 36 launch catalogue rows");
         expect(screen.getByText("Artifact ABI")).toBeInTheDocument();
         expect(screen.getByText("@fromstan/pokie/wasm")).toBeInTheDocument();
         expect(screen.getByText("4096")).toBeInTheDocument();

@@ -59,7 +59,12 @@ async function build(fixture) {
     return {...fixture, folder, packageDir, artifact, bytes: fs.readFileSync(artifact), manifest: JSON.parse(fs.readFileSync(`${artifact}.pokie-wasm.json`, 'utf8'))};
 }
 function compilePackages(fixtures) {
-    const rootNames = fixtures.map(fixture => path.join(fixture.packageDir, 'src/index.ts'));
+    const types = path.join(directory, 'public-types.ts');
+    fs.writeFileSync(types, `import type {CanonicalWasmGameModel as Root} from '@fromstan/pokie';
+import type {CanonicalWasmGameModel as Browser} from '@fromstan/pokie/browser';
+import type {CanonicalWasmGameModel as Portable} from '@fromstan/pokie/wasm';
+export const compatible = (model: Root): [Browser, Portable] => [model, model];`);
+    const rootNames = [types,...fixtures.map(fixture => path.join(fixture.packageDir, 'src/index.ts'))];
     const outDir = path.join(directory, 'typed');
     const program = ts.createProgram(rootNames, {module: ts.ModuleKind.Node16, moduleResolution: ts.ModuleResolutionKind.Node16, target: ts.ScriptTarget.ES2022, strict: true, skipLibCheck: true, noEmitOnError: true, rootDir: directory, outDir});
     const diagnostics = ts.getPreEmitDiagnostics(program);

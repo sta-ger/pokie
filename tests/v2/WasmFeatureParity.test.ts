@@ -145,6 +145,31 @@ it("fails consistent feature preflight before publication and retains unsupporte
     }
 });
 
+it("rejects an overflowing selected denomination without losing the feature checkpoint or RNG", async () => {
+    const {replayModesBlueprint} = await import("./fixtures/ExistingMechanicsGame.js");
+    const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
+    const blueprint = replayModesBlueprint();
+    blueprint.paytable.A = {3: Number.MAX_VALUE / 2};
+    const fixture = createCanonicalWasmFixture({blueprint});
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("overflow"));
+    try {
+        const session = runtime.createSession("overflow");
+        const initial = session.serialize();
+        await expect(session.play({bet: 7.5, delivery: "stepwise", roundId: "bad"})).rejects.toThrow(/overflow/);
+        expect(session.serialize()).toEqual(initial);
+        const good = await session.play({bet: 1e-7, delivery: "stepwise", roundId: "good"});
+        expect(good.win).toBe(Number.MAX_VALUE / 2 * 1e-7);
+        const saved = JSON.parse(JSON.stringify(session.serialize()));
+        const restored = runtime.restoreSession(saved);
+        await expect(restored.play({bet: 7.5, delivery: "stepwise", roundId: "bad-next"})).rejects.toThrow(/overflow/);
+        expect(restored.serialize()).toEqual(saved);
+        const command = {bet: 1e-7, delivery: "stepwise", roundId: "next"};
+        expect(await restored.play(command)).toEqual(await session.play(command));
+    } finally {
+        runtime.dispose();
+    }
+});
+
 it("runs a public CLI composite purchase with reel-major JSON observations and a restorable checkpoint", async () => {
     const {RunWasmCommand} = await import("../../cli/commands/RunWasmCommand.js");
     const {replayModesBlueprint} = await import("./fixtures/ExistingMechanicsGame.js");
