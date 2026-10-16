@@ -84,7 +84,7 @@ describe("ValidateCommand", () => {
         await expect(command.run(["./game", "--out"])).rejects.toThrow(/--out requires a file path/);
     });
 
-    it("prints a human-readable summary and returns exit code 0 for a valid package", async () => {
+    it("prints a contract summary and reports unavailable advanced source separately", async () => {
         const validator = createStubValidator(validReport);
         const command = new ValidateCommand(validator);
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
@@ -92,11 +92,11 @@ describe("ValidateCommand", () => {
         const exitCode = await command.run(["./sample-slot"]);
 
         expect(validator.calledWith).toBe("./sample-slot");
-        expect(exitCode).toBe(0);
+        expect(exitCode).toBe(3);
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain('Validating "Sample Slot"');
         expect(printed).toContain("valid           yes");
-        expect(printed).toContain("No issues found.");
+        expect(printed).toContain("No structural issues found.");
 
         logSpy.mockRestore();
     });
@@ -105,7 +105,7 @@ describe("ValidateCommand", () => {
         const command = new ValidateCommand(createStubValidator({...validReport, information: [{code: "package-integrity-verified", severity: "info", message: "The package provenance is verified."}]}));
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        expect(await command.run(["./sample-slot"])).toBe(0);
+        expect(await command.run(["./sample-slot"])).toBe(3);
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("Information (1):");
         expect(printed).toContain("package-integrity-verified");
@@ -140,7 +140,7 @@ describe("ValidateCommand", () => {
 
         const exitCode = await command.run(["./sample-slot", "--format", "json"]);
 
-        expect(exitCode).toBe(0);
+        expect(exitCode).toBe(3);
         expect(logSpy).toHaveBeenCalledTimes(1);
         const report = JSON.parse(logSpy.mock.calls[0][0]) as PokieGamePackageValidationReport & {schemaVersion: number; project: unknown};
         expect(report).toMatchObject({...validReport, schemaVersion: 1, project: {path: "./sample-slot", kind: "package"}});
@@ -209,7 +209,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
 
         const exitCode = await new ValidateCommand().run([blueprintPath, "--format", "json"]);
 
-        expect(exitCode).toBe(0);
+        expect(exitCode).toBe(2);
         const json = (console.log as jest.Mock).mock.calls.map((call) => call[0]).find((line) => line.startsWith("{"));
         expect(json).toBeDefined();
         const report = JSON.parse(json!) as {
@@ -324,12 +324,12 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         await writeOutcomeLibraryBundle(bundleDir);
         const command = new ValidateCommand();
 
-        expect(await command.run([bundleDir, "--format", "json"])).toBe(0);
+        expect(await command.run([bundleDir, "--format", "json"])).toBe(2);
         const shallow = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {schemaVersion: number; deep: boolean; valid: boolean; project: {kind: string}; errors: unknown[]; issues: unknown[]};
         expect(shallow).toMatchObject({schemaVersion: 1, deep: false, valid: true, project: {kind: "outcome-library"}, errors: [], issues: []});
 
         (console.log as jest.Mock).mockClear();
-        expect(await command.run([bundleDir, "--deep", "--format", "json"])).toBe(0);
+        expect(await command.run([bundleDir, "--deep", "--format", "json"])).toBe(2);
         const deep = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {schemaVersion: number; deep: boolean; valid: boolean; project: {kind: string}; errors: unknown[]; issues: unknown[]};
         expect(deep).toMatchObject({schemaVersion: 1, deep: true, valid: true, project: {kind: "outcome-library"}, errors: [], issues: []});
     });
@@ -340,7 +340,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         corruptOutcomeContentsWithoutChangingByteLayout(bundleDir);
         const command = new ValidateCommand();
 
-        expect(await command.run([bundleDir, "--format", "json"])).toBe(0);
+        expect(await command.run([bundleDir, "--format", "json"])).toBe(2);
         const shallow = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {schemaVersion: number; deep: boolean; valid: boolean; errors: unknown[]};
         expect(shallow).toMatchObject({schemaVersion: 1, deep: false, valid: true, errors: []});
 
@@ -503,7 +503,7 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         };
         const command = new ValidateCommand(undefined, undefined, undefined, resolveProject, undefined, stakeEngineImporter);
 
-        expect(await command.run([stakeDir, "--format", "json"])).toBe(0);
+        expect(await command.run([stakeDir, "--format", "json"])).toBe(2);
 
         const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {project: {kind: string; path: string}; valid: boolean};
         expect(report).toEqual(expect.objectContaining({project: {kind: "stake-engine", path: stakeDir}, valid: true}));
@@ -619,12 +619,12 @@ describe("ValidateCommand (integration, real PokieGamePackageValidator + fixture
         (console.log as jest.Mock).mockRestore();
     });
 
-    it("passes a valid scaffolded-style package and returns exit code 0", async () => {
+    it("keeps a valid custom package structurally valid with inconclusive exit code 2", async () => {
         const command = new ValidateCommand(new PokieGamePackageValidator());
 
         const exitCode = await command.run([path.join(gamepackageFixturesRoot, "valid-game")]);
 
-        expect(exitCode).toBe(0);
+        expect(exitCode).toBe(2);
     });
 
     it("fails with a clear error for a missing/invalid pokie.entry and returns exit code 1", async () => {
@@ -650,5 +650,49 @@ describe("ValidateCommand (integration, real PokieGamePackageValidator + fixture
         const report = JSON.parse(printed) as PokieGamePackageValidationReport;
         expect(report.valid).toBe(false);
         expect(report.errors[0].code).toBe("pokie-game-missing-contract-methods");
+    });
+});
+
+describe("advanced validation report publication", () => {
+    it("protects occupied outputs, source aliases and directories and removes staging on write failure", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "validation-publication-"));
+        const model = {...createStarterGameBlueprint(), reels: 1, rows: 1, reelStrips: [["A"]], paytable: {}};
+        const input = path.join(root, "source.blueprint.json");
+        const occupied = path.join(root, "occupied.json");
+        fs.writeFileSync(input, JSON.stringify(model));
+        fs.writeFileSync(occupied, "keep");
+        const alias = path.join(root, "alias.json");
+        fs.symlinkSync(input, alias);
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            for (const output of [input, occupied, alias]) await expect(new ValidateCommand().run([input, "--out", output])).rejects.toThrow(/already exists/);
+            await expect(new ValidateCommand().run([root, "--out", path.join(root, "nested.json")])).rejects.toThrow(/outside the source directory/);
+            const link = jest.spyOn(fs, "linkSync").mockImplementation(() => {
+                throw new Error("publication failed");
+            });
+            try {
+                await expect(new ValidateCommand().run([input, "--out", path.join(root, "new.json")])).rejects.toThrow(/Could not write/);
+            } finally {
+                link.mockRestore();
+            }
+            expect(fs.readdirSync(root).sort()).toEqual(["alias.json", "occupied.json", "source.blueprint.json"]);
+            expect(fs.readFileSync(occupied, "utf8")).toBe("keep");
+            expect(fs.readFileSync(input, "utf8")).toBe(JSON.stringify(model));
+        } finally {
+            log.mockRestore();
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+    it("keeps a lease cleanup failure observable", async () => {
+        const release = jest.fn(() => Promise.reject(new Error("cleanup failure")));
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            const command = new ValidateCommand(createStubValidator(validReport), undefined, () => Promise.resolve({runtimePath: "unavailable", release}));
+            expect(await command.run(["unavailable", "--format", "json"])).toBe(1);
+            expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({valid: false, errors: [expect.objectContaining({code: "validate-lease-release-failed"})]});
+            expect(release).toHaveBeenCalledTimes(1);
+        } finally {
+            log.mockRestore();
+        }
     });
 });

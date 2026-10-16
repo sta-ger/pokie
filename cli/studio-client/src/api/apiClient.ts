@@ -626,8 +626,8 @@ export async function inspectProject(fetchImpl: FetchLike): Promise<GamePackageI
     return (await response.json()) as GamePackageInspectionReport;
 }
 
-export async function validateProject(fetchImpl: FetchLike): Promise<PokieGamePackageValidationReport> {
-    const response = await fetchImpl("/api/project/validate");
+export async function validateProject(fetchImpl: FetchLike, signal?: AbortSignal): Promise<PokieGamePackageValidationReport> {
+    const response = signal ? await fetchImpl("/api/project/validate", {signal}) : await fetchImpl("/api/project/validate");
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to validate the project"));
     }

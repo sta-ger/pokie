@@ -298,6 +298,13 @@ export function BlueprintEditorPage({
     // is recognized as stale even in the (currently impossible, since validateGuard already serializes
     // validate calls) case that guarantee ever changes.
     const validateRequestIdRef = useRef(0);
+    const validationAbortRef = useRef<AbortController | undefined>(undefined);
+    const validationMountedRef = useRef(true);
+    useEffect(() => () => {
+        validationMountedRef.current = false;
+        validateRequestIdRef.current++;
+        validationAbortRef.current?.abort();
+    }, []);
     // Bind a completed check to the exact model snapshot. A rendered ok control may lose
     // readiness when focus commits a field blur, before its activation finishes.
     const completedValidationRef = useRef<{
@@ -310,6 +317,7 @@ export function BlueprintEditorPage({
     // valid result observable by that click.
     const mutateBlueprint: BlueprintMutate = (mutate) => {
         completedValidationRef.current = undefined;
+        validationAbortRef.current?.abort();
         // A focus transfer to Create can commit a field's blur edit. Invalidate the rendered
         // result in that same batch, before the revision effect schedules the next check.
         setValidationView((previous) => {
@@ -337,14 +345,17 @@ export function BlueprintEditorPage({
         const currentState = editor.getCurrentState();
         const requestedRevision = currentState.revision;
         const requestId = ++validateRequestIdRef.current;
+        const controller = new AbortController();
+        validationAbortRef.current?.abort();
+        validationAbortRef.current = controller;
         // A new check of even the same revision supersedes the cached result.
         // An activation must never save using a superseded completed result.
         completedValidationRef.current = undefined;
         const isStale = (): boolean => requestId !== validateRequestIdRef.current || requestedRevision !== editor.getCurrentState().revision;
         setValidationView({status: "loading"});
-        validateBlueprint(fetchImpl, currentState.blueprint)
+        validateBlueprint(fetchImpl, currentState.blueprint, controller.signal)
             .then((result) => {
-                if (isStale()) {
+                if (isStale() || controller.signal.aborted) {
                     return;
                 }
                 const validation = describeValidation(result);
@@ -352,7 +363,7 @@ export function BlueprintEditorPage({
                 setValidationView(validation);
             })
             .catch((error: unknown) => {
-                if (isStale()) {
+                if (isStale() || controller.signal.aborted) {
                     return;
                 }
                 const validation: BlueprintValidationView = {status: "error", message: errorMessage(error)};
@@ -366,6 +377,7 @@ export function BlueprintEditorPage({
                 // re-run now so the edited revision does not remain permanently unvalidated. When the
                 // debounce is still pending it remains the single owner of that follow-up instead.
                 if (
+                    validationMountedRef.current &&
                     guided &&
                     isVisible &&
                     requestedRevision !== editor.getCurrentState().revision &&
@@ -632,6 +644,7 @@ export function BlueprintEditorPage({
         setSourceDrift(undefined);
         completedValidationRef.current = undefined;
         validateRequestIdRef.current += 1;
+        validationAbortRef.current?.abort();
         setOverwriteConfirmedForPath(undefined);
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
@@ -1406,7 +1419,12 @@ export function BlueprintEditorPage({
                 />
             )}
 
-            <BlueprintValidationPanel view={validationView} onValidate={handleValidate} automatic={guided} />
+            <BlueprintValidationPanel view={validationView} onValidate={handleValidate} automatic={guided} onCancel={() => {
+                validateRequestIdRef.current++;
+                validationAbortRef.current?.abort();
+                completedValidationRef.current = undefined;
+                setValidationView({status: "error", message: "Validation cancelled. Retry to check the current design."});
+            }} />
             <GameModelPreviewPanel key={`gamemodel-${editor.formGeneration}`} blueprint={blueprint} sourcePath={blueprintPath} revision={editor.state.revision} />
             <Collapse expanded={!guided || advancedOpened}>
                 {guided && <Text size="sm" c="dimmed" mb="sm">

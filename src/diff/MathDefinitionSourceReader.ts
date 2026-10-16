@@ -1,3 +1,4 @@
+import {validateMathDefinitionSnapshot} from "../validation/validateMathDefinitionSnapshot.js";
 import {definitionDiagnostics} from "./internal/definitionDiagnostics.js";
 import {definitionFieldAuthority, definitionFieldUnsupported} from "./internal/definitionFieldAuthority.js";
 import fs from "fs";
@@ -31,7 +32,7 @@ import {MathDefinitionDiffer} from "./MathDefinitionDiffer.js";
 
 export type MathDefinitionInput = string | PokieProject | PokieGame | MathDefinitionBlueprintInput;
 export interface MathDefinitionSourceReading {
-    read(input: MathDefinitionInput, options?: {signal?: AbortSignal}): Promise<MathDefinitionSnapshot>;
+    read(input: MathDefinitionInput, options?: {signal?: AbortSignal; analysisOnly?: boolean}): Promise<MathDefinitionSnapshot>;
 }
 function diagnostic(
     code: string,
@@ -95,7 +96,14 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
         this.extraction = extraction;
     }
 
-    public async read(input: MathDefinitionInput, options?: {signal?: AbortSignal}): Promise<MathDefinitionSnapshot> {
+    /** Reading a definition is an explicit analysis boundary; extraction/build callers never enter here. */
+    public async read(input: MathDefinitionInput, options?: {signal?: AbortSignal; analysisOnly?: boolean}): Promise<MathDefinitionSnapshot> {
+        const snapshot = await this.readDefinition(input, options);
+        if (!options?.analysisOnly) snapshot.advanced = await validateMathDefinitionSnapshot(snapshot, options);
+        return snapshot;
+    }
+
+    private async readDefinition(input: MathDefinitionInput, options?: {signal?: AbortSignal; analysisOnly?: boolean}): Promise<MathDefinitionSnapshot> {
         const snapshot: MathDefinitionSnapshot = {
             identity: {kind: "unknown"},
             support: "unsupported",
@@ -270,7 +278,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
 
     private async blueprint(
         input: MathDefinitionBlueprintInput,
-        options?: {signal?: AbortSignal},
+        options?: {signal?: AbortSignal; analysisOnly?: boolean},
     ): Promise<MathDefinitionSnapshot> {
         const snapshot: MathDefinitionSnapshot = {
             identity: {kind: "blueprint", ...(input.location ? {location: input.location} : {})},
@@ -294,6 +302,11 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
             if (snapshot.diagnostics.some((issue) => issue.severity === "error")) {
                 snapshot.support = "invalid";
                 snapshot.effective = snapshot.authored;
+                return snapshot;
+            }
+            if (options?.analysisOnly) {
+                const policy = input.maxWinPolicy ?? {type: "none" as const, scope: "logical-round" as const, authority: "Blueprint runtime has no payout cap"};
+                snapshot.effective = {...authored, maxWinPolicy: policy} as unknown as DefinitionJson;
                 return snapshot;
             }
             const resolution = resolveReelStripGeneration(authored);
@@ -372,7 +385,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
         const policy = validateMathDefinitionMaxWinPolicy(
             declared ??
                 extraction.maxWinPolicy ??
-                (extraction.source.kind === "generated"
+                (identity.kind === "blueprint"
                     ? {type: "none", scope: "logical-round", authority: "POKIE generated runtime: no payout cap"}
                     : {type: "unknown", authority: "Custom executable cap policy is undeclared"}),
         );
@@ -423,5 +436,8 @@ export async function compareMathDefinitions(
             },
     );
     if (options?.signal?.aborted) for (const snapshot of snapshots) if (snapshot.support !== "failed") snapshot.support = "cancelled";
+    await Promise.all(snapshots.map(async snapshot => {
+        (snapshot as MathDefinitionSnapshot).advanced ??= await validateMathDefinitionSnapshot(snapshot, options);
+    }));
     return new MathDefinitionDiffer().diff(snapshots[0], snapshots[1]);
 }

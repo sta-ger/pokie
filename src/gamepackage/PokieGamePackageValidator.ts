@@ -32,12 +32,25 @@ export class PokieGamePackageValidator implements PokieGamePackageValidating {
             ]);
         }
 
+        let report: PokieGamePackageValidationReport | undefined;
+        let failed = false;
+        let failure: unknown;
         try {
             const issues = this.contractRule.validate(candidate);
-            return this.buildReport(packageRoot, this.extractGame(candidate), issues);
-        } finally {
-            await release?.();
+            report = this.buildReport(packageRoot, this.extractGame(candidate), issues);
+        } catch (error) {
+            failed = true;
+            failure = error;
         }
+        try {
+            await release?.();
+        } catch {
+            if (!report) throw new Error("Package validation snapshot cleanup failed.");
+            report.valid = false;
+            report.errors.push({code: "pokie-package-release-failed", severity: "error", path: "$", message: "Package validation snapshot cleanup failed; no successful validation is claimed."});
+        }
+        if (failed) throw failure;
+        return report!;
     }
 
     private extractGame(candidate: unknown): PokieGamePackageValidationReport["game"] {

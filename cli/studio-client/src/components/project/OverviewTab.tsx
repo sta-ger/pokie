@@ -1,3 +1,4 @@
+import {AdvancedValidationPanel} from "../common/AdvancedValidationPanel";
 import {Button, Table, Text} from "@mantine/core";
 import type {StudioProjectOrigin} from "../../api/types";
 import {
@@ -50,6 +51,7 @@ function ValidationDiagnostics({view, onRevalidate}: {view: ProjectValidationVie
                     <IssueList title="Errors" issues={view.summary.errors} />
                     <IssueList title="Warnings" issues={view.summary.warnings} />
                     <IssueList title="Integrity information" issues={view.summary.information} />
+                    <AdvancedValidationPanel report={view.summary.advanced} />
                 </div>
             )}
             <QuickActions>

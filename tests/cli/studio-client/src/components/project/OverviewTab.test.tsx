@@ -120,3 +120,16 @@ describe("OverviewTab", () => {
         expect(screen.getByText("Valid — no issues found.").closest('[data-pokie-lifecycle-result="project-validation"]')).toHaveAttribute("data-pokie-lifecycle-terminal", "completed");
     });
 });
+
+it("renders advanced unknown checks, source paths and witnesses alongside structural warnings and errors", async () => {
+    const {advancedUnknownReport} = await import("../../../../../v2/fixtures/AdvancedModelReport");
+    renderWithMantine(<OverviewTab header={header()} onRevalidate={() => undefined} onOpenPlay={() => undefined} validation={{status: "success", summary: {
+        valid: false, errors: [{code: "bad", message: "Invalid target", path: "mechanics.weightedBonus.outcomes.0.targetId", details: {actual: "absent"}}], warnings: [{code: "warning", message: "Preserved warning", path: "paytable.A"}], information: [], suggestions: [], hasIssues: true, blocking: true, advanced: advancedUnknownReport(),
+    }}} />);
+    expect(screen.getByText(/Invalid target/)).toBeInTheDocument();
+    expect(screen.getByText(/Preserved warning/)).toBeInTheDocument();
+    expect(screen.getByText(/Path: mechanics.weightedBonus.outcomes.0.targetId/)).toBeInTheDocument();
+    expect(screen.getByText(/budget-exhausted — inconclusive/)).toBeInTheDocument();
+    expect(screen.getByText(/termination.unresolved: unknown/)).toBeInTheDocument();
+    expect(screen.getByText(/respin-2/)).toBeInTheDocument();
+});

@@ -1,3 +1,4 @@
+import type {AdvancedModelValidationReport} from "../../../../src/validation/AdvancedModelValidation.js";
 export type {MathDefinitionDiff} from "../../../../src/diff/MathDefinitionDiff.js";
 import type {WeightedBonusStatistics} from "../../../../src/session/videoslot/authored/WeightedBonus.js";
 import type {ReelSequenceSelection, ReelSequenceStatistics, WeightedSequenceVariant} from "../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js";
@@ -200,6 +201,7 @@ export type ValidationIssue = {
 };
 
 export type PokieGamePackageValidationReport = {
+    advanced?: AdvancedModelValidationReport;
     packageRoot: string;
     valid: boolean;
     game: {id: string; name: string; version: string} | null;
@@ -444,8 +446,8 @@ export type StudioBuildResult =
 // POST /api/home/blueprints/validate's own DTO — see cli/studio/blueprint/StudioBlueprintValidationView.ts's
 // own doc comment. Never the result of anything being read/written on disk.
 export type StudioBlueprintValidationView =
-    | {status: "ok"; warnings: ValidationIssue[]}
-    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]};
+    | {status: "ok"; warnings: ValidationIssue[]; advanced?: AdvancedModelValidationReport}
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]; advanced?: AdvancedModelValidationReport};
 
 export type ReelStripConstraintViolation = {
     constraintId: string;

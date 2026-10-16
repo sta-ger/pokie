@@ -447,3 +447,12 @@ source read at execution and the supplied draft revision; they do not monitor
 external file edits. Disconnect, project transition and shutdown cancel source
 reads and await owned extraction cleanup before their work completes. Source
 loading stays in the server; the browser imports only the machine contract type.
+
+Blueprint and Project Overview validation now preserve the shared advanced
+report, including unknown outcomes, paths, witnesses, assumptions and budgets.
+Structural errors and warnings render together. Advanced validation is read-only
+and distinct from structural save/build gates. Source/revision/project changes,
+request cancellation and unmount invalidate old responses; retry checks the
+current source. Server shutdown aborts and drains owned analysis requests.
+Definition comparison also retains advanced validation changes and limitations.
+See [V2C-19](v2-completion/V2C-19.md).

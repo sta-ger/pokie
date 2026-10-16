@@ -115,7 +115,13 @@ describe("canonical math definition diff", () => {
             right = clone(left);
         setAt(right, keys, value);
         const diff = await api.compareMathDefinitions(source(left), source(right));
-        expect(diff.status).toBe("different");
+        const failingReachability = ["free games", "mode cost"].includes(_family);
+        const boundedOrModifier = ["modifier", "cascade", "respin grant", "respin reset", "collection", "hold continuation", "hold payout units"].includes(_family);
+        if (failingReachability) expect(diff.status).toBe("invalid");
+        else if (boundedOrModifier) {
+            expect(["partial", "invalid"]).toContain(diff.status);
+            expect([diff.left.advanced?.verdict, diff.right.advanced?.verdict]).not.toEqual(["proved-within-assumptions", "proved-within-assumptions"]);
+        } else expect(diff.status).toBe("different");
         const change = diff.changes.find((entry) => entry.path === "/" + keys.join("/"));
         expect(change).toMatchObject({
             classification: "mathematical",
@@ -186,7 +192,7 @@ describe("canonical math definition diff", () => {
         const right = {...left, winModel: {type: "lines" as const}};
         const diff = await api.compareMathDefinitions(source(left), source(right));
         expect(diff.status).toBe("different");
-        expect(diff.changes).toEqual([
+        expect(diff.changes.filter(change => change.classification !== "validation")).toEqual([
             expect.objectContaining({
                 path: "/winModel/type",
                 classification: "representation",
@@ -359,7 +365,7 @@ describe("canonical math definition diff", () => {
             model,
             maxWinPolicy: {type: "none", scope: "logical-round", authority: "declared custom runtime"},
         });
-        expect((await api.compareMathDefinitions(game, game)).status).toBe("identical");
+        expect((await api.compareMathDefinitions(game, game)).status).toBe("partial");
         game.getModelDescriptor = () => ({
             descriptorVersion: 1,
             blueprintSchemaVersion: 1,
@@ -621,7 +627,7 @@ describe("reviewed field semantics", () => {
         if (field === "ignored paylines") right.paylines = [[1, 1, 1]];
         if (field === "default factor") right.mechanics!.modifiers!.wilds[0].factor = 1;
         const diff = await api.compareMathDefinitions(source(left), source(right));
-        expect(diff.status).toBe("different");
+        expect(diff.status).toBe(field === "default factor" ? "partial" : "different");
         expect(diff.changes.length).toBeGreaterThan(0);
         expect(diff.changes.every((change) => !change.mathematical)).toBe(true);
         if (field === "default factor") {

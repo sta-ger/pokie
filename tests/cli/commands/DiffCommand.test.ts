@@ -913,14 +913,14 @@ describe("DiffCommand canonical definitions through dispatch", () => {
         if (field === "targetRtp") model.betModes[0].targetRtp = 0.96;
         if (field === "paylines") model.paylines = [[1, 1, 1]];
         fs.writeFileSync(b, JSON.stringify(model));
-        expect(await run([a, b, "--ci", "--format", "json"])).toBe(0);
+        expect(await run([a, b, "--ci", "--format", "json"])).toBe(field === "factor" ? 2 : 0);
         const diff = JSON.parse(log.mock.calls[0][0]);
-        expect(diff.status).toBe("different");
+        expect(diff.status).toBe(field === "factor" ? "partial" : "different");
         expect(diff.changes.every((change: {mathematical: boolean}) => !change.mathematical)).toBe(true);
         if (field === "factor") {
             model.mechanics.modifiers.wilds[0].factor = 2;
             fs.writeFileSync(b, JSON.stringify(model));
-            expect(await run([a, b, "--ci"])).toBe(1);
+            expect(await run([a, b, "--ci"])).toBe(2);
         }
     });
 

@@ -1,3 +1,4 @@
+import {AdvancedValidationPanel} from "../common/AdvancedValidationPanel";
 import {Button, Text} from "@mantine/core";
 import type {BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
 import {describePathActionError} from "../../domain/pathActionError";
@@ -21,10 +22,12 @@ export function BlueprintValidationPanel({
     view,
     onValidate,
     automatic = false,
+    onCancel,
 }: {
     view: BlueprintValidationView;
     onValidate: () => void;
     automatic?: boolean;
+    onCancel?: () => void;
 }) {
     return (
         <PageSection legend="Validation">
@@ -39,7 +42,11 @@ export function BlueprintValidationPanel({
                     </Button>
                 </QuickActions>
             )}
-            {view.status === "loading" && <LoadingState label="Validating…" />}
+            {view.status === "loading" && <>
+                <LoadingState label="Validating…" />
+                {onCancel && <Button variant="default" onClick={onCancel}>Cancel validation</Button>}
+            </>}
+            {automatic && view.status === "error" && <Button onClick={onValidate}>Retry validation</Button>}
             {view.status === "stale" && (
                 <Text c="dimmed" mb="sm">
                     Source changed — checking again…
@@ -47,8 +54,12 @@ export function BlueprintValidationPanel({
             )}
             {view.status === "error" && <ErrorState message={describePathActionError("This validation request", view.message)} />}
             {statusText(view) && <Text mb="sm">{statusText(view)}</Text>}
+            {(view.status === "ok" || view.status === "invalid") && <Text size="sm" c="dimmed">Structural validation. Advanced analysis is reported separately below.</Text>}
             {view.status === "invalid" && <IssueList title="Errors" issues={view.errors} />}
-            {view.status === "ok" && <IssueList title="Warnings" issues={view.warnings} />}
+            {(view.status === "ok" || view.status === "invalid") && <>
+                <IssueList title="Warnings" issues={view.warnings} />
+                <AdvancedValidationPanel report={view.advanced} />
+            </>}
         </PageSection>
     );
 }

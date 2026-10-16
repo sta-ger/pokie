@@ -176,3 +176,12 @@ CLI and Studio use one differ and authoritative readers. This introduces no
 payout caps or new mechanics. Custom executable fidelity and undeclared custom
 max-win policy remain explicit limitations; PAR/WASM/outcome-only boundaries are
 listed in [math-modeling.md](../math-modeling.md#canonical-definition-comparison-v2c-18).
+
+## Advanced declared-model analysis (V2C-19)
+
+The [V2C-19 boundary](V2C-19.md) records each source/mechanic adapter, initial-state
+and numeric assumptions, supported checks, all-path termination semantics and
+unsupported persistent state. Blueprint runtime handlers are reused; custom
+executable fidelity is never inferred from descriptor completeness. Exhausted
+analysis budgets remain unknown, distinct from runtime respin caps and cascade
+limit rejection. CLI/Studio/definition diff retain the same report and witnesses.

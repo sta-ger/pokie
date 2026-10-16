@@ -1,3 +1,7 @@
+import {validateMathDefinitionSnapshot} from "../../src/validation/validateMathDefinitionSnapshot.js";
+import {AdvancedModelSourceValidator} from "../../src/validation/AdvancedModelSourceValidator.js";
+import type {AdvancedModelValidationReport} from "../../src/validation/AdvancedModelValidation.js";
+import {writeNewValidationReportAtomically} from "./internal/writeNewValidationReportAtomically.js";
 import {Command} from "commander";
 import {
     OutcomeLibraryBundleValidating,
@@ -22,6 +26,8 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
+class ValidationLeaseCleanupError extends Error {}
+
 type ValidateFormat = "summary" | "json";
 type ValidateProjectKind = "blueprint" | "outcome-library" | "stake-engine" | "package" | "wasm" | "unknown";
 type ValidateDiagnostic = Required<Pick<ValidationIssue, "code" | "severity" | "message" | "path" | "suggestion">> &
@@ -29,6 +35,7 @@ type ValidateDiagnostic = Required<Pick<ValidationIssue, "code" | "severity" | "
 
 type ValidateReport = {
     schemaVersion: 1;
+    advanced?: AdvancedModelValidationReport;
     project: {path: string; kind: ValidateProjectKind};
     deep: boolean;
     valid: boolean;
@@ -64,7 +71,7 @@ export class ValidateCommand implements CliCommandHandling {
 
     constructor(
         validator: PokieGamePackageValidating = new PokieGamePackageValidator(),
-        writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
+        writeFile: (file: string, contents: string) => void = writeNewValidationReportAtomically,
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
         outcomeLibraryValidator: OutcomeLibraryBundleValidating = new OutcomeLibraryBundleValidator(),
@@ -111,28 +118,57 @@ export class ValidateCommand implements CliCommandHandling {
         const packageRoot = resultRef.packageRoot!;
         const format = resultRef.format!;
         const out = resultRef.out;
+        if (out && fs.existsSync(packageRoot) && fs.statSync(packageRoot).isDirectory()) {
+            let ancestor = path.resolve(path.dirname(out));
+            const suffix: string[] = [path.basename(out)];
+            while (!fs.existsSync(ancestor) && path.dirname(ancestor) !== ancestor) {
+                suffix.unshift(path.basename(ancestor));
+                ancestor = path.dirname(ancestor);
+            }
+            const output = path.join(fs.realpathSync(ancestor), ...suffix);
+            const relative = path.relative(fs.realpathSync(packageRoot), output);
+            if (!relative.startsWith(".." + path.sep) && relative !== ".." && !path.isAbsolute(relative)) throw new Error("Validation output must be outside the source directory.");
+        }
+        if (out && fs.existsSync(out)) throw new Error(`Cannot write validation to "${out}" because that destination already exists. Choose a new unused --out path.`);
+        const controller = new AbortController();
+        const cancel = (): void => controller.abort();
+        process.on("SIGINT", cancel);
         let report: ValidateReport;
+        const stdoutWrite = process.stdout.write;
+        if (format === "json") process.stdout.write = process.stderr.write.bind(process.stderr);
+        const restoreStdout = (): void => {
+            process.stdout.write = stdoutWrite;
+        };
         try {
-            report = await this.validateProject(packageRoot, resultRef.deep ?? false);
-        } catch {
+            report = await this.validateProject(packageRoot, resultRef.deep ?? false, controller.signal);
+            report.advanced ??= ["outcome-library", "stake-engine"].includes(report.project.kind)
+                ? await validateMathDefinitionSnapshot({identity: {kind: report.project.kind}, support: "unsupported", diagnostics: [], fields: [], limits: ["Outcome artifacts cannot establish their generating transition model."]}, {signal: controller.signal})
+                : await new AdvancedModelSourceValidator().validate(packageRoot, {signal: controller.signal});
+        } catch (error) {
             report = this.failedReport(
                 packageRoot,
                 "unknown",
-                "validate-project-unavailable",
-                `POKIE could not inspect "${packageRoot}" as a supported project.`,
+                error instanceof ValidationLeaseCleanupError ? "validate-lease-release-failed" : "validate-project-unavailable",
+                error instanceof ValidationLeaseCleanupError ? "Runtime validation lease cleanup failed; validation did not complete successfully." : `POKIE could not inspect "${packageRoot}" as a supported project.`,
                 "Check that the path exists and points to a POKIE package, Blueprint JSON file, or outcome-library bundle, then run validate again.",
             );
+        } finally {
+            restoreStdout();
+            process.off("SIGINT", cancel);
         }
         this.writeAndPrint(report, format, out);
-        return report.valid ? 0 : 1;
+        if (!report.valid || report.advanced?.verdict === "violated") return 1;
+        if (report.advanced?.status === "cancelled") return 130;
+        if (report.advanced?.status === "failed") return 3;
+        return report.advanced?.verdict === "inconclusive" ? 2 : 0;
     }
 
-    private async validateProject(packageRoot: string, deep: boolean): Promise<ValidateReport> {
+    private async validateProject(packageRoot: string, deep: boolean, signal?: AbortSignal): Promise<ValidateReport> {
         if (this.isBlueprintFile(packageRoot)) {
             return this.validateBlueprint(packageRoot);
         }
         if (this.isPackageDirectory(packageRoot)) {
-            return this.validatePackage(packageRoot);
+            return this.validatePackage(packageRoot, signal);
         }
         if (this.isDirectory(packageRoot)) {
             let project;
@@ -173,7 +209,7 @@ export class ValidateCommand implements CliCommandHandling {
         if (project?.type === "blueprint") {
             return this.validateBlueprint(packageRoot);
         }
-        return this.validatePackage(packageRoot);
+        return this.validatePackage(packageRoot, signal);
     }
 
     private isWasmPath(projectPath: string): boolean {
@@ -256,24 +292,28 @@ export class ValidateCommand implements CliCommandHandling {
         return this.reportFromIssues(blueprintPath, "blueprint", new GameBlueprintValidator().validate(source));
     }
 
-    private async validatePackage(packageRoot: string): Promise<ValidateReport> {
+    private async validatePackage(packageRoot: string, signal?: AbortSignal): Promise<ValidateReport> {
         let resolution: {runtimePath: string; release(): Promise<void>} | undefined;
+        let result: ValidateReport;
         try {
-            resolution = await this.resolveRuntimePackageRoot(packageRoot);
+            resolution = await this.resolveRuntimePackageRoot(packageRoot, signal ? {signal} : undefined);
             const report = await this.validator.validate(resolution.runtimePath);
-            return this.packageReport(packageRoot, report);
+            result = this.packageReport(packageRoot, report);
+            result.advanced = await new AdvancedModelSourceValidator().validate(resolution.runtimePath, {signal});
         } catch {
-            return this.failedReport(
-                packageRoot,
-                "package",
-                "pokie-package-unavailable",
+            result = this.failedReport(
+                packageRoot, "package", "pokie-package-unavailable",
                 `The POKIE package at "${packageRoot}" could not be loaded for validation.`,
                 'Check package.json and its "pokie.entry" setting, install its dependencies, then run validate again.',
                 "package.json",
             );
-        } finally {
-            await resolution?.release();
         }
+        try {
+            await resolution?.release();
+        } catch {
+            throw new ValidationLeaseCleanupError("Runtime validation lease cleanup failed.");
+        }
+        return result;
     }
 
     private packageReport(packageRoot: string, report: PokieGamePackageValidationReport): ValidateReport {
@@ -521,7 +561,16 @@ export class ValidateCommand implements CliCommandHandling {
         } else {
             console.log(`Validating ${report.project.kind}${report.deep ? " (deep check)" : ""} at "${report.project.path}"`);
         }
-        console.log(`  valid           ${report.valid ? "yes" : "no"}`);
+        console.log(`  valid           ${report.valid ? "yes" : "no"} (structural/contract validation)`);
+        if (report.advanced) {
+            console.log(`  advanced        ${report.advanced.status}: ${report.advanced.verdict} (${report.advanced.scope})`);
+            for (const check of report.advanced.checks) {
+                console.log(`  ${check.status} ${check.id} [${check.path}]: ${check.message}`);
+                if (check.evidence !== undefined) console.log(`    Witness: ${JSON.stringify(check.evidence)}`);
+            }
+            for (const assumption of report.advanced.assumptions) console.log(`  Assumption: ${assumption}`);
+            for (const limitation of report.advanced.limitations) console.log(`  Limit: ${limitation}`);
+        }
         if (report.wasm !== undefined) {
             console.log(`  wasm ABI        ${report.wasm.abiVersion} (${report.wasm.compatibility})`);
             console.log(`  integrity       ${report.wasm.integrity}`);
@@ -558,7 +607,7 @@ export class ValidateCommand implements CliCommandHandling {
         }
 
         if (report.valid && report.warnings.length === 0 && report.information.length === 0) {
-            console.log("\nNo issues found.");
+            console.log("\nNo structural issues found.");
         }
     }
 

@@ -1,3 +1,4 @@
+import {AdvancedModelSourceValidator} from "../../src/validation/AdvancedModelSourceValidator.js";
 import {compareMathDefinitions} from "../../src/diff/MathDefinitionSourceReader.js";
 import type {MathDefinitionDiff} from "../../src/diff/MathDefinitionDiff.js";
 import {
@@ -312,6 +313,7 @@ export class StudioServer implements StudioServerHandling {
     // Every dashboard/Home/Play preparation belongs to one generation.  A new project intent aborts
     // the previous resolver work; the generation check is still required because a loader can finish
     // just as its signal is observed.
+    private readonly advancedValidations = new Map<AbortController, Promise<unknown>>();
     private readonly definitionPreviews = new Map<AbortController, Promise<MathDefinitionDiff>>();
     private readonly dashboardLoads = new Set<Promise<void>>();
     private runtimePreparation: {generation: number; controller: AbortController} | undefined;
@@ -517,6 +519,8 @@ export class StudioServer implements StudioServerHandling {
         });
 
         this.cancelRuntimePreparation();
+        for (const controller of this.advancedValidations.keys()) controller.abort();
+        for (const controller of this.definitionPreviews.keys()) controller.abort();
         // Certification, deployment, Play, Home materialization, and Design
         // operations execute directly through StudioJobService rather than a
         // compatibility service with its own cancelAll(). Request their
@@ -528,6 +532,7 @@ export class StudioServer implements StudioServerHandling {
         // Listener closure alone cannot attest to worker or staging cleanup.
         const drains = await Promise.allSettled([
             listenerClosed,
+            Promise.allSettled([...this.advancedValidations.values()]),
             Promise.allSettled([...this.definitionPreviews.values()]),
             this.simulationService.cancelAll(),
             this.replayService.cancelAll(),
@@ -1140,7 +1145,7 @@ export class StudioServer implements StudioServerHandling {
         }
 
         if (method === "GET" && url.pathname === "/api/project/validate") {
-            await this.handleValidateProject(res);
+            await this.handleValidateProject(req, res);
             return;
         }
 
@@ -1822,7 +1827,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        this.sendJson(res, 200, this.blueprintService.validate(validated.blueprint));
+        await this.withAdvancedValidation(req, res, signal => this.blueprintService.validateAdvanced(validated.blueprint, signal));
     }
 
     private async handleBlueprintLoad(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -2275,41 +2280,64 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, this.gamePackageInspector.inspect(projectRoot));
     }
 
-    private async handleValidateProject(res: ServerResponse): Promise<void> {
-        if (this.currentContext.mode !== "project") {
+    private async withAdvancedValidation(req: IncomingMessage, res: ServerResponse, run: (signal: AbortSignal) => Promise<unknown>): Promise<void> {
+        const controller = new AbortController();
+        const context = this.currentContext;
+        const abort = (): void => controller.abort();
+        req.once("aborted", abort);
+        res.once("close", abort);
+        const operation = run(controller.signal);
+        this.advancedValidations.set(controller, operation);
+        try {
+            const result = await operation;
+            if (this.currentContext !== context) throw new StudioHttpRequestError(409, "Project changed. Validate the current source again.");
+            if (!res.destroyed) this.sendJson(res, 200, result);
+        } finally {
+            this.advancedValidations.delete(controller);
+            req.off("aborted", abort);
+            res.off("close", abort);
+        }
+    }
+
+    private async handleValidateProject(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const root = this.currentContext.mode === "project" ? this.currentContext.projectRoot : undefined;
+        if (!root) {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        const projectRoot = this.currentContext.projectRoot;
+        await this.withAdvancedValidation(req, res, async signal => {
+            const [structural, advanced] = await Promise.all([
+                this.validateProjectContract(root),
+                new AdvancedModelSourceValidator().validate(root, {signal}),
+            ]);
+            return {...structural, advanced};
+        });
+    }
+
+    private async validateProjectContract(projectRoot: string): Promise<PokieGamePackageValidationReport> {
         const resolved = await this.resolveOpenedProject(projectRoot);
         if (resolved === undefined && this.isWasmPath(projectRoot)) {
-            this.sendJson(res, 409, {error: await this.describeUnresolvedWasm(projectRoot)});
-            return;
+            throw new StudioHttpRequestError(409, await this.describeUnresolvedWasm(projectRoot));
         }
         if (this.isOpenedBlueprintProject(projectRoot, resolved)) {
-            this.sendJson(res, 200, this.validateBlueprintProject(projectRoot));
-            return;
+            return this.validateBlueprintProject(projectRoot);
         }
         if (resolved !== undefined && (resolved.type === "outcomeLibrary" || resolved.type === "stakeAdapter")) {
-            this.sendJson(res, 200, await this.validateOutcomeSourceProject(resolved));
-            return;
+            return this.validateOutcomeSourceProject(resolved);
         }
         if (resolved?.type === "parWorkbook") {
-            this.sendJson(res, 200, await this.validateParWorkbookProject(resolved));
-            return;
+            return this.validateParWorkbookProject(resolved);
         }
         if (resolved?.type === "wasm") {
             const manifestRead = await readWasmComponentManifest(resolved);
             if (!manifestRead.supported || manifestRead.manifest.artifact === undefined) {
-                this.sendJson(res, 409, {error: manifestRead.supported
-                    ? describeUnsupportedProjectOperation(resolved, VALIDATE_OPERATION)?.message
-                    : manifestRead.diagnostic.message});
-                return;
+                throw new StudioHttpRequestError(409, manifestRead.supported
+                    ? (describeUnsupportedProjectOperation(resolved, VALIDATE_OPERATION)?.message ?? "WASM validation unavailable")
+                    : manifestRead.diagnostic.message ?? "WASM validation unavailable");
             }
-            this.sendJson(res, 200, this.validatedCanonicalWasmProject(resolved, manifestRead.manifest));
-            return;
+            return this.validatedCanonicalWasmProject(resolved, manifestRead.manifest);
         }
-        this.sendJson(res, 200, await this.gamePackageValidator.validate(projectRoot));
+        return this.gamePackageValidator.validate(projectRoot);
     }
 
     private async inspectWasmProject(project: PokieProject): Promise<GamePackageInspectionReport> {

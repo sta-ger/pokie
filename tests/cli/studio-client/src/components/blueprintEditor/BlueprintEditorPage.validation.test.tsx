@@ -238,3 +238,15 @@ describe("Guided Design Game: automatic validation freshness", () => {
         expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument();
     }, 60000);
 });
+
+it("renders warnings and advanced unknown paths even when structural validation is invalid", async () => {
+    const {advancedUnknownReport} = await import("../../../../../v2/fixtures/AdvancedModelReport");
+    const fetchImpl: FetchLike = (url, init) => url.split("?")[0] === "/api/home/blueprints/validate" && init?.method === "POST"
+        ? respond({status: "invalid", errors: [{code: "invalid", severity: "error", message: "Invalid declaration"}], warnings: [{code: "retained", severity: "warning", message: "Retained alongside errors", path: "paytable.A"}], advanced: advancedUnknownReport()})
+        : respond([]);
+    renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+    expect((await screen.findAllByText(/Retained alongside errors/)).length).toBeGreaterThan(0);
+    expect(screen.getByText(/budget-exhausted — inconclusive/)).toBeInTheDocument();
+    expect(screen.getByText(/Path: mechanics.respins/)).toBeInTheDocument();
+    expect(screen.getByText(/respin-2/)).toBeInTheDocument();
+});

@@ -72,3 +72,11 @@ describe("PokieGamePackageValidator", () => {
         expect(report.game).toEqual({id: "nested-default-game", name: "Nested Default Game", version: "1.0.0"});
     });
 });
+
+it("never hides owned snapshot cleanup failure behind a valid package contract", async () => {
+    const release = jest.fn(() => Promise.reject(new Error("release failed")));
+    const validator = new PokieGamePackageValidator(() => Promise.resolve({candidate: {}, entryPath: "/fixture/index.js", release}), {validate: () => []});
+    const report = await validator.validate("/fixture");
+    expect(report).toMatchObject({valid: false, errors: [expect.objectContaining({code: "pokie-package-release-failed"})]});
+    expect(release).toHaveBeenCalledTimes(1);
+});

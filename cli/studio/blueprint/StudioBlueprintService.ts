@@ -1,3 +1,4 @@
+import {AdvancedModelSourceValidator} from "../../../src/validation/AdvancedModelSourceValidator.js";
 import {
     ArtifactConversionPlanner,
     ArtifactBuilderRegistry,
@@ -266,6 +267,12 @@ export class StudioBlueprintService {
         const generator = resolvedPreset === "variant" ? this.variantRandomBlueprintGenerator : this.randomBlueprintGenerator;
         const {blueprint, seed: usedSeed, provenance} = generator.generate({seed, overrides: name ? {name} : undefined});
         return {status: "ok", blueprint, seed: usedSeed, preset: resolvedPreset, provenance};
+    }
+
+    public async validateAdvanced(blueprint: unknown, signal?: AbortSignal): Promise<StudioBlueprintValidationView> {
+        const structural = this.validate(blueprint);
+        const advanced = await new AdvancedModelSourceValidator().validate({kind: "blueprint", model: blueprint}, {signal});
+        return {...structural, advanced};
     }
 
     public validate(blueprint: unknown): StudioBlueprintValidationView {
