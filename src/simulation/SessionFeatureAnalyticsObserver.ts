@@ -116,7 +116,7 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
         Object.assign(this.state, restored);
     }
     /** The caller supplies entry identity from accepted mathematics, never from analytics copies. */
-    public validateAcceptedTransition(before: SessionFeatureAnalyticsBeforePlay, entry: boolean, logicalContinuation: boolean): void {
+    public validateAcceptedTransition(before: SessionFeatureAnalyticsBeforePlay, entry: boolean, logicalContinuation: boolean, accepted?: {entryPosition: number; roundingScale?: number; wins: Partial<Record<AnalyticsFeature, number>>}): void {
         const invalid = () => new Error("Analytics prior state contradicts its accepted mathematical entry or continuation.");
         if (!before || Object.keys(before).sort().join(",") !== "bonus,free,freeNum,freeSum,hold,holdRemaining,locks,pending,respins" ||
             ![before.pending, before.free, before.hold, before.respins, before.bonus].every(value => typeof value === "boolean") ||
@@ -135,6 +135,14 @@ export class SessionFeatureAnalyticsObserver implements SessionFeatureAnalyticsO
         for (const [feature, wasActive] of Object.entries(active)) {
             const retained = this.state.active[feature as AnalyticsFeature];
             if (retained && !wasActive || logicalContinuation && wasActive && (!retained || !retained.known)) throw invalid();
+        }
+        if (accepted) {
+            for (const [feature, retained] of Object.entries(this.state.active)) {
+                const expected = accepted.wins[feature as AnalyticsFeature];
+                const tolerance = 32 * Number.EPSILON * Math.max(1, accepted.roundingScale ?? 0, Math.abs(expected ?? 0), retained!.win);
+                if (!Number.isFinite(expected) || expected! < -tolerance || Math.abs(retained!.win - expected!) > tolerance ||
+                    retained!.entryPosition !== accepted.entryPosition || !retained!.known) throw new Error("Analytics accumulated feature win or provenance contradicts accepted accounting.");
+            }
         }
         const after = this.beforePlay();
         const grant = (this.session as Partial<WonFreeGamesNumberDetermining>).getWonFreeGamesNumber?.() ?? 0;

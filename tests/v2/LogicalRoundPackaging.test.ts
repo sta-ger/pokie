@@ -1011,3 +1011,33 @@ describe("logical-round delivery and mathematical boundaries", () => {
         }
     });
 });
+
+it("validates ordinary rectangular win coordinates through artifact construction, diagnostics and retained logical progress", () => {
+    const screen = [["A"], ["A"], ["A"]];
+    const result = new api.WinEvaluationResult({lineWins: [new api.LineWinComponent(new api.WinningLine(0.1, [0, 0, 0], [1, 1, 1], "0", [0, 1, 2], [], "A"), [[0, 0], [1, 0], [2, 0]])]});
+    const artifact = api.buildRoundArtifact({roundId: "coordinates", stake: 0.05, provenance: {game: {id: "coordinate-owner", name: "Coordinates", version: "1"}, pokieVersion: "1.3.0"}, steps: [{screen, winEvaluationResult: result}]});
+    const validator = new api.RoundArtifactValidator();
+    const projector = new api.PublicRoundArtifactProjector();
+    expect(projector.project(artifact).wins).toEqual(artifact.wins);
+    expect(validator.validate(artifact)).toEqual([]);
+    const command = {kind: "spin" as const, bet: 0.05, roundId: "coordinates", delivery: "stepwise" as const};
+    const logical = {id: "coordinates", entry: command, bet: 0.05, cursor: 1, mathematicalStatus: "completed" as const, deliveryCursor: 1, stageCursor: 1, status: "completed" as const,
+        totalStake: 0.05, totalWin: 0.1, totalPayout: 0.1, subrounds: [{id: "coordinates:0", index: 0, command, stake: 0.05, win: 0.1, payout: 0.1, credits: 100.05, screen, artifacts: artifact.steps}]};
+    expect(api.validateLogicalRound(logical)).toBeUndefined();
+    for (const position of [[999, 999], [-999, 999], ["0", 0], [0, 0.5], [0]]) {
+        const corrupt = JSON.parse(JSON.stringify(artifact)) as typeof artifact;
+        (corrupt.steps[0].wins[0] as {winningPositions: unknown}).winningPositions = [position];
+        (corrupt.wins[0] as {winningPositions: unknown}).winningPositions = [position];
+        const diagnostics = validator.validate(corrupt);
+        expect(diagnostics).toContainEqual(expect.objectContaining({code: "round-artifact-coordinates-invalid"}));
+        expect(() => projector.project(corrupt)).toThrow(/position|index|domain/i);
+        expect(() => api.projectPublicRoundStep(corrupt.steps[0])).toThrow(/position|index|domain/i);
+        expect(diagnostics.every(issue => issue.severity === "error")).toBe(true);
+        expect(api.validateLogicalRound({...logical, subrounds: [{...logical.subrounds[0], artifacts: corrupt.steps}]})).toBeDefined();
+        expect(() => api.buildRoundStepArtifact(0, {screen, winEvaluationResult: api.restoreWinEvaluation({components: [{type: "line", id: "0", symbolId: "A", amount: 0.1, positions: [position] as number[][], multipliers: [], metadata: artifact.wins[0].metadata}], metadata: {}})})).toThrow(/position|index|domain/i);
+        expect(projector.project(artifact).wins).toEqual(artifact.wins);
+        expect(validator.validate(artifact)).toEqual([]);
+        expect(api.validateLogicalRound(logical)).toBeUndefined();
+        expect(api.buildRoundStepArtifact(0, {screen, winEvaluationResult: result})).toEqual(artifact.steps[0]);
+    }
+});

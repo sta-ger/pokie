@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import {weightedBonusBlueprint} from "../../v2/fixtures/WeightedBonusGame.js";
 import {AUTHORED_MECHANIC_CATALOG} from "../../../src/generated/AuthoredMechanicCatalog.js";
 import {existingMechanicsBlueprint} from "../../v2/fixtures/ExistingMechanicsGame.js";
 import type {GameBlueprint} from "../../../src/generated/GameBlueprint.js";
@@ -55,6 +56,35 @@ export const checkpointProjectionMutations: readonly (readonly [string, unknown?
 
 export function mutateCheckpointProjection<T>(saved: T, [path, value]: readonly [string, unknown?]): T {
     const corrupt = JSON.parse(JSON.stringify(saved));
+    if (path.startsWith("acceptedWin.")) {
+        const kind = path.slice("acceptedWin.".length);
+        const visit = (item: unknown): void => {
+            if (!item || typeof item !== "object") return;
+            const record = item as Record<string, unknown>;
+            for (const [key, child] of Object.entries(record)) {
+                if (kind === "symbol" && (key === "symbolId" || key === "symbol")) record[key] = value;
+                else if (kind === "positions" && key === "winningPositions") record[key] = value;
+                else if (kind === "id" && (key === "id" || key === "lineId") && child === "0") record[key] = value;
+                else if (kind === "multiplier" && key === "multiplierBreakdown") record[key] = value;
+                else visit(child);
+            }
+        };
+        visit(corrupt.feature.plainMath?.artifact);
+        visit(corrupt.feature.logicalRound);
+        visit(corrupt.feature.lastRound);
+        const network = corrupt.feature.lastRound.network;
+        if (kind === "id") {
+            network.winningLines.foreign = network.winningLines["0"];
+            Reflect.deleteProperty(network.winningLines, "0");
+        }
+        return corrupt as T;
+    }
+    if (path === "analyticsAccounting.inflated") {
+        for (const state of [corrupt.feature.analyticsCheckpoint.state, corrupt.feature.analytics]) {
+            for (const active of Object.values(state.active) as {win: number}[]) active.win += 999;
+        }
+        return corrupt as T;
+    }
     if (path.startsWith("analyticsTransition.")) {
         const feature = corrupt.feature;
         if (path === "analyticsTransition.carriedPaidEntry") {
@@ -68,12 +98,14 @@ export function mutateCheckpointProjection<T>(saved: T, [path, value]: readonly 
             }
         } else {
             for (const state of [feature.analyticsCheckpoint.state, feature.analytics]) {
+                if (path === "analyticsTransition.plainCarried") state.logicalKnown = false;
                 for (const active of Object.values(state.active) as {known: boolean; entryPosition: number}[]) {
                     active.known = false;
                     active.entryPosition = 0;
                 }
             }
             if (feature.lastRound.analytics) {
+                if (path === "analyticsTransition.plainCarried") feature.lastRound.analytics.carriedSubround = true;
                 feature.lastRound.analytics.activeKnownFeatures = [];
                 feature.lastRound.analytics.activeCarriedFeatures = ["weightedBonus"];
                 feature.lastRound.analytics.activeEntryPositions = {};
@@ -135,7 +167,17 @@ function setPath(parent: Record<string, unknown>, parts: string[], value: unknow
 /** Actual model fixtures used by the reviewer; mutations preserve the receipt's other copies. */
 export function checkpointFeatureObservationFixtures(): {id: string; blueprint: GameBlueprint; mutations: readonly (readonly [string, unknown?])[]}[] {
     const model = (id: string) => existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
+    const wins: GameBlueprint = {manifest: {id: "retained-wins", name: "Wins", version: "1.0.0"}, reels: 3, rows: 1,
+        symbols: ["A", "B"], reelStrips: [["A"], ["A"], ["A"]], paytable: {A: {3: 2}}, availableBets: [0.05],
+        betModes: [{id: "base", runtimeType: "base", isDefault: true}]};
     return [
+        {id: "wins", blueprint: wins, mutations: [
+            ["acceptedWin.symbol", "INVALID"], ["acceptedWin.symbol", "B"], ["acceptedWin.positions", [[999, 999]]],
+            ["acceptedWin.id", "foreign"], ["acceptedWin.multiplier", [{source: "foreign", positions: [[999, 999]], values: [999], combinedMultiplier: 999}]],
+        ]},
+        {id: "generation", blueprint: {...wins, reelStrips: [["A", "B"], ["A", "B"], ["A", "B"]]}, mutations: [
+            ["lastRound.stops.0", 0], ["lastRound.draw", 0],
+        ]},
         {id: "sticky", blueprint: JSON.parse(fs.readFileSync("examples/blueprints/wild-sticky.blueprint.json", "utf8")), mutations: [
             ["acceptedFeature.screenModifiers.sticky.0.remaining", 999],
             ["acceptedFeature.screenModifiers.sticky.0.remaining", 0],
@@ -161,4 +203,22 @@ export function checkpointFeatureObservationFixtures(): {id: string; blueprint: 
             ["acceptedFeature.chargedBetMode.id", "foreign"], ["acceptedFeature.chargedBetMode.duplicate"], ["acceptedFeature.chargedBetMode"],
         ]},
     ];
+}
+
+/** Two accepted mathematical plays leave a live known entry in each progression owner. */
+export function checkpointAccountingFixtures(): {id: string; blueprint: GameBlueprint; mode?: string; completion: number}[] {
+    const model = (id: string) => existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === id)!);
+    const bonus = model("free-games");
+    const weighted = weightedBonusBlueprint();
+    weighted.mechanics!.weightedBonus!.outcomes.forEach(outcome => outcome.weight = outcome.id === "large" ? 1 : 0);
+    const free = model("modes");
+    free.betModes!.find(mode => mode.id === "buy")!.forcedFreeGames = 3;
+    free.reelStrips = [["A"], ["A"], ["A"]];
+    free.paytable = {A: {3: 2}};
+    const hold = model("hold-flat");
+    hold.reelStrips = [["C"], ["A"], ["A"]];
+    const respins = {...bonus, mechanics: {respins: {trigger: {symbolId: "C", minimumCount: 1}, grant: 2, retrigger: "none" as const, maxRespins: 2}},
+        reelStrips: [["C"], ["C"], ["C"]], paytable: {C: {3: 2}}};
+    return [{id: "weightedBonus", blueprint: weighted, completion: 0.44999999999999996}, {id: "freeGames", blueprint: free, mode: "buy", completion: 0.30000000000000004}, {id: "holdAndWin", blueprint: hold, completion: 2},
+        {id: "respins", blueprint: respins, completion: 0.2}];
 }

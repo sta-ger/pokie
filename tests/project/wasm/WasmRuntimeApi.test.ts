@@ -648,7 +648,7 @@ it.each(["stepwise", "composite", "plain"] as const)("binds %s artifact feature 
             for (const mutation of mutations) {
                 const corrupt = mutateCheckpointProjection(saved, mutation);
                 const calls = restore.mock.calls.length;
-                const error = /modifier|sticky|holdAndWin|jackpot|chargedBetMode/i;
+                const error = /modifier|sticky|holdAndWin|jackpot|chargedBetMode|win|position|logical|stops|draw|plain money/i;
                 expect(() => runtime.restoreSession(corrupt)).toThrow(error);
                 expect(() => fresh.restoreSession(corrupt)).toThrow(error);
                 await expect(runtime.replay(corrupt, [command])).rejects.toThrow(error);
@@ -785,5 +785,95 @@ it("rejects retained instantaneous analytics features during a real pending prog
     } finally {
         runtime.release();
         built.dispose();
+    }
+});
+
+it.each(["plain", "stepwise", "composite"] as const)("binds %s known analytics provenance and accumulated wins to accepted accounting across restore/replay/reuse", async policy => {
+    const {checkpointAccountingFixtures, mutateCheckpointProjection} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
+    for (const {id, blueprint, mode, completion} of checkpointAccountingFixtures()) {
+        const fixture = createCanonicalWasmFixture({blueprint});
+        const host = new SeededPokieWasmHost("probe");
+        const restore = jest.spyOn(host, "restoreState");
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
+        const fresh = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("receiving"));
+        try {
+            const session = runtime.createSession("probe");
+            const delivery = policy === "plain" ? {} : {delivery: policy, ...(policy === "composite" ? {maxSubrounds: 1} : {})};
+            await session.play({bet: 0.05, roundId: "x", mode, ...delivery});
+            const command = policy === "plain" ? {} : {...delivery, continuation: {roundId: "x", cursor: 1}};
+            const {deliveries: _deliveries, ...receipt} = await session.play(command);
+            const saved = session.serialize();
+            if (saved.schemaVersion !== "pokie.state.v4") throw new Error("Expected feature state");
+            expect(saved.feature.analytics?.active[id as "weightedBonus"]).toMatchObject({known: true, entryPosition: 1});
+            const before = host.serializeState();
+            for (const mutation of [["analyticsAccounting.inflated"], ["analyticsTransition.plainCarried"]] as const) {
+                const corrupt = mutateCheckpointProjection(saved, mutation);
+                const calls = restore.mock.calls.length;
+                for (const target of [runtime, fresh]) {
+                    expect(() => target.restoreSession(corrupt)).toThrow(/Analytics.*(accounting|prior state)/i);
+                    await expect(target.replay(corrupt, [command])).rejects.toThrow(/Analytics.*(accounting|prior state)/i);
+                }
+                expect(restore).toHaveBeenCalledTimes(calls);
+                expect(host.serializeState()).toEqual(before);
+                expect(session.serialize()).toEqual(saved);
+                if (policy !== "plain") expect(await session.play(command)).toEqual(receipt);
+            }
+            const reference = fresh.restoreSession(saved);
+            const finish = policy === "plain" ? {} : {...delivery, continuation: {roundId: "x", cursor: 2}};
+            const result = await session.play(finish);
+            expect(await reference.play(finish)).toEqual(result);
+            expect(result.analytics?.features).toContainEqual(expect.objectContaining({feature: id, completion: expect.objectContaining({win: completion, entryPosition: 1})}));
+            expect(result.analytics?.logicalCompletion).toBe(true);
+            for (let index = 0; index < 2; index++) {
+                const next = {bet: 0.05};
+                expect(await session.play(next)).toEqual(await reference.play(next));
+            }
+            for (const target of [runtime, fresh]) {
+                const restored = target.restoreSession(saved);
+                if (policy !== "plain") expect(await restored.play(command)).toEqual(receipt);
+                expect(await restored.play(finish)).toEqual(result);
+                restored.dispose();
+            }
+            expect((await runtime.replay(saved, policy === "plain" ? [finish] : [command, finish])).rounds).toEqual(policy === "plain" ? [result] : [receipt, result]);
+        } finally {
+            runtime.dispose();
+            fresh.dispose();
+        }
+    }
+});
+
+it("rejects fabricated prior analytics wins at the observer owner before effects, then explicitly restores and completes", async () => {
+    const {checkpointAccountingFixtures} = await import("../../fixtures/wasm/checkpointProjectionMutations.js");
+    const {createAuthoredSession} = await import("../../../src/generated/createAuthoredSession.js");
+    const {SeededRandomNumberGenerator} = await import("../../../src/session/videoslot/combinations/SeededRandomNumberGenerator.js");
+    const {SessionFeatureAnalyticsObserver} = await import("../../../src/simulation/SessionFeatureAnalyticsObserver.js");
+    const {SessionRuntime} = await import("../../../src/runtime/SessionRuntime.js");
+    for (const {id, blueprint, mode, completion} of checkpointAccountingFixtures()) {
+        const built = createAuthoredSession(blueprint, new SeededRandomNumberGenerator("probe"));
+        const runtime = new SessionRuntime(built.session);
+        const observer = new SessionFeatureAnalyticsObserver(built.session);
+        try {
+            for (const cursor of [0, 1, 2]) {
+                const before = observer.beforePlay();
+                const prior = observer.toState();
+                const result = runtime.execute(cursor === 0 ? {kind: "spin", bet: 0.05, mode, roundId: "x", delivery: "stepwise"} : {kind: "spin", delivery: "stepwise", continuation: {roundId: "x", cursor}});
+                if (result.status !== "played") throw new Error(result.reason);
+                const accepted = {entryPosition: 1, wins: {[id]: prior.active[id as "weightedBonus"]?.win ?? 0}};
+                if (cursor > 0) {
+                    const corrupt = JSON.parse(JSON.stringify(prior)) as typeof prior;
+                    corrupt.active[id as "weightedBonus"]!.win += 999;
+                    observer.restoreState(corrupt);
+                    expect(() => observer.validateAcceptedTransition(before, false, true, accepted)).toThrow("Analytics accumulated feature win");
+                    expect(observer.toState()).toEqual(corrupt);
+                    observer.restoreState(prior);
+                }
+                observer.validateAcceptedTransition(before, cursor === 0, cursor > 0, accepted);
+                const observation = observer.afterPlay(before, result.win, result.mode);
+                if (cursor === 2) expect(observation.features).toContainEqual(expect.objectContaining({feature: id, completion: expect.objectContaining({win: completion})}));
+            }
+        } finally {
+            runtime.release();
+            built.dispose();
+        }
     }
 });

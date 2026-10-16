@@ -1,3 +1,7 @@
+import {validateArtifactCoordinates} from "../../artifact/validateArtifactCoordinates.js";
+import {buildRoundStepArtifact} from "../../artifact/buildRoundStepArtifact.js";
+import {MultiplierResolver} from "../../session/videoslot/winevaluation/MultiplierResolver.js";
+import {WinEvaluationContext} from "../../session/videoslot/winevaluation/WinEvaluationContext.js";
 import {ScreenModifierEngine} from "../../session/videoslot/modifiers/ScreenModifierEngine.js";
 import {observeVideoSlotFeatures} from "../../net/videoslot/observeVideoSlotFeatures.js";
 import {projectPublicFeatureEvent} from "../../artifact/PublicRoundArtifactProjector.js";
@@ -85,6 +89,7 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
     const restored = evaluation(artifacts);
     const hold = session as VideoSlotSessionHandling & {getHoldAndWinLastRoundOutcome?: () => {kind: string}; getJackpotLastRoundOutcome?: () => {kind: string; baseWinEvaluationResult?: WinEvaluationResult}};
     const retainedOutcome = hold.getJackpotLastRoundOutcome?.().kind === "awarded" || hold.getHoldAndWinLastRoundOutcome?.().kind === "completed" || hold.getHoldAndWinLastRoundOutcome?.().kind === "suppressed";
+    validateRetainedWins(session, blueprint, artifacts, retainedOutcome);
     const wrapped = !!blueprint.mechanics?.cascade || bounded?.weightedBonus?.selectedNow || bounded?.collection?.triggered;
     let result = restored;
     if (wrapped) result = new WinEvaluationResult({winComponents: restored.getWinComponents()});
@@ -148,4 +153,69 @@ export function restoreDeclarativeObservation(session: VideoSlotSessionHandling,
         const value: unknown = Reflect.get(session, key);
         return typeof value === "function" ? value.bind(session) : value;
     }});
+}
+
+/** Attribution validation only: amounts stay owned by the accepted evaluation.
+ * Uses the existing coordinate and multiplier contracts, without evaluating paytables.
+ */
+function validateRetainedWins(session: VideoSlotSessionHandling, blueprint: GameBlueprint, steps: readonly RoundStepArtifact[], nativeOutcome: boolean): void {
+    if (nativeOutcome) {
+        const native = buildRoundStepArtifact(0, {screen: steps[0].screen, winEvaluationResult: session.getWinEvaluationResult(),
+            ...(steps[0].geometry ? {geometry: steps[0].geometry, generatedScreen: steps[0].generatedScreen} : {})});
+        if (stableSlotMathJson(steps.flatMap(step => step.wins)) !== stableSlotMathJson(native.wins)) throw new Error("Retained win attribution contradicts its executable award.");
+        return;
+    }
+    const factors = Object.fromEntries((blueprint.mechanics?.modifiers?.wilds ?? []).filter(wild => wild.factor !== undefined).map(wild => [wild.symbol, wild.factor!]));
+    const resolver = new MultiplierResolver(factors, {source: "authored-wild-product", uniquePositions: true, supportedComponentTypes: ["line", "ways", "cluster"]});
+    for (const step of steps) {
+        validateArtifactCoordinates(step);
+        const combination = new SymbolsCombination().fromMatrix((step.generatedScreen ?? step.screen) as string[][]);
+        const tagged = step.geometry ? combination.withCoordinates(step.geometry) : combination;
+        const context = new WinEvaluationContext(session.getBet(), tagged, session);
+        const matrix = context.getSymbolsCombination().toMatrix();
+        for (const win of step.wins) {
+            const invalid = () => new Error(`Retained win ${win.type}.${win.id} contradicts its model, screen or multiplier attribution.`);
+            const symbol = win.symbolId;
+            if (typeof symbol !== "string") throw invalid();
+            const bonusAward = win.type === "value" && symbol === blueprint.mechanics?.weightedBonus?.feature.id;
+            const collectionAward = win.type === "value" && symbol === blueprint.mechanics?.collection?.symbolId;
+            if (bonusAward || collectionAward) {
+                if (win.id !== symbol || win.winningPositions.length || win.multiplierBreakdown.length) throw invalid();
+                continue;
+            }
+            if (!blueprint.symbols.includes(symbol) || !win.winningPositions.length || new Set(win.winningPositions.map(position => JSON.stringify(position))).size !== win.winningPositions.length) throw invalid();
+            const matches = (actual: string) => actual === symbol || (blueprint.wilds?.includes(actual) &&
+                win.type !== "scatter" && (blueprint.mechanics?.modifiers?.wilds.find(wild => wild.symbol === actual)?.substitutes?.includes(symbol) ?? true));
+            if (win.winningPositions.some(([reel, row]) => !matches(matrix[reel]?.[row]))) throw invalid();
+            const count = win.type === "ways" ? new Set(win.winningPositions.map(([reel]) => reel)).size : win.winningPositions.length;
+            if (!(blueprint.paytable[symbol]?.[count] > 0) || win.type !== "scatter" && blueprint.wilds?.includes(symbol) || ["line", "ways"].includes(win.type) && blueprint.scatters?.includes(symbol)) throw invalid();
+            if (win.type === "line") {
+                if ((blueprint.winModel?.type ?? "lines") !== "lines" || !session.getLinesDefinitions().getLinesIds().includes(win.id)) throw invalid();
+                const definition = session.getLinesDefinitions().getLineDefinition(win.id);
+                const reels = win.winningPositions.map(([reel]) => reel);
+                const metadata = {definition, pattern: Array.from({length: blueprint.reels}, (_, reel) => reels.includes(reel) ? 1 : 0),
+                    symbolsPositions: reels, wildSymbolsPositions: win.winningPositions.filter(([reel, row]) => blueprint.wilds?.includes(matrix[reel][row])).map(([reel]) => reel)};
+                if (win.winningPositions.some(([reel, row], index) => reel !== index || definition[reel] !== row) || stableSlotMathJson(win.metadata) !== stableSlotMathJson(metadata)) throw invalid();
+            } else if (win.type === "scatter") {
+                const positions = matrix.flatMap((reel, r) => reel.flatMap((actual, row) => actual === symbol ? [[r, row]] : []));
+                if (!blueprint.scatters?.includes(symbol) || win.id !== symbol || stableSlotMathJson(positions) !== stableSlotMathJson(win.winningPositions)) throw invalid();
+            } else if (win.type === "ways") {
+                if (blueprint.winModel?.type !== "ways" || win.id !== symbol) throw invalid();
+                const positions = matrix.slice(0, count).flatMap((reel, r) => reel.flatMap((actual, row) => matches(actual) ? [[r, row]] : []));
+                const ways = Array.from({length: count}, (_, reel) => positions.filter(position => position[0] === reel).length).reduce((product, size) => product * size, 1);
+                if (stableSlotMathJson(positions) !== stableSlotMathJson(win.winningPositions) || win.metadata.waysCount !== ways || stableSlotMathJson(win.metadata.symbolsPositions) !== stableSlotMathJson(positions)) throw invalid();
+            } else if (win.type === "cluster") {
+                if (blueprint.winModel?.type !== "clusters" || !(/^(0|[1-9][0-9]*)$/).test(win.id) || Number(win.id) >= blueprint.reels * matrix[0].length ||
+                    count < (blueprint.winModel.minimumClusterSize ?? 5) || stableSlotMathJson(win.metadata.symbolsPositions) !== stableSlotMathJson(win.winningPositions)) throw invalid();
+                const connected = new Set([0]);
+                for (let pass = 0; pass < count; pass++) for (const [index, [reel, row]] of win.winningPositions.entries()) {
+                    if (win.winningPositions.some(([r, y], other) => connected.has(other) && Math.abs(r - reel) + Math.abs(y - row) === 1)) connected.add(index);
+                }
+                if (connected.size !== count) throw invalid();
+            } else throw invalid();
+            const component = restoreWinEvaluation({components: [{type: win.type, id: win.id, symbolId: symbol, amount: 0, positions: win.winningPositions as number[][], multipliers: [], metadata: win.metadata}], metadata: {}}).getWinComponents()[0];
+            const expected = blueprint.mechanics?.modifiers && resolver.supportsComponentType(win.type) ? resolver.resolve(component, context).breakdown : [];
+            if (stableSlotMathJson(win.multiplierBreakdown) !== stableSlotMathJson(expected)) throw invalid();
+        }
+    }
 }
