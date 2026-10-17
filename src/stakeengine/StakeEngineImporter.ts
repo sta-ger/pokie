@@ -233,7 +233,8 @@ export class StakeEngineImporter<T extends string | number = string> implements 
                 message:
                     `mode "${context.modeName}": the reconstructed library's hash is expected to differ from pokie-manifest.json's recorded ` +
                     `libraryHash (${context.manifestMode.libraryHash}) — roundId, the real win breakdown, and provenance.pokieVersion are not ` +
-                    "recoverable from the Stake export and are substituted (see docs/stake-engine-import.md).",
+                    "recoverable from the Stake export and are substituted (see docs/stake-engine-import.md). " +
+                    "Reconstructed fractional native ratios/amounts are binary64 approximations; raw Stake units are forward-checked.",
                 details: {modeName: context.modeName, manifestLibraryHash: context.manifestMode.libraryHash},
             });
             return {library, issues};

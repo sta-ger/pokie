@@ -251,16 +251,17 @@ describe("StakeEngineImporter", () => {
         });
 
         it("reports stakeengine-import-payout-multiplier-not-invertible when a finalWin value can't be reversed without hidden rounding", async () => {
-            await exportSingleOutcome(3, 0);
+            // One unit at cost 3 is reversible; seven at cost 1 still fails every exact forward check.
+            await exportSingleOutcome(1, 0);
             const booksPath = path.join(outDir, "books_base.jsonl.zst");
             const lines = readBooksLines(booksPath);
             const finalWin = lines[0].events[lines[0].events.length - 1] as {amount: number; payoutMultiplier: number};
-            finalWin.amount = 1;
-            finalWin.payoutMultiplier = 1;
-            lines[0].payoutMultiplier = 1;
+            finalWin.amount = 7;
+            finalWin.payoutMultiplier = 7;
+            lines[0].payoutMultiplier = 7;
             writeBooksLines(booksPath, lines);
             const csvPath = path.join(outDir, "lookup_base.csv");
-            fs.writeFileSync(csvPath, fs.readFileSync(csvPath, "utf-8").replace(/,\d+$/m, ",1"));
+            fs.writeFileSync(csvPath, fs.readFileSync(csvPath, "utf-8").replace(/,\d+$/m, ",7"));
 
             const result = await new StakeEngineImporter().importFromDirectory(outDir);
 

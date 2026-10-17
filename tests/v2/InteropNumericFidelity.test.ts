@@ -359,6 +359,53 @@ describe("Stake exact interchange and independent numeric domains", () => {
         expect((await new api.StakeEngineImporter().importFromDirectory(source)).issues.some(issue => issue.code.includes("id-set-mismatch"))).toBe(true);
     });
 
+    it.each([{ratio: 1 / 3, raw: 100}, {ratio: 1 / 300, raw: 1}])("retains cost 3 raw $raw through native import/re-export with binary64 ratios", async ({ratio, raw}) => {
+        const library = buildSingleOutcomeStakeEngineLibrary({libraryId: "cost-three", betMode: "base", stake: 1, totalWin: ratio});
+        const source = path.join(directory, "cost-three"),
+            output = path.join(directory, "reexported");
+        expect(errors((await new api.StakeEngineExporter("1").exportToDirectory([{modeName: "base", cost: 3, library}], source)).issues)).toEqual([]);
+        expect(fs.readFileSync(path.join(source, "lookup_base.csv"), "utf8")).toBe(`0,1,${raw}\n`);
+        const before = inventory(source),
+            imported = await new api.StakeEngineImporter().importFromDirectory(source);
+        expect(errors(imported.issues)).toEqual([]);
+        const artifact = imported.modes[0].library.outcomes[0].artifact;
+        for (const actual of [artifact.payoutMultiplier, artifact.totalWin]) {
+            expect(actual).toBeGreaterThan(0);
+            expect(Math.abs(actual / ratio - 1)).toBeLessThanOrEqual(2 * Number.EPSILON);
+        }
+        expect(errors((await new api.StakeEngineExporter("1").exportToDirectory(imported.modes, output)).issues)).toEqual([]);
+        for (const name of ["index.json", "lookup_base.csv", "books_base.jsonl.zst"]) expect(inventory(output)[name]).toBe(before[name]);
+        expect(inventory(source)).toEqual(before);
+    });
+
+    it("rejects positive native payout underflow before publication instead of exporting a zero", async () => {
+        const library = buildSingleOutcomeStakeEngineLibrary({libraryId: "underflow", betMode: "base", stake: 1, totalWin: Number.MIN_VALUE});
+        const output = path.join(directory, "underflow");
+        const result = await new api.StakeEngineExporter("1").exportToDirectory([{modeName: "base", cost: Number.MIN_VALUE, library}], output);
+        expect(result.issues).toContainEqual(expect.objectContaining({code: "stakeengine-outcome-payout-multiplier-not-representable", severity: "error"}));
+        expect(fs.existsSync(output)).toBe(false);
+    });
+
+    it("retains explicit rejection of a raw payout with no exactly reversible native ratio", async () => {
+        const source = path.join(directory, "unrepresentable");
+        const library = buildSingleOutcomeStakeEngineLibrary({libraryId: "unrepresentable", betMode: "base", stake: 1, totalWin: 0});
+        await new api.StakeEngineExporter("1").exportToDirectory([{modeName: "base", cost: 1, library}], source);
+        fs.writeFileSync(path.join(source, "lookup_base.csv"), "0,1,7\n");
+        const booksFile = path.join(source, "books_base.jsonl.zst");
+        const books = JSON.parse(zlib.zstdDecompressSync(fs.readFileSync(booksFile)).toString("utf8")) as {payoutMultiplier: number; events: {amount?: number; payoutMultiplier?: number}[]};
+        books.payoutMultiplier = 7;
+        books.events[books.events.length - 1].amount = 7;
+        books.events[books.events.length - 1].payoutMultiplier = 7;
+        fs.writeFileSync(booksFile, zlib.zstdCompressSync(Buffer.from(JSON.stringify(books) + "\n")));
+        const before = inventory(source),
+            imported = await new api.StakeEngineImporter().importFromDirectory(source);
+        expect(imported.issues).toContainEqual(expect.objectContaining({code: "stakeengine-import-payout-multiplier-not-invertible", severity: "error"}));
+        const output = path.join(directory, "unsupported-import");
+        await new api.StakeEngineImportWriter("1").writeToDirectory(imported, output);
+        expect(fs.existsSync(output)).toBe(false);
+        expect(inventory(source)).toEqual(before);
+    });
+
     it("rejects unsafe numeric exporter weights and preserves fractional stake/cost reversal", async () => {
         for (const stake of [0.05, 7.5, 1e-7]) {
             const library = buildSingleOutcomeStakeEngineLibrary({libraryId: "fraction", betMode: "base", stake, totalWin: stake * 2});

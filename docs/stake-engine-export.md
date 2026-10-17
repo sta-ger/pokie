@@ -331,3 +331,8 @@ Prepared canonical conversions retain the destination identity while source inpu
 are read. A recognized export created by another caller during that preparation
 is a conflict, rather than permission to rebuild it. Cancellation or a failure
 removes only an output owned by the current conversion; foreign replacements survive.
+
+Stake unit conversion never clamps or rounds a non-integral result, and rejects a
+positive native ratio that underflows to zero. Native fractional ratios/amounts
+remain binary64 values; the round-trip guarantee concerns the exact raw Stake
+integer, with equivalent inverse orders tried and forward-checked on import.
