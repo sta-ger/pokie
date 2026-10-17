@@ -185,10 +185,10 @@ it("keeps cancelling until game release settles, then persists cleanup recovery 
     let entered!: () => void;
     let rejectRelease!: (error: Error) => void;
     const releasing = new Promise<void>(resolve => {
-        entered = resolve; 
+        entered = resolve;
     });
     const gate = new Promise<void>((_resolve, reject) => {
-        rejectRelease = reject; 
+        rejectRelease = reject;
     });
     const create = recipes.createOptimizationSimulationGame;
     const hook = jest.fn(async () => {

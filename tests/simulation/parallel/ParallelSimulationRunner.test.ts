@@ -859,7 +859,7 @@ it.each(["success", "cancel", "execution", "observer"])("releases both injected 
     game.release = release;
     const session = createFakeSession();
     if (terminal === "execution") session.play = () => {
-        throw new Error("execution failed"); 
+        throw new Error("execution failed");
     };
     game.createSession = () => session;
     const controller = new AbortController();
