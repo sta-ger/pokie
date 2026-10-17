@@ -66,6 +66,9 @@ async function fixture(type: ProjectType) {
     return {file, request};
 }
 
+// The TS case repeats isolated executable acquisition for engine/CLI publication,
+// independent readback and reviewed apply. Allow the complete serial workflow to
+// finish under the controller's bounded concurrent workers before fixture cleanup.
 it.each(["blueprint", "parWorkbook", "tsPackage", "outcomeLibrary", "stakeAdapter", "wasm"] as const)("public engine and registered CLI retain native %s outputs", async type => {
     const {file, request} = await fixture(type);
     const project = await resolve(file);
@@ -107,7 +110,7 @@ it.each(["blueprint", "parWorkbook", "tsPackage", "outcomeLibrary", "stakeAdapte
     if (type === "stakeAdapter") expect((await new StakeEngineOutcomeSourceReader().readFromDirectory(output)).modes[0].outcomes.every(outcome => typeof outcome.weight === "bigint")).toBe(true);
     await service.discard(result.candidate!);
     expect((await resolve(output)).type).toBe(type);
-}, 60000);
+}, 180000);
 
 it.each(["blueprint", "parWorkbook", "tsPackage"] as const)("explicit authored %s apply reopens measured source and consumes the preview", async type => {
     const {file, request} = await fixture(type);

@@ -740,6 +740,9 @@ describe("StudioServer", () => {
         expect(outcomeService.rebindCheckpointRequest).toHaveBeenCalled();
     });
 
+    // Both routes perform real package snapshot acquisition, generation and
+    // cleanup. Budget the combined workflow, including its server restart,
+    // rather than allowing Jest to tear down a still-running HTTP scenario.
     it("runs both Outcome Library HTTP start routes against a real generated package and rejects a bound destination drift", async () => {
         await server.stop();
         const projectRoot = path.join(studioRoot, "real-outcome-library-package");
@@ -823,8 +826,10 @@ describe("StudioServer", () => {
         expect(fs.existsSync(path.join(sampledProjectRoot, "changed-destination"))).toBe(false);
         await server.stop();
         expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
-    });
+    }, 180000);
 
+    // This scenario includes two complete million-stop enumerations plus
+    // independent runtimes for resume, stop, close, switch and rejection paths.
     it("keeps real Outcome Library HTTP lifecycle cancellation, restart, source drift, and diagnostics cleanup-safe", async () => {
         await server.stop();
         const lifecycleRoot = path.join(studioRoot, "real-outcome-library-lifecycle-package");
@@ -1015,7 +1020,7 @@ describe("StudioServer", () => {
             });
         }
         expectNoOutcomeLibraryPublication(unsupportedRoot, "outcomelibrary");
-    });
+    }, 300000);
 
     it("reports safe diagnostics on GET /api/studio/diagnostics in home mode", async () => {
         const {status, body} = await get(`${baseUrl}/api/studio/diagnostics`);
