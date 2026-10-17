@@ -7,6 +7,7 @@ import {
     PAR_IMPORT_OPERATION,
     ProjectResolving,
     ProjectTargetResolver,
+    StakeEngineImporter,
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {ParCommand} from "./ParCommand.js";
@@ -84,7 +85,9 @@ export class ImportCommand implements CliCommandHandling {
         // same-kind build plan as a guard.  PAR creates a Blueprint and Stake
         // creates an Outcome Library; neither operation advertises a reverse
         // or lossless conversion edge.
-        const outputKind = source.type === "parWorkbook" ? "blueprint" : "outcomeLibrary";
+        const exactStake = source.type === "stakeAdapter" && (await new StakeEngineImporter().importFromDirectory(source.rootPath)).exactSource !== undefined;
+        const stakeOutputKind = exactStake ? "stakeAdapter" : "outcomeLibrary";
+        const outputKind = source.type === "parWorkbook" ? "blueprint" : stakeOutputKind;
         const destination = options.out ?? this.defaultDestination(options.input, outputKind);
         const plan = this.planner.planImportOutput(source, outputKind, destination);
         if (plan.status !== "planned") {
@@ -132,8 +135,8 @@ export class ImportCommand implements CliCommandHandling {
         return this.stake.runPreparedImport(source, plan, options.input, destination, options.format === "json" ? "json" : "summary");
     }
 
-    private defaultDestination(input: string, outputKind: "blueprint" | "outcomeLibrary"): string {
-        if (outputKind === "outcomeLibrary") {
+    private defaultDestination(input: string, outputKind: "blueprint" | "outcomeLibrary" | "stakeAdapter"): string {
+        if (outputKind !== "blueprint") {
             return path.join(path.dirname(input), `${path.basename(input)}-imported`);
         }
         return path.join(path.dirname(input), `${path.basename(input, path.extname(input))}.blueprint.json`);

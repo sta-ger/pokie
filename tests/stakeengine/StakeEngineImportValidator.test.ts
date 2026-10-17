@@ -349,7 +349,7 @@ describe("StakeEngineImportValidator", () => {
 
         it("reports stakeengine-import-csv-malformed-row for a row that isn't exactly 3 comma-separated integer fields", () => {
             expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok(["0,1"])}]})).toContain("stakeengine-import-csv-malformed-row");
-            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok(["a,b,c"])}]})).toContain("stakeengine-import-csv-malformed-row");
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok(["a,b,c"])}]})).toContain("stakeengine-import-outcome-id-not-integer");
         });
 
         it("reports stakeengine-import-books-invalid-json-line for an unparseable books line, distinct from a malformed-shape one", () => {
@@ -379,11 +379,11 @@ describe("StakeEngineImportValidator", () => {
             ).toContain("stakeengine-import-duplicate-book-id");
         });
 
-        it("reports stakeengine-import-outcome-weight-not-positive-integer for a zero, negative, or unsafe weight", () => {
+        it("reports stakeengine-import-outcome-weight-not-positive-integer for a zero, negative, or overflowing UInt64 weight", () => {
             expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok(["0,0,0"])}]})).toContain(
                 "stakeengine-import-outcome-weight-not-positive-integer",
             );
-            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok([`0,${Number.MAX_SAFE_INTEGER}9,0`])}]})).toContain(
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok(["0,18446744073709551616,0"])}]})).toContain(
                 "stakeengine-import-outcome-weight-not-positive-integer",
             );
         });
@@ -394,7 +394,7 @@ describe("StakeEngineImportValidator", () => {
             );
         });
 
-        it("reports stakeengine-import-total-weight-overflow when the sum of weights overflows a safe integer", () => {
+        it("accepts exact aggregate weights above safe integers", () => {
             const csvLines = [
                 `0,${Number.MAX_SAFE_INTEGER},0`,
                 "1,1,0",
@@ -404,7 +404,7 @@ describe("StakeEngineImportValidator", () => {
                     ...baseBundle(),
                     modeFiles: [{...VALID_MODE_FILES, csv: ok(csvLines), books: ok([okLine(VALID_BOOK_LINE), okLine({...VALID_BOOK_LINE, id: 1})])}],
                 }),
-            ).toContain("stakeengine-import-total-weight-overflow");
+            ).not.toContain("stakeengine-import-total-weight-overflow");
         });
 
         it("reports stakeengine-import-csv-books-count-mismatch when the CSV and books have different row/line counts", () => {

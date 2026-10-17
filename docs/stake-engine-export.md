@@ -304,5 +304,25 @@ stabilized and untouched by this streaming path.
 POKIE accepts nonnegative safe-integer numeric Stake IDs and raw payouts (at most
 `Number.MAX_SAFE_INTEGER`, **9007199254740991**); it does not support the complete UInt64 ID/payout range.
 Standalone reading supports positive UInt64 weights with exact BigInt weight accounting,
-while native persisted bundles and import/export retain their existing numeric weight restrictions.
+while native persisted bundles retain their safe-integer weight/total restrictions.
+Exact Stake payload import/re-export supports wide weights as described below.
 Numeric analytics are approximate; standalone decimal fractions are capped at 40 fractional digits.
+
+### V2C-26 numeric and rebuild boundaries
+
+Numeric `WeightedOutcomeLibrary` exporter inputs require **positive safe integer**
+weights (1 through 9007199254740991); an unsafe integer-valued JavaScript Number
+is rejected. Streaming native bundles retain their safe-integer bundle contract.
+Exact imported Stake payloads instead retain positive UInt64 decimal weights
+through `exportExactSourceToDirectory`; aggregate totals may exceed UInt64.
+No weight is rounded or probability-preservingly rescaled. This does not widen
+IDs or raw Stake payouts beyond nonnegative safe integers through 9007199254740991.
+Fractional native payout ratios/stakes are separate from raw Stake integer units.
+
+`build --target stakeAdapter` and exact-payload export require new/empty outputs.
+Native Stake optimizer candidates can be republished through that build path;
+CSV/books and the complete native provenance inventory survive, and archived
+input manifests are never promoted to current reconstructed-library provenance.
+The ordinary direct library exporter additionally retains its documented atomic
+rebuild of a recognized prior export. It also accepts an empty physical directory;
+symlinked and unrelated occupied directories remain rejected.

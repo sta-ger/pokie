@@ -542,12 +542,13 @@ export class StakeEngineCommand implements CliCommandHandling {
             // import`, so destination policy, cancellation, and rollback stay
             // owned by the planner execution boundary.
             const source = await this.prepareImportSource(options.stakeDir);
-            const plan = this.planner.planImportOutput(source, "outcomeLibrary", options.outDir);
+            const exact = (await this.importer.importFromDirectory(options.stakeDir)).exactSource !== undefined;
+            const plan = this.planner.planImportOutput(source, exact ? "stakeAdapter" : "outcomeLibrary", options.outDir);
             return this.runImport(options, {source, plan});
         }
         const cancellation = createCliImportCancellation();
         const assertDestinationAvailable = () => {
-            const destination = new ArtifactBuilderRegistry().checkDestination("outcomeLibrary", options.outDir, prepared.source.rootPath);
+            const destination = new ArtifactBuilderRegistry().checkDestination(prepared.plan.output.kind === "stakeAdapter" ? "stakeAdapter" : "outcomeLibrary", options.outDir, prepared.source.rootPath);
             if (!destination.available) throw new Error(destination.message ?? `The import destination "${options.outDir}" is unavailable.`);
         };
         const execution = await this.planner.executeImportOutputPlan(prepared.plan, prepared.source, options.outDir, {
@@ -623,12 +624,12 @@ export class StakeEngineCommand implements CliCommandHandling {
             return 1;
         }
 
-        const files = [
+        const files = result.exactSource === undefined ? [
             "manifest.json",
             ...result.modes.flatMap((mode) => [`index_${mode.modeName}.json`, `outcomes_${mode.modeName}.jsonl`]),
             "config.json",
             ...(result.sourceProvenance === undefined ? [] : ["source-provenance.json"]),
-        ];
+        ] : Object.keys(result.exactSource.files);
         const issues = [...infos, ...written.issues];
         if (options.format === "json") {
             const report: ImportReport = {stakeDir: options.stakeDir, outDir: options.outDir, files, issues};

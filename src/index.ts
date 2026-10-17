@@ -757,6 +757,8 @@ export * from "./stakeengine/StakeEngineBundleModeInput.js";
 export * from "./stakeengine/StakeEngineBundleStreamingExporter.js";
 export * from "./stakeengine/StakeEngineBundleStreamingExporting.js";
 export * from "./stakeengine/StakeEngineEvent.js";
+export * from "./stakeengine/StakeEngineExactSource.js";
+export * from "./stakeengine/StakeEngineExactSourceExporting.js";
 export * from "./stakeengine/StakeEngineExportInvariantError.js";
 export * from "./stakeengine/StakeEngineExportModeInput.js";
 export * from "./stakeengine/StakeEngineExportResult.js";

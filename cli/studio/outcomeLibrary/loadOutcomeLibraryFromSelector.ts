@@ -73,6 +73,7 @@ export async function loadOutcomeLibraryFromSelector(
     if (importErrors.length > 0) {
         return {status: "load-error", error: importErrors.map((issue) => issue.message).join(" ")};
     }
+    if (imported.exactSource !== undefined) return {status: "load-error", error: "This Stake payload uses UInt64 weights outside native numeric Outcome Library limits. Use Outcome Source analysis or build --target stakeAdapter for exact interchange."};
     const mode = imported.modes.find((candidate) => candidate.modeName === selector.modeName);
     if (mode === undefined) {
         return {status: "load-error", error: `Mode "${selector.modeName}" was not found in Stake Engine export "${selector.stakeDir}".`};

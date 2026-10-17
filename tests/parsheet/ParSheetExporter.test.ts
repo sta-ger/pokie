@@ -68,6 +68,51 @@ describe("ParSheetExporter", () => {
         }
     });
 
+    it("retains an authored empty symbol payout map, omitted counts and explicit zeros in a real XLSX", async () => {
+        const authored = {...blueprint, paytable: {A: {}, W: {2: 0}}, availableBets: [0.05, 7.5, 1e-7]};
+        expect((await new ParSheetExporter("1").exportToFile(authored, filePath)).some(issue => issue.severity === "error")).toBe(false);
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(filePath);
+        expect(workbook.getWorksheet("Paytable")!.getCell("A2").value).toBe("A");
+        const imported = await new ParSheetImporter().importFromFile(filePath);
+        expect(imported.blueprint.paytable).toEqual(authored.paytable);
+        expect(imported.blueprint.availableBets).toEqual(authored.availableBets);
+        expect(imported.conversionEvidence).toMatchObject({losslessEligible: true, provenanceHashMatches: true});
+    });
+
+    it("retains a prior non-lossless import across Blueprint re-export", async () => {
+        const source = path.join(dir, "imported.json");
+        fs.writeFileSync(source, JSON.stringify(blueprint));
+        fs.writeFileSync(`${source}.conversion-evidence.json`, JSON.stringify({losslessEligible: false}));
+        const issues = await new ParSheetExporter("1").exportToFile(blueprint, filePath, source);
+        expect(issues.some(issue => issue.code === "parsheet-prior-conversion-loss")).toBe(true);
+        expect((await new ParSheetImporter().importFromFile(filePath)).conversionEvidence?.losslessEligible).toBe(false);
+    });
+
+    it("rolls back cancellation after the exclusive workbook link and retries cleanly", async () => {
+        const controller = new AbortController();
+        const link = fs.promises.link.bind(fs.promises);
+        const publication = jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+            await link(from, to);
+            controller.abort();
+        });
+        try {
+            await expect(new ParSheetExporter("1").exportToFile(blueprint, filePath, undefined, {signal: controller.signal})).rejects.toThrow(/cancelled/);
+        } finally {
+            publication.mockRestore();
+        }
+        expect(fs.existsSync(filePath)).toBe(false);
+        expect(fs.readdirSync(dir)).toEqual([]);
+        await new ParSheetExporter("1").exportToFile(blueprint, filePath);
+        expect((await new ParSheetImporter().importFromFile(filePath)).conversionEvidence?.losslessEligible).toBe(true);
+    });
+
+    it("rejects unsupported geometry before touching the workbook destination", async () => {
+        const issues = await new ParSheetExporter("1").exportToFile({...blueprint, screenGeometry: {}}, filePath);
+        expect(issues).toContainEqual(expect.objectContaining({code: "parsheet-screen-geometry-unsupported", severity: "error"}));
+        expect(fs.existsSync(filePath)).toBe(false);
+    });
+
     it("writes every sheet, with no error-level issues, for a fully-populated blueprint", async () => {
         const exporter = new ParSheetExporter("1.3.0");
 

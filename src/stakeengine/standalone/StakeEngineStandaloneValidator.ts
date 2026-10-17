@@ -171,7 +171,7 @@ export class StakeEngineStandaloneValidator implements StakeEngineStandaloneVali
 
         csvLines.forEach((line, position) => {
             const fields = line.split(",");
-            if (fields.length !== 3 || fields.some((field) => !(/^-?\d+$/).test(field))) {
+            if (fields.length !== 3) {
                 issues.push({
                     code: "stakeengine-standalone-csv-malformed-row",
                     severity: "error",
@@ -206,7 +206,7 @@ export class StakeEngineStandaloneValidator implements StakeEngineStandaloneVali
             }
             seenIds.add(id);
 
-            const weight = BigInt(weightField);
+            const weight = (/^\d+$/).test(weightField) ? BigInt(weightField) : BigInt(0);
             if (weight <= BigInt(0) || weight > BigInt("18446744073709551615")) {
                 issues.push({
                     code: "stakeengine-standalone-outcome-weight-not-positive-integer",
@@ -219,7 +219,7 @@ export class StakeEngineStandaloneValidator implements StakeEngineStandaloneVali
             }
 
             const payoutMultiplier = Number(payoutMultiplierField);
-            if (!isSafeNonNegativeInteger(payoutMultiplier)) {
+            if (!(/^\d+$/).test(payoutMultiplierField) || !isSafeNonNegativeInteger(payoutMultiplier)) {
                 issues.push({
                     code: "stakeengine-standalone-outcome-payout-multiplier-not-safe-integer",
                     severity: "error",

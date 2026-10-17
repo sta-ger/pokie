@@ -189,12 +189,12 @@ Two layers, mirroring the exporter's own "validate everything before building" d
 | `stakeengine-import-mode-cost-mismatch` | `index.json` and the manifest disagree on a mode's `cost` |
 | `stakeengine-import-csv-missing` / `stakeengine-import-csv-unreadable` | a mode's lookup CSV is absent / couldn't be read |
 | `stakeengine-import-books-missing` / `stakeengine-import-books-unreadable` / `stakeengine-import-books-invalid-zstd` | a mode's books file is absent / couldn't be read / isn't a valid zstd frame |
-| `stakeengine-import-csv-malformed-row` | a CSV row isn't exactly three comma-separated integer fields |
+| `stakeengine-import-csv-malformed-row` | a CSV row does not have exactly three comma-separated fields (invalid field values have specific diagnostics) |
 | `stakeengine-import-books-invalid-json-line` / `stakeengine-import-books-malformed-line` | a decompressed books line isn't parseable JSON at all, vs. parses but has the wrong shape — reported as two distinct codes rather than collapsed into one |
 | `stakeengine-import-outcome-id-not-integer` | a CSV row's or book line's `id` isn't a canonical non-negative safe integer |
-| `stakeengine-import-outcome-weight-not-positive-integer` | a CSV row's `weight` isn't a positive safe integer |
+| `stakeengine-import-outcome-weight-not-positive-integer` | a CSV row's `weight` isn't a positive UInt64 decimal integer |
 | `stakeengine-import-outcome-payout-multiplier-not-safe-integer` | a CSV/book `payoutMultiplier` isn't a safe integer |
-| `stakeengine-import-total-weight-overflow` | the sum of a mode's weights would overflow `Number.isSafeInteger` |
+| `stakeengine-import-exact-payload` | informational: weights/total exceed native numeric library limits; exact Stake payload interchange is used |
 | `stakeengine-import-duplicate-csv-id` / `stakeengine-import-duplicate-book-id` | the same `id` appears twice within a mode's CSV, or within its books |
 | `stakeengine-import-csv-books-count-mismatch` / `stakeengine-import-csv-books-id-set-mismatch` | the CSV and books disagree on how many outcomes there are, or which ids exist — matched **by id**, never by row position |
 | `stakeengine-import-csv-books-payout-multiplier-mismatch` | the same id's CSV and book `payoutMultiplier` disagree |
@@ -274,3 +274,31 @@ POKIE accepts nonnegative safe-integer numeric Stake IDs and raw payouts (at mos
 Standalone reading supports positive UInt64 weights with exact BigInt weight accounting,
 while native persisted bundles and import/export retain their existing numeric weight restrictions.
 Numeric analytics are approximate; standalone decimal fractions are capped at 40 fractional digits.
+
+## Exact wide-weight interchange (V2C-26)
+
+Positive CSV weights range from 1 through **18446744073709551615** (UInt64).
+Aggregate totals are accumulated as BigInt and may exceed UInt64; the required
+`18446744073709551615 + 1 = 18446744073709551616` distribution is accepted.
+IDs and raw Stake integer payouts remain nonnegative safe integers through
+**9007199254740991**, independently of weight precision. Payout ratios and stakes
+may be fractional when forward/reverse cost scaling is exactly reversible.
+
+Native persisted Outcome Libraries still require safe integer weights and totals.
+For an otherwise compatible POKIE export exceeding that native domain,
+`StakeEngineImporter` returns `exactSource` with captured payload bytes and an
+explicit `stakeengine-import-exact-payload` diagnostic; `modes` is empty. It never
+rescales weights or constructs a misleading numeric library. The import writer
+publishes a **Stake adapter project**, preserving CSV/books/index/manifest bytes.
+Canonical `pokie import`, its Stake alias and their JSON output identify that
+payload. Reopen it with the importer, analyze/report/diff it as an Outcome Source,
+and re-export with `pokie build SOURCE --target stakeAdapter --out NEW` or
+`StakeEngineExporter.exportExactSourceToDirectory(result.exactSource, NEW)`.
+Native numeric sampling/Outcome Library selectors remain unavailable for this
+payload and diagnose that boundary explicitly. This is a bounded interchange
+path, not a widening of the native sampling SDK or bundle schema.
+
+Exact payload publication accepts only new/empty directories and revalidates the
+captured bytes. Cancellation and write/commit failure remove owned staging and
+leave existing destination claimants and source bytes intact. Ordinary native
+imports keep their reconstructed Outcome Library format and its disclosed losses.

@@ -1,3 +1,4 @@
+import fs from "fs";
 import {ReelSequencesSheetMapper} from "./mapping/ReelSequencesSheetMapper.js";
 import type {ReelSequencesSheetMapping} from "./mapping/ReelSequencesSheetMapping.js";
 import ExcelJS from "exceljs";
@@ -84,7 +85,7 @@ export function prepareBlueprintForParSheetExport(
 
     if (authored.reelSequences !== undefined) return {blueprint: {...authored}, issues: validationIssues};
 
-    if (authored.reelStrips !== undefined) return {blueprint: removeSharedWeights({...authored}), issues: validationIssues};
+    if (authored.reelStrips !== undefined) return {blueprint: removeSharedWeights({...authored}), issues: authored.symbolWeights === undefined ? validationIssues : [...validationIssues, materializationIssue("parsheet-shared-weights-ignored", "symbolWeights is ignored when literal reelStrips are authored; the workbook retains the literal reels only.")]};
 
     // `symbolWeights` and the omitted engine-default weighting both describe playable canonical
     // Blueprints but have no physical strip. Freeze the same deterministic sample Studio presents.
@@ -213,6 +214,16 @@ export class ParSheetExporter implements ParSheetExporting {
         const issues = prepared.issues;
         if (prepared.blueprint === undefined) return issues;
         const typedBlueprint = prepared.blueprint;
+        let priorLossless = options?.losslessEligible !== false;
+        if (sourcePath !== undefined && fs.existsSync(`${sourcePath}.conversion-evidence.json`)) {
+            try {
+                const prior = JSON.parse(fs.readFileSync(`${sourcePath}.conversion-evidence.json`, "utf8")) as {losslessEligible?: boolean};
+                priorLossless = priorLossless && prior.losslessEligible === true;
+            } catch {
+                priorLossless = false;
+            }
+            if (!priorLossless) issues.push(materializationIssue("parsheet-prior-conversion-loss", "Prior Blueprint conversion evidence is ineligible or unreadable; re-export cannot upgrade that boundary to lossless."));
+        }
 
         const workbook = new ExcelJS.Workbook();
         addSheet(
@@ -255,22 +266,18 @@ export class ParSheetExporter implements ParSheetExporting {
                 this.pokieVersion,
                 this.now(),
                 sourcePath,
-                options?.losslessEligible !== false && !issues.some((issue) => issue.details?.losslessEligible === false),
+                priorLossless && !issues.some((issue) => issue.details?.losslessEligible === false),
             ),
         );
 
         options?.onProgress?.({message: "Serializing PAR workbook"});
         assertNotCancelled(options);
-        if (this.writeWorkbook === defaultWriteWorkbook) {
-            await writeFileAtomically(filePath, (tempPath) => workbook.xlsx.writeFile(tempPath), () => {
-                options?.onProgress?.({message: "Committing PAR workbook"});
-                assertNotCancelled(options);
-            }, false);
-        } else {
-            await this.writeWorkbook(workbook, filePath);
+        await writeFileAtomically(filePath, tempPath => this.writeWorkbook === defaultWriteWorkbook
+            ? workbook.xlsx.writeFile(tempPath)
+            : this.writeWorkbook(workbook, tempPath), () => {
             options?.onProgress?.({message: "Committing PAR workbook"});
             assertNotCancelled(options);
-        }
+        }, false, () => assertNotCancelled(options));
         return issues;
     }
 

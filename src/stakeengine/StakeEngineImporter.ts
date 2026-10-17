@@ -101,6 +101,30 @@ export class StakeEngineImporter<T extends string | number = string> implements 
             const modeFilesByName = new Map(bundle.modeFiles.map((modeFiles) => [modeFiles.modeName, modeFiles]));
             const manifestModesByName = new Map(manifest.modes.map((mode) => [mode.name, mode]));
 
+            const requiresExactSource = bundle.modeFiles.some(files => {
+                const lines = (files.csv as {status: "ok"; value: readonly string[]}).value;
+                return lines.reduce((total, line) => total + BigInt(line.split(",")[1]), BigInt(0)) > BigInt(Number.MAX_SAFE_INTEGER);
+            });
+            if (requiresExactSource) {
+                // Validate reversible event semantics without ever constructing a numeric-weight library.
+                const issues: ValidationIssue[] = [...structuralIssues];
+                for (const indexMode of index.modes) {
+                    const context: ImportModeContext = {modeName: indexMode.name, cost: indexMode.cost, manifestMode: manifestModesByName.get(indexMode.name)!, manifest};
+                    const files = modeFilesByName.get(indexMode.name)!;
+                    for (const line of (files.books as {status: "ok"; value: readonly StakeEngineImportBookLineResult[]}).value) {
+                        this.buildOutcome(context, (line as {status: "ok"; value: {id: number; events: unknown[]; payoutMultiplier: number}}).value, 1, issues);
+                    }
+                }
+                if (issues.some(issue => issue.severity === "error")) return Promise.resolve({stakeDir, manifest: undefined, modes: [], sourceProvenance: undefined, issues});
+                const files: Record<string, string> = {"index.json": rawBytes.indexBuffer!.toString("base64"), "pokie-manifest.json": rawBytes.manifestBuffer!.toString("base64")};
+                for (const mode of index.modes) {
+                    files[mode.weights] = rawBytes.modes.get(mode.name)!.csvBuffer!.toString("base64");
+                    files[mode.events] = rawBytes.modes.get(mode.name)!.booksBuffer!.toString("base64");
+                }
+                issues.push({code: "stakeengine-import-exact-payload", severity: "info", message: "UInt64 weights retained as an exact Stake payload. Native numeric Outcome Library sampling is unavailable; import/re-export preserves the original events and provenance bytes."});
+                return Promise.resolve({stakeDir, manifest, modes: [], sourceProvenance: this.computeSourceProvenance(index, rawBytes), exactSource: {files}, issues});
+            }
+
             const buildIssues: ValidationIssue[] = [];
             const builtModes: StakeEngineExportModeInput<T>[] = [];
 
@@ -131,7 +155,7 @@ export class StakeEngineImporter<T extends string | number = string> implements 
             }
 
             const sourceProvenance = this.computeSourceProvenance(index, rawBytes);
-            return Promise.resolve({stakeDir, manifest, modes: builtModes, sourceProvenance, issues: allIssues});
+            return Promise.resolve({stakeDir, manifest, modes: builtModes.map(mode => ({...mode, sourceProvenance: manifest.sourceProvenance ?? sourceProvenance})), sourceProvenance, issues: allIssues});
         } catch (error) {
             return Promise.reject(error);
         }

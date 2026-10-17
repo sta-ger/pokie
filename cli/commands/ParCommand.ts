@@ -439,7 +439,7 @@ export class ParCommand implements CliCommandHandling {
             },
             canPublish: (read) => read.issues.every((issue) => issue.severity !== "error"),
             assertDestinationAvailable: () => this.assertDestinationIsAvailable(blueprintPath, outPath),
-            publish: (read) => this.exporter.exportToFile(read.blueprint, outPath, blueprintPath),
+            publish: (read) => this.exporter.exportToFile(read.blueprint, outPath, blueprintPath, {signal}),
             rollback: () => fs.promises.rm(outPath, {force: true}),
             ...(signal === undefined ? {} : {signal}),
         }};

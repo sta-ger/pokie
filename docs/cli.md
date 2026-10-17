@@ -4014,3 +4014,31 @@ committing. Changed locks/source/policy require another review; `--apply` cannot
 Exit codes remain success/attained 0, operational failure 1, infeasible 2, invalid 3, unsupported 4,
 exhausted 5, SIGINT cancellation 6 and inconclusive 7. See [optimization](optimization.md) for the six
 conditional adapters, author opt-in, confidence evidence, apply rollback and restart limits.
+
+### V2C-26 interchange domains
+
+PAR preserves represented weighted sequence identities/order/context, launch mechanics,
+retrigger and bet-mode contracts, explicit zero/omitted payouts (including empty symbol
+maps), fractional bets and the resolved Game Model. Empty optional arrays/strings
+canonicalize to absence. Geometry and nonrepresentable package policies fail before
+publication. Generated/default/shared-weight reel sources become literal snapshots;
+formula cached values, ignored cells/sheets and inferred defaults remain disclosed
+in Meta and conversion evidence. A prior ineligible Blueprint sidecar cannot be
+upgraded by re-export. Import into a Studio draft does not save the source; save/apply
+remains explicit.
+
+Stake IDs and raw payouts are nonnegative safe integers through 9007199254740991.
+Weights are positive UInt64 decimal integers through 18446744073709551615 and their
+aggregate may exceed UInt64 on the exact Stake payload path. `import SOURCE --out NEW`
+retains a Stake adapter when native numeric Outcome Library limits would be exceeded;
+`build NEW --target stakeAdapter --out OTHER` republishes it exactly. Numeric library
+export requires safe-integer weights; native bundles also require safe totals.
+Inspect/report/analyze/diff retain rare nonzero values (moments are binary64
+approximations; wide totals/bucket weights and capped decimal probability strings
+retain their separate documented domains). No UInt64 payout guarantee is implied.
+
+New conversions use new/empty destinations, preserve source bytes and publish complete
+outputs. The ordinary direct Stake library exporter also permits a recognized prior
+export rebuild; canonical artifact operations reject occupied outputs and evidence
+companions. Retired direct Studio Stake routes remain retired in favor of prepared
+artifact preview/build and pollable jobs.

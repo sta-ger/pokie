@@ -280,7 +280,7 @@ export type ArtifactConversionExecutionResult<ReadResult, PublishedResult> = {
  * a new durable POKIE artifact, but does not make a reverse/lossless build
  * edge available to the source artifact.
  */
-export type ArtifactImportOutputKind = "blueprint" | "outcomeLibrary";
+export type ArtifactImportOutputKind = "blueprint" | "outcomeLibrary" | "stakeAdapter";
 
 export type ArtifactImportOutputPlan = {
     readonly status: "planned" | "unavailable";
@@ -650,9 +650,12 @@ export class ArtifactConversionPlanner {
         const destinationKind = outputKind === "blueprint" ? "file" : "directory";
         const expectedSource = outputKind === "blueprint" ? "parWorkbook" : "stakeAdapter";
         const requiredCapability = outputKind === "blueprint" ? PAR_WORKBOOK_EXCHANGE_CAPABILITY : STAKE_ADAPTER_EXPORT_CAPABILITY;
+        const stakeLosses = outputKind === "stakeAdapter"
+            ? ["Exact Stake payload retained with UInt64 weights and original events/provenance. Native numeric Outcome Library sampling is unavailable."]
+            : ["Stake Engine import reconstructs a POKIE Outcome Library from its manifest and does not recover a game model or a lossless reverse edge."];
         const losses = outputKind === "blueprint"
             ? ["PAR is an exchange snapshot. Import creates a Blueprint and does not establish a reverse or lossless conversion edge."]
-            : ["Stake Engine import reconstructs a POKIE Outcome Library from its manifest and does not recover a game model or a lossless reverse edge."];
+            : stakeLosses;
         const output: ArtifactIdentity & {readonly kind: ArtifactImportOutputKind} = {
             kind: outputKind,
             canonicalLocation: path.resolve(destinationPath),

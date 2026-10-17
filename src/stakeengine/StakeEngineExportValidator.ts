@@ -197,11 +197,11 @@ export class StakeEngineExportValidator<T extends string | number = string> impl
                 });
             }
 
-            if (!Number.isInteger(outcome.weight)) {
+            if (!Number.isSafeInteger(outcome.weight) || outcome.weight <= 0) {
                 issues.push({
                     code: "stakeengine-outcome-weight-not-integer",
                     severity: "error",
-                    message: `mode "${mode.modeName}": outcome "${outcome.id}" has a non-integer weight (${outcome.weight}); Stake Engine requires integer weights.`,
+                    message: `mode "${mode.modeName}": outcome "${outcome.id}" has a non-integer weight (${outcome.weight}); Numeric library export requires positive safe integer weights; use exact Stake payload interchange for UInt64 weights.`,
                     details: {modeName: mode.modeName, id: outcome.id, weight: outcome.weight},
                 });
             }

@@ -1,10 +1,11 @@
+import {generatedMechanicsGame, mechanicsSession} from "./fixtures/ExistingMechanicsGame.js";
 import {Worker} from "worker_threads";
 import {pathToFileURL} from "url";
 import {SimulationWorkerCoordinator} from "../../src/simulation/parallel/SimulationWorkerCoordinator.js";
 import {writeOptimizationWorkerEntry} from "./fixtures/OptimizationWorkerFixture.js";
 import fs from "fs";
 import path from "path";
-import {ArtifactPublicationOwnership, ProjectOptimizationService, ProjectTargetResolver, ParSheetExporter, ParSheetImporter, WasmArtifactBuilder, declarePackageTuning, bindCanonicalWasmTuningSource, createTunableBlueprintGame, generateExactWeightedOutcomeLibrary, OutcomeLibraryBundleWriter, OutcomeLibraryBundleReader, StakeEngineExporter, StakeEngineOutcomeSourceReader, buildWeightedOutcomeLibrary} from "../../src/index.js";
+import {ArtifactBuilderRegistry, computeBlueprintHash, buildGameModelProjection, ArtifactPublicationOwnership, ProjectOptimizationService, ProjectTargetResolver, ParSheetExporter, ParSheetImporter, WasmArtifactBuilder, declarePackageTuning, bindCanonicalWasmTuningSource, createTunableBlueprintGame, generateExactWeightedOutcomeLibrary, OutcomeLibraryBundleWriter, OutcomeLibraryBundleReader, StakeEngineExporter, StakeEngineOutcomeSourceReader, buildWeightedOutcomeLibrary} from "../../src/index.js";
 import {loadPokieGameRuntime} from "../../src/gamepackage/loadPokieGame.js";
 import {sourceInventory} from "../../src/optimization/internal/optimizationData.js";
 import {acquireOptimizationAdapter} from "../../src/optimization/internal/ProjectOptimizationAdapter.js";
@@ -107,7 +108,29 @@ it.each(["blueprint", "parWorkbook", "tsPackage", "outcomeLibrary", "stakeAdapte
         expect((await reader.readLibrary(output, "untouched")).outcomes).toEqual((await reader.readLibrary(file, "untouched")).outcomes);
         expect((await reader.readLibrary(output, "base")).outcomes.map(o => [o.id, o.artifact])).toEqual((await reader.readLibrary(file, "base")).outcomes.map(o => [o.id, o.artifact]));
     }
-    if (type === "stakeAdapter") expect((await new StakeEngineOutcomeSourceReader().readFromDirectory(output)).modes[0].outcomes.every(outcome => typeof outcome.weight === "bigint")).toBe(true);
+    if (type === "stakeAdapter") {
+        const read = await new StakeEngineOutcomeSourceReader().readFromDirectory(output);
+        expect(read.modes[0].outcomes.every(outcome => typeof outcome.weight === "bigint")).toBe(true);
+        const republished = path.join(directory, "native-reexport");
+        await new ArtifactBuilderRegistry("1").build("stakeAdapter", await resolve(output), republished);
+        expect((await new StakeEngineOutcomeSourceReader().readFromDirectory(republished)).modes).toEqual(read.modes);
+    }
+    if (type === "parWorkbook") {
+        const imported = await new ParSheetImporter().importFromFile(output);
+        const expected = optimizationBlueprint();
+        expected.paytable.A[2] = 3;
+        expect(imported.conversionEvidence?.losslessEligible).toBe(true);
+        expect(computeBlueprintHash(imported.blueprint)).toBe(computeBlueprintHash(expected));
+        expect(buildGameModelProjection(imported.blueprint)).toEqual(buildGameModelProjection(expected));
+        const sessions = [expected, imported.blueprint].map(model => mechanicsSession(generatedMechanicsGame(model), 31));
+        for (let round = 0; round < 12; round++) {
+            sessions.forEach(session => {
+                session.setBet(expected.availableBets[round % 4]);
+                session.play();
+            });
+            expect(sessions[1].toSessionState()).toEqual(sessions[0].toSessionState());
+        }
+    }
     await service.discard(result.candidate!);
     expect((await resolve(output)).type).toBe(type);
 }, 180000);
