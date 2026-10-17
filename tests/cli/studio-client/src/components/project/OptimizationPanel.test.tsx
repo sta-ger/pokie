@@ -139,7 +139,7 @@ it("shows job observation and cancellation errors without losing known work", as
     await userEvent.click(screen.getByRole("button", {name: "Cancel optimization"}));
     await screen.findByText(/Could not cancel job saved-job/);
     connectionFailed = true;
-    await screen.findByText(/Connection to Studio lost/);
+    await screen.findByText(/Network disconnected/);
     expect(screen.getByRole("button", {name: "Cancel optimization"})).toBeInTheDocument();
 });
 it("ignores foreign jobs and an old support response after switching Projects", async () => {

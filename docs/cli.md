@@ -3722,8 +3722,8 @@ Each step builds on the same `<packageRoot>`:
 
 ## What's next
 
-All 21 public top-level commands this file documents (`build`/`certification`/`client`/`create`/`dev`/`diff`/
-`edit`/`fairness`/`generate`/`import`/`init`/`inspect`/`par`/`reel`/`replay`/`report`/`run`/`sample`/
+All 22 public top-level commands this file documents (`build`/`certification`/`client`/`create`/`dev`/`diff`/
+`edit`/`fairness`/`generate`/`import`/`init`/`inspect`/`optimize`/`par`/`reel`/`replay`/`report`/`run`/`sample`/
 `serve`/`sim`/`validate`) are shipped today. Package-oriented workflows use the shared
 [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`);
 the positional Studio Project, portable `run` command and WASM inspect/validate/sim/replay paths use the integrity-checked `@fromstan/pokie/wasm`

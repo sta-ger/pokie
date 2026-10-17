@@ -505,7 +505,7 @@ describe("PC-05 product-model contract", () => {
         expect(repository).toContain("throw new SessionStateCorruptError(sessionId, error)");
         expect(repository).toContain("throw new SessionStateReadError(sessionId, error)");
         expect(repository).toContain("there is no OS-level file lock");
-        expect(server).toContain("this.sessionRepository = options.sessionRepository ?? new InMemorySessionRepository()");
+        expect(server).toContain("this.sessionRepository = store === undefined ? options.sessionRepository ?? new InMemorySessionRepository() : {");
         expect(server).toContain("await this.sessionRepository.save(sessionId, state)");
         expect(server).toContain("await this.sessionRepository.loadVersioned(sessionId)");
         expect(server).toContain(["this.sendJson(res, 404, {error: `Unknown sessionId \"", String.fromCharCode(36), "{sessionId}\".`})"].join(""));

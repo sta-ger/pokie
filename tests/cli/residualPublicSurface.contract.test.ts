@@ -80,7 +80,7 @@ describe("residual public CLI surface", () => {
 
         expect(docs).toContain("`blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`");
         expect(docs).toContain("`parWorkbook` and `wasm` are file destinations");
-        expect(docs).toContain("the portable `run` command and WASM inspect/validate/sim/replay paths use the integrity-checked `pokie/wasm`\nruntime instead");
+        expect(docs).toContain("portable `run` command and WASM inspect/validate/sim/replay paths use the integrity-checked `@fromstan/pokie/wasm`\nruntime instead");
         expect(docs).not.toContain("are shipped today, built on the same [game package]");
         expect(wasmBoundary).toContain("canonical identity, but authorizes no runtime operation by itself");
         expect(wasmBoundary).toContain("declared `runtime.play`, `runtime.serialize`, `runtime.replay`, and `artifact.inspect` operations grant their\nmatching capabilities independently");
