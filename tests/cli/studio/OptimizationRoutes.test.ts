@@ -119,7 +119,9 @@ it("rejects old-tab support, start and save requests for two Projects with ident
     const start = await routes.handle("POST", "start", {request, expectedProjectRoot: source, sourceRevision: support.sourceRevision}, context());
     await routes.drain();
     const {job} = start.body as {job: StudioJobView};
-    const second = path.join(directory, "second.blueprint.json");
+    const secondDirectory = path.join(directory, "second");
+    fs.mkdirSync(secondDirectory);
+    const second = path.join(secondDirectory, path.basename(source));
     fs.copyFileSync(source, second);
     const secondContext = {projectRoot: second, projectId: second, isCurrent: () => true};
     for (const action of ["support", "start", "save"] as const) {
@@ -128,7 +130,8 @@ it("rejects old-tab support, start and save requests for two Projects with ident
     }
     expect(jobs.list()).toHaveLength(1);
     expect(fs.existsSync(path.join(directory, "stale-output.json"))).toBe(false);
-    expect((await routes.handle("POST", "support", {request, expectedProjectRoot: second}, secondContext)).status).toBe(200);
+    const secondSupport = await routes.handle("POST", "support", {request, expectedProjectRoot: second}, secondContext);
+    expect(secondSupport).toMatchObject({status: 200, body: {sourceRevision: support.sourceRevision}});
 });
 
 it.each(["opaque", "tampered"])("rejects %s package authority without executing modules through support or start", async (kind) => {

@@ -594,19 +594,24 @@ it("rolls back publication when the saved executable cannot load", async () => {
     await expect(service.publish(result.candidate!, request, destination)).resolves.toBe(destination);
 });
 
-it.each(["success", "hash-failure", "evaluation-failure", "cleanup-failure"])("releases every acquired package game and loader lease on %s", async (scenario) => {
+it.each(["success", "hash-failure", "manifest-failure", "evaluation-failure", "cleanup-failure"])("releases every acquired package game and loader lease on %s", async (scenario) => {
     const marker = path.join(directory, "releases");
     const {root} = declaredPackage("owned-runtime", "", `require('fs').appendFileSync(${JSON.stringify(marker)}, 'released\\n');${scenario === "cleanup-failure" ? "throw Error('game cleanup failed');" : ""}`);
-    if (scenario === "hash-failure" || scenario === "evaluation-failure") {
+    if (["hash-failure", "manifest-failure", "evaluation-failure"].includes(scenario)) {
         const file = path.join(root, "index.cjs");
-        const code = fs.readFileSync(file, "utf8").replace(scenario === "hash-failure" ? "p.computeGameBlueprintHash(data)" : "new p.VideoSlotSession(config(), forced)", scenario === "hash-failure" ? "'bad-hash'" : "(() => {throw Error('evaluation failed')})()");
+        const expressions: Record<string, [string, string]> = {
+            "hash-failure": ["p.computeGameBlueprintHash(data)", "'bad-hash'"],
+            "manifest-failure": ["getManifest: () => data.manifest", "getManifest: () => {throw Error('manifest failed')}"],
+            "evaluation-failure": ["new p.VideoSlotSession(config(), forced)", "(() => {throw Error('evaluation failed')})()"],
+        };
+        const code = fs.readFileSync(file, "utf8").replace(...expressions[scenario]);
         fs.writeFileSync(file, code);
         fs.rmSync(path.join(root, "pokie-tuning.json"));
         declarePackageTuning(root, "parameters.json", ["/paytable/A/2"]);
     }
     const snapshotsBefore = fs.readdirSync(process.env.TMPDIR!).filter((name) => name.startsWith("pokie-runtime-"));
     const result = await service.optimize(await resolve(root), optimizationRequest());
-    expect(result.status).toBe(({success: "success", "hash-failure": "unsupported", "evaluation-failure": "failure", "cleanup-failure": "failure"} as Record<string, string>)[scenario]);
+    expect(result.status).toBe(({success: "success", "hash-failure": "unsupported", "manifest-failure": "failure", "evaluation-failure": "failure", "cleanup-failure": "failure"} as Record<string, string>)[scenario]);
     expect(fs.readFileSync(marker, "utf8").trim().split("\n")).toHaveLength(scenario === "success" ? 2 : 1);
     expect(fs.readdirSync(process.env.TMPDIR!).filter((name) => name.startsWith("pokie-runtime-"))).toEqual(snapshotsBefore);
     if (scenario === "cleanup-failure") expect(result.diagnostics).toEqual([{path: "cleanup", message: expect.stringContaining("game cleanup failed")}]);
