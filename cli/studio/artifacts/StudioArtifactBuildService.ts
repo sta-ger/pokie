@@ -402,7 +402,8 @@ export class StudioArtifactBuildService {
                     : {}),
                 ...(result.importedBlueprintPath !== undefined ? {importedBlueprintPath: result.importedBlueprintPath} : {}),
                 ...(result.conversionEvidencePath !== undefined ? {conversionEvidencePath: result.conversionEvidencePath} : {}),
-                ...(result.stakeManifest !== undefined ? {stakeManifest: result.stakeManifest, stakeFiles: result.stakeFiles ?? []} : {}),
+                ...(result.stakeManifest !== undefined ? {stakeManifest: result.stakeManifest} : {}),
+                ...(result.stakeFiles !== undefined || result.stakeManifest !== undefined ? {stakeFiles: result.stakeFiles ?? []} : {}),
                 ...(operation === undefined ? {} : {stakePrerequisiteProvenance: this.stakePrerequisiteProvenance(operation, result)}),
             };
         } catch (error) {

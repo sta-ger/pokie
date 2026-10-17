@@ -12,6 +12,7 @@ import {
     OUTCOME_LIBRARY_READ_CAPABILITY,
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     STAKE_ADAPTER_EXPORT_CAPABILITY,
+    STAKE_ADAPTER_EXCHANGE_CAPABILITY,
     type ProjectCapability,
 } from "./ProjectCapability.js";
 import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
@@ -649,7 +650,7 @@ export class ArtifactConversionPlanner {
     public planImportOutputIdentity(source: ArtifactIdentity, outputKind: ArtifactImportOutputKind, destinationPath: string): ArtifactImportOutputPlan {
         const destinationKind = outputKind === "blueprint" ? "file" : "directory";
         const expectedSource = outputKind === "blueprint" ? "parWorkbook" : "stakeAdapter";
-        const requiredCapability = outputKind === "blueprint" ? PAR_WORKBOOK_EXCHANGE_CAPABILITY : STAKE_ADAPTER_EXPORT_CAPABILITY;
+        const requiredCapability = outputKind === "blueprint" ? PAR_WORKBOOK_EXCHANGE_CAPABILITY : STAKE_ADAPTER_EXCHANGE_CAPABILITY;
         const stakeLosses = outputKind === "stakeAdapter"
             ? ["Exact Stake payload retained with UInt64 weights and original events/provenance. Native numeric Outcome Library sampling is unavailable."]
             : ["Stake Engine import reconstructs a POKIE Outcome Library from its manifest and does not recover a game model or a lossless reverse edge."];

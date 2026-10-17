@@ -319,6 +319,6 @@ it.each(["0", "-1", "0.5", "Infinity", "NaN", "18446744073709551616"])("rejects 
         fs.writeFileSync(path.join(dir, "lookup.csv"), `0,${weight},0\n1,1,200\n`);
         const source = await new StakeEngineOutcomeSourceReader().readFromDirectory(dir);
         expect(source.modes).toEqual([]);
-        expect(source.issues).toContainEqual(expect.objectContaining({code: ["0.5", "Infinity", "NaN"].includes(weight) ? "stakeengine-standalone-csv-malformed-row" : "stakeengine-standalone-outcome-weight-not-positive-integer", severity: "error"}));
+        expect(source.issues).toContainEqual(expect.objectContaining({code: "stakeengine-standalone-outcome-weight-not-positive-integer", severity: "error"}));
     });
 });

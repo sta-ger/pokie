@@ -1,3 +1,5 @@
+import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
+import {StudioArtifactBuildService} from "../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -212,7 +214,21 @@ describe("Stake exact interchange and independent numeric domains", () => {
         writeNativeStakeTuningManifest(source);
         const before = inventory(source),
             output = path.join(directory, "native-export");
-        await new api.StakeAdapterArtifactBuilder("1").build(project(source), output);
+        const resolved = (await new api.ProjectTargetResolver().resolve(source))!;
+        expect(resolved.capabilities).toContain(api.STAKE_ADAPTER_EXPORT_CAPABILITY);
+        expect(resolved.capabilities).not.toContain(api.STAKE_ADAPTER_EXCHANGE_CAPABILITY);
+        expect(resolved.capabilities).not.toContain(api.OUTCOME_SOURCE_SAMPLE_CAPABILITY);
+        expect(new api.ArtifactConversionPlanner().planImportOutput(resolved, "outcomeLibrary", path.join(directory, "unsupported-native-import")).status).toBe("unavailable");
+        await new api.ArtifactBuilderRegistry("1").build("stakeAdapter", resolved, output);
+        const stdout = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        expect(await new ValidateCommand().run([output, "--format", "json"])).toBe(2);
+        expect(JSON.parse(stdout.mock.calls[stdout.mock.calls.length - 1][0] as string)).toMatchObject({valid: true, errors: [], advanced: {verdict: "inconclusive"}});
+        const studio = new StudioArtifactBuildService("1");
+        const studioOutput = path.join(directory, "studio-native");
+        expect((await studio.preview(source, "stakeAdapter", studioOutput)).status).toBe("ok");
+        const built = await studio.build(source, "stakeAdapter", studioOutput);
+        expect(built).toMatchObject({status: "ok", stakeFiles: expect.arrayContaining(["pokie-native-weights.json", "lookup_base.csv"])});
+        expect(inventory(studioOutput)).toEqual(before);
         expect(inventory(output)).toEqual(before);
         expectRareMetrics(new api.StakeEngineStandaloneAnalyzer().analyze(await new api.StakeEngineOutcomeSourceReader().readFromDirectory(output)).modes[0]);
     });
