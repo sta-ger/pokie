@@ -5,6 +5,7 @@ import {loadPokieGameRuntime} from "../../src/gamepackage/loadPokieGame.js";
 import fs from "fs";
 import path from "path";
 import {ProjectOptimizationService} from "../../src/optimization/ProjectOptimizationService.js";
+import {ArtifactPublicationOwnership, rollbackArtifactPublication} from "../../src/project/ArtifactPublicationOwnership.js";
 import {validateOptimizationRequest} from "../../src/optimization/validateOptimizationRequest.js";
 import type {OptimizationRequest} from "../../src/optimization/OptimizationPolicy.js";
 import {ProjectTargetResolver} from "../../src/project/ProjectTargetResolver.js";
@@ -32,7 +33,10 @@ beforeEach(() => {
     fs.writeFileSync(source, JSON.stringify(model()));
     service = new ProjectOptimizationService(path.join(directory, "scratch"));
 });
-afterEach(() => fs.rmSync(directory, {recursive: true, force: true}));
+afterEach(() => {
+    jest.restoreAllMocks();
+    fs.rmSync(directory, {recursive: true, force: true});
+});
 
 it("reaches the independently calculated 3/4 target, repeats evidence, proves infeasibility only exhaustively", async () => {
     const project = await resolve(source);
@@ -424,11 +428,11 @@ it("rolls back owned partial WASM publications when the second companion fails",
     const result = await service.optimize(await resolve(wasm), request);
     expect(result.status).toBe("success");
     const destination = path.join(directory, "partial.wasm");
-    const copy = fs.promises.copyFile.bind(fs.promises);
+    const open = fs.promises.open.bind(fs.promises);
     const failure = jest
-        .spyOn(fs.promises, "copyFile")
-        .mockImplementation((from, to, flags) =>
-            String(to).endsWith(".tuning.json") ? Promise.reject(new Error("companion failure")) : copy(from, to, flags),
+        .spyOn(fs.promises, "open")
+        .mockImplementation((file, flags, mode) =>
+            String(file) === `${destination}.tuning.json` && flags === "wx" ? Promise.reject(new Error("companion failure")) : open(file, flags, mode),
         );
     await expect(service.publish(result.candidate!, request, destination)).rejects.toThrow("companion failure");
     failure.mockRestore();
@@ -574,6 +578,12 @@ it("retains project-local dependency identity through evaluation, independent sa
     await service.publish(result.candidate!, request, saved);
     await service.publish(result.candidate!, request, second);
     expect(fs.statSync(path.join(saved, "parameters.json")).ino).not.toBe(fs.statSync(path.join(second, "parameters.json")).ino);
+    for (const relative of [path.join("src", "authored.ts"), path.join("dist", "index.cjs")]) {
+        const original = fs.statSync(path.join(root, relative));
+        const published = fs.statSync(path.join(saved, relative));
+        expect(published.mtimeMs).toBe(original.mtimeMs);
+        expect(published.mode).toBe(original.mode);
+    }
     await service.discard(result.candidate!);
     const runtime = await loadPokieGameRuntime(saved);
     try {
@@ -593,10 +603,17 @@ it("rolls back publication when the saved executable cannot load", async () => {
     const request = optimizationRequest();
     const result = await service.optimize(await resolve(root), request);
     const destination = path.join(directory, "unloadable");
-    const realCopy = fs.promises.copyFile.bind(fs.promises);
-    const copy = jest.spyOn(fs.promises, "copyFile").mockImplementation(async (from, to, flags) => {
-        await realCopy(from, to, flags);
-        if (String(to) === path.join(destination, "index.cjs")) fs.writeFileSync(to, "throw Error('saved executable cannot load');");
+    const open = fs.promises.open.bind(fs.promises);
+    const copy = jest.spyOn(fs.promises, "open").mockImplementation(async (output, flags, mode) => {
+        const file = await open(output, flags, mode);
+        if (String(output) === path.join(destination, "index.cjs") && flags === "wx") {
+            const write = file.writeFile.bind(file);
+            jest.spyOn(file, "writeFile").mockImplementation(async (data, options) => {
+                await write(data, options);
+                fs.writeFileSync(output, "throw Error('saved executable cannot load');");
+            });
+        }
+        return file;
     });
     await expect(service.publish(result.candidate!, request, destination)).rejects.toThrow();
     copy.mockRestore();
@@ -658,6 +675,212 @@ it("rejects publication within owned workspaces and saves independent bytes that
     fs.appendFileSync(first, " ");
     expect(fs.readFileSync(second)).toEqual(secondBytes);
     expect(JSON.parse(secondBytes.toString()).paytable.A[2]).toBe(3);
+});
+
+it.each(["allocation", "timestamps", "close"])("preserves a competing independent file and its metadata replaced at %s", async (phase) => {
+    const request = optimizationRequest();
+    const project = await resolve(source);
+    const before = sourceInventory(project);
+    const result = await service.optimize(project, request);
+    expect(result.status).toBe("success");
+    const destination = path.join(directory, "replacement.json");
+    const bytes = Buffer.from("competing writer's independent output");
+    const controller = new AbortController();
+    let replacement: fs.Stats | undefined;
+    const replace = (): void => {
+        fs.unlinkSync(destination);
+        fs.writeFileSync(destination, bytes, {mode: 0o600});
+        fs.utimesSync(destination, new Date("1999-01-01"), new Date("2000-01-01"));
+        replacement = fs.lstatSync(destination);
+        controller.abort();
+    };
+    const open = fs.promises.open.bind(fs.promises);
+    const allocation = jest.spyOn(fs.promises, "open").mockImplementation(async (output, flags, mode) => {
+        const file = await open(output, flags, mode);
+        if (String(output) === destination && flags === "wx") {
+            if (phase === "allocation") replace();
+            else if (phase === "timestamps") {
+                const utimes = file.utimes.bind(file);
+                jest.spyOn(file, "utimes").mockImplementation(async (atime, mtime) => {
+                    replace();
+                    await utimes(atime, mtime);
+                });
+            } else {
+                const close = file.close.bind(file);
+                jest.spyOn(file, "close").mockImplementation(async () => {
+                    // Keep the old inode alive so the replacement cannot reuse it.
+                    replace();
+                    await close();
+                });
+            }
+        }
+        return file;
+    });
+    await expect(service.publish(result.candidate!, request, destination, {signal: controller.signal})).rejects.toThrow(/cancelled/i);
+    allocation.mockRestore();
+    expect(replacement).toBeDefined();
+    expect(fs.lstatSync(destination)).toEqual(replacement);
+    expect(fs.readFileSync(destination)).toEqual(bytes);
+    expect(sourceInventory(project)).toEqual(before);
+    await service.discard(result.candidate!);
+    expect(fs.readFileSync(destination)).toEqual(bytes);
+});
+
+it("preserves independent publications under a replaced ancestor during cancellation", async () => {
+    const request = optimizationRequest();
+    const result = await service.optimize(await resolve(source), request);
+    const parent = path.join(directory, "nested");
+    const moved = path.join(directory, "moved-publication");
+    const destination = path.join(parent, "saved.json");
+    const controller = new AbortController();
+    const open = fs.promises.open.bind(fs.promises);
+    jest.spyOn(fs.promises, "open").mockImplementation(async (output, flags, mode) => {
+        const file = await open(output, flags, mode);
+        if (String(output) === destination && flags === "wx") {
+            const close = file.close.bind(file);
+            jest.spyOn(file, "close").mockImplementation(async () => {
+                await close();
+                fs.renameSync(parent, moved);
+                fs.mkdirSync(parent);
+                // Same owned file inode, but a different ancestor: neither may be removed.
+                fs.linkSync(path.join(moved, "saved.json"), destination);
+                fs.writeFileSync(path.join(parent, "unrelated.bin"), "replacement directory");
+                controller.abort();
+            });
+        }
+        return file;
+    });
+    await expect(service.publish(result.candidate!, request, destination, {signal: controller.signal})).rejects.toThrow(/cancelled/i);
+    expect(fs.readdirSync(parent).sort()).toEqual(["saved.json", "unrelated.bin"]);
+    expect(fs.statSync(destination).ino).toBe(fs.statSync(path.join(moved, "saved.json")).ino);
+    expect(fs.readFileSync(destination)).toEqual(fs.readFileSync(result.candidate!.path));
+    expect(fs.readFileSync(path.join(parent, "unrelated.bin"), "utf8")).toBe("replacement directory");
+});
+
+it("preserves a replaced copied dependency link during cancellation without adopting its inode", async () => {
+    const name = "local-dependency";
+    const {root} = declaredPackage("dependency-race", "", "", {[name]: "1.0.0"});
+    const dependency = path.join(root, "node_modules", name);
+    fs.mkdirSync(dependency, {recursive: true});
+    fs.writeFileSync(path.join(dependency, "package.json"), JSON.stringify({name, version: "1.0.0", main: "index.cjs"}));
+    fs.writeFileSync(path.join(dependency, "index.cjs"), "module.exports = {};");
+    const request = optimizationRequest();
+    const result = await service.optimize(await resolve(root), request);
+    expect(result.status).toBe("success");
+    const destination = path.join(directory, "saved-dependencies");
+    const output = path.join(destination, "node_modules", name);
+    const competitor = path.join(directory, "other-dependency");
+    fs.mkdirSync(competitor);
+    fs.writeFileSync(path.join(competitor, "marker"), "unrelated dependency");
+    const controller = new AbortController();
+    let replacement: fs.Stats | undefined;
+    const link = fs.promises.link.bind(fs.promises);
+    const publication = jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+        await link(from, to);
+        if (String(to) === output) {
+            expect(fs.lstatSync(from).isSymbolicLink()).toBe(true);
+            expect(fs.lstatSync(from).dev).toBe(fs.statSync(path.dirname(output)).dev);
+            fs.unlinkSync(output);
+            fs.symlinkSync(competitor, output);
+            replacement = fs.lstatSync(output);
+            controller.abort();
+        }
+    });
+    await expect(service.publish(result.candidate!, request, destination, {signal: controller.signal})).rejects.toThrow(/cancelled/i);
+    publication.mockRestore();
+    expect(replacement).toBeDefined();
+    expect(fs.lstatSync(output)).toEqual(replacement);
+    expect(fs.readlinkSync(output)).toBe(competitor);
+    expect(fs.readFileSync(path.join(competitor, "marker"), "utf8")).toBe("unrelated dependency");
+    expect(fs.readdirSync(path.dirname(output))).toEqual([name]);
+    expect(fs.readdirSync(destination)).toEqual(["node_modules"]);
+    await service.discard(result.candidate!);
+    expect(fs.readlinkSync(output)).toBe(competitor);
+});
+
+it("cleans an interrupted exclusive copy, closes its handle and reuses publication after rejection", async () => {
+    const request = optimizationRequest();
+    const project = await resolve(source);
+    const before = sourceInventory(project);
+    const result = await service.optimize(project, request);
+    const destination = path.join(directory, "partial", "output.json");
+    const open = fs.promises.open.bind(fs.promises);
+    let closed = false;
+    const failure = jest.spyOn(fs.promises, "open").mockImplementation(async (output, flags, mode) => {
+        const file = await open(output, flags, mode);
+        if (String(output) === destination && flags === "wx") {
+            const close = file.close.bind(file);
+            jest.spyOn(file, "close").mockImplementation(async () => {
+                await close();
+                closed = true;
+            });
+            jest.spyOn(file, "writeFile").mockImplementation(async (data) => {
+                for await (const chunk of data as fs.ReadStream) {
+                    await file.write((chunk as Buffer).subarray(0, 1));
+                    if ((chunk as Buffer).length > 0) throw new Error("interrupted copy");
+                }
+            });
+        }
+        return file;
+    });
+    await expect(service.publish(result.candidate!, request, destination)).rejects.toThrow("interrupted copy");
+    failure.mockRestore();
+    expect(closed).toBe(true);
+    expect(fs.existsSync(path.dirname(destination))).toBe(false);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(service.publish(result.candidate!, request, destination, {signal: controller.signal})).rejects.toThrow(/cancelled/i);
+    expect(fs.existsSync(path.dirname(destination))).toBe(false);
+    await expect(service.publish(result.candidate!, request, destination)).resolves.toBe(destination);
+    const saved = fs.readFileSync(destination);
+    await expect(service.publish(result.candidate!, request, destination)).rejects.toThrow(/already exists/);
+    expect(fs.readFileSync(destination)).toEqual(saved);
+    for (const name of ["first-reuse.json", "second-reuse.json"]) await expect(service.publish(result.candidate!, request, path.join(directory, name))).resolves.toBe(path.join(directory, name));
+    expect(sourceInventory(project)).toEqual(before);
+});
+
+it("preserves an occupied dependency link and removes only an uncontested owned link", async () => {
+    const staged = path.join(directory, "staged-link");
+    const output = path.join(directory, "dependency-link");
+    fs.symlinkSync(source, staged);
+    fs.symlinkSync("competitor-target", output);
+    const competitor = fs.lstatSync(output);
+    const publication = new ArtifactPublicationOwnership(true);
+    const rollback = (): Promise<void> => rollbackArtifactPublication({publishedFileOwnership: publication.files, publishedDirectoryOwnership: publication.directories});
+    await expect(publication.publish(staged, output)).rejects.toThrow(/already exists/);
+    await rollback();
+    expect(fs.lstatSync(output)).toEqual(competitor);
+    expect(fs.readlinkSync(output)).toBe("competitor-target");
+    fs.unlinkSync(output);
+    await publication.publish(staged, output);
+    expect(fs.readlinkSync(output)).toBe(source);
+    expect(fs.lstatSync(output).ino).not.toBe(fs.lstatSync(staged).ino);
+    await rollback();
+    expect(fs.existsSync(output)).toBe(false);
+    expect(fs.readdirSync(directory).sort()).toEqual([path.basename(source), path.basename(staged)].sort());
+});
+
+it("removes an uncontested independent output when cancellation follows its timestamp update", async () => {
+    const request = optimizationRequest();
+    const result = await service.optimize(await resolve(source), request);
+    const destination = path.join(directory, "cancelled", "saved.json");
+    const controller = new AbortController();
+    const open = fs.promises.open.bind(fs.promises);
+    const allocation = jest.spyOn(fs.promises, "open").mockImplementation(async (output, flags, mode) => {
+        const file = await open(output, flags, mode);
+        if (String(output) === destination && flags === "wx") {
+            const utimes = file.utimes.bind(file);
+            jest.spyOn(file, "utimes").mockImplementation(async (atime, mtime) => {
+                await utimes(atime, mtime);
+                controller.abort();
+            });
+        }
+        return file;
+    });
+    await expect(service.publish(result.candidate!, request, destination, {signal: controller.signal})).rejects.toThrow(/cancelled/i);
+    allocation.mockRestore();
+    expect(fs.existsSync(path.dirname(destination))).toBe(false);
+    await expect(service.publish(result.candidate!, request, destination)).resolves.toBe(destination);
 });
 
 it("honors library project context before acquisition and while selecting a result", async () => {
