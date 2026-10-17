@@ -702,28 +702,25 @@ it.each(["success", "hash-failure", "manifest-failure", "evaluation-failure", "c
         fs.rmSync(path.join(root, "pokie-tuning.json"));
         declarePackageTuning(root, "parameters.json", ["/paytable/A/2"]);
     }
-    // Direct Jest workers need not inherit the npm wrapper's TMPDIR. Observe only this
-    // fixture's real loader snapshots, so concurrent suites cannot change the inventory.
-    const temporary = path.join(directory, "runtime-temporary");
-    fs.mkdirSync(temporary);
-    const variables = ["TMPDIR", "TMP", "TEMP"] as const;
-    const inherited = variables.map(name => process.env[name]);
+    // Observe exact real allocations without depending on npm's TMPDIR or comparing a
+    // shared directory whose other snapshots can disappear during concurrent suites.
     const allocate = jest.spyOn(fs, "mkdtempSync");
     try {
-        for (const name of variables) process.env[name] = temporary;
         const result = await service.optimize(await resolve(root), optimizationRequest());
         expect(result.status).toBe(({success: "success", "hash-failure": "unsupported", "manifest-failure": "failure", "evaluation-failure": "failure", "cleanup-failure": "failure"} as Record<string, string>)[scenario]);
         const acquisitions = scenario === "success" ? 2 : 1;
         expect(fs.readFileSync(marker, "utf8").trim().split("\n")).toHaveLength(acquisitions);
-        expect(allocate.mock.calls.filter(([prefix]) => prefix === path.join(temporary, "pokie-runtime-"))).toHaveLength(acquisitions);
-        expect(fs.readdirSync(temporary)).toEqual([]);
+        const snapshots = allocate.mock.calls.flatMap(([prefix], index) => {
+            if (path.basename(String(prefix)) !== "pokie-runtime-") return [];
+            const allocation = allocate.mock.results[index];
+            expect(allocation.type).toBe("return");
+            expect(typeof allocation.value).toBe("string");
+            return [allocation.value as string];
+        });
+        expect(snapshots).toHaveLength(acquisitions);
+        for (const snapshot of snapshots) expect(fs.existsSync(snapshot)).toBe(false);
         if (scenario === "cleanup-failure") expect(result.diagnostics).toEqual([{path: "cleanup", message: expect.stringContaining("game cleanup failed")}]);
     } finally {
-        variables.forEach((name, index) => {
-            const value = inherited[index];
-            if (value === undefined) Reflect.deleteProperty(process.env, name);
-            else process.env[name] = value;
-        });
         allocate.mockRestore();
     }
 });
