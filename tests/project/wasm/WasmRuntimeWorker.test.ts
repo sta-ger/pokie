@@ -1843,6 +1843,11 @@ it("V2C-22-SIMULATION-REPLAY-FUNDING reproduces a loss-making accepted sample be
     const {POKIE_WASM_SIMULATION_CREDITS} = await import("../../../src/wasm/PokieWasmCommands.js");
     const fixture = createCanonicalWasmFixture({availableBets: [7.5], paytable: {A: {2: 0}, B: {2: 0}}});
     const test = await browserOwner(fixture);
+    test.controls.before = (url, init) => {
+        const match = (/^\/api\/project\/(?:simulations|replays)\/([^/]+)$/).exec(url);
+        if (match) return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(test.jobs.get(test.file, match[1]))});
+        return test.network(url, init);
+    };
     const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("0"));
     const run = async (operation: "simulations" | "replays", request: Record<string, unknown>) => {
         const response = await test.owner.fetch(`/api/project/${operation}`, {method: "POST", body: JSON.stringify(request)});

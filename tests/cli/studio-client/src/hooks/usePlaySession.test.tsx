@@ -137,7 +137,7 @@ it.each(["error", "messageerror"])("V2C-22-WORKER-RETRY recovers the rendered br
         // V2C-22-REPLACEMENT-PLAY-SELECTION: follow Retry through actual replacement spins.
         const modes = createCanonicalWasmFixture({blueprint: {manifest: GAME, reels: 2, rows: 1, symbols: ["A", "B"],
             reelStrips: [["A", "B"], ["A", "B"]], availableBets: [1], paytable: {A: {2: 0}},
-            betModes: [{id: "base", runtimeType: "base", isDefault: true}]}});
+            betModes: [{id: "base", runtimeType: "base", isDefault: true}, {id: "ante", runtimeType: "ante", costMultiplier: 2}]}});
         fs.writeFileSync(file, modes.bytes);
         fs.writeFileSync(`${file}.pokie-wasm.json`, JSON.stringify(modes.manifest));
         await user.click(screen.getByRole("button", {name: "Reset Play session"}));
