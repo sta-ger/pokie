@@ -1,3 +1,4 @@
+import {loadPokieGame} from "../../../src/gamepackage/loadPokieGame.js";
 import {ArtifactPublicationOwnership} from "../../../src/project/ArtifactPublicationOwnership.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
@@ -299,20 +300,26 @@ it.each(["ready", "preparing"])("actual HTTP apply preserves rejected sessions a
     const loaderEntered = latch();
     const loaderGate = latch();
     let holdNextLoad = false;
-    const releaseGame = jest.fn();
+    let heldSnapshot: string | undefined;
     const loadGame = async (file: string) => {
         const model = JSON.parse(fs.readFileSync(file, "utf8"));
         loadedValues.push(model.paytable.A[2]);
         const game = createTunableBlueprintGame(model);
         if (holdNextLoad) {
             holdNextLoad = false;
-            const release = game.release!;
-            game.release = async () => {
-                releaseGame();
-                await release();
-            };
+            // Give this load a real compatibility-loader lease. A handwritten game's
+            // release hook is not the snapshot lease released by Studio Play.
+            const packageRoot = path.join(directory, "held-play-package");
+            fs.mkdirSync(packageRoot);
+            fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: "held-play", version: "1.0.0", pokie: {entry: "index.cjs"}}));
+            fs.writeFileSync(path.join(packageRoot, "index.cjs"), "// injected entry module");
+            const leased = await loadPokieGame(packageRoot, entry => {
+                heldSnapshot = path.dirname(entry);
+                return Promise.resolve({default: game});
+            });
             loaderEntered.release();
             await loaderGate.promise;
+            return leased;
         }
         return game;
     };
@@ -364,6 +371,8 @@ it.each(["ready", "preparing"])("actual HTTP apply preserves rejected sessions a
             overlappingId = (await response.json() as {session: {sessionId: string}}).session.sessionId;
         } else {
             await loaderEntered.promise;
+            expect(heldSnapshot).toBeDefined();
+            expect(fs.existsSync(heldSnapshot!)).toBe(true);
         }
         commitGate.release();
         await committed.promise;
@@ -372,7 +381,7 @@ it.each(["ready", "preparing"])("actual HTTP apply preserves rejected sessions a
             expect((await post(`project/play/sessions/${old.session.sessionId}/spin`, {})).status).toBe(409);
             loaderGate.release();
             expect((await overlapping).status).toBe(409);
-            expect(releaseGame).toHaveBeenCalledTimes(1);
+            expect(fs.existsSync(heldSnapshot!)).toBe(false);
         }
         expect((await applying).status).toBe(200);
         const contextResponse = await fetch(`${base}/api/project/context`);
