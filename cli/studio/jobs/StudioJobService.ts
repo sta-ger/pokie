@@ -146,6 +146,22 @@ export class StudioJobService {
         return this.terminal(id, "cancelled", {...(result === undefined ? {} : {result}), ...(recovery === undefined ? {} : {recovery})});
     }
 
+    /** A lost external executor cannot attest to drainage. Keep its prefix for recovery. */
+    public requireRecovery(id: string, recovery: StudioJobRecoveryView, result?: StudioJobResultView): StudioJobView | undefined {
+        this.executorCleanupFailed = true;
+        return this.terminal(id, "recovery-required", {recovery, ...(result === undefined ? {} : {result})});
+    }
+
+    /** Retain a lost idle owner's cleanup failure even after execution admission closes. */
+    public recordCleanupFailure(input: StudioJobStartInput, recovery: StudioJobRecoveryView): StudioJobView {
+        this.executorCleanupFailed = true;
+        const job: StudioJobView = {id: this.createId(), projectId: input.projectId, operation: input.operation,
+            request: input.request, conflictKey: input.conflictKey, status: "recovery-required",
+            createdAt: this.now(), completedAt: this.now(), durationMs: 0, recovery};
+        this.repository.save(job);
+        return job;
+    }
+
     /**
      * Refines a retained recovery decision after an operation-specific
      * checkpoint has been inspected.  Terminal outcome remains immutable;
@@ -153,6 +169,15 @@ export class StudioJobService {
      */
     public setRecovery(id: string, recovery: StudioJobRecoveryView): StudioJobView | undefined {
         return this.transition(id, (job) => ({...job, recovery}));
+    }
+
+    /** Attach a late accepted Play publication without erasing the lost-owner terminal/warning.
+     * The browser service authenticates the admitted owner and current artifact first.
+     */
+    public retainBrowserPlayPublication(id: string, result: StudioJobResultView): StudioJobView | undefined {
+        return this.transition(id, job => job.operation === "browser-play" && job.status === "recovery-required" && !job.result?.detail?.session
+            ? {...job, result}
+            : job);
     }
 
     /**

@@ -7,6 +7,7 @@ import type {GameBlueprint} from "../../../src/generated/GameBlueprint.js";
 
 type CanonicalWasmFixtureOptions = {
     readonly id?: string;
+    readonly availableBets?: readonly number[];
     readonly blueprint?: GameBlueprint;
     readonly capabilities?: readonly string[];
     readonly trapping?: boolean;
@@ -31,7 +32,7 @@ export function createCanonicalWasmFixture(options: CanonicalWasmFixtureOptions 
     const paytable = options.paytable ?? {A: {[String(reelStrips.length)]: 2}, B: {[String(reelStrips.length)]: 1}};
     const symbols = [...new Set([...reelStrips.flat(), ...(options.wilds ?? []), ...(options.scatters ?? []), ...Object.keys(paytable)])];
     const ordinaryModel = resolveSharedSlotMathModel({manifest: {...component, name: component.id}, reels: reelStrips.length, rows: 1, symbols,
-        reelStrips: reelStrips.map(strip => [...strip]), paytable, winModel: options.winModel, wilds: options.wilds ? [...options.wilds] : undefined, scatters: options.scatters ? [...options.scatters] : undefined});
+        availableBets: options.availableBets ? [...options.availableBets] : undefined, reelStrips: reelStrips.map(strip => [...strip]), paytable, winModel: options.winModel, wilds: options.wilds ? [...options.wilds] : undefined, scatters: options.scatters ? [...options.scatters] : undefined});
     const model = options.blueprint ? {...resolveSharedSlotMathModel(options.blueprint), features: {schemaVersion: "pokie.features.v1" as const, blueprint: options.blueprint}} : ordinaryModel;
     const configurationHash = sha256(new TextEncoder().encode(stableSlotMathJson(model)));
     const descriptor = {schemaVersion: "1.0.0", component, serialization, host, capabilities,

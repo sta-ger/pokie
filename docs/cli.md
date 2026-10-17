@@ -26,7 +26,7 @@ WASM is a normal POKIE artifact target. Build a portable, self-describing compon
 
 ```sh
 npx --package @fromstan/pokie pokie build slot.blueprint.json --target wasm --out game.wasm
-npx --package @fromstan/pokie pokie game.wasm              # inspect its bound metadata and next actions
+npx --package @fromstan/pokie pokie game.wasm              # open its Studio Project (browser Worker execution)
 npx --package @fromstan/pokie pokie validate game.wasm
 npx --package @fromstan/pokie pokie run game.wasm --seed demo
 npx --package @fromstan/pokie pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json
@@ -43,7 +43,9 @@ WASM simulation requires `--workers 1` and does not accept `--mode` or adaptive 
 does not accept `--mode`. Omit replay `--out` when parsing stdout as JSON, or read the written JSON file:
 with `--out`, stdout also contains a destination notice.
 
-`npx --package @fromstan/pokie pokie game.wasm` deliberately routes to ordinary inspection instead of requiring a local project, compiler, package install, or adapter path. It prints the executable validate/run actions available from the normal artifact navigation. A missing, stale, swapped, malformed, or incompatible manifest is rejected before the component can be treated as runnable.
+`npx --package @fromstan/pokie pokie game.wasm [--no-open] [--host 127.0.0.1] [--port 3200]` opens that artifact’s Studio Project. Bare `pokie` still opens Home. Explicit `pokie inspect game.wasm` remains the terminal inspection route. Home Open, registered projects and recent projects resolve the same artifact without materializing a TypeScript package. A missing, stale, swapped, malformed, or incompatible sidecar is rejected before executable actions are granted.
+
+Studio verifies the Project-scoped bytes and sidecar on the server, in the browser, and in the production Web Worker. Play, fixed-budget single-Worker Simulation and Replay use the existing portable runtime and report/replay engines. Operations follow their individual declarations; serialize/restore and artifact detail are offered only when declared. Legacy manifest-only components stay inspection-only. Validation reports module/descriptor/configuration integrity, ABI, runtime and host compatibility; it does not certify game mathematics. Browser jobs retain seeds, modes and artifact identities in the existing job/report/download routes. Cancellation terminates the owned Worker, and reload discovers the retained terminal/retry state without automatically resubmitting a run.
 
 Build creates a **new artifact**: package directories must be new or empty; file targets, including zero-byte
 PAR/WASM files, must not exist. WASM also refuses occupied integrity sidecars and PAR import companions.
@@ -3724,7 +3726,7 @@ All 21 public top-level commands this file documents (`build`/`certification`/`c
 `edit`/`fairness`/`generate`/`import`/`init`/`inspect`/`par`/`reel`/`replay`/`report`/`run`/`sample`/
 `serve`/`sim`/`validate`) are shipped today. Package-oriented workflows use the shared
 [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`);
-the portable `run` command and WASM inspect/validate/sim/replay paths use the integrity-checked `@fromstan/pokie/wasm`
+the positional Studio Project, portable `run` command and WASM inspect/validate/sim/replay paths use the integrity-checked `@fromstan/pokie/wasm`
 runtime instead, while artifact/source workflows use the resolver and `ArtifactBuilderRegistry` contracts appropriate
 to their project types. [POKIE Studio](#pokie) already
 covers most of these workflows with a real GUI, not just the CLI: designing/building a game (Home's Design Game

@@ -43,14 +43,15 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     const spinGuard = useDoubleSubmitGuard();
 
     const newSession = useCallback(
-        (seed?: string, modeName?: string) => {
+        (seed?: string, modeName?: string, checkpoint?: unknown) => {
             if (!newSessionGuard.begin()) {
                 return;
             }
             const requestId = ++requestIdRef.current;
             const previousSession = activeSessionRef.current;
+            const subject = checkpoint === undefined ? "This session" : "Checkpoint restore";
             setSession({status: "loading", ...(previousSession === undefined ? {} : {previousSession})});
-            createPlaySession(fetchImpl, seed, modeName)
+            createPlaySession(fetchImpl, seed, modeName, checkpoint)
                 .then((result) => {
                     if (requestId !== requestIdRef.current) {
                         return;
@@ -67,7 +68,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                         // Session creation can fail after a previously confirmed session has completed a
                         // round. That failed reset has not invalidated the confirmed session, so retain
                         // its identity and round while giving the designer actionable recovery copy.
-                        setSession({status: "error", message: result.message, subject: "This session", ...(previousSession === undefined ? {} : {previousSession})});
+                        setSession({status: "error", message: result.message, subject, ...(previousSession === undefined ? {} : {previousSession})});
                         return;
                     }
                     // "No active project" means the old session is no longer safely actionable.
@@ -79,7 +80,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                 })
                 .catch((error: unknown) => {
                     if (requestId === requestIdRef.current) {
-                        setSession({status: "error", message: errorMessage(error), ...(previousSession === undefined ? {} : {previousSession})});
+                        setSession({status: "error", message: errorMessage(error), subject, ...(previousSession === undefined ? {} : {previousSession})});
                     }
                 })
                 .finally(() => newSessionGuard.end());
@@ -195,5 +196,5 @@ export function usePlaySession(onRoundRecorded?: () => void) {
         setSessionId(undefined);
     }, []);
 
-    return {session, sessionId, newSession, spin, findAnyWin, findSymbolWin, findFreeGames, resetForProjectSwitch};
+    return {session, sessionId, newSession, restore: (state: unknown) => newSession(undefined, undefined, state), spin, findAnyWin, findSymbolWin, findFreeGames, resetForProjectSwitch};
 }

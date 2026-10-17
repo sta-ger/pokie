@@ -14,8 +14,8 @@ import type {StudioProjectImportPreviewResult, StudioProjectRegistryView, Studio
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {formatTimestamp} from "../../domain/formatTimestamp";
-import {describePathActionError} from "../../domain/pathActionError";
 import {describeProjectActionError} from "../../domain/projectActionError";
+import {describeWasmProjectPathError, describeWasmProjectRegistrationError} from "../../domain/wasmProjectActionError";
 import {describeProjectType, PROJECT_TYPE_LABEL} from "../../domain/interpret/ProjectDashboard";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
@@ -209,7 +209,7 @@ export function ProjectsPanel({
             .catch((error: unknown) =>
                 setListView((previous) => {
                     const openError = {
-                        message: describePathActionError(subject, errorMessage(error)),
+                        message: describeWasmProjectPathError(subject, errorMessage(error)),
                         detail: error instanceof ProjectOpenError ? error.detail : undefined,
                     };
                     return previous.status === "loaded" ? {...previous, openError} : {status: "error", ...openError};
@@ -298,7 +298,7 @@ export function ProjectsPanel({
             })
             .catch((error: unknown) => {
                 relocateGuard.end();
-                setRelocationError(describePathActionError("The new game location", errorMessage(error)));
+                setRelocationError(describeWasmProjectPathError("The new game location", errorMessage(error)));
             });
     };
 
@@ -320,7 +320,7 @@ export function ProjectsPanel({
             })
             .catch((error: unknown) => {
                 detectGuard.end();
-                setImportView({status: "error", message: describePathActionError("That game location", errorMessage(error))});
+                setImportView({status: "error", message: describeWasmProjectPathError("That game location", errorMessage(error))});
             });
     };
 
@@ -365,7 +365,7 @@ export function ProjectsPanel({
             })
             .catch((error: unknown) => {
                 registerGuard.end();
-                setImportView({status: "error", message: describeProjectActionError("Adding this game", errorMessage(error))});
+                setImportView({status: "error", message: describeWasmProjectRegistrationError(errorMessage(error))});
             });
     };
 

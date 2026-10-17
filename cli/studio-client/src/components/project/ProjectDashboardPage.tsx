@@ -569,7 +569,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         // receives this immutable request and reconstructs it for an explicit
         // new submission, rather than opening an empty unrelated workflow.
         setRecoveryJob(job);
-        if (job.recovery?.action === "new-session" || job.operation.startsWith("play-")) {
+        if (job.recovery?.action === "new-session" || job.operation === "browser-play" || job.operation.startsWith("play-")) {
             setNewSessionRecoveryRequested(true);
             setActiveTab("play");
         } else if (job.operation.includes("simulation")) {
@@ -1412,6 +1412,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     session={play.session}
                                     sessionId={play.sessionId}
                                     onNewSession={play.newSession}
+                                    onRestore={header.status === "loaded" && header.type === "wasm" && header.capabilities.includes("wasm.runtime.serialize") ? play.restore : undefined}
                                     onSpin={play.spin}
                                     onFindAnyWin={play.findAnyWin}
                                     onFindSymbolWin={play.findSymbolWin}

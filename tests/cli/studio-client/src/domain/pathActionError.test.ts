@@ -1,4 +1,6 @@
 import {classifyPathActionErrorReason, describePathActionError} from "../../../../../cli/studio-client/src/domain/pathActionError";
+import {describeProjectActionError} from "../../../../../cli/studio-client/src/domain/projectActionError";
+import {describeWasmProjectPathError, describeWasmProjectRegistrationError} from "../../../../../cli/studio-client/src/domain/wasmProjectActionError";
 
 describe("classifyPathActionErrorReason", () => {
     it("classifies a browser network failure as network", () => {
@@ -34,6 +36,28 @@ describe("classifyPathActionErrorReason", () => {
 });
 
 describe("describePathActionError", () => {
+    it.each([
+        "Failed to fetch",
+        "ENOENT: no such file or directory, open '/games/artifact.wasm'",
+        "EACCES: permission denied",
+        '"/games/component.wasm" is a directory, not a file.',
+        '"path" is required.',
+        "Unexpected internal failure at /games/component.wasm",
+    ])("retains existing path/project fallback behavior outside a WASM contract diagnostic: %s", (message) => {
+        expect(describeWasmProjectPathError("That game location", message)).toBe(describePathActionError("That game location", message));
+        expect(describeWasmProjectRegistrationError(message)).toBe(describeProjectActionError("Adding this game", message));
+    });
+
+    it("does not change shared Blueprint, certification or fairness handling for WASM-related raw text", () => {
+        const message = 'WASM artifact configuration does not match its manifest. Rebuild the artifact.';
+        expect(describeWasmProjectPathError("The game", message)).toBe(message);
+        expect(describeWasmProjectRegistrationError(message)).toBe(message);
+        for (const subject of ["The blueprint file", "The certification bundle directory", "The Provably Fair bundle directory"]) {
+            expect(describePathActionError(subject, message)).toBe(`${subject} could not be completed. Try again. If it continues, choose the location again and retry.`);
+            expect(describeProjectActionError(subject, message)).toBe(`${subject} couldn't be completed. Try again. If it continues, reopen the project and retry.`);
+        }
+    });
+
     it("never echoes the raw message back for a classified reason", () => {
         const rawMessage = "ENOENT: no such file or directory, open '/foo/bar.json'";
         const described = describePathActionError("The blueprint file", rawMessage);

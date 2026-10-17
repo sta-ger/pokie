@@ -281,9 +281,9 @@ describe("ProjectTargetResolver", () => {
     });
 
     it.each([
-        ["serialization", {serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "other.state.v1"}}, /unsupported serialization identifiers/i],
+        ["serialization", {serialization: {session: "pokie.session.v2", play: "pokie.play.v2", state: "other.state.v1"}}, /unsupported serialization identifiers/i],
         ["RNG protocol", {host: {rng: "other.rng.v1", services: []}}, /unsupported RNG protocol/i],
-        ["host service", {host: {rng: "pokie.rng.v1", services: ["pokie.clock.v1"]}}, /unsupported required host service/i],
+        ["host service", {host: {rng: "pokie.rng.v2", services: ["pokie.clock.v1"]}}, /unsupported required host service/i],
     ])("rejects a canonical WASM artifact with an unsupported %s contract", async (_name, options, error) => {
         const wasmFile = path.join(workDir, `unsupported-${_name}.wasm`);
         const fixture = createCanonicalWasmFixture(options);

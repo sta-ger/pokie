@@ -4,8 +4,7 @@ import {
     SimulationAccumulator,
     describeOutcomeSourceSeedPolicy,
     describeUnavailableArtifactOperation,
-    describeWasmLifecycleBoundary,
-    hasDeclaredCanonicalWasmArtifact,
+    readCanonicalWasmDeclaration,
     isWasmComponentFile,
     loadPokieWasmFileRuntime,
     loadPokieGame,
@@ -160,12 +159,15 @@ export class StudioSimulationService {
     public start(projectRoot: string, request: ValidatedSimulationRequest, outcomeSourceProject?: PokieProject): StudioSimulationStartResult {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         request = {...request, convergence: validateSimulationConvergence(request.convergence)};
-        // This service is also used directly, outside StudioServer's HTTP
-        // guard. A resolved component, or an actual unresolved WASM file, has
-        // no runnable branch. A package directory named `game.wasm` remains a
-        // normal project and must not be rejected from its pathname alone.
-        if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmArtifact(projectRoot)) {
-            return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "simulate game rounds")};
+        // Reject unsupported declarations upfront; acquisition owns current-byte
+        // integrity failures and retains them as failed jobs. A .wasm directory
+        // remains an ordinary package, including for direct service callers.
+        if (isWasmComponentFile(projectRoot)) {
+            const declaration = readCanonicalWasmDeclaration(projectRoot, "simulate game rounds");
+            if (!declaration.supported) return {status: "unsupported", message: declaration.message};
+            if (!declaration.manifest.capabilities.includes("runtime.play") || (request.workers ?? 1) !== 1) {
+                return {status: "unsupported", message: "WASM simulation requires runtime.play, one Worker and a fixed round budget. Rebuild with play support and set workers to 1."};
+            }
         }
         if (request.convergence && (outcomeSourceProject !== undefined || isWasmComponentFile(projectRoot))) {
             return {status: "unsupported", message: "Adaptive stopping is supported only for executable package simulations; outcome-library and WASM samplers use fixed budgets."};

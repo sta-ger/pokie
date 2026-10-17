@@ -1,12 +1,22 @@
 import {createServer} from "http";
-import {mkdirSync, mkdtempSync, rmSync} from "fs";
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from "fs";
 import {readFile, rm} from "fs/promises";
 import path from "path";
+import {pathToFileURL} from "url";
+import {createHash} from "crypto";
 import {spawn, spawnSync} from "child_process";
-import {PORTABLE_RUNTIME_BROWSER_FIXTURE as canonicalFixture} from "../fixtures/wasm/portableRuntimeGolden.browser.mjs";
+import {PORTABLE_RUNTIME_BROWSER_FIXTURE as historicalFixture} from "../fixtures/wasm/portableRuntimeGolden.browser.mjs";
 
 const root = process.cwd();
 const portableRuntimeDirectory = preparePortableRuntime();
+const {compileCanonicalWasmArtifact} = await import(pathToFileURL(path.join(portableRuntimeDirectory, "wasm/DeclarativeWasmModel.js")));
+const {stableSlotMathJson} = await import(pathToFileURL(path.join(portableRuntimeDirectory, "wasm/math/SharedSlotMath.js")));
+// Rebuild only this campaign fixture for the checked ABI. Historical golden observations remain frozen.
+const model = {schemaVersion: "pokie.game.v2", mathVersion: "pokie.math.v2", reels: 2, rows: 1, symbols: ["A", "B"], reelStrips: [["A", "B"], ["A", "B"]], paylines: [[0, 0]], paytable: {A: {2: 2}, B: {2: 1}}, wilds: [], scatters: [], availableBets: [1], winModel: {type: "lines"}};
+const hash = value => `sha256:${createHash("sha256").update(value).digest("hex")}`;
+const descriptor = {schemaVersion: "1.0.0", component: historicalFixture.manifest.component, serialization: {session: "pokie.session.v2", play: "pokie.play.v2", state: "pokie.state.v3"}, host: {rng: "pokie.rng.v2", services: []}, capabilities: ["runtime.play", "runtime.serialize", "runtime.replay"], artifact: {format: "pokie.wasm.v1", abiVersion: "3.0.0", adapter: "@fromstan/pokie/wasm", configurationHash: hash(stableSlotMathJson(model))}};
+const rebuiltBytes = compileCanonicalWasmArtifact(model, descriptor);
+const canonicalFixture = {...historicalFixture, bytes: Buffer.from(rebuiltBytes).toString("base64"), manifest: {...descriptor, artifact: {...descriptor.artifact, bytes: rebuiltBytes.length, sha256: hash(rebuiltBytes)}}};
 const benchmarkConfiguration = readBenchmarkConfiguration(process.argv);
 
 function preparePortableRuntime() {
@@ -27,6 +37,7 @@ function preparePortableRuntime() {
         rmSync(outputDirectory, {recursive: true, force: true});
         throw new Error(`Could not compile the portable runtime for the Chromium fixture:\n${compilation.stdout}\n${compilation.stderr}`);
     }
+    writeFileSync(path.join(outputDirectory, "package.json"), JSON.stringify({type: "module"}));
     return outputDirectory;
 }
 
@@ -34,7 +45,7 @@ const workerModule = `import {PokieWasmWorkerProtocol} from "/runtime/wasm/worke
 const protocol = new PokieWasmWorkerProtocol();
 self.onmessage = async ({data}) => self.postMessage(await protocol.handle(data));`;
 const page = `<!doctype html><script type="module">
-    import {instantiatePokieWasm, BoundedPokieWasmTraceCollector, SeededPokieWasmHost} from "/runtime/wasm/browser.js";
+    import {instantiatePokieWasm, BoundedPokieWasmTraceCollector, SeededPokieWasmHost, PokieWasmWorkerClient, collectPokieWasmSimulation} from "/runtime/wasm/browser.js";
     const fixture = ${JSON.stringify(canonicalFixture)};
     const benchmarkConfiguration = ${JSON.stringify(benchmarkConfiguration)};
     const decode = (value) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
@@ -58,7 +69,53 @@ const page = `<!doctype html><script type="module">
         const host = new SeededPokieWasmHost(seed);
         return Array.from({length: count}, () => host.nextRandom());
     };
+    const productionTransport = async () => {
+        const scope = {project: "golden.wasm", generation: "1", artifact: fixture.manifest.artifact.sha256, job: "production-transport"};
+        const clients = [];
+        const client = () => {
+            const value = new PokieWasmWorkerClient(() => new Worker("/production-worker.mjs", {type: "module"}), scope);
+            clients.push(value);
+            return value;
+        };
+        const active = client();
+        const fresh = client();
+        const runtime = await instantiatePokieWasm(decode(fixture.bytes), fixture.manifest, new SeededPokieWasmHost("0"));
+        const main = runtime.createSession("0");
+        try {
+            for (const worker of [active, fresh]) await worker.request({type: "instantiate", bytes: decode(fixture.bytes), manifest: fixture.manifest, seed: "0", traceCapacity: 4});
+            for (const command of fixture.golden.commands) assertFieldForField(await active.request({type: "play", command}), await main.play(command), "production Worker round");
+            const checkpoint = JSON.parse(JSON.stringify(await active.request({type: "serialize"})));
+            await fresh.request({type: "play"});
+            for (const worker of [active, fresh]) await worker.request({type: "restore", state: checkpoint});
+            const expected = await main.play(fixture.golden.continuationCommand);
+            for (const worker of [active, fresh]) assertFieldForField(await worker.request({type: "play", command: fixture.golden.continuationCommand}), expected, "production transport restore");
+            const before = await active.request({type: "serialize"});
+            let rejected = false;
+            try { await active.request({type: "restore", state: {...before, artifactIdentity: "foreign"}}); } catch { rejected = true; }
+            if (!rejected) throw new Error("production transport accepted foreign checkpoint");
+            assertFieldForField(await active.request({type: "serialize"}), before, "recoverable rejected restore");
+            const progress = [];
+            const results = await active.request({type: "simulate", seed: "0", rounds: 10000}, value => progress.push(value.completed));
+            const comparison = await collectPokieWasmSimulation(runtime, "0", 10000);
+            assertFieldForField(results, comparison, "production Worker shared report totals");
+            if (progress.at(-1) !== 10000 || progress.length > 80) throw new Error("production transport progress was unbounded or incomplete");
+            if (JSON.stringify(await active.request({type: "serialize"})).length > 1000) throw new Error("production transport retained historical state");
+            const cancelled = fresh.request({type: "simulate", seed: "0", rounds: 1000000}, () => fresh.dispose());
+            rejected = false;
+            try { await cancelled; } catch { rejected = true; }
+            if (!rejected || fresh.getDiagnostics().pending !== 0 || !fresh.getDiagnostics().disposed) throw new Error("active production Worker cancellation did not drain");
+            const broken = new PokieWasmWorkerClient(() => new Worker("/missing-worker.mjs", {type: "module"}), scope, 3000);
+            clients.push(broken);
+            rejected = false;
+            try { await broken.request({type: "serialize"}); } catch { rejected = true; }
+            if (!rejected || !broken.getDiagnostics().disposed) throw new Error("Worker load failure was not drained");
+        } finally {
+            clients.forEach(value => value.dispose());
+            runtime.dispose();
+        }
+    };
     window.pokieWasmBrowserResult = (async () => {
+        await productionTransport();
         if (fixture.manifest.component.id !== benchmarkConfiguration.fixtureId) throw new Error("browser benchmark received a different fixture than its configuration");
         const bytes = decode(fixture.bytes);
         const golden = fixture.golden;
@@ -82,7 +139,7 @@ const page = `<!doctype html><script type="module">
             screen: replayRounds[0].screen,
         };
         const {draws: legacyDraws, ...legacyState} = golden.expected.state;
-        const compactExpected = {...golden.expected, state: {...legacyState, schemaVersion: "pokie.state.v2", drawCount: legacyDraws.length}};
+        const compactExpected = {...golden.expected, state: {...legacyState, schemaVersion: "pokie.state.v3", artifactIdentity: fixture.manifest.artifact.sha256, drawCount: legacyDraws.length}};
         assertFieldForField({draws: trace.entries.flatMap(entry => entry.draws), rounds: mainRounds, state: mainState, continuation, replay}, compactExpected, "browser main-thread golden");
         assertFieldForField(replayResult, {rounds: [golden.expected.continuation], stateBeforeFinal: mainState, stateAfter: continuationState}, "browser replay result");
         mainSession.dispose();
@@ -98,7 +155,7 @@ const page = `<!doctype html><script type="module">
         const expectedCorrectnessDraws = seededDraws(benchmarkConfiguration.fixtureSeed, correctnessState.drawCount);
         if (correctnessState.drawCount !== 4 || round.draw !== expectedCorrectnessDraws[2]) throw new Error("browser benchmark did not consume the configured seeded host stream");
         correctnessSession.dispose();
-        const warmSession = runtime.createSession(benchmarkConfiguration.fixtureSeed);
+        const warmSession = runtime.createSession(benchmarkConfiguration.fixtureSeed, {credits: Number.MAX_SAFE_INTEGER});
         for (let index = 0; index < benchmarkConfiguration.warmupRounds; index++) await warmSession.play({bet: 1});
         const warmStartedAt = performance.now();
         for (let index = 0; index < benchmarkConfiguration.measuredRounds; index++) await warmSession.play({bet: 1});
@@ -180,6 +237,10 @@ const page = `<!doctype html><script type="module">
 
 const server = createServer(async (request, response) => {
     if (request.url === "/fixture.html") return response.end(page);
+    if (request.url === "/production-worker.mjs") {
+        response.writeHead(200, {"Content-Type": "text/javascript"});
+        return response.end('import {installPokieWasmWorker} from "/runtime/wasm/PokieWasmWorkerClient.js"; installPokieWasmWorker(self);');
+    }
     if (request.url === "/worker.mjs") {
         response.setHeader("Content-Type", "text/javascript");
         return response.end(workerModule);

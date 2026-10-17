@@ -19,6 +19,7 @@ export default defineConfig(({command}) => {
     return {
         root: projectRoot,
         plugins: [react()],
+        worker: {format: "es"},
         build: {
             outDir: path.resolve(projectRoot, "../../dist/cli/studio-client"),
             emptyOutDir: true,

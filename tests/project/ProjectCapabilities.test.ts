@@ -1,3 +1,4 @@
+import {createCanonicalWasmFixture} from "../fixtures/wasm/createCanonicalWasmFixture.js";
 import {
     BLUEPRINT_BUILD_CAPABILITY,
     OUTCOME_LIBRARY_READ_CAPABILITY,
@@ -50,25 +51,15 @@ describe("PROJECT_TYPE_CAPABILITIES", () => {
     });
 
     it("derives canonical WASM operations from supported host contracts and per-operation declarations", () => {
-        const manifest = {
-            artifact: {format: "pokie.wasm.v1" as const},
-            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
-            host: {rng: "pokie.rng.v1", services: []},
-            capabilities: ["runtime.play", "runtime.serialize", "artifact.inspect"],
-        };
+        const {manifest} = createCanonicalWasmFixture({capabilities: ["runtime.play", "runtime.serialize", "artifact.inspect"]});
         expect(wasmProjectCapabilities(manifest as never)).toEqual(["wasm.manifest.read", "wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.artifact.inspect"]);
         expect(wasmProjectCapabilities({...manifest, serialization: {...manifest.serialization, state: "other.state.v1"}} as never)).toEqual(["wasm.manifest.read"]);
         expect(wasmProjectCapabilities({...manifest, host: {rng: "other.rng.v1", services: []}} as never)).toEqual(["wasm.manifest.read"]);
-        expect(wasmProjectCapabilities({...manifest, host: {rng: "pokie.rng.v1", services: ["pokie.clock.v1"]}} as never)).toEqual(["wasm.manifest.read"]);
+        expect(wasmProjectCapabilities({...manifest, host: {...manifest.host, services: ["pokie.clock.v1"]}} as never)).toEqual(["wasm.manifest.read"]);
     });
 
     it("keeps canonical WASM declarations independent and reserves runtime.execute for the complete bundle", () => {
-        const manifest = {
-            artifact: {format: "pokie.wasm.v1" as const},
-            serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
-            host: {rng: "pokie.rng.v1", services: []},
-            capabilities: ["runtime.replay"],
-        };
+        const {manifest} = createCanonicalWasmFixture({capabilities: ["runtime.replay"]});
 
         expect(wasmProjectCapabilities(manifest as never)).toEqual([
             WASM_MANIFEST_READ_CAPABILITY,

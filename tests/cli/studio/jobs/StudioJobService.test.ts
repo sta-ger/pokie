@@ -42,6 +42,28 @@ describe("StudioJobService", () => {
         ]));
     });
 
+    it("retains a late browser Play result once while preserving lost-owner status and other terminal contracts", () => {
+        let nextId = 0;
+        const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => `late-${++nextId}`);
+        const result = {summary: "Accepted Play", detail: {session: {credits: 999, sessionId: "session"}}};
+        for (const operation of ["browser-play", "simulation", "replay"]) {
+            const started = service.start({projectId: "/a", operation, request: {}, conflictKey: operation});
+            if (started.status !== "created") throw new Error("Expected admission");
+            expect(service.retainBrowserPlayPublication(started.job.id, result)?.result).toBeUndefined();
+            service.requireRecovery(started.job.id, {action: "retry", reason: "Owner expired"});
+            const prior = service.get("/a", started.job.id)!;
+            const retained = service.retainBrowserPlayPublication(started.job.id, result)!;
+            expect(retained).toEqual(operation === "browser-play" ? {...prior, result} : prior);
+            expect(service.retainBrowserPlayPublication(started.job.id, {...result, detail: {session: {credits: 777}}})).toEqual(retained);
+            expect(service.complete(started.job.id, {summary: "replacement"})).toEqual(retained);
+            expect(service.cancelled(started.job.id)).toEqual(retained);
+        }
+        const next = service.start({projectId: "/a", operation: "browser-play", request: {}, conflictKey: "browser-play"});
+        if (next.status !== "created") throw new Error("Expected later admission");
+        service.complete(next.job.id, result);
+        expect(service.retainBrowserPlayPublication(next.job.id, {summary: "replacement"})?.result).toEqual(result);
+    });
+
     it("locks a canonical publication resource across owners while exact requests reattach", () => {
         let nextId = 0;
         const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => `resource-${++nextId}`);
@@ -229,4 +251,96 @@ describe("StudioJobService", () => {
         const restarted = new StudioJobService(repository, () => 180, () => "unused");
         expect(restarted.get("/project-a", "job-3")).toEqual(expect.objectContaining({status: "recovery-required", recovery: expect.objectContaining({action: "retry"}), durationMs: 80}));
     });
+});
+
+it("admits integrity-bound browser jobs, preserves cancellation prefixes and rejects stale publication", async () => {
+    const {StudioWasmBrowserService} = await import("../../../../cli/studio/wasm/StudioWasmBrowserService.js");
+    const {StudioRoundRecorder} = await import("../../../../cli/studio/runtime/StudioRoundRecorder.js");
+    const {createCanonicalWasmFixture} = await import("../../../fixtures/wasm/createCanonicalWasmFixture.js");
+    const {PokieWasmWorkerProtocol} = await import("../../../../src/wasm/worker.js");
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "wasm-browser-jobs-"));
+    const artifactPath = path.join(directory, "game.wasm");
+    const fixture = createCanonicalWasmFixture();
+    fs.writeFileSync(artifactPath, fixture.bytes);
+    fs.writeFileSync(`${artifactPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+    const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
+    const browser = new StudioWasmBrowserService(jobs, new StudioRoundRecorder(), 2000);
+    const context = {mode: "project" as const, projectRoot: artifactPath};
+    const artifact = await browser.artifact(context);
+    const binding = {owner: "tab-1", generation: artifact.generation, artifactIdentity: artifact.manifest.artifact!.sha256};
+    const start = (request = {rounds: 5, seed: "0", workers: 1}) => browser.handle("POST", "/api/project/wasm/jobs", {...binding, projectRoot: artifactPath, operation: "simulation", request}, context);
+    const worker = new PokieWasmWorkerProtocol();
+    try {
+        const accepted = await start();
+        const {job} = accepted.body as {job: {id: string; projectId: string}};
+        expect(accepted.status).toBe(201);
+        expect(await start()).toMatchObject({status: 409});
+        expect((await browser.handle("POST", `/api/project/wasm/jobs/${job.id}/heartbeat`, {...binding, owner: "other"}, context)).status).toBe(409);
+        await worker.handle({id: "init", type: "instantiate", ...fixture, seed: "0"});
+        const output = await worker.handle({id: "sim", type: "simulate", rounds: 5, seed: "0"});
+        if (!output.ok) throw new Error(output.error);
+        expect(await browser.handle("POST", `/api/project/wasm/jobs/${job.id}/finish`, {...binding, cleanup: true, status: "completed", output: output.result}, context)).toMatchObject({status: 200, body: {status: "completed", result: {provenance: {execution: "browser-worker"}, detail: {report: {rounds: 5}}}}});
+        const restarted = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
+        expect(restarted.get(job.projectId, job.id)?.result?.detail?.report).toBeDefined();
+        const cancelled = (await start({rounds: 1000, seed: "0", workers: 1})).body as {job: {id: string}};
+        jobs.cancel(job.projectId, cancelled.job.id);
+        await browser.handle("POST", `/api/project/wasm/jobs/${cancelled.job.id}/finish`, {...binding, cleanup: true, status: "completed", progress: {completed: 3, statistics: {rounds: 3}}}, context);
+        expect(jobs.get(job.projectId, cancelled.job.id)).toMatchObject({status: "cancelled", result: {detail: {rounds: 3, observedPrefix: {rounds: 3}}}});
+        const stale = (await start()).body as {job: {id: string}};
+        const replacement = createCanonicalWasmFixture({id: "replacement"});
+        fs.writeFileSync(artifactPath, replacement.bytes);
+        fs.writeFileSync(`${artifactPath}.pokie-wasm.json`, JSON.stringify(replacement.manifest));
+        await expect(browser.handle("POST", `/api/project/wasm/jobs/${stale.job.id}/finish`, {...binding, cleanup: true, status: "completed", output: output.result}, context)).rejects.toThrow(/changed/);
+        expect(jobs.get(job.projectId, stale.job.id)).toMatchObject({status: "failed"});
+        await expect(start()).rejects.toThrow(/changed/);
+    } finally {
+        await worker.handle({id: "dispose", type: "dispose"});
+        await browser.shutdown();
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
+it("marks a lost browser owner recovery-required and blocks a false graceful shutdown", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "wasm-lost-owner-"));
+    const {StudioWasmBrowserService} = await import("../../../../cli/studio/wasm/StudioWasmBrowserService.js");
+    const {StudioRoundRecorder} = await import("../../../../cli/studio/runtime/StudioRoundRecorder.js");
+    const {createCanonicalWasmFixture} = await import("../../../fixtures/wasm/createCanonicalWasmFixture.js");
+    const fixture = createCanonicalWasmFixture();
+    const file = path.join(directory, "game.wasm");
+    fs.writeFileSync(file, fixture.bytes);
+    fs.writeFileSync(`${file}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+    const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
+    const browser = new StudioWasmBrowserService(jobs, new StudioRoundRecorder(), 20);
+    const context = {mode: "project" as const, projectRoot: file};
+    try {
+        const artifact = await browser.artifact(context);
+        const result = await browser.handle("POST", "/api/project/wasm/jobs", {owner: "lost-tab", projectRoot: file, generation: artifact.generation, artifactIdentity: fixture.manifest.artifact!.sha256, operation: "simulation", request: {rounds: 1000, seed: "0", workers: 1}}, context);
+        const {job} = result.body as {job: {id: string; projectId: string}};
+        await browser.shutdown();
+        expect(jobs.get(job.projectId, job.id)).toMatchObject({status: "recovery-required", recovery: {action: "retry"}});
+        await expect(jobs.completeGracefulShutdown()).rejects.toThrow(/cleanup/);
+    } finally {
+        await browser.shutdown();
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
+it("retains idle Worker cleanup failure after admission closes and refuses graceful drainage", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-idle-cleanup-"));
+    try {
+        const repository = new FileStudioJobRepository(directory);
+        const service = new StudioJobService(repository);
+        service.beginShutdown();
+        const input = {projectId: "/game.wasm", operation: "browser-worker-cleanup", request: {sessionId: "idle", artifactIdentity: "bound"}, conflictKey: "cleanup:idle"};
+        expect(() => service.start(input)).toThrow(/shutting down/);
+        const failure = service.recordCleanupFailure(input, {action: "new-session", reason: "Idle Worker stopped responding; cleanup could not be confirmed."});
+        expect(failure).toMatchObject({status: "recovery-required", request: {sessionId: "idle", artifactIdentity: "bound"}});
+        expect(service.signal(failure.id)).toBeUndefined();
+        await expect(service.completeGracefulShutdown()).rejects.toThrow(/could not confirm executor cleanup/);
+        expect(repository.getProcessState()?.status).toBe("running");
+        const restarted = new StudioJobService(repository);
+        expect(restarted.list()).toEqual([failure]);
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true}); 
+    }
 });

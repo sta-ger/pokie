@@ -1,3 +1,4 @@
+import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {StudioRoundRecorder} from "../../../cli/studio/runtime/StudioRoundRecorder.js";
 import {transactionalRoundGame} from "../../v2/fixtures/TransactionalRoundGame.js";
@@ -4296,6 +4297,156 @@ describe("StudioServer", () => {
             fs.rmSync(wasmStudioRoot, {recursive: true, force: true});
         });
 
+        it("V2C-22-SIMULATION-REPLAY-FUNDING binds retained HTTP samples beyond standalone funding and ignores caller funding overrides", async () => {
+            const wasmFile = path.join(wasmStudioRoot, "game.wasm");
+            const fixture = createCanonicalWasmFixture({availableBets: [7.5], paytable: {A: {2: 0}, B: {2: 0}}});
+            fs.writeFileSync(wasmFile, fixture.bytes);
+            fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+            const jobs = createIsolatedJobService(wasmStudioRoot);
+            const homeService = new StudioHomeService("1.3.0");
+            wasmServer = new StudioServer({pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: wasmStudioRoot,
+                homeService, blueprintService: new StudioBlueprintService("1.3.0", wasmStudioRoot, homeService),
+                jobService: jobs, initialContext: {mode: "project", projectRoot: wasmFile}});
+            const address = await wasmServer.start();
+            const url = `http://${address.host}:${address.port}`;
+            await pollUntilProjectContextSettled(`${url}/api/project/context`);
+            const simulation = await post(`${url}/api/project/simulations`, {rounds: 256, workers: 1, seed: "0"});
+            expect(simulation.status).toBe(202);
+            const simulationId = (simulation.body as {id: string}).id;
+            expect((await pollUntilTerminal(`${url}/api/project/simulations/${simulationId}`)).body.status).toBe("completed");
+            const history = (await get(`${url}/api/project/rounds`)).body;
+            const count = jobs.list().length;
+            expect((await post(`${url}/api/project/replays`, {round: 257, seed: "0", simulationId, initialCredits: Number.MAX_SAFE_INTEGER})).status).toBe(400);
+            expect(jobs.list()).toHaveLength(count);
+            expect((await get(`${url}/api/project/rounds`)).body).toEqual(history);
+            const standalone = await post(`${url}/api/project/replays`, {round: 256, seed: "0", initialCredits: Number.MAX_SAFE_INTEGER});
+            expect(standalone.status).toBe(202);
+            expect((await pollUntilTerminal(`${url}/api/project/replays/${(standalone.body as {id: string}).id}`)).body.status).toBe("failed");
+            expect((await get(`${url}/api/project/rounds`)).body).toEqual(history);
+            for (let retry = 0; retry < 2; retry++) {
+                const replay = await post(`${url}/api/project/replays`, {round: 256, seed: "0", simulationId, initialCredits: 0});
+                expect(replay.status).toBe(202);
+                const id = (replay.body as {id: string}).id;
+                expect(jobs.get(wasmFile, id)!.request.initialCredits).toBe(Number.MAX_SAFE_INTEGER);
+                expect((await pollUntilTerminal(`${url}/api/project/replays/${id}`)).body).toMatchObject({status: "completed", descriptor: {round: 256, seed: "0", totalBet: 1920, totalWin: 0, stateAfter: {sequence: 256}}});
+            }
+        });
+
+        it("cancels compatibility executors immediately while keeping same-origin browser cleanup reachable during shutdown", async () => {
+            const wasmFile = path.join(wasmStudioRoot, "game.wasm");
+            const fixture = createCanonicalWasmFixture();
+            fs.writeFileSync(wasmFile, fixture.bytes);
+            fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+            const replayService = new StudioReplayExecutionService();
+            const cancelReplays = jest.spyOn(replayService, "cancelAll");
+            const jobs = createIsolatedJobService(wasmStudioRoot);
+            const homeService = new StudioHomeService("1.3.0");
+            wasmServer = new StudioServer({
+                pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: wasmStudioRoot,
+                jobService: jobs, homeService,
+                blueprintService: new StudioBlueprintService("1.3.0", wasmStudioRoot, homeService),
+                replayService, initialContext: {mode: "project", projectRoot: wasmFile},
+            });
+            const address = await wasmServer.start();
+            const projectBaseUrl = `http://${address.host}:${address.port}`;
+            const artifactResponse = await get(`${projectBaseUrl}/api/project/wasm/artifact`);
+            expect(artifactResponse.status).toBe(200);
+            const artifact = artifactResponse.body as {generation: string};
+            const binding = {owner: "shutdown-tab", projectRoot: wasmFile, generation: artifact.generation, artifactIdentity: fixture.manifest.artifact!.sha256};
+            const created = await post(`${projectBaseUrl}/api/project/wasm/jobs`, {...binding, operation: "simulation", request: {rounds: 2, seed: "0", workers: 1}});
+            expect(created.status).toBe(201);
+            const {job} = created.body as {job: {id: string}};
+            const serverToStop = wasmServer;
+            wasmServer = undefined;
+            const stopping = serverToStop.stop();
+            try {
+                expect(cancelReplays).toHaveBeenCalledTimes(1);
+                expect(jobs.get(wasmFile, job.id)?.status).toBe("cancelling");
+                // The browser has an Origin header and must still authenticate against the actual
+                // listener port (port 0 in configuration) before acknowledging its Worker cleanup.
+                const finished = await fetch(`${projectBaseUrl}/api/project/wasm/jobs/${job.id}/finish`, {
+                    method: "POST", headers: {"Content-Type": "application/json", Origin: projectBaseUrl},
+                    body: JSON.stringify({...binding, cleanup: true, status: "cancelled"}),
+                });
+                expect(finished.status).toBe(200);
+                expect(await finished.json()).toMatchObject({status: "cancelled"});
+            } finally {
+                await stopping;
+            }
+            expect(jobs.get(wasmFile, job.id)?.status).toBe("cancelled");
+        });
+
+        it("V2C-22-ASYNC-OWNERSHIP closes through apiClient.closeProject and rejects delayed historical reattachment", async () => {
+            const {closeProject} = await import("../../../cli/studio-client/src/api/apiClient.js");
+            const wasmFile = path.join(wasmStudioRoot, "closing.wasm");
+            const fixture = createCanonicalWasmFixture();
+            fs.writeFileSync(wasmFile, fixture.bytes);
+            fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+            const jobs = createIsolatedJobService(wasmStudioRoot);
+            const homeService = new StudioHomeService("1.3.0");
+            wasmServer = new StudioServer({pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: wasmStudioRoot,
+                jobService: jobs, homeService, blueprintService: new StudioBlueprintService("1.3.0", wasmStudioRoot, homeService),
+                initialContext: {mode: "project", projectRoot: wasmFile}});
+            const address = await wasmServer.start();
+            const base = `http://${address.host}:${address.port}`;
+            const artifactResponse = await get(`${base}/api/project/wasm/artifact`);
+            const binding = {owner: "closing-tab", projectRoot: wasmFile, generation: (artifactResponse.body as {generation: string}).generation, artifactIdentity: fixture.manifest.artifact!.sha256};
+            const started = await post(`${base}/api/project/wasm/jobs`, {...binding, operation: "browser-play", request: {action: "new", seed: "0"}});
+            const id = (started.body as {job: {id: string}}).job.id;
+            const finish = {...binding, cleanup: true, status: "completed", output: {state: {credits: 1000}}};
+            expect((await post(`${base}/api/project/wasm/jobs/${id}/finish`, finish)).status).toBe(200);
+            const historical = jobs.get(wasmFile, id);
+            // The real public close waits for the browser's owned idle session disposal.
+            const closing = closeProject((url, init) => fetch(`${base}${url}`, init), true);
+            try {
+                expect((await post(`${base}/api/project/wasm/sessions/${id}/dispose`, binding)).status).toBe(200);
+            } finally {
+                expect(await closing).toEqual({mode: "home"});
+            }
+            expect((await post(`${base}/api/project/wasm/jobs/${id}/finish`, finish)).status).toBe(409);
+            expect((await get(`${base}/api/project/context`)).body).toEqual({status: "empty"});
+            expect(jobs.get(wasmFile, id)).toEqual(historical);
+        });
+
+        it("V2C-22-IDLE-SHUTDOWN settles an unresponsive idle lease after admission closes and retains recovery", async () => {
+            const wasmFile = path.join(wasmStudioRoot, "idle.wasm");
+            const fixture = createCanonicalWasmFixture();
+            fs.writeFileSync(wasmFile, fixture.bytes);
+            fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+            const jobs = createIsolatedJobService(wasmStudioRoot);
+            const homeService = new StudioHomeService("1.3.0");
+            wasmServer = new StudioServer({pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: wasmStudioRoot,
+                jobService: jobs, homeService, blueprintService: new StudioBlueprintService("1.3.0", wasmStudioRoot, homeService),
+                initialContext: {mode: "project", projectRoot: wasmFile}});
+            const address = await wasmServer.start();
+            const base = `http://${address.host}:${address.port}`;
+            const artifactResponse = await get(`${base}/api/project/wasm/artifact`);
+            const binding = {owner: "lost-idle-tab", projectRoot: wasmFile, generation: (artifactResponse.body as {generation: string}).generation, artifactIdentity: fixture.manifest.artifact!.sha256};
+            const started = await post(`${base}/api/project/wasm/jobs`, {...binding, operation: "browser-play", request: {action: "new", seed: "0"}});
+            const id = (started.body as {job: {id: string}}).job.id;
+            let expire: (() => void) | undefined;
+            const nativeTimeout = global.setTimeout;
+            const timer = jest.spyOn(global, "setTimeout").mockImplementation(((callback: () => void, ms?: number, ...args: unknown[]) => {
+                if (ms === 10000) expire = callback;
+                return nativeTimeout(callback, ms, ...args);
+            }) as typeof setTimeout);
+            try {
+                expect((await post(`${base}/api/project/wasm/jobs/${id}/finish`, {...binding, cleanup: true, status: "completed", output: {state: {credits: 1000}}})).status).toBe(200);
+                expect(expire).toBeDefined();
+                const serverToStop = wasmServer;
+                wasmServer = undefined;
+                const stopping = serverToStop.stop();
+                const rejected = expect(stopping).rejects.toThrow(/idle browser Worker cleanup/);
+                expect(() => expire!()).not.toThrow();
+                await rejected;
+                expect(jobs.list().find(job => job.operation === "browser-worker-cleanup")).toMatchObject({status: "recovery-required", request: {sessionId: id}, recovery: {action: "new-session"}});
+                expect(jobs.get(wasmFile, id)?.status).toBe("completed");
+                await expect(jobs.completeGracefulShutdown()).rejects.toThrow(/could not confirm executor cleanup/);
+            } finally {
+                timer.mockRestore(); 
+            }
+        });
+
         it("exposes only the WASM component's own manifest identity, never inventing symbols/reels/paytable", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-gamemodel-wasm-work-test-"));
             try {
@@ -4508,10 +4659,29 @@ describe("StudioServer", () => {
                 const simulationId = (simulation.body as {id: string}).id;
                 await expect(pollUntilTerminal(`${baseUrl}/api/project/simulations/${simulationId}`)).resolves.toMatchObject({status: 200, body: {status: "completed"}});
 
-                const replay = await post(`${baseUrl}/api/project/replays`, {round: 1, seed: "http-seed"});
+                for (const seed of ["", "   ", 42, null, {}, []]) {
+                    expect(await post(`${baseUrl}/api/project/replays`, {round: 1, seed})).toEqual({
+                        status: 400, body: {error: '"seed" must be a non-empty string when given.'},
+                    });
+                }
+                expect((await get(`${baseUrl}/api/project/replays`)).body).toEqual([]);
+                const replay = await post(`${baseUrl}/api/project/replays`, {round: 1});
                 expect(replay).toMatchObject({status: 202, body: {status: "queued"}});
                 const replayId = (replay.body as {id: string}).id;
-                await expect(pollUntilTerminal(`${baseUrl}/api/project/replays/${replayId}`)).resolves.toMatchObject({status: 200, body: {status: "completed"}});
+                const replayResult = await pollUntilTerminal(`${baseUrl}/api/project/replays/${replayId}`);
+                expect(replayResult).toMatchObject({status: 200, body: {status: "completed", seed: expect.any(String), descriptor: {seed: expect.any(String)}}});
+                const replayDescriptor = replayResult.body.descriptor as import("@fromstan/pokie").ReplayDescriptor;
+                for (let index = 0; index < 2; index++) {
+                    const retried = await post(`${baseUrl}/api/project/replays`, {round: 1, seed: replayResult.body.seed});
+                    expect(retried.status).toBe(202);
+                    const retriedId = (retried.body as {id: string}).id;
+                    const result = await pollUntilTerminal(`${baseUrl}/api/project/replays/${retriedId}`);
+                    expect(result.body.descriptor).toMatchObject({
+                        seed: replayResult.body.seed, screen: replayDescriptor.screen,
+                        credits: replayDescriptor.credits, totalBet: replayDescriptor.totalBet,
+                        totalWin: replayDescriptor.totalWin,
+                    });
+                }
 
                 for (const response of await Promise.all([
                     post(`${baseUrl}/api/project/artifacts/build`, {target: "tsPackage"}),
@@ -5654,6 +5824,30 @@ describe("StudioServer", () => {
         // round-producing action in Studio (see StudioServer.recordSimulationSampleReplay), unlike a
         // plain "Recreate from seed" reproduction (no `simulationId`), which the test right after this
         // one proves is deliberately left unrecorded.
+        it("V2C-22-SIMULATION-REPLAY-BINDING rejects non-samples before HTTP admission and permits subsequent retained steps", async () => {
+            await openSampleSlot(createSeedAwareFakeGame(manifest));
+            const created = await post(`${baseUrl}/api/project/simulations`, {rounds: 1, seed: "0"});
+            const simulationId = (created.body as {id: string}).id;
+            expect((await pollUntilTerminal(`${baseUrl}/api/project/simulations/${simulationId}`)).body.status).toBe("completed");
+            for (const request of [
+                {round: 2, seed: "0", simulationId}, {round: 1, simulationId}, {round: 1, seed: "different", simulationId},
+                {round: 1, seed: "0", simulationId, modeName: "different"}, {round: 1, seed: "0", simulationId, entryCommands: []},
+                {round: 1, seed: "0", simulationId, entryCommands: [{kind: "spin", bet: 7.5}]}, {round: 1, seed: "0", simulationId, unit: "logical-round"},
+            ]) {
+                const jobs = (await get(`${baseUrl}/api/project/jobs`)).body;
+                expect(await post(`${baseUrl}/api/project/replays`, request)).toEqual({status: 400, body: {error: "Simulation replay requires the retained seed, selected mode and step range from a single-worker run."}});
+                expect((await get(`${baseUrl}/api/project/jobs`)).body).toEqual(jobs);
+                expect((await get(`${baseUrl}/api/project/rounds`)).body).toEqual([]);
+            }
+            for (const unit of [undefined, "step"]) {
+                const replay = await post(`${baseUrl}/api/project/replays`, {round: 1, seed: "0", simulationId, unit});
+                expect(replay.status).toBe(202);
+                const terminal = await pollUntilTerminal(`${baseUrl}/api/project/replays/${(replay.body as {id: string}).id}`);
+                expect(terminal.body).toMatchObject({status: "completed", descriptor: {round: 1, seed: "0"}});
+            }
+            expect((await get(`${baseUrl}/api/project/rounds`)).body).toHaveLength(2);
+        });
+
         it("records a round selected from a completed simulation into the shared history, immediately visible from GET /api/project/rounds", async () => {
             await openSampleSlot(createSeedAwareFakeGame(manifest));
             const projectRoot = (await get(`${baseUrl}/api/context`)).body as {projectRoot: string};
@@ -6230,8 +6424,10 @@ describe("StudioServer", () => {
             const serverToStop = projectServer;
             projectServer = undefined;
             const stopping = serverToStop.stop();
+            // Release immediately: cleanup of another executor must not postpone replay cancellation.
             gate.release();
             await stopping;
+            expect(replayService.getStatus("/tmp/sample-slot", (created.body as {id: string}).id)).toMatchObject({status: "cancelled", completedRounds: 10});
         });
     });
 

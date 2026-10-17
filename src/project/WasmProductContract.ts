@@ -1,5 +1,9 @@
 import fs from "fs";
-import {WASM_EXECUTION_BOUNDARY} from "../wasm/PokieWasmRuntimeApi.js";
+import crypto from "crypto";
+import {readCanonicalPokieWasmModule, assertCanonicalWasmDescriptorMatchesManifest, assertSupportedCanonicalWasmRuntimeContract} from "../wasm/PokieWasmCanonicalModule.js";
+import {satisfiesMinimumSemverLite} from "./wasm/internal/compareSemverLite.js";
+import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
+import {WASM_EXECUTION_BOUNDARY, POKIE_WASM_RUNTIME_VERSION} from "../wasm/PokieWasmRuntimeApi.js";
 import {WASM_MANIFEST_READ_CAPABILITY, type ProjectCapability} from "./ProjectCapability.js";
 import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompatibility.js";
 
@@ -33,21 +37,53 @@ export function isWasmComponentFile(targetPath: string): boolean {
     }
 }
 
-/** Cheap Studio queue guard; execution still revalidates exact module bytes. */
+/** Declaration checks authorize only a queued attempt, never module execution. */
+function readDeclaredCanonicalFile(targetPath: string): PokieWasmComponentManifest {
+    const manifest = JSON.parse(fs.readFileSync(`${targetPath}.pokie-wasm.json`, "utf-8")) as PokieWasmComponentManifest;
+    const compatibility = assessWasmComponentCompatibility(manifest);
+    if (!compatibility.compatible) throw new Error(compatibility.issues.map(issue => issue.message).join(" "));
+    if (!manifest.artifact) throw new Error("Legacy sidecar-only WASM is inspection-only.");
+    if (manifest.minPokieVersion && !satisfiesMinimumSemverLite(POKIE_WASM_RUNTIME_VERSION, manifest.minPokieVersion)) throw new Error(`Update POKIE runtime ${POKIE_WASM_RUNTIME_VERSION} to ${manifest.minPokieVersion} or newer.`);
+    if (manifest.artifact.format !== "pokie.wasm.v1" || manifest.artifact.abiVersion !== "3.0.0" || manifest.artifact.adapter !== "@fromstan/pokie/wasm") throw new Error("WASM artifact format, ABI or adapter is incompatible with this runtime.");
+    assertSupportedCanonicalWasmRuntimeContract(manifest);
+    return manifest;
+}
+
+/** Synchronous lifecycle admission. Runtime acquisition must still validate current bytes. */
+export function readCanonicalWasmDeclaration(targetPath: string, operation: string):
+    | {readonly supported: true; readonly manifest: PokieWasmComponentManifest}
+    | {readonly supported: false; readonly message: string} {
+    try {
+        return {supported: true, manifest: readDeclaredCanonicalFile(targetPath)};
+    } catch {
+        return {supported: false, message: describeWasmLifecycleBoundary(targetPath, operation)};
+    }
+}
+
+/** Strict artifact checks used by public integrity/capability queries. */
+function readVerifiedCanonicalFile(targetPath: string): PokieWasmComponentManifest {
+    const manifest = readDeclaredCanonicalFile(targetPath);
+    const artifact = manifest.artifact!;
+    const bytes = fs.readFileSync(targetPath);
+    const hash = (value: Uint8Array): string => `sha256:${crypto.createHash("sha256").update(value).digest("hex")}`;
+    if (bytes.length !== artifact.bytes || hash(bytes) !== artifact.sha256) throw new Error("WASM module bytes do not match the sidecar SHA-256/byte count.");
+    const canonical = readCanonicalPokieWasmModule(bytes);
+    if (hash(canonical.modelBytes) !== artifact.configurationHash) throw new Error("WASM configuration hash does not match its sidecar.");
+    assertCanonicalWasmDescriptorMatchesManifest(canonical.descriptor, manifest);
+    if (manifest.serialization.state !== (canonical.model.features ? "pokie.state.v4" : "pokie.state.v3")) throw new Error("WASM model and state schema are incompatible.");
+    return manifest;
+}
 export function hasDeclaredCanonicalWasmArtifact(targetPath: string): boolean {
     try {
-        const manifest = JSON.parse(fs.readFileSync(`${targetPath}.pokie-wasm.json`, "utf-8")) as {artifact?: unknown};
-        return typeof manifest.artifact === "object" && manifest.artifact !== null;
+        readVerifiedCanonicalFile(targetPath);
+        return true;
     } catch {
         return false;
     }
 }
-
-/** Cheap Studio queue guard; the runtime still verifies the byte-bound descriptor before work. */
 export function hasDeclaredCanonicalWasmOperation(targetPath: string, declaration: string): boolean {
     try {
-        const manifest = JSON.parse(fs.readFileSync(`${targetPath}.pokie-wasm.json`, "utf-8")) as {artifact?: unknown; capabilities?: unknown};
-        return typeof manifest.artifact === "object" && manifest.artifact !== null && Array.isArray(manifest.capabilities) && manifest.capabilities.includes(declaration);
+        return readVerifiedCanonicalFile(targetPath).capabilities.includes(declaration);
     } catch {
         return false;
     }
@@ -99,6 +135,13 @@ export function describeWasmLifecycleBoundary(wasmPath: string, operation: strin
         const detail = compatibility.issues.map((issue) => issue.message).join(" ");
         const malformed = compatibility.issues.some((issue) => issue.code.startsWith("wasm-component-manifest-"));
         return describeWasmLifecycleSidecarFailure(wasmPath, sidecarPath, malformed ? "malformed" : "incompatible", operation, detail);
+    }
+    if ((manifest as PokieWasmComponentManifest).artifact) {
+        try {
+            readVerifiedCanonicalFile(wasmPath);
+        } catch (error) {
+            return `POKIE rejected "${wasmPath}" before ${operation}: ${error instanceof Error ? error.message : String(error)} Rebuild the canonical artifact and its matching sidecar in a new/empty destination, then reopen it.`;
+        }
     }
     return describeWasmUnsupportedOperation(operation);
 }

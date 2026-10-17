@@ -5,6 +5,12 @@ import {createProductionParityFixture} from "../fixtures/wasm/createProductionPa
 import {ReplayRecorder} from "../../src/replay/ReplayRecorder.js";
 import {loadPokieWasmFileRuntime} from "../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
 import {SeededPokieWasmHost} from "../../src/wasm/PokieWasmRuntime.js";
+import {EventEmitter} from "events";
+import {StudioCommand} from "../../cli/commands/StudioCommand.js";
+import {InternalStudioCommand, INTERNAL_STUDIO_COMMAND_NAME} from "../../cli/commands/InternalStudioCommand.js";
+import {StudioServer} from "../../cli/studio/StudioServer.js";
+import {StudioJobService} from "../../cli/studio/jobs/StudioJobService.js";
+import {FileStudioJobRepository} from "../../cli/studio/jobs/FileStudioJobRepository.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -21,6 +27,21 @@ const blueprint = {
     manifest: {id: "cli-wasm", name: "CLI WASM", version: "1.0.0"}, reels: 3, rows: 1,
     symbols: ["A", "B", "C"], reelStrips: [["A", "B", "C"], ["B", "C", "A"], ["C", "A", "B"]], paytable: {A: {3: 2}},
 };
+
+async function waitForProjectContext(address: string, projectRoot: string): Promise<Record<string, unknown>> {
+    const deadline = Date.now() + 5_000;
+    do {
+        const response = await fetch(`${address}/api/project/context`);
+        expect(response.ok).toBe(true);
+        const context = await response.json() as Record<string, unknown>;
+        if (context.status !== "loading") return context;
+        expect(context.projectRoot).toBe(projectRoot);
+        await new Promise<void>(resolve => {
+            setTimeout(resolve, 10);
+        });
+    } while (Date.now() < deadline);
+    throw new Error(`Timed out waiting for Studio to load ${projectRoot}.`);
+}
 
 describe("canonical WASM CLI workflow", () => {
     let directory: string;
@@ -44,11 +65,11 @@ describe("canonical WASM CLI workflow", () => {
         const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
         try {
             for (const model of [
-                {...blueprint, mechanics: {freeGames: {scatterSymbol: "A", awardsByCount: {3: 5}}}, scatters: ["A"]},
+                {...blueprint, evaluator: {module: "custom-authored-evaluator"}},
                 {...blueprint, symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(65537).fill("A"), Array<string>(1024).fill("A"), Array<string>(1024).fill("A")]},
             ]) {
                 fs.writeFileSync(source, JSON.stringify(model));
-                const diagnostic = /freeGames.*Next:|Limits:.*Next:/;
+                const diagnostic = /evaluator.*Next:|Limits:.*Next:/;
                 await expect(new BuildCommand("1.3.0").run([source, "--target", "wasm", "--out", destination, "--dry-run"])).rejects.toThrow(diagnostic);
                 await expect(new BuildCommand("1.3.0").run([source, "--target", "wasm", "--out", destination])).rejects.toThrow(diagnostic);
                 expect(fs.existsSync(destination)).toBe(false);
@@ -143,32 +164,58 @@ describe("canonical WASM CLI workflow", () => {
             log.mockRestore();
         }
         const report = JSON.parse(output.join("\n"));
-        expect(report).toMatchObject({valid: true, wasm: {abiVersion: "2.0.0", compatibility: "compatible", hostRequirements: {rng: "pokie.rng.v2"}}});
+        expect(report).toMatchObject({valid: true, wasm: {abiVersion: "3.0.0", compatibility: "compatible", hostRequirements: {rng: "pokie.rng.v2"}}});
         expect(report.wasm.integrity).toMatch(/^sha256:[a-f0-9]{64}/);
         expect(report.advanced).toMatchObject({adapter: "wasm-declaration-v1", verdict: "inconclusive", executableFidelity: "unverified"});
         expect(report.advanced.checks).toContainEqual(expect.objectContaining({id: "source.executable-fidelity", status: "unknown"}));
     });
 
-    it("routes an implicit artifact path through the public dispatcher to inspect guidance", async () => {
+    it.each(["playable", "metadata-only"])("opens a positional %s artifact in Studio and releases its owned server", async kind => {
+        const target = kind === "playable" ? artifact : path.join(directory, "metadata-only.wasm");
+        if (kind === "metadata-only") {
+            const fixture = createCanonicalWasmFixture({id: "metadata-only", capabilities: ["runtime.serialize"]});
+            fs.writeFileSync(target, fixture.bytes);
+            fs.writeFileSync(`${target}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        }
+        fs.writeFileSync(path.join(directory, "index.html"), "<html><body>Studio fixture shell</body></html>");
+        const ownedProcess = new EventEmitter();
         const output: string[] = [];
         const log = jest.spyOn(console, "log").mockImplementation((line: string) => output.push(line));
+        const openBrowser = jest.fn();
+        let server: StudioServer | undefined;
+        const studio = new InternalStudioCommand(new StudioCommand("1.3.0", directory, {
+            studioRoot: directory, process: ownedProcess as unknown as NodeJS.Process, openBrowser,
+            createServer: options => {
+                server = new StudioServer({...options, jobService: new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")))});
+                return server;
+            },
+        }));
         try {
-            await expect(dispatch(registerCliCommands({
-                version: "1.3.0",
-                pokiePackageRoot: directory,
-                clientRoot: directory,
-                studioRoot: directory,
-            }), ["node", "pokie", artifact])).resolves.toBe(0);
+            const commands = registerCliCommands({version: "1.3.0", pokiePackageRoot: directory, clientRoot: directory, studioRoot: directory})
+                .map(command => command.getName() === INTERNAL_STUDIO_COMMAND_NAME ? studio : command);
+            expect(await dispatch(commands, ["node", "pokie", target, "--no-open", "--host", "127.0.0.1", "--port", "0"])).toBe(0);
+            const address = output.join("\n").match(/POKIE Studio listening on (http:\/\/127\.0\.0\.1:\d+)/)?.[1];
+            expect(address).toBeDefined();
+            expect(openBrowser).not.toHaveBeenCalled();
+            expect(await waitForProjectContext(address!, target)).toMatchObject({status: "loaded", type: "wasm", projectRoot: target});
+            const artifactResponse = await fetch(`${address}/api/project/wasm/artifact`);
+            expect(artifactResponse.ok).toBe(true);
+            expect(await artifactResponse.json()).toMatchObject({projectRoot: target, manifest: {artifact: {abiVersion: "3.0.0"}}});
+            expect(output.join("\n")).not.toContain("Available next actions:");
+            expect(ownedProcess.listenerCount("SIGINT")).toBe(1);
+            expect(ownedProcess.listenerCount("SIGTERM")).toBe(1);
         } finally {
-            log.mockRestore();
+            try {
+                await server?.stop();
+            } finally {
+                ownedProcess.removeAllListeners();
+                log.mockRestore();
+            }
         }
-        expect(output.join("\n")).toContain("Available next actions:");
-        expect(output.join("\n")).toContain(`pokie run "${artifact}" --seed demo`);
-        expect(output.join("\n")).toContain(`pokie sim "${artifact}" --rounds 10000 --seed demo`);
-        expect(output.join("\n")).toContain(`pokie replay "${artifact}" --round 1 --seed demo`);
+        expect(ownedProcess.eventNames()).toEqual([]);
     });
 
-    it("derives explicit and implicit guidance from each canonical component's declared operations", async () => {
+    it("derives explicit inspect guidance from each canonical component's declared operations", async () => {
         const playOnly = createCanonicalWasmFixture({id: "play-only", capabilities: ["runtime.play", "runtime.serialize"]});
         const metadataOnly = createCanonicalWasmFixture({id: "metadata-only", capabilities: ["runtime.serialize"]});
         const playOnlyPath = path.join(directory, "play-only.wasm");
@@ -191,21 +238,18 @@ describe("canonical WASM CLI workflow", () => {
 
             output.length = 0;
             await expect(dispatch(registerCliCommands({
-                version: "1.3.0",
-                pokiePackageRoot: directory,
-                clientRoot: directory,
-                studioRoot: directory,
-            }), ["node", "pokie", metadataOnlyPath])).resolves.toBe(0);
+                version: "1.3.0", pokiePackageRoot: directory, clientRoot: directory, studioRoot: directory,
+            }), ["node", "pokie", "inspect", metadataOnlyPath])).resolves.toBe(0);
         } finally {
             log.mockRestore();
         }
 
-        const implicit = output.join("\n");
-        expect(implicit).toContain(`pokie validate "${metadataOnlyPath}"`);
-        expect(implicit).not.toContain("pokie run");
-        expect(implicit).not.toContain("pokie sim");
-        expect(implicit).not.toContain("pokie replay");
-        expect(implicit).not.toContain("runnable");
-        expect(implicit).toContain("does not declare runtime.play");
+        const inspected = output.join("\n");
+        expect(inspected).toContain(`pokie validate "${metadataOnlyPath}"`);
+        expect(inspected).not.toContain("pokie run");
+        expect(inspected).not.toContain("pokie sim");
+        expect(inspected).not.toContain("pokie replay");
+        expect(inspected).not.toContain("runnable");
+        expect(inspected).toContain("does not declare runtime.play");
     });
 });

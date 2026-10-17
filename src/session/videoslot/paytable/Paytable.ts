@@ -66,13 +66,13 @@ export class Paytable<T extends string | number | symbol = string> implements Pa
         } else {
             Object.keys(this.paytableMap).forEach((bet) => {
                 const numericBet = Number(bet);
-                if (!this.paytableMap[bet]) {
-                    this.paytableMap[bet] = {} as Record<T, Record<number, number>>;
+                if (!this.paytableMap[numericBet]) {
+                    this.paytableMap[numericBet] = {} as Record<T, Record<number, number>>;
                 }
-                if (!this.paytableMap[bet][symbolId]) {
-                    this.paytableMap[bet][symbolId] = {};
+                if (!this.paytableMap[numericBet][symbolId]) {
+                    this.paytableMap[numericBet][symbolId] = {};
                 }
-                this.paytableMap[bet][symbolId][times] = betMultiplier * numericBet;
+                this.paytableMap[numericBet][symbolId][times] = betMultiplier * numericBet;
             });
         }
     }

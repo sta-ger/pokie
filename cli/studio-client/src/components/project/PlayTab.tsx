@@ -1,5 +1,5 @@
 import {Button, Select, Text, TextInput} from "@mantine/core";
-import {ReactNode, useEffect, useState} from "react";
+import {ReactNode, useEffect, useMemo, useState} from "react";
 import {deriveAvailableBetModeIds, deriveAvailableBets, deriveBetModeId} from "../../../../client/player";
 import {describeRuntimeActionError} from "../../domain/runtimeActionError";
 import type {PlaySessionView} from "../../hooks/usePlaySession";
@@ -31,6 +31,7 @@ export function PlayTab({
     onFindSymbolWin,
     onFindFreeGames,
     availableModes,
+    onRestore,
 }: {
     session: PlaySessionView;
     sessionId: string | undefined;
@@ -48,7 +49,10 @@ export function PlayTab({
     // notion of an outcome-library mode at all. When present, New session/Reset draw against whichever
     // of these real modes is selected below, never the manifest's own first mode by default silently.
     availableModes?: string[];
+    onRestore?: (state: unknown) => void;
 }) {
+    const [checkpoint, setCheckpoint] = useState("");
+    const [checkpointError, setCheckpointError] = useState<string>();
     const [seed, setSeed] = useState("");
     const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
     const [selectedMode, setSelectedMode] = useState<string | null>(null);
@@ -76,8 +80,8 @@ export function PlayTab({
     // These values are the session serializer's direct projection of the canonical Project/Game Model;
     // Play never invents a bet or a mode from an artifact/result.  They are refreshed from the returned
     // session after every spin, which is particularly important for a consumed one-shot buyFeature.
-    const availableBets = deriveAvailableBets(activeSession?.availableBets);
-    const availableBetModes = deriveAvailableBetModeIds(activeSession?.availableBetModeIds);
+    const availableBets = useMemo(() => deriveAvailableBets(activeSession?.availableBets), [activeSession?.availableBets]);
+    const availableBetModes = useMemo(() => deriveAvailableBetModeIds(activeSession?.availableBetModeIds), [activeSession?.availableBetModeIds]);
     const currentBet = typeof activeSession?.bet === "number" ? activeSession.bet : undefined;
     const currentBetMode = deriveBetModeId(activeSession?.betModeId);
     const scenarioCapabilities = activeSession?.scenarioCapabilities;
@@ -85,16 +89,26 @@ export function PlayTab({
     const findSymbolWinReason = scenarioCapabilities?.findSymbolWin;
     const findFreeGamesReason = scenarioCapabilities?.findFreeGames;
 
+    // Derive submit/render values immediately, including the first render of a replacement.
+    // Transient states retain the same accepted session, so they cannot erase pending intent.
+    const defaultBet = currentBet !== undefined && (availableBets.length === 0 || availableBets.includes(currentBet)) ? currentBet : availableBets[0];
+    const bet = selectedBet !== null && availableBets.includes(Number(selectedBet)) ? Number(selectedBet) : defaultBet;
+    const defaultMode = currentBetMode !== undefined && availableBetModes.includes(currentBetMode) ? currentBetMode : availableBetModes[0];
+    const mode = selectedBetMode !== null && availableBetModes.includes(selectedBetMode) ? selectedBetMode : defaultMode;
     useEffect(() => {
-        if (currentBet !== undefined) {
-            setSelectedBet(String(currentBet));
-        }
-    }, [currentBet, activeSession?.sessionId]);
+        setSelectedBet(previous => {
+            if (previous !== null && availableBets.includes(Number(previous))) return previous;
+            return defaultBet === undefined ? null : String(defaultBet);
+        });
+    }, [activeSession, availableBets, defaultBet]);
     useEffect(() => {
-        if (currentBetMode !== undefined) {
-            setSelectedBetMode(currentBetMode);
-        }
-    }, [currentBetMode, activeSession]);
+        // An accepted play may consume a one-shot purchase even if its returned default is unchanged.
+        setSelectedBetMode(previous => {
+            if (currentBetMode !== undefined && availableBetModes.includes(currentBetMode)) return currentBetMode;
+            if (previous !== null && availableBetModes.includes(previous)) return previous;
+            return availableBetModes[0] ?? null;
+        });
+    }, [activeSession, availableBetModes, currentBetMode]);
 
     // "no-active-project"/"not-found" are already plain, specific messages -- shown as-is. "error"/
     // "blocked" carry the underlying server's own raw text (a caught exception's message, or a game's
@@ -103,7 +117,9 @@ export function PlayTab({
     // read as subject-specific status + remediation copy instead of an internal message verbatim.
     let errorNotice: ReactNode;
     if (session.status === "error") {
-        errorNotice = <ErrorState message={describeRuntimeActionError(session.subject ?? "This session", session.message)} />;
+        errorNotice = session.subject === "Checkpoint restore"
+            ? <ErrorState message="Checkpoint restore failed. Supply a valid checkpoint from this WASM artifact and matching version, then retry the restore. Your last confirmed session is preserved." detail={session.message} />
+            : <ErrorState message={describeRuntimeActionError(session.subject ?? "This session", session.message)} />;
     } else if (session.status === "blocked") {
         errorNotice = <ErrorState message={describeRuntimeActionError("This spin", session.message)} />;
     } else if (session.status === "not-found" || session.status === "no-active-project") {
@@ -182,8 +198,8 @@ export function PlayTab({
         roundResult = (
             <RoundSummary
                 session={playedRound}
-                selectedBet={selectedBet === null ? undefined : Number(selectedBet)}
-                selectedBetMode={selectedBetMode ?? undefined}
+                selectedBet={bet}
+                selectedBetMode={mode}
                 availableBets={availableBets}
                 availableModeIds={availableBetModes}
                 onSelectBet={(bet) => setSelectedBet(String(bet))}
@@ -198,10 +214,10 @@ export function PlayTab({
                 visibleRowCoverage={Array.isArray(activeSession.visibleRowCoverage) ? activeSession.visibleRowCoverage as number[] : undefined}
                 credits={activeSession.credits}
                 availableBets={availableBets}
-                currentBet={currentBet}
+                currentBet={bet}
                 onSelectBet={(bet) => setSelectedBet(String(bet))}
                 availableModeIds={availableBetModes}
-                currentModeId={selectedBetMode ?? currentBetMode}
+                currentModeId={mode}
                 onSelectMode={setSelectedBetMode}
             />
         );
@@ -213,7 +229,7 @@ export function PlayTab({
         <div>
             <PageSection legend="Play">
                 <QuickActions>
-                    <Button loading={loading} onClick={() => onSpin(selectedBet === null ? undefined : Number(selectedBet), selectedBetMode ?? undefined, delivery)}>
+                    <Button loading={loading} onClick={() => onSpin(bet, mode, delivery)}>
                         {activeSession?.logicalRound?.status === "pending" ? "Continue round" : "Spin"}
                     </Button>
                 </QuickActions>
@@ -223,6 +239,20 @@ export function PlayTab({
                 {(!loading || playedRound !== undefined) && roundResult}
             </PageSection>
 
+            {onRestore && <PageSection legend="WASM checkpoint">
+                <TextInput label="JSON checkpoint" value={checkpoint} onChange={event => setCheckpoint(event.currentTarget.value)} />
+                <Button disabled={loading || !checkpoint.trim()} onClick={() => {
+                    try {
+                        const state: unknown = JSON.parse(checkpoint);
+                        setCheckpointError(undefined);
+                        onRestore(state);
+                    } catch {
+                        setCheckpointError("Supply valid checkpoint JSON. The current session is preserved after a rejected restore.");
+                    }
+                }}>Restore checkpoint</Button>
+                {activeSession?.debug?.stateAfter !== undefined && <Button onClick={() => setCheckpoint(JSON.stringify(activeSession.debug!.stateAfter))}>Copy current checkpoint to input</Button>}
+                {checkpointError && <Text role="alert">{checkpointError}</Text>}
+            </PageSection>}
             <PageSection legend="Session">
                 {modeField}
                 {deliveryField}

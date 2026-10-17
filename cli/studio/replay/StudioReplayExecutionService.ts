@@ -1,5 +1,5 @@
 import {projectPokieWasmRoundArtifact} from "../../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
-import {advancePokieWasmReplay} from "../../../src/wasm/PokieWasmCommands.js";
+import {collectPokieWasmReplay} from "../../../src/wasm/PokieWasmReplay.js";
 import type {SessionCommandResult} from "../../../src/runtime/SessionRuntimeHandling.js";
 import {deepFreeze} from "../../../src/internal/deepFreeze.js";
 import {
@@ -10,9 +10,7 @@ import {
     captureRoundPokieSessionState,
     captureScreen,
     describeUnavailableArtifactOperation,
-    describeWasmLifecycleBoundary,
-    hasDeclaredCanonicalWasmOperation,
-    hasDeclaredCanonicalWasmArtifact,
+    readCanonicalWasmDeclaration,
     isWasmComponentFile,
     loadPokieWasmFileRuntime,
     GameSessionHandling,
@@ -198,19 +196,22 @@ export class StudioReplayExecutionService {
         }
         if (request.recording && (isWasmComponentFile(projectRoot) || outcomeSourceProject)) return {status: "unsupported", message: "Recorded package audit is unavailable for WASM and outcome libraries; use their existing replay profiles."};
         if (request.unit === "logical-round" && outcomeSourceProject) return {status: "unsupported", message: "This runtime cannot replay feature logical rounds."};
-        // Keep the no-job WASM boundary inside the shared lifecycle as well as
-        // StudioServer. A direct caller must not be able to queue work that
-        // can only fail after attempting runtime preparation.
-        if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmArtifact(projectRoot)) {
-            return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "replay a game round")};
-        }
-        if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmOperation(projectRoot, "runtime.replay")) {
-            return {status: "unsupported", message: "This canonical WASM artifact does not declare runtime.replay; it cannot replay a game round."};
+        // Admission checks declarations; runtime acquisition revalidates bytes
+        // and publishes a retained failure if a canonical artifact was replaced.
+        if (isWasmComponentFile(projectRoot)) {
+            const declaration = readCanonicalWasmDeclaration(projectRoot, "replay a game round");
+            if (!declaration.supported) return {status: "unsupported", message: declaration.message};
+            if (!declaration.manifest.capabilities.includes("runtime.replay")) {
+                return {status: "unsupported", message: "This canonical WASM artifact does not declare runtime.replay; it cannot replay a game round."};
+            }
+            // Resolve optional forward-replay input once, before retaining the job,
+            // so execution and later reproduction use the same seeded host stream.
+            request = {...request, seed: request.seed ?? crypto.randomUUID()};
         }
         const common = this.jobService?.start({
             projectId: projectRoot,
             operation: "replay",
-            request: {round: request.round, ...(request.expectedConfigHash === undefined ? {} : {expectedConfigHash: request.expectedConfigHash}), ...(request.recording ? {recording: request.recording} : {}), ...(request.unit ? {unit: request.unit} : {}), ...(request.entryCommands ? {entryCommands: request.entryCommands} : {}), ...(request.seed === undefined ? {} : {seed: request.seed}), ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
+            request: {round: request.round, ...(request.initialCredits === undefined ? {} : {initialCredits: request.initialCredits}), ...(request.expectedConfigHash === undefined ? {} : {expectedConfigHash: request.expectedConfigHash}), ...(request.recording ? {recording: request.recording} : {}), ...(request.unit ? {unit: request.unit} : {}), ...(request.entryCommands ? {entryCommands: request.entryCommands} : {}), ...(request.seed === undefined ? {} : {seed: request.seed}), ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
             conflictKey: `replay:${projectRoot}`,
             recoveryOnRestart: {action: "retry", reason: "A replay cannot safely resume after Studio restarts. Run it again with these captured parameters."},
         });
@@ -235,6 +236,7 @@ export class StudioReplayExecutionService {
             seed: request.seed,
             simulationId: request.simulationId,
             expectedConfigHash: request.expectedConfigHash,
+            initialCredits: request.initialCredits,
             startedAt: this.now(),
             completedRounds: 0,
             durationMs: 0,
@@ -590,36 +592,13 @@ export class StudioReplayExecutionService {
             record.game = {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version};
             record.configHash = runtime.manifest.artifact?.configurationHash;
             const canSerialize = runtime.manifest.capabilities.includes("runtime.serialize");
-            let state: import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmRestorableState = {schemaVersion: "pokie.state.v2", seed: record.seed, drawCount: 0, sequence: 0, credits: 1000};
-            let totalBet = 0;
-            let totalWin = 0;
-            let totalPayout = 0;
-            let finalRound;
-            let stateBefore: Record<string, unknown> | undefined;
-            for (let index = 0; index < record.round; index += this.chunkSize) {
-                if (record.abortController.signal.aborted) {
-                    this.cancelRecord(record);
-                    return;
-                }
-                const chunk = Math.min(this.chunkSize, record.round - index);
-                for (let offset = 0; offset < chunk; offset++) {
-                    if (record.abortController.signal.aborted) {
-                        this.cancelRecord(record);
-                        return;
-                    }
-                    const replay = await advancePokieWasmReplay(runtime, state, {mode: record.modeName, unit: record.unit, entry: record.entryCommands?.[index + offset], index: index + offset});
-                    state = replay.stateAfter;
-                    finalRound = replay.rounds[replay.rounds.length - 1];
-                    if (replay.stateBeforeFinal) stateBefore = replay.stateBeforeFinal as unknown as Record<string, unknown>;
-                    totalBet += finalRound.stake;
-                    totalWin += finalRound.win ?? finalRound.payout;
-                    totalPayout += finalRound.payout;
-                }
-                const completedRounds = index + chunk;
-                this.updateReplayProgress(record, completedRounds);
-                if (completedRounds < record.round && completedRounds % this.chunkSize === 0) await this.yieldToEventLoop();
-            }
-            record.status = "completed";
+            const observed = await collectPokieWasmReplay(runtime, {seed: record.seed, round: record.round, modeName: record.modeName, unit: record.unit, entryCommands: record.entryCommands, initialCredits: record.initialCredits}, {
+                signal: record.abortController.signal, yieldToHost: this.yieldToEventLoop,
+                onProgress: completed => this.updateReplayProgress(record, completed),
+            });
+            const {stateAfter: state, finalRound, totalBet, totalWin, totalPayout} = observed;
+            const stateBefore = observed.stateBefore as unknown as Record<string, unknown> | undefined;
+            this.markWasmReplayCompleted(record);
             record.descriptor = {
                 ...(finalRound?.network ?? {}),
                 sessionId: this.createId(),
@@ -650,6 +629,10 @@ export class StudioReplayExecutionService {
         } finally {
             await runtime?.dispose();
         }
+    }
+
+    private markWasmReplayCompleted(record: StudioReplayJobRecord): void {
+        record.status = "completed";
     }
 
     private updateReplayProgress(record: StudioReplayJobRecord, completedRounds: number): void {

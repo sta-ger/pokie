@@ -109,3 +109,47 @@ it("continues a declarative bonus through portable JSON restore and independent 
         replayRuntime.dispose();
     }
 });
+
+it("checks the Project-scoped browser byte/sidecar pair before granting execution", async () => {
+    const fixture = createCanonicalWasmFixture();
+    const artifact = {projectRoot: "/game.wasm", generation: "current", bytes: [...fixture.bytes], manifest: fixture.manifest};
+    await expect(browser.validatePokieWasmBrowserArtifact(artifact, "/game.wasm")).resolves.toBe(artifact);
+    await expect(browser.validatePokieWasmBrowserArtifact(artifact, "/other.wasm")).rejects.toThrow(/replaced/);
+    await expect(browser.validatePokieWasmBrowserArtifact(artifact, "/game.wasm", "sha256:foreign")).rejects.toThrow(/changed/);
+    await expect(browser.validatePokieWasmBrowserArtifact({...artifact, manifest: undefined!}, "/game.wasm")).rejects.toThrow();
+    await expect(browser.validatePokieWasmBrowserArtifact({...artifact, manifest: {...fixture.manifest, schemaVersion: "99.0.0"}}, "/game.wasm")).rejects.toThrow(/incompatible/);
+    await expect(browser.validatePokieWasmBrowserArtifact({...artifact, bytes: [...fixture.bytes.slice(0, -1)]}, "/game.wasm")).rejects.toThrow(/byte count/);
+    const swapped = createCanonicalWasmFixture({id: "swapped"});
+    await expect(browser.validatePokieWasmBrowserArtifact({...artifact, manifest: swapped.manifest}, "/game.wasm")).rejects.toThrow(/SHA-256|byte count/);
+});
+
+it("keeps public browser entries and every executable transitive import free of Node dependencies and globals", async () => {
+    const ts = await import("typescript");
+    const {builtinModules} = await import("module");
+    const builtins = new Set(builtinModules.flatMap(name => [name, `node:${name}`]));
+    const visited = new Set<string>();
+    const visit = (file: string): void => {
+        if (visited.has(file)) return;
+        visited.add(file);
+        const source = fs.readFileSync(file, "utf8");
+        const js = ts.transpileModule(source, {compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022}}).outputText;
+        const parsed = ts.createSourceFile(file, js, ts.ScriptTarget.ES2022, true, ts.ScriptKind.JS);
+        const imports: string[] = [];
+        const inspect = (node: import("typescript").Node): void => {
+            if (ts.isIdentifier(node)) expect(["require", "Buffer", "process", "__dirname", "__filename"]).not.toContain(node.text);
+            if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) imports.push(node.moduleSpecifier.text);
+            if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && ts.isStringLiteral(node.arguments[0])) imports.push(node.arguments[0].text);
+            ts.forEachChild(node, inspect);
+        };
+        inspect(parsed);
+        for (const targetName of imports) {
+            expect(builtins.has(targetName)).toBe(false);
+            expect(targetName).toMatch(/^\./);
+            visit(path.resolve(path.dirname(file), targetName).replace(/\.js$/, ".ts"));
+        }
+    };
+    visit(path.resolve(__dirname, "../../src/browser.ts"));
+    visit(path.resolve(__dirname, "../../src/wasm/browser.ts"));
+    visit(path.resolve(__dirname, "../../cli/studio-client/src/wasm/pokie.worker.ts"));
+    expect(visited.size).toBeGreaterThan(30);
+});

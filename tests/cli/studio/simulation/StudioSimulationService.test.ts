@@ -26,6 +26,12 @@ import {
     ProjectTargetResolver,
     PROJECT_TYPE_CAPABILITIES,
     SIM_OPERATION,
+    assessWasmComponentCompatibility,
+    hasDeclaredCanonicalWasmArtifact,
+    hasDeclaredCanonicalWasmOperation,
+    loadPokieWasmFileRuntime,
+    readCanonicalWasmDeclaration,
+    SeededPokieWasmHost,
 } from "@fromstan/pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
@@ -41,6 +47,102 @@ import {FileStudioJobRepository} from "../../../../cli/studio/jobs/FileStudioJob
 import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {createCanonicalWasmFixture} from "../../../fixtures/wasm/createCanonicalWasmFixture.js";
+
+it.each(["simulation", "replay"] as const)("retains %s acquisition failures and safely reuses the same service after repair", async surface => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "v2c22-acquisition-"));
+    const artifact = path.join(directory, "game.wasm");
+    const sidecar = `${artifact}.pokie-wasm.json`;
+    const options = {availableBets: [0.05], reelStrips: [["A"], ["A"]]};
+    const fixture = createCanonicalWasmFixture(options);
+    const tampered = createCanonicalWasmFixture({...options, trapping: true});
+    const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
+    const completed = jest.fn();
+    const simulation = new StudioSimulationService(undefined, undefined, undefined, 1, undefined, undefined, undefined, undefined, undefined, undefined, undefined, completed);
+    const replay = new StudioReplayExecutionService(undefined, undefined, 1, undefined, undefined, undefined, undefined, completed);
+    const service = surface === "simulation" ? simulation : replay;
+    service.attachJobService(jobs);
+    const operation = surface === "simulation" ? "simulate game rounds" : "replay a game round";
+    const capability = surface === "simulation" ? "runtime.play" : "runtime.replay";
+    const start = () => surface === "simulation" ? simulation.start(artifact, {rounds: 1, seed: "stale"}) : replay.start(artifact, {round: 1, seed: "stale"});
+    const status = (id: string) => surface === "simulation" ? simulation.getStatus(id) : replay.getStatus(artifact, id);
+    const result = (id: string) => surface === "simulation" ? simulation.getReport(artifact, id) : replay.getDownload(artifact, id);
+    const settle = async (id: string) => {
+        // Drain the actual executor and terminal publication, without a timer/mock loader.
+        const deadline = Date.now() + 5000;
+        while (service.getActiveCount() > 0) {
+            if (Date.now() > deadline) throw new Error(`Acquisition job ${id} did not drain.`);
+            await new Promise<void>(resolve => {
+                setImmediate(resolve);
+            });
+        }
+        return status(id);
+    };
+    const repair = () => {
+        fs.writeFileSync(artifact, fixture.bytes);
+        fs.writeFileSync(sidecar, JSON.stringify(fixture.manifest));
+    };
+    const succeed = async () => {
+        const started = start();
+        if (started.status !== "created") throw new Error(JSON.stringify(started));
+        expect(await settle(started.job.id)).toMatchObject({status: "completed"});
+        expect(result(started.job.id)).toMatchObject(surface === "simulation"
+            ? {status: "ok", report: {rounds: 1, totalBet: 0.05, totalWin: 0.1}}
+            : {status: "ok", descriptor: {round: 1, totalBet: 0.05, totalWin: 0.1, credits: expect.closeTo(1000.05, 8), screen: [["A"], ["A"]]}});
+        // Terminal cancellation is a no-op and cannot poison the next execution.
+        expect(surface === "simulation" ? simulation.cancel(started.job.id) : replay.cancel(artifact, started.job.id)).toMatchObject({status: "completed"});
+    };
+    try {
+        repair();
+        await succeed();
+        for (const replacement of [
+            // The exact independent malformed-input reproducer, with the original sidecar.
+            {bytes: new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]), manifest: fixture.manifest},
+            {bytes: fixture.bytes, manifest: {...fixture.manifest, artifact: {...fixture.manifest.artifact!, configurationHash: `sha256:${"0".repeat(64)}`}}},
+            // Coordinated executable + outer integrity edits still fail canonical lowering.
+            tampered,
+        ]) {
+            const priorCompletions = completed.mock.calls.length;
+            fs.writeFileSync(artifact, replacement.bytes);
+            fs.writeFileSync(sidecar, JSON.stringify(replacement.manifest));
+            expect(readCanonicalWasmDeclaration(artifact, operation)).toMatchObject({supported: true});
+            expect(hasDeclaredCanonicalWasmArtifact(artifact)).toBe(false);
+            expect(hasDeclaredCanonicalWasmOperation(artifact, capability)).toBe(false);
+            await expect(loadPokieWasmFileRuntime(artifact, new SeededPokieWasmHost("stale"))).rejects.toThrow(/integrity|canonical|descriptor|module|configuration|lowering/i);
+            const started = start();
+            if (started.status !== "created") throw new Error(JSON.stringify(started));
+            expect(await settle(started.job.id)).toMatchObject({status: "failed", error: expect.stringMatching(/integrity|canonical|descriptor|module|configuration|lowering/i)});
+            expect(jobs.get(artifact, started.job.id)).toMatchObject({status: "failed"});
+            expect(result(started.job.id)).toEqual({status: "not-ready", jobStatus: "failed"});
+            expect(completed).toHaveBeenCalledTimes(priorCompletions);
+            expect(service.getActiveCount()).toBe(0);
+            repair();
+            await succeed();
+            await succeed();
+        }
+        // Shape-invalid integrity metadata is not an executable acquisition attempt.
+        for (const bytes of ["8", -1]) {
+            const malformed = {...fixture.manifest, artifact: {...fixture.manifest.artifact!, bytes}};
+            fs.writeFileSync(sidecar, JSON.stringify(malformed));
+            expect(assessWasmComponentCompatibility(malformed)).toMatchObject({compatible: false, issues: expect.arrayContaining([expect.objectContaining({path: "artifact"})])});
+            expect(readCanonicalWasmDeclaration(artifact, operation)).toMatchObject({supported: false, message: expect.stringContaining('"artifact"')});
+            expect(start()).toMatchObject({status: "unsupported", message: expect.stringContaining('"artifact"')});
+            expect(service.getActiveCount()).toBe(0);
+            repair();
+            await succeed();
+        }
+        fs.writeFileSync(sidecar, JSON.stringify({...fixture.manifest, capabilities: []}));
+        expect(start()).toMatchObject({status: "unsupported", message: expect.stringContaining(capability)});
+        repair();
+        if (surface === "simulation") {
+            expect(simulation.start(artifact, {rounds: 1, workers: 2})).toMatchObject({status: "unsupported"});
+            expect(simulation.start(artifact, {rounds: 1, convergence: {minRounds: 1, rtpTolerance: 0.01, checkIntervalRounds: 1}})).toMatchObject({status: "unsupported"});
+        }
+        await succeed();
+    } finally {
+        await service.cancelAll();
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
 
 it("samples actual portable purchase stake, lifecycle and weighted selections across all modes", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "v2c21-simulation-"));
@@ -265,8 +367,9 @@ describe("StudioSimulationService", () => {
     it.each([false, true])("keeps WASM cancellation pending through asynchronous disposal rejection=%s", async (rejectDisposal) => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wasm-simulation-cleanup-"));
         const wasmPath = path.join(workDir, "game.wasm");
-        fs.writeFileSync(wasmPath, "");
-        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({artifact: {}}));
+        const fixture = createCanonicalWasmFixture({capabilities: ["runtime.play"]});
+        fs.writeFileSync(wasmPath, fixture.bytes);
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
         const gate = createControlledYield();
         let finishDisposal!: () => void;
         let failDisposal!: (error: Error) => void;
@@ -276,7 +379,7 @@ describe("StudioSimulationService", () => {
         }));
         const disposeSession = jest.fn();
         const runtime = {
-            manifest: {component: {id: "wasm", version: "1.0.0"}, artifact: {configurationHash: "config"}},
+            manifest: fixture.manifest,
             createSession: () => ({
                 play: () => Promise.resolve({stake: 1, payout: 1}),
                 serialize: () => ({schemaVersion: "pokie.state.v2", seed: "cleanup", drawCount: 2, sequence: 1, credits: 1000}),
@@ -302,7 +405,7 @@ describe("StudioSimulationService", () => {
         );
         try {
             const started = service.start(wasmPath, {rounds: 2, seed: "cleanup"});
-            if (started.status !== "created") throw new Error("expected WASM simulation job");
+            if (started.status !== "created") throw new Error(JSON.stringify(started));
             for (let attempt = 0; attempt < 20 && gate.pendingCount() === 0; attempt++) await flushMacrotask();
             expect(gate.pendingCount()).toBe(1);
             service.cancel(started.job.id);

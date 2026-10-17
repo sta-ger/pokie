@@ -1,3 +1,4 @@
+import {StudioWasmBrowserService} from "./wasm/StudioWasmBrowserService.js";
 import {readValidationSourceRevision} from "../validation/readValidationSourceRevision.js";
 import {AdvancedModelSourceValidator} from "../../src/validation/AdvancedModelSourceValidator.js";
 import {compareMathDefinitions} from "../../src/diff/MathDefinitionSourceReader.js";
@@ -113,7 +114,7 @@ import type {StudioReplayJobRecord} from "./replay/StudioReplayJobRecord.js";
 import type {StudioSimulationJobRecord} from "./simulation/StudioSimulationJobRecord.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import type {StudioReplayStatus} from "./replay/StudioReplayStatus.js";
-import {validateReplayRequest, ReplayRequestInput} from "./replay/validateReplayRequest.js";
+import {bindReplayToSimulationReport, validateReplayRequest, ReplayRequestInput} from "./replay/validateReplayRequest.js";
 import {StudioPlayService, StudioPlaySpinResult} from "./runtime/StudioPlayService.js";
 import {StudioRoundRecorder} from "./runtime/StudioRoundRecorder.js";
 import type {StudioRuntimeSessionView} from "./runtime/StudioRuntimeSessionView.js";
@@ -302,6 +303,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly stakeEngineExportService: StudioStakeEngineExportService;
     private readonly artifactBuildService: StudioArtifactBuildService;
     private readonly jobService: StudioJobService;
+    private readonly wasmBrowserService: StudioWasmBrowserService;
     // The persistent Studio project registry -- see StudioServerOptions.projectRegistrationService's own
     // doc comment for the default's FileStudioProjectRegistry-vs-app-data-unresolved fallback story.
     private readonly projectRegistrationService: StudioProjectRegistrationService;
@@ -394,6 +396,7 @@ export class StudioServer implements StudioServerHandling {
             );
         this.replayService.attachJobService(this.jobService);
         this.roundRecorder = options.roundRecorder ?? new StudioRoundRecorder();
+        this.wasmBrowserService = new StudioWasmBrowserService(this.jobService, this.roundRecorder);
         this.playService =
             options.playService ??
             new StudioPlayService(this.loadGame, this.resolveRuntimePackageRoot, this.pokieVersion, undefined, undefined, undefined, this.roundRecorder);
@@ -505,9 +508,13 @@ export class StudioServer implements StudioServerHandling {
     }
 
     public async stop(): Promise<void> {
+        // Request browser cleanup immediately, but cancel every other executor before awaiting it.
+        // A paused executor can otherwise resume into another yield while shutdown is still waiting.
+        const browserDrain = this.wasmBrowserService.shutdown();
         const server = this.server;
-        this.server = undefined;
-        const listenerClosed = new Promise<void>((resolve, reject) => {
+        // Browser disposal acknowledgements still need HTTP and its bound port for Origin validation.
+        const listenerClosed = browserDrain.catch(() => undefined).then(() => new Promise<void>((resolve, reject) => {
+            this.server = undefined;
             if (!server) {
                 resolve();
                 return;
@@ -519,7 +526,7 @@ export class StudioServer implements StudioServerHandling {
                 }
                 resolve();
             });
-        });
+        }));
 
         this.cancelRuntimePreparation();
         for (const controller of this.advancedValidations.keys()) controller.abort();
@@ -534,6 +541,7 @@ export class StudioServer implements StudioServerHandling {
         // Request every domain cancellation before waiting for any executor.
         // Listener closure alone cannot attest to worker or staging cleanup.
         const drains = await Promise.allSettled([
+            browserDrain,
             listenerClosed,
             Promise.allSettled([...this.advancedValidations.values()]),
             Promise.allSettled([...this.definitionPreviews.values()]),
@@ -576,6 +584,7 @@ export class StudioServer implements StudioServerHandling {
             await Promise.allSettled([...this.definitionPreviews.values()]);
             if (this.currentContext.mode === "project") {
                 const projectId = this.canonicalPathIdentity(this.currentContext.projectRoot);
+                await this.wasmBrowserService.drain(projectId);
                 this.simulationService.cancelActiveForProject(projectId);
                 this.replayService.cancelActiveForProject(projectId);
                 this.artifactBuildService.cancelActiveForProject(projectId);
@@ -1135,7 +1144,24 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (url.pathname.startsWith("/api/project/wasm/")) {
+            try {
+                const context = this.currentContext;
+                const result = await this.wasmBrowserService.handle(method, url.pathname, method === "GET" ? undefined : await this.readJsonBody(req), context, () => this.currentContext === context);
+                if (this.currentContext !== context) throw new StudioHttpRequestError(409, "The WASM Project changed during this request. Reopen and retry.");
+                this.sendJson(res, result.status, result.body);
+            } catch (error) {
+                this.sendJson(res, 409, {error: error instanceof Error ? error.message : String(error)});
+            }
+            return;
+        }
+
         if (method === "GET" && url.pathname === "/api/project/context") {
+            const context = this.currentContext;
+            if (context.mode === "project" && this.isWasmPath(context.projectRoot) && this.projectDashboard?.status !== "loading") {
+                const dashboard = await loadProjectDashboardContext(context.projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeProjectLocation);
+                if (this.currentContext === context) this.projectDashboard = dashboard;
+            }
             this.sendJson(res, 200, this.projectDashboard ?? {status: "empty"});
             return;
         }
@@ -2400,7 +2426,7 @@ export class StudioServer implements StudioServerHandling {
             game: {id: manifest.component.id, name: manifest.component.id, version: manifest.component.version},
             errors: [],
             warnings: [],
-            information: [],
+            information: [{code: "wasm-integrity-compatibility", severity: "info", message: "Verified module SHA-256 and byte count, embedded descriptor and configuration hash, manifest shape, runtime version, ABI, serialization and host bindings. This validates artifact integrity and compatibility; it does not certify game mathematics."}],
             suggestions: [],
         };
     }
@@ -3641,19 +3667,12 @@ export class StudioServer implements StudioServerHandling {
         if (validated.simulationId !== undefined && !isNativeOutcomeLibrary) {
             const source = this.simulationService.getReport(this.currentContext.projectRoot, validated.simulationId);
             if (source.status !== "ok") return;
-            const report = source.report;
-            if ("modes" in report) {
-                if (validated.modeName === undefined || !Reflect.apply(Object.prototype.hasOwnProperty, report.modes, [validated.modeName])) {
-                    this.sendJson(res, 400, {error: "Select a concrete mode from the all-mode simulation to replay."});
-                    return;
-                }
-            }
-            const selected = "modes" in report ? report.modes[validated.modeName!] : report;
-            if ((selected.workers ?? 1) !== 1 || selected.seed === null || validated.seed !== selected.seed || validated.round > (selected.sampling?.acceptedSubrounds ?? selected.rounds) || validated.unit === "logical-round" || validated.entryCommands !== undefined || (validated.modeName !== undefined && validated.modeName !== selected.betMode)) {
-                this.sendJson(res, 400, {error: "Simulation replay requires the retained seed, selected mode and step range from a single-worker run."});
+            try {
+                validated = bindReplayToSimulationReport(validated, source.report, {wasm: this.isWasmPath(this.currentContext.projectRoot)});
+            } catch (error) {
+                this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
                 return;
             }
-            validated = {...validated, modeName: selected.betMode, expectedConfigHash: selected.reproducibility?.configHash};
         }
 
         const result = this.replayService.start(this.canonicalPathIdentity(this.currentContext.projectRoot), validated, outcomeSourceProject);
@@ -3839,15 +3858,19 @@ export class StudioServer implements StudioServerHandling {
         return `Replay "${id}" has no descriptor (status: ${jobStatus}).`;
     }
 
-    // Replay & Debug's "Session Spin" find method -- an empty list (nothing played yet, or the project
-    // was since switched) is still a valid 200, same as StudioSimulationService.listReports()/
+    // Replay & Debug's "Session Spin" find method -- retained history belongs to its recorded
+    // Project, even after a switch. An empty list is still a valid 200, same as StudioSimulationService.listReports()/
     // StudioReplayExecutionService.listJobs() returning [] rather than erroring for "nothing yet".
     private handleListRecentSpins(res: ServerResponse): void {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        this.sendJson(res, 200, this.roundRecorder.list());
+        const projectId = this.canonicalPathIdentity(this.currentContext.projectRoot);
+        const rounds = this.roundRecorder.list().filter((round) =>
+            round.studioProjectRoot !== undefined && this.canonicalPathIdentity(round.studioProjectRoot) === projectId,
+        );
+        this.sendJson(res, 200, rounds);
     }
 
     // The Play tab's own two handlers -- POST /api/project/play/session (new/reset), POST
