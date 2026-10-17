@@ -1,5 +1,5 @@
 import {Button, Select, Text, TextInput} from "@mantine/core";
-import {ReactNode, useEffect, useState} from "react";
+import {ReactNode, useEffect, useMemo, useState} from "react";
 import {deriveAvailableBetModeIds, deriveAvailableBets, deriveBetModeId} from "../../../../client/player";
 import {describeRuntimeActionError} from "../../domain/runtimeActionError";
 import type {PlaySessionView} from "../../hooks/usePlaySession";
@@ -80,8 +80,8 @@ export function PlayTab({
     // These values are the session serializer's direct projection of the canonical Project/Game Model;
     // Play never invents a bet or a mode from an artifact/result.  They are refreshed from the returned
     // session after every spin, which is particularly important for a consumed one-shot buyFeature.
-    const availableBets = deriveAvailableBets(activeSession?.availableBets);
-    const availableBetModes = deriveAvailableBetModeIds(activeSession?.availableBetModeIds);
+    const availableBets = useMemo(() => deriveAvailableBets(activeSession?.availableBets), [activeSession?.availableBets]);
+    const availableBetModes = useMemo(() => deriveAvailableBetModeIds(activeSession?.availableBetModeIds), [activeSession?.availableBetModeIds]);
     const currentBet = typeof activeSession?.bet === "number" ? activeSession.bet : undefined;
     const currentBetMode = deriveBetModeId(activeSession?.betModeId);
     const scenarioCapabilities = activeSession?.scenarioCapabilities;
@@ -89,16 +89,26 @@ export function PlayTab({
     const findSymbolWinReason = scenarioCapabilities?.findSymbolWin;
     const findFreeGamesReason = scenarioCapabilities?.findFreeGames;
 
+    // Derive submit/render values immediately, including the first render of a replacement.
+    // Transient states retain the same accepted session, so they cannot erase pending intent.
+    const defaultBet = currentBet !== undefined && (availableBets.length === 0 || availableBets.includes(currentBet)) ? currentBet : availableBets[0];
+    const bet = selectedBet !== null && availableBets.includes(Number(selectedBet)) ? Number(selectedBet) : defaultBet;
+    const defaultMode = currentBetMode !== undefined && availableBetModes.includes(currentBetMode) ? currentBetMode : availableBetModes[0];
+    const mode = selectedBetMode !== null && availableBetModes.includes(selectedBetMode) ? selectedBetMode : defaultMode;
     useEffect(() => {
-        if (currentBet !== undefined) {
-            setSelectedBet(String(currentBet));
-        }
-    }, [currentBet, activeSession?.sessionId]);
+        setSelectedBet(previous => {
+            if (previous !== null && availableBets.includes(Number(previous))) return previous;
+            return defaultBet === undefined ? null : String(defaultBet);
+        });
+    }, [activeSession, availableBets, defaultBet]);
     useEffect(() => {
-        if (currentBetMode !== undefined) {
-            setSelectedBetMode(currentBetMode);
-        }
-    }, [currentBetMode, activeSession]);
+        // An accepted play may consume a one-shot purchase even if its returned default is unchanged.
+        setSelectedBetMode(previous => {
+            if (currentBetMode !== undefined && availableBetModes.includes(currentBetMode)) return currentBetMode;
+            if (previous !== null && availableBetModes.includes(previous)) return previous;
+            return availableBetModes[0] ?? null;
+        });
+    }, [activeSession, availableBetModes, currentBetMode]);
 
     // "no-active-project"/"not-found" are already plain, specific messages -- shown as-is. "error"/
     // "blocked" carry the underlying server's own raw text (a caught exception's message, or a game's
@@ -188,8 +198,8 @@ export function PlayTab({
         roundResult = (
             <RoundSummary
                 session={playedRound}
-                selectedBet={selectedBet === null ? undefined : Number(selectedBet)}
-                selectedBetMode={selectedBetMode ?? undefined}
+                selectedBet={bet}
+                selectedBetMode={mode}
                 availableBets={availableBets}
                 availableModeIds={availableBetModes}
                 onSelectBet={(bet) => setSelectedBet(String(bet))}
@@ -204,10 +214,10 @@ export function PlayTab({
                 visibleRowCoverage={Array.isArray(activeSession.visibleRowCoverage) ? activeSession.visibleRowCoverage as number[] : undefined}
                 credits={activeSession.credits}
                 availableBets={availableBets}
-                currentBet={selectedBet === null ? currentBet : Number(selectedBet)}
+                currentBet={bet}
                 onSelectBet={(bet) => setSelectedBet(String(bet))}
                 availableModeIds={availableBetModes}
-                currentModeId={selectedBetMode ?? currentBetMode}
+                currentModeId={mode}
                 onSelectMode={setSelectedBetMode}
             />
         );
@@ -219,7 +229,7 @@ export function PlayTab({
         <div>
             <PageSection legend="Play">
                 <QuickActions>
-                    <Button loading={loading} onClick={() => onSpin(selectedBet === null ? undefined : Number(selectedBet), selectedBetMode ?? undefined, delivery)}>
+                    <Button loading={loading} onClick={() => onSpin(bet, mode, delivery)}>
                         {activeSession?.logicalRound?.status === "pending" ? "Continue round" : "Spin"}
                     </Button>
                 </QuickActions>

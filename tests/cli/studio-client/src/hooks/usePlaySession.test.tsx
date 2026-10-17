@@ -134,6 +134,30 @@ it.each(["error", "messageerror"])("V2C-22-WORKER-RETRY recovers the rendered br
         expect(created).toBe(2);
         expect(terminated).toBe(1);
         session.dispose();
+        // V2C-22-REPLACEMENT-PLAY-SELECTION: follow Retry through actual replacement spins.
+        const modes = createCanonicalWasmFixture({blueprint: {manifest: GAME, reels: 2, rows: 1, symbols: ["A", "B"],
+            reelStrips: [["A", "B"], ["A", "B"]], availableBets: [1], paytable: {A: {2: 0}},
+            betModes: [{id: "base", runtimeType: "base", isDefault: true}]}});
+        fs.writeFileSync(file, modes.bytes);
+        fs.writeFileSync(`${file}.pokie-wasm.json`, JSON.stringify(modes.manifest));
+        await user.click(screen.getByRole("button", {name: "Reset Play session"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Select mode base"})).toBeVisible());
+        const replacement = createCanonicalWasmFixture({availableBets: [7.5], capabilities: ["runtime.play", "runtime.replay"]});
+        fs.writeFileSync(file, replacement.bytes);
+        fs.writeFileSync(`${file}.pokie-wasm.json`, JSON.stringify(replacement.manifest));
+        await user.click(screen.getByRole("button", {name: "Reset Play session"}));
+        await waitFor(() => {
+            expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
+            expect(screen.queryByRole("button", {name: "Select mode base"})).toBeNull();
+        });
+        for (let round = 3; round <= 4; round++) {
+            await user.click(screen.getByRole("button", {name: "Spin"}));
+            await waitFor(() => expect(recorder.list()).toHaveLength(round));
+            await waitFor(() => expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled());
+            const accepted = jobs.list().find(job => job.request.action === "spin");
+            expect(accepted).toMatchObject({status: "completed", request: {artifactIdentity: replacement.manifest.artifact!.sha256, command: {bet: 7.5}}});
+            expect(accepted!.request.command).not.toHaveProperty("mode");
+        }
     } finally {
         view?.unmount();
         owner.dispose();

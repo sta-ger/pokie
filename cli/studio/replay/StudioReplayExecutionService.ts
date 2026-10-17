@@ -211,7 +211,7 @@ export class StudioReplayExecutionService {
         const common = this.jobService?.start({
             projectId: projectRoot,
             operation: "replay",
-            request: {round: request.round, ...(request.expectedConfigHash === undefined ? {} : {expectedConfigHash: request.expectedConfigHash}), ...(request.recording ? {recording: request.recording} : {}), ...(request.unit ? {unit: request.unit} : {}), ...(request.entryCommands ? {entryCommands: request.entryCommands} : {}), ...(request.seed === undefined ? {} : {seed: request.seed}), ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
+            request: {round: request.round, ...(request.initialCredits === undefined ? {} : {initialCredits: request.initialCredits}), ...(request.expectedConfigHash === undefined ? {} : {expectedConfigHash: request.expectedConfigHash}), ...(request.recording ? {recording: request.recording} : {}), ...(request.unit ? {unit: request.unit} : {}), ...(request.entryCommands ? {entryCommands: request.entryCommands} : {}), ...(request.seed === undefined ? {} : {seed: request.seed}), ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
             conflictKey: `replay:${projectRoot}`,
             recoveryOnRestart: {action: "retry", reason: "A replay cannot safely resume after Studio restarts. Run it again with these captured parameters."},
         });
@@ -236,6 +236,7 @@ export class StudioReplayExecutionService {
             seed: request.seed,
             simulationId: request.simulationId,
             expectedConfigHash: request.expectedConfigHash,
+            initialCredits: request.initialCredits,
             startedAt: this.now(),
             completedRounds: 0,
             durationMs: 0,
@@ -591,7 +592,7 @@ export class StudioReplayExecutionService {
             record.game = {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version};
             record.configHash = runtime.manifest.artifact?.configurationHash;
             const canSerialize = runtime.manifest.capabilities.includes("runtime.serialize");
-            const observed = await collectPokieWasmReplay(runtime, {seed: record.seed, round: record.round, modeName: record.modeName, unit: record.unit, entryCommands: record.entryCommands}, {
+            const observed = await collectPokieWasmReplay(runtime, {seed: record.seed, round: record.round, modeName: record.modeName, unit: record.unit, entryCommands: record.entryCommands, initialCredits: record.initialCredits}, {
                 signal: record.abortController.signal, yieldToHost: this.yieldToEventLoop,
                 onProgress: completed => this.updateReplayProgress(record, completed),
             });

@@ -1,5 +1,5 @@
 import {collectPokieWasmSimulation} from "./PokieWasmCommands.js";
-import {collectPokieWasmReplay, type PokieWasmReplayOptions} from "./PokieWasmReplay.js";
+import {collectPokieWasmReplay, validatePokieWasmReplayInitialCredits, type PokieWasmReplayOptions} from "./PokieWasmReplay.js";
 import {instantiatePokieWasm, SeededPokieWasmHost} from "./PokieWasmRuntime.js";
 import {BoundedPokieWasmTraceCollector, type PokieWasmHost, type PokieWasmHostState, type PokieWasmRuntime, type PokieWasmRestorableState, type PokieWasmRound} from "./PokieWasmRuntimeApi.js";
 import {readCanonicalPokieWasmModule, sha256CanonicalWasmBytes} from "./PokieWasmCanonicalModule.js";
@@ -199,6 +199,7 @@ function assertValidWorkerRequest(value: unknown): asserts value is PokieWasmWor
             if (!isRecord(value.options) || typeof value.options.seed !== "string" || !value.options.seed.length || !Number.isSafeInteger(value.options.round) || (value.options.round as number) < 1 || (value.options.round as number) > 1000000 ||
                 (value.options.unit !== undefined && value.options.unit !== "step" && value.options.unit !== "logical-round") || (value.options.modeName !== undefined && typeof value.options.modeName !== "string") ||
                 (value.options.entryCommands !== undefined && (!Array.isArray(value.options.entryCommands) || !value.options.entryCommands.every(isRecord)))) throw new Error("Malformed WASM replay target request.");
+            validatePokieWasmReplayInitialCredits(value.options.initialCredits);
             return;
         case "view":
         case "serialize":

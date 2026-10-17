@@ -36,6 +36,7 @@ export type StudioReplayJobRecord = {
     // with different content.
     configHash?: string;
     expectedConfigHash?: string;
+    initialCredits?: number;
     descriptor?: ReplayDescriptor;
     error?: string;
     abortController: AbortController;

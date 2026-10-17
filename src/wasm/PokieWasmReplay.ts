@@ -1,8 +1,10 @@
 import {advancePokieWasmReplay} from "./PokieWasmCommands.js";
-import type {PokieWasmRuntime, PokieWasmRestorableState, PokieWasmRound, PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
+import {POKIE_WASM_DEFAULT_CREDITS, type PokieWasmRuntime, type PokieWasmRestorableState, type PokieWasmRound, type PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
 import type {SessionCommand} from "../runtime/SessionCommand.js";
 
 export type PokieWasmReplayOptions = {
+    /** Supplied by Studio only after binding an accepted WASM simulation sample. */
+    readonly initialCredits?: number;
     readonly seed: string;
     readonly round: number;
     readonly modeName?: string;
@@ -25,7 +27,8 @@ export async function collectPokieWasmReplay(runtime: PokieWasmRuntime, options:
     readonly onProgress?: (completed: number) => void;
 } = {}): Promise<PokieWasmReplayObservation> {
     if (!Number.isSafeInteger(options.round) || options.round < 1 || options.round > 1000000) throw new Error("WASM replay requires a positive bounded round index.");
-    let state: PokieWasmRestorableState = {schemaVersion: "pokie.state.v2", seed: options.seed, drawCount: 0, sequence: 0, credits: 1000};
+    validatePokieWasmReplayInitialCredits(options.initialCredits);
+    let state: PokieWasmRestorableState = {schemaVersion: "pokie.state.v2", seed: options.seed, drawCount: 0, sequence: 0, credits: options.initialCredits ?? POKIE_WASM_DEFAULT_CREDITS};
     let finalRound: PokieWasmRound | undefined;
     let stateBefore: PokieWasmSessionState | undefined;
     let totalBet = 0;
@@ -47,4 +50,11 @@ export async function collectPokieWasmReplay(runtime: PokieWasmRuntime, options:
     }
     if (control.signal?.aborted) throw new Error("WASM replay cancelled.");
     return {finalRound, stateBefore, stateAfter: state, totalBet, totalWin, totalPayout};
+}
+
+/** Validate before replay allocates a session; Worker and direct hosts share field diagnostics. */
+export function validatePokieWasmReplayInitialCredits(credits: unknown): void {
+    if (credits !== undefined && (typeof credits !== "number" || !Number.isFinite(credits) || credits < 0)) {
+        throw new Error("WASM replay initialCredits must be a finite non-negative number when supplied.");
+    }
 }

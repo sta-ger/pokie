@@ -170,7 +170,7 @@ export class StudioWasmBrowserService {
                     simulation.result.provenance.configHash !== artifact.manifest.artifact!.configurationHash || !record(report) || !("game" in report) || !("rounds" in report || "modes" in report)) {
                     throw new Error("The selected simulation does not match this WASM artifact and configuration. Run a new simulation.");
                 }
-                replay = bindReplayToSimulationReport(replay, report as SimulationReport | SimulationReportSet);
+                replay = bindReplayToSimulationReport(replay, report as SimulationReport | SimulationReportSet, {wasm: true});
                 if (replay.expectedConfigHash !== artifact.manifest.artifact!.configurationHash) throw new Error("The project model changed since this simulation; run a new simulation before sampling it.");
             }
             request = {...replay};

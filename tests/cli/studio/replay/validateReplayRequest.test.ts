@@ -103,3 +103,15 @@ describe("validateReplayRequest", () => {
         expect(() => validateReplayRequest({round: 1, seed})).toThrow('"seed" must be a non-empty string when given.');
     });
 });
+
+
+it("binds funding only from the fixed WASM simulation executor after validating its retained sample", () => {
+    const report = new SimulationReportBuilder().build({manifest: {id: "loss", name: "Loss", version: "1"}, requestedRounds: 256,
+        seed: "0", workers: 1, durationMs: 1, statistics: new SimulationAccumulator().getStatistics()});
+    const retained = {...report, rounds: 256};
+    const request = validateReplayRequest({round: 256, seed: "0", simulationId: "retained", initialCredits: 0} as never);
+    expect(request).not.toHaveProperty("initialCredits");
+    expect(bindReplayToSimulationReport(request, retained)).not.toHaveProperty("initialCredits");
+    expect(bindReplayToSimulationReport(request, retained, {wasm: true})).toMatchObject({initialCredits: Number.MAX_SAFE_INTEGER});
+    expect(() => bindReplayToSimulationReport({...request, round: 257}, retained, {wasm: true})).toThrow(/step range/);
+});

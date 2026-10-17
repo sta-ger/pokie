@@ -4297,6 +4297,39 @@ describe("StudioServer", () => {
             fs.rmSync(wasmStudioRoot, {recursive: true, force: true});
         });
 
+        it("V2C-22-SIMULATION-REPLAY-FUNDING binds retained HTTP samples beyond standalone funding and ignores caller funding overrides", async () => {
+            const wasmFile = path.join(wasmStudioRoot, "game.wasm");
+            const fixture = createCanonicalWasmFixture({availableBets: [7.5], paytable: {A: {2: 0}, B: {2: 0}}});
+            fs.writeFileSync(wasmFile, fixture.bytes);
+            fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+            const jobs = createIsolatedJobService(wasmStudioRoot);
+            wasmServer = new StudioServer({pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: wasmStudioRoot,
+                jobService: jobs, initialContext: {mode: "project", projectRoot: wasmFile}});
+            const address = await wasmServer.start();
+            const url = `http://${address.host}:${address.port}`;
+            await pollUntilProjectContextSettled(`${url}/api/project/context`);
+            const simulation = await post(`${url}/api/project/simulations`, {rounds: 256, workers: 1, seed: "0"});
+            expect(simulation.status).toBe(202);
+            const simulationId = (simulation.body as {id: string}).id;
+            expect((await pollUntilTerminal(`${url}/api/project/simulations/${simulationId}`)).body.status).toBe("completed");
+            const history = (await get(`${url}/api/project/rounds`)).body;
+            const count = jobs.list().length;
+            expect((await post(`${url}/api/project/replays`, {round: 257, seed: "0", simulationId, initialCredits: Number.MAX_SAFE_INTEGER})).status).toBe(400);
+            expect(jobs.list()).toHaveLength(count);
+            expect((await get(`${url}/api/project/rounds`)).body).toEqual(history);
+            const standalone = await post(`${url}/api/project/replays`, {round: 256, seed: "0", initialCredits: Number.MAX_SAFE_INTEGER});
+            expect(standalone.status).toBe(202);
+            expect((await pollUntilTerminal(`${url}/api/project/replays/${(standalone.body as {id: string}).id}`)).body.status).toBe("failed");
+            expect((await get(`${url}/api/project/rounds`)).body).toEqual(history);
+            for (let retry = 0; retry < 2; retry++) {
+                const replay = await post(`${url}/api/project/replays`, {round: 256, seed: "0", simulationId, initialCredits: 0});
+                expect(replay.status).toBe(202);
+                const id = (replay.body as {id: string}).id;
+                expect(jobs.get(wasmFile, id)!.request.initialCredits).toBe(Number.MAX_SAFE_INTEGER);
+                expect((await pollUntilTerminal(`${url}/api/project/replays/${id}`)).body).toMatchObject({status: "completed", descriptor: {round: 256, seed: "0", totalBet: 1920, totalWin: 0, stateAfter: {sequence: 256}}});
+            }
+        });
+
         it("cancels compatibility executors immediately while keeping same-origin browser cleanup reachable during shutdown", async () => {
             const wasmFile = path.join(wasmStudioRoot, "game.wasm");
             const fixture = createCanonicalWasmFixture();

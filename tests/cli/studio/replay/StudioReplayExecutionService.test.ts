@@ -2156,3 +2156,45 @@ it("V2C-21 completes Studio seed-7 cascade logical replay with correct totals an
         fs.rmSync(directory, {recursive: true, force: true});
     }
 });
+
+
+it("V2C-22-SIMULATION-REPLAY-FUNDING carries the bound policy through the Node replay record and preserves standalone funding", async () => {
+    const {bindReplayToSimulationReport} = await import("../../../../cli/studio/replay/validateReplayRequest.js");
+    const {StudioSimulationService} = await import("../../../../cli/studio/simulation/StudioSimulationService.js");
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "v2c22-replay-funding-"));
+    const artifact = path.join(directory, "game.wasm");
+    const fixture = createCanonicalWasmFixture({availableBets: [7.5], paytable: {A: {2: 0}, B: {2: 0}}});
+    fs.writeFileSync(artifact, fixture.bytes);
+    fs.writeFileSync(`${artifact}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+    const service = new StudioReplayExecutionService();
+    const simulation = new StudioSimulationService();
+    const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
+    service.attachJobService(jobs);
+    simulation.attachJobService(jobs);
+    try {
+        const started = simulation.start(artifact, {rounds: 256, seed: "0", workers: 1});
+        if (started.status !== "created") throw new Error(JSON.stringify(started));
+        await waitFor(() => simulation.getStatusForProject(artifact, started.job.id)?.status === "completed", "Simulation did not complete");
+        const retained = simulation.getReport(artifact, started.job.id);
+        if (retained.status !== "ok" || "modes" in retained.report) throw new Error(JSON.stringify(retained));
+        expect(retained.report).toMatchObject({rounds: 256, totalBet: 1920, totalWin: 0});
+        const standalone = service.start(artifact, {round: 256, seed: "0"});
+        if (standalone.status !== "created") throw new Error(JSON.stringify(standalone));
+        expect(await waitForTerminal(service, artifact, standalone.job.id)).toMatchObject({status: "failed"});
+        const request = bindReplayToSimulationReport({round: 256, seed: "0", simulationId: started.job.id}, retained.report, {wasm: true});
+        for (let retry = 0; retry < 2; retry++) {
+            const replay = service.start(artifact, request);
+            if (replay.status !== "created") throw new Error(JSON.stringify(replay));
+            expect(jobs.get(artifact, replay.job.id)!.request.initialCredits).toBe(Number.MAX_SAFE_INTEGER);
+            expect(await waitForTerminal(service, artifact, replay.job.id)).toMatchObject({status: "completed", descriptor: {
+                round: 256, seed: "0", totalBet: 1920, totalWin: 0,
+                stateAfter: {sequence: 256},
+            }});
+        }
+    } finally {
+        await service.cancelAll();
+        await simulation.cancelAll();
+        await jobs.completeGracefulShutdown();
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});

@@ -1,3 +1,4 @@
+import {POKIE_WASM_SIMULATION_CREDITS} from "../../../src/wasm/PokieWasmCommands.js";
 import {deepFreeze} from "../../../src/internal/deepFreeze.js";
 import {validateAuditReplayDescriptor, validateSessionCommand, type ReplayDescriptor, type SessionCommand, toCanonicalJson} from "@fromstan/pokie";
 import {MAX_STUDIO_REPLAY_ROUND} from "./StudioReplayLimits.js";
@@ -28,6 +29,8 @@ export type ReplayRequestInput = {
 export type ValidatedReplayRequest = {
     /** Bound by the server to the selected retained simulation, never a browser assertion. */
     expectedConfigHash?: string;
+    /** Fixed executor policy, bound by Studio; never accepted from a public request body. */
+    initialCredits?: number;
     recording?: ReplayDescriptor & {audit: NonNullable<ReplayDescriptor["audit"]>};
     round: number;
     unit?: "step" | "logical-round";
@@ -46,7 +49,7 @@ export type ReplayValidationOptions = {
 };
 
 /** A simulation sample addresses a retained accepted step, never a new command policy. */
-export function bindReplayToSimulationReport(request: ValidatedReplayRequest, report: SimulationReport | SimulationReportSet): ValidatedReplayRequest {
+export function bindReplayToSimulationReport(request: ValidatedReplayRequest, report: SimulationReport | SimulationReportSet, options: {wasm?: boolean} = {}): ValidatedReplayRequest {
     if ("modes" in report && (request.modeName === undefined || !Reflect.apply(Object.prototype.hasOwnProperty, report.modes, [request.modeName]))) {
         throw new Error("Select a concrete mode from the all-mode simulation to replay.");
     }
@@ -57,7 +60,8 @@ export function bindReplayToSimulationReport(request: ValidatedReplayRequest, re
         (request.modeName !== undefined && request.modeName !== selected.betMode)) {
         throw new Error("Simulation replay requires the retained seed, selected mode and step range from a single-worker run.");
     }
-    return {...request, modeName: selected.betMode, expectedConfigHash: selected.reproducibility?.configHash};
+    return {...request, modeName: selected.betMode, expectedConfigHash: selected.reproducibility?.configHash,
+        ...(options.wasm ? {initialCredits: POKIE_WASM_SIMULATION_CREDITS} : {})};
 }
 
 // The one place a POST /api/project/replays body is turned into a trusted ValidatedReplayRequest —

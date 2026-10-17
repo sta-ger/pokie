@@ -445,3 +445,39 @@ it("renders portable selection identity and configured versus observed frequency
     fireEvent.click(screen.getByRole("button", {name: "Spin"}));
     expect(onSpin).toHaveBeenCalledWith(1, undefined, "stepwise");
 });
+
+
+it("V2C-22-REPLACEMENT-PLAY-SELECTION reconciles removed modes and disjoint bets while preserving recoverable intent", () => {
+    const onSpin = jest.fn();
+    const original: StudioRuntimeSessionView = {sessionId: "old", game: {id: "same-path", name: "G", version: "1"}, bet: 0.05,
+        availableBets: [0.05, 7.5], availableBetModeIds: ["base", "buy"], betModeId: "base", screen: [["A"]]};
+    const page = (session: PlaySessionView) => <MantineProvider><PlayTab session={session} sessionId={session.status === "ok" ? session.session.sessionId : original.sessionId}
+        onNewSession={jest.fn()} onSpin={onSpin} onFindAnyWin={jest.fn()} onFindSymbolWin={jest.fn()} onFindFreeGames={jest.fn()} /></MantineProvider>;
+    const {rerender} = render(page({status: "ok", session: original}));
+    fireEvent.click(screen.getByRole("button", {name: "Select bet 7.5"}));
+    fireEvent.click(screen.getByRole("button", {name: "Select mode buy"}));
+    rerender(page({status: "loading", previousSession: original}));
+    expect(screen.getByRole("button", {name: "Spin"})).toBeDisabled();
+    for (const subject of ["Checkpoint restore", "This spin", "This session"]) {
+        rerender(page({status: "error", subject, message: "recoverable rejection or ambiguous publication", previousSession: original}));
+        expect(screen.getByRole("button", {name: "Select bet 7.5"})).toHaveAttribute("aria-pressed", "true");
+        expect(screen.getByRole("button", {name: "Select mode buy"})).toHaveAttribute("aria-pressed", "true");
+        fireEvent.click(screen.getByRole("button", {name: "Spin"}));
+        expect(onSpin).toHaveBeenLastCalledWith(7.5, "buy", "stepwise");
+    }
+    // A valid choice survives replacement with the same supported choices.
+    rerender(page({status: "ok", session: {...original, sessionId: "valid-replacement", bet: 0.05, betModeId: undefined}}));
+    fireEvent.click(screen.getByRole("button", {name: "Spin"}));
+    expect(onSpin).toHaveBeenLastCalledWith(7.5, "buy", "stepwise");
+    // Both absent and explicitly empty capabilities must remove hidden selections.
+    for (const availableBetModeIds of [undefined, []]) {
+        const replacement = {...original, sessionId: "replacement", bet: undefined, availableBets: [1e-7], availableBetModeIds, betModeId: undefined};
+        rerender(page({status: "ok", session: replacement}));
+        expect(screen.queryByRole("button", {name: "Select mode buy"})).toBeNull();
+        for (let spin = 0; spin < 2; spin++) {
+            fireEvent.click(screen.getByRole("button", {name: "Spin"}));
+            expect(onSpin).toHaveBeenLastCalledWith(1e-7, undefined, "stepwise");
+            rerender(page({status: "ok", session: {...replacement, bet: 1e-7, credits: 999}}));
+        }
+    }
+});

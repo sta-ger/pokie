@@ -3,6 +3,9 @@ import type {SessionCommand} from "../runtime/SessionCommand.js";
 import type {SimulationAccumulator} from "../simulation/SimulationAccumulator.js";
 import {analyticsEnvelope} from "../simulation/FeatureAnalytics.js";
 
+/** Fixed initialization for accepted-step simulation sampling, shared with sample replay. */
+export const POKIE_WASM_SIMULATION_CREDITS = Number.MAX_SAFE_INTEGER;
+
 /** Tool commands keep the current entry identity through every delivery/feature boundary. */
 export function nextPokieWasmCommand(state: PokieWasmSessionState, mode?: string, delivery: "stepwise" | "composite" = "stepwise"): SessionCommand {
     return nextCommand(state.sequence, state.schemaVersion === "pokie.state.v4", state.schemaVersion === "pokie.state.v4" ? state.feature.logicalRound : undefined, mode, delivery);
@@ -74,7 +77,7 @@ export async function collectPokieWasmSimulation(runtime: import("./PokieWasmRun
     const results: {mode?: string; targetRtp?: number; statistics: import("../simulation/SimulationStatistics.js").SimulationStatistics}[] = [];
     let completed = 0;
     for (const mode of modes) {
-        const session = runtime.createSession(seed, {credits: Number.MAX_SAFE_INTEGER});
+        const session = runtime.createSession(seed, {credits: POKIE_WASM_SIMULATION_CREDITS});
         const accumulator = new SimulationAccumulator();
         const observer = new PokieWasmSimulationObserver();
         let previous: PokieWasmRound | undefined;

@@ -1198,7 +1198,7 @@ it("V2C-22-SIMULATION-REPLAY-BINDING admits only retained single/all-mode steps 
         try {
             for (const modeName of ["ante", "base", "ante"]) {
                 const replay = await run("replays", {round: 2, seed: "0", simulationId: all.id, modeName, unit: "step"});
-                const observed = await collectPokieWasmReplay(reference, {round: 2, seed: "0", modeName});
+                const observed = await collectPokieWasmReplay(reference, {round: 2, seed: "0", modeName, initialCredits: Number.MAX_SAFE_INTEGER});
                 expect(replay.result!.detail!.descriptor).toMatchObject({round: 2, seed: "0", modePolicy: {betModeId: modeName}, totalBet: reports.modes[modeName].totalBet,
                     totalWin: reports.modes[modeName].totalWin, totalPayout: observed.totalPayout, screen: observed.finalRound!.screen, credits: observed.finalRound!.credits});
                 const comparable = (state: import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmFeatureSessionState) => {
@@ -1833,6 +1833,82 @@ it("V2C-22-PUBLICATION-RECOVERY pagehide publishes the latest cancellation prefi
             holdFinish.resolve();
         }
     } finally {
+        await test.close();
+    }
+});
+
+
+it("V2C-22-SIMULATION-REPLAY-FUNDING reproduces a loss-making accepted sample beyond standalone funding through browser admission and Worker execution", async () => {
+    const {collectPokieWasmReplay} = await import("../../../src/wasm/PokieWasmReplay.js");
+    const {POKIE_WASM_SIMULATION_CREDITS} = await import("../../../src/wasm/PokieWasmCommands.js");
+    const fixture = createCanonicalWasmFixture({availableBets: [7.5], paytable: {A: {2: 0}, B: {2: 0}}});
+    const test = await browserOwner(fixture);
+    const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("0"));
+    const run = async (operation: "simulations" | "replays", request: Record<string, unknown>) => {
+        const response = await test.owner.fetch(`/api/project/${operation}`, {method: "POST", body: JSON.stringify(request)});
+        expect(response.ok).toBe(true);
+        const {id} = await response.json() as {id: string};
+        for (let attempt = 0; attempt < 10000; attempt++) {
+            const job = test.jobs.get(test.file, id)!;
+            if (job.status !== "running" && job.status !== "queued") return job;
+            await new Promise<void>(resolve => {
+                setImmediate(resolve);
+            });
+        }
+        throw new Error("Funding regression did not settle.");
+    };
+    try {
+        const simulation = await run("simulations", {rounds: 256, seed: "0", workers: 1});
+        expect(simulation).toMatchObject({status: "completed", result: {detail: {report: {rounds: 256, totalBet: 1920, totalWin: 0}}}});
+        // The public request cannot choose a funding policy, even with a coordinated override.
+        const failed = await run("replays", {round: 256, seed: "0", initialCredits: POKIE_WASM_SIMULATION_CREDITS});
+        expect(failed.status).toBe("failed");
+        expect(failed.request.initialCredits).toBeUndefined();
+        expect(test.recorder.list()).toHaveLength(0);
+        const created = test.controls.created;
+        const rejected = await test.owner.fetch("/api/project/replays", {method: "POST", body: JSON.stringify({round: 257, seed: "0", simulationId: simulation.id, initialCredits: POKIE_WASM_SIMULATION_CREDITS})});
+        expect(rejected.ok).toBe(false);
+        expect(test.controls.created).toBe(created);
+        const expected = await collectPokieWasmReplay(runtime, {seed: "0", round: 256, initialCredits: POKIE_WASM_SIMULATION_CREDITS});
+        const simulated = runtime.createSession("0", {credits: POKIE_WASM_SIMULATION_CREDITS});
+        try {
+            let last;
+            for (let step = 0; step < 256; step++) last = await simulated.play({});
+            expect(expected.stateAfter).toEqual(simulated.serialize());
+            expect(expected.finalRound!.screen).toEqual(last!.screen);
+            const continued = runtime.restoreSession(expected.stateAfter);
+            try {
+                expect(await continued.play({})).toEqual(await simulated.play({}));
+                expect(continued.serialize()).toEqual(simulated.serialize());
+            } finally {
+                continued.dispose();
+            }
+        } finally {
+            simulated.dispose();
+        }
+        for (let retry = 0; retry < 2; retry++) {
+            const replay = await run("replays", {round: 256, seed: "0", simulationId: simulation.id, initialCredits: 0});
+            expect(replay).toMatchObject({status: "completed", request: {initialCredits: POKIE_WASM_SIMULATION_CREDITS}, result: {detail: {descriptor: {
+                round: 256, seed: "0", totalBet: 1920, totalWin: 0, credits: expected.finalRound!.credits, screen: expected.finalRound!.screen, stateAfter: expected.stateAfter,
+            }}}});
+        }
+        expect(test.recorder.list()).toHaveLength(2);
+        const worker = new PokieWasmWorkerProtocol();
+        try {
+            await worker.handle({id: "init", type: "instantiate", bytes: fixture.bytes, manifest: fixture.manifest, seed: "0"});
+            for (const initialCredits of [null, "1000", -1, NaN, Infinity]) {
+                const options = {seed: "0", round: 1, initialCredits};
+                const diagnostic = "WASM replay initialCredits must be a finite non-negative number when supplied.";
+                await expect(collectPokieWasmReplay(runtime, options as never)).rejects.toThrow(diagnostic);
+                expect(await worker.handle({id: "invalid", type: "replay-target", options})).toMatchObject({ok: false, error: diagnostic});
+            }
+            expect(await worker.handle({id: "reuse", type: "replay-target", options: {seed: "0", round: 1}})).toMatchObject({ok: true, result: {stateAfter: {sequence: 1, credits: 992.5}}});
+        } finally {
+            await worker.handle({id: "dispose", type: "dispose"});
+        }
+        expect(test.controls.live).toBe(0);
+    } finally {
+        runtime.dispose();
         await test.close();
     }
 });

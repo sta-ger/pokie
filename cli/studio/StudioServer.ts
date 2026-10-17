@@ -3668,7 +3668,7 @@ export class StudioServer implements StudioServerHandling {
             const source = this.simulationService.getReport(this.currentContext.projectRoot, validated.simulationId);
             if (source.status !== "ok") return;
             try {
-                validated = bindReplayToSimulationReport(validated, source.report);
+                validated = bindReplayToSimulationReport(validated, source.report, {wasm: this.isWasmPath(this.currentContext.projectRoot)});
             } catch (error) {
                 this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
                 return;
