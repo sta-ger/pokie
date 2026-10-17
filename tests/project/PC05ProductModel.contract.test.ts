@@ -508,7 +508,7 @@ describe("PC-05 product-model contract", () => {
         expect(server).toContain("this.sessionRepository = store === undefined ? options.sessionRepository ?? new InMemorySessionRepository() : {");
         expect(server).toContain("await this.sessionRepository.save(sessionId, state)");
         expect(server).toContain("await this.sessionRepository.loadVersioned(sessionId)");
-        expect(server).toContain(["this.sendJson(res, 404, {error: `Unknown sessionId \"", String.fromCharCode(36), "{sessionId}\".`})"].join(""));
+        expect(server).toContain(["this.sendJson(res, 404, {code: \"not-found\", error: `Unknown sessionId \"", String.fromCharCode(36), "{sessionId}\".`, ...recovery})"].join(""));
         expect(rootIndex).toContain('export * from "./server/session/FileSessionRepository.js"');
         expect(cliDocs).toContain("`FileSessionRepository` — one JSON file per session under a directory you choose");
         expect(cliDocs).toContain("ids are hashed into filenames");
@@ -566,7 +566,7 @@ describe("PC-05 product-model contract", () => {
         expect(reportDownload).toContain("export function buildSimulationReportDownload(");
         expect(reportDownload).toContain("value.replace(/[^a-zA-Z0-9._-]+/g, \"-\")");
         expect(replayTab).toContain("new Blob([JSON.stringify(data, null, 2)]");
-        expect(replayTab).toContain("downloadJsonBlob(`spin-" + dollar + "{selectedSpin.sessionId}.json`, selectedSpin)");
+        expect(replayTab).toContain("downloadJsonBlob(`spin-" + dollar + "{selectedSpin.sessionId}.json`, selectedSpin.debug?.recording ?? selectedSpin)");
         expect(replayTab).toContain("buildReplayDownloadUrl(result.id)");
         expect(certificationTab).toContain("new Blob([JSON.stringify(data, null, 2)]");
         expect(certificationTab).toContain("Download manifest.json");
@@ -892,10 +892,10 @@ describe("PC-05 product-model contract", () => {
             {id: "par-import-blueprint-default", artifactId: "blueprint", commandFile: "cli/commands/ParCommand.ts", sourceAssertions: ["options.out ?? defaultBlueprintPath(inputPath)", "this.planner.planImportOutput(source, \"blueprint\", outPath)"]},
             {id: "import-par-blueprint-default", artifactId: "blueprint", commandFile: "cli/commands/ImportCommand.ts", sourceAssertions: ["const outputKind = source.type === \"parWorkbook\" ? \"blueprint\" : \"outcomeLibrary\"", "this.planner.planImportOutput(source, outputKind, destination)"]},
             {id: "par-export-workbook-default", artifactId: "parWorkbook", commandFile: "cli/commands/ParCommand.ts", sourceAssertions: ["options.out ?? defaultParSheetPath(blueprintPath)", "this.assertDestinationIsAvailable(blueprintPath, outPath)"]},
-            {id: "build-ts-package-default", artifactId: "tsPackage", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, options.target)", "if (options.dryRun)", "this.registry.executePlan(plan, project, out,"]},
-            {id: "build-outcome-bundle-default", artifactId: "outcomeLibrary", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, options.target)", "this.registry.executePlan(plan, project, out,"]},
-            {id: "build-stake-default", artifactId: "stakeAdapter", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, options.target)", "this.registry.executePlan(plan, project, out,"]},
-            {id: "build-par-default", artifactId: "parWorkbook", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, options.target)", "this.registry.executePlan(plan, project, out,"]},
+            {id: "build-ts-package-default", artifactId: "tsPackage", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, target)", "if (options.dryRun)", "this.registry.executePlan(plan, project, out,"]},
+            {id: "build-outcome-bundle-default", artifactId: "outcomeLibrary", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, target)", "this.registry.executePlan(plan, project, out,"]},
+            {id: "build-stake-default", artifactId: "stakeAdapter", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, target)", "this.registry.executePlan(plan, project, out,"]},
+            {id: "build-par-default", artifactId: "parWorkbook", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, target)", "this.registry.executePlan(plan, project, out,"]},
             {id: "export-outcome-bundle-default", artifactId: "outcomeLibrary", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(projectPath, options.target)", "prepareDescriptorBuildOperation(source, destination, signal)", "executeDescriptorOperation(prepared, dryRun)"]},
             {id: "export-stake-default", artifactId: "stakeAdapter", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(projectPath, options.target)", "prepareDescriptorExportOperation(source, destination, signal)", "executeDescriptorOperation(prepared, dryRun)"]},
             {id: "export-par-default", artifactId: "parWorkbook", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(projectPath, options.target)", "prepareDescriptorExportOperation(source, destination, signal)", "executeDescriptorOperation(prepared, dryRun)"]},

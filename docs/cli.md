@@ -3956,7 +3956,7 @@ No history database is created.
 `--ci` applies only to definition comparisons; using it for statistics is an
 error (2). SIGINT cancels definition acquisition and waits for owned extraction
 cleanup. Existing top-level statistical diff still succeeds on differences;
-`pokie stakeengine diff` retains its 0/1/2 threshold contract. These defaults are
+the Stake aggregate comparison retains its 0/1/2 threshold contract. These defaults are
 not silently changed by adding definition comparison.
 
 Existing report/report-set results add `comparisonKind: "simulation-statistics"`;
