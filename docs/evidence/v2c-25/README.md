@@ -394,3 +394,32 @@ visited. The historical two-worker Studio result remains useful but does not
 prove actual Node worker startup or the requested reload/CLI-cancellation
 reuse. Those missing branches, and stale-apply, remain uncollected rather than
 being treated as failures.
+
+## Final focused continuation — corrected compiled worker and support matrix
+
+The candidate remained `6087b2f85431a70d77c918442caab0e0d0769605`. The fresh
+Studio transcript
+`run-2026-10-17T21-49-33-933Z/transcript.json` (SHA-256
+`f96f6c24a9e51e061a450b090646de3513139a5b046aa6fad321119c477a4ad9`) uses
+only public Projects and Overview controls. It rendered supported finite
+same-type requests and writable fields for the retained Outcome Library
+(`/modes/base/outcomes/outcome-92d7fefe2949e936/weight` and sibling weight),
+candidate-built Stake export (`/modes/base/outcomes/0/weight` and `/1/weight`),
+and explicitly source-bound canonical WASM (`/paytable/A/2`). The same run
+retains the earlier current-candidate PAR, declared-TS, and Blueprint support
+receipts rather than replaying them.
+
+The compiled candidate CLI was then run with `NODE_DEBUG=worker`, source
+`v2c-25-recovery-current/optimization.blueprint.json`, and the retained exact
+seeded two-worker cancellation policy. Node reported creation and startup of
+two real `dist/src/simulation/parallel/internal/simulationWorkerEntry.js`
+workers. After 149,461 positive search samples, exactly one SIGINT produced
+product terminal JSON `status:"cancelled"` and CLI exit `6`; Node reported both
+workers terminated and end events. The bounded result receipt is
+`cli-workers2-cancel.json` (SHA-256
+`04c5ddd52a6066e96e4a5436c4029f84e461b6e6d0d41853e4eb5f421ef332f8`). A fresh
+compiled-CLI exact retry succeeded; `cli-workers2-fresh-retry.json` has SHA-256
+`ee677b95c274cc078d3817d99873b0c8c48ffd8b758bc68ec9d03463f104b0bd`.
+The accepted earlier active-job reload/source-lock cleanup receipt remains
+preserved; this new Node receipt distinguishes worker_threads from browser
+Worker telemetry.
