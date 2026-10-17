@@ -111,7 +111,7 @@ last dimension varying fastest, selecting the first match. Seed is a nonempty
 string of at most 256 characters, retained verbatim; exact selection uses no
 random draw. Each attempted candidate costs one deterministic budget unit,
 including constraint rejection, materialization, validation and measurement.
-`budget` and the separate per-candidate exact reel-population `maxOutcomes` cap
+`budget` and the separate per-candidate exact reel/native-population `maxOutcomes` cap
 are integers in `[1,1000000]`. Zero, negative, fractional, nonfinite, unsafe or
 string-encoded budgets are invalid. A population cap or unfinished candidate
 search returns `exhausted`; only complete supported search returns `infeasible`.
@@ -141,7 +141,7 @@ requires the same service receipt, unchanged source/policy/reviewed candidate,
 and a new or empty destination. Occupied and aliased destinations fail; partial
 publication rolls back only owned outputs. Call `discard` after reviewing an
 unsaved candidate. The CLI discards review-only work after printing evidence;
-`--out` retains its output. Studio retains candidate ownership for explicit save
+`--out` retains its output and reports that destination's actual file inventory revision in `output`. Studio retains candidate ownership for explicit save
 within its process. After server restart, durable evidence remains available;
 rerun optimization to obtain a new save receipt. Closing/switching Project or
 cancelling a job discards an unfinished candidate and drains the executor.

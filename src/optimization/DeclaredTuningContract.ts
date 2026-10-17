@@ -6,7 +6,7 @@ import {readWasmComponentManifest} from "../project/readWasmComponentManifest.js
 import {ProjectTargetResolver} from "../project/ProjectTargetResolver.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
-import {digest, inventory, jsonHash, paytablePaths, readJson, writeJson} from "./internal/optimizationData.js";
+import {digest, inventory, paytablePaths, readJson} from "./internal/optimizationData.js";
 
 /** Package authors explicitly opt in; a descriptor or executable capability alone is insufficient. */
 export type DeclaredPackageTuningContract = {
@@ -82,17 +82,4 @@ export async function bindCanonicalWasmTuningSource(
         moduleHash: read.manifest.artifact!.sha256,
     };
     fs.writeFileSync(`${file}.tuning.json`, `${JSON.stringify(contract, null, 2)}\n`, {flag: "wx"});
-}
-export function refreshPackageTuning(
-    root: string,
-    contract: DeclaredPackageTuningContract,
-    blueprint: GameBlueprint,
-): void {
-    writeJson(`${root}/pokie-tuning.json`, {...contract, modelHash: computeGameBlueprintHash(blueprint)});
-}
-export function verifyPackageSourceHashes(root: string, contract: DeclaredPackageTuningContract): void {
-    const files = inventory(root);
-    Reflect.deleteProperty(files, contract.parameterFile);
-    Reflect.deleteProperty(files, "pokie-tuning.json");
-    if (jsonHash(files) !== jsonHash(contract.sourceHashes)) throw new Error("Declared package source identity is stale or tampered.");
 }

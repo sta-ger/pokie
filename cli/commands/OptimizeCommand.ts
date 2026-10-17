@@ -1,3 +1,4 @@
+import {projectRevision} from "../../src/optimization/internal/optimizationData.js";
 import {OptimizationCancelledError} from "../../src/optimization/internal/ProjectOptimizationAdapter.js";
 import {ArtifactBuildCancelledError} from "../../src/project/ArtifactBuildOptions.js";
 import fs from "fs";
@@ -71,7 +72,7 @@ export class OptimizeCommand implements CliCommandHandling {
                             const output = await this.service.publish(candidate, request, options.out, {
                                 signal: controller.signal,
                             });
-                            result = {...result, candidate: {...candidate, path: output, workspace: ""}};
+                            result = {...result, candidate: undefined, output: {path: output, revision: projectRevision({type: candidate.type, rootPath: output}), type: candidate.type}};
                         } else {
                             // A CLI review exposes evidence/diff; only explicit --out retains an artifact.
                             result = {...result, candidate: undefined};
@@ -83,6 +84,8 @@ export class OptimizeCommand implements CliCommandHandling {
             }
         } catch (error) {
             result = {
+                ...result,
+                candidate: undefined,
                 status: classifyCommandError(error),
                 diagnostics:
                     error instanceof OptimizationInputError

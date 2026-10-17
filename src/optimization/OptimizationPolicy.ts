@@ -78,6 +78,7 @@ export type OptimizationResult = {
     diagnostics: OptimizationDiagnostic[];
     evidence?: OptimizationEvidence;
     candidate?: OptimizationCandidate;
+    output?: {path: string; revision: string; type: import("../project/ProjectType.js").ProjectType};
 };
 export interface ProjectOptimizing {
     optimize(

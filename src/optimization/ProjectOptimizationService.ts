@@ -28,6 +28,7 @@ import {
     acquireOptimizationAdapter,
     OptimizationCancelledError,
     OptimizationCleanupError,
+    OptimizationExhaustedError,
     OptimizationUnsupportedError,
 } from "./internal/ProjectOptimizationAdapter.js";
 import {
@@ -389,6 +390,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
 }
 
 function classifyOptimizationError(error: unknown): OptimizationResult["status"] {
+    if (error instanceof OptimizationExhaustedError) return "exhausted";
     if (error instanceof OptimizationInputError) return "invalid";
     if (error instanceof OptimizationUnsupportedError) return "unsupported";
     if (

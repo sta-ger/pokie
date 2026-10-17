@@ -1,3 +1,4 @@
+import {projectRevision} from "../../../src/optimization/internal/optimizationData.js";
 import fs from "fs";
 import path from "path";
 import {OptimizeCommand} from "../../../cli/commands/OptimizeCommand.js";
@@ -29,6 +30,7 @@ it("publishes a same-type candidate only with explicit output intent and returns
     expect(await new OptimizeCommand().run([source, "--policy", policy, "--out", output, "--format", "json"])).toBe(0);
     expect(result()).toMatchObject({status: "success", evidence: {measured: [0.75]}});
     expect(JSON.parse(fs.readFileSync(output, "utf8")).paytable.A[2]).toBe(3);
+    expect(result()).toMatchObject({output: {path: output, type: "blueprint", revision: projectRevision({type: "blueprint", rootPath: output})}});
     expect(fs.readFileSync(source)).toEqual(before);
     expect(await new OptimizeCommand().run([source, "--policy", policy, "--out", output])).toBe(1);
     expect(fs.readFileSync(source)).toEqual(before);

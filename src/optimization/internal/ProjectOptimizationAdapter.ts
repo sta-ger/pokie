@@ -1,3 +1,4 @@
+import {refreshPackageTuning, verifyPackageSourceHashes} from "./DeclaredTuningAuthority.js";
 import {compareIds} from "../../weightedoutcome/internal/compareIds.js";
 import {writeNativeStakeTuningManifest} from "./NativeStakeTuningManifest.js";
 import fs from "fs";
@@ -33,8 +34,6 @@ import {stableSlotMathJson} from "../../wasm/math/SharedSlotMath.js";
 import {createTunableBlueprintGame} from "../createTunableBlueprintGame.js";
 import {
     compileBoundTuningWasm,
-    refreshPackageTuning,
-    verifyPackageSourceHashes,
     type CanonicalWasmTuningContract,
     type DeclaredPackageTuningContract,
 } from "../DeclaredTuningContract.js";
@@ -52,6 +51,7 @@ type NativeModel = {
 export class OptimizationUnsupportedError extends Error {}
 export class OptimizationCancelledError extends Error {}
 export class OptimizationCleanupError extends Error {}
+export class OptimizationExhaustedError extends Error {}
 export interface ProjectOptimizationAdapting {
     model: unknown;
     writable: string[];
@@ -278,6 +278,7 @@ export async function acquireOptimizationAdapter(
                 const data = value as NativeModel;
                 const mode = data.modes[requested.mode];
                 const outcomes = Object.entries(mode.outcomes);
+                if (outcomes.length > requested.maxOutcomes) throw new OptimizationExhaustedError("Native outcome population exceeds maxOutcomes; no metric proof was established.");
                 if (project.type === "outcomeLibrary") {
                     if (outcomes.some(([, outcome]) => outcome.artifact!.stake !== requested.stake)) throw new OptimizationUnsupportedError(
                         "Native library stake must match every selected artifact.",

@@ -234,6 +234,8 @@ it("tunes native bundle weights, rebuilds indexes/analysis and retains identitie
         candidate: {type: "outcomeLibrary"},
         evidence: {measured: [1], rejected: 1},
     });
+    const cappedRequest = {...request, policy: {...request.policy, maxOutcomes: 1}};
+    expect((await service.optimize(await resolve(root), cappedRequest)).status).toBe("exhausted");
     const reader = new OutcomeLibraryBundleReader();
     expect((await reader.readLibrary(result.candidate!.path, "other")).outcomes).toEqual(library.outcomes);
     expect(
