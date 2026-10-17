@@ -219,7 +219,8 @@ full-mechanics parity are not provided. See [the maintained boundary](wasm-compa
 
 The [P9 finding/status register](audit-corrections/README.md) separates implemented primitives, partial
 coverage, not-found directions, historical v2 deferrals, and unconfirmed release scope. In particular,
-Math Targeting/Optimization is agreed but not implemented; no release commitment is inferred.
+Math targeting now has [finite exact and bounded seeded same-type workflows](optimization.md),
+with explicit adapter/population limits and held-out assessment; no public release commitment is inferred.
 
 ## Core concepts at a glance
 

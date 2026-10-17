@@ -1,3 +1,7 @@
+import {integerRelativeWeights} from "../../session/videoslot/combinations/WeightedSymbolsSequence.js";
+import {ParallelSimulationRunner} from "../../simulation/parallel/ParallelSimulationRunner.js";
+import type {SimulationStatistics} from "../../simulation/SimulationStatistics.js";
+import type {OptimizationSimulationRecipe} from "./createOptimizationSimulationGame.js";
 import {refreshPackageTuning, verifyPackageSourceHashes} from "./DeclaredTuningAuthority.js";
 import {compareIds} from "../../weightedoutcome/internal/compareIds.js";
 import {writeNativeStakeTuningManifest} from "./NativeStakeTuningManifest.js";
@@ -9,7 +13,7 @@ import {GameBlueprintValidator} from "../../generated/GameBlueprintValidator.js"
 import {computeGameBlueprintHash} from "../../generated/computeGameBlueprintHash.js";
 import {createPokieGameDependencyOverlay} from "../../gamepackage/resolvePokieGameEntryModule.js";
 import {OptimizationInputError} from "../validateOptimizationRequest.js";
-import {loadPokieGameRuntime} from "../../gamepackage/loadPokieGame.js";
+import {loadPokieGame, releasePokieGame, loadPokieGameRuntime} from "../../gamepackage/loadPokieGame.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {PokieProject} from "../../project/PokieProject.js";
 import {readWasmComponentManifest} from "../../project/readWasmComponentManifest.js";
@@ -54,9 +58,11 @@ export class OptimizationUnsupportedError extends Error {}
 export class OptimizationCancelledError extends Error {}
 export class OptimizationCleanupError extends Error {}
 export class OptimizationExhaustedError extends Error {}
+type OptimizationSamplingOptions = {signal?: AbortSignal; workerEntryUrl?: URL; onProgress(completed: number): void; onValidationWork(completed: number): void};
 export interface ProjectOptimizationAdapting {
     model: unknown;
     writable: string[];
+    sample(file: string, model: unknown, targets: MathTarget[], policy: OptimizationPolicy, seed: string, samples: number, options: OptimizationSamplingOptions): Promise<{statistics: SimulationStatistics; returnBound: number; validationWork: number; stopReason: string}>;
     materialize(model: unknown, directory: string, signal?: AbortSignal): Promise<string>;
     read(file: string): Promise<unknown>;
     measure(
@@ -168,6 +174,7 @@ async function measureGame(
     targets: MathTarget[],
     policy: OptimizationPolicy,
     signal?: AbortSignal,
+    onValidationWork?: (count: number) => void,
 ): Promise<number[]> {
     try {
         cancelled(signal);
@@ -181,6 +188,7 @@ async function measureGame(
             stake: policy.stake,
             maxOutcomeSpaceSize: BigInt(policy.maxOutcomes),
             signal,
+            onProgress: onValidationWork ? count => onValidationWork(Number(count)) : undefined,
             now: () => new Date(0),
         });
         if (result.diagnostics.strategy !== "exact") throw new OptimizationUnsupportedError("Sampled analysis cannot prove an exact target.");
@@ -291,6 +299,21 @@ export async function acquireOptimizationAdapter(
                 return output;
             },
             read: (file) => readNative({...project, rootPath: file}),
+            sample(file, value, targets, requested, seed, samples, options) {
+                const mode = (value as NativeModel).modes[requested.mode];
+                const outcomes = Object.values(mode.outcomes);
+                if (outcomes.length > requested.maxOutcomes) throw new OptimizationExhaustedError("Native support population exceeds maxOutcomes.");
+                const weights = project.type === "stakeAdapter" ? outcomes.map(outcome => BigInt(outcome.weight)) : integerRelativeWeights(outcomes.map(outcome => outcome.weight as number));
+                if (project.type === "outcomeLibrary" && outcomes.some(outcome => outcome.artifact!.stake !== requested.stake)) throw new OptimizationUnsupportedError("Native library stake must match every selected artifact.");
+                const recipe: OptimizationSimulationRecipe = {
+                    kind: "native", modelId: jsonHash(value), stake: requested.stake, cost: mode.cost ?? 1,
+                    outcomes: outcomes.map((outcome, i) => ({weight: weights[i].toString(),
+                        payoutPerBet: outcome.artifact?.payoutMultiplier ?? outcome.stake!.payoutMultiplier / 100,
+                        events: [...new Set(outcome.artifact?.featureEvents?.map(event => event.type) ?? outcome.stake?.events.map(event => event.type) ?? [])],})),
+                };
+                const returnBound = Math.max(...recipe.outcomes.map(outcome => outcome.payoutPerBet / recipe.cost));
+                return samplePopulation(file, targets, requested, seed, samples, returnBound, options, recipe);
+            },
             measure(_file, value, targets, requested) {
                 const data = value as NativeModel;
                 const mode = data.modes[requested.mode];
@@ -415,6 +438,8 @@ export async function acquireOptimizationAdapter(
         );
     }
     assertFiniteBlueprint(blueprint, policy);
+    if (policy.strategy === "seeded-search-v1" && blueprint.winModel && blueprint.winModel.type !== "lines") throw new OptimizationUnsupportedError("Sampled authored tuning currently supports line payouts only; exact support is unchanged.");
+    if (policy.strategy === "seeded-search-v1" && project.type === "tsPackage" && Object.keys(blueprint.mechanics ?? {}).length) throw new OptimizationUnsupportedError("Sampled declared packages currently require simple complete rounds; authored Blueprint/PAR paid-entry features and native event populations are supported separately.");
     const writable = contract?.paths ?? wasmContract?.paths ?? paytablePaths(blueprint);
     if (writable.some((field) => !paytablePaths(blueprint).includes(field))) throw new OptimizationUnsupportedError("Tuning contract grants an unsupported writable field.");
     if (policy.tunables.some((field) => field.values.some((value) => typeof value !== "number"))) throw new OptimizationUnsupportedError("Paytable values must be numbers.");
@@ -498,6 +523,42 @@ export async function acquireOptimizationAdapter(
             if (project.type === "wasm") return (readJson(`${file}.tuning.json`) as CanonicalWasmTuningContract).blueprint;
             return readJson(file);
         },
+        async sample(file, value, targets, requested, seed, samples, options) {
+            const model = value as GameBlueprint;
+            // For this supported line-pay contract, at most one paytable award per line
+            // plus one per scatter identity is possible. No sampled maximum grants authority.
+            const maximum = Math.max(0, ...Object.values(model.paytable).flatMap(table => Object.values(table)));
+            let returnBound = maximum * ((model.paylines?.length ?? model.rows) + (model.scatters?.length ?? 0));
+            let validationWork = 0;
+            const validationProgress = (completed: number): void => {
+                validationWork = completed;
+                options.onValidationWork(completed);
+            };
+            if (project.type === "wasm") {
+                await verifyWasmExecutable(file, model, requested, options.signal, validationProgress);
+            }
+            if (project.type === "tsPackage") {
+                const runtime = await loadPokieGameRuntime(file);
+                try {
+                    [returnBound] = await measureGame(runtime.game, model, [{metric: "maxWin", unit: "betMultiple", value: 0}], requested, options.signal, validationProgress);
+                } finally {
+                    await releaseOwnedRuntime(() => runtime.release());
+                }
+            }
+            const recipe: OptimizationSimulationRecipe | undefined = project.type === "tsPackage" ? undefined : {
+                kind: "authored-entry", blueprint: model, stake: requested.stake, modelId: computeGameBlueprintHash(model),
+            };
+            const result = await samplePopulation(file, targets, requested, seed, samples, returnBound, options, recipe,
+                project.type === "tsPackage" ? async () => {
+                    const game = await loadPokieGame(file);
+                    if (game.getConfigHash?.() !== computeGameBlueprintHash(model)) {
+                        await releaseOwnedRuntime(() => releasePokieGame(game));
+                        throw new OptimizationUnsupportedError("Executable does not bind declared model.");
+                    }
+                    return game;
+                } : undefined, computeGameBlueprintHash(model));
+            return {...result, validationWork};
+        },
         async measure(file, value, targets, requested, signal) {
             const model = value as GameBlueprint;
             if (project.type === "tsPackage") {
@@ -519,6 +580,7 @@ async function verifyWasmExecutable(
     model: GameBlueprint,
     policy: OptimizationPolicy,
     signal?: AbortSignal,
+    onValidationWork?: (count: number) => void,
 ): Promise<void> {
     const sourceGame = createTunableBlueprintGame(model);
     let library;
@@ -531,6 +593,7 @@ async function verifyWasmExecutable(
             exact: true,
             maxOutcomeSpaceSize: BigInt(policy.maxOutcomes),
             signal,
+            onProgress: onValidationWork ? count => onValidationWork(Number(count)) : undefined,
             now: () => new Date(0),
         });
     } finally {
@@ -562,6 +625,7 @@ async function verifyWasmExecutable(
             try {
                 const round = await session.play({bet: policy.stake}, {signal});
                 if (round.payout !== expected.get(JSON.stringify(round.screen))) throw new Error("Rebuilt WASM executable differs from its exact source population.");
+                onValidationWork?.(count + ordinal + 1);
             } finally {
                 session.dispose();
             }
@@ -595,4 +659,23 @@ async function releaseOwnedRuntime(release: () => Promise<void>): Promise<void> 
     } catch (error) {
         throw new OptimizationCleanupError(`Runtime cleanup failed: ${(error as Error).message}`);
     }
+}
+
+async function samplePopulation(
+    file: string, targets: MathTarget[], policy: OptimizationPolicy, seed: string, samples: number, returnBound: number,
+    options: OptimizationSamplingOptions, recipe?: OptimizationSimulationRecipe,
+    loadGame?: (file: string) => Promise<PokieGame>,
+    expectedModelId?: string,
+): Promise<{statistics: SimulationStatistics; returnBound: number; validationWork: number; stopReason: string}> {
+    if (!Number.isFinite(returnBound) || returnBound < 0) throw new OptimizationUnsupportedError("No finite payout bound for sampled assessment.");
+    const result = await new ParallelSimulationRunner(file, samples, {
+        seed, workers: policy.sampling!.workers, chunkSize: policy.sampling!.chunkSize,
+        stake: policy.stake, signal: options.signal, onProgress: options.onProgress, workerEntryUrl: options.workerEntryUrl, requireCleanup: true,
+        optimizationRecipe: recipe, loadGame,
+        observations: {events: [...new Set(targets.filter(target => target.metric === "featureFrequency").map(target => target.event!))],
+            buckets: targets.filter(target => target.metric === "distribution").map(target => target.bucket!)},
+    }).run();
+    if (expectedModelId && result.configHash !== expectedModelId) throw new Error("Worker executable does not bind the declared tuning model.");
+    if (result.statistics.maxWin / result.statistics.averageBet > returnBound + 1e-10) throw new Error("Runtime exceeds the declared payout bound.");
+    return {statistics: result.statistics, returnBound, validationWork: 0, stopReason: result.stopReason};
 }

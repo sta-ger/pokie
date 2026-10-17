@@ -1,4 +1,4 @@
-# Finite same-type math optimization
+# Constrained same-type math optimization
 
 `pokie optimize SOURCE --policy request.json [--out NEW_DESTINATION]` and
 Studio Project → Overview → **Optimize math** use `ProjectOptimizationService`,
@@ -56,8 +56,9 @@ before executable acquisition and candidate writes. Detached candidates and save
 bind declared runtime dependencies to the same installed packages resolved from the source
 project (including project-local installations), rather than resolving from scratch ancestry.
 These external installations must remain available; saving does not vendor them. Saved
-packages retain source/build timestamps for stale-entry detection and are loaded
-and measured at the destination before publication is accepted.
+packages retain source/build timestamps for stale-entry detection. Exact candidates are loaded
+and measured at the destination before publication is accepted. Seeded candidates retain their single
+reviewed assessment and executable identity without a fresh, potentially favorable assessment on save.
 Dependencies remain ordinary external package dependencies;
 `node_modules`, `.git` and loader caches are excluded from authored-byte identity.
 Filesystem aliases in authored input/publication paths are rejected.
@@ -159,8 +160,8 @@ rerun optimization to obtain a new save receipt. Closing/switching Project or
 cancelling a job discards an unfinished candidate and drains the executor.
 
 CLI JSON is always structured; `--progress` emits progress JSON to stderr.
-Exit codes: success **0**, operational failure **1**, infeasible **2**, invalid
-**3**, unsupported **4**, exhausted **5**, cancelled **6**. Ctrl-C requests
+Exit codes: exact success or sampled attained **0**, operational failure **1**, infeasible **2**, invalid
+**3**, unsupported **4**, exhausted **5**, cancelled **6**, sampled inconclusive **7**. Ctrl-C requests
 cancellation and waits for owned work to settle. Node orchestration is kept out
 of browser entrypoints; Studio imports the same pure policy validator.
 
@@ -173,3 +174,111 @@ Studio support, start and save requests include the expected Project root, along
 source revisions; changing Projects invalidates the request even for identical files.
 Terminal evidence is shown alongside diagnostics, job errors, recovery guidance and
 connection/cancellation failures.
+
+## Seeded search and held-out assessment
+
+Set `policy.strategy` to `seeded-search-v1` and supply a complete `sampling` object:
+
+```json
+{
+  "searchSamples": 400, "searchBudget": 1200, "assessmentSamples": 6000,
+  "minSamples": 1000, "minEventCount": 5, "confidence": 0.95,
+  "chunkSize": 100, "workers": 1
+}
+```
+
+The other fields are unchanged from the exact example. For sampling, give each target an explicit
+positive tolerance (for example RTP `0.75` with absolute tolerance `0.15`). Omitted or zero tolerance
+is retained, but numerical equality cannot be certified from samples. `minSamples` must be at least
+30; an assessment budget below it is permitted and returns `exhausted`, not approval. All sample
+budgets and counts are integers in `[1,1000000]`, `workers` is at most 16, `chunkSize` at most 1000,
+candidate attempts at most 10000, and confidence must be finite in `[0.8,1)`.
+
+| Adapter | Seeded population/support (exact support is unchanged) |
+| --- | --- |
+| Blueprint | Literal reels or whole-sequence variants; line payouts; feature-free logical rounds or paid entries. Free-game entry triggers may be counted, not their continuations. |
+| Lossless canonical PAR | Same supported authored populations; native paytable-cell readback preserves other declarations. |
+| Explicitly declared TS package | Feature-free complete rounds with finite executable enumeration, source/dependency binding and model hash. The executable enumeration establishes the return support bound; actual seeded sessions supply observations. The package must honor the `createSession({seed})` RNG contract, including independent seeds. An opaque/hash-only runtime is insufficient. |
+| Outcome Library | Selected `native-outcomes` numeric weights, matching artifact stake; event identities come from stored `featureEvents[].type`. |
+| Stake | Selected `native-outcomes` uint64 string weights (never rounded to numbers); actual paid cost is denomination times native mode cost. |
+| Source-bound canonical WASM | Supported feature-free literal reels, rebuilt reproducibly and checked against every executable stop tuple before using the bound authored population. |
+
+Only RTP, hit probability, named feature-event presence and requested half-open payout-multiple
+buckets are sampled targets. For example `{"metric":"featureFrequency","unit":"ratio","event":"bonus","value":0.25,"tolerance":{"kind":"absolute","value":0.04}}`
+and `{"metric":"distribution","unit":"ratio","bucket":{"min":2,"max":4},"value":0.25,"tolerance":{"kind":"absolute","value":0.04}}`.
+Buckets use payout / actual paid stake, not the legacy currency histogram. Repeated occurrences
+of an event in an observation count once. Zero/all-success events cannot pass the required
+success/failure coverage check. A native draw is not a generating game's full logical round.
+Sample maxima and volatility are unsupported targets/constraints in this strategy; use exact
+authority rather than interpreting an observed maximum as a hard bound. Advanced stateful mechanics
+and incomplete logical-round populations are explicitly unsupported, not silently approximated.
+
+### Determinism and work accounting
+
+The Cartesian domain is permuted by `seeded-affine-cartesian-v1`: hash `[seed,"start"]` and
+`[seed,"stride"]` using the existing canonical JSON SHA-256, reduce modulo domain size,
+and advance the nonzero stride to the first value coprime to domain size. The last authored
+dimension varies fastest within each ordinal. There are no duplicates. Fitness is the sum of
+squared target errors divided by `max(tolerance.value, abs(target.value), 1)` squared.
+The first visited minimum wins ties, regardless of worker completion timing.
+
+Each attempt, including constraint rejection, consumes one candidate unit. Only surviving native
+readback candidates consume search observations, at most `searchSamples` each and never beyond
+the separate total `searchBudget`. A final shortened search batch is recorded as such. The best
+candidate is frozen before one reserved `assessmentSamples` run. Its seed is
+`JSON.stringify([seed,"assessment",0])`; search seeds are `JSON.stringify([seed,"search",attempt])`
+with one-based attempt numbers. WorkerSeedStrategy derives per-worker streams. Worker count is
+part of reproducibility: changing it changes streams and may change selected parameters.
+
+Evidence records the full validated request, source inventory revision, adapter/strategy/policy
+versions, model identity, ordered parameters, per-candidate fitness/seeds/actual samples, total
+attempts/rejections/search/held-out samples, executable validation work, selected diff and assessment.
+Executable-validation observations (TS enumeration, or authored plus actual WASM stop tuples) are
+counted separately from sampled observations and bounded by `maxOutcomes` for each sweep. No hidden
+target evaluations occur on save. Supported authored diffs reuse the math-definition reader/differ
+in analysis-only mode; that partial declared-model comparison is not itself runtime proof. Native
+weight diffs retain integer strings. Scratch paths, timestamps and job IDs are excluded from evidence;
+rerun its request against the same identified source and dependencies to compare evidence directly.
+
+### Confidence and truthful verdicts
+
+One fixed held-out assessment uses two-sided Hoeffding intervals, with Bonferroni allocation
+`delta=(1-confidence)/numberOfTargets`. Probability observations have range `[0,1]`; RTP observations
+use a finite support bound derived from supported line/scatter math or the validated native/executable
+population, never a sampled maximum. This deliberately does not reuse the empirical normal interval's
+zero-variance shortcut. Existing simulation precision convergence is not optimization attainment.
+
+Every target needs its entire simultaneous confidence interval **inside** its tolerance region,
+positive allowance, all requested assessment observations, at least `minSamples`, finite estimates,
+and at least `minEventCount` successes and failures. RTP conservatively uses paying/nonpaying
+coverage too. Merely containing the target or matching its estimate is insufficient. Rare/unseen
+payouts, zero empirical variance and tolerance-boundary overlap therefore cannot create spurious
+exact approval. The returned per-target bounds, estimates, regions, coverage reasons and verdicts
+describe what was actually assessed. This is a fixed-sample, single-assessment policy, not optional
+stopping or repeated assessment until a favorable result occurs. It makes no joint guarantee across
+separate user-initiated reruns; do not cherry-pick reruns as stronger evidence.
+
+- `attained`: all requested assessment regions established and the declared search completed.
+- `inconclusive`: a candidate exists but assessment is uncertain or missed; even exhaustive **sampling**
+  of candidates is not a proof of infeasibility.
+- `exhausted`: candidate/search budget stopped the search or assessment cannot meet its minimum;
+  evidence retains the concrete stop reason and any best-so-far candidate.
+- `infeasible`: reserved for exhaustive exact target exclusion or structural exclusion of every declared
+  candidate. Contradictory declarations/target intervals instead return `invalid` before preparation.
+
+Candidate presence never means approval. Direct callers may explicitly `publish` and then `discard`
+an `attained`, `inconclusive` or `exhausted` candidate. CLI `--out` and Studio save follow the same
+contract, writing a sibling `DESTINATION.optimization.json` with the original verdict, reviewed
+candidate revision and full evidence. Saving cannot turn an exhausted candidate into success.
+Studio job `completed` means execution ended, not mathematical attainment. Restarted jobs retain
+durable evidence but need a rerun for process-local save ownership.
+
+Progress phases are preparing, search, assessment and finalizing; chunked simulations yield to SIGINT/Studio
+cancellation. Cancellation, execution/observer failures, native readback drift, stale Project/source
+or request identity, and release failures discard owned scratch candidates without changing source
+or locks. Workers cooperate through the shared cancellation buffer, acknowledge runtime release and
+are terminated before a terminal result. Failed termination or missing release acknowledgement is an
+operational cleanup failure (Studio recovery-required), never successful cancellation. Publication
+uses existing new/empty destination and ownership-aware rollback rules, including the evidence and
+WASM companions. Independent review, production bundle/packaging and controller gates remain separate
+from these implementation tests.

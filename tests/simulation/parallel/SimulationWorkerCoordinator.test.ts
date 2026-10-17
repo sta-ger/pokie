@@ -47,6 +47,43 @@ function makeResult(workerIndex: number, rounds = 100): SimulationWorkerResult {
     };
 }
 
+it("never claims worker termination completed when termination rejects", async () => {
+    const worker = new FakeWorker(() => Promise.reject(new Error("termination refused")));
+    const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
+    const promise = coordinator.run([makeRequest(0)]);
+    worker.emit("message", {type: "result", ...makeResult(0)});
+    await expect(promise).rejects.toThrow("Worker cleanup unconfirmed");
+    expect(worker.terminateCallCount).toBe(1);
+});
+
+it("keeps cancellation pending until cooperative runtime release and termination settle", async () => {
+    let completeTermination: (code: number) => void = () => undefined;
+    const worker = new FakeWorker(() => new Promise(resolve => {
+        completeTermination = resolve;
+    }));
+    const controller = new AbortController();
+    const request = {...makeRequest(0), requireCleanup: true, cancellation: new SharedArrayBuffer(4)};
+    const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
+    const promise = coordinator.run([request], {signal: controller.signal});
+    let settled = false;
+    const completion = promise.catch(() => {
+        settled = true;
+    });
+    controller.abort();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(Atomics.load(new Int32Array(request.cancellation), 0)).toBe(1);
+    worker.emit("message", {type: "result", ...makeResult(0)});
+    await new Promise<void>(resolve => {
+        setImmediate(resolve);
+    });
+    expect(worker.terminateCallCount).toBe(1);
+    expect(settled).toBe(false);
+    completeTermination(0);
+    await expect(promise).rejects.toBeInstanceOf(SimulationCancelledError);
+    await completion;
+});
+
 describe("SimulationWorkerCoordinator", () => {
     test("resolves with every worker's result once all have posted one", async () => {
         const workers = [new FakeWorker(), new FakeWorker()];

@@ -46,10 +46,10 @@ function setup(supported = true) {
 it("checks real policy validation, submits reviewed revision, and exposes cancellation", async () => {
     const {calls} = setup();
     const user = userEvent.setup();
-    expect(screen.getByRole("button", {name: "Run exact optimization"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Run optimization"})).toBeDisabled();
     await user.click(screen.getByRole("button", {name: "Check tuning support"}));
     await screen.findByText("Finite workflow available");
-    await user.click(screen.getByRole("button", {name: "Run exact optimization"}));
+    await user.click(screen.getByRole("button", {name: "Run optimization"}));
     await screen.findByRole("button", {name: "Cancel optimization"});
     expect(JSON.parse(calls.find((call) => call.url.endsWith("start"))!.body!)).toMatchObject({
         sourceRevision: "sha256:source",
@@ -72,7 +72,7 @@ it("shows unsupported source reasons and invalidates support after policy edits"
     setup(false);
     await userEvent.click(screen.getByRole("button", {name: "Check tuning support"}));
     await screen.findByText("Opaque WASM: missing source/build contract");
-    expect(screen.getByRole("button", {name: "Run exact optimization"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Run optimization"})).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Math targets and optimization policy (JSON)"), {target: {value: "{}"}});
     expect(screen.queryByText("Opaque WASM: missing source/build contract")).not.toBeInTheDocument();
 });
@@ -86,6 +86,15 @@ function completedJob(status: StudioJobView["status"] = "completed"): StudioJobV
 function response(body: unknown, ok = true) {
     return Promise.resolve({ok, status: ok ? 200 : 409, json: () => Promise.resolve(body)});
 }
+
+it.each(["attained", "inconclusive", "exhausted"])("keeps a completed job separate from mathematical %s and labels candidate saves", async verdict => {
+    const job = completedJob();
+    job.result!.detail = {...job.result!.detail, status: verdict};
+    render(panel(() => response({jobs: [job]})));
+    await screen.findByText(`Verdict: ${verdict}`);
+    expect(await screen.findByLabelText("Candidate destination")).toBeInTheDocument();
+    if (verdict !== "attained") expect(screen.getByText(/Best-so-far candidate; targets are not approved/)).toBeInTheDocument();
+});
 it("reattaches terminal evidence after reload and saves the reviewed candidate with project identity", async () => {
     const calls: {url: string; body?: unknown}[] = [];
     const fetchImpl: FetchLike = (url, init) => {
@@ -155,5 +164,5 @@ it("ignores foreign jobs and an old support response after switching Projects", 
     await waitFor(() => expect(screen.queryByText("Old Project support")).not.toBeInTheDocument());
     expect(screen.queryByText("Verdict: success")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", {name: "Save reviewed candidate"})).not.toBeInTheDocument();
-    expect(screen.getByRole("button", {name: "Run exact optimization"})).toBeDisabled();
+    expect(screen.getByRole("button", {name: "Run optimization"})).toBeDisabled();
 });

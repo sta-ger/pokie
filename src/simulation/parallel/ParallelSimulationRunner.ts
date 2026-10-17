@@ -1,3 +1,4 @@
+import {createOptimizationSimulationGame} from "../../optimization/internal/createOptimizationSimulationGame.js";
 import {setSimulationModelIdentity} from "../SessionFeatureAnalyticsObserver.js";
 import {loadPokieGame, releasePokieGame} from "../../gamepackage/loadPokieGame.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
@@ -29,6 +30,10 @@ function defaultYieldToEventLoop(): Promise<void> {
 }
 
 export type ParallelSimulationRunOptions = {
+    requireCleanup?: boolean;
+    stake?: number;
+    observations?: import("../SimulationObservationCounters.js").SimulationObservationRequest;
+    optimizationRecipe?: import("../../optimization/internal/createOptimizationSimulationGame.js").OptimizationSimulationRecipe;
     seed?: string;
     // 1 by default — a single worker (run in-process, not a real thread — see runInProcess()) playing
     // every requested round, unsplit, with the original seed unchanged (see WorkerSeedStrategy) so its
@@ -139,13 +144,16 @@ export class ParallelSimulationRunner {
     // smaller chunkSize is purely an orchestration detail (progress/cancellation granularity for a
     // caller like Studio) that never changes the resulting statistics.
     private async runInProcess(workers = 1): Promise<ParallelSimulationResult> {
-        const loadGame = this.options.loadGame ?? loadPokieGame;
+        const loadGame = this.options.loadGame ?? (this.options.optimizationRecipe
+            ? () => Promise.resolve(createOptimizationSimulationGame(this.options.optimizationRecipe!))
+            : loadPokieGame);
         this.options.onPhase?.("preparing");
         const game = await loadGame(this.packageRoot);
         let observedPrefix: SimulationStatistics | undefined;
         try {
             const session = game.createSession(this.options.seed === undefined ? undefined : {seed: this.options.seed});
             setSimulationModelIdentity(session, game.getConfigHash?.());
+            if (this.options.stake !== undefined) session.setBet(this.options.stake);
             // Simulations measure RTP/volatility, not risk of ruin — same as every other simulation path.
             session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
 
@@ -164,6 +172,7 @@ export class ParallelSimulationRunner {
                 this.rounds,
                 chunkSize,
                 {
+                    observations: this.options.observations,
                     shouldStop: () => this.options.signal?.aborted ?? false,
                     onChunkComplete: async ({roundsCompleted, isFinished}) => {
                         this.options.onProgress?.(roundsCompleted);
@@ -265,6 +274,10 @@ export class ParallelSimulationRunner {
                 workerIndex,
                 totalWorkers: workers,
                 packageRoot: this.packageRoot,
+                stake: this.options.stake,
+                observations: this.options.observations,
+                optimizationRecipe: this.options.optimizationRecipe,
+                requireCleanup: this.options.requireCleanup,
                 rounds: share,
                 seed: WorkerSeedStrategy.deriveSeed(this.options.seed, workerIndex, workers),
                 progressChunkSize,

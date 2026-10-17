@@ -19,6 +19,7 @@ export type ChunkedSimulationChunkInfo = {
 };
 
 export type ChunkedSimulationCallbacks = {
+    observations?: import("../../SimulationObservationCounters.js").SimulationObservationRequest;
     // Checked before every round. A settled command is counted before cancellation is reported.
     // Throws SimulationCancelledError to stop, same as ParallelSimulationRunner's worker-thread path.
     shouldStop?: () => boolean;
@@ -67,7 +68,7 @@ export async function runChunkedSimulation(
 ): Promise<ChunkedSimulationResult> {
     // Capture run-local configured coverage even if no chunk ever plays. This also clears any
     // historical counts when the supplied session is reused or restored.
-    const accumulator = new AggregateSimulationRunner(session, 0).run();
+    const accumulator = new AggregateSimulationRunner(session, 0, undefined, undefined, betModeSelector, callbacks.observations).run();
     let breakdown: Record<string, SimulationBreakdownComponent> | undefined;
     let jackpot: JackpotStatisticsSnapshot | undefined;
     let roundsCompleted = 0;
@@ -81,7 +82,7 @@ export async function runChunkedSimulation(
             }
 
             const chunkRounds = Math.min(chunkSize, roundsRemaining);
-            const runner = new AggregateSimulationRunner(session, chunkRounds, undefined, undefined, betModeSelector);
+            const runner = new AggregateSimulationRunner(session, chunkRounds, undefined, undefined, betModeSelector, callbacks.observations);
             let chunkAccumulator: SimulationAccumulator;
             try {
                 chunkAccumulator = runner.run(callbacks.shouldStop);

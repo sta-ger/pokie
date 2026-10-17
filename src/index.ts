@@ -728,6 +728,7 @@ export * from "./simulation/SimulationConvergenceChecker.js";
 export * from "./simulation/SimulationConvergenceOptions.js";
 export * from "./simulation/SimulationConvergenceOutcome.js";
 export * from "./simulation/SimulationHandling.js";
+export * from "./simulation/SimulationObservationCounters.js";
 export * from "./simulation/SimulationRoundCategoryDetermining.js";
 export * from "./simulation/SimulationStatistics.js";
 export * from "./simulation/SimulationStatisticsMerger.js";

@@ -269,7 +269,9 @@ array with no total-bit cap; the host owns randomness, continuation, ledger and 
 declared package models use model-preserving conversion; arbitrary TypeScript behavior is not compiled.
 Feature mechanics remain outside this WASM slice. See the [execution and resource boundaries](docs/wasm-compatibility-boundary.md).
 
-Math Targeting/Optimization is agreed but not implemented; its release scope is unconfirmed. Authored YAML and
+Math targeting supports [finite exact and bounded seeded same-type optimization](docs/optimization.md),
+with independent sampled assessment and explicit candidate publication, not arbitrary mechanics or certification.
+Its public release scope remains unconfirmed. Authored YAML and
 PDF reports are absent from the reviewed formats. Overscan, partial analytics/certification/authoring/diff/
 reachability, existing v2 deferrals, and Cloud/private RGS hypotheses are distinguished in the
 [reviewed status register](docs/audit-corrections/README.md). Documenting a gap does not complete it.

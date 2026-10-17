@@ -1,3 +1,5 @@
+import {runStochasticOptimization} from "./internal/runStochasticOptimization.js";
+import {SimulationCancelledError} from "../simulation/parallel/SimulationCancelledError.js";
 import {WeightedOutcomeLibraryGenerationError} from "../weightedoutcome/generate/WeightedOutcomeLibraryGenerationError.js";
 import {WeightedOutcomeLibraryGenerationCancelledError} from "../weightedoutcome/generate/WeightedOutcomeLibraryGenerationCancelledError.js";
 import {OutcomeLibraryBundleWriteCancelledError} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
@@ -46,6 +48,8 @@ import {
 
 export const OPTIMIZATION_EXIT_CODES = {
     success: 0,
+    attained: 0,
+    inconclusive: 7,
     infeasible: 2,
     invalid: 3,
     unsupported: 4,
@@ -104,7 +108,7 @@ function targetsMatch(targets: MathTarget[], measured: number[]): boolean {
 }
 /** Stable authored domain order and first-match tie breaking. Seed is recorded; exact enumeration uses no random selection. */
 export class ProjectOptimizationService implements ProjectOptimizing, OptimizationCandidatePublishing {
-    private readonly receipts = new Map<string, {candidate: OptimizationCandidate; request: OptimizationRequest}>();
+    private readonly receipts = new Map<string, {candidate: OptimizationCandidate; request: OptimizationRequest; evidence?: OptimizationEvidence; status?: OptimizationResult["status"]}>();
     private readonly scratchRoot: string;
     public constructor(scratchRoot = path.resolve("node_modules/.cache/pokie-optimization")) {
         this.scratchRoot = scratchRoot;
@@ -116,6 +120,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
     ): Promise<{supported: boolean; reason: string; adapter: string; writable?: string[]}> {
         try {
             const validated = validateOptimizationRequest(request);
+            assertSampledTargets(validated);
             assertNoFilesystemAliases(project.rootPath);
             validateProtectedFiles(project, validated.policy, sourceInventory(project));
             const adapter = await acquireOptimizationAdapter(project, validated.policy);
@@ -123,7 +128,9 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             preflightConstraints(adapter.model, validated.policy);
             return {
                 supported: true,
-                reason: "Supported finite same-type workflow; target authority is limited to the submitted scope.",
+                reason: validated.policy.strategy === "seeded-search-v1"
+                    ? "Supported bounded sampled same-type workflow; held-out confidence assessment determines attainment in the submitted population."
+                    : "Supported finite same-type workflow; target authority is limited to the submitted scope.",
                 adapter: `${project.type}:v1`,
                 writable: adapter.writable,
             };
@@ -151,6 +158,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
         try {
             assertCurrent();
             const request = validateOptimizationRequest(input);
+            assertSampledTargets(request);
             if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled before acquisition.");
             assertNoFilesystemAliases(project.rootPath);
             const sourceRevision = projectRevision(project);
@@ -173,7 +181,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                 version: 1,
                 sourceRevision,
                 adapter: `${project.type}:v1`,
-                strategy: "exact-finite-v1",
+                strategy: request.policy.strategy,
                 request,
                 domainSize: domainSize.toString(),
                 evaluated: 0,
@@ -185,59 +193,67 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             };
             fs.mkdirSync(this.scratchRoot, {recursive: true});
             workspace = fs.mkdtempSync(path.join(this.scratchRoot, "run-"));
-            let ordinal = BigInt(0);
-            let selected: OptimizationCandidate | undefined;
-            while (ordinal < domainSize && evidence.consumedWork < request.policy.budget) {
-                if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled during finite search.");
-                const model = JSON.parse(JSON.stringify(adapter.model)) as unknown;
-                const selection: Record<string, OptimizationScalar> = {};
-                let remaining = ordinal;
-                // Last authored dimension varies fastest: stable Cartesian product order.
-                for (const field of [...request.policy.tunables].reverse()) {
-                    const value = field.values[Number(remaining % BigInt(field.values.length))];
-                    remaining /= BigInt(field.values.length);
-                    put(model, field.path, value);
-                    selection[field.path] = value;
+            if (request.policy.strategy === "seeded-search-v1") {
+                const sampled = await runStochasticOptimization(project, request, adapter, workspace, evidence, inventory, options);
+                if (sampled.candidate) {
+                    this.receipts.set(sampled.candidate.path, {candidate: structuredClone(sampled.candidate), request: structuredClone(request), evidence: structuredClone(evidence), status: sampled.status});
+                    keep = true;
                 }
-                evidence.consumedWork++;
-                ordinal++;
-                if (!constraintsHold(model, request.policy)) {
-                    evidence.rejected++;
+                result = sampled;
+            } else {
+                let ordinal = BigInt(0);
+                let selected: OptimizationCandidate | undefined;
+                while (ordinal < domainSize && evidence.consumedWork < request.policy.budget) {
+                    if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled during finite search.");
+                    const model = JSON.parse(JSON.stringify(adapter.model)) as unknown;
+                    const selection: Record<string, OptimizationScalar> = {};
+                    let remaining = ordinal;
+                    // Last authored dimension varies fastest: stable Cartesian product order.
+                    for (const field of [...request.policy.tunables].reverse()) {
+                        const value = field.values[Number(remaining % BigInt(field.values.length))];
+                        remaining /= BigInt(field.values.length);
+                        put(model, field.path, value);
+                        selection[field.path] = value;
+                    }
+                    evidence.consumedWork++;
+                    ordinal++;
+                    if (!constraintsHold(model, request.policy)) {
+                        evidence.rejected++;
                     evidence.evaluations!.push({parameters: selection, verdict: "constraint-rejected"});
-                } else {
-                    const directory = path.join(workspace, `candidate-${evidence.consumedWork}`);
-                    fs.mkdirSync(directory);
-                    const file = await adapter.materialize(model, directory, options.signal);
-                    if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled during candidate materialization.");
-                    const resolved = await new ProjectTargetResolver().resolve(file, {readConfigurationProvenance: false});
-                    if (!resolved || resolved.type !== project.type) throw new Error("Candidate did not resolve as the original ProjectType.");
-                    const readback = await adapter.read(file);
-                    assertOnlyTuned(adapter.model, readback, request.policy, model);
-                    assertCurrent();
-                    const candidateInventory = sourceInventory(resolved);
-                    for (const protectedFile of request.policy.protectedFiles ?? []) if (candidateInventory[protectedFile] !== inventory[protectedFile]) throw new Error(`Protected source bytes changed: ${protectedFile}`);
-                    const serializedRevision = projectRevision(resolved);
-                    const maxConstraint = request.policy.constraints?.maxWin;
-                    const evaluatedTargets = maxConstraint
-                        ? [
-                            ...request.targets,
-                            {metric: "maxWin" as const, unit: maxConstraint.unit, value: maxConstraint.value},
-                        ]
-                        : request.targets;
-                    const measured = await adapter.measure(
-                        file,
-                        readback,
-                        evaluatedTargets,
-                        request.policy,
-                        options.signal,
-                    );
-                    assertCurrent();
-                    if (projectRevision(resolved) !== serializedRevision) throw new Error("Executable evaluation changed candidate bytes.");
-                    if (measured.some((value) => !Number.isFinite(value))) throw new Error("Metric authority returned a nonfinite result.");
-                    evidence.evaluated++;
-                    evidence.outputValidation =
+                    } else {
+                        const directory = path.join(workspace, `candidate-${evidence.consumedWork}`);
+                        fs.mkdirSync(directory);
+                        const file = await adapter.materialize(model, directory, options.signal);
+                        if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled during candidate materialization.");
+                        const resolved = await new ProjectTargetResolver().resolve(file, {readConfigurationProvenance: false});
+                        if (!resolved || resolved.type !== project.type) throw new Error("Candidate did not resolve as the original ProjectType.");
+                        const readback = await adapter.read(file);
+                        assertOnlyTuned(adapter.model, readback, request.policy, model);
+                        assertCurrent();
+                        const candidateInventory = sourceInventory(resolved);
+                        for (const protectedFile of request.policy.protectedFiles ?? []) if (candidateInventory[protectedFile] !== inventory[protectedFile]) throw new Error(`Protected source bytes changed: ${protectedFile}`);
+                        const serializedRevision = projectRevision(resolved);
+                        const maxConstraint = request.policy.constraints?.maxWin;
+                        const evaluatedTargets = maxConstraint
+                            ? [
+                                ...request.targets,
+                                {metric: "maxWin" as const, unit: maxConstraint.unit, value: maxConstraint.value},
+                            ]
+                            : request.targets;
+                        const measured = await adapter.measure(
+                            file,
+                            readback,
+                            evaluatedTargets,
+                            request.policy,
+                            options.signal,
+                        );
+                        assertCurrent();
+                        if (projectRevision(resolved) !== serializedRevision) throw new Error("Executable evaluation changed candidate bytes.");
+                        if (measured.some((value) => !Number.isFinite(value))) throw new Error("Metric authority returned a nonfinite result.");
+                        evidence.evaluated++;
+                        evidence.outputValidation =
                         "same-type resolver, native readback, undeclared-field comparison and recomputed runtime/native metrics";
-                    const passesMax = !maxConstraint || measured[measured.length - 1] <= maxConstraint.value;
+                        const passesMax = !maxConstraint || measured[measured.length - 1] <= maxConstraint.value;
                     evidence.evaluations!.push({
                         parameters: selection,
                         measured,
@@ -271,33 +287,34 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                         evidence.outputValidation =
                             "same-type resolver, native readback, undeclared-field comparison and recomputed runtime/native metrics";
                     } else fs.rmSync(directory, {recursive: true, force: true});
-                }
-                evidence.exhaustive = ordinal === domainSize;
-                options.onProgress?.(structuredClone(evidence));
-                // Yield to cancellation without making wall time a search budget.
-                await new Promise<void>((resolve) => {
-                    setImmediate(resolve);
-                });
-                if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled before terminal result.");
-                assertCurrent();
-                if (selected) {
-                    this.receipts.set(selected.path, {
-                        candidate: structuredClone(selected),
-                        request: structuredClone(request),
+                    }
+                    evidence.exhaustive = ordinal === domainSize;
+                    options.onProgress?.(structuredClone(evidence));
+                    // Yield to cancellation without making wall time a search budget.
+                    await new Promise<void>((resolve) => {
+                        setImmediate(resolve);
                     });
-                    keep = true;
-                    return {status: "success", diagnostics: [], evidence, candidate: selected};
+                    if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled before terminal result.");
+                    assertCurrent();
+                    if (selected) {
+                        this.receipts.set(selected.path, {
+                            candidate: structuredClone(selected),
+                            request: structuredClone(request),
+                        });
+                        keep = true;
+                        return {status: "success", diagnostics: [], evidence, candidate: selected};
+                    }
                 }
+                if (projectRevision(project) !== sourceRevision) throw new Error("Source changed during optimization; result is stale.");
+                result = {status: evidence.exhaustive ? "infeasible" : "exhausted", diagnostics: [], evidence};
             }
-            if (projectRevision(project) !== sourceRevision) throw new Error("Source changed during optimization; result is stale.");
-            result = {status: evidence.exhaustive ? "infeasible" : "exhausted", diagnostics: [], evidence};
         } catch (error) {
             result = {
                 status: classifyOptimizationError(error),
                 diagnostics:
                     error instanceof OptimizationInputError
                         ? error.diagnostics
-                        : [{path: error instanceof OptimizationCleanupError ? "cleanup" : "$", message: error instanceof Error ? error.message : String(error)}],
+                        : [{path: error instanceof OptimizationCleanupError || (/cleanup|release game runtime/i).test(String(error)) ? "cleanup" : "$", message: error instanceof Error ? error.message : String(error)}],
                 ...(evidence ? {evidence} : {}),
             };
         } finally {
@@ -349,6 +366,15 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             assertArtifactDestinationIsSafe(candidate.sourcePath, target);
             assertArtifactDestinationAvailable(target, directory ? "directory" : "file");
         }
+        if (request.policy.strategy === "seeded-search-v1") {
+            const companion = `${destination}.optimization.json`;
+            assertNoFilesystemAliases(companion);
+            assertArtifactDestinationIsSafe(candidate.sourcePath, companion);
+            assertArtifactDestinationAvailable(companion, "file");
+            const receiptFile = path.join(candidate.workspace, "publication-evidence.json");
+            fs.writeFileSync(receiptFile, JSON.stringify({status: receipt.status, candidateRevision: candidate.revision, evidence: receipt.evidence}, null, 2));
+            members.push([receiptFile, companion]);
+        }
         const publication = new ArtifactPublicationOwnership(true);
         try {
             if (options.signal?.aborted) throw new OptimizationCancelledError("Publication cancelled.");
@@ -363,17 +389,25 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             // Optional resolver provenance is not proof of a loadable, measured runtime.
             const adapter = await acquireOptimizationAdapter(reopened, request.policy);
             const readback = await adapter.read(destination);
-            const maxConstraint = request.policy.constraints?.maxWin;
-            const evaluatedTargets = maxConstraint ? [...request.targets, {metric: "maxWin" as const, unit: maxConstraint.unit, value: maxConstraint.value}] : request.targets;
-            const measured = await adapter.measure(destination, readback, evaluatedTargets, request.policy, options.signal);
-            if (maxConstraint && measured[measured.length - 1] > maxConstraint.value) throw new Error("Published runtime violates the reviewed maximum win.");
-            if (!targetsMatch(request.targets, measured)) throw new Error("Published runtime does not demonstrate the reviewed target.");
+            if (request.policy.strategy === "seeded-search-v1") {
+                const sourceAdapter = await acquireOptimizationAdapter({...reopened, rootPath: candidate.sourcePath}, request.policy);
+                assertOnlyTuned(sourceAdapter.model, readback, request.policy);
+                if (!receipt.evidence?.stochastic?.assessment || !receipt.evidence.selected) throw new Error("Reviewed stochastic assessment unavailable; rerun optimization.");
+                for (const field of request.policy.tunables) if (at(readback, field.path) !== receipt.evidence.selected[field.path]) throw new Error("Published parameters differ from assessment.");
+            } else {
+                const maxConstraint = request.policy.constraints?.maxWin;
+                const evaluatedTargets = maxConstraint ? [...request.targets, {metric: "maxWin" as const, unit: maxConstraint.unit, value: maxConstraint.value}] : request.targets;
+                const measured = await adapter.measure(destination, readback, evaluatedTargets, request.policy, options.signal);
+                if (maxConstraint && measured[measured.length - 1] > maxConstraint.value) throw new Error("Published runtime violates the reviewed maximum win.");
+                if (!targetsMatch(request.targets, measured)) throw new Error("Published runtime does not demonstrate the reviewed target.");
+            }
             const sameBytes = directory
                 ? projectRevision(reopened) === candidate.revision
                 : members.every(([from, to]) => digest(fs.readFileSync(from)) === digest(fs.readFileSync(to)));
             if (!sameBytes) throw new Error("Published output bytes drifted.");
             if (options.signal?.aborted) throw new OptimizationCancelledError("Publication cancelled.");
             if (options.isCurrent && !options.isCurrent()) throw new Error("Project/request changed during publication.");
+            if (projectRevision(source) !== candidate.sourceRevision) throw new Error("Source changed during publication.");
             return destination;
         } catch (error) {
             await rollbackArtifactPublication({
@@ -397,6 +431,7 @@ function classifyOptimizationError(error: unknown): OptimizationResult["status"]
     if (error instanceof OptimizationUnsupportedError) return "unsupported";
     if (
         error instanceof OptimizationCancelledError ||
+        error instanceof SimulationCancelledError ||
         error instanceof WeightedOutcomeLibraryGenerationCancelledError ||
         error instanceof OutcomeLibraryBundleWriteCancelledError
     ) return "cancelled";
@@ -433,4 +468,9 @@ function validateProtectedFiles(project: PokieProject, policy: OptimizationPolic
         if (!(file in files)) throw new OptimizationInputError([{path: "policy/protectedFiles", message: `Unknown source file ${file}.`}]);
         if (writableFiles.has(file)) throw new OptimizationInputError([{path: "policy/protectedFiles", message: `Byte lock ${file} conflicts with the selected tuning contract.`}]);
     }
+}
+
+function assertSampledTargets(request: OptimizationRequest): void {
+    if (request.policy.strategy !== "seeded-search-v1") return;
+    if (request.targets.some(target => target.metric === "volatility" || target.metric === "maxWin") || request.policy.constraints?.maxWin) throw new OptimizationUnsupportedError("seeded-search-v1 supports RTP, hit, feature and distribution probabilities; sampled maxima and volatility cannot certify hard bounds. Use exact-finite-v1 for those metrics.");
 }

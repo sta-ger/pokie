@@ -1,5 +1,22 @@
 import {SimulationAccumulator, SimulationStatisticsMerger, type JackpotStatisticsSnapshot} from "@fromstan/pokie";
 
+it("merges worker-requested probabilities without confusing currency histograms or accepting missing coverage", () => {
+    const observed = (win: number) => {
+        const accumulator = new SimulationAccumulator();
+        accumulator.configureObservations({events: ["bonus"], buckets: [{min: 1, max: 3}]});
+        accumulator.addRound(7.5, win);
+        accumulator.observeRequestedMetrics(7.5, win, win ? ["bonus"] : []);
+        return accumulator.toSnapshot();
+    };
+    const first = observed(15);
+    const second = observed(0);
+    expect(new SimulationStatisticsMerger().merge([{accumulator: first}, {accumulator: second}]).statistics.observations).toMatchObject({observations: 2, events: [1], buckets: [1]});
+    Reflect.deleteProperty(second, "observations");
+    expect(() => new SimulationStatisticsMerger().merge([{accumulator: first}, {accumulator: second}])).toThrow("coverage");
+    second.observations = {...first.observations!, request: {events: ["other"], buckets: [{min: 1, max: 3}]}};
+    expect(() => new SimulationStatisticsMerger().merge([{accumulator: first}, {accumulator: second}])).toThrow("different");
+});
+
 describe("SimulationStatisticsMerger", () => {
     test("merging a single entry reproduces that entry's own statistics exactly", () => {
         const accumulator = new SimulationAccumulator();

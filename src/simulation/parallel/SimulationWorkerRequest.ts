@@ -6,6 +6,11 @@ import type {SimulationConvergenceOptions} from "../SimulationConvergenceOptions
 // workerData, which would silently drop or throw on any of those (see docs/simulation.md's worker
 // package-loading limitations note).
 export type SimulationWorkerRequest = {
+    requireCleanup?: boolean;
+    cancellation?: SharedArrayBuffer;
+    stake?: number;
+    observations?: import("../SimulationObservationCounters.js").SimulationObservationRequest;
+    optimizationRecipe?: import("../../optimization/internal/createOptimizationSimulationGame.js").OptimizationSimulationRecipe;
     workerIndex: number;
     totalWorkers: number;
     packageRoot: string;

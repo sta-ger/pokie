@@ -86,7 +86,7 @@ export function validateOptimizationRequest(input: unknown): OptimizationRequest
             finite(tolerance.value, `${p}/tolerance/value`);
         }
         if (t.metric === "featureFrequency") {
-            if (typeof t.event !== "string" || !t.event.trim()) bad(`${p}/event`, "Supply the exact native event identity.");
+            if (typeof t.event !== "string" || !t.event.trim() || t.event.length > 256) bad(`${p}/event`, "Supply the exact native event identity.");
         } else if (t.event !== undefined) bad(`${p}/event`, "Only featureFrequency accepts event.");
         if (t.metric === "distribution") {
             const bucket = object(t.bucket, `${p}/bucket`, ["min", "max"]);
@@ -113,6 +113,7 @@ export function validateOptimizationRequest(input: unknown): OptimizationRequest
     );
     const p = object(root.policy, "policy", [
         "strategy",
+        "sampling",
         "seed",
         "budget",
         "maxOutcomes",
@@ -124,9 +125,18 @@ export function validateOptimizationRequest(input: unknown): OptimizationRequest
         "protectedFiles",
         "constraints",
     ]);
-    if (p.strategy !== "exact-finite-v1") bad("policy/strategy", "Expected exact-finite-v1.");
+    if (!["exact-finite-v1", "seeded-search-v1"].includes(p.strategy as string)) bad("policy/strategy", "Expected exact-finite-v1 or seeded-search-v1.");
+    if (p.strategy === "seeded-search-v1") {
+        const sampling = object(p.sampling, "policy/sampling", ["searchSamples", "searchBudget", "assessmentSamples", "minSamples", "minEventCount", "confidence", "chunkSize", "workers"]);
+        for (const key of ["searchSamples", "searchBudget", "assessmentSamples", "minSamples", "minEventCount", "chunkSize", "workers"]) integer(sampling[key], `policy/sampling/${key}`);
+        if (Number(sampling.workers) > 16) bad("policy/sampling/workers", "At most 16 workers.");
+        if (Number(sampling.chunkSize) > 1000) bad("policy/sampling/chunkSize", "At most 1000 observations per cancellation chunk.");
+        if (Number(sampling.minSamples) < 30) bad("policy/sampling/minSamples", "At least 30 assessment observations.");
+        if (typeof sampling.confidence !== "number" || !Number.isFinite(sampling.confidence) || sampling.confidence < 0.8 || sampling.confidence >= 1) bad("policy/sampling/confidence", "Expected confidence in [0.8,1).");
+    } else if (p.sampling !== undefined) bad("policy/sampling", "Only seeded-search-v1 accepts sampling.");
     if (typeof p.seed !== "string" || !p.seed.length || p.seed.length > 256) bad("policy/seed", "Supply a nonempty string of at most 256 characters.");
     integer(p.budget, "policy/budget");
+    if (p.strategy === "seeded-search-v1" && Number(p.budget) > 10000) bad("policy/budget", "Sampled search trace is bounded to 10000 candidate attempts.");
     integer(p.maxOutcomes, "policy/maxOutcomes");
     finite(p.stake, "policy/stake");
     if (p.stake === 0) bad("policy/stake", "Stake must be positive.");
@@ -183,6 +193,23 @@ export function validateOptimizationRequest(input: unknown): OptimizationRequest
             finite(max.value, "policy/constraints/maxWin/value");
             if (!["currency", "betMultiple"].includes(max.unit as string)) bad("policy/constraints/maxWin/unit", "Expected currency or betMultiple.");
         }
+    }
+    // Intersect tolerance regions for repeated observations before any source acquisition.
+    const regions = new Map<string, {low: number; high: number}>();
+    for (const value of targets) {
+        if (!value || typeof value !== "object") continue;
+        const target = value as OptimizationRequest["targets"][number];
+        const key = JSON.stringify([target.metric, target.unit, target.event, target.bucket]);
+        const allowance = target.tolerance?.kind === "relative" ? target.value * target.tolerance.value : target.tolerance?.value ?? 0;
+        const region = {low: target.value - allowance, high: target.value + allowance};
+        if (!Number.isFinite(region.low) || !Number.isFinite(region.high)) bad("targets", "Tolerance region must be finite.");
+        const previous = regions.get(key);
+        if (previous) {
+            region.low = Math.max(region.low, previous.low);
+            region.high = Math.min(region.high, previous.high);
+            if (region.low > region.high) bad("targets", "Contradictory target intervals for the same observable.");
+        }
+        regions.set(key, region);
     }
     if (errors.length) throw new OptimizationInputError(errors);
     return JSON.parse(JSON.stringify(input)) as OptimizationRequest;

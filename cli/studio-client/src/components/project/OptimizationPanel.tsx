@@ -122,7 +122,7 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
         <Stack mt="lg">
             <Title order={3}>Optimize math</Title>
             <Text size="sm">
-                Review a finite same-type candidate, then save it to a new destination. Authored source changes require
+                Review an exact or sampled same-type candidate, then save it to a new destination. Authored source changes require
                 a separate save or apply.
             </Text>
             <Textarea
@@ -160,7 +160,7 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
                     action("start");
                 }}
             >
-                Run exact optimization
+                Run optimization
             </Button>
             {active && (
                 <Button
@@ -175,12 +175,13 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
             {job && (
                 <Text role="status">
                     {job.status}: {job.progress?.current ?? 0} / {job.progress?.total ?? "unknown"}{" "}
-                    {job.progress?.unit ?? "work"}
+                    {job.progress?.unit ?? "work"} {job.progress?.stage}
                 </Text>
             )}
             {result && (
                 <>
                     <Text>Verdict: {result.status}</Text>
+                    {result.candidate && !["success", "attained"].includes(result.status) && <Alert color="yellow">Best-so-far candidate; targets are not approved. Saving preserves this verdict.</Alert>}
                     {result.diagnostics.length > 0 && <Alert color="red" role="alert">{result.diagnostics.map((item) => `${item.path}: ${item.message}`).join("; ")}</Alert>}
                     {result.evidence && <Code block>{JSON.stringify(result.evidence, null, 2)}</Code>}
                 </>
@@ -189,7 +190,7 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
             {job?.recovery && <Alert color="yellow" role="alert">Recovery ({job.recovery.action}): {job.recovery.reason}</Alert>}
             {jobs.connectionError && <Alert color="red" role="alert">{jobs.connectionError}</Alert>}
             {jobs.actionError && <Alert color="red" role="alert">{jobs.actionError}</Alert>}
-            {result?.status === "success" && result.candidate && job?.status === "completed" && (
+            {result?.candidate && ["success", "attained", "inconclusive", "exhausted"].includes(result.status) && job?.status === "completed" && (
                 <>
                     <TextInput
                         label="Candidate destination"

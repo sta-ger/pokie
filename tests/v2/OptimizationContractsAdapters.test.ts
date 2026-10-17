@@ -21,7 +21,7 @@ import {StakeEngineOutcomeSourceReader} from "../../src/stakeengine/standalone/S
 import {buildWeightedOutcomeLibrary} from "../../src/weightedoutcome/buildWeightedOutcomeLibrary.js";
 import {sourceInventory} from "../../src/optimization/internal/optimizationData.js";
 
-import {optimizationBlueprint as model, optimizationRequest} from "./fixtures/OptimizationFixture.js";
+import {optimizationBlueprint as model, optimizationRequest, stochasticOptimizationRequest} from "./fixtures/OptimizationFixture.js";
 let directory: string;
 let source: string;
 let service: ProjectOptimizationService;
@@ -144,6 +144,67 @@ it("tunes and reopens the canonical PAR workbook retaining locked declarations",
     const result = await service.optimize(await resolve(file), optimizationRequest());
     expect(result.diagnostics).toEqual([]);
     expect(result).toMatchObject({status: "success", candidate: {type: "parWorkbook"}, evidence: {measured: [0.75]}});
+});
+
+it.each(["blueprint", "parWorkbook", "wasm", "tsPackage"] as const)("samples validated same-type %s candidates and preserves exact adapter authority", async type => {
+    let file = source;
+    if (type === "parWorkbook") {
+        file = path.join(directory, "sample.xlsx");
+        await new ParSheetExporter("1.3.0").exportToFile(model(), file);
+    } else if (type === "wasm") {
+        file = path.join(directory, "sample.wasm");
+        await new WasmArtifactBuilder("1.3.0").build(await resolve(source), file);
+        await bindCanonicalWasmTuningSource(file, model(), ["/paytable/A/2"]);
+    } else if (type === "tsPackage") {
+        file = declaredPackage("sample").root;
+        fs.rmSync(path.join(file, "pokie-tuning.json"));
+        const entry = path.join(file, "index.cjs");
+        fs.writeFileSync(entry, fs.readFileSync(entry, "utf8").replace("createSession()", "createSession(context)").replace("new p.SeededRandomNumberGenerator(1)", "new p.SeededRandomNumberGenerator(context?.seed ?? 1)"));
+        declarePackageTuning(file, "parameters.json", ["/paytable/A/2"]);
+    }
+    const request = stochasticOptimizationRequest();
+    request.targets[0].tolerance = {kind: "absolute", value: 0.3};
+    request.policy.sampling!.assessmentSamples = 1000;
+    const project = await resolve(file);
+    const before = sourceInventory(project);
+    const result = await service.optimize(project, request);
+    expect(result.diagnostics).toEqual([]);
+    expect(result).toMatchObject({status: "attained", candidate: {type}, evidence: {stochastic: {assessmentSamples: 1000}}});
+    if (type === "wasm") expect(result.evidence!.stochastic!.validationWork).toBe(32);
+    if (type === "tsPackage") expect(result.evidence!.stochastic!.validationWork).toBe(16);
+    await service.discard(result.candidate!);
+    expect(sourceInventory(project)).toEqual(before);
+});
+
+it("samples Stake uint64 weights without rounding and normalizes payout buckets by native mode cost and fractional stake", async () => {
+    const original = await nativeSource();
+    const library = buildWeightedOutcomeLibrary({libraryId: "stake", outcomes: original.outcomes.map((outcome, index) => ({...outcome, id: String(index + 1)}))});
+    const root = path.join(directory, "sample-stake");
+    await new StakeEngineExporter("1.3.0").exportToDirectory([{modeName: "base", cost: 2, library}], root);
+    const native = await new StakeEngineOutcomeSourceReader().readFromDirectory(root);
+    const win = native.modes[0].outcomes.find(outcome => outcome.payoutMultiplier > 0)!;
+    const zero = native.modes[0].outcomes.find(outcome => outcome.payoutMultiplier === 0)!;
+    const request = stochasticOptimizationRequest();
+    request.policy.scope = "native-outcomes";
+    request.policy.stake = 0.05;
+    request.policy.locks = [];
+    request.policy.tunables = [{path: `/modes/base/outcomes/${win.id}/weight`, values: ["1", "3"]}, {path: `/modes/base/outcomes/${zero.id}/weight`, values: ["1", "18446744073709551615"]}];
+    request.policy.budget = 4;
+    request.policy.sampling!.searchBudget = 1600;
+    request.targets = [
+        {metric: "rtp", unit: "ratio", value: 1.5, tolerance: {kind: "absolute", value: 0.06}},
+        {metric: "distribution", unit: "ratio", value: 0.75, bucket: {min: 2, max: 3}, tolerance: {kind: "absolute", value: 0.05}},
+    ];
+    const project = await resolve(root);
+    const before = sourceInventory(project);
+    const result = await service.optimize(project, request);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.status).toBe("attained");
+    expect(result.evidence!.selected).toEqual({[`/modes/base/outcomes/${win.id}/weight`]: "3", [`/modes/base/outcomes/${zero.id}/weight`]: "1"});
+    expect(result.evidence!.evaluations!.some(entry => Object.values(entry.parameters).includes("18446744073709551615"))).toBe(true);
+    expect(result.evidence!.stochastic!.assessment!.estimates[0]).toBeCloseTo(1.5, 1);
+    await service.discard(result.candidate!);
+    expect(sourceInventory(project)).toEqual(before);
 });
 
 it("rebuilds a source-bound canonical WASM and checks its executable population", async () => {

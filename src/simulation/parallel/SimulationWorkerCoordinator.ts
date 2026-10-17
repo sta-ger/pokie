@@ -67,6 +67,7 @@ export class SimulationWorkerCoordinator {
             return [];
         }
 
+        requests = requests.map(request => request.requireCleanup ? {...request, cancellation: request.cancellation ?? new SharedArrayBuffer(4)} : request);
         const createWorker = this.createWorker ?? (await this.buildDefaultCreateWorker());
 
         return new Promise((resolve, reject) => {
@@ -78,10 +79,30 @@ export class SimulationWorkerCoordinator {
             const results = new Array<SimulationWorkerResult | undefined>(requests.length).fill(undefined);
             const prefixes = new Map<number, import("../SimulationAccumulatorSnapshot.js").SimulationAccumulatorSnapshot>();
             let settled = false;
+            let failureContext = "";
+            const drainage: Promise<boolean>[] = [];
+            const acknowledgements: ((confirmed: boolean) => void)[] = [];
             const finalizing = new Set<number>();
 
             const terminateAll = async (): Promise<void> => {
-                await Promise.allSettled(workers.map((worker) => Promise.resolve().then(() => worker.terminate())));
+                for (const request of requests) if (request.cancellation) Atomics.store(new Int32Array(request.cancellation), 0, 1);
+                let confirmed = true;
+                if (drainage.length) {
+                    let timer: ReturnType<typeof setTimeout> | undefined;
+                    try {
+                        confirmed = await Promise.race([
+                            Promise.all(drainage).then(values => values.every(Boolean)),
+                            new Promise<boolean>(resolve => {
+                                timer = setTimeout(() => resolve(false), 5000);
+                            }),
+                        ]);
+                    } finally {
+                        if (timer) clearTimeout(timer);
+                    }
+                }
+                const outcomes = await Promise.allSettled(workers.map((worker) => Promise.resolve().then(() => worker.terminate())));
+                const failures = outcomes.filter((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected");
+                if (failures.length || !confirmed) throw new Error(`Worker cleanup unconfirmed: ${failures.map(outcome => String(outcome.reason)).join("; ") || "runtime release acknowledgement absent"}. ${failureContext}`);
             };
 
             const onAbort = (): void => {
@@ -100,8 +121,14 @@ export class SimulationWorkerCoordinator {
                 } catch (error) {
                     phaseError = error;
                 }
-                await terminateAll();
-                for (const worker of workers) worker.removeAllListeners();
+                try {
+                    await terminateAll();
+                } catch (error) {
+                    reject(error);
+                    return;
+                } finally {
+                    for (const worker of workers) worker.removeAllListeners();
+                }
                 if (phaseError !== undefined) {
                     reject(phaseError);
                     return;
@@ -126,6 +153,16 @@ export class SimulationWorkerCoordinator {
                 }
                 try {
                     workers.push(createWorker(requests[index]));
+                    if (requests[index].requireCleanup) {
+                        drainage.push(new Promise<boolean>(done => {
+                            acknowledgements[index] = done;
+                        }));
+                        workers[index].on("message", (message: SimulationWorkerMessage) => {
+                            if ((message.type === "result" || message.type === "error") && message.workerIndex === requests[index].workerIndex) acknowledgements[index](true);
+                        });
+                        workers[index].on("exit", () => acknowledgements[index](false));
+                        workers[index].on("error", () => acknowledgements[index](false));
+                    }
                 } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
                     finish(() => reject(new SimulationWorkerFailureError(requests[index].workerIndex, `could not create worker: ${message}`)));
@@ -169,6 +206,7 @@ export class SimulationWorkerCoordinator {
                                 onProgress?.({workerIndex: message.workerIndex, roundsCompleted: message.roundsCompleted});
                                 return;
                             case "error":
+                                failureContext = message.message;
                                 if (message.accumulator) prefixes.set(index, message.accumulator);
                                 finish(() => reject(new SimulationWorkerFailureError(message.workerIndex, message.message, prefixes.size ? new SimulationStatisticsMerger().merge([...prefixes.values()].map(accumulator => ({accumulator}))).statistics : undefined)));
                                 return;

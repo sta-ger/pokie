@@ -2,8 +2,10 @@
 
 # Modeling Slot Math with POKIE
 
-This is manual modeling, measurement, and iteration. Math Targeting/Optimization is an agreed direction
-without an implementation in the reviewed repository; release scope remains unconfirmed. Reel strips,
+This walkthrough covers manual modeling, measurement, and iteration. The separate
+[optimization workflow](optimization.md) supports declared same-type tunables with finite exact or bounded
+seeded search, held-out confidence assessment, locks and explicit saves. It does not promise arbitrary
+mechanics or exact numerical attainment from noisy observations; release scope remains unconfirmed. Reel strips,
 visible rows, and resizable grids do not supply an explicit overscan model. Blueprint schema/editor mechanics
 authoring covers win models, free games, and bet modes, but remains partial relative to composable runtime
 mechanics. Blueprint symbol/reel/paytable reachability checks are limited checks, not generic mechanics/state

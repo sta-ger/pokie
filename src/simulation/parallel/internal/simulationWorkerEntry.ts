@@ -1,3 +1,4 @@
+import {createOptimizationSimulationGame} from "../../../optimization/internal/createOptimizationSimulationGame.js";
 import {setSimulationModelIdentity} from "../../SessionFeatureAnalyticsObserver.js";
 import {loadPokieGame, releasePokieGame} from "../../../gamepackage/loadPokieGame.js";
 import {parentPort, workerData} from "worker_threads";
@@ -25,9 +26,10 @@ async function main(): Promise<void> {
     let game: Awaited<ReturnType<typeof loadPokieGame>> | undefined;
     let terminal: SimulationWorkerMessage;
     try {
-        game = await loadPokieGame(request.packageRoot);
+        game = request.optimizationRecipe ? createOptimizationSimulationGame(request.optimizationRecipe) : await loadPokieGame(request.packageRoot);
         const session = game.createSession(request.seed === undefined ? undefined : {seed: request.seed});
         setSimulationModelIdentity(session, game.getConfigHash?.());
+        if (request.stake !== undefined) session.setBet(request.stake);
         // Simulations measure RTP/volatility, not risk of ruin — same as every other simulation path.
         session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
 
@@ -41,6 +43,8 @@ async function main(): Promise<void> {
             request.rounds,
             request.progressChunkSize,
             {
+                observations: request.observations,
+                shouldStop: () => request.cancellation !== undefined && Atomics.load(new Int32Array(request.cancellation), 0) !== 0,
                 onChunkComplete: ({roundsCompleted: completed, accumulator}) => {
                     const progress: SimulationWorkerMessage = {type: "progress", workerIndex: request.workerIndex, roundsCompleted: completed, accumulator};
                     port.postMessage(progress);

@@ -23,3 +23,13 @@ export const optimizationRequest = (): OptimizationRequest => ({
         locks: ["/paylines", "/reelStrips", "/paytable/B", "/availableBets"],
     },
 });
+export const stochasticOptimizationRequest = (): OptimizationRequest => {
+    const request = optimizationRequest();
+    request.policy.strategy = "seeded-search-v1";
+    request.policy.sampling = {
+        searchSamples: 400, searchBudget: 1200, assessmentSamples: 6000,
+        minSamples: 1000, minEventCount: 5, confidence: 0.95, chunkSize: 100, workers: 1,
+    };
+    request.targets[0].tolerance = {kind: "absolute", value: 0.15};
+    return request;
+};
