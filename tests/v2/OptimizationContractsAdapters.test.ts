@@ -4,7 +4,6 @@ import {describeUnsupportedProjectOperation} from "../../src/project/describeUns
 import {StakeAdapterArtifactBuilder} from "../../src/project/StakeAdapterArtifactBuilder.js";
 import {loadPokieGameRuntime} from "../../src/gamepackage/loadPokieGame.js";
 import fs from "fs";
-import {createRequire} from "module";
 import {execFileSync} from "child_process";
 import path from "path";
 import {ProjectOptimizationService} from "../../src/optimization/ProjectOptimizationService.js";
@@ -1139,48 +1138,59 @@ it.each([["cjs", false], ["cjs", true], ["esm", false], ["esm", true]] as const)
         const before = sourceInventory(project);
         const request = stochasticOptimizationRequest();
         request.policy.tunables[0].values = [3];
-        const hostRequire = createRequire(path.join(root, "index.cjs"));
-        const original = hostRequire(leafFile);
-        const cached = hostRequire.cache[leafFile];
-        const first = await service.optimize(project, request);
-        expect(first.diagnostics).toEqual([]);
-        expect(first.status).toBe("attained");
-        write(2);
-        const changed = await service.optimize(project, request);
-        expect(changed.diagnostics).toEqual([]);
-        expect(changed.status).toBe("inconclusive");
-        expect(changed.evidence!.stochastic!.executableRevision).not.toBe(first.evidence!.stochastic!.executableRevision);
-        expect(changed.evidence!.stochastic!.assessment!.returnBound).toBe(6);
-        const freshScript = path.join(directory, "fresh.cjs");
-        // The focused test executes current TS source in an ordinary fresh Node process;
-        // no package compilation/install or official build is involved.
-        fs.writeFileSync(freshScript, `const fs = require('fs'); const Module = require('module'); const ts = require(${JSON.stringify(require.resolve("typescript"))});
+        const script = path.join(directory, "native-optimization.cjs");
+        // Execute the public service in an ordinary long-lived Node host, then compare
+        // its rerun to a separate fresh process. ts-jest cannot require native ESM.
+        fs.writeFileSync(script, `const fs = require('fs'); const Module = require('module'); const ts = require(${JSON.stringify(require.resolve("typescript"))});
 const original = Module._resolveFilename;
 Module._resolveFilename = function(request, ...rest) { if (request === '@fromstan/pokie') return ${JSON.stringify(path.resolve("src/index.ts"))}; try { return original.call(this, request, ...rest); } catch (error) { if (request.endsWith('.js')) return original.call(this, request.slice(0, -3) + '.ts', ...rest); throw error; } };
 Module._extensions['.ts'] = (module, file) => module._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true}}).outputText, file);
-(async () => { const {ProjectOptimizationService} = require(${JSON.stringify(path.resolve("src/optimization/ProjectOptimizationService.ts"))});
-const {ProjectTargetResolver} = require(${JSON.stringify(path.resolve("src/project/ProjectTargetResolver.ts"))});
-const service = new ProjectOptimizationService(${JSON.stringify(path.join(directory, "fresh-scratch"))});
-const result = await service.optimize(await new ProjectTargetResolver().resolve(${JSON.stringify(root)}, {readConfigurationProvenance: false}), ${JSON.stringify(request)});
-if (result.candidate) await service.discard(result.candidate);
-console.log(JSON.stringify({status: result.status, diagnostics: result.diagnostics, evidence: result.evidence})); })().catch(error => { console.error(error); process.exitCode = 1; });`);
-        const fresh = JSON.parse(execFileSync(process.execPath, [freshScript], {encoding: "utf8", timeout: 60000}));
-        expect({status: changed.status, diagnostics: changed.diagnostics, evidence: changed.evidence}).toEqual(fresh);
-        const simulation = jest.spyOn(ParallelSimulationRunner.prototype, "run");
-        await service.publish(changed.candidate!, request, path.join(directory, "current-output"));
-        expect(simulation).not.toHaveBeenCalled();
-        expect(hostRequire(leafFile)).toBe(original);
-        expect(hostRequire.cache[leafFile]).toBe(cached);
-        write(1);
-        for (let attempt = 0; attempt < 2; attempt++) {
-            const restored = await service.optimize(project, request);
-            expect(restored.status).toBe("attained");
-            expect(restored.evidence).toEqual(first.evidence);
-            await service.discard(restored.candidate!);
-        }
-        await service.discard(first.candidate!);
-        await service.discard(changed.candidate!);
-        expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+const assert = require('node:assert/strict');
+const root = ${JSON.stringify(root)}, leaf = ${JSON.stringify(leafFile)}, request = ${JSON.stringify(request)};
+const select = result => ({status: result.status, diagnostics: result.diagnostics, evidence: result.evidence});
+const write = multiplier => fs.writeFileSync(leaf, ${JSON.stringify(format === "cjs" ? "module.exports = " : "export default ")} + multiplier + ';');
+(async () => {
+ const {ProjectOptimizationService} = require(${JSON.stringify(path.resolve("src/optimization/ProjectOptimizationService.ts"))});
+ const {ProjectTargetResolver} = require(${JSON.stringify(path.resolve("src/project/ProjectTargetResolver.ts"))});
+ const service = new ProjectOptimizationService(${JSON.stringify(path.join(directory, "native-scratch"))} + (process.argv[2] === 'fresh' ? '-fresh' : ''));
+ const project = await new ProjectTargetResolver().resolve(root, {readConfigurationProvenance: false});
+ if (process.argv[2] === 'fresh') {
+   const result = await service.optimize(project, request);
+   if (result.candidate) await service.discard(result.candidate);
+   console.log(JSON.stringify(select(result))); return;
+ }
+ const originalExport = require(leaf), cached = require.cache[leaf];
+ const first = await service.optimize(project, request);
+ assert.deepEqual(first.diagnostics, []); assert.equal(first.status, 'attained');
+ write(2);
+ const changed = await service.optimize(project, request);
+ assert.deepEqual(changed.diagnostics, []); assert.equal(changed.status, 'inconclusive');
+ assert.notEqual(changed.evidence.stochastic.executableRevision, first.evidence.stochastic.executableRevision);
+ assert.equal(changed.evidence.stochastic.assessment.returnBound, 6);
+ const fresh = JSON.parse(require('child_process').execFileSync(process.execPath, [__filename, 'fresh'], {encoding: 'utf8', timeout: 60000}));
+ assert.deepEqual(select(changed), fresh);
+ const {ParallelSimulationRunner} = require(${JSON.stringify(path.resolve("src/simulation/parallel/ParallelSimulationRunner.ts"))});
+ const run = ParallelSimulationRunner.prototype.run; let samples = 0;
+ ParallelSimulationRunner.prototype.run = function(...args) { samples++; return Reflect.apply(run, this, args); };
+ await service.publish(changed.candidate, request, ${JSON.stringify(path.join(directory, "current-output"))});
+ assert.equal(samples, 0);
+ assert.equal(require(leaf), originalExport); assert.equal(require.cache[leaf], cached);
+ fs.writeFileSync(leaf, ${JSON.stringify(format === "esm" ? "export default 0;" : "")} + "throw Error('Dependency unavailable; reinstall dependencies and rerun optimization.');");
+ const rejected = await service.optimize(project, request);
+ assert.equal(rejected.status, 'failure'); assert.match(rejected.diagnostics[0].message, /reinstall dependencies/);
+ assert.equal(rejected.evidence.stochastic.assessment, undefined); assert.equal(samples, 0);
+ write(1);
+ for (let attempt = 0; attempt < 2; attempt++) {
+   const restored = await service.optimize(project, request);
+   assert.equal(restored.status, 'attained'); assert.deepEqual(restored.evidence, first.evidence);
+   await service.discard(restored.candidate);
+ }
+ await service.discard(first.candidate); await service.discard(changed.candidate);
+ assert.deepEqual(fs.readdirSync(${JSON.stringify(path.join(directory, "native-scratch"))}), []);
+ console.log(JSON.stringify({before: first.status, changed: changed.status, fresh: fresh.status, rejected: rejected.status, restored: 'attained', samplesDuringSave: 0, cachePreserved: require.cache[leaf] === cached}));
+})().catch(error => { console.error(error); process.exitCode = 1; });`);
+        const outcomes = JSON.parse(execFileSync(process.execPath, [script], {encoding: "utf8", timeout: 120000}));
+        expect(outcomes).toEqual({before: "attained", changed: "inconclusive", fresh: "inconclusive", rejected: "failure", restored: "attained", samplesDuringSave: 0, cachePreserved: true});
         expect(sourceInventory(project)).toEqual(before);
-    }, 120000,
+    }, 150000,
 );

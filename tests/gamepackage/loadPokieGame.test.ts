@@ -169,13 +169,17 @@ it.each(["cjs", "esm"])("isolates direct/transitive %s code, lazy imports and li
     // Exercise native ESM even in ts-jest's CommonJS transform.
     // eslint-disable-next-line no-new-func -- the public loader supports native ESM hosts.
     const nativeImport = new Function("file", "return import(file)") as (file: string) => Promise<Record<string, unknown>>;
-    const load = () => loadPokieGameRuntime(root, file => nativeImport(pathToFileURL(file).href));
+    const snapshots: string[] = [];
+    const load = () => loadPokieGameRuntime(root, file => {
+        snapshots.push(path.dirname(file));
+        return nativeImport(pathToFileURL(file).href);
+    });
     const manifest = (value: string) => ({id: "dependency-game", name: value, version: "1.0.0"});
     const write = (value: string) => fs.writeFileSync(dependencyFile, format === "cjs" ? `module.exports = '${value}';` : `export default '${value}';`);
     fs.mkdirSync(nested, {recursive: true});
     fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({pokie: {entry: `index.${suffix}`}, dependencies: {direct: "1"}}));
     for (const [name, location, dependencies] of [["direct", direct, {nested: "1"}], ["nested", nested, {}]] as const) {
-        fs.writeFileSync(path.join(location, "package.json"), JSON.stringify({name, main: `index.${suffix}`, dependencies}));
+        fs.writeFileSync(path.join(location, "package.json"), JSON.stringify({name, main: `index.${suffix}`, dependencies, peerDependencies: name === "nested" ? {direct: "1"} : {}}));
     }
     fs.writeFileSync(path.join(direct, `index.${suffix}`), format === "cjs" ? "module.exports = require('nested');" : "export {default} from 'nested';");
     const game = `{getManifest: () => ({id: 'dependency-game', name: value, version: '1.0.0'}), createSession: () => ({}), lazy: async () => ${format === "cjs" ? "require('direct')" : "(await import('direct')).default"}}`;
@@ -198,7 +202,7 @@ it.each(["cjs", "esm"])("isolates direct/transitive %s code, lazy imports and li
         }
         // A failed acquisition cleans its snapshot without disturbing an earlier live consumer.
         write("current");
-        fs.writeFileSync(dependencyFile, "throw Error('dependency rejected');");
+        fs.writeFileSync(dependencyFile, `${format === "esm" ? "export default 0;" : ""} throw Error('dependency rejected');`);
         await expect(load()).rejects.toThrow("dependency rejected");
         write("repaired");
         for (let attempt = 0; attempt < 2; attempt++) {
@@ -210,6 +214,8 @@ it.each(["cjs", "esm"])("isolates direct/transitive %s code, lazy imports and li
         if (format === "cjs") expect(hostRequire.cache[dependencyFile]).toBe(cachedModule);
     } finally {
         await first.release();
+        expect(snapshots.every(snapshot => !fs.existsSync(snapshot))).toBe(true);
+        expect(Object.keys(hostRequire.cache).some(file => snapshots.some(snapshot => file.startsWith(`${snapshot}${path.sep}`)))).toBe(false);
         fs.rmSync(root, {recursive: true, force: true});
     }
 }, 60000);

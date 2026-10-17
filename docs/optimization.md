@@ -62,6 +62,10 @@ reviewed assessment without resampling. Their evidence separately binds installe
 and the resolved transitive dependency graph (including the host runtime). Search/assessment and save
 reject dependency drift or disappearance. Save loads the destination and verifies its model binding
 before accepting publication, then releases its game resources and loader lease.
+Every load copies the resolved runtime dependency graph to invocation-owned paths, including
+transitive and peer dependencies and the host runtime. Enumeration, search, held-out assessment and
+publication therefore cannot reuse exports from an earlier installation revision. Existing live
+consumers keep their own modules; releasing a runtime removes only its private files and CJS cache.
 Dependencies remain ordinary external package dependencies;
 `node_modules`, `.git` and loader caches are excluded from authored-byte identity.
 Filesystem aliases in authored input/publication paths are rejected.

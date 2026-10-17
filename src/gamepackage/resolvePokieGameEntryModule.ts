@@ -60,10 +60,7 @@ async function createRuntimeSnapshot(packageRoot: string, entryPath: string): Pr
     // snapshot directory would otherwise fabricate source drift between preflight and execution.
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-"));
     try {
-        for (const name of fs.readdirSync(packageRoot)) {
-            if (name === "node_modules" || name === ".pokie-runtime-cache") continue;
-            fs.cpSync(path.join(packageRoot, name), path.join(root, name), {recursive: true});
-        }
+        copyRuntimePackage(packageRoot, root);
         // Copy the resolved graph as well as the entry. Symlinks to the installation reuse
         // Node's realpath-keyed CJS/ESM caches even when disk fingerprints have changed.
         await snapshotPokieGameDependencies(root, packageRoot);
@@ -96,6 +93,21 @@ async function createRuntimeSnapshot(packageRoot: string, entryPath: string): Pr
     }
 }
 
+function copyRuntimePackage(source: string, destination: string): void {
+    fs.mkdirSync(destination, {recursive: true});
+    // A host can put TMPDIR below its own node_modules. Copy children after excluding
+    // installations rather than asking cp to copy a root into a descendant of itself.
+    for (const name of fs.readdirSync(source)) {
+        if (["node_modules", ".git", ".pokie-runtime-cache"].includes(name)) continue;
+        fs.cpSync(path.join(source, name), path.join(destination, name), {
+            recursive: true,
+            preserveTimestamps: true,
+            mode: fs.constants.COPYFILE_FICLONE,
+            filter: file => !["node_modules", ".git", ".pokie-runtime-cache"].includes(path.basename(file)),
+        });
+    }
+}
+
 /** Private paths for the entire installed runtime graph, including cycles and peers.
  * Keep the detachable candidate's overlay separate: it binds publication to the installation;
  * only an executing runtime owns these copies and their cache entries.
@@ -109,12 +121,7 @@ async function snapshotPokieGameDependencies(snapshotRoot: string, packageRoot: 
         if (existing !== undefined) return existing;
         const destination = path.join(storage, String(copies.size));
         copies.set(source, destination);
-        fs.cpSync(source, destination, {
-            recursive: true,
-            preserveTimestamps: true,
-            mode: fs.constants.COPYFILE_FICLONE,
-            filter: file => !["node_modules", ".git", ".pokie-runtime-cache"].includes(path.basename(file)),
-        });
+        copyRuntimePackage(source, destination);
         await linkDependencies(destination, await resolvePokieGameDependencyRoots(source, false));
         return destination;
     };
