@@ -290,3 +290,53 @@ worker `result`/`error` messages at lines 191–193. The repaired compiled
 two-worker Studio path reaches finalization with neither acknowledgement and
 therefore cannot produce samples, cancellation, worker-drain, or fresh-retry
 evidence. This is a reproducible product failure, not a browser-driver timeout.
+
+## Independent continuation — corrected candidate 6087b2f85431a70d77c918442caab0e0d0769605
+
+This is a new observation of the corrected candidate, not a reclassification of
+the preceding `b611…` failure. The clean checkout HEAD matched candidate
+`6087b2f85431a70d77c918442caab0e0d0769605`. The harness rebuilt it with
+`npm run build-cli` (exit 0, 2026-10-17T21:24:25.808Z–21:25:16.890Z). Its receipt
+is `candidate-builds/6087b2f85431a70d77c918442caab0e0d0769605/result.json`:
+tree `51b4018a3355bb753267c4e86930f0c7a960fcd2`, output SHA-256
+`a0b8cf537644b058c49836990a76a49551952dec26cd4301509da1f1680852e2`, and
+build-log SHA-256 `9c4f29ce71f49defa79692f8e0106a66e4902cbf5da511cedc394a2ad0837a48`.
+
+One fresh isolated Studio run used the public source-checkout command
+`node ./dist/cli/pokie.js <optimization.blueprint.json> --no-open`, positional
+fixture
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-25-f699fc52f81bcf45/v2c-25-recovery-current/optimization.blueprint.json`,
+and separate application config/documents directories. Full transcript:
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-25-84d0903aa96ef22f/run-2026-10-17T21-24-25-772Z/transcript.json`
+(SHA-256 `8a8a8f56ae2e615438d07990fa9aa34d1563b532d1ae1f9232ec227ba9b34298`).
+
+The rendered Blueprint request used target RTP `0.75 ± 0.15`, stake `1`, seeded
+search, `/paytable/A/2 = [2,3,4]`, locks `/paylines`, `/reelStrips`,
+`/paytable/B`, `/availableBets`, and `sampling.workers = 2`. Its support check
+rendered writable `/paytable/A/2` and `/paytable/B/2`. One accepted request
+reached `92,000` rendered search observations before its own `Cancel optimization`
+control was activated; its local terminal card was `Optimization cancelled`
+(8,724 ms). A fresh request completed `Verdict: attained`: three candidates,
+stop `assessment-complete`, held-out RTP `0.75735`, 95% CI
+`[0.7285403162604024, 0.7861596837395975]`, and 20,000 held-out observations.
+The preview rendered locked paths, empty constraints, declared-writable and
+source-byte checks, native readback, and the `/paytable/A/2: 2 → 3` mathematical
+definition diff. Fixture SHA-256 stayed
+`84305a521582bf634a73c8ae8dffe08c9e6a7f833fa7b03e45e29c5a7a0eddf3`; after
+the child drained, scratch had no retained run directory and the isolated process
+state was `gracefully-stopped`.
+
+I independently inspected the representative captures: `3-observation.png`
+(SHA-256 `6bb67ed839fd14c0f9425bfd59c2e1d4593fca518c27fdf7f3e0ed515dce39ab`)
+visibly shows the lower preview’s locks, checks, validation, and diff;
+`4-observation.png` (SHA-256
+`3617f592f4b656e0a8e91e91e635dbc5c28bc0393d72769a1111083644868e47`) visibly
+shows the attained metric, CI, worker count, and locks. Browser target telemetry
+was `[]`; that does not establish Node worker startup. The rendered worker count
+and positive samples therefore do not close that requested Node-worker proof.
+
+This run did not collect built-CLI Stake/canonical bound-WASM publication and
+readback, unbound-WASM rejection, direct public API infeasible/exhausted/cancel,
+or request-specific Studio support for PAR, declared TS, Outcome Library, Stake,
+and bound WASM. It also did not exercise apply/stale-apply. Those are uncollected,
+not product failures.
