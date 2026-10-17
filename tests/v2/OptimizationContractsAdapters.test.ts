@@ -4,7 +4,8 @@ import {describeUnsupportedProjectOperation} from "../../src/project/describeUns
 import {StakeAdapterArtifactBuilder} from "../../src/project/StakeAdapterArtifactBuilder.js";
 import {loadPokieGameRuntime} from "../../src/gamepackage/loadPokieGame.js";
 import fs from "fs";
-import {execFileSync} from "child_process";
+import {execFile} from "child_process";
+import {promisify} from "util";
 import path from "path";
 import {ProjectOptimizationService} from "../../src/optimization/ProjectOptimizationService.js";
 import {ArtifactPublicationOwnership, rollbackArtifactPublication} from "../../src/project/ArtifactPublicationOwnership.js";
@@ -27,6 +28,7 @@ import {optimizationBlueprint as model, optimizationRequest, stochasticOptimizat
 let directory: string;
 let source: string;
 let service: ProjectOptimizationService;
+const execFileAsync = promisify(execFile);
 const resolve = async (file: string) => (await new ProjectTargetResolver().resolve(file, {readConfigurationProvenance: false}))!;
 beforeEach(() => {
     fs.mkdirSync(path.resolve("node_modules/.cache"), {recursive: true});
@@ -1170,7 +1172,8 @@ const write = multiplier => fs.writeFileSync(leaf, ${JSON.stringify(format === "
  assert.deepEqual(changed.diagnostics, []); assert.equal(changed.status, 'inconclusive');
  assert.notEqual(changed.evidence.stochastic.executableRevision, first.evidence.stochastic.executableRevision);
  assert.equal(changed.evidence.stochastic.assessment.returnBound, 6);
- const fresh = JSON.parse(require('child_process').execFileSync(process.execPath, [__filename, 'fresh'], {encoding: 'utf8', timeout: 60000}));
+ const freshOutput = await require('util').promisify(require('child_process').execFile)(process.execPath, [__filename, 'fresh'], {encoding: 'utf8', timeout: 120000});
+ const fresh = JSON.parse(freshOutput.stdout);
  assert.deepEqual(select(changed), fresh);
  const {ParallelSimulationRunner} = require(${JSON.stringify(path.resolve("src/simulation/parallel/ParallelSimulationRunner.ts"))});
  const run = ParallelSimulationRunner.prototype.run; let samples = 0;
@@ -1192,8 +1195,13 @@ const write = multiplier => fs.writeFileSync(leaf, ${JSON.stringify(format === "
  assert.deepEqual(fs.readdirSync(${JSON.stringify(path.join(directory, "native-scratch"))}), []);
  console.log(JSON.stringify({before: first.status, changed: changed.status, fresh: fresh.status, rejected: rejected.status, restored: 'attained', samplesDuringSave: 0, cachePreserved: require.cache[leaf] === cached}));
 })().catch(error => { console.error(error); process.exitCode = 1; });`);
-        const outcomes = JSON.parse(execFileSync(process.execPath, [script], {encoding: "utf8", timeout: 120000}));
+        // This host runs initial/drifted optimization, a fresh process, publication,
+        // rejection and two recoveries. Await its exit with a whole-scenario budget;
+        // execFileSync spawn errors contain error.error === error and cannot cross
+        // Jest's worker transport when a constrained gate reaches that deadline.
+        const {stdout} = await execFileAsync(process.execPath, [script], {encoding: "utf8", timeout: 300000});
+        const outcomes = JSON.parse(stdout);
         expect(outcomes).toEqual({before: "attained", changed: "inconclusive", fresh: "inconclusive", rejected: "failure", restored: "attained", samplesDuringSave: 0, cachePreserved: true});
         expect(sourceInventory(project)).toEqual(before);
-    }, 150000,
+    }, 330000,
 );

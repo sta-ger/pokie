@@ -744,7 +744,7 @@ describe("StudioServer", () => {
     });
 
     // Both routes perform real package snapshot acquisition, generation and
-    // cleanup. Budget the combined workflow, including its server restart,
+    // cleanup. Budget the combined workflow on constrained gate workers, including its server restart,
     // rather than allowing Jest to tear down a still-running HTTP scenario.
     it("runs both Outcome Library HTTP start routes against a real generated package and rejects a bound destination drift", async () => {
         await server.stop();
@@ -829,7 +829,7 @@ describe("StudioServer", () => {
         expect(fs.existsSync(path.join(sampledProjectRoot, "changed-destination"))).toBe(false);
         await server.stop();
         expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
-    }, 180000);
+    }, 300000);
 
     // This scenario includes two complete million-stop enumerations plus
     // independent runtimes for resume, stop, close, switch and rejection paths.
