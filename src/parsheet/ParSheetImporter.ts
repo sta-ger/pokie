@@ -205,8 +205,9 @@ export class ParSheetImporter implements ParSheetImporting {
         let metaSheet: readonly (readonly unknown[])[] | undefined;
         if (sheetsByName.has("Meta")) {
             metaSheet = rawSheetToGrid(sheetsByName.get("Meta")!);
-            provenance = this.provenanceMapper.fromRows(gridFor("Meta")).value;
-            issues.push(...this.verifyProvenance(provenance, blueprint));
+            const mapped = this.provenanceMapper.fromRows(gridFor("Meta"));
+            provenance = mapped.value;
+            issues.push(...mapped.issues, ...this.verifyProvenance(provenance, blueprint));
         } else {
             issues.push({
                 code: "parsheet-provenance-missing",
@@ -391,6 +392,17 @@ function sheetToGrid(worksheet: ExcelJS.Worksheet, sheetName: string, issues: Va
             cells.push(cellValueToPrimitive(cell.value));
         });
         grid.push(cells);
+    });
+    const header = grid[0] ?? [];
+    const headerlessColumns = new Set<number>();
+    for (const row of grid.slice(1)) row.forEach((value, index) => {
+        if (cellToText(value) !== undefined && cellToText(header[index]) === undefined) headerlessColumns.add(index);
+    });
+    for (const index of headerlessColumns) issues.push({
+        code: "parsheet-headerless-data",
+        severity: "warning",
+        message: `Sheet "${sheetName}" has data in column ${index + 1} without a header; that data is ignored.`,
+        details: {sheet: sheetName, column: index + 1},
     });
     if (formulaCellCount > 0) {
         facts.push({

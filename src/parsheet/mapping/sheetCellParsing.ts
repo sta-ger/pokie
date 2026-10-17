@@ -72,6 +72,12 @@ export function resolveColumnIndexes(
         }
         const expected = expectedColumns.find((candidate) => candidate.toLowerCase() === name.toLowerCase());
         if (expected) {
+            if (found[expected] !== undefined) issues.push({
+                code: "parsheet-duplicate-column",
+                severity: "warning",
+                message: `Sheet "${sheetName}" repeats column "${name}"; the last column is used.`,
+                details: {sheet: sheetName, column: name},
+            });
             found[expected] = index;
         } else {
             issues.push({

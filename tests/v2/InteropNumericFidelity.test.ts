@@ -164,6 +164,67 @@ describe("real XLSX represented math", () => {
         expect(fs.readFileSync(source)).toEqual(before);
     });
 
+    it.each(["headerless data", "duplicate payout column", "unknown Meta key", "duplicate Meta key", "extra Meta column"])("withholds lossless identity for %s even when the represented hash matches", async kind => {
+        const file = path.join(directory, "ignored.xlsx");
+        const original = boundedBlueprint();
+        await new api.ParSheetExporter("1").exportToFile(original, file);
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(file);
+        const paytable = workbook.getWorksheet("Paytable")!,
+            meta = workbook.getWorksheet("Meta")!;
+        if (kind === "headerless data") paytable.getCell("D2").value = "ignored data";
+        if (kind === "duplicate payout column") {
+            paytable.getCell("D1").value = "Multiplier";
+            paytable.getCell("D2").value = paytable.getCell("C2").value;
+            paytable.getCell("C2").value = 999;
+            for (let row = 3; row <= paytable.rowCount; row++) paytable.getCell(`D${row}`).value = paytable.getCell(`C${row}`).value;
+        }
+        if (kind === "unknown Meta key") meta.addRow(["Workbook Note", "unrepresented metadata"]);
+        if (kind === "duplicate Meta key") {
+            meta.addRow(["Blueprint Hash", api.computeBlueprintHash(original)]);
+            meta.getCell("B6").value = `sha256:${"0".repeat(64)}`;
+        }
+        if (kind === "extra Meta column") meta.getCell("C1").value = "Ignored";
+        await workbook.xlsx.writeFile(file);
+        const before = fs.readFileSync(file);
+        const imported = await new api.ParSheetImporter().importFromFile(file);
+        expect(errors(imported.issues)).toEqual([]);
+        expect(api.computeBlueprintHash(imported.blueprint)).toBe(api.computeBlueprintHash(original));
+        expect(imported.conversionEvidence?.provenanceHashMatches).toBe(true);
+        expect(imported.conversionEvidence?.losslessEligible).toBe(false);
+        expect(imported.conversionEvidence?.facts.some(fact => fact.kind === "ignored")).toBe(true);
+        expect(fs.readFileSync(file)).toEqual(before);
+    });
+
+    it.each(["lossy", "edited", "unprepared", "pristine"])("Studio draft re-export retains %s workbook history across restart without saving", async kind => {
+        const file = path.join(directory, "draft.xlsx"),
+            output = path.join(directory, "exported.xlsx"),
+            studioRoot = path.join(directory, "studio");
+        await new api.ParSheetExporter("1").exportToFile(boundedBlueprint(), file);
+        if (kind === "lossy") {
+            const workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.readFile(file);
+            const cell = workbook.getWorksheet("AvailableBets")!.getCell("A2");
+            cell.value = {formula: "1", result: cell.value as number};
+            await workbook.xlsx.writeFile(file);
+        }
+        const before = fs.readFileSync(file);
+        const service = new StudioBlueprintService("1", studioRoot, new StudioHomeService("1"));
+        const imported = await service.importParSheet(file);
+        expect(imported.status).toBe("ok");
+        if (imported.status !== "ok") throw new Error(imported.error);
+        expect(imported.errors).toEqual([]);
+        if (kind === "edited") (imported.blueprint as api.GameBlueprint).availableBets = [0.05];
+        const restarted = new StudioBlueprintService("1", kind === "unprepared" ? path.join(directory, "other-studio") : studioRoot, new StudioHomeService("1"));
+        const exported = await restarted.exportParSheet(imported.blueprint, output, false, file);
+        expect(exported.status).toBe("ok");
+        if (exported.status !== "ok") throw new Error("Export failed");
+        expect(exported.warnings.some(issue => issue.code === "parsheet-prior-conversion-loss")).toBe(kind !== "pristine");
+        expect((await new api.ParSheetImporter().importFromFile(output)).conversionEvidence?.losslessEligible).toBe(kind === "pristine");
+        expect(fs.readFileSync(file)).toEqual(before);
+        expect(fs.readdirSync(directory).filter(name => name.endsWith(".json"))).toEqual([]);
+    });
+
     it.each(["extra header", "extra data", "malformed JSON", "unknown mechanic", "formula"])("discloses %s in real Mechanics JSON workbooks", async kind => {
         const file = path.join(directory, "math.xlsx");
         const original = boundedBlueprint("cascade-collection");

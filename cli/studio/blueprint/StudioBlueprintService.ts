@@ -8,6 +8,7 @@ import {
     buildGameBuildInfo,
     buildGameModelProjection,
     computeGameBlueprintHash,
+    computeBlueprintHash,
     computeArtifactInputBindingHash,
     GameBlueprint,
     GameBlueprintValidating,
@@ -780,7 +781,7 @@ export class StudioBlueprintService {
                 // PAR export performs its own atomic publication. The
                 // operation owns its ordering and terminal boundary; the
                 // shared policy has already ruled out a borrowed target.
-                publish: () => this.parSheetExporter.exportToFile(blueprint, resolved, sourcePath, {signal, onPublication: owned => {
+                publish: () => this.parSheetExporter.exportToFile(blueprint, resolved, sourcePath, {signal, losslessEligible: this.parDraftLosslessEligible(blueprint, sourcePath), onPublication: owned => {
                     publication = owned;
                 }}),
                 rollback,
@@ -1088,6 +1089,18 @@ export class StudioBlueprintService {
                 fs.promises.rm(temporaryBlueprint, {force: true}),
                 fs.promises.rm(`${temporaryBlueprint}.conversion-evidence.json`, {force: true}),
             ]);
+        }
+    }
+
+    private parDraftLosslessEligible(blueprint: unknown, sourcePath?: string): boolean | undefined {
+        if (sourcePath === undefined || path.extname(sourcePath).toLowerCase() !== ".xlsx") return undefined;
+        // The browser supplies a draft and source path, never authority to erase
+        // the workbook's losses. Reuse the byte-bound, restart-safe import record.
+        try {
+            const trusted = this.loadPreparedParImport(sourcePath);
+            return trusted?.losslessEligible === true && trusted.importedBlueprintHash === computeBlueprintHash(blueprint as GameBlueprint);
+        } catch {
+            return false;
         }
     }
 

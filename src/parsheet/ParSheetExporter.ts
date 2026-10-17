@@ -222,8 +222,8 @@ export class ParSheetExporter implements ParSheetExporting {
             } catch {
                 priorLossless = false;
             }
-            if (!priorLossless) issues.push(materializationIssue("parsheet-prior-conversion-loss", "Prior Blueprint conversion evidence is ineligible or unreadable; re-export cannot upgrade that boundary to lossless."));
         }
+        if (!priorLossless) issues.push(materializationIssue("parsheet-prior-conversion-loss", "Prior conversion evidence is ineligible, changed or unavailable; re-export cannot upgrade that boundary to lossless."));
 
         const workbook = new ExcelJS.Workbook();
         addSheet(
