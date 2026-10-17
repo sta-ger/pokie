@@ -212,10 +212,29 @@ it.each(["cjs", "esm"])("isolates direct/transitive %s code, lazy imports and li
         }
         expect(format === "cjs" ? hostRequire(dependencyFile) : (await nativeImport(pathToFileURL(dependencyFile).href)).default).toBe(original);
         if (format === "cjs") expect(hostRequire.cache[dependencyFile]).toBe(cachedModule);
+        // Jest's virtual require.cache ignores deleteProperty. Check actual Node cache ownership
+        // in a native host, using the same public loader and current source implementation.
+        const probe = path.join(root, "cache-probe.cjs");
+        fs.writeFileSync(probe, `const fs = require('fs'), Module = require('module'), assert = require('node:assert/strict');
+const ts = require(${JSON.stringify(require.resolve("typescript"))}), original = Module._resolveFilename;
+Module._resolveFilename = function(request, ...rest) { try { return original.call(this, request, ...rest); } catch (error) { if (request.endsWith('.js')) return original.call(this, request.slice(0, -3) + '.ts', ...rest); throw error; } };
+Module._extensions['.ts'] = (module, file) => module._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true}}).outputText, file);
+(async () => {
+ const {loadPokieGameRuntime} = require(${JSON.stringify(path.resolve("src/gamepackage/loadPokieGame.ts"))});
+ const outside = require(${JSON.stringify(dependencyFile)}), cached = require.cache[${JSON.stringify(dependencyFile)}];
+ let entry;
+ const runtime = await loadPokieGameRuntime(${JSON.stringify(root)}, file => { entry = file; return import(require('url').pathToFileURL(file).href); });
+ const owned = Object.keys(require.cache).filter(file => file.startsWith(require('path').dirname(entry) + require('path').sep));
+ ${format === "cjs" ? "assert.ok(owned.length > 0);" : ""}
+ await runtime.release();
+ assert.ok(owned.every(file => require.cache[file] === undefined));
+ assert.equal(require(${JSON.stringify(dependencyFile)}), outside); assert.equal(require.cache[${JSON.stringify(dependencyFile)}], cached);
+ console.log(JSON.stringify({removed: true, preserved: true}));
+})().catch(error => { console.error(error); process.exitCode = 1; });`);
+        expect(JSON.parse(execFileSync(process.execPath, [probe], {encoding: "utf8", timeout: 30000}))).toEqual({removed: true, preserved: true});
     } finally {
         await first.release();
         expect(snapshots.every(snapshot => !fs.existsSync(snapshot))).toBe(true);
-        expect(Object.keys(hostRequire.cache).some(file => snapshots.some(snapshot => file.startsWith(`${snapshot}${path.sep}`)))).toBe(false);
         fs.rmSync(root, {recursive: true, force: true});
     }
 }, 60000);
