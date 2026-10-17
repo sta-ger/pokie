@@ -1,6 +1,8 @@
+import {releaseSimulationGame} from "./releaseSimulationGame.js";
+import {SimulationCancelledError} from "../SimulationCancelledError.js";
 import {createOptimizationSimulationGame} from "../../../optimization/internal/createOptimizationSimulationGame.js";
 import {setSimulationModelIdentity} from "../../SessionFeatureAnalyticsObserver.js";
-import {loadPokieGame, releasePokieGame} from "../../../gamepackage/loadPokieGame.js";
+import {loadPokieGame} from "../../../gamepackage/loadPokieGame.js";
 import {parentPort, workerData} from "worker_threads";
 import {FixedBetModeForNextSimulationRoundSetting} from "../../FixedBetModeForNextSimulationRoundSetting.js";
 import {SimulationConvergenceChecker} from "../../SimulationConvergenceChecker.js";
@@ -73,17 +75,19 @@ async function main(): Promise<void> {
             type: "error",
             workerIndex: request.workerIndex,
             message: error instanceof Error ? error.message : String(error),
+            cancelled: error instanceof SimulationCancelledError,
             accumulator: (error as {accumulatorSnapshot?: import("../../SimulationAccumulatorSnapshot.js").SimulationAccumulatorSnapshot}).accumulatorSnapshot,
         };
     } finally {
         port.postMessage({type: "phase", workerIndex: request.workerIndex, phase: "finalizing / cleanup"} satisfies SimulationWorkerMessage);
         if (game !== undefined) {
             try {
-                await releasePokieGame(game);
+                await releaseSimulationGame(game);
             } catch (error) {
                 terminal = {
                     type: "error",
                     workerIndex: request.workerIndex,
+                    cleanupFailed: true,
                     message: `could not release game runtime: ${error instanceof Error ? error.message : String(error)}`,
                     accumulator: "accumulator" in terminal! ? terminal!.accumulator : undefined,
                 };

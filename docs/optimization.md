@@ -58,7 +58,10 @@ project (including project-local installations), rather than resolving from scra
 These external installations must remain available; saving does not vendor them. Saved
 packages retain source/build timestamps for stale-entry detection. Exact candidates are loaded
 and measured at the destination before publication is accepted. Seeded candidates retain their single
-reviewed assessment and executable identity without a fresh, potentially favorable assessment on save.
+reviewed assessment without resampling. Their evidence separately binds installed dependency bytes
+and the resolved transitive dependency graph (including the host runtime). Search/assessment and save
+reject dependency drift or disappearance. Save loads the destination and verifies its model binding
+before accepting publication, then releases its game resources and loader lease.
 Dependencies remain ordinary external package dependencies;
 `node_modules`, `.git` and loader caches are excluded from authored-byte identity.
 Filesystem aliases in authored input/publication paths are rejected.
@@ -244,7 +247,8 @@ rerun its request against the same identified source and dependencies to compare
 
 One fixed held-out assessment uses two-sided Hoeffding intervals, with Bonferroni allocation
 `delta=(1-confidence)/numberOfTargets`. Probability observations have range `[0,1]`; RTP observations
-use a finite support bound derived from supported line/scatter math or the validated native/executable
+use a finite support bound derived from the canonical resolved line/scatter math (including default
+paylines over evaluated geometry) or the validated native/executable
 population, never a sampled maximum. This deliberately does not reuse the empirical normal interval's
 zero-variance shortcut. Existing simulation precision convergence is not optimization attainment.
 
@@ -276,9 +280,12 @@ durable evidence but need a rerun for process-local save ownership.
 Progress phases are preparing, search, assessment and finalizing; chunked simulations yield to SIGINT/Studio
 cancellation. Cancellation, execution/observer failures, native readback drift, stale Project/source
 or request identity, and release failures discard owned scratch candidates without changing source
-or locks. Workers cooperate through the shared cancellation buffer, acknowledge runtime release and
+or locks. Invocation ownership releases game hooks and loader leases on every terminal path,
+including recipe games and injected games. Workers cooperate through the shared cancellation buffer, acknowledge runtime release and
 are terminated before a terminal result. Failed termination or missing release acknowledgement is an
-operational cleanup failure (Studio recovery-required), never successful cancellation. Publication
+operational cleanup failure (Studio recovery-required), never successful cancellation. Terminal
+snapshots are still validated during cancellation drainage; all accepted counts reach partial evidence,
+and a late release failure takes precedence over cancellation. Publication
 uses existing new/empty destination and ownership-aware rollback rules, including the evidence and
 WASM companions. Independent review, production bundle/packaging and controller gates remain separate
 from these implementation tests.

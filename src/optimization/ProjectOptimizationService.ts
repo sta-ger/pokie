@@ -1,3 +1,6 @@
+import {loadPokieGameRuntime} from "../gamepackage/loadPokieGame.js";
+import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
+import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {runStochasticOptimization} from "./internal/runStochasticOptimization.js";
 import {SimulationCancelledError} from "../simulation/parallel/SimulationCancelledError.js";
 import {WeightedOutcomeLibraryGenerationError} from "../weightedoutcome/generate/WeightedOutcomeLibraryGenerationError.js";
@@ -41,6 +44,7 @@ import {
     constraintsHold,
     digest,
     jsonHash,
+    packageExecutableRevision,
     projectRevision,
     put,
     sourceInventory,
@@ -352,6 +356,12 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             projectRevision(source) !== candidate.sourceRevision ||
             projectRevision({type: candidate.type, rootPath: candidate.path}) !== candidate.revision
         ) throw new Error("Source or reviewed candidate changed; optimize again.");
+        const assertExecutable = async (file: string): Promise<void> => {
+            if (request.policy.strategy === "seeded-search-v1" && candidate.type === "tsPackage" &&
+                (!receipt.evidence?.stochastic?.executableRevision || await packageExecutableRevision(file) !== receipt.evidence.stochastic.executableRevision)) throw new Error("Executable dependencies changed or are unavailable; rerun optimization.");
+        };
+        await assertExecutable(candidate.sourcePath);
+        await assertExecutable(candidate.path);
         destination = path.resolve(destination);
         assertNoFilesystemAliases(destination);
         assertArtifactDestinationIsSafe(candidate.sourcePath, destination);
@@ -394,6 +404,20 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                 assertOnlyTuned(sourceAdapter.model, readback, request.policy);
                 if (!receipt.evidence?.stochastic?.assessment || !receipt.evidence.selected) throw new Error("Reviewed stochastic assessment unavailable; rerun optimization.");
                 for (const field of request.policy.tunables) if (at(readback, field.path) !== receipt.evidence.selected[field.path]) throw new Error("Published parameters differ from assessment.");
+                await assertExecutable(destination);
+                if (candidate.type === "tsPackage") {
+                    const runtime = await loadPokieGameRuntime(destination);
+                    try {
+                        if (runtime.game.getConfigHash?.() !== computeGameBlueprintHash(readback as GameBlueprint)) throw new Error("Published executable does not bind the assessed model.");
+                    } finally {
+                        try {
+                            await runtime.game.release?.();
+                        } finally {
+                            await runtime.release();
+                        }
+                    }
+                    await assertExecutable(destination);
+                }
             } else {
                 const maxConstraint = request.policy.constraints?.maxWin;
                 const evaluatedTargets = maxConstraint ? [...request.targets, {metric: "maxWin" as const, unit: maxConstraint.unit, value: maxConstraint.value}] : request.targets;
@@ -408,6 +432,8 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             if (options.signal?.aborted) throw new OptimizationCancelledError("Publication cancelled.");
             if (options.isCurrent && !options.isCurrent()) throw new Error("Project/request changed during publication.");
             if (projectRevision(source) !== candidate.sourceRevision) throw new Error("Source changed during publication.");
+            await assertExecutable(candidate.sourcePath);
+            await assertExecutable(candidate.path);
             return destination;
         } catch (error) {
             await rollbackArtifactPublication({

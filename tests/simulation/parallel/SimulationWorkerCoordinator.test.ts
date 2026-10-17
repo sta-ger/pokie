@@ -385,3 +385,32 @@ it("propagates cleanup only when every worker has entered it and still drains af
     await expect(rejected).rejects.toThrow("observation failed");
     expect(failing.terminateCallCount).toBe(1);
 });
+
+
+it.each([false, true])("accepts terminal drainage counts and lets release failure=%s override cancellation", async cleanupFailed => {
+    const workers = [new FakeWorker(), new FakeWorker()];
+    let created = 0;
+    const controller = new AbortController();
+    const coordinator = new SimulationWorkerCoordinator(undefined, () => workers[created++] as unknown as Worker);
+    const requests = [0, 1].map(index => ({...makeRequest(index, 2), requireCleanup: true}));
+    const promise = coordinator.run(requests, {signal: controller.signal});
+    workers[0].emit("message", {type: "progress", ...makeResult(0, 2)});
+    controller.abort();
+    workers[0].emit("message", {type: "result", ...makeResult(0, 7)});
+    workers[1].emit("message", {type: "error", workerIndex: 1, message: cleanupFailed ? "release refused" : "cancelled", cancelled: !cleanupFailed, cleanupFailed, accumulator: makeResult(1, 9).accumulator});
+    await expect(promise).rejects.toMatchObject({message: expect.stringContaining(cleanupFailed ? "cleanup failed" : "cancelled"), observedPrefix: {rounds: 16}});
+    expect(workers.map(worker => worker.terminateCallCount)).toEqual([1, 1]);
+    expect(workers.map(worker => worker.listenerCount("message"))).toEqual([0, 0]);
+});
+
+it("validates error snapshots during drainage and retains the last valid prefix", async () => {
+    const worker = new FakeWorker();
+    const controller = new AbortController();
+    const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
+    const promise = coordinator.run([{...makeRequest(0), requireCleanup: true}], {signal: controller.signal});
+    worker.emit("message", {type: "progress", ...makeResult(0, 2)});
+    controller.abort();
+    worker.emit("message", {type: "error", workerIndex: 0, message: "cancelled", cancelled: true, accumulator: {...makeResult(0, 7).accumulator, rounds: -1}});
+    await expect(promise).rejects.toMatchObject({message: expect.stringContaining("cleanup unconfirmed"), observedPrefix: {rounds: 2}});
+    expect(worker.terminateCallCount).toBe(1);
+});

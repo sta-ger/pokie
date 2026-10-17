@@ -4,7 +4,7 @@ import {pathToFileURL} from "url";
 import {Worker} from "worker_threads";
 import {ProjectOptimizationService} from "../../src/optimization/ProjectOptimizationService.js";
 import {ProjectTargetResolver} from "../../src/project/ProjectTargetResolver.js";
-import {acquireOptimizationAdapter} from "../../src/optimization/internal/ProjectOptimizationAdapter.js";
+import {acquireOptimizationAdapter, nativeReturnBound} from "../../src/optimization/internal/ProjectOptimizationAdapter.js";
 import {assessOptimizationSample, stochasticOrder} from "../../src/optimization/internal/runStochasticOptimization.js";
 import {sourceInventory} from "../../src/optimization/internal/optimizationData.js";
 import {validateOptimizationRequest} from "../../src/optimization/validateOptimizationRequest.js";
@@ -331,12 +331,7 @@ it("does not relabel sampled maxima, volatility or full feature rounds as suppor
 });
 
 it("executes the actual source worker lifecycle, transports requested counters, repeats with fixed workers and drains aborts", async () => {
-    const entry = path.join(directory, "worker.cjs");
-    fs.writeFileSync(entry, `const fs = require('fs'); const Module = require('module'); const ts = require(${JSON.stringify(require.resolve("typescript"))});
-const original = Module._resolveFilename;
-Module._resolveFilename = function(request, ...rest) { try { return original.call(this, request, ...rest); } catch (error) { if (request.endsWith('.js')) return original.call(this, request.slice(0, -3) + '.ts', ...rest); throw error; } };
-Module._extensions['.ts'] = (module, file) => module._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true}}).outputText, file);
-require(${JSON.stringify(path.resolve("src/simulation/parallel/internal/simulationWorkerEntry.ts"))});`);
+    const entry = writeSourceWorkerEntry();
     const nativeWorker = jest.spyOn(SimulationWorkerCoordinator.prototype as unknown as {buildDefaultCreateWorker(): Promise<(request: unknown) => Worker>}, "buildDefaultCreateWorker");
     const owned: Worker[] = [];
     nativeWorker.mockImplementation(() => Promise.resolve(request => {
@@ -375,4 +370,89 @@ require(${JSON.stringify(path.resolve("src/simulation/parallel/internal/simulati
     expect((await service.optimize(project, request)).status).toBe("failure");
     expect(owned.every(worker => worker.threadId === -1)).toBe(true);
     expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+}, 60000);
+
+
+it("uses the canonical evaluated geometry for omitted paylines in search and assessment", async () => {
+    const {paylines: _paylines, ...model} = optimizationBlueprint();
+    const geometry = {...model, reelStrips: [["A"], ["A"]], paytable: {A: {2: 1}, B: {2: 0}},
+        screenGeometry: {generated: {reels: 2, rows: 2}, visible: {rowOffset: 0, rows: 1}, evaluated: {rowOffset: 0, rows: 2}, paylineSpace: "evaluated"}};
+    fs.writeFileSync(source, JSON.stringify(geometry));
+    const request = stochasticOptimizationRequest();
+    request.policy.tunables[0].values = [1];
+    request.policy.sampling!.minEventCount = 0;
+    request.policy.locks = ["/screenGeometry", "/reelStrips", "/paytable/B", "/availableBets"];
+    request.targets[0] = {metric: "rtp", unit: "ratio", value: 2, tolerance: {kind: "absolute", value: 0.1}};
+    const result = await service.optimize(await resolve(source), request);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.status).toBe("attained");
+    expect(result.evidence!.evaluations![0].measured).toEqual([2]);
+    expect(result.evidence!.stochastic!.assessment).toMatchObject({returnBound: 2, estimates: [2], targets: [{verdict: "attained"}]});
+    await service.discard(result.candidate!);
+});
+
+it("reduces the declared million-outcome native support without a population-sized argument list", () => {
+    const outcomes = Array<{payoutPerBet: number}>(1000000).fill({payoutPerBet: 0.5});
+    outcomes[999999] = {payoutPerBet: 18};
+    expect(nativeReturnBound(outcomes, 2)).toBe(9);
+});
+
+function writeSourceWorkerEntry(instrumentation = ""): string {
+    const entry = path.join(directory, "worker.cjs");
+    fs.writeFileSync(entry, `const fs = require('fs'); const Module = require('module'); const ts = require(${JSON.stringify(require.resolve("typescript"))});
+const original = Module._resolveFilename;
+Module._resolveFilename = function(request, ...rest) { try { return original.call(this, request, ...rest); } catch (error) { if (request.endsWith('.js')) return original.call(this, request.slice(0, -3) + '.ts', ...rest); throw error; } };
+Module._extensions['.ts'] = (module, file) => module._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true}}).outputText, file);
+${instrumentation}
+require(${JSON.stringify(path.resolve("src/simulation/parallel/internal/simulationWorkerEntry.ts"))});`);
+    return entry;
+}
+
+
+it.each(["success", "cancel", "execution", "observer", "cancel-release"])("settles actual recipe/package hooks and snapshot leases exactly once after real-worker %s", async terminal => {
+    const marker = path.join(directory, "worker-releases");
+    const instrument = `const {workerData} = require('worker_threads');
+const mark = (kind, snapshot) => fs.appendFileSync(${JSON.stringify(marker)}, JSON.stringify({kind, index: workerData.workerIndex, snapshot}) + '\\n');
+const authored = require(${JSON.stringify(path.resolve("src/generated/createAuthoredSession.ts"))});
+const createAuthored = authored.createAuthoredSession;
+authored.createAuthoredSession = (...args) => { const owned = createAuthored(...args); const dispose = owned.dispose; owned.dispose = () => { dispose(); mark('dispose'); }; return owned; };
+const recipes = require(${JSON.stringify(path.resolve("src/optimization/internal/createOptimizationSimulationGame.ts"))});
+const create = recipes.createOptimizationSimulationGame;
+recipes.createOptimizationSimulationGame = recipe => { const game = create(recipe); const release = game.release; const session = game.createSession;
+game.createSession = context => { const result = session(context); if (${JSON.stringify(terminal)} === 'execution') { let count = 0; const play = result.play; result.play = () => { if (count++ === 1) throw Error('execution failed'); return play(); }; } return result; };
+game.release = async () => { await release(); mark('hook'); if (${JSON.stringify(terminal)} === 'cancel-release') throw Error('release refused'); }; return game; };`;
+    const entry = writeSourceWorkerEntry(instrument);
+    const root = path.join(directory, "worker-package");
+    fs.mkdirSync(root);
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "worker-owned", pokie: {entry: "index.cjs"}}));
+    fs.writeFileSync(path.join(root, "index.cjs"), `module.exports = {
+getManifest: () => ({id: 'worker-owned', name: 'Owned', version: '1'}),
+release: async () => { require('fs').appendFileSync(${JSON.stringify(marker)}, JSON.stringify({kind: 'hook', index: require('worker_threads').workerData.workerIndex, snapshot: __dirname}) + '\\n'); if (${JSON.stringify(terminal)} === 'cancel-release') throw Error('release refused'); },
+createSession: () => { let count=0; return { getBet:()=>1, setBet:()=>{}, getAvailableBets:()=>[1], getCreditsAmount:()=>1000, setCreditsAmount:()=>{}, canPlayNextGame:()=>true, getWinAmount:()=>0, play:()=>{ if (${JSON.stringify(terminal)} === 'execution' && count++ === 1) throw Error('execution failed'); } }; }
+};`);
+    const workers: Worker[] = [];
+    for (const kind of ["recipe", "package"]) {
+        fs.writeFileSync(marker, "");
+        const controller = new AbortController();
+        const coordinator = new SimulationWorkerCoordinator(pathToFileURL(entry), request => {
+            const worker = new Worker(pathToFileURL(entry), {workerData: request});
+            workers.push(worker);
+            return worker;
+        });
+        const runner = new ParallelSimulationRunner(root, 40, {workers: 2, chunkSize: 2, signal: controller.signal,
+            optimizationRecipe: kind === "recipe" ? {kind: "authored-entry", modelId: "owned", stake: 1, blueprint: optimizationBlueprint()} : undefined,
+            createWorkerCoordinator: () => coordinator,
+            onProgress: () => {
+                if (terminal === "cancel" || terminal === "cancel-release") controller.abort();
+                if (terminal === "observer") throw new Error("observer failed");
+            },});
+        const reasons: Record<string, string> = {"cancel-release": "cleanup failed", cancel: "cancelled"};
+        if (terminal === "success") await expect(runner.run()).resolves.toHaveProperty("statistics.rounds", 40);
+        else await expect(runner.run()).rejects.toMatchObject({message: expect.stringContaining(reasons[terminal] ?? `${terminal} failed`), observedPrefix: {rounds: expect.any(Number)}});
+        const records = fs.readFileSync(marker, "utf8").trim().split("\n").map(line => JSON.parse(line) as {kind: string; index: number; snapshot?: string});
+        expect(records.filter(record => record.kind === "hook").map(record => record.index).sort()).toEqual([0, 1]);
+        if (kind === "recipe") expect(records.filter(record => record.kind === "dispose").map(record => record.index).sort()).toEqual([0, 1]);
+        else for (const record of records) expect(fs.existsSync(record.snapshot!)).toBe(false);
+        expect(workers.every(worker => worker.threadId === -1)).toBe(true);
+    }
 }, 60000);

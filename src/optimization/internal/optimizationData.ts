@@ -1,3 +1,4 @@
+import {resolvePokieGameDependencyRoots} from "../../gamepackage/resolvePokieGameEntryModule.js";
 import crypto from "crypto";
 import {stableSlotMathJson} from "../../wasm/math/SharedSlotMath.js";
 import fs from "fs";
@@ -136,4 +137,27 @@ export function assertNoFilesystemAliases(file: string): void {
         if (parent === current) return;
         current = parent;
     }
+}
+
+/** Content and resolution graph of executable dependencies; authored inventory remains separate.
+ * Follow physical roots once (including nested/transitive/peer installations), never hash a
+ * descriptor in place of installed code. Missing optional roots are part of the identity too.
+ */
+export async function packageExecutableRevision(packageRoot: string): Promise<string> {
+    const identities = new Map<string, number>();
+    const graph: {files: Record<string, string>; dependencies: Record<string, number | null>}[] = [];
+    const visit = async (root: string): Promise<number> => {
+        const known = identities.get(root);
+        if (known !== undefined) return known;
+        const id = graph.length;
+        identities.set(root, id);
+        const node = {files: inventory(root), dependencies: {} as Record<string, number | null>};
+        graph.push(node);
+        const dependencies = await resolvePokieGameDependencyRoots(root, false);
+        for (const [name, dependency] of Object.entries(dependencies)) node.dependencies[name] = dependency === null ? null : await visit(dependency);
+        return id;
+    };
+    const roots: Record<string, number | null> = {};
+    for (const [name, root] of Object.entries(await resolvePokieGameDependencyRoots(packageRoot))) roots[name] = root === null ? null : await visit(root);
+    return jsonHash({roots, graph});
 }

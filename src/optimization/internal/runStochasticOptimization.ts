@@ -7,7 +7,7 @@ import {ProjectTargetResolver} from "../../project/ProjectTargetResolver.js";
 import type {SimulationStatistics} from "../../simulation/SimulationStatistics.js";
 import type {MathTarget, OptimizationCandidate, OptimizationEvidence, OptimizationOptions, OptimizationRequest, OptimizationResult, OptimizationSampleEvidence, OptimizationScalar} from "../OptimizationPolicy.js";
 import {OptimizationCancelledError, type ProjectOptimizationAdapting} from "./ProjectOptimizationAdapter.js";
-import {assertOnlyTuned, at, constraintsHold, jsonHash, projectRevision, put, sourceInventory} from "./optimizationData.js";
+import {assertOnlyTuned, at, constraintsHold, jsonHash, packageExecutableRevision, projectRevision, put, sourceInventory} from "./optimizationData.js";
 
 export function sampledEstimates(targets: MathTarget[], statistics: SimulationStatistics): number[] {
     const observations = statistics.observations;
@@ -90,6 +90,13 @@ export async function runStochasticOptimization(
     evidence.stochastic = {policyVersion: "bounded-hoeffding-bonferroni-v1", ordering: "seeded-affine-cartesian-v1;first-minimum-score",
         seedDerivation: "JSON([seed,phase,attempt]); worker seeds use WorkerSeedStrategy", workers: sampling.workers,
         searchSamples: 0, assessmentSamples: 0, validationWork: 0, modelRevision: originalModel};
+    if (project.type === "tsPackage") {
+        const executableRevision = await packageExecutableRevision(project.rootPath);
+        Object.assign(evidence.stochastic, {executableRevision});
+    }
+    const assertExecutable = async (file: string): Promise<void> => {
+        if (project.type === "tsPackage" && await packageExecutableRevision(file) !== evidence.stochastic!.executableRevision) throw new Error("Executable dependencies changed or are unavailable; rerun optimization.");
+    };
     let best: {candidate: OptimizationCandidate; model: unknown; score: number; parameters: Record<string, OptimizationScalar>; measured: number[]} | undefined;
     const current = (): void => {
         if (options.signal?.aborted) throw new OptimizationCancelledError("Optimization cancelled; owned execution drained.");
@@ -117,6 +124,9 @@ export async function runStochasticOptimization(
             completed = actual;
         };
         try {
+            await assertExecutable(project.rootPath);
+            await assertExecutable(file);
+            current();
             const result = await adapter.sample(file, model, request.targets, request.policy, seed, count, {
                 signal: options.signal, workerEntryUrl: options.workerEntryUrl,
                 onProgress: actual => {
@@ -126,6 +136,8 @@ export async function runStochasticOptimization(
                 onValidationWork: validationWork,
             });
             update(result.statistics.rounds);
+            await assertExecutable(project.rootPath);
+            await assertExecutable(file);
             validationWork(result.validationWork);
             current();
             return result;
@@ -135,7 +147,7 @@ export async function runStochasticOptimization(
             throw error;
         }
     };
-    evidence.phase = "search";
+    Object.assign(evidence, {phase: "search"});
     let stop: OptimizationEvidence["stopReason"] = "domain-complete";
     for (let attempt = BigInt(0); attempt < domain; attempt++) {
         current();
@@ -198,7 +210,7 @@ export async function runStochasticOptimization(
         });
     }
     current();
-    evidence.stopReason = stop;
+    Object.assign(evidence, {stopReason: stop});
     Object.assign(evidence.stochastic, {searchStopReason: stop});
     if (!best) {
         if (evidence.exhaustive) evidence.stopReason = "no-valid-candidate";

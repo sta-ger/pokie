@@ -100,7 +100,19 @@ async function createRuntimeSnapshot(packageRoot: string, entryPath: string): Pr
 
 /** Bind declared dependencies to the source installation when detaching a package. */
 export async function createPokieGameDependencyOverlay(snapshotRoot: string, startPath: string): Promise<void> {
+    const roots = await resolvePokieGameDependencyRoots(startPath);
     const overlay = path.join(snapshotRoot, "node_modules");
+    fs.mkdirSync(overlay);
+    for (const [dependencyName, source] of Object.entries(roots)) {
+        if (source === null) continue;
+        const destination = path.join(overlay, dependencyName);
+        fs.mkdirSync(path.dirname(destination), {recursive: true});
+        fs.symlinkSync(source, destination, process.platform === "win32" ? "junction" : "dir");
+    }
+}
+
+/** The exact dependency roots used by the loader overlay, including its host-runtime fallback. */
+export async function resolvePokieGameDependencyRoots(startPath: string, includeHostRuntime = true): Promise<Record<string, string | null>> {
     const dependencyRoots: string[] = [];
     let current = startPath;
     while (path.dirname(current) !== current) {
@@ -108,7 +120,6 @@ export async function createPokieGameDependencyOverlay(snapshotRoot: string, sta
         if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) dependencyRoots.push(candidate);
         current = path.dirname(current);
     }
-    fs.mkdirSync(overlay);
     // Link only the package's declared runtime dependencies, never every entry in an ancestor
     // workspace node_modules.  The linked package keeps its physical nested dependency tree, so
     // Node resolves its transitive dependencies normally without a recursive copy or overlay scan.
@@ -118,8 +129,9 @@ export async function createPokieGameDependencyOverlay(snapshotRoot: string, sta
     // normal workspace ancestor. Keep that single compatibility dependency;
     // every other overlay entry remains manifest-declared.
     const declaredDependencies = declaredRuntimeDependencies(startPath);
-    const hostRuntimeRoot = await resolveHostPokieRuntimeRoot();
-    for (const dependencyName of new Set(["@fromstan/pokie", ...declaredDependencies])) {
+    const hostRuntimeRoot = includeHostRuntime ? await resolveHostPokieRuntimeRoot() : undefined;
+    const roots: Record<string, string | null> = {};
+    for (const dependencyName of [...new Set([...(includeHostRuntime ? ["@fromstan/pokie"] : []), ...declaredDependencies])].sort()) {
         // An explicit package dependency remains authoritative. The compatibility `pokie`
         // overlay for old packages that omit it is different: bind that name to the embedding
         // runtime first, so a stray legacy/local `node_modules/@fromstan/pokie` cannot make a worker load a
@@ -136,11 +148,9 @@ export async function createPokieGameDependencyOverlay(snapshotRoot: string, sta
         const source = hostRuntime
             ?? dependencyRoots.map((dependencyRoot) => path.join(dependencyRoot, dependencyName)).find((candidate) => fs.existsSync(candidate))
             ?? (dependencyName === "@fromstan/pokie" ? hostRuntimeRoot : undefined);
-        if (source === undefined) continue;
-        const destination = path.join(overlay, dependencyName);
-        fs.mkdirSync(path.dirname(destination), {recursive: true});
-        fs.symlinkSync(source, destination, process.platform === "win32" ? "junction" : "dir");
+        roots[dependencyName] = source === undefined ? null : fs.realpathSync(source);
     }
+    return roots;
 }
 
 async function resolveHostPokieRuntimeRoot(): Promise<string | undefined> {

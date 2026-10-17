@@ -1,3 +1,4 @@
+import {ParallelSimulationRunner} from "../../src/simulation/parallel/ParallelSimulationRunner.js";
 import {acquireOptimizationAdapter} from "../../src/optimization/internal/ProjectOptimizationAdapter.js";
 import {describeUnsupportedProjectOperation} from "../../src/project/describeUnsupportedProjectOperation.js";
 import {StakeAdapterArtifactBuilder} from "../../src/project/StakeAdapterArtifactBuilder.js";
@@ -1022,3 +1023,88 @@ it("measures a supported population above the JavaScript argument limit without 
     const population = {modes: {base: {libraryId: "large", outcomes: Object.fromEntries(Array.from({length: 150000}, (_, index) => [String(index), {weight: 1, artifact}]))}}};
     expect(await adapter.measure(root, population, [{metric: "maxWin", unit: "betMultiple", value: 2}], request.policy)).toEqual([2]);
 }, 30000);
+
+
+it.each(["exact-finite-v1", "seeded-search-v1"] as const)("rejects native stake mismatch in support and %s before preparing candidates", async strategy => {
+    const {outcomes} = await nativeSource();
+    const root = path.join(directory, "stake-mismatch");
+    await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{modeName: "base", libraryId: "native", outcomes}], root);
+    const project = await resolve(root);
+    const before = sourceInventory(project);
+    const request = stochasticOptimizationRequest();
+    request.policy.strategy = strategy;
+    if (strategy === "exact-finite-v1") Reflect.deleteProperty(request.policy, "sampling");
+    request.policy.scope = "native-outcomes";
+    request.policy.stake = 7.5;
+    request.policy.tunables = [{path: `/modes/base/outcomes/${outcomes[0].id}/weight`, values: [1, 2]}];
+    request.policy.locks = [];
+    const write = jest.spyOn(OutcomeLibraryBundleWriter.prototype, "writeToDirectory");
+    expect(await service.support(project, request)).toMatchObject({supported: false, reason: expect.stringContaining("stake must match")});
+    expect(await service.optimize(project, request)).toMatchObject({status: "unsupported", diagnostics: [{message: expect.stringContaining("stake must match")}]});
+    expect(write).not.toHaveBeenCalled();
+    expect(fs.existsSync(path.join(directory, "scratch"))).toBe(false);
+    expect(sourceInventory(project)).toEqual(before);
+});
+
+it.each(["changed", "missing", "transitive"])("rejects %s executable dependencies without resampling or touching source/output", async drift => {
+    const name = "sample-dependency";
+    const {root} = declaredPackage("sample-authority", `require('${name}');\n`, "", {[name]: "1.0.0"});
+    const dependency = path.join(root, "node_modules", name);
+    const nested = path.join(dependency, "node_modules", "transitive");
+    fs.mkdirSync(nested, {recursive: true});
+    fs.writeFileSync(path.join(dependency, "package.json"), JSON.stringify({name, main: "index.cjs", dependencies: {transitive: "1"}}));
+    fs.writeFileSync(path.join(dependency, "index.cjs"), "module.exports = require('transitive');");
+    fs.writeFileSync(path.join(nested, "package.json"), JSON.stringify({name: "transitive", main: "index.cjs"}));
+    fs.writeFileSync(path.join(nested, "index.cjs"), "module.exports = 42;");
+    const request = stochasticOptimizationRequest();
+    request.policy.tunables[0].values = [3];
+    const project = await resolve(root);
+    const before = sourceInventory(project);
+    const result = await service.optimize(project, request);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.evidence!.stochastic!.executableRevision).toMatch(/^sha256:/);
+    const simulation = jest.spyOn(ParallelSimulationRunner.prototype, "run");
+    const output = path.join(directory, "rejected-output");
+    if (drift === "missing") fs.rmSync(dependency, {recursive: true});
+    else fs.appendFileSync(path.join(drift === "transitive" ? nested : dependency, "index.cjs"), "\n// changed executable bytes");
+    await expect(service.publish(result.candidate!, request, output)).rejects.toThrow(/dependencies changed or are unavailable/);
+    expect(simulation).not.toHaveBeenCalled();
+    expect(fs.existsSync(output)).toBe(false);
+    expect(fs.existsSync(`${output}.optimization.json`)).toBe(false);
+    expect(sourceInventory(project)).toEqual(before);
+    await service.discard(result.candidate!);
+}, 60000);
+
+it.each([false, true])("validates sampled destination loadability failure=%s without another assessment and preserves unowned files", async failLoad => {
+    const marker = path.join(directory, "loaded-destinations");
+    const {root} = declaredPackage("publish-runtime", `require('fs').appendFileSync(${JSON.stringify(marker)}, 'loaded\\n'); if (__dirname.includes('pokie-runtime-') && require('fs').existsSync(${JSON.stringify(path.join(directory, "reject-load"))})) { require('fs').writeFileSync(${JSON.stringify(path.join(directory, "published-runtime", "unowned.txt"))}, 'another writer'); throw Error('destination runtime unavailable'); }\n`);
+    const request = stochasticOptimizationRequest();
+    request.policy.tunables[0].values = [3];
+    const result = await service.optimize(await resolve(root), request);
+    expect(result.diagnostics).toEqual([]);
+    const assessment = JSON.stringify(result.evidence);
+    const loadsBefore = fs.readFileSync(marker, "utf8");
+    const output = path.join(directory, "published-runtime");
+    const companion = `${output}.optimization.json`;
+    const publish = ArtifactPublicationOwnership.prototype.publish;
+    jest.spyOn(ArtifactPublicationOwnership.prototype, "publish").mockImplementation(async function(from, to, options) {
+        await Reflect.apply(publish, this, [from, to, options]);
+        if (to === companion && failLoad) {
+            fs.writeFileSync(path.join(directory, "reject-load"), "reject");
+        }
+    });
+    const simulation = jest.spyOn(ParallelSimulationRunner.prototype, "run");
+    if (failLoad) {
+        await expect(service.publish(result.candidate!, request, output)).rejects.toThrow("destination runtime unavailable");
+        expect(fs.readdirSync(output)).toEqual(["unowned.txt"]);
+        expect(fs.readFileSync(path.join(output, "unowned.txt"), "utf8")).toBe("another writer");
+        expect(fs.existsSync(companion)).toBe(false);
+    } else {
+        await service.publish(result.candidate!, request, output);
+        expect(fs.readFileSync(marker, "utf8").length).toBeGreaterThan(loadsBefore.length);
+        expect(JSON.parse(fs.readFileSync(companion, "utf8")).evidence).toEqual(result.evidence);
+    }
+    expect(simulation).not.toHaveBeenCalled();
+    expect(JSON.stringify(result.evidence)).toBe(assessment);
+    await service.discard(result.candidate!);
+}, 60000);

@@ -1,6 +1,7 @@
+import {releaseSimulationGame} from "./internal/releaseSimulationGame.js";
 import {createOptimizationSimulationGame} from "../../optimization/internal/createOptimizationSimulationGame.js";
 import {setSimulationModelIdentity} from "../SessionFeatureAnalyticsObserver.js";
-import {loadPokieGame, releasePokieGame} from "../../gamepackage/loadPokieGame.js";
+import {loadPokieGame} from "../../gamepackage/loadPokieGame.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {PokieGameManifest} from "../../gamepackage/PokieGameManifest.js";
 import type {JackpotStatisticsSnapshot} from "../../session/JackpotStatisticsSnapshot.js";
@@ -204,13 +205,19 @@ export class ParallelSimulationRunner {
             observedPrefix = (error as {observedPrefix?: SimulationStatistics} | null)?.observedPrefix ?? observedPrefix;
             throw error;
         } finally {
+            let phaseError: unknown;
             try {
                 this.options.onPhase?.("finalizing / cleanup");
-            } finally {
-                await releasePokieGame(game).catch((error: unknown) => {
-                    if (error instanceof Error && observedPrefix) Object.assign(error, {observedPrefix});
-                    return Promise.reject(error);
-                });
+            } catch (error) {
+                phaseError = error;
+            }
+            await releaseSimulationGame(game).catch((error: unknown) => {
+                if (error instanceof Error && observedPrefix) Object.assign(error, {observedPrefix});
+                return Promise.reject(error);
+            });
+            if (phaseError !== undefined) {
+                if (phaseError instanceof Error && observedPrefix) Object.assign(phaseError, {observedPrefix});
+                await Promise.reject(phaseError);
             }
         }
     }
@@ -277,7 +284,7 @@ export class ParallelSimulationRunner {
                 stake: this.options.stake,
                 observations: this.options.observations,
                 optimizationRecipe: this.options.optimizationRecipe,
-                requireCleanup: this.options.requireCleanup,
+                requireCleanup: this.options.requireCleanup ?? true,
                 rounds: share,
                 seed: WorkerSeedStrategy.deriveSeed(this.options.seed, workerIndex, workers),
                 progressChunkSize,

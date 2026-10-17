@@ -57,6 +57,7 @@ export type OptimizationEvidence = {
         validationWork: number;
         searchStopReason?: OptimizationEvidence["stopReason"];
         modelRevision: string;
+        executableRevision?: string;
         fitness?: number;
         assessment?: OptimizationSampleEvidence;
     };

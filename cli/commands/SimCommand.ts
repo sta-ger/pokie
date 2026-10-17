@@ -1,3 +1,4 @@
+import {releaseSimulationGame} from "../../src/simulation/parallel/internal/releaseSimulationGame.js";
 import {collectPokieWasmSimulation} from "../../src/wasm/PokieWasmCommands.js";
 import {projectOutcomeSourceSimulationReport} from "../../src/reporting/projectOutcomeSourceSimulationReport.js";
 import {describeSimulationDiagnostics} from "../../src/reporting/describeSimulationDiagnostics.js";
@@ -16,7 +17,6 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
     readWasmComponentManifest,
-    releasePokieGame,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
     simulateOutcomeSourceProject,
@@ -444,7 +444,7 @@ export class SimCommand implements CliCommandHandling {
         try {
             declaredModes = game.getBetModes?.();
         } finally {
-            await releasePokieGame(game);
+            await releaseSimulationGame(game);
         }
 
         if (options.mode === ALL_MODES) {

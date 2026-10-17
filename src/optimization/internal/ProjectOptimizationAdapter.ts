@@ -1,3 +1,4 @@
+import {resolveSharedSlotMathModel} from "../../generated/resolveSharedSlotMathModel.js";
 import {integerRelativeWeights} from "../../session/videoslot/combinations/WeightedSymbolsSequence.js";
 import {ParallelSimulationRunner} from "../../simulation/parallel/ParallelSimulationRunner.js";
 import type {SimulationStatistics} from "../../simulation/SimulationStatistics.js";
@@ -13,7 +14,8 @@ import {GameBlueprintValidator} from "../../generated/GameBlueprintValidator.js"
 import {computeGameBlueprintHash} from "../../generated/computeGameBlueprintHash.js";
 import {createPokieGameDependencyOverlay} from "../../gamepackage/resolvePokieGameEntryModule.js";
 import {OptimizationInputError} from "../validateOptimizationRequest.js";
-import {loadPokieGame, releasePokieGame, loadPokieGameRuntime} from "../../gamepackage/loadPokieGame.js";
+import {loadPokieGame, loadPokieGameRuntime} from "../../gamepackage/loadPokieGame.js";
+import {releaseSimulationGame} from "../../simulation/parallel/internal/releaseSimulationGame.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {PokieProject} from "../../project/PokieProject.js";
 import {readWasmComponentManifest} from "../../project/readWasmComponentManifest.js";
@@ -220,6 +222,7 @@ export async function acquireOptimizationAdapter(
         if (project.type === "stakeAdapter" && fs.existsSync(path.join(project.rootPath, "pokie-manifest.json")) && fs.existsSync(path.join(project.rootPath, "optimization-input-pokie-manifest.json"))) throw new OptimizationUnsupportedError("A prior Stake input-provenance archive already occupies the required companion path.");
         const model = await readNative(project);
         if (!model.modes[policy.mode]) throw new OptimizationUnsupportedError(`Unknown native mode ${policy.mode}.`);
+        if (project.type === "outcomeLibrary" && Object.values(model.modes[policy.mode].outcomes).some(outcome => outcome.artifact!.stake !== policy.stake)) throw new OptimizationUnsupportedError("Native library stake must match every selected artifact.");
         const escapeMode = encode(policy.mode);
         const writable = Object.keys(model.modes[policy.mode].outcomes).map(
             (id) => `/modes/${escapeMode}/outcomes/${encode(id)}/weight`,
@@ -304,14 +307,13 @@ export async function acquireOptimizationAdapter(
                 const outcomes = Object.values(mode.outcomes);
                 if (outcomes.length > requested.maxOutcomes) throw new OptimizationExhaustedError("Native support population exceeds maxOutcomes.");
                 const weights = project.type === "stakeAdapter" ? outcomes.map(outcome => BigInt(outcome.weight)) : integerRelativeWeights(outcomes.map(outcome => outcome.weight as number));
-                if (project.type === "outcomeLibrary" && outcomes.some(outcome => outcome.artifact!.stake !== requested.stake)) throw new OptimizationUnsupportedError("Native library stake must match every selected artifact.");
                 const recipe: OptimizationSimulationRecipe = {
                     kind: "native", modelId: jsonHash(value), stake: requested.stake, cost: mode.cost ?? 1,
                     outcomes: outcomes.map((outcome, i) => ({weight: weights[i].toString(),
                         payoutPerBet: outcome.artifact?.payoutMultiplier ?? outcome.stake!.payoutMultiplier / 100,
                         events: [...new Set(outcome.artifact?.featureEvents?.map(event => event.type) ?? outcome.stake?.events.map(event => event.type) ?? [])],})),
                 };
-                const returnBound = Math.max(...recipe.outcomes.map(outcome => outcome.payoutPerBet / recipe.cost));
+                const returnBound = nativeReturnBound(recipe.outcomes, recipe.cost);
                 return samplePopulation(file, targets, requested, seed, samples, returnBound, options, recipe);
             },
             measure(_file, value, targets, requested) {
@@ -527,8 +529,9 @@ export async function acquireOptimizationAdapter(
             const model = value as GameBlueprint;
             // For this supported line-pay contract, at most one paytable award per line
             // plus one per scatter identity is possible. No sampled maximum grants authority.
-            const maximum = Math.max(0, ...Object.values(model.paytable).flatMap(table => Object.values(table)));
-            let returnBound = maximum * ((model.paylines?.length ?? model.rows) + (model.scatters?.length ?? 0));
+            const resolved = resolveSharedSlotMathModel(model);
+            const maximum = Object.values(resolved.paytable).reduce((bound, table) => Object.values(table).reduce((largest, payout) => Math.max(largest, payout), bound), 0);
+            let returnBound = maximum * (resolved.paylines.length + resolved.scatters.length);
             let validationWork = 0;
             const validationProgress = (completed: number): void => {
                 validationWork = completed;
@@ -552,7 +555,7 @@ export async function acquireOptimizationAdapter(
                 project.type === "tsPackage" ? async () => {
                     const game = await loadPokieGame(file);
                     if (game.getConfigHash?.() !== computeGameBlueprintHash(model)) {
-                        await releaseOwnedRuntime(() => releasePokieGame(game));
+                        await releaseOwnedRuntime(() => releaseSimulationGame(game));
                         throw new OptimizationUnsupportedError("Executable does not bind declared model.");
                     }
                     return game;
@@ -678,4 +681,9 @@ async function samplePopulation(
     if (expectedModelId && result.configHash !== expectedModelId) throw new Error("Worker executable does not bind the declared tuning model.");
     if (result.statistics.maxWin / result.statistics.averageBet > returnBound + 1e-10) throw new Error("Runtime exceeds the declared payout bound.");
     return {statistics: result.statistics, returnBound, validationWork: 0, stopReason: result.stopReason};
+}
+
+/** Native support may contain maxOutcomes entries; reduction uses constant auxiliary memory. */
+export function nativeReturnBound(outcomes: readonly {payoutPerBet: number}[], cost: number): number {
+    return outcomes.reduce((maximum, outcome) => Math.max(maximum, outcome.payoutPerBet / cost), 0);
 }
