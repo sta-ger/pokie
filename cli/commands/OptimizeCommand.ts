@@ -27,7 +27,7 @@ export class OptimizeCommand implements CliCommandHandling {
         return "optimize";
     }
     public getDescription(): string {
-        return "Search a declared finite math domain and review or save a same-type candidate.";
+        return "Search a declared math domain, review and explicitly apply authored changes or save a same-type candidate.";
     }
     public getCommanderCommand(): Command {
         return this.command();
@@ -36,7 +36,7 @@ export class OptimizeCommand implements CliCommandHandling {
         const command = this.command();
         let result: OptimizationResult = {status: "failure", diagnostics: []};
         let request: unknown;
-        let review: {sourcePath: string; sourceRevision: string; candidateRevision: string; requestRevision: string} | undefined;
+        let review: {sourcePath: string; sourceRevision: string; candidateRevision: string; requestRevision: string; executableRevision?: string} | undefined;
         const controller = new AbortController();
         const cancel = (): void => controller.abort();
         process.on("SIGINT", cancel);
@@ -72,10 +72,10 @@ export class OptimizeCommand implements CliCommandHandling {
                 });
                 if (result.candidate) {
                     const candidate = result.candidate;
-                    review = {sourcePath: candidate.sourcePath, sourceRevision: candidate.sourceRevision, candidateRevision: candidate.revision, requestRevision: candidate.requestRevision};
+                    review = {sourcePath: candidate.sourcePath, sourceRevision: candidate.sourceRevision, candidateRevision: candidate.revision, requestRevision: candidate.requestRevision, ...(candidate.executableRevision ? {executableRevision: candidate.executableRevision} : {})};
                     try {
                         if (options.apply) {
-                            if (approved?.candidateRevision !== candidate.revision) throw new Error("Candidate differs from reviewed preview; review again.");
+                            if (approved?.candidateRevision !== candidate.revision || approved?.executableRevision !== candidate.executableRevision) throw new Error("Candidate or executable dependencies differ from reviewed preview; review again.");
                             const output = await this.service["apply"](candidate, request, {signal: controller.signal});
                             result = {...result, candidate: undefined, output: {path: output, type: candidate.type, revision: projectRevision({type: candidate.type, rootPath: output})}};
                         } else if (options.out) {

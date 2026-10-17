@@ -94,6 +94,8 @@ export type OptimizationCandidate = {
     sourcePath: string;
     sourceRevision: string;
     requestRevision: string;
+    /** Declared package executable dependency identity reviewed with this candidate. */
+    executableRevision?: string;
     /** Detached workspace, owned by this candidate until discard. */
     workspace: string;
 };

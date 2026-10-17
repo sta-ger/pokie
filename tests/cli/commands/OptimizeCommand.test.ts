@@ -1,8 +1,9 @@
+import {declarePackageTuning} from "../../../src/optimization/DeclaredTuningContract.js";
 import {projectRevision} from "../../../src/optimization/internal/optimizationData.js";
 import fs from "fs";
 import path from "path";
 import {OptimizeCommand} from "../../../cli/commands/OptimizeCommand.js";
-import {optimizationBlueprint, optimizationRequest, stochasticOptimizationRequest} from "../../v2/fixtures/OptimizationFixture.js";
+import {optimizationBlueprint, optimizationRequest, stochasticOptimizationRequest, declaredOptimizationGameCode} from "../../v2/fixtures/OptimizationFixture.js";
 let directory: string;
 let source: string;
 let policy: string;
@@ -135,3 +136,28 @@ it("requires an unchanged reviewed source, candidate and policy for explicit aut
     expect(await command.run([source, "--policy", policy, "--apply", review])).toBe(1);
     expect(await command.run([source, "--policy", policy, "--apply", review, "--out", path.join(directory, "out")])).toBe(3);
 });
+
+
+it("rejects a reviewed CLI apply after executable dependency drift with identical source/candidate parameters", async () => {
+    const root = path.join(directory, "custom");
+    const dependency = path.join(root, "node_modules", "binding");
+    fs.mkdirSync(dependency, {recursive: true});
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "custom", version: "1", pokie: {entry: "index.cjs"}, dependencies: {binding: "1"}}));
+    fs.writeFileSync(path.join(root, "index.cjs"), declaredOptimizationGameCode);
+    fs.writeFileSync(path.join(root, "parameters.json"), JSON.stringify(optimizationBlueprint()));
+    fs.writeFileSync(path.join(dependency, "package.json"), JSON.stringify({name: "binding", main: "index.cjs"}));
+    const executable = path.join(dependency, "index.cjs");
+    fs.writeFileSync(executable, "module.exports = 1;");
+    declarePackageTuning(root, "parameters.json", ["/paytable/A/2"]);
+    const command = new OptimizeCommand();
+    expect(await command.run([root, "--policy", policy])).toBe(0);
+    const reviewed = JSON.parse(stdout.mock.calls[stdout.mock.calls.length - 1][0]);
+    const reviewFile = path.join(directory, "custom-review.json");
+    fs.writeFileSync(reviewFile, JSON.stringify(reviewed));
+    const sourceRevision = projectRevision({type: "tsPackage", rootPath: root});
+    fs.appendFileSync(executable, "\n// changed installed executable bytes");
+    expect(await command.run([root, "--policy", policy, "--apply", reviewFile])).toBe(1);
+    expect(projectRevision({type: "tsPackage", rootPath: root})).toBe(sourceRevision);
+    expect(result().status).toBe("failure");
+    expect(reviewed.review.executableRevision).toMatch(/^sha256:/);
+}, 60000);

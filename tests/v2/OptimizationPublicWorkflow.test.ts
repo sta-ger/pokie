@@ -4,7 +4,7 @@ import {SimulationWorkerCoordinator} from "../../src/simulation/parallel/Simulat
 import {writeOptimizationWorkerEntry} from "./fixtures/OptimizationWorkerFixture.js";
 import fs from "fs";
 import path from "path";
-import {ProjectOptimizationService, ProjectTargetResolver, ParSheetExporter, ParSheetImporter, WasmArtifactBuilder, declarePackageTuning, bindCanonicalWasmTuningSource, createTunableBlueprintGame, generateExactWeightedOutcomeLibrary, OutcomeLibraryBundleWriter, OutcomeLibraryBundleReader, StakeEngineExporter, StakeEngineOutcomeSourceReader, buildWeightedOutcomeLibrary} from "../../src/index.js";
+import {ArtifactPublicationOwnership, ProjectOptimizationService, ProjectTargetResolver, ParSheetExporter, ParSheetImporter, WasmArtifactBuilder, declarePackageTuning, bindCanonicalWasmTuningSource, createTunableBlueprintGame, generateExactWeightedOutcomeLibrary, OutcomeLibraryBundleWriter, OutcomeLibraryBundleReader, StakeEngineExporter, StakeEngineOutcomeSourceReader, buildWeightedOutcomeLibrary} from "../../src/index.js";
 import {loadPokieGameRuntime} from "../../src/gamepackage/loadPokieGame.js";
 import {sourceInventory} from "../../src/optimization/internal/optimizationData.js";
 import {acquireOptimizationAdapter} from "../../src/optimization/internal/ProjectOptimizationAdapter.js";
@@ -303,3 +303,37 @@ it("reproduces reviewed PAR candidate bytes across clock changes before CLI appl
     jest.useRealTimers();
     expect((await new ParSheetImporter().importFromFile(file)).blueprint.paytable.A[2]).toBe(3);
 });
+
+
+it("rejects exact publication dependency replacement while preserving source and foreign destination files", async () => {
+    const {file, request} = await fixture("tsPackage");
+    const dependency = path.join(file, "node_modules", "binding");
+    fs.mkdirSync(dependency, {recursive: true});
+    fs.writeFileSync(path.join(dependency, "package.json"), JSON.stringify({name: "binding", main: "index.cjs"}));
+    fs.writeFileSync(path.join(dependency, "index.cjs"), "module.exports = 1;");
+    const metadata = path.join(file, "package.json");
+    fs.writeFileSync(metadata, JSON.stringify({...JSON.parse(fs.readFileSync(metadata, "utf8")), dependencies: {binding: "1"}}));
+    fs.unlinkSync(path.join(file, "pokie-tuning.json"));
+    declarePackageTuning(file, "parameters.json", ["/paytable/A/2"]);
+    const project = await resolve(file);
+    const before = sourceInventory(project);
+    const result = await service.optimize(project, request);
+    expect(result.status).toBe("success");
+    const output = path.join(directory, "replaced-bindings");
+    const binding = path.join(output, "node_modules", "binding");
+    const publish = ArtifactPublicationOwnership.prototype.publish;
+    jest.spyOn(ArtifactPublicationOwnership.prototype, "publish").mockImplementation(async function(this: ArtifactPublicationOwnership, from, to, options) {
+        await Reflect.apply(publish, this, [from, to, options]);
+        if (to === output) {
+            expect(fs.lstatSync(binding).isSymbolicLink()).toBe(true);
+            fs.unlinkSync(binding);
+            fs.mkdirSync(binding);
+            fs.writeFileSync(path.join(binding, "package.json"), JSON.stringify({name: "binding", main: "index.cjs"}));
+            fs.writeFileSync(path.join(binding, "index.cjs"), "module.exports = 1; // independently changed installation");
+        }
+    });
+    await expect(service.publish(result.candidate!, request, output)).rejects.toThrow(/dependencies changed or are unavailable/);
+    expect(sourceInventory(project)).toEqual(before);
+    expect(fs.readFileSync(path.join(binding, "index.cjs"), "utf8")).toContain("independently changed installation");
+    await service.discard(result.candidate!);
+}, 60000);

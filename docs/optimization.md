@@ -346,3 +346,7 @@ The generic recover endpoint only resumes separately supported generation jobs. 
 and shutdown request cancellation and drain owned optimization executions/candidates; independently
 published artifacts survive candidate cleanup. Independent browser/API/CLI verification and production
 bundle/package gates remain controller-owned.
+
+CLI review identity also includes a declared package's executable dependency revision. An unchanged
+parameter file or selected candidate cannot authorize application after installed code changes. Exact
+and sampled publication both verify the saved package's dependency identity before accepting it.

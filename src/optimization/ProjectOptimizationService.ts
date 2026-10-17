@@ -183,7 +183,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                 throw new OptimizationInputError([{path: "policy", message: (error as Error).message}]);
             }
             preflightConstraints(adapter.model, request.policy);
-            const executableRevision = project.type === "tsPackage" ? await packageExecutableRevision(project.rootPath) : undefined;
+            const executableRevision = project.type === "tsPackage" && request.policy.strategy === "exact-finite-v1" ? await packageExecutableRevision(project.rootPath) : undefined;
             const domainSize = request.policy.tunables.reduce(
                 (total, field) => total * BigInt(field.values.length),
                 BigInt(1),
@@ -207,7 +207,9 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             if (request.policy.strategy === "seeded-search-v1") {
                 const sampled = await runStochasticOptimization(project, request, adapter, workspace, evidence, inventory, options);
                 if (sampled.candidate) {
-                    this.receipts.set(sampled.candidate.path, {candidate: structuredClone(sampled.candidate), request: structuredClone(request), evidence: structuredClone(evidence), status: sampled.status, executableRevision});
+                    const sampledExecutableRevision = evidence.stochastic?.executableRevision;
+                    if (sampledExecutableRevision) sampled.candidate.executableRevision = sampledExecutableRevision;
+                    this.receipts.set(sampled.candidate.path, {candidate: structuredClone(sampled.candidate), request: structuredClone(request), evidence: structuredClone(evidence), status: sampled.status, executableRevision: sampledExecutableRevision});
                     keep = true;
                 }
                 result = sampled;
@@ -279,6 +281,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                             sourcePath: project.rootPath,
                             sourceRevision,
                             requestRevision: jsonHash(request),
+                            ...(executableRevision ? {executableRevision} : {}),
                             workspace,
                         };
                         evidence.diff = request.policy.tunables.map((field) => ({
@@ -417,10 +420,10 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             const original = await acquireOptimizationAdapter({...reopened, rootPath: candidate.sourcePath}, request.policy);
             assertOnlyTuned(original.model, readback, request.policy);
             for (const field of request.policy.tunables) if (at(readback, field.path) !== receipt.evidence?.selected?.[field.path]) throw new Error("Published parameters differ from reviewed selection.");
+            await assertExecutable(destination);
             if (request.policy.strategy === "seeded-search-v1") {
                 if (!receipt.evidence?.stochastic?.assessment || !receipt.evidence.selected) throw new Error("Reviewed stochastic assessment unavailable; rerun optimization.");
                 for (const field of request.policy.tunables) if (at(readback, field.path) !== receipt.evidence.selected[field.path]) throw new Error("Published parameters differ from assessment.");
-                await assertExecutable(destination);
                 if (candidate.type === "tsPackage") {
                     const runtime = await loadPokieGameRuntime(destination);
                     try {
@@ -432,7 +435,6 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                             await runtime.release();
                         }
                     }
-                    await assertExecutable(destination);
                 }
             } else {
                 const maxConstraint = request.policy.constraints?.maxWin;
@@ -441,6 +443,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                 if (maxConstraint && measured[measured.length - 1] > maxConstraint.value) throw new Error("Published runtime violates the reviewed maximum win.");
                 if (!targetsMatch(request.targets, measured)) throw new Error("Published runtime does not demonstrate the reviewed target.");
             }
+            await assertExecutable(destination);
             const sameBytes = directory
                 ? projectRevision(reopened) === candidate.revision
                 : members.every(([from, to]) => digest(fs.readFileSync(from)) === digest(fs.readFileSync(to)));
