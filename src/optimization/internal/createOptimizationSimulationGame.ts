@@ -44,11 +44,11 @@ export function createOptimizationSimulationGame(recipe: OptimizationSimulationR
             const session: GameSessionHandling & {getStakeAmount(): number; getSimulationFeatureIdentities(): string[]} = {
                 getCreditsAmount: () => credits,
                 setCreditsAmount: value => {
-                    credits = value; 
+                    credits = value;
                 },
                 getBet: () => recipe.stake,
                 setBet: value => {
-                    if (value !== recipe.stake) throw new Error("Optimization recipe stake changed."); 
+                    if (value !== recipe.stake) throw new Error("Optimization recipe stake changed.");
                 },
                 getAvailableBets: () => [recipe.stake],
                 getStakeAmount: () => recipe.stake * cost,

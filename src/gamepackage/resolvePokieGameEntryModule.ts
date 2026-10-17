@@ -64,11 +64,9 @@ async function createRuntimeSnapshot(packageRoot: string, entryPath: string): Pr
             if (name === "node_modules" || name === ".pokie-runtime-cache") continue;
             fs.cpSync(path.join(packageRoot, name), path.join(root, name), {recursive: true});
         }
-        // A package may legitimately inherit its runtime dependency from a parent workspace
-        // node_modules directory (fixtures and Studio materializations do). Keep that normal
-        // Node resolution chain available from the external snapshot without copying dependencies
-        // or writing anything into the authored package.
-        await createPokieGameDependencyOverlay(root, packageRoot);
+        // Copy the resolved graph as well as the entry. Symlinks to the installation reuse
+        // Node's realpath-keyed CJS/ESM caches even when disk fingerprints have changed.
+        await snapshotPokieGameDependencies(root, packageRoot);
         const snapshotEntry = path.join(root, relativeEntry);
         let released = false;
         return {
@@ -98,6 +96,40 @@ async function createRuntimeSnapshot(packageRoot: string, entryPath: string): Pr
     }
 }
 
+/** Private paths for the entire installed runtime graph, including cycles and peers.
+ * Keep the detachable candidate's overlay separate: it binds publication to the installation;
+ * only an executing runtime owns these copies and their cache entries.
+ */
+async function snapshotPokieGameDependencies(snapshotRoot: string, packageRoot: string): Promise<void> {
+    const copies = new Map<string, string>([[fs.realpathSync(packageRoot), snapshotRoot]]);
+    const storage = path.join(snapshotRoot, "node_modules", ".pokie-runtime-dependencies");
+    fs.mkdirSync(storage, {recursive: true});
+    const copy = async (source: string): Promise<string> => {
+        const existing = copies.get(source);
+        if (existing !== undefined) return existing;
+        const destination = path.join(storage, String(copies.size));
+        copies.set(source, destination);
+        fs.cpSync(source, destination, {
+            recursive: true,
+            preserveTimestamps: true,
+            mode: fs.constants.COPYFILE_FICLONE,
+            filter: file => !["node_modules", ".git", ".pokie-runtime-cache"].includes(path.basename(file)),
+        });
+        await linkDependencies(destination, await resolvePokieGameDependencyRoots(source, false));
+        return destination;
+    };
+    const linkDependencies = async (owner: string, dependencies: Record<string, string | null>): Promise<void> => {
+        for (const [name, source] of Object.entries(dependencies)) {
+            if (source === null) continue;
+            const target = await copy(source);
+            const link = path.join(owner, "node_modules", name);
+            fs.mkdirSync(path.dirname(link), {recursive: true});
+            fs.symlinkSync(target, link, process.platform === "win32" ? "junction" : "dir");
+        }
+    };
+    await linkDependencies(snapshotRoot, await resolvePokieGameDependencyRoots(packageRoot));
+}
+
 /** Bind declared dependencies to the source installation when detaching a package. */
 export async function createPokieGameDependencyOverlay(snapshotRoot: string, startPath: string): Promise<void> {
     const roots = await resolvePokieGameDependencyRoots(startPath);
@@ -120,9 +152,8 @@ export async function resolvePokieGameDependencyRoots(startPath: string, include
         if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) dependencyRoots.push(candidate);
         current = path.dirname(current);
     }
-    // Link only the package's declared runtime dependencies, never every entry in an ancestor
-    // workspace node_modules.  The linked package keeps its physical nested dependency tree, so
-    // Node resolves its transitive dependencies normally without a recursive copy or overlay scan.
+    // Resolve only declared runtime dependencies, never every ancestor workspace entry.
+    // Both the detachable overlay and isolated execution graph use this resolution authority.
     // `@fromstan/pokie` is the host runtime contract for a generated package.  Older
     // package fixtures and packages built before dependency metadata was
     // standardized may omit it from package.json, yet were loadable from a

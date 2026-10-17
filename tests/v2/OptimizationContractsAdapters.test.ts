@@ -4,6 +4,8 @@ import {describeUnsupportedProjectOperation} from "../../src/project/describeUns
 import {StakeAdapterArtifactBuilder} from "../../src/project/StakeAdapterArtifactBuilder.js";
 import {loadPokieGameRuntime} from "../../src/gamepackage/loadPokieGame.js";
 import fs from "fs";
+import {createRequire} from "module";
+import {execFileSync} from "child_process";
 import path from "path";
 import {ProjectOptimizationService} from "../../src/optimization/ProjectOptimizationService.js";
 import {ArtifactPublicationOwnership, rollbackArtifactPublication} from "../../src/project/ArtifactPublicationOwnership.js";
@@ -655,7 +657,10 @@ it("retains project-local dependency identity through evaluation, independent sa
         await runtime.game.release?.();
         await runtime.release();
     }
-    expect(new Set(fs.readFileSync(loads, "utf8").trim().split("\n"))).toEqual(new Set([path.join(dependency, "index.cjs")]));
+    const loadedPaths = fs.readFileSync(loads, "utf8").trim().split("\n");
+    expect(loadedPaths.length).toBeGreaterThan(1);
+    expect(loadedPaths.every(file => file.includes("pokie-runtime-") && !file.startsWith(dependency))).toBe(true);
+    expect(loadedPaths.every(file => !fs.existsSync(file))).toBe(true);
     fs.appendFileSync(path.join(saved, "dist", "index.cjs"), "\n// independently edited");
     expect(fs.readFileSync(path.join(second, "dist", "index.cjs"), "utf8")).not.toContain("independently edited");
 });
@@ -1108,3 +1113,74 @@ it.each([false, true])("validates sampled destination loadability failure=%s wit
     expect(JSON.stringify(result.evidence)).toBe(assessment);
     await service.discard(result.candidate!);
 }, 60000);
+
+
+it.each([["cjs", false], ["cjs", true], ["esm", false], ["esm", true]] as const)(
+    "reruns sampled %s dependencies after executable drift (transitive=%s) using current code and matches a fresh process",
+    async (format, transitive) => {
+        const name = "behavior-dependency";
+        const {root, code} = declaredPackage("behavior", "", "", {[name]: "1"});
+        const suffix = format === "cjs" ? "cjs" : "mjs";
+        const dependency = path.join(root, "node_modules", name);
+        const leaf = transitive ? path.join(dependency, "node_modules", "leaf") : dependency;
+        fs.mkdirSync(leaf, {recursive: true});
+        fs.writeFileSync(path.join(dependency, "package.json"), JSON.stringify({name, main: `index.${suffix}`, dependencies: transitive ? {leaf: "1"} : {}}));
+        if (transitive) {
+            fs.writeFileSync(path.join(leaf, "package.json"), JSON.stringify({name: "leaf", main: `index.${suffix}`}));
+            fs.writeFileSync(path.join(dependency, `index.${suffix}`), format === "cjs" ? "module.exports = require('leaf');" : "export {default} from 'leaf';");
+        }
+        const leafFile = path.join(leaf, `index.${suffix}`);
+        const write = (multiplier: number) => fs.writeFileSync(leafFile, format === "cjs" ? `module.exports = ${multiplier};` : `export default ${multiplier};`);
+        write(1);
+        fs.writeFileSync(path.join(root, "index.cjs"), `const dependency = require('${name}'); const multiplier = dependency.default ?? dependency;\n` + code.replace("Number(count), amount)", "Number(count), amount * multiplier)"));
+        fs.rmSync(path.join(root, "pokie-tuning.json"));
+        declarePackageTuning(root, "parameters.json", ["/paytable/A/2"]);
+        const project = await resolve(root);
+        const before = sourceInventory(project);
+        const request = stochasticOptimizationRequest();
+        request.policy.tunables[0].values = [3];
+        const hostRequire = createRequire(path.join(root, "index.cjs"));
+        const original = hostRequire(leafFile);
+        const cached = hostRequire.cache[leafFile];
+        const first = await service.optimize(project, request);
+        expect(first.diagnostics).toEqual([]);
+        expect(first.status).toBe("attained");
+        write(2);
+        const changed = await service.optimize(project, request);
+        expect(changed.diagnostics).toEqual([]);
+        expect(changed.status).toBe("inconclusive");
+        expect(changed.evidence!.stochastic!.executableRevision).not.toBe(first.evidence!.stochastic!.executableRevision);
+        expect(changed.evidence!.stochastic!.assessment!.returnBound).toBe(6);
+        const freshScript = path.join(directory, "fresh.cjs");
+        // The focused test executes current TS source in an ordinary fresh Node process;
+        // no package compilation/install or official build is involved.
+        fs.writeFileSync(freshScript, `const fs = require('fs'); const Module = require('module'); const ts = require(${JSON.stringify(require.resolve("typescript"))});
+const original = Module._resolveFilename;
+Module._resolveFilename = function(request, ...rest) { if (request === '@fromstan/pokie') return ${JSON.stringify(path.resolve("src/index.ts"))}; try { return original.call(this, request, ...rest); } catch (error) { if (request.endsWith('.js')) return original.call(this, request.slice(0, -3) + '.ts', ...rest); throw error; } };
+Module._extensions['.ts'] = (module, file) => module._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true}}).outputText, file);
+(async () => { const {ProjectOptimizationService} = require(${JSON.stringify(path.resolve("src/optimization/ProjectOptimizationService.ts"))});
+const {ProjectTargetResolver} = require(${JSON.stringify(path.resolve("src/project/ProjectTargetResolver.ts"))});
+const service = new ProjectOptimizationService(${JSON.stringify(path.join(directory, "fresh-scratch"))});
+const result = await service.optimize(await new ProjectTargetResolver().resolve(${JSON.stringify(root)}, {readConfigurationProvenance: false}), ${JSON.stringify(request)});
+if (result.candidate) await service.discard(result.candidate);
+console.log(JSON.stringify({status: result.status, diagnostics: result.diagnostics, evidence: result.evidence})); })().catch(error => { console.error(error); process.exitCode = 1; });`);
+        const fresh = JSON.parse(execFileSync(process.execPath, [freshScript], {encoding: "utf8", timeout: 60000}));
+        expect({status: changed.status, diagnostics: changed.diagnostics, evidence: changed.evidence}).toEqual(fresh);
+        const simulation = jest.spyOn(ParallelSimulationRunner.prototype, "run");
+        await service.publish(changed.candidate!, request, path.join(directory, "current-output"));
+        expect(simulation).not.toHaveBeenCalled();
+        expect(hostRequire(leafFile)).toBe(original);
+        expect(hostRequire.cache[leafFile]).toBe(cached);
+        write(1);
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const restored = await service.optimize(project, request);
+            expect(restored.status).toBe("attained");
+            expect(restored.evidence).toEqual(first.evidence);
+            await service.discard(restored.candidate!);
+        }
+        await service.discard(first.candidate!);
+        await service.discard(changed.candidate!);
+        expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+        expect(sourceInventory(project)).toEqual(before);
+    }, 120000,
+);

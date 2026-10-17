@@ -1,5 +1,8 @@
-import {loadPokieGame, readPokiePackageConfig, releasePokieGame} from "@fromstan/pokie";
+import {loadPokieGame, loadPokieGameRuntime, readPokiePackageConfig, releasePokieGame} from "@fromstan/pokie";
 import fs from "fs";
+import {createRequire} from "module";
+import {execFileSync} from "child_process";
+import {pathToFileURL} from "url";
 import os from "os";
 import path from "path";
 
@@ -153,3 +156,60 @@ describe("loadPokieGame", () => {
     });
 
 });
+
+
+it.each(["cjs", "esm"])("isolates direct/transitive %s code, lazy imports and live consumers across dependency edits and rejection", async format => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-dependency-game-"));
+    const direct = path.join(root, "node_modules", "direct");
+    const nested = path.join(direct, "node_modules", "nested");
+    const suffix = format === "cjs" ? "cjs" : "mjs";
+    const entry = path.join(root, `index.${suffix}`);
+    const dependencyFile = path.join(nested, `index.${suffix}`);
+    const hostRequire = createRequire(entry);
+    // Exercise native ESM even in ts-jest's CommonJS transform.
+    // eslint-disable-next-line no-new-func -- the public loader supports native ESM hosts.
+    const nativeImport = new Function("file", "return import(file)") as (file: string) => Promise<Record<string, unknown>>;
+    const load = () => loadPokieGameRuntime(root, file => nativeImport(pathToFileURL(file).href));
+    const manifest = (value: string) => ({id: "dependency-game", name: value, version: "1.0.0"});
+    const write = (value: string) => fs.writeFileSync(dependencyFile, format === "cjs" ? `module.exports = '${value}';` : `export default '${value}';`);
+    fs.mkdirSync(nested, {recursive: true});
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({pokie: {entry: `index.${suffix}`}, dependencies: {direct: "1"}}));
+    for (const [name, location, dependencies] of [["direct", direct, {nested: "1"}], ["nested", nested, {}]] as const) {
+        fs.writeFileSync(path.join(location, "package.json"), JSON.stringify({name, main: `index.${suffix}`, dependencies}));
+    }
+    fs.writeFileSync(path.join(direct, `index.${suffix}`), format === "cjs" ? "module.exports = require('nested');" : "export {default} from 'nested';");
+    const game = `{getManifest: () => ({id: 'dependency-game', name: value, version: '1.0.0'}), createSession: () => ({}), lazy: async () => ${format === "cjs" ? "require('direct')" : "(await import('direct')).default"}}`;
+    fs.writeFileSync(entry, format === "cjs" ? `const value = require('direct'); module.exports = ${game};` : `import value from 'direct'; export default ${game};`);
+    write("old");
+    const original = format === "cjs" ? hostRequire(dependencyFile) : (await nativeImport(pathToFileURL(dependencyFile).href)).default;
+    const cachedModule = hostRequire.cache[dependencyFile];
+    const first = await load();
+    try {
+        expect(first.game.getManifest()).toEqual(manifest("old"));
+        write("current");
+        const current = await load();
+        try {
+            const fresh = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `console.log(JSON.stringify((await import(${JSON.stringify(pathToFileURL(entry).href)})).default.getManifest()))`], {encoding: "utf8"}));
+            expect(current.game.getManifest()).toEqual(fresh);
+            expect(fresh).toEqual(manifest("current"));
+            expect(await (first.game as unknown as {lazy(): Promise<string>}).lazy()).toBe("old");
+        } finally {
+            await current.release();
+        }
+        // A failed acquisition cleans its snapshot without disturbing an earlier live consumer.
+        write("current");
+        fs.writeFileSync(dependencyFile, "throw Error('dependency rejected');");
+        await expect(load()).rejects.toThrow("dependency rejected");
+        write("repaired");
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const repaired = await load();
+            expect(repaired.game.getManifest()).toEqual(manifest("repaired"));
+            await repaired.release();
+        }
+        expect(format === "cjs" ? hostRequire(dependencyFile) : (await nativeImport(pathToFileURL(dependencyFile).href)).default).toBe(original);
+        if (format === "cjs") expect(hostRequire.cache[dependencyFile]).toBe(cachedModule);
+    } finally {
+        await first.release();
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+}, 60000);
