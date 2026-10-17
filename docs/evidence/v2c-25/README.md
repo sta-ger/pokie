@@ -254,3 +254,39 @@ its `new Function(... import(specifier))` relative import resolves from the call
 directory. The transcript is in the assigned harness at
 `run-2026-10-17T18-59-44-053Z/transcript.json` (SHA-256
 `c74b397b1496a00eee802e5ba9d7fada0de06117833fd9558d786ec641efb88c`).
+
+## Current candidate rerun — cleanup failure after resolver repair
+
+Candidate `b611787e961e8eb6874f77dfd82875b3eeff9cbb` was clean and rebuilt with
+`npm run build-cli` (exit 0). The build receipt is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-25-715914bc4de18c48/candidate-builds/b611787e961e8eb6874f77dfd82875b3eeff9cbb/result.json`
+(SHA-256 `990f3e65d7c288be10aba93123e6618134abd3caecb35c044f36f46ac276f2f6`);
+the rebuilt default-worker resolver artifacts in `dist/esm` and `dist/src` had
+the same SHA-256 `e1ad4c84f781c14981f2d6db500ac8e3a154516052177ee869e0a30e083d02df`.
+
+One fresh positional Studio launch used the public candidate command
+`node ./dist/cli/pokie.js <retained Blueprint> --no-open`. After an intentional
+invalid default policy was visibly rejected, the restored deterministic request
+was visibly supported with writable `/paytable/A/2` and `/paytable/B/2`. Its
+exact JSON specified seeded search, seed `v2c-25-b611-workers2-cancel`, budget
+3, the retained four locks, and sampling workers `2` with 1,000,000 search and
+assessment samples. One `Run optimization` activation rendered the action-local
+pending state `running: 1 / 3 candidates preparing` and `Cancel optimization`.
+It then rendered its own terminal `Verdict: failure` after 85 ms, before samples:
+`cleanup: Worker cleanup unconfirmed: runtime release acknowledgement absent.`
+The recovery card is action-local (`optimization · Recovery required`), not a
+pre-existing page alert. No retry or second launch was issued.
+
+The retained terminal job is
+`run-2026-10-17T20-11-35-488Z/application-OrWC8h/config/pokie/studio-jobs/923862c211c847a6a98bbb41c5bf485d.json`
+(SHA-256 `68705ddf1be487d64daf485d208229b495fc80d008ad0ab2f5ece744f261549c`)
+and the full candidate-bound transcript is
+`run-2026-10-17T20-11-35-488Z/transcript.json` (SHA-256
+`ddce6fe2ce7eacccec4bc2d30d47b726a8e4cb4a5269eb2642f710a2f6165b4d`).
+The direct cause is in `SimulationWorkerCoordinator`: its cleanup rejects at
+`src/simulation/parallel/SimulationWorkerCoordinator.ts:109` when a runtime
+release acknowledgement is absent, while acknowledgements become true only for
+worker `result`/`error` messages at lines 191–193. The repaired compiled
+two-worker Studio path reaches finalization with neither acknowledgement and
+therefore cannot produce samples, cancellation, worker-drain, or fresh-retry
+evidence. This is a reproducible product failure, not a browser-driver timeout.
