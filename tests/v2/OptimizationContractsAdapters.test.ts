@@ -214,10 +214,12 @@ it("tunes native bundle weights, rebuilds indexes/analysis and retains identitie
         ],
         root,
     );
+    fs.writeFileSync(path.join(root, "notes.bin"), Buffer.from([0, 255, 7]));
     const win = library.outcomes.find((outcome) => outcome.artifact.totalWin > 0)!;
     const zero = library.outcomes.find((outcome) => outcome.artifact.totalWin === 0)!;
     const request = optimizationRequest();
     request.policy.scope = "native-outcomes";
+    request.policy.protectedFiles = ["notes.bin"];
     request.policy.locks = [];
     request.policy.tunables = [{path: `/modes/base/outcomes/${win.id}/weight`, values: [1, 3]}];
     request.targets[0].value = 1;
@@ -234,6 +236,7 @@ it("tunes native bundle weights, rebuilds indexes/analysis and retains identitie
         candidate: {type: "outcomeLibrary"},
         evidence: {measured: [1], rejected: 1},
     });
+    expect(fs.readFileSync(path.join(result.candidate!.path, "notes.bin"))).toEqual(Buffer.from([0, 255, 7]));
     const cappedRequest = {...request, policy: {...request.policy, maxOutcomes: 1}};
     expect((await service.optimize(await resolve(root), cappedRequest)).status).toBe("exhausted");
     const reader = new OutcomeLibraryBundleReader();

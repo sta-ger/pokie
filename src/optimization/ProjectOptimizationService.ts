@@ -115,6 +115,8 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
     ): Promise<{supported: boolean; reason: string; adapter: string; writable?: string[]}> {
         try {
             const validated = validateOptimizationRequest(request);
+            assertNoFilesystemAliases(project.rootPath);
+            validateProtectedFiles(project, validated.policy, sourceInventory(project));
             const adapter = await acquireOptimizationAdapter(project, validated.policy);
             checkPolicyPaths(adapter.model, validated.policy, adapter.writable);
             preflightConstraints(adapter.model, validated.policy);
@@ -147,6 +149,8 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled before acquisition.");
             assertNoFilesystemAliases(project.rootPath);
             const sourceRevision = projectRevision(project);
+            const inventory = sourceInventory(project);
+            validateProtectedFiles(project, request.policy, inventory);
             const adapter = await acquireOptimizationAdapter(project, request.policy);
             if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled during acquisition.");
             try {
@@ -155,31 +159,6 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                 throw new OptimizationInputError([{path: "policy", message: (error as Error).message}]);
             }
             preflightConstraints(adapter.model, request.policy);
-            const inventory = sourceInventory(project);
-            for (const file of request.policy.protectedFiles ?? []) {
-                if (!(file in inventory)) throw new OptimizationInputError([
-                    {path: "policy/protectedFiles", message: `Unknown source file ${file}.`},
-                ]);
-                if (
-                    ["blueprint", "parWorkbook", "wasm"].includes(project.type) ||
-                    (project.type === "tsPackage" &&
-                        [
-                            "pokie-tuning.json",
-                            (
-                                JSON.parse(
-                                    fs.readFileSync(path.join(project.rootPath, "pokie-tuning.json"), "utf8"),
-                                ) as {parameterFile: string}
-                            ).parameterFile,
-                        ].includes(file)) ||
-                    project.type === "outcomeLibrary" ||
-                    (project.type === "stakeAdapter" && (file.endsWith(".csv") || ["pokie-manifest.json", "pokie-native-weights.json"].includes(file)))
-                ) throw new OptimizationInputError([
-                    {
-                        path: "policy/protectedFiles",
-                        message: `Byte lock ${file} conflicts with the selected tuning contract.`,
-                    },
-                ]);
-            }
             const domainSize = request.policy.tunables.reduce(
                 (total, field) => total * BigInt(field.values.length),
                 BigInt(1),
@@ -403,4 +382,32 @@ function classifyOptimizationError(error: unknown): OptimizationResult["status"]
         error.getCode() === "weighted-outcome-library-generation-space-exceeded"
     ) return "exhausted";
     return "failure";
+}
+
+function validateProtectedFiles(project: PokieProject, policy: OptimizationPolicy, files: Record<string, string>): void {
+    if (!policy.protectedFiles?.length) return;
+    const writableFiles = new Set<string>();
+    if (["blueprint", "parWorkbook", "wasm"].includes(project.type)) for (const file of Object.keys(files)) writableFiles.add(file);
+    if (project.type === "tsPackage") {
+        writableFiles.add("pokie-tuning.json");
+        if (files["pokie-tuning.json"]) {
+            const contract = JSON.parse(fs.readFileSync(path.join(project.rootPath, "pokie-tuning.json"), "utf8")) as {parameterFile: string};
+            writableFiles.add(contract.parameterFile);
+        }
+    }
+    if (project.type === "outcomeLibrary") {
+        const manifest = JSON.parse(fs.readFileSync(path.join(project.rootPath, "manifest.json"), "utf8")) as {files: string[]};
+        for (const file of manifest.files) writableFiles.add(file);
+        writableFiles.add("manifest.json");
+    }
+    if (project.type === "stakeAdapter") {
+        const index = JSON.parse(fs.readFileSync(path.join(project.rootPath, "index.json"), "utf8")) as {modes: {name: string; weights: string}[]};
+        for (const mode of index.modes) if (mode.name === policy.mode) writableFiles.add(mode.weights);
+        writableFiles.add("pokie-manifest.json");
+        writableFiles.add("pokie-native-weights.json");
+    }
+    for (const file of policy.protectedFiles) {
+        if (!(file in files)) throw new OptimizationInputError([{path: "policy/protectedFiles", message: `Unknown source file ${file}.`}]);
+        if (writableFiles.has(file)) throw new OptimizationInputError([{path: "policy/protectedFiles", message: `Byte lock ${file} conflicts with the selected tuning contract.`}]);
+    }
 }

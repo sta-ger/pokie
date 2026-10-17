@@ -38,7 +38,7 @@ import {
     type DeclaredPackageTuningContract,
 } from "../DeclaredTuningContract.js";
 import type {MathTarget, OptimizationPolicy, OptimizationScalar} from "../OptimizationPolicy.js";
-import {copyPackage, digest, paytablePaths, readJson, writeJson} from "./optimizationData.js";
+import {copyPackage, digest, inventory, paytablePaths, readJson, writeJson} from "./optimizationData.js";
 
 type NativeOutcome = {
     weight: OptimizationScalar;
@@ -229,7 +229,7 @@ export async function acquireOptimizationAdapter(
                 const data = value as NativeModel;
                 const output = path.join(directory, "candidate");
                 if (project.type === "outcomeLibrary") {
-                    await new OutcomeLibraryBundleWriter("1.3.0", undefined, () => new Date(0)).writeToDirectory(
+                    const written = await new OutcomeLibraryBundleWriter("1.3.0", undefined, () => new Date(0)).writeToDirectory(
                         Object.entries(data.modes).map(([modeName, mode]) => ({
                             modeName,
                             libraryId: mode.libraryId!,
@@ -244,6 +244,15 @@ export async function acquireOptimizationAdapter(
                         output,
                         {signal},
                     );
+                    errors(written.issues);
+                    const sourceManifest = await new OutcomeLibraryBundleReader().readManifest(project.rootPath);
+                    const canonicalFiles = new Set([...sourceManifest.files, "manifest.json"]);
+                    for (const file of Object.keys(inventory(project.rootPath))) {
+                        if (canonicalFiles.has(file)) continue;
+                        const target = path.join(output, file);
+                        fs.mkdirSync(path.dirname(target), {recursive: true});
+                        fs.copyFileSync(path.join(project.rootPath, file), target, fs.constants.COPYFILE_EXCL);
+                    }
                 } else {
                     copyPackage(project.rootPath, output);
                     // Export/import metadata describes the old distribution, not these native uint64 weights.
