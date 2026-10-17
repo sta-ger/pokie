@@ -4624,10 +4624,29 @@ describe("StudioServer", () => {
                 const simulationId = (simulation.body as {id: string}).id;
                 await expect(pollUntilTerminal(`${baseUrl}/api/project/simulations/${simulationId}`)).resolves.toMatchObject({status: 200, body: {status: "completed"}});
 
-                const replay = await post(`${baseUrl}/api/project/replays`, {round: 1, seed: "http-seed"});
+                for (const seed of ["", "   ", 42, null, {}, []]) {
+                    expect(await post(`${baseUrl}/api/project/replays`, {round: 1, seed})).toEqual({
+                        status: 400, body: {error: '"seed" must be a non-empty string when given.'},
+                    });
+                }
+                expect((await get(`${baseUrl}/api/project/replays`)).body).toEqual([]);
+                const replay = await post(`${baseUrl}/api/project/replays`, {round: 1});
                 expect(replay).toMatchObject({status: 202, body: {status: "queued"}});
                 const replayId = (replay.body as {id: string}).id;
-                await expect(pollUntilTerminal(`${baseUrl}/api/project/replays/${replayId}`)).resolves.toMatchObject({status: 200, body: {status: "completed"}});
+                const replayResult = await pollUntilTerminal(`${baseUrl}/api/project/replays/${replayId}`);
+                expect(replayResult).toMatchObject({status: 200, body: {status: "completed", seed: expect.any(String), descriptor: {seed: expect.any(String)}}});
+                const replayDescriptor = replayResult.body.descriptor as import("@fromstan/pokie").ReplayDescriptor;
+                for (let index = 0; index < 2; index++) {
+                    const retried = await post(`${baseUrl}/api/project/replays`, {round: 1, seed: replayResult.body.seed});
+                    expect(retried.status).toBe(202);
+                    const retriedId = (retried.body as {id: string}).id;
+                    const result = await pollUntilTerminal(`${baseUrl}/api/project/replays/${retriedId}`);
+                    expect(result.body.descriptor).toMatchObject({
+                        seed: replayResult.body.seed, screen: replayDescriptor.screen,
+                        credits: replayDescriptor.credits, totalBet: replayDescriptor.totalBet,
+                        totalWin: replayDescriptor.totalWin,
+                    });
+                }
 
                 for (const response of await Promise.all([
                     post(`${baseUrl}/api/project/artifacts/build`, {target: "tsPackage"}),
