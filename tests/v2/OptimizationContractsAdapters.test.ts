@@ -702,12 +702,30 @@ it.each(["success", "hash-failure", "manifest-failure", "evaluation-failure", "c
         fs.rmSync(path.join(root, "pokie-tuning.json"));
         declarePackageTuning(root, "parameters.json", ["/paytable/A/2"]);
     }
-    const snapshotsBefore = fs.readdirSync(process.env.TMPDIR!).filter((name) => name.startsWith("pokie-runtime-"));
-    const result = await service.optimize(await resolve(root), optimizationRequest());
-    expect(result.status).toBe(({success: "success", "hash-failure": "unsupported", "manifest-failure": "failure", "evaluation-failure": "failure", "cleanup-failure": "failure"} as Record<string, string>)[scenario]);
-    expect(fs.readFileSync(marker, "utf8").trim().split("\n")).toHaveLength(scenario === "success" ? 2 : 1);
-    expect(fs.readdirSync(process.env.TMPDIR!).filter((name) => name.startsWith("pokie-runtime-"))).toEqual(snapshotsBefore);
-    if (scenario === "cleanup-failure") expect(result.diagnostics).toEqual([{path: "cleanup", message: expect.stringContaining("game cleanup failed")}]);
+    // Direct Jest workers need not inherit the npm wrapper's TMPDIR. Observe only this
+    // fixture's real loader snapshots, so concurrent suites cannot change the inventory.
+    const temporary = path.join(directory, "runtime-temporary");
+    fs.mkdirSync(temporary);
+    const variables = ["TMPDIR", "TMP", "TEMP"] as const;
+    const inherited = variables.map(name => process.env[name]);
+    const allocate = jest.spyOn(fs, "mkdtempSync");
+    try {
+        for (const name of variables) process.env[name] = temporary;
+        const result = await service.optimize(await resolve(root), optimizationRequest());
+        expect(result.status).toBe(({success: "success", "hash-failure": "unsupported", "manifest-failure": "failure", "evaluation-failure": "failure", "cleanup-failure": "failure"} as Record<string, string>)[scenario]);
+        const acquisitions = scenario === "success" ? 2 : 1;
+        expect(fs.readFileSync(marker, "utf8").trim().split("\n")).toHaveLength(acquisitions);
+        expect(allocate.mock.calls.filter(([prefix]) => prefix === path.join(temporary, "pokie-runtime-"))).toHaveLength(acquisitions);
+        expect(fs.readdirSync(temporary)).toEqual([]);
+        if (scenario === "cleanup-failure") expect(result.diagnostics).toEqual([{path: "cleanup", message: expect.stringContaining("game cleanup failed")}]);
+    } finally {
+        variables.forEach((name, index) => {
+            const value = inherited[index];
+            if (value === undefined) Reflect.deleteProperty(process.env, name);
+            else process.env[name] = value;
+        });
+        allocate.mockRestore();
+    }
 });
 
 it("preflights model-dependent package policies without executable acquisition", async () => {
