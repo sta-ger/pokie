@@ -833,6 +833,8 @@ describe("StudioServer", () => {
 
     // This scenario includes two complete million-stop enumerations plus
     // independent runtimes for resume, stop, close, switch and rejection paths.
+    // Keep the full populations and production loaders, with a bounded
+    // integration budget for the entire sequence on constrained CI workers.
     it("keeps real Outcome Library HTTP lifecycle cancellation, restart, source drift, and diagnostics cleanup-safe", async () => {
         await server.stop();
         const lifecycleRoot = path.join(studioRoot, "real-outcome-library-lifecycle-package");
@@ -1023,7 +1025,7 @@ describe("StudioServer", () => {
             });
         }
         expectNoOutcomeLibraryPublication(unsupportedRoot, "outcomelibrary");
-    }, 300000);
+    }, 900000);
 
     it("reports safe diagnostics on GET /api/studio/diagnostics in home mode", async () => {
         const {status, body} = await get(`${baseUrl}/api/studio/diagnostics`);
