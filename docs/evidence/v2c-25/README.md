@@ -22,10 +22,12 @@ budget `3`, target RTP `0.75`, tunable `/paytable/A/2 = [2,3,4]`, and locks
 | Canonical CLI | seeded run with `cancel-policy.json`, progress, then one external `SIGINT` | rendered product terminal JSON was `status:"cancelled"` after search observations reached 11,000; the `timeout` wrapper itself reported 124 after delivering SIGINT. |
 | Rendered Studio | candidate launch `node ./dist/cli/pokie.js <fixture>/optimization.blueprint.json --no-open` through the required persistent driver | current request support rendered, then the single accepted run completed `Optimization success` in 82 ms. Preview rendered exact 0.75, target/tolerance, budget, locks, source revision, same-type native-readback validation and diff 2→3. Explicit `Apply reviewed changes to source` then rendered `Authored changes applied`; the Play route rendered afterward. |
 
-The two PNGs are independently inspected captures, not driver verdicts:
-
-- `studio-preflight.png` (`19feb00fa1bac942b77059af568a2be37749cea5e2eefe30db638fff0ffcbc14`) visibly shows the authored request and successful support boundary.
-- `studio-post-apply-play.png` (`d03565d569b329c8cc80e283fe9945c091bea053959775e758dcde8ea226bd8b`) visibly shows the retained authored Blueprint overview immediately after the post-apply Play navigation was requested; the route transition itself completed later in the durable transcript.
+The two independently inspected captures are retained only in the controller-assigned
+runtime harness, not as Git payload: `run-2026-10-17T15-37-23-824Z/1-observation.png`
+(`19feb00fa1bac942b77059af568a2be37749cea5e2eefe30db638fff0ffcbc14`) visibly
+shows the authored request and successful support boundary; its paired observation
+(`d03565d569b329c8cc80e283fe9945c091bea053959775e758dcde8ea226bd8b`) shows the
+retained authored Blueprint overview after the post-apply Play navigation request.
 
 ## Visual assessment
 
@@ -60,14 +62,13 @@ exact-finite retry (seed `v2c-25-recovery-exact`) rendered an exact 0.75 preview
 diff `/paytable/A/2 2 → 3`; one explicit apply reported `Authored changes applied`.
 The resulting public Play session then completed one ordinary round: stake 1, payout 0.
 
-The two new PNGs were independently opened and inspected at 1440×956:
-
-- `studio-reload-cancel.png` SHA-256
-  `f9fca08094c794687157e439afa09176d51bcb18805df6a49fd9fe1b41cd7695` clearly shows
-  the cancellation terminal, observations, source revision, policy, and no held-out result.
-- `studio-post-apply-round.png` SHA-256
-  `bbdf7b055e6f818a77f621f0ef0919207d4bd0d90fbc1dc441542d859f7da787` clearly shows
-  the post-apply Play round, one delivery, stake 1, payout 0, reel result, and credits.
+The recovery captures were independently opened and inspected at 1440×956, and are
+retained only in that runtime harness: `1-observation.png` SHA-256
+`f9fca08094c794687157e439afa09176d51bcb18805df6a49fd9fe1b41cd7695` clearly shows
+the cancellation terminal, observations, source revision, policy, and no held-out
+result; `2-observation.png` SHA-256
+`bbdf7b055e6f818a77f621f0ef0919207d4bd0d90fbc1dc441542d859f7da787` clearly shows
+the post-apply Play round, one delivery, stake 1, payout 0, reel result, and credits.
 
 For the required declared custom executable package, a harness-only fixture
 `v2c-25-custom-ts` was created with executable SHA-256
