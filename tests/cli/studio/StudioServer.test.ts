@@ -5789,6 +5789,30 @@ describe("StudioServer", () => {
         // round-producing action in Studio (see StudioServer.recordSimulationSampleReplay), unlike a
         // plain "Recreate from seed" reproduction (no `simulationId`), which the test right after this
         // one proves is deliberately left unrecorded.
+        it("V2C-22-SIMULATION-REPLAY-BINDING rejects non-samples before HTTP admission and permits subsequent retained steps", async () => {
+            await openSampleSlot(createSeedAwareFakeGame(manifest));
+            const created = await post(`${baseUrl}/api/project/simulations`, {rounds: 1, seed: "0"});
+            const simulationId = (created.body as {id: string}).id;
+            expect((await pollUntilTerminal(`${baseUrl}/api/project/simulations/${simulationId}`)).body.status).toBe("completed");
+            for (const request of [
+                {round: 2, seed: "0", simulationId}, {round: 1, simulationId}, {round: 1, seed: "different", simulationId},
+                {round: 1, seed: "0", simulationId, modeName: "different"}, {round: 1, seed: "0", simulationId, entryCommands: []},
+                {round: 1, seed: "0", simulationId, entryCommands: [{kind: "spin", bet: 7.5}]}, {round: 1, seed: "0", simulationId, unit: "logical-round"},
+            ]) {
+                const jobs = (await get(`${baseUrl}/api/project/jobs`)).body;
+                expect(await post(`${baseUrl}/api/project/replays`, request)).toEqual({status: 400, body: {error: "Simulation replay requires the retained seed, selected mode and step range from a single-worker run."}});
+                expect((await get(`${baseUrl}/api/project/jobs`)).body).toEqual(jobs);
+                expect((await get(`${baseUrl}/api/project/rounds`)).body).toEqual([]);
+            }
+            for (const unit of [undefined, "step"]) {
+                const replay = await post(`${baseUrl}/api/project/replays`, {round: 1, seed: "0", simulationId, unit});
+                expect(replay.status).toBe(202);
+                const terminal = await pollUntilTerminal(`${baseUrl}/api/project/replays/${(replay.body as {id: string}).id}`);
+                expect(terminal.body).toMatchObject({status: "completed", descriptor: {round: 1, seed: "0"}});
+            }
+            expect((await get(`${baseUrl}/api/project/rounds`)).body).toHaveLength(2);
+        });
+
         it("records a round selected from a completed simulation into the shared history, immediately visible from GET /api/project/rounds", async () => {
             await openSampleSlot(createSeedAwareFakeGame(manifest));
             const projectRoot = (await get(`${baseUrl}/api/context`)).body as {projectRoot: string};

@@ -114,7 +114,7 @@ import type {StudioReplayJobRecord} from "./replay/StudioReplayJobRecord.js";
 import type {StudioSimulationJobRecord} from "./simulation/StudioSimulationJobRecord.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import type {StudioReplayStatus} from "./replay/StudioReplayStatus.js";
-import {validateReplayRequest, ReplayRequestInput} from "./replay/validateReplayRequest.js";
+import {bindReplayToSimulationReport, validateReplayRequest, ReplayRequestInput} from "./replay/validateReplayRequest.js";
 import {StudioPlayService, StudioPlaySpinResult} from "./runtime/StudioPlayService.js";
 import {StudioRoundRecorder} from "./runtime/StudioRoundRecorder.js";
 import type {StudioRuntimeSessionView} from "./runtime/StudioRuntimeSessionView.js";
@@ -3667,19 +3667,12 @@ export class StudioServer implements StudioServerHandling {
         if (validated.simulationId !== undefined && !isNativeOutcomeLibrary) {
             const source = this.simulationService.getReport(this.currentContext.projectRoot, validated.simulationId);
             if (source.status !== "ok") return;
-            const report = source.report;
-            if ("modes" in report) {
-                if (validated.modeName === undefined || !Reflect.apply(Object.prototype.hasOwnProperty, report.modes, [validated.modeName])) {
-                    this.sendJson(res, 400, {error: "Select a concrete mode from the all-mode simulation to replay."});
-                    return;
-                }
-            }
-            const selected = "modes" in report ? report.modes[validated.modeName!] : report;
-            if ((selected.workers ?? 1) !== 1 || selected.seed === null || validated.seed !== selected.seed || validated.round > (selected.sampling?.acceptedSubrounds ?? selected.rounds) || validated.unit === "logical-round" || validated.entryCommands !== undefined || (validated.modeName !== undefined && validated.modeName !== selected.betMode)) {
-                this.sendJson(res, 400, {error: "Simulation replay requires the retained seed, selected mode and step range from a single-worker run."});
+            try {
+                validated = bindReplayToSimulationReport(validated, source.report);
+            } catch (error) {
+                this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
                 return;
             }
-            validated = {...validated, modeName: selected.betMode, expectedConfigHash: selected.reproducibility?.configHash};
         }
 
         const result = this.replayService.start(this.canonicalPathIdentity(this.currentContext.projectRoot), validated, outcomeSourceProject);

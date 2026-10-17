@@ -941,7 +941,7 @@ it("connects the browser API owner to durable Play, restore, report and replay D
             {round: 3, seed: "different", simulationId: started.job.id},
             {round: 3, seed: "0", modeName: "different", simulationId: started.job.id},
         ]) {
-            await expect(owner.fetch("/api/project/replays", {method: "POST", body: JSON.stringify(request)})).rejects.toThrow(/does not match/);
+            await expect(owner.fetch("/api/project/replays", {method: "POST", body: JSON.stringify(request)})).rejects.toThrow(/retained seed/);
         }
         expect(jobs.list(file).filter(job => job.operation === "replay")).toHaveLength(replayCount);
         expect(liveWorkers).toBe(1); // Only the unchanged idle Play session.
@@ -995,7 +995,7 @@ async function browserOwner(fixture = createCanonicalWasmFixture()) {
     const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
     const recorder = new StudioRoundRecorder();
     const broker = new StudioWasmBrowserService(jobs, recorder, 10000);
-    const controls: {before?: OwnerFetch; after?: (url: string, result: OwnerResponse) => Promise<OwnerResponse>; live: number; plays: number; dispatch?: (data: unknown, deliver: () => void) => void} = {live: 0, plays: 0};
+    const controls: {before?: OwnerFetch; after?: (url: string, result: OwnerResponse) => Promise<OwnerResponse>; live: number; created: number; plays: number; dispatch?: (data: unknown, deliver: () => void) => void} = {live: 0, created: 0, plays: 0};
     const network: OwnerFetch = async (url, init) => {
         let result: {status: number; body: unknown};
         if (url === "/api/project/context") result = {status: 200, body: context.mode === "project" ? {status: "loaded", type: "wasm", projectRoot: file} : {status: "empty"}};
@@ -1018,6 +1018,7 @@ async function browserOwner(fixture = createCanonicalWasmFixture()) {
         return controls.after ? controls.after(url, result) : result;
     }, () => {
         controls.live++;
+        controls.created++;
         let terminated = false;
         let receive!: WorkerEventListener;
         const listeners = new Map<string, WorkerEventListener>();
@@ -1081,6 +1082,135 @@ async function browserOwner(fixture = createCanonicalWasmFixture()) {
         fs.rmSync(directory, {recursive: true, force: true});
     }};
 }
+
+it("V2C-22-SIMULATION-REPLAY-BINDING admits only retained single/all-mode steps through the production browser API", async () => {
+    const path = await import("path");
+    const {FileStudioJobRepository} = await import("../../../cli/studio/jobs/FileStudioJobRepository.js");
+    const {bindReplayToSimulationReport, validateReplayRequest} = await import("../../../cli/studio/replay/validateReplayRequest.js");
+    const {collectPokieWasmReplay} = await import("../../../src/wasm/PokieWasmReplay.js");
+    const fixture = createCanonicalWasmFixture({blueprint: {
+        manifest: {id: "sample-binding", name: "Sample binding", version: "1.0.0"}, reels: 2, rows: 1, symbols: ["A", "B"],
+        reelStrips: [["A", "B"], ["A", "B"]], availableBets: [0.05, 7.5, 1e-7], paytable: {A: {2: 0}, B: {2: 1}},
+        betModes: [{id: "base", runtimeType: "base", isDefault: true}, {id: "ante", runtimeType: "ante", costMultiplier: 2}],
+    }});
+    const test = await browserOwner(fixture);
+    const repository = new FileStudioJobRepository(path.join(path.dirname(test.file), "jobs"));
+    const sent: Record<string, unknown>[] = [];
+    test.controls.dispatch = (data, deliver) => {
+        sent.push(structuredClone((data as {request: Record<string, unknown>}).request));
+        deliver();
+    };
+    test.controls.before = (url, init) => {
+        const match = (/^\/api\/project\/(?:simulations|replays)\/([^/]+)$/).exec(url);
+        if (match) return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(test.jobs.get(test.file, match[1]))});
+        return test.network(url, init);
+    };
+    const run = async (operation: "simulations" | "replays", request: Record<string, unknown>) => {
+        const response = await test.owner.fetch(`/api/project/${operation}`, {method: "POST", body: JSON.stringify(request)});
+        expect(response.ok).toBe(true);
+        const admitted = await response.json() as {id: string};
+        const deadline = Date.now() + 3000;
+        let job;
+        do {
+            if (Date.now() > deadline) throw new Error("Simulation sample binding did not settle");
+            await new Promise<void>(resolve => {
+                setImmediate(resolve);
+            });
+            job = test.jobs.get(test.file, admitted.id)!;
+        } while (job.status === "running" || job.status === "queued");
+        expect(job).toMatchObject({status: "completed"});
+        expect(test.controls.live).toBe(0);
+        return job;
+    };
+    try {
+        const artifactResponse = await test.network("/api/project/wasm/artifact");
+        const artifact = await artifactResponse.json() as {projectRoot: string; generation: string; manifest: {artifact: {sha256: string}}};
+        const binding = {owner: "sample-test", projectRoot: test.file, generation: artifact.generation, artifactIdentity: artifact.manifest.artifact.sha256, operation: "replay"};
+        const single = await run("simulations", {rounds: 1, seed: "0", workers: 1, modeName: "ante"});
+        const report = single.result!.detail!.report as import("../../../src/reporting/SimulationReport.js").SimulationReport;
+        expect(report).toMatchObject({rounds: 1, seed: "0", workers: 1, betMode: "ante", totalBet: 0.1});
+        const reject = async (request: Record<string, unknown>, diagnostic: string) => {
+            const jobs = test.jobs.list(test.file);
+            const history = test.recorder.list();
+            const workers = test.controls.created;
+            for (const response of [
+                await test.network("/api/project/wasm/jobs", {method: "POST", body: JSON.stringify({...binding, request})}),
+                await test.owner.fetch("/api/project/replays", {method: "POST", body: JSON.stringify(request)}),
+            ]) {
+                expect(response.ok).toBe(false);
+                expect(await response.json()).toEqual({error: diagnostic});
+            }
+            expect(test.jobs.list(test.file)).toEqual(jobs);
+            expect(test.recorder.list()).toEqual(history);
+            expect(test.controls.created).toBe(workers);
+            expect(test.controls.live).toBe(0);
+        };
+        const valid = {round: 1, seed: "0", simulationId: single.id};
+        const diagnostic = "Simulation replay requires the retained seed, selected mode and step range from a single-worker run.";
+        for (const request of [
+            {...valid, round: 2}, {round: 1, simulationId: single.id}, {...valid, seed: "different"}, {...valid, modeName: "different"},
+            {...valid, entryCommands: []}, {...valid, entryCommands: [{kind: "spin", bet: 7.5}]}, {...valid, unit: "logical-round"},
+        ]) {
+            expect(() => bindReplayToSimulationReport(validateReplayRequest(request), report)).toThrow(diagnostic);
+            await reject(request, diagnostic);
+        }
+        for (const changed of [
+            {...single, status: "failed" as const}, {...single, operation: "replay"}, {...single, projectId: "/another.wasm"},
+            {...single, result: {...single.result!, detail: {}}},
+            {...single, request: {...single.request, artifactIdentity: "foreign"}, result: {...single.result!, provenance: {...single.result!.provenance, artifactIdentity: "foreign"}}},
+            {...single, result: {...single.result!, provenance: {...single.result!.provenance, configHash: "foreign"}}},
+        ]) {
+            repository.save(changed);
+            await reject(valid, "The selected simulation does not match this WASM artifact and configuration. Run a new simulation.");
+            repository.save(single);
+        }
+        for (const change of [{workers: 2}, {seed: null}, {rounds: 0, sampling: undefined}]) {
+            repository.save({...single, result: {...single.result!, detail: {...single.result!.detail, report: {...report, ...change}}}});
+            await reject(valid, diagnostic);
+            repository.save(single);
+        }
+        for (const coordinated of [false, true]) {
+            repository.save({...single, result: {...single.result!,
+                provenance: {...single.result!.provenance, ...(coordinated ? {configHash: "foreign"} : {})},
+                detail: {...single.result!.detail, report: {...report, reproducibility: {...report.reproducibility, configHash: "foreign"}}}}});
+            await reject(valid, coordinated ? "The selected simulation does not match this WASM artifact and configuration. Run a new simulation." : "The project model changed since this simulation; run a new simulation before sampling it.");
+            repository.save(single);
+        }
+        // Submitted copies are not sample authority: the completed report supplies mode/seed.
+        repository.save({...single, request: {...single.request, seed: "different", modeName: "different"}});
+        for (const unit of [undefined, "step"]) {
+            const replay = await run("replays", {...valid, unit});
+            expect(replay.request).toMatchObject({round: 1, seed: "0", modeName: "ante", expectedConfigHash: fixture.manifest.artifact!.configurationHash});
+            expect(sent.filter(item => item.type === "replay-target").pop()).toMatchObject({options: {round: 1, seed: "0", modeName: "ante"}});
+            expect(test.recorder.list()[0]).toMatchObject({studioSource: "simulation-sample", studioSeed: "0", studioModeName: "ante", bet: 0.1});
+        }
+        repository.save(single);
+        const all = await run("simulations", {rounds: 2, seed: "0", workers: 1, modeName: "all"});
+        const reports = all.result!.detail!.report as import("../../../src/reporting/SimulationReportSet.js").SimulationReportSet;
+        expect(reports.modes).toMatchObject({base: {rounds: 2, totalBet: 0.1}, ante: {rounds: 2, totalBet: 0.2}});
+        for (const modeName of [undefined, "all", "unknown", "toString", "__proto__"]) {
+            const request = {round: 1, seed: "0", simulationId: all.id, modeName};
+            const error = "Select a concrete mode from the all-mode simulation to replay.";
+            expect(() => bindReplayToSimulationReport(validateReplayRequest(request), reports)).toThrow(error);
+            await reject(request, error);
+        }
+        const reference = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("0"));
+        try {
+            for (const modeName of ["ante", "base", "ante"]) {
+                const replay = await run("replays", {round: 2, seed: "0", simulationId: all.id, modeName, unit: "step"});
+                const observed = await collectPokieWasmReplay(reference, {round: 2, seed: "0", modeName});
+                expect(replay.result!.detail!.descriptor).toMatchObject({round: 2, seed: "0", modePolicy: {betModeId: modeName}, totalBet: reports.modes[modeName].totalBet,
+                    totalWin: reports.modes[modeName].totalWin, totalPayout: observed.totalPayout, screen: observed.finalRound!.screen, credits: observed.finalRound!.credits,
+                    stateAfter: observed.stateAfter});
+            }
+        } finally {
+            reference.dispose();
+        }
+        expect(test.recorder.list()).toHaveLength(5);
+    } finally {
+        await test.close();
+    }
+});
 
 it("V2C-22-OPTIONAL-SEED executes replay-only requests with one retained seed and safely reuses admission after rejection", async () => {
     const {StudioReplayExecutionService} = await import("../../../cli/studio/replay/StudioReplayExecutionService.js");

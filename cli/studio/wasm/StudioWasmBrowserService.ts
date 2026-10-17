@@ -10,9 +10,11 @@ import type {PokieWasmReplayObservation} from "../../../src/wasm/PokieWasmReplay
 import {projectPokieWasmRoundArtifact} from "../../../src/wasm/projectPokieWasmRoundArtifact.js";
 import {projectLogicalRound} from "../../../src/runtime/projectLogicalRound.js";
 import {SimulationReportBuilder} from "../../../src/reporting/SimulationReportBuilder.js";
+import type {SimulationReport} from "../../../src/reporting/SimulationReport.js";
+import type {SimulationReportSet} from "../../../src/reporting/SimulationReportSet.js";
 import type {SimulationStatistics} from "../../../src/simulation/SimulationStatistics.js";
 import {validateSimulationRequest} from "../simulation/validateSimulationRequest.js";
-import {validateReplayRequest} from "../replay/validateReplayRequest.js";
+import {bindReplayToSimulationReport, validateReplayRequest} from "../replay/validateReplayRequest.js";
 import {validatePlaySessionRequest} from "../runtime/validatePlaySessionRequest.js";
 import {validatePlaySpinRequest} from "../runtime/validatePlaySpinRequest.js";
 import type {StudioContext} from "../StudioContext.js";
@@ -159,12 +161,19 @@ export class StudioWasmBrowserService {
             request = {...validateSimulationRequest(value.request)};
             if (request.convergence || (request.workers as number) > 1) throw new Error("WASM browser simulation supports one Worker and a fixed round budget. Set Workers to 1 and disable adaptive stopping.");
         } else if (operation === "replay") {
-            request = {...validateReplayRequest(value.request)};
-            if (request.recording || value.request.outcomeSource) throw new Error("Use a WASM recorded round or seed replay for this artifact.");
-            if (request.simulationId) {
-                const simulation = this.jobs.get(canonicalStudioProjectIdentity(artifact.projectRoot), request.simulationId as string);
-                if (simulation?.status !== "completed" || simulation.operation !== "simulation" || simulation.result?.provenance?.artifactIdentity !== artifact.manifest.artifact!.sha256 || simulation.request.seed !== request.seed || simulation.request.modeName !== request.modeName) throw new Error("The selected simulation does not match this WASM artifact, seed and mode. Run a new simulation.");
+            let replay = validateReplayRequest(value.request);
+            if (replay.recording || value.request.outcomeSource) throw new Error("Use a WASM recorded round or seed replay for this artifact.");
+            if (replay.simulationId !== undefined) {
+                const simulation = this.jobs.get(canonicalStudioProjectIdentity(artifact.projectRoot), replay.simulationId);
+                const report = simulation?.result?.detail?.report;
+                if (simulation?.status !== "completed" || simulation.operation !== "simulation" || simulation.result?.provenance?.artifactIdentity !== artifact.manifest.artifact!.sha256 ||
+                    simulation.result.provenance.configHash !== artifact.manifest.artifact!.configurationHash || !record(report) || !("game" in report) || !("rounds" in report || "modes" in report)) {
+                    throw new Error("The selected simulation does not match this WASM artifact and configuration. Run a new simulation.");
+                }
+                replay = bindReplayToSimulationReport(replay, report as SimulationReport | SimulationReportSet);
+                if (replay.expectedConfigHash !== artifact.manifest.artifact!.configurationHash) throw new Error("The project model changed since this simulation; run a new simulation before sampling it.");
             }
+            request = {...replay};
         } else {
             if (value.request.action !== "new" && value.request.action !== "spin" && value.request.action !== "restore") throw new Error("Unavailable WASM Play action.");
             if (value.request.action === "new") validatePlaySessionRequest(value.request);

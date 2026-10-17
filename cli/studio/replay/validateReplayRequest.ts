@@ -1,6 +1,8 @@
 import {deepFreeze} from "../../../src/internal/deepFreeze.js";
 import {validateAuditReplayDescriptor, validateSessionCommand, type ReplayDescriptor, type SessionCommand, toCanonicalJson} from "@fromstan/pokie";
 import {MAX_STUDIO_REPLAY_ROUND} from "./StudioReplayLimits.js";
+import type {SimulationReport} from "../../../src/reporting/SimulationReport.js";
+import type {SimulationReportSet} from "../../../src/reporting/SimulationReportSet.js";
 
 export type ReplayRequestInput = {
     recording?: unknown;
@@ -42,6 +44,21 @@ export type ValidatedReplayRequest = {
 export type ReplayValidationOptions = {
     requireOutcomeSourceProvenance?: boolean;
 };
+
+/** A simulation sample addresses a retained accepted step, never a new command policy. */
+export function bindReplayToSimulationReport(request: ValidatedReplayRequest, report: SimulationReport | SimulationReportSet): ValidatedReplayRequest {
+    if ("modes" in report && (request.modeName === undefined || !Reflect.apply(Object.prototype.hasOwnProperty, report.modes, [request.modeName]))) {
+        throw new Error("Select a concrete mode from the all-mode simulation to replay.");
+    }
+    const selected = "modes" in report ? report.modes[request.modeName!] : report;
+    const acceptedSteps = selected.sampling?.acceptedSubrounds ?? selected.rounds;
+    if ((report.workers ?? 1) !== 1 || (selected.workers ?? 1) !== 1 || typeof selected.seed !== "string" || request.seed !== selected.seed ||
+        !Number.isSafeInteger(acceptedSteps) || request.round > acceptedSteps || request.unit === "logical-round" || request.entryCommands !== undefined ||
+        (request.modeName !== undefined && request.modeName !== selected.betMode)) {
+        throw new Error("Simulation replay requires the retained seed, selected mode and step range from a single-worker run.");
+    }
+    return {...request, modeName: selected.betMode, expectedConfigHash: selected.reproducibility?.configHash};
+}
 
 // The one place a POST /api/project/replays body is turned into a trusted ValidatedReplayRequest —
 // throws a plain, client-safe Error (no stack trace leaks; StudioServer catches this and maps it to
