@@ -1,3 +1,4 @@
+import {recognizesNativeStakeTuningManifest} from "../optimization/internal/NativeStakeTuningManifest.js";
 import {StakeEngineExporter} from "../stakeengine/StakeEngineExporter.js";
 import {isPublishDirectoryDestinationClaimedError, removePublishedDirectoryIfOwned, type PublishedDirectoryOwnership} from "../stakeengine/internal/publishDirectoryAtomically.js";
 import type {StakeEngineExporting} from "../stakeengine/StakeEngineExporting.js";
@@ -121,6 +122,7 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
     }
 
     private async readStakeModes(sourcePath: string): Promise<readonly StakeEngineExportModeInput[]> {
+        if (recognizesNativeStakeTuningManifest(sourcePath)) throw new Error("Native Stake weight candidates support inspect/analyze and explicit candidate save. Re-export requires the original compatible POKIE export; native uint64 weights cannot be reconstructed through numbers.");
         const imported = await this.importer.importFromDirectory(sourcePath);
         const importErrors = imported.issues.filter((issue) => issue.severity === "error");
         if (importErrors.length > 0) {

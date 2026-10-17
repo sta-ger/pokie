@@ -82,6 +82,10 @@ export function describeUnsupportedProjectOperation(
             message: describeWasmUnsupportedOperation(action),
         };
     }
+    if (project.type === "stakeAdapter" && !project.capabilities.includes("stakeAdapter.exchange")) {
+        const recovery = "Inspect or analyze these native weights, or save the reviewed candidate to a new destination. Reconstructing/exporting a number-weighted library requires the original compatible POKIE export.";
+        return {detectedType: project.type, operation, missingCapability: requiredCapability, alternatives, recovery, message: `This native Stake candidate cannot ${action}. ${recovery}`};
+    }
     const recovery =
         alternatives.length > 0
             ? ` You can ${action} with ${alternatives.map(describeProjectType).join(" or ")}.`

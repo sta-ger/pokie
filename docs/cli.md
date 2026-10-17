@@ -3981,3 +3981,24 @@ an unchanged unknown source. [V2C-19](v2-completion/V2C-19.md) lists assumptions
 adapter support and the separate structural save/build gates.
 
 See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.
+
+
+## `pokie optimize <source>`
+
+`pokie optimize game.blueprint.json --policy targets.json --out candidate.blueprint.json`
+searches the declared finite tuning domain and saves a validated candidate of the same
+project type to a new or empty destination. Omit `--out` to review evidence and the diff;
+the temporary candidate is then discarded. Authored input stays separate from explicit
+save/apply. `--format json` is the structured result format; `--progress` writes progress
+records to stderr. Ctrl-C cancels and drains owned work.
+
+The policy file contains `{targets, policy}` as documented in
+[optimization.md](optimization.md), including units/tolerances, declared tunables,
+locks, constraints, seed, positive candidate budget and exact population limit.
+Opaque or tampered packages and WASM without bound source/tuning authority are
+unsupported before executable acquisition. Artifact conversion remains under
+`pokie build SOURCE --target TARGET`.
+
+Exit statuses: success `0`, operational failure `1`, proven infeasible `2`, invalid
+request `3`, unsupported `4`, budget exhausted `5`, cancelled `6`. Only exhaustive
+supported search can prove infeasibility; errors and exhaustion retain distinct verdicts.

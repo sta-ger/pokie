@@ -11,6 +11,11 @@ type DirectoryOwnership = NonNullable<ArtifactBuildResult["publishedDirectoryOwn
 export class ArtifactPublicationOwnership {
     public readonly files: FileOwnership[] = [];
     public readonly directories: DirectoryOwnership[] = [];
+    private readonly independentFiles: boolean;
+
+    public constructor(independentFiles = false) {
+        this.independentFiles = independentFiles;
+    }
 
     public async ensureDirectory(directory: string, requireEmpty = false): Promise<void> {
         directory = path.resolve(directory);
@@ -60,8 +65,12 @@ export class ArtifactPublicationOwnership {
         await this.ensureDirectory(path.dirname(outputPath));
         assertArtifactBuildNotCancelled(options);
         try {
-            await fs.promises.link(stagedPath, outputPath);
-            this.files.push({path: outputPath, dev: staged.dev, ino: staged.ino});
+            if (this.independentFiles) {
+                if (staged.isSymbolicLink()) await fs.promises.symlink(await fs.promises.readlink(stagedPath), outputPath);
+                else await fs.promises.copyFile(stagedPath, outputPath, fs.constants.COPYFILE_EXCL);
+            } else await fs.promises.link(stagedPath, outputPath);
+            const published = await fs.promises.lstat(outputPath);
+            this.files.push({path: outputPath, dev: published.dev, ino: published.ino});
             assertArtifactBuildNotCancelled(options);
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new ArtifactBuildConflictError(`"${outputPath}" already exists. Choose a different --out path.`);

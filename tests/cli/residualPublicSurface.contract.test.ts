@@ -55,10 +55,10 @@ describe("residual public CLI surface", () => {
             .sort();
 
         // This coverage map is immutable P7 evidence.  P8 adds the public
-        // portable-artifact runner, so compare the historical command tree to
+        // portable-artifact runner and V2C-23 adds optimization, so compare the historical command tree to
         // its historical portion rather than rewriting the completed audit.
-        expect(coverage.initialInventory.rootCommands).toEqual([...commandNames.filter((name) => name !== "run"), "export"].sort());
-        expect(commandNames).toContain("run");
+        expect(coverage.initialInventory.rootCommands).toEqual([...commandNames.filter((name) => name !== "run" && name !== "optimize"), "export"].sort());
+        expect(commandNames).toEqual(expect.arrayContaining(["run", "optimize"]));
         expect(coverage.initialInventory.nestedVerbs).toEqual(nestedVerbs);
         for (const command of publicCommands) {
             const help = command.getCommanderCommand().helpInformation();

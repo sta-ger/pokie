@@ -1,3 +1,7 @@
+import {acquireOptimizationAdapter} from "../../src/optimization/internal/ProjectOptimizationAdapter.js";
+import {describeUnsupportedProjectOperation} from "../../src/project/describeUnsupportedProjectOperation.js";
+import {StakeAdapterArtifactBuilder} from "../../src/project/StakeAdapterArtifactBuilder.js";
+import {loadPokieGameRuntime} from "../../src/gamepackage/loadPokieGame.js";
 import fs from "fs";
 import path from "path";
 import {ProjectOptimizationService} from "../../src/optimization/ProjectOptimizationService.js";
@@ -20,7 +24,7 @@ import {optimizationBlueprint as model, optimizationRequest} from "./fixtures/Op
 let directory: string;
 let source: string;
 let service: ProjectOptimizationService;
-const resolve = async (file: string) => (await new ProjectTargetResolver().resolve(file))!;
+const resolve = async (file: string) => (await new ProjectTargetResolver().resolve(file, {readConfigurationProvenance: false}))!;
 beforeEach(() => {
     fs.mkdirSync(path.resolve("node_modules/.cache"), {recursive: true});
     directory = fs.mkdtempSync(path.resolve("node_modules/.cache/optimization-test-"));
@@ -156,15 +160,7 @@ it("requires package source authority before mutation", async () => {
     expect((await service.optimize(await resolve(root), optimizationRequest())).status).toBe("unsupported");
 });
 
-it("tunes a real declared data-backed code package, preserves custom bytes, rejects stale authority", async () => {
-    const root = path.join(directory, "package");
-    fs.mkdirSync(root);
-    fs.writeFileSync(
-        path.join(root, "package.json"),
-        JSON.stringify({name: "tunable", version: "1.0.0", pokie: {entry: "index.cjs"}}),
-    );
-    fs.writeFileSync(path.join(root, "parameters.json"), JSON.stringify(model()));
-    const code = `const p = require('@fromstan/pokie');
+const declaredGameCode = `const p = require('@fromstan/pokie');
 const data = require('./parameters.json');
 function config() {
  const c = new p.VideoSlotConfig(); c.setAvailableBets(data.availableBets); c.setReelsNumber(data.reels); c.setReelsSymbolsNumber(data.rows);
@@ -177,8 +173,20 @@ module.exports = {getManifest: () => data.manifest, getConfigHash: () => p.compu
  createSession() { const c = config(); return new p.VideoSlotSession(c, new p.SymbolsCombinationsGenerator(c, new p.SeededRandomNumberGenerator(1))); },
  createExactEnumerationSession(forced) { return new p.VideoSlotSession(config(), forced); }};
 `;
+
+function declaredPackage(name = "package", prefix = "", release = "", dependencies: Record<string, string> = {}) {
+    const root = path.join(directory, name);
+    fs.mkdirSync(root);
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "tunable", version: "1.0.0", pokie: {entry: "index.cjs"}, dependencies}));
+    fs.writeFileSync(path.join(root, "parameters.json"), JSON.stringify(model()));
+    const code = prefix + declaredGameCode.replace("module.exports = {", `module.exports = {${release ? `release: async () => {${release}},` : ""}`);
     fs.writeFileSync(path.join(root, "index.cjs"), code);
     declarePackageTuning(root, "parameters.json", ["/paytable/A/2"]);
+    return {root, code};
+}
+
+it("tunes a real declared data-backed code package, preserves custom bytes, rejects stale authority", async () => {
+    const {root, code} = declaredPackage();
     const request = optimizationRequest();
     request.policy.protectedFiles = ["index.cjs", "package.json"];
     const project = await resolve(root);
@@ -267,8 +275,8 @@ it("tunes Stake native uint64 lookup weights and retains book/event bytes and mo
     const book = fs.readFileSync(path.join(root, index.modes[0].events));
     // Native bigint source values deliberately exceed binary64 integer precision.
     const weights = new Map([
-        [win.id, "9007199254740993"],
-        [zero.id, "9007199254740993"],
+        [win.id, "18446744073709551615"],
+        [zero.id, "18446744073709551615"],
     ]);
     const csv = path.join(root, index.modes[0].weights);
     fs.writeFileSync(
@@ -289,27 +297,34 @@ it("tunes Stake native uint64 lookup weights and retains book/event bytes and mo
     request.policy.locks = [];
     request.targets[0].value = 1;
     request.policy.tunables = [
-        {path: `/modes/base/outcomes/${win.id}/weight`, values: ["9007199254740992", "9007199254740993"]},
+        {path: `/modes/base/outcomes/${win.id}/weight`, values: ["18446744073709551614", "18446744073709551615"]},
     ];
     request.policy.constraints = {
-        fixed: [{path: `/modes/base/outcomes/${zero.id}/weight`, value: "9007199254740993"}],
+        fixed: [{path: `/modes/base/outcomes/${zero.id}/weight`, value: "18446744073709551615"}],
         sums: [
             {
                 paths: [`/modes/base/outcomes/${win.id}/weight`, `/modes/base/outcomes/${zero.id}/weight`],
-                value: "18014398509481986",
+                value: "36893488147419103230",
             },
         ],
     };
     const result = await service.optimize(await resolve(root), request);
     expect(result.diagnostics).toEqual([]);
     expect(result).toMatchObject({status: "success", candidate: {type: "stakeAdapter"}, evidence: {measured: [1]}});
-    const reopened = await new StakeEngineOutcomeSourceReader().readFromDirectory(result.candidate!.path);
+    const candidateProject = await resolve(result.candidate!.path);
+    expect(candidateProject.capabilities).toEqual(["outcomeSource.read"]);
+    expect(describeUnsupportedProjectOperation(candidateProject, "stakeEngine.export")?.recovery).toContain("save the reviewed candidate");
+    await expect(new StakeAdapterArtifactBuilder("1.3.0").validate(candidateProject)).rejects.toThrow("native uint64");
+    const saved = path.join(directory, "saved-stake");
+    await service.publish(result.candidate!, request, saved);
+    await service.discard(result.candidate!);
+    const reopened = await new StakeEngineOutcomeSourceReader().readFromDirectory(saved);
     expect(reopened.issues.filter((issue) => issue.severity === "error")).toEqual([]);
     expect(reopened.modes[0].outcomes.map((outcome) => outcome.weight)).toEqual([
-        BigInt("9007199254740993"),
-        BigInt("9007199254740993"),
+        BigInt("18446744073709551615"),
+        BigInt("18446744073709551615"),
     ]);
-    expect(fs.readFileSync(path.join(result.candidate!.path, index.modes[0].events))).toEqual(book);
+    expect(fs.readFileSync(path.join(saved, index.modes[0].events))).toEqual(book);
 });
 
 it.each([
@@ -409,11 +424,11 @@ it("rolls back owned partial WASM publications when the second companion fails",
     const result = await service.optimize(await resolve(wasm), request);
     expect(result.status).toBe("success");
     const destination = path.join(directory, "partial.wasm");
-    const link = fs.promises.link.bind(fs.promises);
+    const copy = fs.promises.copyFile.bind(fs.promises);
     const failure = jest
-        .spyOn(fs.promises, "link")
-        .mockImplementation((from, to) =>
-            String(to).endsWith(".tuning.json") ? Promise.reject(new Error("companion failure")) : link(from, to),
+        .spyOn(fs.promises, "copyFile")
+        .mockImplementation((from, to, flags) =>
+            String(to).endsWith(".tuning.json") ? Promise.reject(new Error("companion failure")) : copy(from, to, flags),
         );
     await expect(service.publish(result.candidate!, request, destination)).rejects.toThrow("companion failure");
     failure.mockRestore();
@@ -487,3 +502,190 @@ it("rejects source byte locks that conflict with the tuning contract before prep
     expect(fs.existsSync(path.join(directory, "scratch"))).toBe(false);
     expect(fs.readFileSync(source)).toEqual(before);
 });
+
+it("rejects target-matching serialization outside the attempted finite domain", async () => {
+    const request = optimizationRequest();
+    request.policy.tunables[0].values = [2, 4];
+    const realWrite = fs.writeFileSync.bind(fs);
+    const write = jest.spyOn(fs, "writeFileSync").mockImplementation((...args) => {
+        if (String(args[0]).endsWith("candidate.blueprint.json")) {
+            const data = JSON.parse(args[1] as string);
+            data.paytable.A[2] = 3; // Meets 0.75, but was never attempted.
+            return realWrite(args[0], JSON.stringify(data));
+        }
+        return realWrite(...args);
+    });
+    const result = await service.optimize(await resolve(source), request);
+    write.mockRestore();
+    expect(result).toMatchObject({status: "failure", diagnostics: [{message: expect.stringContaining("attempted selection")}]});
+    expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+});
+
+it("rejects coordinated package code and contract drift against original authority without executing it", async () => {
+    const marker = path.join(directory, "executed");
+    const {root} = declaredPackage();
+    const before = sourceInventory(await resolve(root));
+    const realWrite = fs.writeFileSync.bind(fs);
+    const write = jest.spyOn(fs, "writeFileSync").mockImplementation((...args) => {
+        if (String(args[0]).endsWith("pokie-tuning.json") && String(args[0]).includes("scratch")) {
+            const contract = JSON.parse(args[1] as string);
+            const candidateRoot = path.dirname(String(args[0]));
+            realWrite(path.join(candidateRoot, "index.cjs"), `require('fs').writeFileSync(${JSON.stringify(marker)}, 'executed');\n` + declaredGameCode);
+            const files = sourceInventory({type: "tsPackage", rootPath: candidateRoot});
+            Reflect.deleteProperty(files, "pokie-tuning.json");
+            Reflect.deleteProperty(files, "parameters.json");
+            contract.sourceHashes = files;
+            return realWrite(args[0], JSON.stringify(contract));
+        }
+        return realWrite(...args);
+    });
+    const result = await service.optimize(await resolve(root), optimizationRequest());
+    write.mockRestore();
+    expect(result.status).toBe("failure");
+    expect(result.diagnostics[0].message).toContain("authority changed");
+    expect(fs.existsSync(marker)).toBe(false);
+    expect(sourceInventory(await resolve(root))).toEqual(before);
+});
+
+it("retains project-local dependency identity through evaluation, independent saves and runtime loading", async () => {
+    const loads = path.join(directory, "dependency-loads");
+    const name = "optimization-local-dependency";
+    const {root} = declaredPackage("local-dependency", `const d = require('${name}'); if (d.value !== 42) throw Error('wrong dependency'); require('fs').appendFileSync(${JSON.stringify(loads)}, require.resolve('${name}') + '\\n');\n`, "", {[name]: "1.0.0"});
+    const dependency = path.join(root, "node_modules", name);
+    fs.mkdirSync(dependency, {recursive: true});
+    fs.writeFileSync(path.join(dependency, "package.json"), JSON.stringify({name, version: "1.0.0", main: "index.cjs"}));
+    fs.writeFileSync(path.join(dependency, "index.cjs"), "module.exports = {value: 42};");
+    const request = optimizationRequest();
+    const result = await service.optimize(await resolve(root), request);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.status).toBe("success");
+    const saved = path.join(directory, "saved-package");
+    const second = path.join(directory, "second-package");
+    await service.publish(result.candidate!, request, saved);
+    await service.publish(result.candidate!, request, second);
+    expect(fs.statSync(path.join(saved, "parameters.json")).ino).not.toBe(fs.statSync(path.join(second, "parameters.json")).ino);
+    await service.discard(result.candidate!);
+    const runtime = await loadPokieGameRuntime(saved);
+    try {
+        expect(runtime.game.getConfigHash?.()).toBeDefined();
+        expect(JSON.parse(fs.readFileSync(path.join(saved, "parameters.json"), "utf8")).paytable.A[2]).toBe(3);
+    } finally {
+        await runtime.game.release?.();
+        await runtime.release();
+    }
+    expect(new Set(fs.readFileSync(loads, "utf8").trim().split("\n"))).toEqual(new Set([path.join(dependency, "index.cjs")]));
+    fs.appendFileSync(path.join(saved, "index.cjs"), "\n// independently edited");
+    expect(fs.readFileSync(path.join(second, "index.cjs"), "utf8")).not.toContain("independently edited");
+});
+
+it("rolls back publication when the saved executable cannot load", async () => {
+    const {root} = declaredPackage();
+    const request = optimizationRequest();
+    const result = await service.optimize(await resolve(root), request);
+    const destination = path.join(directory, "unloadable");
+    const realCopy = fs.promises.copyFile.bind(fs.promises);
+    const copy = jest.spyOn(fs.promises, "copyFile").mockImplementation(async (from, to, flags) => {
+        await realCopy(from, to, flags);
+        if (String(to) === path.join(destination, "index.cjs")) fs.writeFileSync(to, "throw Error('saved executable cannot load');");
+    });
+    await expect(service.publish(result.candidate!, request, destination)).rejects.toThrow();
+    copy.mockRestore();
+    expect(fs.existsSync(destination)).toBe(false);
+    await expect(service.publish(result.candidate!, request, destination)).resolves.toBe(destination);
+});
+
+it.each(["success", "hash-failure", "evaluation-failure", "cleanup-failure"])("releases every acquired package game and loader lease on %s", async (scenario) => {
+    const marker = path.join(directory, "releases");
+    const {root} = declaredPackage("owned-runtime", "", `require('fs').appendFileSync(${JSON.stringify(marker)}, 'released\\n');${scenario === "cleanup-failure" ? "throw Error('game cleanup failed');" : ""}`);
+    if (scenario === "hash-failure" || scenario === "evaluation-failure") {
+        const file = path.join(root, "index.cjs");
+        const code = fs.readFileSync(file, "utf8").replace(scenario === "hash-failure" ? "p.computeGameBlueprintHash(data)" : "new p.VideoSlotSession(config(), forced)", scenario === "hash-failure" ? "'bad-hash'" : "(() => {throw Error('evaluation failed')})()");
+        fs.writeFileSync(file, code);
+        fs.rmSync(path.join(root, "pokie-tuning.json"));
+        declarePackageTuning(root, "parameters.json", ["/paytable/A/2"]);
+    }
+    const snapshotsBefore = fs.readdirSync(process.env.TMPDIR!).filter((name) => name.startsWith("pokie-runtime-"));
+    const result = await service.optimize(await resolve(root), optimizationRequest());
+    expect(result.status).toBe(({success: "success", "hash-failure": "unsupported", "evaluation-failure": "failure", "cleanup-failure": "failure"} as Record<string, string>)[scenario]);
+    expect(fs.readFileSync(marker, "utf8").trim().split("\n")).toHaveLength(scenario === "success" ? 2 : 1);
+    expect(fs.readdirSync(process.env.TMPDIR!).filter((name) => name.startsWith("pokie-runtime-"))).toEqual(snapshotsBefore);
+    if (scenario === "cleanup-failure") expect(result.diagnostics).toEqual([{path: "cleanup", message: expect.stringContaining("game cleanup failed")}]);
+});
+
+it("preflights model-dependent package policies without executable acquisition", async () => {
+    const marker = path.join(directory, "executed");
+    const {root} = declaredPackage("preflight", `require('fs').writeFileSync(${JSON.stringify(marker)}, 'executed');\n`);
+    const request = optimizationRequest();
+    request.policy.locks.push("/unknown-model-field");
+    expect((await service.optimize(await resolve(root), request)).status).toBe("invalid");
+    expect(fs.existsSync(marker)).toBe(false);
+    expect(fs.existsSync(path.join(directory, "scratch"))).toBe(false);
+    expect((await service.optimize(await resolve(root), optimizationRequest())).status).toBe("success");
+    expect(fs.existsSync(marker)).toBe(true);
+});
+
+it("rejects publication within owned workspaces and saves independent bytes that survive discard", async () => {
+    const request = optimizationRequest();
+    const result = await service.optimize(await resolve(source), request);
+    await expect(service.publish(result.candidate!, request, path.join(result.candidate!.workspace, "sibling.json"))).rejects.toThrow("inside source");
+    const first = path.join(directory, "first.json");
+    const second = path.join(directory, "second.json");
+    // EXDEV from hard-link publication must be irrelevant to ordinary saves.
+    const link = jest.spyOn(fs.promises, "link").mockRejectedValue(Object.assign(new Error("cross-device link"), {code: "EXDEV"}));
+    await service.publish(result.candidate!, request, first);
+    await service.publish(result.candidate!, request, second);
+    expect(link).not.toHaveBeenCalled();
+    link.mockRestore();
+    await service.discard(result.candidate!);
+    const secondBytes = fs.readFileSync(second);
+    fs.appendFileSync(first, " ");
+    expect(fs.readFileSync(second)).toEqual(secondBytes);
+    expect(JSON.parse(secondBytes.toString()).paytable.A[2]).toBe(3);
+});
+
+it("honors library project context before acquisition and while selecting a result", async () => {
+    expect((await service.optimize(await resolve(source), optimizationRequest(), {isCurrent: () => false})).status).toBe("failure");
+    expect(fs.existsSync(path.join(directory, "scratch"))).toBe(false);
+    let current = true;
+    const result = await service.optimize(await resolve(source), optimizationRequest(), {isCurrent: () => current, onProgress: () => {
+        current = false;
+    }});
+    expect(result.status).toBe("failure");
+    expect(result.candidate).toBeUndefined();
+    expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+});
+
+it.each(["outcomeLibrary", "stakeAdapter"] as const)("rejects zero and wrong-representation native domains before scratch preparation for %s", async (type) => {
+    const root = path.join(directory, type);
+    const original = await nativeSource();
+    const library = buildWeightedOutcomeLibrary({libraryId: "native", outcomes: original.outcomes.map((outcome, index) => ({...outcome, id: String(index + 1)}))});
+    if (type === "outcomeLibrary") await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{modeName: "base", libraryId: "native", outcomes: library.outcomes}], root);
+    else await new StakeEngineExporter("1.3.0").exportToDirectory([{modeName: "base", cost: 1, library}], root);
+    const project = await resolve(root);
+    const before = sourceInventory(project);
+    const request = optimizationRequest();
+    request.policy.scope = "native-outcomes";
+    request.policy.locks = [];
+    request.policy.tunables = [{path: "/modes/base/outcomes/1/weight", values: [type === "stakeAdapter" ? "0" : 0]}];
+    expect((await service.support(project, request)).supported).toBe(false);
+    expect((await service.optimize(project, request)).status).toBe("invalid");
+    request.policy.tunables[0].values = [type === "stakeAdapter" ? 1 : "1"];
+    expect((await service.optimize(project, request)).status).toBe("invalid");
+    expect(fs.existsSync(path.join(directory, "scratch"))).toBe(false);
+    expect(sourceInventory(project)).toEqual(before);
+});
+
+it("measures a supported population above the JavaScript argument limit without spreading it", async () => {
+    const library = await nativeSource();
+    const root = path.join(directory, "large-library");
+    await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{modeName: "base", libraryId: "native", outcomes: library.outcomes}], root);
+    const request = optimizationRequest();
+    request.policy.scope = "native-outcomes";
+    request.policy.maxOutcomes = 150000;
+    request.policy.locks = [];
+    request.policy.tunables = [{path: `/modes/base/outcomes/${library.outcomes[0].id}/weight`, values: [1]}];
+    const adapter = await acquireOptimizationAdapter(await resolve(root), request.policy);
+    const artifact = library.outcomes.find((outcome) => outcome.artifact.totalWin > 0)!.artifact;
+    const population = {modes: {base: {libraryId: "large", outcomes: Object.fromEntries(Array.from({length: 150000}, (_, index) => [String(index), {weight: 1, artifact}]))}}};
+    expect(await adapter.measure(root, population, [{metric: "maxWin", unit: "betMultiple", value: 2}], request.policy)).toEqual([2]);
+}, 30000);

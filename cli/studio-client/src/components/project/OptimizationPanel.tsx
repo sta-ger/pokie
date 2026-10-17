@@ -40,16 +40,26 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
     const controller = useRef<AbortController | undefined>(undefined);
     const jobs = useProjectJobs(fetchImpl, projectRoot, 0);
     useEffect(
-        () => () => {
-            generation.current++;
-            controller.current?.abort();
+        () => {
+            setSupport(undefined);
+            setStarted(undefined);
+            setSaved(undefined);
+            setError(undefined);
+            setBusy(false);
+            edited.current = false;
+            const invalidate = (): void => {
+                generation.current++;
+                controller.current?.abort();
+            };
+            return invalidate;
         },
         [projectRoot],
     );
+    const projectJobs = jobs.jobs.filter((item) => item.projectId === projectRoot);
     const job =
-        jobs.jobs.find((item) => item.id === started?.id) ??
-        started ??
-        jobs.jobs.find((item) => item.operation === "optimization");
+        projectJobs.find((item) => item.id === started?.id) ??
+        (started?.projectId === projectRoot ? started : undefined) ??
+        projectJobs.find((item) => item.operation === "optimization");
     useEffect(() => {
         if (!edited.current && job?.request.request) {
             setText(JSON.stringify(job.request.request, null, 2));
@@ -78,7 +88,7 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
                 const value = await optimizationAction<StudioOptimizationSupport>(
                     fetchImpl,
                     kind,
-                    {request},
+                    {request, expectedProjectRoot: projectRoot},
                     controller.current.signal,
                 );
                 if (current === generation.current) setSupport(value);
@@ -86,7 +96,7 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
                 const value = await optimizationAction<{job: StudioJobView}>(
                     fetchImpl,
                     kind,
-                    {request, sourceRevision: support?.sourceRevision},
+                    {request, sourceRevision: support?.sourceRevision, expectedProjectRoot: projectRoot},
                     controller.current.signal,
                 );
                 if (current === generation.current) {
@@ -97,7 +107,7 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
                 const value = await optimizationAction<{outputPath: string}>(
                     fetchImpl,
                     kind,
-                    {jobId: job?.id, destination},
+                    {jobId: job?.id, destination, expectedProjectRoot: projectRoot},
                     controller.current.signal,
                 );
                 if (current === generation.current) setSaved(value.outputPath);
@@ -154,7 +164,7 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
             </Button>
             {active && (
                 <Button
-                    disabled={job.status === "cancelling"}
+                    disabled={job.status === "cancelling" || jobs.pendingIds.includes(job.id)}
                     onClick={() => {
                         jobs.cancel(job.id);
                     }}
@@ -171,10 +181,15 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
             {result && (
                 <>
                     <Text>Verdict: {result.status}</Text>
-                    <Code block>{JSON.stringify(result.evidence ?? result.diagnostics, null, 2)}</Code>
+                    {result.diagnostics.length > 0 && <Alert color="red" role="alert">{result.diagnostics.map((item) => `${item.path}: ${item.message}`).join("; ")}</Alert>}
+                    {result.evidence && <Code block>{JSON.stringify(result.evidence, null, 2)}</Code>}
                 </>
             )}
-            {result?.candidate && (
+            {job?.error && <Alert color="red" role="alert">{job.error}</Alert>}
+            {job?.recovery && <Alert color="yellow" role="alert">Recovery ({job.recovery.action}): {job.recovery.reason}</Alert>}
+            {jobs.connectionError && <Alert color="red" role="alert">{jobs.connectionError}</Alert>}
+            {jobs.actionError && <Alert color="red" role="alert">{jobs.actionError}</Alert>}
+            {result?.status === "success" && result.candidate && job?.status === "completed" && (
                 <>
                     <TextInput
                         label="Candidate destination"

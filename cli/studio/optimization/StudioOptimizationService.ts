@@ -48,12 +48,14 @@ export class StudioOptimizationService {
         try {
             if (method !== "POST") return {status: 405, body: {error: "Use POST."}};
             const submitted = body as {
+                expectedProjectRoot?: unknown;
                 request?: unknown;
                 sourceRevision?: unknown;
                 jobId?: unknown;
                 destination?: unknown;
             };
             if (!submitted || typeof submitted !== "object") throw new Error("Expected an optimization request.");
+            if (submitted.expectedProjectRoot !== context.projectRoot || !context.isCurrent()) return {status: 409, body: {error: "Project changed. Reopen the intended Project before optimizing or saving."}};
             if (action === "save") {
                 if (
                     typeof submitted.jobId !== "string" ||
@@ -78,14 +80,15 @@ export class StudioOptimizationService {
                 return {status: 200, body: {outputPath}};
             }
             const request = validateOptimizationRequest(submitted.request);
-            const project = await new ProjectTargetResolver().resolve(context.projectRoot);
+            const project = await new ProjectTargetResolver().resolve(context.projectRoot, {readConfigurationProvenance: false});
             if (!project) return {status: 400, body: {error: "Unsupported Project."}};
             const revision = projectRevision(project);
             if (!context.isCurrent()) return {status: 409, body: {error: "Project changed."}};
-            if (action === "support") return {
-                status: 200,
-                body: {...(await this.optimizer.support(project, request)), sourceRevision: revision},
-            };
+            if (action === "support") {
+                const support = await this.optimizer.support(project, request);
+                if (!context.isCurrent()) return {status: 409, body: {error: "Project changed."}};
+                return {status: 200, body: {...support, sourceRevision: revision}};
+            }
             if (submitted.sourceRevision !== revision) return {
                 status: 409,
                 body: {error: "Source changed or no support preview. Refresh support before optimizing.", request},
@@ -100,6 +103,7 @@ export class StudioOptimizationService {
                 async (executor) => {
                     const result = await this.optimizer.optimize(project, request, {
                         signal: executor.signal,
+                        isCurrent: context.isCurrent,
                         onProgress: (evidence) =>
                             executor.progress({
                                 stage: "Finite search",

@@ -63,10 +63,14 @@ it("returns unsupported for a valid policy with opaque package and supports help
     const root = path.join(directory, "opaque");
     fs.mkdirSync(root);
     fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "opaque", pokie: {entry: "index.cjs"}}));
-    fs.writeFileSync(path.join(root, "index.cjs"), "module.exports = {};");
+    fs.writeFileSync(path.join(root, "index.cjs"), `require("fs").writeFileSync(${JSON.stringify(path.join(directory, "executed"))}, "executed"); module.exports = {};`);
     const command = new OptimizeCommand();
     expect(await command.run([root, "--policy", policy])).toBe(4);
     expect(result().status).toBe("unsupported");
+    expect(fs.existsSync(path.join(directory, "executed"))).toBe(false);
+    const opaqueWasm = path.join(directory, "opaque.wasm");
+    fs.writeFileSync(opaqueWasm, Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
+    expect(await command.run([opaqueWasm, "--policy", policy])).toBe(4);
     expect(await command.run(["--help"])).toBe(0);
     expect(await command.run([source, "--policy", policy, "--invalid"])).toBe(3);
 });

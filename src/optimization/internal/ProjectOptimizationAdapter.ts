@@ -7,6 +7,8 @@ import ExcelJS from "exceljs";
 import type {GameBlueprint} from "../../generated/GameBlueprint.js";
 import {GameBlueprintValidator} from "../../generated/GameBlueprintValidator.js";
 import {computeGameBlueprintHash} from "../../generated/computeGameBlueprintHash.js";
+import {createPokieGameDependencyOverlay} from "../../gamepackage/resolvePokieGameEntryModule.js";
+import {OptimizationInputError} from "../validateOptimizationRequest.js";
 import {loadPokieGameRuntime} from "../../gamepackage/loadPokieGame.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {PokieProject} from "../../project/PokieProject.js";
@@ -38,7 +40,7 @@ import {
     type DeclaredPackageTuningContract,
 } from "../DeclaredTuningContract.js";
 import type {MathTarget, OptimizationPolicy, OptimizationScalar} from "../OptimizationPolicy.js";
-import {copyPackage, digest, inventory, paytablePaths, readJson, writeJson} from "./optimizationData.js";
+import {copyPackage, digest, inventory, jsonHash, paytablePaths, readJson, writeJson} from "./optimizationData.js";
 
 type NativeOutcome = {
     weight: OptimizationScalar;
@@ -154,7 +156,7 @@ function selectLibraryMetrics(
             case "maxWin":
                 return target.unit === "currency"
                     ? analysis.maxWin
-                    : Math.max(...outcomes.map((outcome) => outcome.artifact.payoutMultiplier));
+                    : outcomes.reduce((maximum, outcome) => Math.max(maximum, outcome.artifact.payoutMultiplier), 0);
             default:
                 throw new OptimizationUnsupportedError("Unknown metric.");
         }
@@ -167,10 +169,10 @@ async function measureGame(
     policy: OptimizationPolicy,
     signal?: AbortSignal,
 ): Promise<number[]> {
-    cancelled(signal);
-    if (game.getConfigHash?.() !== computeGameBlueprintHash(blueprint)) throw new OptimizationUnsupportedError("Executable getConfigHash does not bind the declared tuning model.");
-    const selectedGame = selectStake(game, policy.stake);
     try {
+        cancelled(signal);
+        if (game.getConfigHash?.() !== computeGameBlueprintHash(blueprint)) throw new OptimizationUnsupportedError("Executable getConfigHash does not bind the declared tuning model.");
+        const selectedGame = selectStake(game, policy.stake);
         const result = await generateExactWeightedOutcomeLibrary({
             libraryId: "optimization",
             game: selectedGame,
@@ -218,9 +220,15 @@ export async function acquireOptimizationAdapter(
             tunable.values.some((value) =>
                 project.type === "stakeAdapter" ? typeof value !== "string" : typeof value !== "number",
             )
-        ) throw new OptimizationUnsupportedError(
-            "Stake weights require uint64 strings; Outcome Library weights require numbers.",
-        );
+        ) throw new OptimizationInputError([{path: tunable.path, message: "Stake weights require uint64 strings; Outcome Library weights require numbers."}]);
+        for (const field of policy.tunables) if (field.values.some((value) => typeof value === "string" ? BigInt(value) === BigInt(0) : value <= 0)) throw new OptimizationInputError([{path: field.path, message: "Native weights must be positive; zero-weight domains are unsupported by the native format."}]);
+        if (project.type === "outcomeLibrary") {
+            const maximumTotal = Object.entries(model.modes[policy.mode].outcomes).reduce((sum, [id, outcome]) => {
+                const values = policy.tunables.find((field) => field.path === `/modes/${escapeMode}/outcomes/${encode(id)}/weight`)?.values ?? [outcome.weight];
+                return sum + values.reduce<number>((maximum, value) => Math.max(maximum, Number(value)), 0);
+            }, 0);
+            if (!Number.isFinite(maximumTotal)) throw new OptimizationInputError([{path: "policy/tunables", message: "Native library total weight must remain finite throughout the declared domain."}]);
+        }
         return {
             model,
             writable,
@@ -383,14 +391,6 @@ export async function acquireOptimizationAdapter(
         }
         blueprint = readJson(path.join(project.rootPath, contract.parameterFile)) as GameBlueprint;
         if (computeGameBlueprintHash(blueprint) !== contract.modelHash) throw new OptimizationUnsupportedError("Stale package tuning model hash.");
-        const loaded = await loadPokieGameRuntime(project.rootPath);
-        try {
-            if (!loaded.game.createExactEnumerationSession || loaded.game.getConfigHash?.() !== contract.modelHash) throw new OptimizationUnsupportedError(
-                "Package executable does not implement declared tuning/hash/exact-runtime contract.",
-            );
-        } finally {
-            await releaseOwnedRuntime(() => loaded.release());
-        }
     } else {
         if (!fs.existsSync(`${project.rootPath}.tuning.json`)) throw new OptimizationUnsupportedError("Opaque WASM: missing bound source/build tuning provenance.");
         wasmContract = readJson(`${project.rootPath}.tuning.json`) as CanonicalWasmTuningContract;
@@ -454,6 +454,7 @@ export async function acquireOptimizationAdapter(
             if (project.type === "tsPackage") {
                 const output = path.join(directory, "candidate");
                 copyPackage(project.rootPath, output);
+                await createPokieGameDependencyOverlay(output, project.rootPath);
                 writeJson(path.join(output, contract!.parameterFile), model);
                 refreshPackageTuning(output, contract!, model);
                 return output;
@@ -487,11 +488,12 @@ export async function acquireOptimizationAdapter(
                 return result.blueprint;
             }
             if (project.type === "tsPackage") {
-                verifyPackageSourceHashes(
-                    file,
-                    readJson(path.join(file, "pokie-tuning.json")) as DeclaredPackageTuningContract,
-                );
-                return readJson(path.join(file, contract!.parameterFile));
+                const savedContract = readJson(path.join(file, "pokie-tuning.json")) as DeclaredPackageTuningContract;
+                if (jsonHash({...savedContract, modelHash: contract!.modelHash}) !== jsonHash(contract)) throw new Error("Serialized package tuning authority changed.");
+                verifyPackageSourceHashes(file, contract!);
+                const model = readJson(path.join(file, contract!.parameterFile)) as GameBlueprint;
+                if (savedContract.modelHash !== computeGameBlueprintHash(model)) throw new Error("Serialized package model hash changed.");
+                return model;
             }
             if (project.type === "wasm") return (readJson(`${file}.tuning.json`) as CanonicalWasmTuningContract).blueprint;
             return readJson(file);

@@ -1,3 +1,4 @@
+import {ProjectTargetUnsupportedError} from "../../src/project/ProjectTargetUnsupportedError.js";
 import {projectRevision} from "../../src/optimization/internal/optimizationData.js";
 import {OptimizationCancelledError} from "../../src/optimization/internal/ProjectOptimizationAdapter.js";
 import {ArtifactBuildCancelledError} from "../../src/project/ArtifactBuildOptions.js";
@@ -53,7 +54,7 @@ export class OptimizeCommand implements CliCommandHandling {
                 if (error instanceof OptimizationInputError) throw error;
                 throw new OptimizationInputError([{path: "policy", message: (error as Error).message}]);
             }
-            const project = await new ProjectTargetResolver().resolve(command.args[0]);
+            const project = await new ProjectTargetResolver().resolve(command.args[0], {readConfigurationProvenance: false});
             if (!project) result = {
                 status: "unsupported",
                 diagnostics: [{path: "source", message: "Not a recognized POKIE project."}],
@@ -111,6 +112,7 @@ export class OptimizeCommand implements CliCommandHandling {
 }
 
 function classifyCommandError(error: unknown): OptimizationResult["status"] {
+    if (error instanceof ProjectTargetUnsupportedError) return "unsupported";
     if (error instanceof OptimizationInputError || (error as {code?: string}).code?.startsWith("commander.")) return "invalid";
     if (error instanceof OptimizationCancelledError || error instanceof ArtifactBuildCancelledError) return "cancelled";
     return "failure";

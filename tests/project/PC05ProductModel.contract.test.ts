@@ -765,7 +765,7 @@ describe("PC-05 product-model contract", () => {
             "sim",
             "validate",
         ].sort();
-        expect(publicRoutes.sort()).toEqual([...historicalPublicRoutes.filter((route) => route !== "export"), "run"].sort());
+        expect(publicRoutes.sort()).toEqual([...historicalPublicRoutes.filter((route) => route !== "export"), "run", "optimize"].sort());
 
         // CAPABILITY-MATRIX.md is completed PC-05 evidence, not a mutable
         // current-route registry. P8's canonical WASM runner is documented
@@ -840,7 +840,14 @@ describe("PC-05 product-model contract", () => {
             {route: "par import", option: "--out"},
             {route: "fairness reveal", option: "--out"},
         ]));
-        for (const surface of persistenceSurfaces) {
+        expect(persistenceSurfaces).toContainEqual({route: "optimize", option: "--out"});
+        const optimizationSource = fs.readFileSync(path.join(__dirname, "..", "..", "cli/commands/OptimizeCommand.ts"), "utf-8");
+        expect(optimizationSource).toContain("if (options.out)");
+        expect(optimizationSource).toContain("this.service.publish(candidate, request, options.out");
+        expect(optimizationSource).toContain("this.service.discard(candidate)");
+        expect(fs.readFileSync(CLI_DOCS_PATH, "utf-8")).toContain("pokie optimize");
+        // Frozen PC-05 producers retain their original scope; V2C-23 is asserted above.
+        for (const surface of persistenceSurfaces.filter((surface) => surface.route !== "optimize")) {
             expect(
                 contracts.some((contract) => contract.producer.startsWith(`cli:${surface.route}`) && contract.producer.includes(surface.option)),
             ).toBe(true);

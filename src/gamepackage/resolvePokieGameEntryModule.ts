@@ -68,7 +68,7 @@ async function createRuntimeSnapshot(packageRoot: string, entryPath: string): Pr
         // node_modules directory (fixtures and Studio materializations do). Keep that normal
         // Node resolution chain available from the external snapshot without copying dependencies
         // or writing anything into the authored package.
-        await createDependencyOverlay(root, packageRoot);
+        await createPokieGameDependencyOverlay(root, packageRoot);
         const snapshotEntry = path.join(root, relativeEntry);
         let released = false;
         return {
@@ -98,7 +98,8 @@ async function createRuntimeSnapshot(packageRoot: string, entryPath: string): Pr
     }
 }
 
-async function createDependencyOverlay(snapshotRoot: string, startPath: string): Promise<void> {
+/** Bind declared dependencies to the source installation when detaching a package. */
+export async function createPokieGameDependencyOverlay(snapshotRoot: string, startPath: string): Promise<void> {
     const overlay = path.join(snapshotRoot, "node_modules");
     const dependencyRoots: string[] = [];
     let current = startPath;

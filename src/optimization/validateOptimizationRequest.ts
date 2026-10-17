@@ -39,15 +39,15 @@ export function validateOptimizationRequest(input: unknown): OptimizationRequest
         }
         return true;
     };
-    const scalar = (value: unknown, path: string): void => {
+    const scalar = (value: unknown, path: string, aggregate = false): void => {
         if (
             !(typeof value === "number" && Number.isFinite(value) && value >= 0) &&
             !(
                 typeof value === "string" &&
                 (/^(0|[1-9][0-9]*)$/).test(value) &&
-                BigInt(value) <= BigInt("18446744073709551615")
+                (aggregate || BigInt(value) <= BigInt("18446744073709551615"))
             )
-        ) bad(path, "Expected a nonnegative finite number or canonical uint64 decimal string.");
+        ) bad(path, aggregate ? "Expected a nonnegative finite number or canonical nonnegative integer sum string." : "Expected a nonnegative finite number or canonical uint64 decimal string.");
     };
     const array = (value: unknown, path: string): unknown[] => {
         if (!Array.isArray(value)) {
@@ -170,7 +170,7 @@ export function validateOptimizationRequest(input: unknown): OptimizationRequest
             const sumPaths = array(s.paths, `policy/constraints/sums/${i}/paths`);
             if (!sumPaths.length || new Set(sumPaths).size !== sumPaths.length) bad(`policy/constraints/sums/${i}/paths`, "Supply distinct paths.");
             sumPaths.forEach((field) => pointer(field, `policy/constraints/sums/${i}/paths`));
-            scalar(s.value, `policy/constraints/sums/${i}/value`);
+            scalar(s.value, `policy/constraints/sums/${i}/value`, true);
         });
         if (c.counts !== undefined) array(c.counts, "policy/constraints/counts").forEach((v, i) => {
             const count = object(v, `policy/constraints/counts/${i}`, ["path", "scope", "value"]);

@@ -103,7 +103,11 @@ export function constraintsHold(model: unknown, policy: OptimizationPolicy): boo
     for (const count of policy.constraints?.counts ?? []) if (Object.keys(at(model, count.path) as object).length !== count.value) return false;
     return true;
 }
-export function assertOnlyTuned(before: unknown, after: unknown, policy: OptimizationPolicy): void {
+export function assertOnlyTuned(before: unknown, after: unknown, policy: OptimizationPolicy, attempted?: unknown): void {
+    for (const field of policy.tunables) {
+        const value = at(after, field.path);
+        if (!field.values.includes(value as OptimizationScalar) || (attempted !== undefined && value !== at(attempted, field.path))) throw new Error(`Serialized tunable differs from attempted selection: ${field.path}`);
+    }
     const restored = structuredClone(after);
     for (const field of policy.tunables) put(restored, field.path, at(before, field.path) as OptimizationScalar);
     if (JSON.stringify(before) !== JSON.stringify(restored)) throw new Error("Native roundtrip changed an undeclared or locked field.");

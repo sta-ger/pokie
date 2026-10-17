@@ -52,7 +52,12 @@ math with the supplied deterministic combinations generator. A convenient
 custom packages can implement this contract without replacing their own code.
 The optimizer does not infer tuning permission from a model descriptor or from
 runtime execution capability. Missing, stale or tampered source authority fails
-before candidate writes. Dependencies remain ordinary external package dependencies;
+before executable acquisition and candidate writes. Detached candidates and saved packages
+bind declared runtime dependencies to the same installed packages resolved from the source
+project (including project-local installations), rather than resolving from scratch ancestry.
+These external installations must remain available; saving does not vendor them. Saved
+packages are loaded and measured at the destination before publication is accepted.
+Dependencies remain ordinary external package dependencies;
 `node_modules`, `.git` and loader caches are excluded from authored-byte identity.
 Filesystem aliases in authored input/publication paths are rejected.
 
@@ -70,7 +75,10 @@ manifest is retained verbatim as `optimization-input-pokie-manifest.json`, and a
 resolution recognizes this integrity-bound native candidate. Standalone native
 readback/analysis remains authoritative; a claim of lossless reconstruction into
 a number-weighted POKIE Outcome Library is not made. Original books/event bytes,
-including tiny positive native probabilities, are retained.
+including tiny positive native probabilities, are retained. Native candidates expose only
+inspect/analysis capabilities. Import and build/re-export require the original compatible
+POKIE export; they are unavailable for native-only candidates. Use explicit candidate save
+to retain native uint64 weights and books without reconstruction.
 
 Targets and exactness:
 
@@ -84,8 +92,10 @@ Targets and exactness:
   `[min,max)`; `max: null` means infinity. Values are probability mass, together
   at most one; a partial collection of buckets need not cover all mass.
 - Maximum win uses `currency` or `betMultiple`. `constraints.maxWin` is an output
-  bound in the same selected population, never an installed payout cap. Declared
-  zero-weight outcomes remain part of the native maximum and count population.
+  bound in the same selected population, never an installed payout cap. Native Outcome
+  Library and Stake weights must be positive; zero-weight tuning domains are rejected
+  during preflight. Authored zero paytable/grant values and zero-weight reel variants
+  keep their separate canonical contracts.
 - Tolerances are nonnegative finite numbers. Omitted tolerance means exact
   binary64 comparison (the same as explicit absolute zero); explicit zero is
   preserved in evidence. Relative tolerance multiplies the absolute target
@@ -100,7 +110,8 @@ Targets and exactness:
 
 `constraints.fixed` contains `{path,value}` entries; fixed fields cannot also be
 tunables. `constraints.sums` contains `{paths,value}` entries, using strings for
-exact native integer sums. `constraints.counts` contains `{path,scope,value}`:
+exact native integer sums, which may exceed uint64 although each Stake weight must
+fit uint64. `constraints.counts` contains `{path,scope,value}`:
 `outcomes` counts all declared outcome identities, `symbols` counts entries in a
 symbol list or one strip, and `variants` counts declared sequence variants,
 including zero-weight entries. These are checked before search and after native
@@ -151,3 +162,12 @@ Exit codes: success **0**, operational failure **1**, infeasible **2**, invalid
 **3**, unsupported **4**, exhausted **5**, cancelled **6**. Ctrl-C requests
 cancellation and waits for owned work to settle. Node orchestration is kept out
 of browser entrypoints; Studio imports the same pure policy validator.
+
+Publication rejects destinations inside the owned run workspace. Each save owns
+independent authored file bytes, supports cross-filesystem destinations, and survives
+candidate discard. External dependency bindings continue to identify the source
+installation. Rollback removes only files and directories owned by that save.
+Studio support, start and save requests include the expected Project root, alongside
+source revisions; changing Projects invalidates the request even for identical files.
+Terminal evidence is shown alongside diagnostics, job errors, recovery guidance and
+connection/cancellation failures.

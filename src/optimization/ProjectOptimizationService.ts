@@ -37,6 +37,7 @@ import {
     at,
     checkPolicyPaths,
     constraintsHold,
+    digest,
     jsonHash,
     projectRevision,
     put,
@@ -144,7 +145,11 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
         let evidence: OptimizationEvidence | undefined;
         let keep = false;
         let result: OptimizationResult;
+        const assertCurrent = (): void => {
+            if (options.isCurrent && !options.isCurrent()) throw new Error("Project/request changed during optimization; discard stale result.");
+        };
         try {
+            assertCurrent();
             const request = validateOptimizationRequest(input);
             if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled before acquisition.");
             assertNoFilesystemAliases(project.rootPath);
@@ -152,6 +157,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             const inventory = sourceInventory(project);
             validateProtectedFiles(project, request.policy, inventory);
             const adapter = await acquireOptimizationAdapter(project, request.policy);
+            assertCurrent();
             if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled during acquisition.");
             try {
                 checkPolicyPaths(adapter.model, request.policy, adapter.writable);
@@ -203,10 +209,11 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                     fs.mkdirSync(directory);
                     const file = await adapter.materialize(model, directory, options.signal);
                     if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled during candidate materialization.");
-                    const resolved = await new ProjectTargetResolver().resolve(file);
+                    const resolved = await new ProjectTargetResolver().resolve(file, {readConfigurationProvenance: false});
                     if (!resolved || resolved.type !== project.type) throw new Error("Candidate did not resolve as the original ProjectType.");
                     const readback = await adapter.read(file);
-                    assertOnlyTuned(adapter.model, readback, request.policy);
+                    assertOnlyTuned(adapter.model, readback, request.policy, model);
+                    assertCurrent();
                     const candidateInventory = sourceInventory(resolved);
                     for (const protectedFile of request.policy.protectedFiles ?? []) if (candidateInventory[protectedFile] !== inventory[protectedFile]) throw new Error(`Protected source bytes changed: ${protectedFile}`);
                     const serializedRevision = projectRevision(resolved);
@@ -224,6 +231,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                         request.policy,
                         options.signal,
                     );
+                    assertCurrent();
                     if (projectRevision(resolved) !== serializedRevision) throw new Error("Executable evaluation changed candidate bytes.");
                     if (measured.some((value) => !Number.isFinite(value))) throw new Error("Metric authority returned a nonfinite result.");
                     evidence.evaluated++;
@@ -271,6 +279,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                     setImmediate(resolve);
                 });
                 if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled before terminal result.");
+                assertCurrent();
                 if (selected) {
                     this.receipts.set(selected.path, {
                         candidate: structuredClone(selected),
@@ -330,6 +339,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
         assertNoFilesystemAliases(destination);
         assertArtifactDestinationIsSafe(candidate.sourcePath, destination);
         assertArtifactDestinationIsSafe(candidate.path, destination);
+        assertArtifactDestinationIsSafe(candidate.workspace, destination);
         const directory = fs.statSync(candidate.path).isDirectory();
         assertArtifactDestinationAvailable(destination, directory ? "directory" : "file");
         const members = [[candidate.path, destination]];
@@ -338,7 +348,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             assertArtifactDestinationIsSafe(candidate.sourcePath, target);
             assertArtifactDestinationAvailable(target, directory ? "directory" : "file");
         }
-        const publication = new ArtifactPublicationOwnership();
+        const publication = new ArtifactPublicationOwnership(true);
         try {
             if (options.signal?.aborted) throw new OptimizationCancelledError("Publication cancelled.");
             if (options.isCurrent && !options.isCurrent()) throw new Error("Project/request changed during publication.");
@@ -347,8 +357,17 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                 projectRevision(source) !== candidate.sourceRevision ||
                 projectRevision({type: candidate.type, rootPath: candidate.path}) !== candidate.revision
             ) throw new Error("Publication revision changed.");
-            const reopened = await new ProjectTargetResolver().resolve(destination);
+            const reopened = await new ProjectTargetResolver().resolve(destination, {readConfigurationProvenance: false});
             if (reopened?.type !== candidate.type) throw new Error("Published output type drifted.");
+            // Optional resolver provenance is not proof of a loadable, measured runtime.
+            const adapter = await acquireOptimizationAdapter(reopened, request.policy);
+            const readback = await adapter.read(destination);
+            const measured = await adapter.measure(destination, readback, request.targets, request.policy, options.signal);
+            if (!targetsMatch(request.targets, measured)) throw new Error("Published runtime does not demonstrate the reviewed target.");
+            const sameBytes = directory
+                ? projectRevision(reopened) === candidate.revision
+                : members.every(([from, to]) => digest(fs.readFileSync(from)) === digest(fs.readFileSync(to)));
+            if (!sameBytes) throw new Error("Published output bytes drifted.");
             if (options.signal?.aborted) throw new OptimizationCancelledError("Publication cancelled.");
             if (options.isCurrent && !options.isCurrent()) throw new Error("Project/request changed during publication.");
             return destination;
