@@ -160,7 +160,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
         assertNotCancelled(options);
         // Keep an external destination out of the staging lifecycle entirely.
         assertSafeToReplaceStakeEngineExportDirectory(outDir);
-        const destinationOwnership = capturePublishDirectoryOwnership(outDir);
+        const destinationOwnership = options?.destinationOwnership ?? capturePublishDirectoryOwnership(outDir);
         preflightAtomicDirectoryPublication(outDir, destinationOwnership.destinationIdentity === undefined);
         const upfrontIssues = this.validateUpfront(modes);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
@@ -378,7 +378,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                     issues.push({
                         code: "stakeengine-outcome-id-not-integer",
                         severity: "error",
-                        message: `mode "${mode.modeName}": outcome id "${outcome.id}" is not a canonical non-negative integer string, as Stake Engine requires.`,
+                        message: `mode "${mode.modeName}": outcome id "${outcome.id}" must be a canonical non-negative safe integer string (0 through 9007199254740991).`,
                         details: {modeName: mode.modeName, id: outcome.id},
                     });
                     sawError = true;
@@ -388,7 +388,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                     issues.push({
                         code: "stakeengine-outcome-weight-not-integer",
                         severity: "error",
-                        message: `mode "${mode.modeName}": outcome "${outcome.id}" has a non-integer weight (${outcome.weight}); Numeric library export requires positive safe integer weights; use exact Stake payload interchange for UInt64 weights.`,
+                        message: `mode "${mode.modeName}": outcome "${outcome.id}" has an unsupported numeric weight (${outcome.weight}); Numeric library export requires positive safe integer weights; use exact Stake payload interchange for UInt64 weights.`,
                         details: {modeName: mode.modeName, id: outcome.id, weight: outcome.weight},
                     });
                     sawError = true;

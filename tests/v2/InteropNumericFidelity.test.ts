@@ -1,3 +1,6 @@
+import {ParCommand} from "../../cli/commands/ParCommand.js";
+import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprintService.js";
+import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import {StudioArtifactBuildService} from "../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import fs from "fs";
@@ -97,6 +100,68 @@ describe("real XLSX represented math", () => {
         const changed = await new api.ParSheetImporter().importFromFile(file);
         expect(changed.conversionEvidence?.losslessEligible).toBe(false);
         expect(api.computeBlueprintHash(changed.blueprint)).not.toBe(api.computeBlueprintHash(original));
+    });
+
+    it("preserves a competing workbook claimed during actual serialization through the artifact builder", async () => {
+        const source = path.join(directory, "source.json"),
+            output = path.join(directory, "claim.xlsx");
+        fs.writeFileSync(source, JSON.stringify(boundedBlueprint()));
+        const before = fs.readFileSync(source);
+        const resolved = (await new api.ProjectTargetResolver().resolve(source))!;
+        await expect(new api.ParWorkbookArtifactBuilder("1").build(resolved, output, {onProgress: progress => {
+            if (progress.message === "Serializing PAR workbook") fs.writeFileSync(output, "competing workbook");
+        }})).rejects.toThrow();
+        expect(fs.readFileSync(output, "utf8")).toBe("competing workbook");
+        expect(fs.readFileSync(source)).toEqual(before);
+        expect(fs.readdirSync(directory).some(name => name.includes(".tmp-"))).toBe(false);
+    });
+
+    it.each((["registry", "CLI", "Studio"] as const).flatMap(caller => [false, true].map(replace => ({caller, replace}))))("$caller rolls back late cancellation and preserves replacement: $replace", async ({caller, replace}) => {
+        const model = boundedBlueprint(),
+            source = path.join(directory, "source.json"),
+            output = path.join(directory, "result.xlsx");
+        fs.writeFileSync(source, JSON.stringify(model));
+        const before = fs.readFileSync(source),
+            controller = new AbortController();
+        const real = new api.ParSheetExporter("1");
+        let active = true;
+        const exporter: api.ParSheetExporting = {exportToFile: async (blueprint, target, origin, options) => {
+            const issues = await real.exportToFile(blueprint, target, origin, options);
+            if (active) {
+                if (replace) {
+                    fs.renameSync(target, `${target}.displaced`);
+                    fs.writeFileSync(target, "independent replacement");
+                }
+                controller.abort();
+            }
+            return issues;
+        }};
+        const invoke = async (signal?: AbortSignal) => {
+            if (caller === "registry") {
+                const registry = new api.ArtifactBuilderRegistry("1", new Map([["parWorkbook", new api.ParWorkbookArtifactBuilder("1", undefined, exporter)]]));
+                return registry.build("parWorkbook", (await new api.ProjectTargetResolver().resolve(source))!, output, {signal});
+            }
+            if (caller === "CLI") {
+                const operation = new ParCommand("1", undefined, exporter).prepareDescriptorExportOperation(source, output, signal);
+                return new api.ArtifactConversionPlanner().executeConversionPlan(operation.plan, operation.execution);
+            }
+            const service = new StudioBlueprintService("1", path.join(directory, "studio"), new StudioHomeService("1"), undefined, undefined, undefined, undefined, undefined, exporter);
+            const result = await service.exportParSheet(model, output, false, source, signal);
+            if (active) expect(result.status).toBe("error");
+            else expect(result.status).toBe("ok");
+            return result;
+        };
+        if (caller === "Studio") await invoke(controller.signal);
+        else await expect(invoke(controller.signal)).rejects.toThrow(/cancelled/);
+        if (replace) {
+            expect(fs.readFileSync(output, "utf8")).toBe("independent replacement");
+            fs.unlinkSync(output);
+        } else expect(fs.existsSync(output)).toBe(false);
+        expect(fs.readFileSync(source)).toEqual(before);
+        active = false;
+        await invoke();
+        expect((await new api.ParSheetImporter().importFromFile(output)).conversionEvidence?.losslessEligible).toBe(true);
+        expect(fs.readFileSync(source)).toEqual(before);
     });
 
     it.each(["extra header", "extra data", "malformed JSON", "unknown mechanic", "formula"])("discloses %s in real Mechanics JSON workbooks", async kind => {
@@ -306,6 +371,51 @@ describe("Stake exact interchange and independent numeric domains", () => {
             const unsafe = {...library, outcomes: [{...library.outcomes[0], weight: 9007199254740992}]};
             expect(new api.StakeEngineExportValidator().validate([{modeName: "base", cost: 1.5, library: unsafe}]).some(issue => issue.code === "stakeengine-outcome-weight-not-integer")).toBe(true);
         }
+    });
+
+    it("keeps descriptor export aliases on the new/empty contract and preserves their source files", async () => {
+        const libraryFile = path.join(directory, "library.json"),
+            descriptor = path.join(directory, "config.json"),
+            output = path.join(directory, "descriptor-export");
+        const library = buildSingleOutcomeStakeEngineLibrary({libraryId: "descriptor", betMode: "base", stake: 0.05, totalWin: 0.1});
+        fs.writeFileSync(libraryFile, JSON.stringify(library));
+        fs.writeFileSync(descriptor, JSON.stringify({modes: [{modeName: "base", cost: 1, libraryPath: "library.json"}]}));
+        const before = [fs.readFileSync(libraryFile), fs.readFileSync(descriptor)];
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+        fs.mkdirSync(output);
+        expect(await new StakeEngineCommand("1").run(["export", descriptor, "--out", output])).toBe(0);
+        const published = inventory(output);
+        await expect(new StakeEngineCommand("1").run(["export", descriptor, "--out", output])).rejects.toThrow(/already exists|not empty/);
+        expect(inventory(output)).toEqual(published);
+        const built = path.join(directory, "descriptor-build");
+        expect(await new BuildCommand("1").run([descriptor, "--target", "stakeAdapter", "--out", built])).toBe(0);
+        expect([fs.readFileSync(libraryFile), fs.readFileSync(descriptor)]).toEqual(before);
+    });
+
+    it("never adopts a recognized Stake claimant arriving before the concrete exporter captures its destination", async () => {
+        const source = await stakeFixture(),
+            output = path.join(directory, "claimed-stake");
+        fs.writeFileSync(path.join(source, "lookup_base.csv"), "0,1,0\n1,1,200\n");
+        const before = inventory(source),
+            real = new api.StakeEngineExporter("1");
+        let claim = true;
+        const exporter: api.StakeEngineExporting = {exportToDirectory: (modes, target, options) => {
+            if (claim) {
+                fs.cpSync(source, target, {recursive: true});
+                fs.writeFileSync(path.join(target, "foreign.txt"), "competing recognized export");
+            }
+            return real.exportToDirectory(modes, target, options);
+        }};
+        const builder = new api.StakeAdapterArtifactBuilder("1", undefined, exporter);
+        await expect(builder.build((await new api.ProjectTargetResolver().resolve(source))!, output)).rejects.toThrow(/claimed/);
+        expect(fs.readFileSync(path.join(output, "foreign.txt"), "utf8")).toBe("competing recognized export");
+        expect(inventory(output)).toEqual({...before, "foreign.txt": Buffer.from("competing recognized export").toString("base64")});
+        expect(inventory(source)).toEqual(before);
+        fs.rmSync(output, {recursive: true});
+        claim = false;
+        await builder.build((await new api.ProjectTargetResolver().resolve(source))!, output);
+        expect(errors((await new api.StakeEngineOutcomeSourceReader().readFromDirectory(output)).issues)).toEqual([]);
+        expect(inventory(source)).toEqual(before);
     });
 
     it("rejects non-invertible event amounts and preserves an independently claimed destination", async () => {

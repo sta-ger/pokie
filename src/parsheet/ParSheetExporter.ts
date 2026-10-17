@@ -277,7 +277,10 @@ export class ParSheetExporter implements ParSheetExporting {
             : this.writeWorkbook(workbook, tempPath), () => {
             options?.onProgress?.({message: "Committing PAR workbook"});
             assertNotCancelled(options);
-        }, false, () => assertNotCancelled(options));
+        }, false, publication => {
+            options?.onPublication?.(publication);
+            assertNotCancelled(options);
+        });
         return issues;
     }
 

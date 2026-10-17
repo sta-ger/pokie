@@ -10,6 +10,8 @@ export type StakeEngineExportProgress = {
 
 export type StakeEngineExportOptions = {
     readonly signal?: AbortSignal;
+    /** Canonical artifact callers retain their original destination identity across source preparation. */
+    readonly destinationOwnership?: import("./PublishedDirectoryOwnership.js").PublishDirectoryAtomicallyOwnership;
     readonly onProgress?: (progress: StakeEngineExportProgress) => void;
 };
 

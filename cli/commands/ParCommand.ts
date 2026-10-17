@@ -13,6 +13,8 @@ import {
     PAR_IMPORT_OPERATION,
     ParSheetExporter,
     ParSheetExporting,
+    ParSheetFilePublication,
+    rollbackArtifactPublication,
     ParSheetImporter,
     ParSheetImporting,
     prepareBlueprintForParSheetExport,
@@ -431,6 +433,8 @@ export class ParCommand implements CliCommandHandling {
     // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for BuildCommand
     public prepareDescriptorExportOperation(blueprintPath: string, outPath: string, signal?: AbortSignal) {
         const currentSource = () => this.exportDescriptorSource(blueprintPath);
+        let publication: ParSheetFilePublication | undefined;
+        const rollback = () => rollbackArtifactPublication({publishedFileOwnership: publication === undefined ? [] : [publication]});
         return {plan: this.planner.planIdentity(currentSource(), "parWorkbook", {destinationPath: outPath}), validate: () => this.validateExportSource(blueprintPath), execution: {
             currentSource,
             read: () => {
@@ -439,8 +443,14 @@ export class ParCommand implements CliCommandHandling {
             },
             canPublish: (read) => read.issues.every((issue) => issue.severity !== "error"),
             assertDestinationAvailable: () => this.assertDestinationIsAvailable(blueprintPath, outPath),
-            publish: (read) => this.exporter.exportToFile(read.blueprint, outPath, blueprintPath, {signal}),
-            rollback: () => fs.promises.rm(outPath, {force: true}),
+            publish: (read) => {
+                publication = undefined;
+                return this.exporter.exportToFile(read.blueprint, outPath, blueprintPath, {signal, onPublication: owned => {
+                    publication = owned;
+                }});
+            },
+            rollback,
+            cleanup: ({error}: {error?: unknown}) => error === undefined ? undefined : rollback(),
             ...(signal === undefined ? {} : {signal}),
         }};
     }

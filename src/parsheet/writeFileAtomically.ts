@@ -8,7 +8,7 @@ import path from "path";
 // mid-write leaves the original `filePath` (if any) completely untouched. `write(tempPath)` does the
 // actual writing (e.g. `workbook.xlsx.writeFile(tempPath)`); if it throws, or the rename itself fails,
 // the temp file is removed and the error is rethrown — `filePath` is never touched in that case.
-export async function writeFileAtomically(filePath: string, write: (tempPath: string) => Promise<void>, beforeCommit?: () => void, overwrite?: boolean, afterCommit?: () => void): Promise<void> {
+export async function writeFileAtomically(filePath: string, write: (tempPath: string) => Promise<void>, beforeCommit?: () => void, overwrite?: boolean, afterCommit?: (publication: {readonly path: string; readonly dev: number; readonly ino: number}) => void): Promise<void> {
     const tempPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.tmp-${crypto.randomBytes(6).toString("hex")}`);
     let published: fs.Stats | undefined;
     try {
@@ -21,7 +21,7 @@ export async function writeFileAtomically(filePath: string, write: (tempPath: st
             const identity = await fs.promises.stat(tempPath);
             await fs.promises.link(tempPath, filePath);
             published = identity;
-            afterCommit?.();
+            afterCommit?.({path: path.resolve(filePath), dev: identity.dev, ino: identity.ino});
             await fs.promises.rm(tempPath, {force: true});
         }
     } catch (error) {

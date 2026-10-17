@@ -4,7 +4,7 @@ import type {StakeEngineExactSource} from "../stakeengine/StakeEngineExactSource
 import {publishExactStakeSource, validateExactStakeSource} from "../stakeengine/internal/publishExactStakeSource.js";
 import {recognizesNativeStakeTuningManifest} from "../optimization/internal/NativeStakeTuningManifest.js";
 import {StakeEngineExporter} from "../stakeengine/StakeEngineExporter.js";
-import {isPublishDirectoryDestinationClaimedError, removePublishedDirectoryIfOwned, type PublishedDirectoryOwnership} from "../stakeengine/internal/publishDirectoryAtomically.js";
+import {capturePublishDirectoryOwnership, removePublishedDirectoryIfOwned, type PublishedDirectoryOwnership} from "../stakeengine/internal/publishDirectoryAtomically.js";
 import type {StakeEngineExporting} from "../stakeengine/StakeEngineExporting.js";
 import {StakeEngineImporter} from "../stakeengine/StakeEngineImporter.js";
 import type {StakeEngineImporting} from "../stakeengine/StakeEngineImporting.js";
@@ -13,8 +13,6 @@ import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import {
     assertArtifactBuildNotCancelled,
     ArtifactBuildCancelledError,
-    captureArtifactDestinationState,
-    cleanupIncompleteArtifactOutput,
     reportArtifactBuildProgress,
     type ArtifactBuildOptions,
     type ArtifactBuildPreflight,
@@ -66,7 +64,7 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
         assertArtifactBuildNotCancelled(options);
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
-        const destinationState = captureArtifactDestinationState(destinationPath, this.destinationKind);
+        const destinationOwnership = capturePublishDirectoryOwnership(destinationPath);
 
         let publication: PublishedDirectoryOwnership | undefined;
         try {
@@ -78,6 +76,7 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
                 assertArtifactBuildNotCancelled(options);
                 const result = publishExactStakeSource(exact, destinationPath, {
                     signal: options?.signal,
+                    destinationOwnership,
                     onProgress: progress => reportArtifactBuildProgress(options, {status: "running", preflight, completed: progress.completed, message: progress.message}),
                 });
                 publication = result.publication;
@@ -97,8 +96,10 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
                 assertArtifactBuildNotCancelled(options);
             }
             reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: "Publishing Stake export"});
+            assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
             const result = await this.exporter.exportToDirectory(modes, destinationPath, {
                 signal: options?.signal,
+                destinationOwnership,
                 onProgress: (progress) => {
                     reportArtifactBuildProgress(options, {
                         status: "running",
@@ -123,13 +124,10 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
             reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount, preflight});
             return {outputPath: result.outDir, preflight, stakeManifest: result.manifest, stakeFiles: result.files};
         } catch (error) {
-            // A late claimant owns the pathname.  Generic artifact cleanup is
-            // intentionally broad for invocation-owned output, so it must not
-            // run for this typed shared-publication outcome.
+            // Atomic publishers clean their staging on failure. Only a returned ownership token
+            // authorizes removal of a public path; a claimant may have appeared during source reads.
             if (publication !== undefined) {
                 removePublishedDirectoryIfOwned(publication);
-            } else if (!isPublishDirectoryDestinationClaimedError(error)) {
-                await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
             }
             if (options?.signal?.aborted) {
                 if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);

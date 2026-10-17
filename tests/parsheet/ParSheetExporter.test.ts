@@ -113,6 +113,25 @@ describe("ParSheetExporter", () => {
         expect(fs.existsSync(filePath)).toBe(false);
     });
 
+    it.each(["cancel", "write failure"])("drains real workbook serialization and removes owned staging on %s", async kind => {
+        const controller = new AbortController();
+        const source = path.join(dir, "source.json");
+        fs.writeFileSync(source, JSON.stringify(blueprint));
+        const before = fs.readFileSync(source);
+        const writeWorkbook = async (workbook: ExcelJS.Workbook, target: string): Promise<void> => {
+            const serialization = workbook.xlsx.writeFile(target);
+            if (kind === "cancel") controller.abort();
+            await serialization;
+            if (kind === "write failure") throw new Error("injected workbook write failure");
+        };
+        const exporter = new ParSheetExporter("1", undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, writeWorkbook);
+        await expect(exporter.exportToFile(blueprint, filePath, source, {signal: controller.signal})).rejects.toThrow(kind === "cancel" ? /cancelled/ : /injected workbook write failure/);
+        expect(fs.readdirSync(dir)).toEqual(["source.json"]);
+        expect(fs.readFileSync(source)).toEqual(before);
+        await new ParSheetExporter("1").exportToFile(blueprint, filePath, source);
+        expect((await new ParSheetImporter().importFromFile(filePath)).conversionEvidence?.losslessEligible).toBe(true);
+    });
+
     it("writes every sheet, with no error-level issues, for a fully-populated blueprint", async () => {
         const exporter = new ParSheetExporter("1.3.0");
 

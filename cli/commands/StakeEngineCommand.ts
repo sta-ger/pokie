@@ -40,6 +40,7 @@ import {
     OutcomeLibraryGeneratorDiagnostics,
     StakeEngineImportSourceProvenance,
     removePublishedDirectoryIfOwned,
+    capturePublishDirectoryOwnership,
 } from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -466,6 +467,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for BuildCommand
     public prepareDescriptorExportOperation(configPath: string, outDir: string, signal?: AbortSignal) {
         const currentSource = () => this.exportDescriptorSource(configPath);
+        const destinationOwnership = capturePublishDirectoryOwnership(outDir);
         return {plan: this.planner.planIdentity(currentSource(), "stakeAdapter", {destinationPath: outDir}), validate: () => this.validateExportSource(configPath), execution: {
             currentSource,
             read: async () => {
@@ -501,9 +503,9 @@ export class StakeEngineCommand implements CliCommandHandling {
                         ...(read.descriptor.sourceProvenance === undefined ? {} : {sourceProvenance: read.descriptor.sourceProvenance}),
                     })),
                     outDir,
-                    {signal},
+                    {signal, destinationOwnership},
                 )
-                : this.exporter.exportToDirectory(read.modes!, outDir, {signal}),
+                : this.exporter.exportToDirectory(read.modes!, outDir, {signal, destinationOwnership}),
             rollback: (result) => {
                 if (result.publication !== undefined) removePublishedDirectoryIfOwned(result.publication);
             },

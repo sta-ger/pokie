@@ -117,7 +117,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             // Reject an external holder before mode construction can allocate
             // any publication scratch beside it.
             assertSafeToReplaceStakeEngineExportDirectory(outDir);
-            const destinationOwnership = capturePublishDirectoryOwnership(outDir);
+            const destinationOwnership = options?.destinationOwnership ?? capturePublishDirectoryOwnership(outDir);
             preflightAtomicDirectoryPublication(outDir, destinationOwnership.destinationIdentity === undefined);
 
             const buildResults: ModeBuildResult[] = [];

@@ -82,7 +82,7 @@ export function publishExactStakeSource(source: StakeEngineExactSource, outDir: 
     cancelled();
     validateExactStakeSource(source);
     assertArtifactDestinationAvailable(outDir, "directory");
-    const ownership = capturePublishDirectoryOwnership(outDir);
+    const ownership = options?.destinationOwnership ?? capturePublishDirectoryOwnership(outDir);
     const files = Object.keys(source.files);
     const manifest = source.files["pokie-manifest.json"] === undefined ? undefined : JSON.parse(Buffer.from(source.files["pokie-manifest.json"], "base64").toString("utf8")) as StakeEngineManifest;
     const {publication} = publishDirectoryAtomically({

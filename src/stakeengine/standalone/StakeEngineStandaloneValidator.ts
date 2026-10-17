@@ -175,7 +175,7 @@ export class StakeEngineStandaloneValidator implements StakeEngineStandaloneVali
                 issues.push({
                     code: "stakeengine-standalone-csv-malformed-row",
                     severity: "error",
-                    message: `mode "${modeName}": lookup CSV row ${position} ("${line}") is not exactly 3 comma-separated integer fields.`,
+                    message: `mode "${modeName}": lookup CSV row ${position} ("${line}") must contain exactly 3 comma-separated fields: id, weight, payoutMultiplier.`,
                     details: {modeName, position},
                 });
                 sawError = true;
@@ -188,7 +188,7 @@ export class StakeEngineStandaloneValidator implements StakeEngineStandaloneVali
                 issues.push({
                     code: "stakeengine-standalone-outcome-id-not-integer",
                     severity: "error",
-                    message: `mode "${modeName}": lookup CSV row ${position}'s id ("${idField}") is not a canonical non-negative integer string.`,
+                    message: `mode "${modeName}": lookup CSV row ${position}'s id ("${idField}") is not a canonical non-negative safe integer string (0 through 9007199254740991).`,
                     details: {modeName, position},
                 });
                 sawError = true;

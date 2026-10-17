@@ -326,3 +326,8 @@ input manifests are never promoted to current reconstructed-library provenance.
 The ordinary direct library exporter additionally retains its documented atomic
 rebuild of a recognized prior export. It also accepts an empty physical directory;
 symlinked and unrelated occupied directories remain rejected.
+
+Prepared canonical conversions retain the destination identity while source inputs
+are read. A recognized export created by another caller during that preparation
+is a conflict, rather than permission to rebuild it. Cancellation or a failure
+removes only an output owned by the current conversion; foreign replacements survive.
