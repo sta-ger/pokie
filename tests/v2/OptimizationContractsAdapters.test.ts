@@ -1087,7 +1087,7 @@ it.each([false, true])("validates sampled destination loadability failure=%s wit
     const output = path.join(directory, "published-runtime");
     const companion = `${output}.optimization.json`;
     const publish = ArtifactPublicationOwnership.prototype.publish;
-    jest.spyOn(ArtifactPublicationOwnership.prototype, "publish").mockImplementation(async function(from, to, options) {
+    jest.spyOn(ArtifactPublicationOwnership.prototype, "publish").mockImplementation(async function(this: ArtifactPublicationOwnership, from, to, options) {
         await Reflect.apply(publish, this, [from, to, options]);
         if (to === companion && failLoad) {
             fs.writeFileSync(path.join(directory, "reject-load"), "reject");

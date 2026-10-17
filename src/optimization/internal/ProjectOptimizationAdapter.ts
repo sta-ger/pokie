@@ -531,7 +531,7 @@ export async function acquireOptimizationAdapter(
             // plus one per scatter identity is possible. No sampled maximum grants authority.
             const resolved = resolveSharedSlotMathModel(model);
             const maximum = Object.values(resolved.paytable).reduce((bound, table) => Object.values(table).reduce((largest, payout) => Math.max(largest, payout), bound), 0);
-            let returnBound = maximum * (resolved.paylines.length + resolved.scatters.length);
+            let returnBound = maximum * (resolved.paylines.length + (resolved.scatters?.length ?? 0));
             let validationWork = 0;
             const validationProgress = (completed: number): void => {
                 validationWork = completed;
