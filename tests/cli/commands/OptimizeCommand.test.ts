@@ -2,6 +2,8 @@ import {declarePackageTuning} from "../../../src/optimization/DeclaredTuningCont
 import {projectRevision} from "../../../src/optimization/internal/optimizationData.js";
 import fs from "fs";
 import path from "path";
+import {execFileSync} from "child_process";
+import ts from "typescript";
 import {OptimizeCommand} from "../../../cli/commands/OptimizeCommand.js";
 import {optimizationBlueprint, optimizationRequest, stochasticOptimizationRequest, declaredOptimizationGameCode} from "../../v2/fixtures/OptimizationFixture.js";
 let directory: string;
@@ -25,6 +27,76 @@ const result = () =>
         status: string;
         evidence?: {measured: number[]};
     };
+
+it("ships the CLI-relative native runtime helpers through the production asset-copy steps", () => {
+    const installation = path.join(directory, "node_modules", "@fromstan", "pokie");
+    const game = path.join(directory, "external-game");
+    // Emit only the affected consumers. No package build, source loader mapping or
+    // test-only helper staging may supply a missing production asset here.
+    for (const relative of ["gamepackage/resolvePokieGameEntryModule.ts", "gamepackage/isPokieGame.ts", "gamepackage/readPokiePackageConfig.ts", "simulation/parallel/internal/defaultWorkerEntryUrl.ts"]) {
+        const output = ts.transpileModule(fs.readFileSync(path.resolve("src", relative), "utf8"), {
+            compilerOptions: {module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022, esModuleInterop: true},
+        }).outputText;
+        const file = path.join(installation, "dist/src", relative.replace(/\.ts$/, ".js"));
+        fs.mkdirSync(path.dirname(file), {recursive: true});
+        fs.writeFileSync(file, output);
+    }
+    const assets = ["gamepackage/internal/runtimeLocation.mjs", "simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"];
+    for (const relative of assets) {
+        const file = path.join(installation, "src", relative);
+        fs.mkdirSync(path.dirname(file), {recursive: true});
+        fs.copyFileSync(path.resolve("src", relative), file);
+    }
+    fs.writeFileSync(path.join(installation, "package.json"), JSON.stringify({name: "@fromstan/pokie", type: "module"}));
+    const scripts = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf8")).scripts as Record<string, string>;
+    for (const command of scripts["build-cli:compile"].split(" && ").filter(step => (/^shx (mkdir|cp) /).test(step))) {
+        execFileSync(process.execPath, [path.resolve("node_modules/shx/lib/cli.js"), ...command.split(" ").slice(1)], {cwd: installation, timeout: 5000});
+    }
+    for (const relative of assets) {
+        expect(fs.readFileSync(path.join(installation, "dist/src", relative))).toEqual(fs.readFileSync(path.resolve("src", relative)));
+    }
+    fs.mkdirSync(game);
+    fs.writeFileSync(path.join(game, "package.json"), JSON.stringify({name: "external-game", pokie: {entry: "index.cjs"}}));
+    const entry = path.join(game, "index.cjs");
+    const code = "module.exports = {getManifest: () => ({id: 'original'}), createSession: () => ({root: __dirname})};";
+    fs.writeFileSync(entry, code);
+    const probe = path.join(installation, "probe.mjs");
+    fs.writeFileSync(probe, `import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {resolvePokieGameDependencyRoots, resolvePokieGameEntryModule} from './dist/src/gamepackage/resolvePokieGameEntryModule.js';
+import {getDefaultWorkerEntryUrl} from './dist/src/simulation/parallel/internal/defaultWorkerEntryUrl.js';
+const [installation, game] = process.argv.slice(2);
+const entry = path.join(game, 'index.cjs'), original = fs.readFileSync(entry);
+assert.equal((await resolvePokieGameDependencyRoots(game))['@fromstan/pokie'], installation);
+assert.equal((await getDefaultWorkerEntryUrl()).href, pathToFileURL(path.join(installation, 'dist/src/simulation/parallel/internal/simulationWorkerEntry.js')).href);
+const first = await resolvePokieGameEntryModule(game);
+const root = first.candidate.createSession().root;
+assert.equal(first.candidate.getManifest().id, 'original');
+assert.ok(fs.existsSync(root));
+try {
+    fs.writeFileSync(entry, "throw new Error('executed rejection');");
+    await assert.rejects(resolvePokieGameEntryModule(game), /executed rejection/);
+    assert.equal(first.candidate.getManifest().id, 'original');
+    fs.writeFileSync(entry, original);
+    for (let retry = 0; retry < 2; retry++) {
+        const next = await resolvePokieGameEntryModule(game);
+        const nextRoot = next.candidate.createSession().root;
+        assert.equal(next.candidate.getManifest().id, 'original');
+        assert.notEqual(nextRoot, root);
+        await next.release();
+        assert.equal(fs.existsSync(nextRoot), false);
+    }
+} finally { await first.release(); await first.release(); }
+assert.equal(fs.existsSync(root), false);
+assert.deepEqual(fs.readFileSync(entry), original);
+assert.equal(fs.existsSync(path.join(game, 'node_modules')), false);
+console.log('CLI native assets: resolution, rejection, two recoveries and lease cleanup passed.');
+`);
+    expect(execFileSync(process.execPath, [probe, installation, game], {encoding: "utf8", timeout: 15000})).toContain("CLI native assets: resolution, rejection, two recoveries and lease cleanup passed.");
+});
+
 it("publishes a same-type candidate only with explicit output intent and returns structured evidence", async () => {
     const output = path.join(directory, "candidate.blueprint.json");
     const before = fs.readFileSync(source);
