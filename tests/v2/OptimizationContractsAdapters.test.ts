@@ -150,6 +150,9 @@ it("tunes and reopens the canonical PAR workbook retaining locked declarations",
     expect(result).toMatchObject({status: "success", candidate: {type: "parWorkbook"}, evidence: {measured: [0.75]}});
 });
 
+// The package case validates three candidates and a held-out assessment, each with
+// exact executable enumeration, dependency fingerprints and two isolated runtime
+// loads. Budget that whole scenario under concurrent gates, retaining every sample.
 it.each(["blueprint", "parWorkbook", "wasm", "tsPackage"] as const)("samples validated same-type %s candidates and preserves exact adapter authority", async type => {
     let file = source;
     if (type === "parWorkbook") {
@@ -178,7 +181,7 @@ it.each(["blueprint", "parWorkbook", "wasm", "tsPackage"] as const)("samples val
     if (type === "tsPackage") expect(result.evidence!.stochastic!.validationWork).toBe(16);
     await service.discard(result.candidate!);
     expect(sourceInventory(project)).toEqual(before);
-});
+}, 180000);
 
 it("samples Stake uint64 weights without rounding and normalizes payout buckets by native mode cost and fractional stake", async () => {
     const original = await nativeSource();
