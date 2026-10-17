@@ -340,3 +340,57 @@ readback, unbound-WASM rejection, direct public API infeasible/exhausted/cancel,
 or request-specific Studio support for PAR, declared TS, Outcome Library, Stake,
 and bound WASM. It also did not exercise apply/stale-apply. Those are uncollected,
 not product failures.
+
+## Recovery collection — API, compiled CLI, and scoped Studio support (2026-10-17)
+
+The product candidate remained `6087b2f85431a70d77c918442caab0e0d0769605`;
+this evidence checkout began at clean descendant
+`37f4a9f232e7f9c2b280806437d6cd2f92f18483`. The direct public API receipt
+`api-remaining-result.json` (SHA-256
+`f67551a8e858e6949a3743efdb92f640d2c41d002768f53c85fd6ab85c8dc688`) records
+three deterministic calls through the built public exports: finite seed
+`v2c-25-6087-api-infeasible`, target `0.6`, budget `3` returned `infeasible`
+after 3 exhaustive evaluations; seed `v2c-25-6087-api-exhausted`, target
+`0.75`, budget `1` returned `exhausted` after 1 non-exhaustive evaluation; and
+seed `v2c-25-6087-api-cancel`, sampled workers `2`, reached 1,963 search
+samples before its AbortController cancellation returned `cancelled`. The
+last receipt records no retained scratch directory after cleanup.
+The actual collector command was `node "$POKIE_VERIFIER_HARNESS_WORKSPACE/api-remaining.mjs"`
+from this candidate checkout.
+
+Using the candidate's compiled public CLI (`node ./dist/cli/pokie.js`), the
+new isolated artifact run built canonical WASM and Stake packages, then
+optimized a source-bound WASM and a Stake package to new destinations. The
+WASM output selected `/paytable/A/2 = 3`, measured `0.75`, and native
+`inspect` readback succeeded; the Stake output selected
+`/modes/base/outcomes/0/weight = 3`, and native `report` readback rendered
+RTP `100.00%`. The source binding was made through the candidate's exported
+public `bindCanonicalWasmTuningSource` helper, with its CLI-built WASM SHA-256
+`c7aa3d3a9f2b97b5b7317820f2a8000f4cf8c3db074ae53d5734bf568f20c8cd` and
+tuning receipt SHA-256
+`667cc79601997a7e7577aa8607b35c5d2e369b35bd15d5ab7536555461a77304`.
+The same compiled CLI rejected the retained unbound canonical WASM with
+`Opaque WASM: missing bound source/build tuning provenance.` The bounded
+outputs have SHA-256: WASM optimize
+`a9d482b70bf915291d65b17adbf20b9b1b4dae287de87cd899be5c1f6a4ca854`, Stake
+optimize `95228781528c7c8e6776c84602344c0b5b668b267fd50f3a98023a501b5ce9ec`,
+unbound rejection `3853a9eed0f074bae0ad1745ec3fe2c7ca12ff56303b8e328ef58cf8c519ead1`,
+WASM inspect `7da4abce03c2e9a60ff41d0b2b291ebd7db5a381ffd2ba28f9c8e4b233e0fdca`,
+and Stake report `ec7a401dc70476fd1e2cf35de824a624f02607f27747a05dfecc1acccf9eb561`.
+The executed optimization forms were `node ./dist/cli/pokie.js optimize <bound.wasm>
+--policy <PAR policy> --out <wasm-candidate.wasm> --format json` and
+`node ./dist/cli/pokie.js optimize <stake package> --policy <stake policy>
+--out <stake-candidate> --format json`; each `<...>` path is inside the
+isolated `cli-artifacts.9BcYXN` runtime directory, not this checkout.
+
+One fresh isolated rendered Studio run used the candidate source command and
+closed normally. Its transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-25-84d0903aa96ef22f/run-2026-10-17T21-41-27-679Z/transcript.json`
+(SHA-256 `97495d1e690464cc2499a71badd0809ae7822d853a8cc94e9c2082b0adad44f0`).
+It rendered request-specific finite same-type support and writable
+`/paytable/A/2`, `/paytable/B/2` for PAR, and `/paytable/A/2` for declared TS.
+The Outcome Library, Stake, and bound-WASM Studio support cards were not
+visited. The historical two-worker Studio result remains useful but does not
+prove actual Node worker startup or the requested reload/CLI-cancellation
+reuse. Those missing branches, and stale-apply, remain uncollected rather than
+being treated as failures.
