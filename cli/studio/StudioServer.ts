@@ -305,6 +305,9 @@ export class StudioServer implements StudioServerHandling {
     private readonly artifactBuildService: StudioArtifactBuildService;
     private readonly jobService: StudioJobService;
     private optimizationService?: StudioOptimizationService;
+    private stopping = false;
+    private authoredRuntimeRefresh = false;
+    private readonly playPreparations = new Set<Promise<unknown>>();
     private readonly wasmBrowserService: StudioWasmBrowserService;
     // The persistent Studio project registry -- see StudioServerOptions.projectRegistrationService's own
     // doc comment for the default's FileStudioProjectRegistry-vs-app-data-unresolved fallback story.
@@ -510,6 +513,7 @@ export class StudioServer implements StudioServerHandling {
     }
 
     public async stop(): Promise<void> {
+        this.stopping = true;
         // Request browser cleanup immediately, but cancel every other executor before awaiting it.
         // A paused executor can otherwise resume into another yield while shutdown is still waiting.
         const browserDrain = this.wasmBrowserService.shutdown();
@@ -553,6 +557,7 @@ export class StudioServer implements StudioServerHandling {
             this.artifactBuildService.cancelAll(),
             this.outcomeLibraryGenerateJobService.cancelAll(),
             Promise.all([...this.dashboardLoads]),
+            Promise.all([...this.playPreparations]),
         ]);
         const failedDrain = drains.find((result) => result.status === "rejected");
         if (failedDrain?.status === "rejected") {
@@ -596,6 +601,8 @@ export class StudioServer implements StudioServerHandling {
             for (const job of this.activeCommonJobs()) {
                 if (job.id !== excludeJobId) this.jobService.cancel(job.projectId, job.id);
             }
+            await this.optimizationService?.releaseCandidates();
+            await Promise.all([...this.playPreparations]);
         } finally {
             this.validationTransitions--;
         }
@@ -765,7 +772,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        this.sendJson(res, 200, {jobs: this.jobService.list(this.canonicalPathIdentity(this.currentContext.projectRoot))});
+        this.sendJson(res, 200, {projectRoot: this.currentContext.projectRoot, projectId: this.canonicalPathIdentity(this.currentContext.projectRoot), jobs: this.jobService.list(this.canonicalPathIdentity(this.currentContext.projectRoot))});
     }
 
     private isHomeScopedJob(job: StudioJobView): boolean {
@@ -1137,13 +1144,20 @@ export class StudioServer implements StudioServerHandling {
             // existing projectRoot scoping alone.
             // Closing is the established explicit policy: request cancellation,
             // then let each executor persist its own cleanup-safe terminal state.
-            this.cancelRuntimePreparation();
-            await this.playService.reset();
-            // Retained immutable results remain inspectable after leaving the active project.
-            await this.cancelActiveJobsForOldProject();
-            this.currentContext = {mode: "home"};
-            this.projectDashboard = undefined;
-            this.sendJson(res, 200, {context: this.currentContext});
+            this.validationTransitions++;
+            try {
+                this.cancelRuntimePreparation();
+                // Invalidate admitted mutations before awaiting runtime teardown.
+                await this.cancelActiveJobsForOldProject();
+                await this.playService.reset();
+                await Promise.all([...this.playPreparations]);
+                // Retained immutable results remain inspectable after leaving the active project.
+                this.currentContext = {mode: "home"};
+                this.projectDashboard = undefined;
+                this.sendJson(res, 200, {context: this.currentContext});
+            } finally {
+                this.validationTransitions--;
+            }
             return;
         }
 
@@ -1169,16 +1183,46 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const optimizationRoute = (/^\/api\/project\/optimization\/(support|start|save)$/).exec(url.pathname);
+        const optimizationRoute = (/^\/api\/project\/optimization\/(support|start|save|apply)$/).exec(url.pathname);
         if (optimizationRoute) {
             const context = this.currentContext;
             if (context.mode !== "project") {
                 this.sendJson(res, 409, {error: "No active Project."});
                 return;
             }
+            if (this.validationTransitions > 0) {
+                this.sendJson(res, 409, {error: "Project transition is draining active work. Retry after it finishes."});
+                return;
+            }
+            if (method === "POST" && optimizationRoute[1] === "apply") {
+                if (this.activeCommonJobs().length) {
+                    this.sendJson(res, 409, {error: "Wait for active Project work to finish before applying authored changes."});
+                    return;
+                }
+            }
             this.optimizationService ??= new StudioOptimizationService(this.jobService);
-            const result = await this.optimizationService.handle(method, optimizationRoute[1] as "support" | "start" | "save", await this.readJsonBody(req), {
-                projectRoot: context.projectRoot, projectId: this.canonicalPathIdentity(context.projectRoot), isCurrent: () => this.currentContext === context,
+            const result = await this.optimizationService.handle(method, optimizationRoute[1] as "support" | "start" | "save" | "apply", await this.readJsonBody(req), {
+                projectRoot: context.projectRoot,
+                projectId: this.canonicalPathIdentity(context.projectRoot),
+                isCurrent: () => !this.stopping && !this.authoredRuntimeRefresh && this.currentContext === context && this.validationTransitions === 0 &&
+                    (optimizationRoute[1] !== "apply" || this.activeCommonJobs().length === 0),
+                onAuthoredCommit: async () => {
+                    // Runs in the synchronous commit stack: invalidate old preparations and
+                    // sessions before another request can execute against the committed source.
+                    this.authoredRuntimeRefresh = true;
+                    this.cancelRuntimePreparation();
+                    try {
+                        await this.playService.reset();
+                        await Promise.all([...this.playPreparations]);
+                        if (!this.stopping && this.currentContext === context && this.validationTransitions === 0) {
+                            this.currentContext = {...context};
+                            this.startProjectDashboardLoad(context.projectRoot);
+                            await Promise.all([...this.dashboardLoads]);
+                        }
+                    } finally {
+                        this.authoredRuntimeRefresh = false;
+                    }
+                },
             });
             this.sendJson(res, result.status, result.body);
             return;
@@ -1656,7 +1700,9 @@ export class StudioServer implements StudioServerHandling {
         // controller would let the older handler publish after the newer one completed.
         let preparation: ReturnType<StudioServer["beginRuntimePreparation"]> | undefined;
         let execution: {readonly job: StudioJobView; readonly value: ProjectDashboardContext} | undefined;
+        this.validationTransitions++;
         try {
+            await this.optimizationService?.releaseCandidates();
             execution = await this.executeCommonOperation<ProjectDashboardContext>(
                 res,
                 {
@@ -1745,6 +1791,8 @@ export class StudioServer implements StudioServerHandling {
             }
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
+        } finally {
+            this.validationTransitions--;
         }
         if (execution === undefined) return;
         const dashboard = execution.value;
@@ -3897,11 +3945,18 @@ export class StudioServer implements StudioServerHandling {
     // every other /api/project/* route; StudioPlayService never throws, so nothing here ever sees a
     // SessionRepository/WalletPort/raw session object either, only the same StudioRuntimeSessionView
     // shape it already renders through.
+    private rejectPlayDuringTransition(res: ServerResponse): boolean {
+        if (!this.stopping && !this.authoredRuntimeRefresh && this.validationTransitions === 0) return false;
+        this.sendJson(res, 409, {error: "Project runtime is changing. Create a new Play session after it finishes."});
+        return true;
+    }
+
     private async handlePlayNewSession(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (this.rejectPlayDuringTransition(res)) return;
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
         const body = await this.readJsonBody(req);
         let validated;
@@ -3912,9 +3967,17 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (this.rejectPlayDuringTransition(res)) return;
         const preparation = this.beginRuntimePreparation();
         const projectRoot = this.currentContext.projectRoot;
-        const result = await this.playService.newSession(projectRoot, validated.seed, validated.modeName, {signal: preparation.controller.signal});
+        const execution = this.playService.newSession(projectRoot, validated.seed, validated.modeName, {signal: preparation.controller.signal});
+        this.playPreparations.add(execution);
+        let result;
+        try {
+            result = await execution;
+        } finally {
+            this.playPreparations.delete(execution);
+        }
         if (!this.isCurrentRuntimePreparation(preparation) || this.currentContext.mode !== "project" || this.currentContext.projectRoot !== projectRoot) {
             this.sendJson(res, 409, {error: "Play session preparation was superseded by a project change."});
             return;
@@ -3931,6 +3994,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (this.rejectPlayDuringTransition(res)) return;
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
         let validated;
         try {
@@ -3941,6 +4005,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (this.rejectPlayDuringTransition(res)) return;
         const disconnect = new AbortController();
         const abortDelivery = (): void => disconnect.abort();
         req.once("aborted", abortDelivery);
@@ -3968,7 +4033,9 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (this.rejectPlayDuringTransition(res)) return;
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
+        if (this.rejectPlayDuringTransition(res)) return;
         const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
         const recovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
         const execution = await this.executeCommonOperation(
@@ -4002,6 +4069,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (this.rejectPlayDuringTransition(res)) return;
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
         const body = await this.readJsonBody(req);
         let validated;
@@ -4012,6 +4080,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (this.rejectPlayDuringTransition(res)) return;
         const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
         const recovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
         const execution = await this.executeCommonOperation(
@@ -4043,7 +4112,9 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
+        if (this.rejectPlayDuringTransition(res)) return;
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
+        if (this.rejectPlayDuringTransition(res)) return;
         const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
         const recovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
         const execution = await this.executeCommonOperation(

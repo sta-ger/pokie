@@ -4,7 +4,8 @@ import {describeUnsupportedProjectOperation} from "../../src/project/describeUns
 import {StakeAdapterArtifactBuilder} from "../../src/project/StakeAdapterArtifactBuilder.js";
 import {loadPokieGameRuntime} from "../../src/gamepackage/loadPokieGame.js";
 import fs from "fs";
-import {execFileSync} from "child_process";
+import {execFile} from "child_process";
+import {promisify} from "util";
 import path from "path";
 import {ProjectOptimizationService} from "../../src/optimization/ProjectOptimizationService.js";
 import {ArtifactPublicationOwnership, rollbackArtifactPublication} from "../../src/project/ArtifactPublicationOwnership.js";
@@ -23,10 +24,11 @@ import {StakeEngineOutcomeSourceReader} from "../../src/stakeengine/standalone/S
 import {buildWeightedOutcomeLibrary} from "../../src/weightedoutcome/buildWeightedOutcomeLibrary.js";
 import {sourceInventory} from "../../src/optimization/internal/optimizationData.js";
 
-import {optimizationBlueprint as model, optimizationRequest, stochasticOptimizationRequest} from "./fixtures/OptimizationFixture.js";
+import {optimizationBlueprint as model, optimizationRequest, stochasticOptimizationRequest, declaredOptimizationGameCode as declaredGameCode} from "./fixtures/OptimizationFixture.js";
 let directory: string;
 let source: string;
 let service: ProjectOptimizationService;
+const execFileAsync = promisify(execFile);
 const resolve = async (file: string) => (await new ProjectTargetResolver().resolve(file, {readConfigurationProvenance: false}))!;
 beforeEach(() => {
     fs.mkdirSync(path.resolve("node_modules/.cache"), {recursive: true});
@@ -148,6 +150,9 @@ it("tunes and reopens the canonical PAR workbook retaining locked declarations",
     expect(result).toMatchObject({status: "success", candidate: {type: "parWorkbook"}, evidence: {measured: [0.75]}});
 });
 
+// The package case validates three candidates and a held-out assessment, each with
+// exact executable enumeration, dependency fingerprints and two isolated runtime
+// loads. Budget that whole scenario under concurrent gates, retaining every sample.
 it.each(["blueprint", "parWorkbook", "wasm", "tsPackage"] as const)("samples validated same-type %s candidates and preserves exact adapter authority", async type => {
     let file = source;
     if (type === "parWorkbook") {
@@ -176,7 +181,7 @@ it.each(["blueprint", "parWorkbook", "wasm", "tsPackage"] as const)("samples val
     if (type === "tsPackage") expect(result.evidence!.stochastic!.validationWork).toBe(16);
     await service.discard(result.candidate!);
     expect(sourceInventory(project)).toEqual(before);
-});
+}, 180000);
 
 it("samples Stake uint64 weights without rounding and normalizes payout buckets by native mode cost and fractional stake", async () => {
     const original = await nativeSource();
@@ -227,19 +232,7 @@ it("requires package source authority before mutation", async () => {
     expect((await service.optimize(await resolve(root), optimizationRequest())).status).toBe("unsupported");
 });
 
-const declaredGameCode = `const p = require('@fromstan/pokie');
-const data = require('./parameters.json');
-function config() {
- const c = new p.VideoSlotConfig(); c.setAvailableBets(data.availableBets); c.setReelsNumber(data.reels); c.setReelsSymbolsNumber(data.rows);
- c.setAvailableSymbols(data.symbols); c.setWildSymbols([]); c.setScatterSymbols([]);
- c.setSymbolsSequences(data.reelStrips.map(s => new p.SymbolsSequence().fromArray(s)));
- const lines = new p.CustomLinesDefinitions(); data.paylines.forEach((line,i) => lines.setLineDefinition(String(i), line)); c.setLinesDefinitions(lines);
- const table = new p.Paytable(data.availableBets); for (const [symbol, amounts] of Object.entries(data.paytable)) for (const [count, amount] of Object.entries(amounts)) table.setPayoutForSymbol(symbol, Number(count), amount); c.setPaytable(table); return c;
-}
-module.exports = {getManifest: () => data.manifest, getConfigHash: () => p.computeGameBlueprintHash(data),
- createSession() { const c = config(); return new p.VideoSlotSession(c, new p.SymbolsCombinationsGenerator(c, new p.SeededRandomNumberGenerator(1))); },
- createExactEnumerationSession(forced) { return new p.VideoSlotSession(config(), forced); }};
-`;
+
 
 function declaredPackage(name = "package", prefix = "", release = "", dependencies: Record<string, string> = {}) {
     const root = path.join(directory, name);
@@ -1182,7 +1175,8 @@ const write = multiplier => fs.writeFileSync(leaf, ${JSON.stringify(format === "
  assert.deepEqual(changed.diagnostics, []); assert.equal(changed.status, 'inconclusive');
  assert.notEqual(changed.evidence.stochastic.executableRevision, first.evidence.stochastic.executableRevision);
  assert.equal(changed.evidence.stochastic.assessment.returnBound, 6);
- const fresh = JSON.parse(require('child_process').execFileSync(process.execPath, [__filename, 'fresh'], {encoding: 'utf8', timeout: 60000}));
+ const freshOutput = await require('util').promisify(require('child_process').execFile)(process.execPath, [__filename, 'fresh'], {encoding: 'utf8', timeout: 120000});
+ const fresh = JSON.parse(freshOutput.stdout);
  assert.deepEqual(select(changed), fresh);
  const {ParallelSimulationRunner} = require(${JSON.stringify(path.resolve("src/simulation/parallel/ParallelSimulationRunner.ts"))});
  const run = ParallelSimulationRunner.prototype.run; let samples = 0;
@@ -1204,8 +1198,13 @@ const write = multiplier => fs.writeFileSync(leaf, ${JSON.stringify(format === "
  assert.deepEqual(fs.readdirSync(${JSON.stringify(path.join(directory, "native-scratch"))}), []);
  console.log(JSON.stringify({before: first.status, changed: changed.status, fresh: fresh.status, rejected: rejected.status, restored: 'attained', samplesDuringSave: 0, cachePreserved: require.cache[leaf] === cached}));
 })().catch(error => { console.error(error); process.exitCode = 1; });`);
-        const outcomes = JSON.parse(execFileSync(process.execPath, [script], {encoding: "utf8", timeout: 120000}));
+        // This host runs initial/drifted optimization, a fresh process, publication,
+        // rejection and two recoveries. Await its exit with a whole-scenario budget;
+        // execFileSync spawn errors contain error.error === error and cannot cross
+        // Jest's worker transport when a constrained gate reaches that deadline.
+        const {stdout} = await execFileAsync(process.execPath, [script], {encoding: "utf8", timeout: 300000});
+        const outcomes = JSON.parse(stdout);
         expect(outcomes).toEqual({before: "attained", changed: "inconclusive", fresh: "inconclusive", rejected: "failure", restored: "attained", samplesDuringSave: 0, cachePreserved: true});
         expect(sourceInventory(project)).toEqual(before);
-    }, 150000,
+    }, 330000,
 );

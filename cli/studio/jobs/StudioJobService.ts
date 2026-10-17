@@ -180,6 +180,13 @@ export class StudioJobService {
             : job);
     }
 
+    /** Record a consumed optimization preview without changing its mathematical verdict/evidence. */
+    public recordOptimizationApply(projectId: string, id: string, outputPath: string): StudioJobView | undefined {
+        return this.transition(id, job => job.projectId === projectId && job.operation === "optimization" && job.status === "completed" && job.result
+            ? {...job, result: {...job.result, provenance: {...job.result.provenance, authoredApply: {path: outputPath}}}}
+            : job);
+    }
+
     /**
      * Runs one compatibility executor behind the common durable job record.
      * Reattachment/conflict is resolved before `executor` is called, and the

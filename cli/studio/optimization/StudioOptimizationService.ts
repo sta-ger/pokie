@@ -12,9 +12,19 @@ import {projectRevision} from "../../../src/optimization/internal/optimizationDa
 import {ProjectTargetResolver} from "../../../src/project/ProjectTargetResolver.js";
 import type {StudioJobService} from "../jobs/StudioJobService.js";
 
-export type StudioOptimizationContext = {projectRoot: string; projectId: string; isCurrent(): boolean};
+export type StudioOptimizationContext = {
+    projectRoot: string;
+    projectId: string;
+    isCurrent(): boolean;
+    /** Called synchronously at commit; its returned cleanup remains owned by this operation. */
+    onAuthoredCommit?(): Promise<void>;
+};
 export class StudioOptimizationService {
     private accepting = true;
+    private releasing = 0;
+    private refreshFailure?: Error;
+    private readonly admissions = new Set<AbortController>();
+    private readonly mutations = new Set<string>();
     private readonly executions = new Set<Promise<unknown>>();
     private readonly candidates = new Map<string, {candidate: OptimizationCandidate; request: OptimizationRequest}>();
     private readonly jobs: StudioJobService;
@@ -23,27 +33,63 @@ export class StudioOptimizationService {
         this.jobs = jobs;
         this.optimizer = optimizer;
     }
-    public handle(method: string, action: "support" | "start" | "save", body: unknown, context: StudioOptimizationContext): Promise<{status: number; body: unknown}> {
-        if (!this.accepting) return Promise.resolve({status: 409, body: {error: "Studio optimization is shutting down."}});
-        const execution = this.handleOwned(method, action, body, context);
+    public handle(method: string, action: "support" | "start" | "save" | "apply", body: unknown, context: StudioOptimizationContext): Promise<{status: number; body: unknown}> {
+        if (!this.accepting || this.releasing) return Promise.resolve({status: 409, body: {error: "Studio optimization is shutting down or changing Project."}});
+        const controller = new AbortController();
+        this.admissions.add(controller);
+        const ownedContext = {...context, isCurrent: () => this.accepting && !controller.signal.aborted && context.isCurrent()};
+        const execution = this.handleOwned(method, action, body, ownedContext, controller.signal);
         this.executions.add(execution);
-        execution.finally(() => this.executions.delete(execution)).catch(() => undefined);
+        execution.finally(() => {
+            this.executions.delete(execution);
+            this.admissions.delete(controller);
+        }).catch(() => undefined);
         return execution;
     }
     public async drain(): Promise<void> {
-        while (this.executions.size) await Promise.all([...this.executions]);
+        let failure: unknown;
+        while (this.executions.size) {
+            const results = await Promise.allSettled([...this.executions]);
+            for (const result of results) if (result.status === "rejected") failure = result.reason;
+        }
+        if (failure) throw failure;
+        if (this.refreshFailure) throw this.refreshFailure;
+    }
+    public async releaseCandidates(): Promise<void> {
+        this.releasing++;
+        for (const controller of this.admissions) controller.abort();
+        for (const job of this.jobs.list()) if (job.operation === "optimization" && ["queued", "running"].includes(job.status)) this.jobs.cancel(job.projectId, job.id);
+        try {
+            const failures: unknown[] = [];
+            try {
+                await this.drain();
+            } catch (error) {
+                failures.push(error);
+            }
+            for (const [id, retained] of this.candidates) {
+                try {
+                    await this.optimizer.discard(retained.candidate);
+                    this.candidates.delete(id);
+                } catch (error) {
+                    failures.push(error);
+                }
+            }
+            if (failures.length) throw new Error(`Optimization lifecycle cleanup failed: ${failures.map(String).join("; ")}`);
+        } finally {
+            this.releasing--;
+        }
     }
     public async shutdown(): Promise<void> {
         this.accepting = false;
-        await this.drain();
-        for (const retained of this.candidates.values()) await this.optimizer.discard(retained.candidate);
-        this.candidates.clear();
+        for (const job of this.jobs.list()) if (job.operation === "optimization" && ["queued", "running"].includes(job.status)) this.jobs.cancel(job.projectId, job.id);
+        await this.releaseCandidates();
     }
     private async handleOwned(
         method: string,
-        action: "support" | "start" | "save",
+        action: "support" | "start" | "save" | "apply",
         body: unknown,
         context: StudioOptimizationContext,
+        signal: AbortSignal,
     ): Promise<{status: number; body: unknown}> {
         try {
             if (method !== "POST") return {status: 405, body: {error: "Use POST."}};
@@ -56,11 +102,10 @@ export class StudioOptimizationService {
             };
             if (!submitted || typeof submitted !== "object") throw new Error("Expected an optimization request.");
             if (submitted.expectedProjectRoot !== context.projectRoot || !context.isCurrent()) return {status: 409, body: {error: "Project changed. Reopen the intended Project before optimizing or saving."}};
-            if (action === "save") {
+            if (action === "save" || action === "apply") {
                 if (
                     typeof submitted.jobId !== "string" ||
-                    typeof submitted.destination !== "string" ||
-                    !submitted.destination.trim()
+                    (action === "save" && (typeof submitted.destination !== "string" || !submitted.destination.trim()))
                 ) throw new Error("jobId and destination are required.");
                 const job = this.jobs.get(context.projectId, submitted.jobId);
                 const retained = this.candidates.get(submitted.jobId);
@@ -71,13 +116,42 @@ export class StudioOptimizationService {
                     !retained ||
                     !context.isCurrent()
                 ) return {status: 409, body: {error: "Candidate unavailable or Project changed. Optimize again."}};
-                const outputPath = await this.optimizer.publish(
-                    retained.candidate,
-                    retained.request,
-                    submitted.destination,
-                    {isCurrent: context.isCurrent},
-                );
-                return {status: 200, body: {outputPath}};
+                const request = validateOptimizationRequest(submitted.request);
+                if (this.mutations.has(submitted.jobId)) throw new Error("Candidate save/apply is already in progress.");
+                this.mutations.add(submitted.jobId);
+                try {
+                    let refresh: Promise<void> | undefined;
+                    const onAuthoredCommit = (): void => {
+                        // Start invalidation in the commit's call stack, before any old preparation
+                        // can resume. A later lifecycle cancellation cannot undo a completed commit.
+                        try {
+                            refresh = context.onAuthoredCommit?.();
+                        } catch (error) {
+                            refresh = Promise.reject(error);
+                        }
+                        refresh?.catch(() => undefined);
+                    };
+                    const outputPath = action === "apply"
+                        ? await this.optimizer["apply"](retained.candidate, request, {isCurrent: context.isCurrent, signal, onAuthoredCommit})
+                        : await this.optimizer.publish(retained.candidate, request, submitted.destination as string, {isCurrent: context.isCurrent, signal});
+                    let warning: string | undefined;
+                    try {
+                        await refresh;
+                    } catch (error) {
+                        this.refreshFailure = new Error(`Committed optimization runtime cleanup failed: ${String(error)}`);
+                        warning = `Source was applied and its preview consumed, but runtime refresh failed. Reopen the Project before playing: ${String(error)}`;
+                    }
+                    if (action === "apply") {
+                        try {
+                            this.jobs.recordOptimizationApply(context.projectId, submitted.jobId, outputPath);
+                        } catch (error) {
+                            warning = [warning, `Source was applied, but its durable apply marker could not be saved. The old preview is consumed; inspect the source before retrying: ${String(error)}`].filter(Boolean).join(" ");
+                        }
+                    }
+                    return {status: 200, body: {outputPath, ...(warning ? {warning} : {})}};
+                } finally {
+                    this.mutations.delete(submitted.jobId);
+                }
             }
             const request = validateOptimizationRequest(submitted.request);
             const project = await new ProjectTargetResolver().resolve(context.projectRoot, {readConfigurationProvenance: false});

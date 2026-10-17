@@ -584,3 +584,24 @@ it("preserves Recent Rounds audit evidence through inspection, submission and re
         expect(JSON.parse(call.init!.body!)).toMatchObject({round: 1, recording: JSON.parse(JSON.stringify(recording))});
     }
 });
+
+it.each(["blueprint", "parWorkbook", "tsPackage", "outcomeLibrary", "stakeAdapter", "wasm"])("mounts optimization and discovers request-specific tuning support for %s", async type => {
+    const status = {blueprint: "loaded", parWorkbook: "loaded", tsPackage: "loaded", outcomeLibrary: "outcome-source", stakeAdapter: "outcome-source", wasm: "artifact"}[type];
+    const {fetchImpl} = createRoutedFakeFetch({
+        ...baseFetchRoutes(),
+        "/api/project/context": () => ({ok: true, status: 200, body: {
+            status, projectRoot: "/games/sample-slot", type, game: {id: "sample-slot", name: "Sample Slot", version: "1"}, capabilities: [],
+            project: {type, rootPath: "/games/sample-slot", capabilities: [], provenance: "fixture"},
+            report: {descriptor: {kind: "native", streaming: false, limitations: []}, issues: [], modes: []},
+            wasmPresentation: {label: "WASM component", inspectionSummary: "Inspect bound component", inspectActionLabel: "Inspect declared manifest"},
+        }}),
+        "/api/project/optimization/support": () => ({ok: true, status: 200, body: {supported: true, reason: `${type} declared tuning only`, writable: ["/declared/weight"], sourceRevision: "sha256:source"}}),
+    });
+    renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+    await screen.findByRole("heading", {name: "Optimize math"});
+    expect(screen.getByRole("button", {name: "Run optimization"})).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", {name: "Check tuning support"}));
+    await screen.findByText(`${type} declared tuning only`);
+    expect(screen.getByText("Writable fields: /declared/weight")).toBeInTheDocument();
+    expect(screen.getByRole("button", {name: "Run optimization"})).toBeEnabled();
+});

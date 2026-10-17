@@ -1,5 +1,5 @@
 import {ProjectTargetUnsupportedError} from "../../src/project/ProjectTargetUnsupportedError.js";
-import {projectRevision} from "../../src/optimization/internal/optimizationData.js";
+import {jsonHash, projectRevision} from "../../src/optimization/internal/optimizationData.js";
 import {OptimizationCancelledError} from "../../src/optimization/internal/ProjectOptimizationAdapter.js";
 import {ArtifactBuildCancelledError} from "../../src/project/ArtifactBuildOptions.js";
 import fs from "fs";
@@ -27,7 +27,7 @@ export class OptimizeCommand implements CliCommandHandling {
         return "optimize";
     }
     public getDescription(): string {
-        return "Search a declared finite math domain and review or save a same-type candidate.";
+        return "Search a declared math domain, review and explicitly apply authored changes or save a same-type candidate.";
     }
     public getCommanderCommand(): Command {
         return this.command();
@@ -36,6 +36,7 @@ export class OptimizeCommand implements CliCommandHandling {
         const command = this.command();
         let result: OptimizationResult = {status: "failure", diagnostics: []};
         let request: unknown;
+        let review: {sourcePath: string; sourceRevision: string; candidateRevision: string; requestRevision: string; executableRevision?: string} | undefined;
         const controller = new AbortController();
         const cancel = (): void => controller.abort();
         process.on("SIGINT", cancel);
@@ -46,7 +47,8 @@ export class OptimizeCommand implements CliCommandHandling {
                 if (isCommanderHelpDisplay(error)) return 0;
                 throw error;
             }
-            const options = command.opts<{policy: string; out?: string; format: string; progress?: boolean}>();
+            const options = command.opts<{policy: string; out?: string; format: string; progress?: boolean; apply?: string}>();
+            if (options.apply && options.out) throw new OptimizationInputError([{path: "apply", message: "Choose authored apply or separate artifact output."}]);
             if (options.format !== "json") throw new OptimizationInputError([{path: "format", message: "Only json is supported."}]);
             try {
                 request = validateOptimizationRequest(JSON.parse(fs.readFileSync(options.policy, "utf8")));
@@ -60,6 +62,8 @@ export class OptimizeCommand implements CliCommandHandling {
                 diagnostics: [{path: "source", message: "Not a recognized POKIE project."}],
             };
             else {
+                const approved = options.apply ? JSON.parse(fs.readFileSync(options.apply, "utf8")).review as typeof review : undefined;
+                if (options.apply && (!approved || approved.sourcePath !== project.rootPath || approved.sourceRevision !== projectRevision(project) || approved.requestRevision !== jsonHash(request))) throw new Error("Reviewed source or policy changed; run a fresh preview.");
                 result = await this.service.optimize(project, request, {
                     signal: controller.signal,
                     onProgress: options.progress
@@ -68,8 +72,13 @@ export class OptimizeCommand implements CliCommandHandling {
                 });
                 if (result.candidate) {
                     const candidate = result.candidate;
+                    review = {sourcePath: candidate.sourcePath, sourceRevision: candidate.sourceRevision, candidateRevision: candidate.revision, requestRevision: candidate.requestRevision, ...(candidate.executableRevision ? {executableRevision: candidate.executableRevision} : {})};
                     try {
-                        if (options.out) {
+                        if (options.apply) {
+                            if (approved?.candidateRevision !== candidate.revision || approved?.executableRevision !== candidate.executableRevision) throw new Error("Candidate or executable dependencies differ from reviewed preview; review again.");
+                            const output = await this.service["apply"](candidate, request, {signal: controller.signal});
+                            result = {...result, candidate: undefined, output: {path: output, type: candidate.type, revision: projectRevision({type: candidate.type, rootPath: output})}};
+                        } else if (options.out) {
                             const output = await this.service.publish(candidate, request, options.out, {
                                 signal: controller.signal,
                             });
@@ -97,7 +106,7 @@ export class OptimizeCommand implements CliCommandHandling {
         } finally {
             process.off("SIGINT", cancel);
         }
-        console.log(JSON.stringify(result));
+        console.log(JSON.stringify({...result, ...(review ? {review} : {})}));
         return OPTIMIZATION_EXIT_CODES[result.status];
     }
     private command(): Command {
@@ -105,6 +114,7 @@ export class OptimizeCommand implements CliCommandHandling {
             .description(this.getDescription())
             .argument("<source>", "existing project")
             .requiredOption("--policy <file>", "JSON {targets, policy} request")
+            .option("--apply <review.json>", "rerun and explicitly apply an unchanged reviewed JSON preview to authored source")
             .option("--out <path>", "explicitly save candidate to a new/empty destination")
             .option("--format <format>", "structured output (json)", "json")
             .option("--progress", "write JSON progress to stderr");

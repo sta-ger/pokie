@@ -5,10 +5,10 @@ import {useDurableJobs} from "./useDurableJobs.js";
 /** Discover server-scoped durable work without resubmitting any operation. */
 export function useProjectJobs(fetchImpl: FetchLike, projectId: string | undefined, generation: number) {
     const port = useMemo(() => ({
-        list: (signal: AbortSignal) => listProjectJobs(fetchImpl, signal),
+        list: (signal: AbortSignal) => listProjectJobs(fetchImpl, signal, projectId),
         get: (id: string, signal: AbortSignal) => getProjectJob(fetchImpl, id, signal),
         cancel: (id: string, signal: AbortSignal) => cancelProjectJob(fetchImpl, id, signal),
         recover: (id: string, signal: AbortSignal) => recoverProjectJob(fetchImpl, id, signal),
-    }), [fetchImpl]);
+    }), [fetchImpl, projectId]);
     return useDurableJobs(port, projectId, generation);
 }

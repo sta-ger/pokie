@@ -252,12 +252,16 @@ export class SimulationWorkerCoordinator {
                 });
 
                 worker.on("messageerror", (error: Error) => {
+                    failureContext = `Worker ${request.workerIndex}: ${error.message}`;
                     finish(() =>
                         rejectWithPrefix(new SimulationWorkerFailureError(request.workerIndex, `received an unparseable message: ${error.message}`)),
                     );
                 });
 
                 worker.on("error", (error: Error) => {
+                    // An entry/module startup error has no terminal release acknowledgement.
+                    // Keep its cause when fail-closed cleanup reports that missing acknowledgement.
+                    failureContext = `Worker ${request.workerIndex}: ${error.message}`;
                     finish(() => rejectWithPrefix(new SimulationWorkerFailureError(request.workerIndex, error.message)));
                 });
 
@@ -266,6 +270,7 @@ export class SimulationWorkerCoordinator {
                         return;
                     }
                     if (code !== 0 || results[index] === undefined) {
+                        failureContext = `Worker ${request.workerIndex} exited prematurely with code ${code}.`;
                         finish(() =>
                             rejectWithPrefix(new SimulationWorkerFailureError(request.workerIndex, `worker exited prematurely with code ${code}.`)),
                         );
@@ -294,6 +299,7 @@ export class SimulationWorkerCoordinator {
                     observeWorker(workers[index], index);
                 } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
+                    failureContext = `Worker ${requests[index].workerIndex} could not be created: ${message}`;
                     finish(() => rejectWithPrefix(new SimulationWorkerFailureError(requests[index].workerIndex, `could not create worker: ${message}`)));
                     return;
                 }

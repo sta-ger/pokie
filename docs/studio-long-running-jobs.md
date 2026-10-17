@@ -91,3 +91,17 @@ The simulation API accepts an optional coherent `convergence` object (`minRounds
 
 
 WASM browser jobs use the same durable service. A browser tab owns each production Worker and reports scoped progress and a drained terminal; Studio owns admission, report/replay downloads and recorded rounds. A job captures its artifact identity and Project generation. Publication revalidates the current bytes/sidecar pair. Cancellation terminates the browser Worker before the cancellation terminal is submitted; only the observed accepted prefix is retained. Pagehide disposes Workers and sends a cancellation receipt. If that receipt is lost, the ten-second owner lease becomes recovery-required and offers an explicit retry. Reload and duplicate tabs discover retained jobs and never automatically submit a replacement. A disconnected owner cannot claim successful cleanup, and a shutdown with unconfirmed drainage cannot record a graceful stop. Idle Play sessions are tab-owned and discarded on pagehide, artifact change or connection loss.
+
+Optimization jobs rediscover the same server execution after browser reload, using canonical
+project identity even when the routed path is an alias. Editing the policy requires a new support
+check; an incompatible active request conflicts instead of launching a second search. Cancellation
+is terminal only after owned game, loader, worker and scratch cleanup. Cleanup failures remain
+failed/recovery-required. Close, project switching and shutdown drain optimization work and release
+retained candidate workspaces; separately published outputs remain independent.
+
+There is no resumable optimization checkpoint. After a server restart, interrupted search requires
+fresh retry, and retained terminal evidence does not restore process-local candidate save/apply
+permission. The generic recovery action must not claim optimization resumed. Use Optimize math's
+support check followed by Run optimization to start a fresh bounded search. Authored apply refreshes
+the active project runtime and consumes its preview; both save and apply require the current policy
+at the server boundary, including locks and constraints.

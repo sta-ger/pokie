@@ -110,7 +110,7 @@ it("reattaches terminal evidence after reload and saves the reviewed candidate w
     fireEvent.change(screen.getByLabelText("Candidate destination"), {target: {value: "/output/saved.json"}});
     await userEvent.click(screen.getByRole("button", {name: "Save reviewed candidate"}));
     await screen.findByText("Candidate saved: /output/saved.json");
-    expect(calls.find((call) => call.url.endsWith("save"))?.body).toEqual({expectedProjectRoot: "/project", jobId: "saved-job", destination: "/output/saved.json"});
+    expect(calls.find((call) => call.url.endsWith("save"))?.body).toEqual({expectedProjectRoot: "/project", jobId: "saved-job", request: optimizationRequest(), destination: "/output/saved.json"});
 });
 it("renders failure diagnostics, evidence, job error and recovery guidance together", async () => {
     const job = completedJob("recovery-required");
@@ -155,7 +155,7 @@ it("ignores foreign jobs and an old support response after switching Projects", 
     let finishSupport: ((value: Awaited<ReturnType<FetchLike>>) => void) | undefined;
     const fetchImpl: FetchLike = (url) => url.endsWith("support") ? new Promise((resolve) => {
         finishSupport = resolve;
-    }) : response({jobs: [completedJob()]});
+    }) : response({projectRoot: "/project", jobs: [completedJob()]});
     const view = render(panel(fetchImpl));
     await screen.findByText("Verdict: success");
     await userEvent.click(screen.getByRole("button", {name: "Check tuning support"}));
@@ -165,4 +165,71 @@ it("ignores foreign jobs and an old support response after switching Projects", 
     expect(screen.queryByText("Verdict: success")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", {name: "Save reviewed candidate"})).not.toBeInTheDocument();
     expect(screen.getByRole("button", {name: "Run optimization"})).toBeDisabled();
+});
+
+it("renders held-out estimates, CI, population, constraints and parameter changes, and sends the reviewed policy on apply", async () => {
+    const request = optimizationRequest();
+    request.policy.strategy = "seeded-search-v1";
+    request.policy.sampling = {confidence: 0.95, searchSamples: 100, searchBudget: 100, assessmentSamples: 1000, minSamples: 100, minEventCount: 5, chunkSize: 100, workers: 1};
+    const job = completedJob();
+    job.request.request = request;
+    job.result!.detail = {status: "attained", diagnostics: [], candidate: {type: "blueprint"}, evidence: {
+        request, strategy: "seeded-search-v1", sourceRevision: "sha256:reviewed", measured: [99],
+        numericRepresentation: "IEEE-754 binary64 moments; native integer weights preserved",
+        constraintChecks: ["locked subtrees", "fixed weights/counts/sums"],
+        diff: [{path: "/paytable/A/2", before: 2, after: 3}],
+        stochastic: {assessment: {targets: [{estimate: 0.74, observations: 1000, confidence: {low: 0.71, high: 0.77}, verdict: "attained", reason: "contained"}]}},
+    }};
+    const calls: unknown[] = [];
+    const applied = jest.fn();
+    const fetchImpl: FetchLike = (url, init) => {
+        if (url.endsWith("apply")) {
+            calls.push(JSON.parse(init!.body as string));
+            return response({outputPath: "/project"});
+        }
+        return response({jobs: [job]});
+    };
+    render(<MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><OptimizationPanel projectRoot="/project" onApplied={applied} /></StudioApiProvider></MantineProvider>);
+    const comparison = await screen.findByRole("table", {name: "Target comparison"});
+    expect(comparison).toHaveTextContent("rtp");
+    expect(comparison).toHaveTextContent("ratio");
+    expect(comparison).toHaveTextContent("logical-round");
+    expect(comparison).toHaveTextContent("0.75");
+    expect(comparison).toHaveTextContent("0.74 held-out estimate");
+    expect(comparison).toHaveTextContent("[0.71, 0.77]; confidence 0.95; 1000 observations");
+    expect(comparison).not.toHaveTextContent("99");
+    expect(screen.getByRole("table", {name: "Parameter changes"})).toHaveTextContent("/paytable/A/2");
+    expect(screen.getByText(/Constraint checks:/)).toHaveTextContent("locked subtrees");
+    expect(screen.getByText(/Locks:/)).toHaveTextContent("/reelStrips");
+    await userEvent.click(screen.getByRole("button", {name: "Apply reviewed changes to source"}));
+    expect(calls[0]).toMatchObject({request, jobId: job.id, expectedProjectRoot: "/project"});
+    expect(applied).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
+});
+
+it("remounts an active canonical job through an alias without submitting another search", async () => {
+    const job = completedJob("running");
+    job.projectId = "/canonical/project";
+    job.result = undefined;
+    const calls: string[] = [];
+    const fetchImpl: FetchLike = url => {
+        calls.push(url);
+        return response({projectRoot: "/alias/project", jobs: [job]});
+    };
+    const first = render(panel(fetchImpl, "/alias/project"));
+    await screen.findByRole("button", {name: "Cancel optimization"});
+    first.unmount();
+    render(panel(fetchImpl, "/alias/project"));
+    await screen.findByRole("button", {name: "Cancel optimization"});
+    expect(calls.some(url => url.endsWith("start"))).toBe(false);
+});
+
+it("keeps consumed authored preview actions hidden after reload while retaining its verdict", async () => {
+    const job = completedJob();
+    job.result!.provenance = {authoredApply: {path: "/project"}};
+    render(panel(() => response({jobs: [job]})));
+    await screen.findByText("Verdict: success");
+    expect(screen.getByText(/Authored changes applied/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", {name: "Save reviewed candidate"})).not.toBeInTheDocument();
 });

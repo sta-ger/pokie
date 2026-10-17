@@ -1,3 +1,6 @@
+import {applyAuthoredFiles} from "./internal/applyAuthoredFiles.js";
+import {MathDefinitionSourceReader} from "../diff/MathDefinitionSourceReader.js";
+import {MathDefinitionDiffer} from "../diff/MathDefinitionDiffer.js";
 import {loadPokieGameRuntime} from "../gamepackage/loadPokieGame.js";
 import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
@@ -68,6 +71,7 @@ export interface OptimizationCandidatePublishing {
         destination: string,
         options?: OptimizationOptions,
     ): Promise<string>;
+    apply(candidate: OptimizationCandidate, request: unknown, options?: OptimizationOptions): Promise<string>;
     discard(candidate: OptimizationCandidate): Promise<void>;
 }
 function preflightConstraints(model: unknown, policy: OptimizationPolicy): void {
@@ -112,7 +116,9 @@ function targetsMatch(targets: MathTarget[], measured: number[]): boolean {
 }
 /** Stable authored domain order and first-match tie breaking. Seed is recorded; exact enumeration uses no random selection. */
 export class ProjectOptimizationService implements ProjectOptimizing, OptimizationCandidatePublishing {
-    private readonly receipts = new Map<string, {candidate: OptimizationCandidate; request: OptimizationRequest; evidence?: OptimizationEvidence; status?: OptimizationResult["status"]}>();
+    private readonly receipts = new Map<string, {candidate: OptimizationCandidate; request: OptimizationRequest; evidence?: OptimizationEvidence; status?: OptimizationResult["status"]; executableRevision?: string}>();
+    private readonly applyStages = new Map<string, Set<string>>();
+    private readonly applied = new Set<string>();
     private readonly scratchRoot: string;
     public constructor(scratchRoot = path.resolve("node_modules/.cache/pokie-optimization")) {
         this.scratchRoot = scratchRoot;
@@ -177,6 +183,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                 throw new OptimizationInputError([{path: "policy", message: (error as Error).message}]);
             }
             preflightConstraints(adapter.model, request.policy);
+            const executableRevision = project.type === "tsPackage" && request.policy.strategy === "exact-finite-v1" ? await packageExecutableRevision(project.rootPath) : undefined;
             const domainSize = request.policy.tunables.reduce(
                 (total, field) => total * BigInt(field.values.length),
                 BigInt(1),
@@ -200,7 +207,9 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             if (request.policy.strategy === "seeded-search-v1") {
                 const sampled = await runStochasticOptimization(project, request, adapter, workspace, evidence, inventory, options);
                 if (sampled.candidate) {
-                    this.receipts.set(sampled.candidate.path, {candidate: structuredClone(sampled.candidate), request: structuredClone(request), evidence: structuredClone(evidence), status: sampled.status});
+                    const sampledExecutableRevision = evidence.stochastic?.executableRevision;
+                    if (sampledExecutableRevision) sampled.candidate.executableRevision = sampledExecutableRevision;
+                    this.receipts.set(sampled.candidate.path, {candidate: structuredClone(sampled.candidate), request: structuredClone(request), evidence: structuredClone(evidence), status: sampled.status, executableRevision: sampledExecutableRevision});
                     keep = true;
                 }
                 result = sampled;
@@ -272,6 +281,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                             sourcePath: project.rootPath,
                             sourceRevision,
                             requestRevision: jsonHash(request),
+                            ...(executableRevision ? {executableRevision} : {}),
                             workspace,
                         };
                         evidence.diff = request.policy.tunables.map((field) => ({
@@ -279,6 +289,13 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                             before: at(adapter.model, field.path) as OptimizationScalar,
                             after: selection[field.path],
                         }));
+                        if (!["outcomeLibrary", "stakeAdapter"].includes(project.type)) {
+                            const reader = new MathDefinitionSourceReader();
+                            const before = await reader.read({kind: "blueprint", model: adapter.model}, {analysisOnly: true, signal: options.signal});
+                            const after = await reader.read({kind: "blueprint", model: readback}, {analysisOnly: true, signal: options.signal});
+                            const {status, scope, changes} = new MathDefinitionDiffer().diff(before, after);
+                            evidence.definitionDiff = {status, scope, changes};
+                        }
                         evidence.selected = selection;
                         evidence.measured = measured.slice(0, request.targets.length);
                         evidence.constraintChecks = [
@@ -304,6 +321,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                         this.receipts.set(selected.path, {
                             candidate: structuredClone(selected),
                             request: structuredClone(request),
+                            executableRevision, evidence: structuredClone(evidence), status: "success",
                         });
                         keep = true;
                         return {status: "success", diagnostics: [], evidence, candidate: selected};
@@ -347,7 +365,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
         const request = validateOptimizationRequest(input);
         const receipt = this.receipts.get(candidate.path);
         if (
-            !receipt ||
+            !receipt || this.applied.has(candidate.path) ||
             jsonHash(receipt.candidate) !== jsonHash(candidate) ||
             candidate.requestRevision !== jsonHash(request)
         ) throw new Error("Unknown or modified candidate/policy receipt; optimize again.");
@@ -357,8 +375,8 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             projectRevision({type: candidate.type, rootPath: candidate.path}) !== candidate.revision
         ) throw new Error("Source or reviewed candidate changed; optimize again.");
         const assertExecutable = async (file: string): Promise<void> => {
-            if (request.policy.strategy === "seeded-search-v1" && candidate.type === "tsPackage" &&
-                (!receipt.evidence?.stochastic?.executableRevision || await packageExecutableRevision(file) !== receipt.evidence.stochastic.executableRevision)) throw new Error("Executable dependencies changed or are unavailable; rerun optimization.");
+            if (candidate.type === "tsPackage" &&
+                (!receipt.executableRevision || await packageExecutableRevision(file) !== receipt.executableRevision)) throw new Error("Executable dependencies changed or are unavailable; rerun optimization.");
         };
         await assertExecutable(candidate.sourcePath);
         await assertExecutable(candidate.path);
@@ -399,12 +417,13 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             // Optional resolver provenance is not proof of a loadable, measured runtime.
             const adapter = await acquireOptimizationAdapter(reopened, request.policy);
             const readback = await adapter.read(destination);
+            const original = await acquireOptimizationAdapter({...reopened, rootPath: candidate.sourcePath}, request.policy);
+            assertOnlyTuned(original.model, readback, request.policy);
+            for (const field of request.policy.tunables) if (at(readback, field.path) !== receipt.evidence?.selected?.[field.path]) throw new Error("Published parameters differ from reviewed selection.");
+            await assertExecutable(destination);
             if (request.policy.strategy === "seeded-search-v1") {
-                const sourceAdapter = await acquireOptimizationAdapter({...reopened, rootPath: candidate.sourcePath}, request.policy);
-                assertOnlyTuned(sourceAdapter.model, readback, request.policy);
                 if (!receipt.evidence?.stochastic?.assessment || !receipt.evidence.selected) throw new Error("Reviewed stochastic assessment unavailable; rerun optimization.");
                 for (const field of request.policy.tunables) if (at(readback, field.path) !== receipt.evidence.selected[field.path]) throw new Error("Published parameters differ from assessment.");
-                await assertExecutable(destination);
                 if (candidate.type === "tsPackage") {
                     const runtime = await loadPokieGameRuntime(destination);
                     try {
@@ -416,7 +435,6 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                             await runtime.release();
                         }
                     }
-                    await assertExecutable(destination);
                 }
             } else {
                 const maxConstraint = request.policy.constraints?.maxWin;
@@ -425,6 +443,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                 if (maxConstraint && measured[measured.length - 1] > maxConstraint.value) throw new Error("Published runtime violates the reviewed maximum win.");
                 if (!targetsMatch(request.targets, measured)) throw new Error("Published runtime does not demonstrate the reviewed target.");
             }
+            await assertExecutable(destination);
             const sameBytes = directory
                 ? projectRevision(reopened) === candidate.revision
                 : members.every(([from, to]) => digest(fs.readFileSync(from)) === digest(fs.readFileSync(to)));
@@ -443,11 +462,80 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             throw error;
         }
     }
+    /** Commit reviewed authored files; native generated artifacts use publish instead. */
+    public async apply(candidate: OptimizationCandidate, input: unknown, options: OptimizationOptions = {}): Promise<string> {
+        if (!["blueprint", "parWorkbook", "tsPackage"].includes(candidate.type)) throw new Error("Generated artifacts require publish to a new/empty destination.");
+        const request = validateOptimizationRequest(input);
+        const receipt = this.receipts.get(candidate.path);
+        if (!receipt || this.applied.has(candidate.path) || jsonHash(receipt.candidate) !== jsonHash(candidate) || candidate.requestRevision !== jsonHash(request)) throw new Error("Unknown or modified candidate/policy receipt; optimize again.");
+        const source = {type: candidate.type, rootPath: candidate.sourcePath};
+        const assertActive = (): void => {
+            if (this.applied.has(candidate.path)) throw new Error("Preview already applied; optimize again.");
+            if (options.signal?.aborted) throw new OptimizationCancelledError("Apply cancelled.");
+            if (options.isCurrent && !options.isCurrent()) throw new Error("Project/request changed during apply.");
+        };
+        const assertCurrent = (): void => {
+            assertActive();
+            if (projectRevision(source) !== candidate.sourceRevision || projectRevision({type: candidate.type, rootPath: candidate.path}) !== candidate.revision) throw new Error("Source or reviewed candidate changed; optimize again.");
+        };
+        assertCurrent();
+        const committedInventory = sourceInventory(source);
+        // Use the same native publication/readback authority before entering the mutation section.
+        const temporary = fs.mkdtempSync(path.join(path.dirname(candidate.sourcePath), ".pokie-review-"));
+        const stages = this.applyStages.get(candidate.path) ?? new Set<string>();
+        stages.add(temporary);
+        this.applyStages.set(candidate.path, stages);
+        let files: {file: string; before: Buffer; after: Buffer}[] = [];
+        let validationFailed = false;
+        let validationError: unknown;
+        try {
+            const validated = await this.publish(candidate, request, path.join(temporary, candidate.type === "tsPackage" ? "package" : path.basename(candidate.path)), options);
+            const names = candidate.type === "tsPackage"
+                ? [JSON.parse(fs.readFileSync(path.join(candidate.sourcePath, "pokie-tuning.json"), "utf8")).parameterFile as string, "pokie-tuning.json"]
+                : [""];
+            files = names.map(name => ({file: name ? path.join(candidate.sourcePath, name) : candidate.sourcePath,
+                before: fs.readFileSync(name ? path.join(candidate.sourcePath, name) : candidate.sourcePath),
+                after: fs.readFileSync(name ? path.join(validated, name) : validated)}));
+        } catch (error) {
+            validationFailed = true;
+            validationError = error;
+        }
+        // A cleanup error occurs before any authored mutation.
+        try {
+            fs.rmSync(temporary, {recursive: true, force: true});
+            stages.delete(temporary);
+        } catch (error) {
+            throw new Error(`Apply staging cleanup failed at ${temporary}; original source is unchanged. Discard the candidate to retry owned cleanup: ${String(error)}${validationFailed ? `; validation: ${String(validationError)}` : ""}`);
+        }
+        if (validationFailed) throw validationError;
+        assertCurrent();
+        for (const item of files) {
+            const name = candidate.type === "tsPackage" ? path.relative(candidate.sourcePath, item.file).split(path.sep).join("/") : path.basename(item.file);
+            committedInventory[name] = digest(item.after);
+        }
+        applyAuthoredFiles(files, assertCurrent, path.dirname(candidate.sourcePath), stages, () => {
+            assertActive();
+            if (projectRevision(source) !== jsonHash(committedInventory) || projectRevision({type: candidate.type, rootPath: candidate.path}) !== candidate.revision) {
+                throw new Error(`Concurrent edit changed the committed authored state or reviewed candidate. Refresh and optimize again. Recovery required: inspect ${candidate.sourcePath}; external edits are retained.`);
+            }
+        });
+        // The old receipt is consumed even when the selected values equal the source.
+        this.applied.add(candidate.path);
+        try {
+            options.onAuthoredCommit?.();
+        } catch (error) {
+            throw new Error(`Authored source committed and preview consumed at ${candidate.sourcePath}, but commit notification failed: ${String(error)}. Reopen the project before retrying.`);
+        }
+        return candidate.sourcePath;
+    }
     public async discard(candidate: OptimizationCandidate): Promise<void> {
         const receipt = this.receipts.get(candidate.path);
         if (!receipt || receipt.candidate.workspace !== candidate.workspace) throw new Error("Unknown candidate ownership.");
+        for (const stage of this.applyStages.get(candidate.path) ?? []) await fs.promises.rm(stage, {recursive: true, force: true});
+        this.applyStages.delete(candidate.path);
         await fs.promises.rm(candidate.workspace, {recursive: true, force: true});
         this.receipts.delete(candidate.path);
+        this.applied.delete(candidate.path);
     }
 }
 

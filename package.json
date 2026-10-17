@@ -72,7 +72,7 @@
         "release:p8-05": "node scripts/p8-05-release-completion.mjs",
         "release:p8-05:gate": "node scripts/p8-05-release-completion.mjs --gate-only",
         "dev-studio-client": "npm run build-cli && node scripts/start-studio-client-dev.mjs",
-        "build-cli:compile": "tsc --project tsconfig.cli.json && npm run build-client && npm run build-studio-client && shx chmod +x dist/cli/pokie.js",
+        "build-cli:compile": "tsc --project tsconfig.cli.json && shx mkdir -p dist/src/gamepackage/internal && shx cp src/gamepackage/internal/runtimeLocation.mjs dist/src/gamepackage/internal/runtimeLocation.mjs && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs && npm run build-client && npm run build-studio-client && shx chmod +x dist/cli/pokie.js",
         "build-cli": "npm run generate-barrels && npm run build-esm:compile && npm run build-cjs:compile && npm run build-cli:compile",
         "prebuild": "npm run lint",
         "build": "npm run generate-barrels && shx rm -rf ./dist && npm run build-esm:compile && npm run build-cjs:compile && npm run build-cli:compile",
@@ -199,7 +199,8 @@
         "examples/blueprints/weighted-bonus.blueprint.json",
         "examples/blueprints/wild-*.blueprint.json",
         "docs/optimization.md",
-        "docs/v2-completion/V2C-23.md"
+        "docs/v2-completion/V2C-23.md",
+        "docs/v2-completion/V2C-25.md"
     ],
     "dependencies": {
         "commander": "^14.0.3",

@@ -89,6 +89,10 @@ const fixtureCommandAuthority: Pick<PokieGame, "getSessionCommandCapabilities"> 
 const COMPILED_CJS_ENTRY = path.join(REPO_ROOT, "dist", "cjs", "index.js");
 const COMPILED_CJS_PACKAGE_JSON = path.join(REPO_ROOT, "dist", "cjs", "package.json");
 const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js");
+// Real source reads snapshot the host installation and its dependency graph, even when the
+// contract validator is injected. Allow the same bounded budget as offline materialization
+// under the controller's concurrent Jest launcher; route-only cases keep the default timeout.
+const REAL_RUNTIME_TEST_TIMEOUT_MS = 300000;
 type PendingGameLoad = (game: PokieGame) => void;
 type PendingLoadStarted = () => void;
 
@@ -137,14 +141,17 @@ const runBundledNpmCommand: PackageCommandRunning = async (command, args, cwd, o
 };
 
 async function get(url: string): Promise<{status: number; body: unknown}> {
-    const response = await fetch(url);
+    // Client and server share this event loop. Synchronous runtime snapshots can
+    // delay a request beyond a pooled socket's idle deadline; use a fresh
+    // connection for each assertion instead of racing that socket's close.
+    const response = await fetch(url, {headers: {Connection: "close"}});
     return {status: response.status, body: await response.json()};
 }
 
 async function post(url: string, body?: unknown): Promise<{status: number; body: unknown}> {
     const response = await fetch(url, {
         method: "POST",
-        headers: body === undefined ? undefined : {"Content-Type": "application/json"},
+        headers: {Connection: "close", ...(body === undefined ? {} : {"Content-Type": "application/json"})},
         body: body === undefined ? undefined : JSON.stringify(body),
     });
     return {status: response.status, body: await response.json()};
@@ -200,7 +207,7 @@ function runtimeSnapshotsForPackage(packageName: string): string[] {
 }
 
 async function del(url: string): Promise<{status: number; body: unknown}> {
-    const response = await fetch(url, {method: "DELETE"});
+    const response = await fetch(url, {method: "DELETE", headers: {Connection: "close"}});
     return {status: response.status, body: await response.json()};
 }
 
@@ -740,6 +747,9 @@ describe("StudioServer", () => {
         expect(outcomeService.rebindCheckpointRequest).toHaveBeenCalled();
     });
 
+    // Both routes perform real package snapshot acquisition, generation and
+    // cleanup. Budget the combined workflow on constrained gate workers, including its server restart,
+    // rather than allowing Jest to tear down a still-running HTTP scenario.
     it("runs both Outcome Library HTTP start routes against a real generated package and rejects a bound destination drift", async () => {
         await server.stop();
         const projectRoot = path.join(studioRoot, "real-outcome-library-package");
@@ -823,8 +833,12 @@ describe("StudioServer", () => {
         expect(fs.existsSync(path.join(sampledProjectRoot, "changed-destination"))).toBe(false);
         await server.stop();
         expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
-    });
+    }, 300000);
 
+    // This scenario includes two complete million-stop enumerations plus
+    // independent runtimes for resume, stop, close, switch and rejection paths.
+    // Keep the full populations and production loaders, with a bounded
+    // integration budget for the entire sequence on constrained CI workers.
     it("keeps real Outcome Library HTTP lifecycle cancellation, restart, source drift, and diagnostics cleanup-safe", async () => {
         await server.stop();
         const lifecycleRoot = path.join(studioRoot, "real-outcome-library-lifecycle-package");
@@ -1015,7 +1029,7 @@ describe("StudioServer", () => {
             });
         }
         expectNoOutcomeLibraryPublication(unsupportedRoot, "outcomelibrary");
-    });
+    }, 900000);
 
     it("reports safe diagnostics on GET /api/studio/diagnostics in home mode", async () => {
         const {status, body} = await get(`${baseUrl}/api/studio/diagnostics`);
@@ -3592,7 +3606,7 @@ describe("StudioServer", () => {
             expect(status).toBe(200);
             expect(body).toEqual({...report, advanced: unsupportedDeclarationReport("tsPackage")});
             expect(validate).toHaveBeenCalledWith(sampleSlotRoot);
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         it("forwards a validation report with errors", async () => {
             await openSampleSlot();
@@ -3612,7 +3626,7 @@ describe("StudioServer", () => {
             expect(body).toEqual({...report, advanced: unsupportedDeclarationReport("tsPackage")});
             expect(validate).toHaveBeenCalledWith(sampleSlotRoot);
             expect(JSON.stringify(body)).not.toContain("\\n    at ");
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         it("forwards a validation report with only warnings (still valid)", async () => {
             await openSampleSlot();
@@ -3631,7 +3645,7 @@ describe("StudioServer", () => {
             expect(status).toBe(200);
             expect(body).toEqual({...report, advanced: unsupportedDeclarationReport("tsPackage")});
             expect(validate).toHaveBeenCalledWith(sampleSlotRoot);
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         it("reports failed source acquisition before attempting contract validation", async () => {
             const missingRoot = path.join(studioRoot, "missing-slot");
@@ -3669,7 +3683,7 @@ describe("StudioServer", () => {
 
             expect(health.status).toBe(200);
             expect(health.body).toEqual({status: "ok"});
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
     });
 
     describe("starting directly into project mode (pokie . / pokie <path>)", () => {
@@ -6477,7 +6491,7 @@ describe("StudioServer", () => {
             expect(secondDescriptor.totalBet).toBe(firstDescriptor.totalBet);
             expect(secondDescriptor.totalWin).toBe(firstDescriptor.totalWin);
             expect(secondDescriptor.screen).toEqual(firstDescriptor.screen);
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
     });
 
     describe("Project Dashboard: Play (POST /api/project/play/session, /api/project/play/sessions/:id/spin)", () => {
@@ -8044,6 +8058,8 @@ describe("StudioServer", () => {
             return filePath;
         }
 
+        // Extraction performs repeated isolated package loads through actual
+        // dashboard, model, preview and build routes, like the workflow above.
         it("shares package extraction diagnosis between Game Model, artifact preview and published jobs", async () => {
             const initialInventory = fs.readdirSync(artifactWorkDir).sort();
             const source = writeDescriptorPackage(artifactWorkDir);
@@ -8076,7 +8092,7 @@ describe("StudioServer", () => {
             expect(completed.status).toBe("completed");
             expect(completed.result).toMatchObject({status: "ok", outputPath: destination, conversionEvidencePath: `${destination}.conversion-evidence.json`});
             expect(fs.existsSync(destination)).toBe(true);
-        });
+        }, 180000);
 
         it.each(["source", "descriptor", "destination", "project", "companion", "unsupported"])("rejects %s drift across HTTP extraction preview/save without publication", async change => {
             const control = path.join(artifactWorkDir, "descriptor-control.txt");
@@ -8113,7 +8129,7 @@ describe("StudioServer", () => {
             else expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(false);
             expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(bytes);
             expect(fs.readdirSync(artifactWorkDir).sort()).toEqual(inventory);
-        });
+        }, 180000);
 
         it("returns 409 for every route when there is no active project", async () => {
             const homeBaseUrl = await startServerForProject(undefined);
