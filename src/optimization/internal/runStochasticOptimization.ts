@@ -199,6 +199,7 @@ export async function runStochasticOptimization(
     }
     current();
     evidence.stopReason = stop;
+    Object.assign(evidence.stochastic, {searchStopReason: stop});
     if (!best) {
         if (evidence.exhaustive) evidence.stopReason = "no-valid-candidate";
         return {status: evidence.exhaustive ? "infeasible" : "exhausted", diagnostics: [{path: "constraints", message: evidence.exhaustive ? "All declared candidates excluded by structural constraints; no target samples evaluated." : "No valid candidate before deterministic budget ended."}], evidence};

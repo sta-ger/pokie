@@ -26,7 +26,8 @@ export function createOptimizationSimulationGame(recipe: OptimizationSimulationR
             for (const dispose of releases) {
                 dispose();
                 releases.delete(dispose);
-            } 
+            }
+            return Promise.resolve();
         },
         createSession: (context) => {
             let credits = 0;

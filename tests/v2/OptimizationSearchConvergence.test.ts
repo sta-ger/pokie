@@ -129,7 +129,7 @@ it("separates exact impossibility, contradictions, sampled nonattainment, and ex
     request.policy.budget = 3;
     request.policy.sampling!.searchBudget = 20;
     const search = await service.optimize(project, request);
-    expect(search).toMatchObject({status: "exhausted", evidence: {stopReason: "search-budget", stochastic: {searchSamples: 20}}});
+    expect(search).toMatchObject({status: "exhausted", evidence: {stopReason: "search-budget", stochastic: {searchSamples: 20, searchStopReason: "search-budget"}}});
     await service.discard(search.candidate!);
     request.policy.sampling!.searchBudget = 1200;
     request.policy.sampling!.assessmentSamples = 30;
