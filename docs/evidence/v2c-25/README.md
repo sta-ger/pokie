@@ -217,3 +217,22 @@ budget unit consumed. A short driver probe had looked for the non-rendered wordi
 `budget-limited`; the retained local terminal is the product's actual `exhausted`
 wording, not a defect. This transcript SHA-256 is
 `46476edba8c3aee121678a2f66fe916573a7365aa77de77b27f935227f49f714`.
+
+## Current independent continuation — 254bb30b0549b2545084a35942bc7d89c3ad1f2f
+
+The candidate checkout was clean and its HEAD matched the assigned candidate SHA.
+Its only difference from the authenticated `fbd605ab8b630d9f41e5296988159f806600805d`
+product build is this evidence README; the rebuilt candidate output has the same
+`f501c269e53e9ae356465fbea51a012cae0aa5ed4b4bf96ceef58f30debe4eb9` tree hash.
+
+One fresh public Studio launch through `node ./dist/cli/pokie.js --no-open` reached
+the rendered Home/Design screen. Its candidate-bound build receipt is
+`candidate-builds/254bb30b0549b2545084a35942bc7d89c3ad1f2f/result.json` and its
+full transcript is `run-2026-10-17T18-54-11-979Z/transcript.json` (SHA-256
+`8d5bce20de72eed7794a5e31e9a9ea9c006b92eecc46a2d94c1184c17e5bae6f`). The
+required file-command transport twice rejected the visibly rendered, enabled
+`Show advanced options (file and JSON tools)` control as not uniquely hit-testable,
+including once with the rendered `Design Your Game` section. The transcript retains
+the two driver errors, a clean Studio output tail, no browser Worker targets, and no
+downloads. No optimization request was accepted; this is a driver collection block,
+not a product finding and not proof of any missing workflow branch.
