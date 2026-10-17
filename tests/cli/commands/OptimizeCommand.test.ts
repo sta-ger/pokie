@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import {execFileSync} from "child_process";
 import ts from "typescript";
+import {writeOptimizationWorkerEntry} from "../../v2/fixtures/OptimizationWorkerFixture.js";
 import {OptimizeCommand} from "../../../cli/commands/OptimizeCommand.js";
 import {optimizationBlueprint, optimizationRequest, stochasticOptimizationRequest, declaredOptimizationGameCode} from "../../v2/fixtures/OptimizationFixture.js";
 let directory: string;
@@ -27,6 +28,94 @@ const result = () =>
         status: string;
         evidence?: {measured: number[]};
     };
+
+it.each([
+    ["ESM", "dist/esm", "build-esm:compile", ts.ModuleKind.ES2022],
+    ["CommonJS", "dist/cjs", "build-cjs:compile", ts.ModuleKind.CommonJS],
+    ["CLI", "dist/src", "build-cli:compile", ts.ModuleKind.ES2022],
+] as const)("resolves the packaged %s default through the real coordinator and drains optimization workers", (_label, tree, script, moduleKind) => {
+    const installation = path.join(directory, "native-runtime");
+    const emitted = new Set<string>();
+    // Only emit the coordinator's runtime imports, rather than running a package build.
+    // Native Node must call from parallel/ into internal/; direct helper calls hid the defect.
+    const emit = (relative: string): void => {
+        if (emitted.has(relative)) return;
+        emitted.add(relative);
+        const sourceText = fs.readFileSync(path.resolve("src", relative), "utf8");
+        const esm = ts.transpileModule(sourceText, {compilerOptions: {module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022, esModuleInterop: true}}).outputText;
+        const output = moduleKind === ts.ModuleKind.ES2022 ? esm : ts.transpileModule(sourceText, {compilerOptions: {module: moduleKind, target: ts.ScriptTarget.ES2022, esModuleInterop: true}}).outputText;
+        const file = path.join(installation, tree, relative.replace(/\.ts$/, ".js"));
+        fs.mkdirSync(path.dirname(file), {recursive: true});
+        fs.writeFileSync(file, output);
+        for (const dependency of ts.preProcessFile(esm).importedFiles) {
+            if (dependency.fileName.startsWith(".")) emit(path.join(path.dirname(relative), dependency.fileName.replace(/\.js$/, ".ts")));
+        }
+    };
+    emit("simulation/parallel/SimulationWorkerCoordinator.ts");
+    fs.writeFileSync(path.join(installation, "package.json"), JSON.stringify({type: "module"}));
+    if (moduleKind === ts.ModuleKind.CommonJS) fs.writeFileSync(path.join(installation, tree, "package.json"), JSON.stringify({type: "commonjs"}));
+    const asset = "simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs";
+    fs.mkdirSync(path.dirname(path.join(installation, "src", asset)), {recursive: true});
+    fs.copyFileSync(path.resolve("src", asset), path.join(installation, "src", asset));
+    const scripts = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf8")).scripts as Record<string, string>;
+    const copy = scripts[script].split(" && ").find(command => command.startsWith(`shx cp src/${asset} `));
+    expect(copy).toBeDefined();
+    execFileSync(process.execPath, [path.resolve("node_modules/shx/lib/cli.js"), ...copy!.split(" ").slice(1)], {cwd: installation, timeout: 5000});
+    // Run the real source worker at the resolved package entry, using the existing source loader.
+    // The controller still owns compilation/packaging of the complete worker dependency graph.
+    const sourceWorker = writeOptimizationWorkerEntry(directory);
+    fs.writeFileSync(path.join(installation, tree, "simulation/parallel/internal/simulationWorkerEntry.js"),
+        moduleKind === ts.ModuleKind.CommonJS ? fs.readFileSync(sourceWorker, "utf8") : `import ${JSON.stringify(sourceWorker)};`);
+    const probe = path.join(installation, "probe.mjs");
+    fs.writeFileSync(probe, `import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
+import {pathToFileURL} from 'node:url';
+import threads from 'node:worker_threads';
+import {SimulationWorkerCoordinator} from './${tree}/simulation/parallel/SimulationWorkerCoordinator.js';
+const workers = [], NativeWorker = threads.Worker;
+threads.Worker = class extends NativeWorker { constructor(...args) { super(...args); workers.push(this); } };
+syncBuiltinESMExports();
+const coordinator = new SimulationWorkerCoordinator();
+const blueprint = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const before = fs.readFileSync(process.argv[2]);
+const requests = [0, 1].map(workerIndex => ({workerIndex, totalWorkers: 2, packageRoot: process.argv[2], rounds: 64,
+    seed: 'native-default-' + workerIndex, stake: 1, progressChunkSize: 16, requireCleanup: true,
+    optimizationRecipe: {kind: 'authored-entry', modelId: 'native-default', stake: 1, blueprint}}));
+const drained = () => assert.ok(workers.every(worker => worker.threadId === -1));
+const success = async (owner = coordinator) => {
+    const seen = new Set();
+    const results = await owner.run(requests, {onProgress: progress => { if (progress.roundsCompleted > 0) seen.add(progress.workerIndex); }});
+    assert.deepEqual([...seen].sort(), [0, 1]);
+    assert.deepEqual(results.map(result => result.roundsCompleted), [64, 64]);
+    assert.ok(results.every(result => result.accumulator.rounds === 64 && result.accumulator.totalBet === 64));
+    drained();
+};
+assert.deepEqual(await coordinator.run([]), []);
+const preflight = new AbortController(); preflight.abort();
+await assert.rejects(coordinator.run(requests, {signal: preflight.signal}), /cancel/i);
+assert.equal(workers.length, 0);
+await success();
+// Execute rejection after successful use, then recover twice in this same coordinator.
+const invalid = requests.map(({optimizationRecipe, ...request}) => ({...request, packageRoot: process.argv[2] + '.absent'}));
+await assert.rejects(coordinator.run(invalid), /worker|package/i);
+drained();
+await success(); await success();
+const active = new AbortController();
+let samples = 0;
+await assert.rejects(coordinator.run(requests.map(request => ({...request, rounds: 10000000})), {
+    signal: active.signal, onProgress: progress => { samples += progress.roundsCompleted; active.abort(); }
+}), /cancel/i);
+assert.ok(samples > 0); drained();
+await success();
+await success(new SimulationWorkerCoordinator(pathToFileURL(${JSON.stringify(sourceWorker)})));
+assert.deepEqual(fs.readFileSync(process.argv[2]), before);
+console.log('Native default: two-worker samples, rejection/reuse, active cancel, retry, override and termination passed.');
+`);
+    const env = {...process.env};
+    Reflect.deleteProperty(env, "JEST_WORKER_ID");
+    expect(execFileSync(process.execPath, [probe, source], {env, encoding: "utf8", timeout: 120000})).toContain("Native default: two-worker samples, rejection/reuse, active cancel, retry, override and termination passed.");
+}, 150000);
 
 it("ships the CLI-relative native runtime helpers through the production asset-copy steps", () => {
     const installation = path.join(directory, "node_modules", "@fromstan", "pokie");

@@ -2,22 +2,18 @@ type ResolveDefaultWorkerEntryUrlModule = {
     resolveDefaultWorkerEntryUrl(): URL;
 };
 
-// An *indirect* dynamic import — built at runtime via the Function constructor rather than written
-// as a literal `import(...)` expression — specifically so TypeScript never sees a static import
-// expression to "helpfully" downlevel. For a CommonJS compilation target, TS rewrites a literal
-// `await import(specifier)` into a synchronous `require(specifier)` call, which throws
-// ERR_REQUIRE_ESM for an .mjs file — defeating the entire reason for reaching for a real dynamic
-// import in the first place (see resolveDefaultWorkerEntryUrl.mjs's own comment). Hiding the
-// expression inside a runtime-constructed function body is invisible to TS's compiler, so this one
-// line behaves identically (a genuine, native dynamic import, capable of loading a real ES module)
-// whether this file itself was compiled to dist/esm or dist/cjs.
-// eslint-disable-next-line no-new-func -- the standard, narrowly-scoped workaround for TS's CommonJS dynamic-import downleveling; see comment above.
-const importIndirect = new Function("specifier", "return import(specifier)") as (
-    specifier: string,
-) => Promise<ResolveDefaultWorkerEntryUrlModule>;
+// Direct eval retains THIS module's location for native relative import resolution. A Function
+// constructor loses that scope: Node can resolve its import relative to the coordinator instead,
+// one directory above the packaged helper. Keep the fixed expression invisible to TypeScript's
+// CommonJS downleveling (require cannot load this .mjs on all supported Node versions) and to
+// browser bundlers inspecting the public simulation API. No caller input is evaluated.
+function importResolver(): Promise<ResolveDefaultWorkerEntryUrlModule> {
+    // eslint-disable-next-line no-eval -- native import must retain this module's scope in ESM and CJS.
+    return eval('import("./resolveDefaultWorkerEntryUrl.mjs")') as Promise<ResolveDefaultWorkerEntryUrlModule>;
+}
 
 // Like resolvePokieGameEntryModule's CommonJS entry fallback, this is only for Jest's VM: it does
-// not provide a dynamic-import callback, so even the deliberately indirect native import above
+// not provide a dynamic-import callback, so even the scoped native import above
 // rejects before resolving this module. The normal path remains native import, because the .mjs
 // resolver is what lets the same source work in both the ESM and CommonJS package builds.
 //
@@ -40,7 +36,7 @@ let cachedUrlPromise: Promise<URL> | undefined;
 // caller doesn't supply their own — resolves to this package's own compiled
 // internal/simulationWorkerEntry.js, in whichever of dist/esm or dist/cjs is actually running. Only
 // ever consulted when workers > 1 and no explicit/overriding workerEntryUrl was given, so a caller
-// that always supplies one (every existing test, for instance) never pays for or depends on this
+// that always supplies one never pays for or depends on this
 // resolution at all.
 export function getDefaultWorkerEntryUrl(): Promise<URL> {
     if (!cachedUrlPromise) {
@@ -49,7 +45,7 @@ export function getDefaultWorkerEntryUrl(): Promise<URL> {
         // `__dirname`, so select the existing synchronous fallback before starting that import.
         cachedUrlPromise = isJestRuntime() && typeof require === "function" && typeof __dirname === "string"
             ? Promise.resolve(resolveCommonJsWorkerEntryUrl(require, __dirname))
-            : importIndirect("./resolveDefaultWorkerEntryUrl.mjs")
+            : importResolver()
                 .then((module) => module.resolveDefaultWorkerEntryUrl())
                 .catch((error: unknown) => {
                     if (!isVmDynamicImportUnavailable(error) || typeof require !== "function" || typeof __dirname !== "string") {
