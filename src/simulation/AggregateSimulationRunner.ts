@@ -1,3 +1,5 @@
+import {deriveStandardFeatureEvents} from "../artifact/buildRoundArtifactFromSession.js";
+import type {SimulationObservationRequest} from "./SimulationObservationCounters.js";
 import {SessionFeatureAnalyticsObserver} from "./SessionFeatureAnalyticsObserver.js";
 import type {WeightedBonusProviding} from "../session/videoslot/authored/WeightedBonus.js";
 import {mergeWeightedBonusStatistics} from "./WeightedBonusStatisticsMerging.js";
@@ -40,6 +42,7 @@ type CategoryTotals = {
 };
 
 export class AggregateSimulationRunner {
+    private readonly observationRequest?: SimulationObservationRequest;
     private readonly session: GameSessionHandling;
     private readonly rounds: number;
     private readonly playStrategy?: NextSessionRoundPlayableDetermining;
@@ -53,24 +56,27 @@ export class AggregateSimulationRunner {
         session: GameSessionHandling,
         rounds: number,
         playStrategy?: NextSessionRoundPlayableDetermining,
-        roundCategoryDeterminer: SimulationRoundCategoryDetermining = createDefaultRoundCategoryDeterminer(),
+        roundCategoryDeterminer?: SimulationRoundCategoryDetermining,
         // Locks the run to one bet mode (see FixedBetModeForNextSimulationRoundSetting) — absent by
         // default, so an existing caller that never touches bet modes gets byte-identical behavior.
         // Both the overall accumulator and every breakdown read getStakeAmount() (see
         // SessionRuntime): a mode-locked run's whole point is measuring what a bet mode
         // actually costs, which is exactly what StakeAmountDetermining -- already the runtime's own
         // source of truth, never recomputed here -- reports.
-        betModeSelector: BetModeForNextSimulationRoundSetting | undefined = undefined,
+        betModeSelector?: BetModeForNextSimulationRoundSetting,
+        observationRequest?: SimulationObservationRequest,
     ) {
         this.session = session;
+        this.observationRequest = observationRequest;
         this.rounds = rounds;
         this.playStrategy = playStrategy;
-        this.roundCategoryDeterminer = roundCategoryDeterminer;
+        this.roundCategoryDeterminer = roundCategoryDeterminer === undefined ? createDefaultRoundCategoryDeterminer() : roundCategoryDeterminer;
         this.betModeSelector = betModeSelector;
     }
 
     public run(shouldStop?: () => boolean): SimulationAccumulator {
         const accumulator = new SimulationAccumulator();
+        if (this.observationRequest) accumulator.configureObservations(this.observationRequest);
         const observer = new SessionFeatureAnalyticsObserver(this.session);
         accumulator.configureAnalytics(observer.getEnvelope());
         const sampling = SessionRuntime.supportsLogicalRoundDelivery(this.session);
@@ -119,6 +125,10 @@ export class AggregateSimulationRunner {
                 // payout. This same denominator reaches accumulator, breakdown,
                 // worker merge and report -- no mode-specific alternate RTP.
                 accumulator.addRound(stakeAmount, payout, observer.afterPlay(before, payout, mode));
+                if (this.observationRequest) {
+                    const native = this.session as GameSessionHandling & {getSimulationFeatureIdentities?(): readonly string[]};
+                    accumulator.observeRequestedMetrics(stakeAmount, payout, native.getSimulationFeatureIdentities?.() ?? deriveStandardFeatureEvents(this.session).map(event => event.type));
+                }
                 const modifiers = observeModifierStatistics(this.session);
                 if (modifiers) accumulator.addModifierStatistics(modifiers);
                 const logical = observeLogicalSubround(this.session, stakeAmount, payout, !before.pending);

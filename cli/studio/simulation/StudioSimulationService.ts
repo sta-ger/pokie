@@ -1,3 +1,4 @@
+import {releaseSimulationGame} from "../../../src/simulation/parallel/internal/releaseSimulationGame.js";
 import {collectPokieWasmSimulation} from "../../../src/wasm/PokieWasmCommands.js";
 import {artifactAnalyticsObservation} from "../../../src/simulation/artifactAnalyticsObservation.js";
 import {
@@ -8,7 +9,6 @@ import {
     isWasmComponentFile,
     loadPokieWasmFileRuntime,
     loadPokieGame,
-    releasePokieGame,
     isSimulationReportSet,
     SimulationReportSet,
     OUTCOME_SOURCE_SIMULATE_OPERATION,
@@ -397,7 +397,7 @@ export class StudioSimulationService {
                 try {
                     declaredModes = game.getBetModes?.();
                 } finally {
-                    await releasePokieGame(game);
+                    await releaseSimulationGame(game);
                 }
                 if (record.modeName === "all" && !declaredModes?.length) throw new Error('All-mode simulation requires declared executable bet modes.');
                 if (record.modeName !== "all" && !declaredModes?.some(mode => mode.id === record.modeName)) throw new Error(`Unknown bet mode "${record.modeName}".`);

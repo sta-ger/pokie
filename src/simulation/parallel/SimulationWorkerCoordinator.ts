@@ -67,6 +67,7 @@ export class SimulationWorkerCoordinator {
             return [];
         }
 
+        requests = requests.map(request => request.requireCleanup ? {...request, cancellation: request.cancellation ?? new SharedArrayBuffer(4)} : request);
         const createWorker = this.createWorker ?? (await this.buildDefaultCreateWorker());
 
         return new Promise((resolve, reject) => {
@@ -78,14 +79,47 @@ export class SimulationWorkerCoordinator {
             const results = new Array<SimulationWorkerResult | undefined>(requests.length).fill(undefined);
             const prefixes = new Map<number, import("../SimulationAccumulatorSnapshot.js").SimulationAccumulatorSnapshot>();
             let settled = false;
+            let failureContext = "";
+            let drainageError: unknown;
+            let drainageCleanupError: unknown;
+            const terminalWorkers = new Set<number>();
+            const observedPrefix = () => prefixes.size ? new SimulationStatisticsMerger().merge([...prefixes.values()].map(accumulator => ({accumulator}))).statistics : undefined;
+            const drainage: Promise<boolean>[] = [];
+            const acknowledgements: ((confirmed: boolean) => void)[] = [];
             const finalizing = new Set<number>();
 
             const terminateAll = async (): Promise<void> => {
-                await Promise.allSettled(workers.map((worker) => Promise.resolve().then(() => worker.terminate())));
+                for (const request of requests) if (request.cancellation) Atomics.store(new Int32Array(request.cancellation), 0, 1);
+                let confirmed = true;
+                if (drainage.length) {
+                    let timer: ReturnType<typeof setTimeout> | undefined;
+                    try {
+                        confirmed = await Promise.race([
+                            Promise.all(drainage).then(values => values.every(Boolean)),
+                            new Promise<boolean>(resolve => {
+                                timer = setTimeout(() => resolve(false), 5000);
+                            }),
+                        ]);
+                    } finally {
+                        if (timer) clearTimeout(timer);
+                    }
+                }
+                const outcomes = await Promise.allSettled(workers.map((worker) => Promise.resolve().then(() => worker.terminate())));
+                const failures = outcomes.filter((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected");
+                if (failures.length || !confirmed) throw new Error(`Worker cleanup unconfirmed: ${failures.map(outcome => String(outcome.reason)).join("; ") || "runtime release acknowledgement absent"}. ${failureContext}`);
             };
 
             const onAbort = (): void => {
                 finish(() => reject(new SimulationCancelledError(prefixes.size ? new SimulationStatisticsMerger().merge([...prefixes.values()].map(accumulator => ({accumulator}))).statistics : undefined)));
+            };
+
+            const rejectWithPrefix = (error: unknown): void => {
+                try {
+                    if (error instanceof Error) Object.assign(error, {observedPrefix: observedPrefix()});
+                    reject(error);
+                } catch (validationError) {
+                    reject(validationError);
+                }
             };
 
             async function finish(action: () => void): Promise<void> {
@@ -100,63 +134,73 @@ export class SimulationWorkerCoordinator {
                 } catch (error) {
                     phaseError = error;
                 }
-                await terminateAll();
-                for (const worker of workers) worker.removeAllListeners();
+                try {
+                    await terminateAll();
+                } catch (error) {
+                    rejectWithPrefix(error);
+                    return;
+                } finally {
+                    for (const worker of workers) worker.removeAllListeners();
+                }
+                if (drainageCleanupError !== undefined) {
+                    rejectWithPrefix(drainageCleanupError);
+                    return;
+                }
+                if (drainageError !== undefined) {
+                    rejectWithPrefix(drainageError);
+                    return;
+                }
                 if (phaseError !== undefined) {
-                    reject(phaseError);
+                    rejectWithPrefix(phaseError);
                     return;
                 }
                 try {
                     action();
                 } catch (error) {
-                    reject(error);
+                    rejectWithPrefix(error);
                 }
             }
 
             signal?.addEventListener("abort", onAbort);
 
-            // Creation itself is a lifecycle boundary too.  A failure while
-            // creating worker N used to escape before the coordinator owned a
-            // promise, leaking workers 0..N-1.  Keep the partial list and run
-            // it through the same settled cleanup path as every later error.
-            for (let index = 0; index < requests.length; index++) {
-                if (settled || signal?.aborted) {
-                    onAbort();
-                    return;
-                }
-                try {
-                    workers.push(createWorker(requests[index]));
-                } catch (error) {
-                    const message = error instanceof Error ? error.message : String(error);
-                    finish(() => reject(new SimulationWorkerFailureError(requests[index].workerIndex, `could not create worker: ${message}`)));
-                    return;
-                }
-            }
-
-            workers.forEach((worker, index) => {
+            const observeWorker = (worker: Worker, index: number): void => {
                 const request = requests[index];
 
                 worker.on("message", (raw: unknown) => {
-                    if (settled) {
-                        return;
-                    }
+                    if (terminalWorkers.has(index)) return;
                     if (raw === null || typeof raw !== "object" || typeof (raw as {type?: unknown}).type !== "string") {
-                        finish(() =>
-                            reject(new SimulationWorkerFailureError(request.workerIndex, "received a malformed message from the worker.")),
-                        );
+                        drainageError = new SimulationWorkerFailureError(request.workerIndex, "received a malformed message from the worker.");
+                        acknowledgements[index]?.(false);
+                        finish(() => rejectWithPrefix(drainageError));
                         return;
                     }
 
                     const message = raw as SimulationWorkerMessage;
                     try {
                         if (["progress", "result", "error", "phase"].includes(message.type) && message.workerIndex !== request.workerIndex) throw new SimulationWorkerFailureError(request.workerIndex, "message identity does not match its request.");
-                        if ((message.type === "progress" || message.type === "result") && message.accumulator) {
+                        if (message.type === "result" && !message.accumulator) throw new Error("Simulation worker terminal result has no snapshot.");
+                        if ((message.type === "progress" || message.type === "result" || message.type === "error") && message.accumulator) {
                             SimulationAccumulator.fromSnapshot(message.accumulator);
-                            if (message.roundsCompleted !== message.accumulator.rounds) throw new Error("Simulation worker progress disagrees with accepted subrounds.");
+                            if (message.accumulator.rounds < (prefixes.get(index)?.rounds ?? 0) || message.accumulator.rounds > request.rounds) throw new Error("Simulation worker snapshot is outside its accepted work range.");
+                            if (message.type !== "error" && message.roundsCompleted !== message.accumulator.rounds) throw new Error("Simulation worker progress disagrees with accepted subrounds.");
                             if (message.type === "result" && message.accumulator.analytics && message.accumulator.analytics.envelope.modelId !== (message.configHash ?? null)) throw new Error("Simulation worker analytics model identity disagrees with its result provenance.");
+                            const next = new Map(prefixes).set(index, message.accumulator);
+                            new SimulationStatisticsMerger().merge([...next.values()].map(accumulator => ({accumulator})));
                             prefixes.set(index, message.accumulator);
-                            new SimulationStatisticsMerger().merge([...prefixes.values()].map(accumulator => ({accumulator})));
                         }
+                        if (message.type === "result" || message.type === "error") {
+                            terminalWorkers.add(index);
+                            acknowledgements[index]?.(true);
+                            if (message.type === "error" && (!message.cancelled || message.cleanupFailed)) {
+                                const reason = message.cleanupFailed ? `Worker runtime cleanup failed: ${message.message}` : message.message;
+                                const failure = new SimulationWorkerFailureError(message.workerIndex, reason);
+                                if (message.cleanupFailed) drainageCleanupError = failure;
+                                else drainageError = failure;
+                            }
+                        }
+                        // Cancellation/observer failure stops callbacks, but terminal snapshots and
+                        // cleanup failures still belong to this invocation until drainage settles.
+                        if (settled) return;
                         switch (message.type) {
                             case "phase":
                                 if (message.phase === "finalizing / cleanup") finalizing.add(index);
@@ -165,12 +209,11 @@ export class SimulationWorkerCoordinator {
                                 if (finalizing.size === requests.length) onPhase?.("finalizing / cleanup");
                                 return;
                             case "progress":
-                                if (message.accumulator) prefixes.set(index, message.accumulator);
                                 onProgress?.({workerIndex: message.workerIndex, roundsCompleted: message.roundsCompleted});
                                 return;
                             case "error":
-                                if (message.accumulator) prefixes.set(index, message.accumulator);
-                                finish(() => reject(new SimulationWorkerFailureError(message.workerIndex, message.message, prefixes.size ? new SimulationStatisticsMerger().merge([...prefixes.values()].map(accumulator => ({accumulator}))).statistics : undefined)));
+                                failureContext = message.message;
+                                finish(() => rejectWithPrefix(new SimulationWorkerFailureError(message.workerIndex, message.message, prefixes.size ? new SimulationStatisticsMerger().merge([...prefixes.values()].map(accumulator => ({accumulator}))).statistics : undefined)));
                                 return;
                             case "result": {
                                 const result: SimulationWorkerResult = {
@@ -193,7 +236,7 @@ export class SimulationWorkerCoordinator {
                             }
                             default:
                                 finish(() =>
-                                    reject(
+                                    rejectWithPrefix(
                                         new SimulationWorkerFailureError(
                                             request.workerIndex,
                                             `received an unrecognized message from the worker.`,
@@ -202,18 +245,20 @@ export class SimulationWorkerCoordinator {
                                 );
                         }
                     } catch (error) {
-                        finish(() => reject(error));
+                        drainageError = error;
+                        if (message.type === "result" || message.type === "error") acknowledgements[index]?.(false);
+                        finish(() => rejectWithPrefix(error));
                     }
                 });
 
                 worker.on("messageerror", (error: Error) => {
                     finish(() =>
-                        reject(new SimulationWorkerFailureError(request.workerIndex, `received an unparseable message: ${error.message}`)),
+                        rejectWithPrefix(new SimulationWorkerFailureError(request.workerIndex, `received an unparseable message: ${error.message}`)),
                     );
                 });
 
                 worker.on("error", (error: Error) => {
-                    finish(() => reject(new SimulationWorkerFailureError(request.workerIndex, error.message)));
+                    finish(() => rejectWithPrefix(new SimulationWorkerFailureError(request.workerIndex, error.message)));
                 });
 
                 worker.on("exit", (code: number) => {
@@ -222,11 +267,37 @@ export class SimulationWorkerCoordinator {
                     }
                     if (code !== 0 || results[index] === undefined) {
                         finish(() =>
-                            reject(new SimulationWorkerFailureError(request.workerIndex, `worker exited prematurely with code ${code}.`)),
+                            rejectWithPrefix(new SimulationWorkerFailureError(request.workerIndex, `worker exited prematurely with code ${code}.`)),
                         );
                     }
                 });
-            });
+            };
+
+            // Creation itself is a lifecycle boundary too.  A failure while
+            // creating worker N used to escape before the coordinator owned a
+            // promise, leaking workers 0..N-1.  Keep the partial list and run
+            // it through the same settled cleanup path as every later error.
+            for (let index = 0; index < requests.length; index++) {
+                if (settled || signal?.aborted) {
+                    onAbort();
+                    return;
+                }
+                try {
+                    workers.push(createWorker(requests[index]));
+                    if (requests[index].requireCleanup) {
+                        drainage.push(new Promise<boolean>(done => {
+                            acknowledgements[index] = done;
+                        }));
+                        workers[index].on("exit", () => acknowledgements[index](false));
+                        workers[index].on("error", () => acknowledgements[index](false));
+                    }
+                    observeWorker(workers[index], index);
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    finish(() => rejectWithPrefix(new SimulationWorkerFailureError(requests[index].workerIndex, `could not create worker: ${message}`)));
+                    return;
+                }
+            }
         });
     }
 

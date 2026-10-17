@@ -11,8 +11,10 @@ export type MathTarget = {
 };
 export type OptimizationScalar = number | string;
 export type OptimizationPolicy = {
-    strategy: "exact-finite-v1";
+    strategy: "exact-finite-v1" | "seeded-search-v1";
     seed: string;
+    /** Required only for seeded-search-v1. All budgets count observations, never time. */
+    sampling?: OptimizationSamplingPolicy;
     /** One unit per attempted candidate, including constraint rejection and native readback. */
     budget: number;
     /** Separate deterministic cap on exact runtime reel-stop enumeration per candidate. */
@@ -32,6 +34,8 @@ export type OptimizationPolicy = {
 };
 export type OptimizationRequest = {targets: MathTarget[]; policy: OptimizationPolicy};
 export type OptimizationStatus =
+    | "attained"
+    | "inconclusive"
     | "success"
     | "infeasible"
     | "invalid"
@@ -41,10 +45,26 @@ export type OptimizationStatus =
     | "failure";
 export type OptimizationDiagnostic = {path: string; message: string};
 export type OptimizationEvidence = {
+    phase?: "preparing" | "search" | "assessment" | "finalizing";
+    stopReason?: "domain-complete" | "candidate-budget" | "search-budget" | "assessment-budget" | "assessment-complete" | "no-valid-candidate";
+    stochastic?: {
+        policyVersion: "bounded-hoeffding-bonferroni-v1";
+        ordering: "seeded-affine-cartesian-v1;first-minimum-score";
+        seedDerivation: "JSON([seed,phase,attempt]); worker seeds use WorkerSeedStrategy";
+        workers: number;
+        searchSamples: number;
+        assessmentSamples: number;
+        validationWork: number;
+        searchStopReason?: OptimizationEvidence["stopReason"];
+        modelRevision: string;
+        executableRevision?: string;
+        fitness?: number;
+        assessment?: OptimizationSampleEvidence;
+    };
     version: 1;
     sourceRevision: string;
     adapter: string;
-    strategy: "exact-finite-v1";
+    strategy: "exact-finite-v1" | "seeded-search-v1";
     request: OptimizationRequest;
     domainSize: string;
     evaluated: number;
@@ -55,9 +75,13 @@ export type OptimizationEvidence = {
     evaluations?: {
         parameters: Record<string, OptimizationScalar>;
         measured?: number[];
-        verdict: "constraint-rejected" | "target-missed" | "selected";
+        seed?: string;
+        samples?: number;
+        fitness?: number;
+        verdict: "constraint-rejected" | "target-missed" | "selected" | "evaluated";
     }[];
     diff?: {path: string; before: OptimizationScalar; after: OptimizationScalar}[];
+    definitionDiff?: Pick<import("../diff/MathDefinitionDiff.js").MathDefinitionDiff, "status" | "scope" | "changes">;
     selected?: Record<string, OptimizationScalar>;
     measured?: number[];
     constraintChecks?: string[];
@@ -88,7 +112,40 @@ export interface ProjectOptimizing {
     ): Promise<OptimizationResult>;
 }
 export type OptimizationOptions = {
+    /** Optional worker entry for embedders; use the packaged entry by default. */
+    workerEntryUrl?: URL;
     isCurrent?: () => boolean;
     signal?: AbortSignal;
     onProgress?: (evidence: OptimizationEvidence) => void;
+};
+
+export type OptimizationSamplingPolicy = {
+    searchSamples: number;
+    searchBudget: number;
+    assessmentSamples: number;
+    minSamples: number;
+    minEventCount: number;
+    confidence: number;
+    chunkSize: number;
+    workers: number;
+};
+export type OptimizationSampleEvidence = {
+    authority: "sampled-bounded";
+    population: {scope: OptimizationPolicy["scope"]; paidEntries?: number; completedLogicalRounds?: number; nativeOutcomes?: number};
+    seed: string;
+    requestedSamples: number;
+    actualSamples: number;
+    stopReason: string;
+    returnBound: number;
+    estimates: number[];
+    targets: {
+        observations: number;
+        successes: number;
+        failures: number;
+        estimate: number;
+        confidence: {low: number; high: number};
+        toleranceRegion: {low: number; high: number};
+        verdict: "attained" | "inconclusive" | "missed";
+        reason: string;
+    }[];
 };

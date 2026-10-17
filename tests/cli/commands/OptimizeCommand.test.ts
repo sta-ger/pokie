@@ -2,7 +2,7 @@ import {projectRevision} from "../../../src/optimization/internal/optimizationDa
 import fs from "fs";
 import path from "path";
 import {OptimizeCommand} from "../../../cli/commands/OptimizeCommand.js";
-import {optimizationBlueprint, optimizationRequest} from "../../v2/fixtures/OptimizationFixture.js";
+import {optimizationBlueprint, optimizationRequest, stochasticOptimizationRequest} from "../../v2/fixtures/OptimizationFixture.js";
 let directory: string;
 let source: string;
 let policy: string;
@@ -86,4 +86,34 @@ it("handles Ctrl-C with a distinct cancelled exit, drains candidate work and rem
     expect(result().status).toBe("cancelled");
     expect(process.listenerCount("SIGINT")).toBe(listeners);
     expect(fs.readFileSync(source)).toEqual(before);
+});
+
+it("exposes sampled attainment, inconclusive and exhausted candidates with unchanged publication verdicts", async () => {
+    const request = stochasticOptimizationRequest();
+    fs.writeFileSync(policy, JSON.stringify(request));
+    expect(await new OptimizeCommand().run([source, "--policy", policy])).toBe(0);
+    expect(result().status).toBe("attained");
+    request.targets[0].tolerance = {kind: "absolute", value: 0};
+    fs.writeFileSync(policy, JSON.stringify(request));
+    const output = path.join(directory, "inconclusive.json");
+    expect(await new OptimizeCommand().run([source, "--policy", policy, "--out", output])).toBe(7);
+    expect(result().status).toBe("inconclusive");
+    expect(JSON.parse(fs.readFileSync(`${output}.optimization.json`, "utf8")).status).toBe("inconclusive");
+    request.policy.budget = 1;
+    fs.writeFileSync(policy, JSON.stringify(request));
+    expect(await new OptimizeCommand().run([source, "--policy", policy])).toBe(5);
+    expect(result().status).toBe("exhausted");
+});
+
+it.each(["search", "assessment"])("cancels from phase-aware stochastic %s progress inside evaluation", async phase => {
+    fs.writeFileSync(policy, JSON.stringify(stochasticOptimizationRequest()));
+    const listeners = process.listenerCount("SIGINT");
+    const progress = jest.spyOn(console, "error").mockImplementation((line: string) => {
+        const message = JSON.parse(line);
+        if (message.evidence.phase === phase && message.evidence.stochastic[phase === "search" ? "searchSamples" : "assessmentSamples"] > 0) process.emit("SIGINT");
+    });
+    expect(await new OptimizeCommand().run([source, "--policy", policy, "--progress"])).toBe(6);
+    expect(result().status).toBe("cancelled");
+    expect(process.listenerCount("SIGINT")).toBe(listeners);
+    progress.mockRestore();
 });

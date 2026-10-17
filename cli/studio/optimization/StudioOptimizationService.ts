@@ -106,11 +106,11 @@ export class StudioOptimizationService {
                         isCurrent: context.isCurrent,
                         onProgress: (evidence) =>
                             executor.progress({
-                                stage: "Finite search",
-                                current: evidence.consumedWork,
-                                total: request.policy.budget,
-                                unit: "candidates",
-                                message: `${evidence.evaluated} evaluated; ${evidence.rejected} rejected`,
+                                stage: evidence.phase ?? "Finite search",
+                                current: evidence.phase === "assessment" ? evidence.stochastic?.assessmentSamples ?? 0 : evidence.consumedWork,
+                                total: evidence.phase === "assessment" ? request.policy.sampling?.assessmentSamples ?? 0 : request.policy.budget,
+                                unit: evidence.phase === "assessment" ? "held-out observations" : "candidates",
+                                message: `${evidence.evaluated} evaluated; ${evidence.rejected} rejected; ${evidence.stochastic?.searchSamples ?? 0} search observations`,
                             }),
                     });
                     if (result.candidate && (!context.isCurrent() || executor.signal.aborted)) {

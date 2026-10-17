@@ -1,3 +1,4 @@
+import {emptyObservationCounters, mergeObservationCounters, type SimulationObservationRequest, type SimulationObservationCounters} from "./SimulationObservationCounters.js";
 import {emptyFeatureAnalytics, featureAnalyticsStatistics, mergeFeatureAnalytics, observeFeatureAnalytics, validateFeatureAnalytics, type AnalyticsEnvelope, type FeatureAnalyticsObservation, type FeatureAnalyticsSnapshot} from "./FeatureAnalytics.js";
 import type {WeightedBonusStatistics} from "../session/videoslot/authored/WeightedBonus.js";
 import {mergeWeightedBonusStatistics} from "./WeightedBonusStatisticsMerging.js";
@@ -10,6 +11,7 @@ import type {SimulationAccumulatorSnapshot} from "./SimulationAccumulatorSnapsho
 import type {SimulationStatistics} from "./SimulationStatistics.js";
 
 export class SimulationAccumulator {
+    private observations?: SimulationObservationCounters;
     private analytics?: FeatureAnalyticsSnapshot;
     private logicalSamplingRanges?: LogicalSamplingRange[];
     private logicalSamples?: SimulationAccumulator;
@@ -38,6 +40,7 @@ export class SimulationAccumulator {
     public static fromSnapshot(snapshot: SimulationAccumulatorSnapshot): SimulationAccumulator {
         validateSnapshot(snapshot);
         const accumulator = new SimulationAccumulator();
+        accumulator.observations = mergeObservationCounters(undefined, snapshot.observations);
         accumulator.analytics = mergeFeatureAnalytics(undefined, snapshot.analytics);
         if (snapshot.weightedBonus) accumulator.setWeightedBonusStatistics(snapshot.weightedBonus);
         if (snapshot.reelSequences) accumulator.setReelSequenceStatistics(snapshot.reelSequences);
@@ -62,6 +65,24 @@ export class SimulationAccumulator {
             accumulator.payoutHistogram[bucket] = count;
         });
         return accumulator;
+    }
+
+    public configureObservations(request: SimulationObservationRequest): void {
+        if (this.rounds) throw new Error("Observation request must precede simulation.");
+        this.observations = emptyObservationCounters(request);
+    }
+    public observeRequestedMetrics(stake: number, payout: number, events: readonly string[]): void {
+        if (!this.observations) return;
+        if (!(stake > 0) || !Number.isFinite(stake) || !Number.isFinite(payout) || payout < 0) throw new Error("Requested payout-multiple observations require positive actual stake.");
+        const multiple = payout / stake;
+        if (!Number.isFinite(multiple)) throw new Error("Nonfinite payout multiple.");
+        this.observations.observations++;
+        this.observations.request.events.forEach((event, index) => {
+            if (events.includes(event)) this.observations!.events[index]++;
+        });
+        this.observations.request.buckets.forEach((bucket, index) => {
+            if (multiple >= bucket.min && (bucket.max === null || multiple < bucket.max)) this.observations!.buckets[index]++;
+        });
     }
 
     public addModifierStatistics(observation: ModifierStatistics): void {
@@ -149,6 +170,8 @@ export class SimulationAccumulator {
     public merge(other: SimulationAccumulator): void {
         validateSnapshot(this.toSnapshot());
         validateSnapshot(other.toSnapshot());
+        if (this.rounds && !this.observations && other.observations || other.rounds && !other.observations && this.observations) throw new Error("Missing requested observation coverage.");
+        const observations = mergeObservationCounters(this.observations, other.observations);
         const analytics = mergeFeatureAnalytics(this.analytics, other.analytics);
         if (this.rounds > 0 && !this.analytics && other.analytics || other.rounds > 0 && !other.analytics && this.analytics) throw new Error("Cannot merge missing analytics provenance with current observations.");
         const ranges = other.logicalSamplingRanges ? mergeLogicalSamplingRanges(this.logicalSamplingRanges ?? [], other.logicalSamplingRanges) : this.logicalSamplingRanges;
@@ -159,6 +182,7 @@ export class SimulationAccumulator {
         let logicalSamples = this.logicalSamples ? SimulationAccumulator.fromSnapshot(this.logicalSamples.toSnapshot()) : undefined;
         if (!logicalSamples && other.logicalSamples) logicalSamples = new SimulationAccumulator();
         if (other.logicalSamples) logicalSamples!.merge(other.logicalSamples);
+        this.observations = observations;
         this.analytics = analytics;
         this.logicalSamplingRanges = ranges;
         this.modifiers = modifiers;
@@ -239,6 +263,7 @@ export class SimulationAccumulator {
             this.rounds,
         );
         return {
+            ...(this.observations ? {observations: mergeObservationCounters(undefined, this.observations)} : {}),
             ...(this.modifiers ? {modifiers: {...this.modifiers}} : {}),
             ...(this.weightedBonus ? {weightedBonus: mergeWeightedBonusStatistics(undefined, this.weightedBonus)} : {}),
             ...(this.reelSequences ? {reelSequences: mergeReelSequenceStatistics([], this.reelSequences)} : {}),
@@ -273,6 +298,7 @@ export class SimulationAccumulator {
     // worker_threads boundary itself, but this plain snapshot can.
     public toSnapshot(): SimulationAccumulatorSnapshot {
         return {
+            ...(this.observations ? {observations: mergeObservationCounters(undefined, this.observations)} : {}),
             ...(this.modifiers ? {modifiers: {...this.modifiers}} : {}),
             ...(this.weightedBonus ? {weightedBonus: mergeWeightedBonusStatistics(undefined, this.weightedBonus)} : {}),
             ...(this.reelSequences ? {reelSequences: mergeReelSequenceStatistics([], this.reelSequences)} : {}),
@@ -312,6 +338,10 @@ export class SimulationAccumulator {
 }
 
 function validateSnapshot(snapshot: SimulationAccumulatorSnapshot): void {
+    if (snapshot.observations) {
+        mergeObservationCounters(undefined, snapshot.observations);
+        if (snapshot.observations.observations !== snapshot.rounds) throw new Error("Requested observation coverage disagrees with accepted rounds.");
+    }
     if (snapshot.analytics) {
         validateFeatureAnalytics(snapshot.analytics);
         if (snapshot.analytics.subrounds !== snapshot.rounds || snapshot.analytics.totalStake !== snapshot.totalBet || snapshot.analytics.totalWin !== snapshot.totalPayout || snapshot.analytics.deadSpins !== snapshot.rounds - snapshot.hitCount || snapshot.analytics.maxWin !== snapshot.maxWin || snapshot.maxWin > 0 && snapshot.analytics.maxWinCount !== snapshot.maxWinCount) throw new Error("Analytics snapshot totals disagree with accumulator.");

@@ -1,5 +1,8 @@
+import {releaseSimulationGame} from "./releaseSimulationGame.js";
+import {SimulationCancelledError} from "../SimulationCancelledError.js";
+import {createOptimizationSimulationGame} from "../../../optimization/internal/createOptimizationSimulationGame.js";
 import {setSimulationModelIdentity} from "../../SessionFeatureAnalyticsObserver.js";
-import {loadPokieGame, releasePokieGame} from "../../../gamepackage/loadPokieGame.js";
+import {loadPokieGame} from "../../../gamepackage/loadPokieGame.js";
 import {parentPort, workerData} from "worker_threads";
 import {FixedBetModeForNextSimulationRoundSetting} from "../../FixedBetModeForNextSimulationRoundSetting.js";
 import {SimulationConvergenceChecker} from "../../SimulationConvergenceChecker.js";
@@ -25,9 +28,10 @@ async function main(): Promise<void> {
     let game: Awaited<ReturnType<typeof loadPokieGame>> | undefined;
     let terminal: SimulationWorkerMessage;
     try {
-        game = await loadPokieGame(request.packageRoot);
+        game = request.optimizationRecipe ? createOptimizationSimulationGame(request.optimizationRecipe) : await loadPokieGame(request.packageRoot);
         const session = game.createSession(request.seed === undefined ? undefined : {seed: request.seed});
         setSimulationModelIdentity(session, game.getConfigHash?.());
+        if (request.stake !== undefined) session.setBet(request.stake);
         // Simulations measure RTP/volatility, not risk of ruin — same as every other simulation path.
         session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
 
@@ -41,6 +45,8 @@ async function main(): Promise<void> {
             request.rounds,
             request.progressChunkSize,
             {
+                observations: request.observations,
+                shouldStop: () => request.cancellation !== undefined && Atomics.load(new Int32Array(request.cancellation), 0) !== 0,
                 onChunkComplete: ({roundsCompleted: completed, accumulator}) => {
                     const progress: SimulationWorkerMessage = {type: "progress", workerIndex: request.workerIndex, roundsCompleted: completed, accumulator};
                     port.postMessage(progress);
@@ -69,17 +75,19 @@ async function main(): Promise<void> {
             type: "error",
             workerIndex: request.workerIndex,
             message: error instanceof Error ? error.message : String(error),
+            cancelled: error instanceof SimulationCancelledError,
             accumulator: (error as {accumulatorSnapshot?: import("../../SimulationAccumulatorSnapshot.js").SimulationAccumulatorSnapshot}).accumulatorSnapshot,
         };
     } finally {
         port.postMessage({type: "phase", workerIndex: request.workerIndex, phase: "finalizing / cleanup"} satisfies SimulationWorkerMessage);
         if (game !== undefined) {
             try {
-                await releasePokieGame(game);
+                await releaseSimulationGame(game);
             } catch (error) {
                 terminal = {
                     type: "error",
                     workerIndex: request.workerIndex,
+                    cleanupFailed: true,
                     message: `could not release game runtime: ${error instanceof Error ? error.message : String(error)}`,
                     accumulator: "accumulator" in terminal! ? terminal!.accumulator : undefined,
                 };

@@ -1,3 +1,5 @@
+import * as authored from "../../../src/generated/createAuthoredSession.js";
+import {optimizationBlueprint} from "../../v2/fixtures/OptimizationFixture.js";
 import {
     GameSessionHandling,
     ParallelSimulationRunner,
@@ -841,9 +843,59 @@ it("keeps the accepted analytics prefix when runtime release rejects after execu
     const release = jest.spyOn(loader, "releasePokieGame").mockRejectedValue(new Error("cleanup failure"));
     try {
         const runner = new ParallelSimulationRunner("/weighted", 2, {seed: "prefix", loadGame: () => Promise.resolve(weightedGame())});
-        await expect(runner.run()).rejects.toMatchObject({message: "cleanup failure", observedPrefix: {rounds: 2, analytics: {subrounds: 2}}});
+        await expect(runner.run()).rejects.toMatchObject({message: expect.stringContaining("cleanup failure"), observedPrefix: {rounds: 2, analytics: {subrounds: 2}}});
         expect(release).toHaveBeenCalledTimes(1);
     } finally {
         release.mockRestore();
+    }
+});
+
+
+it.each(["success", "cancel", "execution", "observer"])("releases both injected game resources and loader ownership after %s", async terminal => {
+    const loader = jest.requireActual<typeof import("../../../src/gamepackage/loadPokieGame.js")>("../../../src/gamepackage/loadPokieGame.js");
+    const lease = jest.spyOn(loader, "releasePokieGame").mockResolvedValue();
+    const release = jest.fn(() => Promise.resolve());
+    const game = createFakeGame();
+    game.release = release;
+    const session = createFakeSession();
+    if (terminal === "execution") session.play = () => {
+        throw new Error("execution failed");
+    };
+    game.createSession = () => session;
+    const controller = new AbortController();
+    try {
+        const running = new ParallelSimulationRunner("/owned", 10, {loadGame: () => Promise.resolve(game), signal: controller.signal, chunkSize: 2,
+            onProgress: () => {
+                if (terminal === "cancel") controller.abort();
+                if (terminal === "observer") throw new Error("observer failed");
+            },}).run();
+        if (terminal === "success") await expect(running).resolves.toHaveProperty("statistics.rounds", 10);
+        else await expect(running).rejects.toThrow();
+        expect(release).toHaveBeenCalledTimes(1);
+        expect(lease).toHaveBeenCalledTimes(1);
+    } finally {
+        lease.mockRestore();
+    }
+});
+
+
+it("disposes the actual ten-round authored recipe session once in-process", async () => {
+    const create = authored.createAuthoredSession;
+    const dispose = jest.fn();
+    const factory = jest.spyOn(authored, "createAuthoredSession").mockImplementation((...args) => {
+        const owned = create(...args);
+        const release = owned.dispose;
+        owned.dispose = () => {
+            release();
+            dispose();
+        };
+        return owned;
+    });
+    try {
+        const result = await new ParallelSimulationRunner("/recipe", 10, {optimizationRecipe: {kind: "authored-entry", modelId: "ten-round", stake: 1, blueprint: optimizationBlueprint()}}).run();
+        expect(result.statistics.rounds).toBe(10);
+        expect(dispose).toHaveBeenCalledTimes(1);
+    } finally {
+        factory.mockRestore();
     }
 });

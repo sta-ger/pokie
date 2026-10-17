@@ -8,6 +8,7 @@ import type {LogicalRoundStatistics, LogicalSamplingRange} from "./LogicalRoundS
 // purely so a merge step (see SimulationStatisticsMerger) can reconstruct a real SimulationAccumulator
 // and reuse its own merge() — the online mean/variance algorithm itself is never duplicated.
 export type SimulationAccumulatorSnapshot = {
+    observations?: import("./SimulationObservationCounters.js").SimulationObservationCounters;
     analytics?: import("./FeatureAnalytics.js").FeatureAnalyticsSnapshot;
     modifiers?: ModifierStatistics;
     weightedBonus?: WeightedBonusStatistics;

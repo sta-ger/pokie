@@ -1,3 +1,4 @@
+import * as recipes from "../../../src/optimization/internal/createOptimizationSimulationGame.js";
 import {declarePackageTuning} from "../../../src/optimization/DeclaredTuningContract.js";
 import fs from "fs";
 import path from "path";
@@ -5,7 +6,7 @@ import {StudioOptimizationService} from "../../../cli/studio/optimization/Studio
 import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
 import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRepository.js";
 import {ProjectOptimizationService} from "../../../src/optimization/ProjectOptimizationService.js";
-import {optimizationBlueprint, optimizationRequest} from "../../v2/fixtures/OptimizationFixture.js";
+import {optimizationBlueprint, optimizationRequest, stochasticOptimizationRequest} from "../../v2/fixtures/OptimizationFixture.js";
 import type {StudioJobView} from "../../../cli/studio/jobs/StudioJobView.js";
 let directory: string;
 let source: string;
@@ -30,6 +31,26 @@ async function preview(request = optimizationRequest()) {
     expect(response.status).toBe(200);
     return response.body as {sourceRevision: string; supported: boolean};
 }
+
+it("persists and reloads the full sampled verdict without granting lost process-local save receipts", async () => {
+    const request = stochasticOptimizationRequest();
+    request.targets[0].tolerance = {kind: "absolute", value: 0};
+    const support = await preview(request);
+    const started = await routes.handle("POST", "start", {request, expectedProjectRoot: source, sourceRevision: support.sourceRevision}, context());
+    const {job} = started.body as {job: StudioJobView};
+    await routes.drain();
+    const completed = jobs.get(source, job.id)!;
+    expect(completed).toMatchObject({status: "completed", result: {detail: {status: "inconclusive", evidence: {stochastic: {assessmentSamples: 6000}}}}});
+    const reloaded = new FileStudioJobRepository(path.join(directory, "jobs"));
+    expect(reloaded.get(job.id)!.result).toEqual(completed.result);
+    const fresh = new StudioOptimizationService(new StudioJobService(reloaded), new ProjectOptimizationService(path.join(directory, "fresh")));
+    const save = {expectedProjectRoot: source, jobId: job.id, destination: path.join(directory, "lost.json")};
+    expect((await fresh.handle("POST", "save", save, context())).status).toBe(409);
+    const output = path.join(directory, "candidate.json");
+    expect((await routes.handle("POST", "save", {...save, destination: output}, context())).status).toBe(200);
+    expect(JSON.parse(fs.readFileSync(`${output}.optimization.json`, "utf8")).status).toBe("inconclusive");
+    await fresh.shutdown();
+});
 it("runs through durable jobs, preserves terminal evidence on reload and saves only explicit reviewed output", async () => {
     const request = optimizationRequest();
     const support = await preview(request);
@@ -157,4 +178,52 @@ it.each(["opaque", "tampered"])("rejects %s package authority without executing 
     const {job} = start.body as {job: StudioJobView};
     expect(jobs.get(root, job.id)?.result?.detail?.status).toBe("unsupported");
     expect(fs.existsSync(marker)).toBe(false);
+});
+
+
+it("keeps cancelling until game release settles, then persists cleanup recovery and accepted partial counts", async () => {
+    let entered!: () => void;
+    let rejectRelease!: (error: Error) => void;
+    const releasing = new Promise<void>(resolve => {
+        entered = resolve;
+    });
+    const gate = new Promise<void>((_resolve, reject) => {
+        rejectRelease = reject;
+    });
+    const create = recipes.createOptimizationSimulationGame;
+    const hook = jest.fn(async () => {
+        entered();
+        await gate;
+    });
+    const factory = jest.spyOn(recipes, "createOptimizationSimulationGame").mockImplementation(recipe => {
+        const game = create(recipe);
+        const release = game.release!;
+        game.release = async () => {
+            await release();
+            await hook();
+        };
+        return game;
+    });
+    const before = fs.readFileSync(source);
+    try {
+        const request = stochasticOptimizationRequest();
+        const support = await preview(request);
+        const started = await routes.handle("POST", "start", {request, expectedProjectRoot: source, sourceRevision: support.sourceRevision}, context());
+        const {job} = started.body as {job: StudioJobView};
+        await releasing;
+        jobs.cancel(source, job.id);
+        expect(jobs.get(source, job.id)?.status).toBe("cancelling");
+        rejectRelease(new Error("release refused during cancellation"));
+        await routes.drain();
+        const terminal = jobs.get(source, job.id)!;
+        expect(terminal).toMatchObject({status: "recovery-required", result: {detail: {status: "failure", diagnostics: [{path: "cleanup"}], evidence: {stochastic: {searchSamples: 400}}}}});
+        expect(new FileStudioJobRepository(path.join(directory, "jobs")).get(job.id)!.result).toEqual(terminal.result);
+        expect(hook).toHaveBeenCalledTimes(1);
+        expect(fs.readFileSync(source)).toEqual(before);
+        expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+    } finally {
+        rejectRelease(new Error("test teardown"));
+        await routes.drain();
+        factory.mockRestore();
+    }
 });

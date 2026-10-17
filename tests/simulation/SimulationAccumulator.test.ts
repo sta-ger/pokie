@@ -1,6 +1,22 @@
 import {analyticsEnvelope} from "../../src/simulation/FeatureAnalytics.js";
 import {AggregateSimulationRunner, GameSession, GameSessionConfig, SimulationAccumulator} from "@fromstan/pokie";
 
+it("counts arbitrary half-open payout multiples and event presence once at fractional actual stake", () => {
+    const accumulator = new SimulationAccumulator();
+    accumulator.configureObservations({events: ["bonus", "missing"], buckets: [{min: 2, max: 4}, {min: 4, max: null}]});
+    for (const payout of [0.1, 0.2, 0]) {
+        accumulator.addRound(0.05, payout);
+        accumulator.observeRequestedMetrics(0.05, payout, payout ? ["bonus", "bonus"] : []);
+    }
+    expect(accumulator.getStatistics().observations).toMatchObject({observations: 3, events: [2, 0], buckets: [1, 1]});
+    expect(SimulationAccumulator.fromSnapshot(accumulator.toSnapshot()).getStatistics()).toEqual(accumulator.getStatistics());
+    expect(() => accumulator.configureObservations({events: [], buckets: []})).toThrow("precede");
+    expect(() => accumulator.observeRequestedMetrics(0, 1, [])).toThrow("actual stake");
+    const corrupted = accumulator.toSnapshot();
+    corrupted.observations!.events[0] = 4;
+    expect(() => SimulationAccumulator.fromSnapshot(corrupted)).toThrow("counts");
+});
+
 describe("SimulationAccumulator", () => {
     test("addRound tracks total bet, total payout, rounds, and hit count", () => {
         const accumulator = new SimulationAccumulator();

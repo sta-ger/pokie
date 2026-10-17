@@ -2,6 +2,15 @@
 
 # Simulation
 
+Opt-in `SimulationObservationRequest` counters record bounded named event presence and arbitrary
+half-open payout/actual-paid-stake buckets. Aggregate, chunked and worker paths retain the same request
+and accepted-observation counts through snapshots/merging; missing or different coverage is rejected.
+These are selected subround observations, not a claim of full feature-round coverage. Existing currency
+histograms and default simulation behavior are unchanged. The [optimization workflow](optimization.md)
+uses supported population adapters, a separately seeded fixed held-out assessment and bounded joint
+confidence intervals. Simulation precision convergence is not optimization target attainment; neither a
+short zero-variance sample nor an empirical maximum supplies a mathematical support bound.
+
 Feature analytics remain partial: aggregate/report statistics, mode/feature breakdowns, and outcome-event
 analysis exist, but do not constitute complete feature analytics. Reports support JSON, Markdown, and HTML;
 PAR workbook exchange is a separate model format. YAML authoring and PDF report output are absent from the

@@ -3748,8 +3748,9 @@ true cross-store atomicity to v2. The optional local transactional reference ada
 below; independent external stores remain outside its guarantee. Compensation and reconciliation
 do not provide a cross-store transaction.
 A named expanding/sticky-wilds decorator and organization/npm migration remain future directions; this
-summary assigns no new release commitment. Math Targeting/Optimization is agreed but not implemented, with
-release scope unconfirmed. See the [reviewed status register](audit-corrections/README.md) for partial and
+summary assigns no new release commitment. [Math optimization](optimization.md) supports exact finite and
+bounded seeded same-type tuning, with explicit source authority, held-out assessment and candidate-only saves
+on nonattainment; arbitrary mechanics and release scope remain unconfirmed. See the [reviewed status register](audit-corrections/README.md) for partial and
 not-found directions, including authoring, analytics, certification, diff, reachability, overscan, and formats.
 
 ## Headless runtime contract

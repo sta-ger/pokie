@@ -1,8 +1,10 @@
+import {ParallelSimulationRunner} from "../../src/simulation/parallel/ParallelSimulationRunner.js";
 import {acquireOptimizationAdapter} from "../../src/optimization/internal/ProjectOptimizationAdapter.js";
 import {describeUnsupportedProjectOperation} from "../../src/project/describeUnsupportedProjectOperation.js";
 import {StakeAdapterArtifactBuilder} from "../../src/project/StakeAdapterArtifactBuilder.js";
 import {loadPokieGameRuntime} from "../../src/gamepackage/loadPokieGame.js";
 import fs from "fs";
+import {execFileSync} from "child_process";
 import path from "path";
 import {ProjectOptimizationService} from "../../src/optimization/ProjectOptimizationService.js";
 import {ArtifactPublicationOwnership, rollbackArtifactPublication} from "../../src/project/ArtifactPublicationOwnership.js";
@@ -21,7 +23,7 @@ import {StakeEngineOutcomeSourceReader} from "../../src/stakeengine/standalone/S
 import {buildWeightedOutcomeLibrary} from "../../src/weightedoutcome/buildWeightedOutcomeLibrary.js";
 import {sourceInventory} from "../../src/optimization/internal/optimizationData.js";
 
-import {optimizationBlueprint as model, optimizationRequest} from "./fixtures/OptimizationFixture.js";
+import {optimizationBlueprint as model, optimizationRequest, stochasticOptimizationRequest} from "./fixtures/OptimizationFixture.js";
 let directory: string;
 let source: string;
 let service: ProjectOptimizationService;
@@ -144,6 +146,67 @@ it("tunes and reopens the canonical PAR workbook retaining locked declarations",
     const result = await service.optimize(await resolve(file), optimizationRequest());
     expect(result.diagnostics).toEqual([]);
     expect(result).toMatchObject({status: "success", candidate: {type: "parWorkbook"}, evidence: {measured: [0.75]}});
+});
+
+it.each(["blueprint", "parWorkbook", "wasm", "tsPackage"] as const)("samples validated same-type %s candidates and preserves exact adapter authority", async type => {
+    let file = source;
+    if (type === "parWorkbook") {
+        file = path.join(directory, "sample.xlsx");
+        await new ParSheetExporter("1.3.0").exportToFile(model(), file);
+    } else if (type === "wasm") {
+        file = path.join(directory, "sample.wasm");
+        await new WasmArtifactBuilder("1.3.0").build(await resolve(source), file);
+        await bindCanonicalWasmTuningSource(file, model(), ["/paytable/A/2"]);
+    } else if (type === "tsPackage") {
+        file = declaredPackage("sample").root;
+        fs.rmSync(path.join(file, "pokie-tuning.json"));
+        const entry = path.join(file, "index.cjs");
+        fs.writeFileSync(entry, fs.readFileSync(entry, "utf8").replace("createSession()", "createSession(context)").replace("new p.SeededRandomNumberGenerator(1)", "new p.SeededRandomNumberGenerator(context?.seed ?? 1)"));
+        declarePackageTuning(file, "parameters.json", ["/paytable/A/2"]);
+    }
+    const request = stochasticOptimizationRequest();
+    request.targets[0].tolerance = {kind: "absolute", value: 0.3};
+    request.policy.sampling!.assessmentSamples = 1000;
+    const project = await resolve(file);
+    const before = sourceInventory(project);
+    const result = await service.optimize(project, request);
+    expect(result.diagnostics).toEqual([]);
+    expect(result).toMatchObject({status: "attained", candidate: {type}, evidence: {stochastic: {assessmentSamples: 1000}}});
+    if (type === "wasm") expect(result.evidence!.stochastic!.validationWork).toBe(32);
+    if (type === "tsPackage") expect(result.evidence!.stochastic!.validationWork).toBe(16);
+    await service.discard(result.candidate!);
+    expect(sourceInventory(project)).toEqual(before);
+});
+
+it("samples Stake uint64 weights without rounding and normalizes payout buckets by native mode cost and fractional stake", async () => {
+    const original = await nativeSource();
+    const library = buildWeightedOutcomeLibrary({libraryId: "stake", outcomes: original.outcomes.map((outcome, index) => ({...outcome, id: String(index + 1)}))});
+    const root = path.join(directory, "sample-stake");
+    await new StakeEngineExporter("1.3.0").exportToDirectory([{modeName: "base", cost: 2, library}], root);
+    const native = await new StakeEngineOutcomeSourceReader().readFromDirectory(root);
+    const win = native.modes[0].outcomes.find(outcome => outcome.payoutMultiplier > 0)!;
+    const zero = native.modes[0].outcomes.find(outcome => outcome.payoutMultiplier === 0)!;
+    const request = stochasticOptimizationRequest();
+    request.policy.scope = "native-outcomes";
+    request.policy.stake = 0.05;
+    request.policy.locks = [];
+    request.policy.tunables = [{path: `/modes/base/outcomes/${win.id}/weight`, values: ["1", "3"]}, {path: `/modes/base/outcomes/${zero.id}/weight`, values: ["1", "18446744073709551615"]}];
+    request.policy.budget = 4;
+    request.policy.sampling!.searchBudget = 1600;
+    request.targets = [
+        {metric: "rtp", unit: "ratio", value: 1.5, tolerance: {kind: "absolute", value: 0.06}},
+        {metric: "distribution", unit: "ratio", value: 0.75, bucket: {min: 2, max: 3}, tolerance: {kind: "absolute", value: 0.05}},
+    ];
+    const project = await resolve(root);
+    const before = sourceInventory(project);
+    const result = await service.optimize(project, request);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.status).toBe("attained");
+    expect(result.evidence!.selected).toEqual({[`/modes/base/outcomes/${win.id}/weight`]: "3", [`/modes/base/outcomes/${zero.id}/weight`]: "1"});
+    expect(result.evidence!.evaluations!.some(entry => Object.values(entry.parameters).includes("18446744073709551615"))).toBe(true);
+    expect(result.evidence!.stochastic!.assessment!.estimates[0]).toBeCloseTo(1.5, 1);
+    await service.discard(result.candidate!);
+    expect(sourceInventory(project)).toEqual(before);
 });
 
 it("rebuilds a source-bound canonical WASM and checks its executable population", async () => {
@@ -593,7 +656,10 @@ it("retains project-local dependency identity through evaluation, independent sa
         await runtime.game.release?.();
         await runtime.release();
     }
-    expect(new Set(fs.readFileSync(loads, "utf8").trim().split("\n"))).toEqual(new Set([path.join(dependency, "index.cjs")]));
+    const loadedPaths = fs.readFileSync(loads, "utf8").trim().split("\n");
+    expect(loadedPaths.length).toBeGreaterThan(1);
+    expect(loadedPaths.every(file => file.includes("pokie-runtime-") && !file.startsWith(dependency))).toBe(true);
+    expect(loadedPaths.every(file => !fs.existsSync(file))).toBe(true);
     fs.appendFileSync(path.join(saved, "dist", "index.cjs"), "\n// independently edited");
     expect(fs.readFileSync(path.join(second, "dist", "index.cjs"), "utf8")).not.toContain("independently edited");
 });
@@ -636,12 +702,27 @@ it.each(["success", "hash-failure", "manifest-failure", "evaluation-failure", "c
         fs.rmSync(path.join(root, "pokie-tuning.json"));
         declarePackageTuning(root, "parameters.json", ["/paytable/A/2"]);
     }
-    const snapshotsBefore = fs.readdirSync(process.env.TMPDIR!).filter((name) => name.startsWith("pokie-runtime-"));
-    const result = await service.optimize(await resolve(root), optimizationRequest());
-    expect(result.status).toBe(({success: "success", "hash-failure": "unsupported", "manifest-failure": "failure", "evaluation-failure": "failure", "cleanup-failure": "failure"} as Record<string, string>)[scenario]);
-    expect(fs.readFileSync(marker, "utf8").trim().split("\n")).toHaveLength(scenario === "success" ? 2 : 1);
-    expect(fs.readdirSync(process.env.TMPDIR!).filter((name) => name.startsWith("pokie-runtime-"))).toEqual(snapshotsBefore);
-    if (scenario === "cleanup-failure") expect(result.diagnostics).toEqual([{path: "cleanup", message: expect.stringContaining("game cleanup failed")}]);
+    // Observe exact real allocations without depending on npm's TMPDIR or comparing a
+    // shared directory whose other snapshots can disappear during concurrent suites.
+    const allocate = jest.spyOn(fs, "mkdtempSync");
+    try {
+        const result = await service.optimize(await resolve(root), optimizationRequest());
+        expect(result.status).toBe(({success: "success", "hash-failure": "unsupported", "manifest-failure": "failure", "evaluation-failure": "failure", "cleanup-failure": "failure"} as Record<string, string>)[scenario]);
+        const acquisitions = scenario === "success" ? 2 : 1;
+        expect(fs.readFileSync(marker, "utf8").trim().split("\n")).toHaveLength(acquisitions);
+        const snapshots = allocate.mock.calls.flatMap(([prefix], index) => {
+            if (path.basename(String(prefix)) !== "pokie-runtime-") return [];
+            const allocation = allocate.mock.results[index];
+            expect(allocation.type).toBe("return");
+            expect(typeof allocation.value).toBe("string");
+            return [allocation.value as string];
+        });
+        expect(snapshots).toHaveLength(acquisitions);
+        for (const snapshot of snapshots) expect(fs.existsSync(snapshot)).toBe(false);
+        if (scenario === "cleanup-failure") expect(result.diagnostics).toEqual([{path: "cleanup", message: expect.stringContaining("game cleanup failed")}]);
+    } finally {
+        allocate.mockRestore();
+    }
 });
 
 it("preflights model-dependent package policies without executable acquisition", async () => {
@@ -961,3 +1042,170 @@ it("measures a supported population above the JavaScript argument limit without 
     const population = {modes: {base: {libraryId: "large", outcomes: Object.fromEntries(Array.from({length: 150000}, (_, index) => [String(index), {weight: 1, artifact}]))}}};
     expect(await adapter.measure(root, population, [{metric: "maxWin", unit: "betMultiple", value: 2}], request.policy)).toEqual([2]);
 }, 30000);
+
+
+it.each(["exact-finite-v1", "seeded-search-v1"] as const)("rejects native stake mismatch in support and %s before preparing candidates", async strategy => {
+    const {outcomes} = await nativeSource();
+    const root = path.join(directory, "stake-mismatch");
+    await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{modeName: "base", libraryId: "native", outcomes}], root);
+    const project = await resolve(root);
+    const before = sourceInventory(project);
+    const request = stochasticOptimizationRequest();
+    request.policy.strategy = strategy;
+    if (strategy === "exact-finite-v1") Reflect.deleteProperty(request.policy, "sampling");
+    request.policy.scope = "native-outcomes";
+    request.policy.stake = 7.5;
+    request.policy.tunables = [{path: `/modes/base/outcomes/${outcomes[0].id}/weight`, values: [1, 2]}];
+    request.policy.locks = [];
+    const write = jest.spyOn(OutcomeLibraryBundleWriter.prototype, "writeToDirectory");
+    expect(await service.support(project, request)).toMatchObject({supported: false, reason: expect.stringContaining("stake must match")});
+    expect(await service.optimize(project, request)).toMatchObject({status: "unsupported", diagnostics: [{message: expect.stringContaining("stake must match")}]});
+    expect(write).not.toHaveBeenCalled();
+    expect(fs.existsSync(path.join(directory, "scratch"))).toBe(false);
+    expect(sourceInventory(project)).toEqual(before);
+});
+
+it.each(["changed", "missing", "transitive"])("rejects %s executable dependencies without resampling or touching source/output", async drift => {
+    const name = "sample-dependency";
+    const {root} = declaredPackage("sample-authority", `require('${name}');\n`, "", {[name]: "1.0.0"});
+    const dependency = path.join(root, "node_modules", name);
+    const nested = path.join(dependency, "node_modules", "transitive");
+    fs.mkdirSync(nested, {recursive: true});
+    fs.writeFileSync(path.join(dependency, "package.json"), JSON.stringify({name, main: "index.cjs", dependencies: {transitive: "1"}}));
+    fs.writeFileSync(path.join(dependency, "index.cjs"), "module.exports = require('transitive');");
+    fs.writeFileSync(path.join(nested, "package.json"), JSON.stringify({name: "transitive", main: "index.cjs"}));
+    fs.writeFileSync(path.join(nested, "index.cjs"), "module.exports = 42;");
+    const request = stochasticOptimizationRequest();
+    request.policy.tunables[0].values = [3];
+    const project = await resolve(root);
+    const before = sourceInventory(project);
+    const result = await service.optimize(project, request);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.evidence!.stochastic!.executableRevision).toMatch(/^sha256:/);
+    const simulation = jest.spyOn(ParallelSimulationRunner.prototype, "run");
+    const output = path.join(directory, "rejected-output");
+    if (drift === "missing") fs.rmSync(dependency, {recursive: true});
+    else fs.appendFileSync(path.join(drift === "transitive" ? nested : dependency, "index.cjs"), "\n// changed executable bytes");
+    await expect(service.publish(result.candidate!, request, output)).rejects.toThrow(/dependencies changed or are unavailable/);
+    expect(simulation).not.toHaveBeenCalled();
+    expect(fs.existsSync(output)).toBe(false);
+    expect(fs.existsSync(`${output}.optimization.json`)).toBe(false);
+    expect(sourceInventory(project)).toEqual(before);
+    await service.discard(result.candidate!);
+}, 60000);
+
+it.each([false, true])("validates sampled destination loadability failure=%s without another assessment and preserves unowned files", async failLoad => {
+    const marker = path.join(directory, "loaded-destinations");
+    const {root} = declaredPackage("publish-runtime", `require('fs').appendFileSync(${JSON.stringify(marker)}, 'loaded\\n'); if (__dirname.includes('pokie-runtime-') && require('fs').existsSync(${JSON.stringify(path.join(directory, "reject-load"))})) { require('fs').writeFileSync(${JSON.stringify(path.join(directory, "published-runtime", "unowned.txt"))}, 'another writer'); throw Error('destination runtime unavailable'); }\n`);
+    const request = stochasticOptimizationRequest();
+    request.policy.tunables[0].values = [3];
+    const result = await service.optimize(await resolve(root), request);
+    expect(result.diagnostics).toEqual([]);
+    const assessment = JSON.stringify(result.evidence);
+    const loadsBefore = fs.readFileSync(marker, "utf8");
+    const output = path.join(directory, "published-runtime");
+    const companion = `${output}.optimization.json`;
+    const publish = ArtifactPublicationOwnership.prototype.publish;
+    jest.spyOn(ArtifactPublicationOwnership.prototype, "publish").mockImplementation(async function(this: ArtifactPublicationOwnership, from, to, options) {
+        await Reflect.apply(publish, this, [from, to, options]);
+        if (to === companion && failLoad) {
+            fs.writeFileSync(path.join(directory, "reject-load"), "reject");
+        }
+    });
+    const simulation = jest.spyOn(ParallelSimulationRunner.prototype, "run");
+    if (failLoad) {
+        await expect(service.publish(result.candidate!, request, output)).rejects.toThrow("destination runtime unavailable");
+        expect(fs.readdirSync(output)).toEqual(["unowned.txt"]);
+        expect(fs.readFileSync(path.join(output, "unowned.txt"), "utf8")).toBe("another writer");
+        expect(fs.existsSync(companion)).toBe(false);
+    } else {
+        await service.publish(result.candidate!, request, output);
+        expect(fs.readFileSync(marker, "utf8").length).toBeGreaterThan(loadsBefore.length);
+        expect(JSON.parse(fs.readFileSync(companion, "utf8")).evidence).toEqual(result.evidence);
+    }
+    expect(simulation).not.toHaveBeenCalled();
+    expect(JSON.stringify(result.evidence)).toBe(assessment);
+    await service.discard(result.candidate!);
+}, 60000);
+
+
+it.each([["cjs", false], ["cjs", true], ["esm", false], ["esm", true]] as const)(
+    "reruns sampled %s dependencies after executable drift (transitive=%s) using current code and matches a fresh process",
+    async (format, transitive) => {
+        const name = "behavior-dependency";
+        const {root, code} = declaredPackage("behavior", "", "", {[name]: "1"});
+        const suffix = format === "cjs" ? "cjs" : "mjs";
+        const dependency = path.join(root, "node_modules", name);
+        const leaf = transitive ? path.join(dependency, "node_modules", "leaf") : dependency;
+        fs.mkdirSync(leaf, {recursive: true});
+        fs.writeFileSync(path.join(dependency, "package.json"), JSON.stringify({name, main: `index.${suffix}`, dependencies: transitive ? {leaf: "1"} : {}}));
+        if (transitive) {
+            fs.writeFileSync(path.join(leaf, "package.json"), JSON.stringify({name: "leaf", main: `index.${suffix}`}));
+            fs.writeFileSync(path.join(dependency, `index.${suffix}`), format === "cjs" ? "module.exports = require('leaf');" : "export {default} from 'leaf';");
+        }
+        const leafFile = path.join(leaf, `index.${suffix}`);
+        const write = (multiplier: number) => fs.writeFileSync(leafFile, format === "cjs" ? `module.exports = ${multiplier};` : `export default ${multiplier};`);
+        write(1);
+        fs.writeFileSync(path.join(root, "index.cjs"), `const dependency = require('${name}'); const multiplier = dependency.default ?? dependency;\n` + code.replace("Number(count), amount)", "Number(count), amount * multiplier)"));
+        fs.rmSync(path.join(root, "pokie-tuning.json"));
+        declarePackageTuning(root, "parameters.json", ["/paytable/A/2"]);
+        const project = await resolve(root);
+        const before = sourceInventory(project);
+        const request = stochasticOptimizationRequest();
+        request.policy.tunables[0].values = [3];
+        const script = path.join(directory, "native-optimization.cjs");
+        // Execute the public service in an ordinary long-lived Node host, then compare
+        // its rerun to a separate fresh process. ts-jest cannot require native ESM.
+        fs.writeFileSync(script, `const fs = require('fs'); const Module = require('module'); const ts = require(${JSON.stringify(require.resolve("typescript"))});
+const original = Module._resolveFilename;
+Module._resolveFilename = function(request, ...rest) { if (request === '@fromstan/pokie') return ${JSON.stringify(path.resolve("src/index.ts"))}; try { return original.call(this, request, ...rest); } catch (error) { if (request.endsWith('.js')) return original.call(this, request.slice(0, -3) + '.ts', ...rest); throw error; } };
+Module._extensions['.ts'] = (module, file) => module._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true}}).outputText, file);
+const assert = require('node:assert/strict');
+const root = ${JSON.stringify(root)}, leaf = ${JSON.stringify(leafFile)}, request = ${JSON.stringify(request)};
+const select = result => ({status: result.status, diagnostics: result.diagnostics, evidence: result.evidence});
+const write = multiplier => fs.writeFileSync(leaf, ${JSON.stringify(format === "cjs" ? "module.exports = " : "export default ")} + multiplier + ';');
+(async () => {
+ const {ProjectOptimizationService} = require(${JSON.stringify(path.resolve("src/optimization/ProjectOptimizationService.ts"))});
+ const {ProjectTargetResolver} = require(${JSON.stringify(path.resolve("src/project/ProjectTargetResolver.ts"))});
+ const service = new ProjectOptimizationService(${JSON.stringify(path.join(directory, "native-scratch"))} + (process.argv[2] === 'fresh' ? '-fresh' : ''));
+ const project = await new ProjectTargetResolver().resolve(root, {readConfigurationProvenance: false});
+ if (process.argv[2] === 'fresh') {
+   const result = await service.optimize(project, request);
+   if (result.candidate) await service.discard(result.candidate);
+   console.log(JSON.stringify(select(result))); return;
+ }
+ const originalExport = require(leaf), cached = require.cache[leaf];
+ const first = await service.optimize(project, request);
+ assert.deepEqual(first.diagnostics, []); assert.equal(first.status, 'attained');
+ write(2);
+ const changed = await service.optimize(project, request);
+ assert.deepEqual(changed.diagnostics, []); assert.equal(changed.status, 'inconclusive');
+ assert.notEqual(changed.evidence.stochastic.executableRevision, first.evidence.stochastic.executableRevision);
+ assert.equal(changed.evidence.stochastic.assessment.returnBound, 6);
+ const fresh = JSON.parse(require('child_process').execFileSync(process.execPath, [__filename, 'fresh'], {encoding: 'utf8', timeout: 60000}));
+ assert.deepEqual(select(changed), fresh);
+ const {ParallelSimulationRunner} = require(${JSON.stringify(path.resolve("src/simulation/parallel/ParallelSimulationRunner.ts"))});
+ const run = ParallelSimulationRunner.prototype.run; let samples = 0;
+ ParallelSimulationRunner.prototype.run = function(...args) { samples++; return Reflect.apply(run, this, args); };
+ await service.publish(changed.candidate, request, ${JSON.stringify(path.join(directory, "current-output"))});
+ assert.equal(samples, 0);
+ assert.equal(require(leaf), originalExport); assert.equal(require.cache[leaf], cached);
+ fs.writeFileSync(leaf, ${JSON.stringify(format === "esm" ? "export default 0;" : "")} + "throw Error('Dependency unavailable; reinstall dependencies and rerun optimization.');");
+ const rejected = await service.optimize(project, request);
+ assert.equal(rejected.status, 'failure'); assert.match(rejected.diagnostics[0].message, /reinstall dependencies/);
+ assert.equal(rejected.evidence.stochastic.assessment, undefined); assert.equal(samples, 0);
+ write(1);
+ for (let attempt = 0; attempt < 2; attempt++) {
+   const restored = await service.optimize(project, request);
+   assert.equal(restored.status, 'attained'); assert.deepEqual(restored.evidence, first.evidence);
+   await service.discard(restored.candidate);
+ }
+ await service.discard(first.candidate); await service.discard(changed.candidate);
+ assert.deepEqual(fs.readdirSync(${JSON.stringify(path.join(directory, "native-scratch"))}), []);
+ console.log(JSON.stringify({before: first.status, changed: changed.status, fresh: fresh.status, rejected: rejected.status, restored: 'attained', samplesDuringSave: 0, cachePreserved: require.cache[leaf] === cached}));
+})().catch(error => { console.error(error); process.exitCode = 1; });`);
+        const outcomes = JSON.parse(execFileSync(process.execPath, [script], {encoding: "utf8", timeout: 120000}));
+        expect(outcomes).toEqual({before: "attained", changed: "inconclusive", fresh: "inconclusive", rejected: "failure", restored: "attained", samplesDuringSave: 0, cachePreserved: true});
+        expect(sourceInventory(project)).toEqual(before);
+    }, 150000,
+);
