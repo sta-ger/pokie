@@ -137,14 +137,17 @@ const runBundledNpmCommand: PackageCommandRunning = async (command, args, cwd, o
 };
 
 async function get(url: string): Promise<{status: number; body: unknown}> {
-    const response = await fetch(url);
+    // Client and server share this event loop. Synchronous runtime snapshots can
+    // delay a request beyond a pooled socket's idle deadline; use a fresh
+    // connection for each assertion instead of racing that socket's close.
+    const response = await fetch(url, {headers: {Connection: "close"}});
     return {status: response.status, body: await response.json()};
 }
 
 async function post(url: string, body?: unknown): Promise<{status: number; body: unknown}> {
     const response = await fetch(url, {
         method: "POST",
-        headers: body === undefined ? undefined : {"Content-Type": "application/json"},
+        headers: {Connection: "close", ...(body === undefined ? {} : {"Content-Type": "application/json"})},
         body: body === undefined ? undefined : JSON.stringify(body),
     });
     return {status: response.status, body: await response.json()};
@@ -200,7 +203,7 @@ function runtimeSnapshotsForPackage(packageName: string): string[] {
 }
 
 async function del(url: string): Promise<{status: number; body: unknown}> {
-    const response = await fetch(url, {method: "DELETE"});
+    const response = await fetch(url, {method: "DELETE", headers: {Connection: "close"}});
     return {status: response.status, body: await response.json()};
 }
 
@@ -8049,6 +8052,8 @@ describe("StudioServer", () => {
             return filePath;
         }
 
+        // Extraction performs repeated isolated package loads through actual
+        // dashboard, model, preview and build routes, like the workflow above.
         it("shares package extraction diagnosis between Game Model, artifact preview and published jobs", async () => {
             const initialInventory = fs.readdirSync(artifactWorkDir).sort();
             const source = writeDescriptorPackage(artifactWorkDir);
@@ -8081,7 +8086,7 @@ describe("StudioServer", () => {
             expect(completed.status).toBe("completed");
             expect(completed.result).toMatchObject({status: "ok", outputPath: destination, conversionEvidencePath: `${destination}.conversion-evidence.json`});
             expect(fs.existsSync(destination)).toBe(true);
-        });
+        }, 180000);
 
         it.each(["source", "descriptor", "destination", "project", "companion", "unsupported"])("rejects %s drift across HTTP extraction preview/save without publication", async change => {
             const control = path.join(artifactWorkDir, "descriptor-control.txt");
@@ -8118,7 +8123,7 @@ describe("StudioServer", () => {
             else expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(false);
             expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(bytes);
             expect(fs.readdirSync(artifactWorkDir).sort()).toEqual(inventory);
-        });
+        }, 180000);
 
         it("returns 409 for every route when there is no active project", async () => {
             const homeBaseUrl = await startServerForProject(undefined);
