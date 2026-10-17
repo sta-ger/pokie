@@ -935,7 +935,17 @@ it("connects the browser API owner to durable Play, restore, report and replay D
             view = await api.getSimulation(owner.fetch, started.job.id);
         } while (view.status === "running" || view.status === "queued");
         expect(view).toMatchObject({status: "completed", roundsCompleted: 256, report: {rounds: 256, seed: "0"}});
-        const reproduced = await api.runReplay(owner.fetch, 3, "0");
+        const replayCount = jobs.list(file).filter(job => job.operation === "replay").length;
+        for (const request of [
+            {round: 3, simulationId: started.job.id},
+            {round: 3, seed: "different", simulationId: started.job.id},
+            {round: 3, seed: "0", modeName: "different", simulationId: started.job.id},
+        ]) {
+            await expect(owner.fetch("/api/project/replays", {method: "POST", body: JSON.stringify(request)})).rejects.toThrow(/does not match/);
+        }
+        expect(jobs.list(file).filter(job => job.operation === "replay")).toHaveLength(replayCount);
+        expect(liveWorkers).toBe(1); // Only the unchanged idle Play session.
+        const reproduced = await api.runReplay(owner.fetch, 3, "0", started.job.id);
         if (reproduced.status !== "created") throw new Error("Replay conflict");
         let replayView;
         const replayDeadline = Date.now() + 3000;
@@ -1071,6 +1081,91 @@ async function browserOwner(fixture = createCanonicalWasmFixture()) {
         fs.rmSync(directory, {recursive: true, force: true});
     }};
 }
+
+it("V2C-22-OPTIONAL-SEED executes replay-only requests with one retained seed and safely reuses admission after rejection", async () => {
+    const {StudioReplayExecutionService} = await import("../../../cli/studio/replay/StudioReplayExecutionService.js");
+    const {validateReplayRequest} = await import("../../../cli/studio/replay/validateReplayRequest.js");
+    const {collectPokieWasmReplay} = await import("../../../src/wasm/PokieWasmReplay.js");
+    const fixture = createCanonicalWasmFixture({capabilities: ["runtime.replay"], availableBets: [0.05, 7.5, 1e-7]});
+    const test = await browserOwner(fixture);
+    const replay = new StudioReplayExecutionService();
+    replay.attachJobService(test.jobs);
+    test.controls.before = (url, init) => {
+        if (url.startsWith("/api/project/replays/")) {
+            const body = replay.getStatus(test.file, url.split("/").pop()!);
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+        }
+        return test.network(url, init);
+    };
+    const run = async (request: Record<string, unknown>) => {
+        const response = await test.owner.fetch("/api/project/replays", {method: "POST", body: JSON.stringify(request)});
+        expect(response.ok).toBe(true);
+        const admitted = await response.json() as {id: string};
+        const deadline = Date.now() + 3000;
+        let view;
+        do {
+            if (Date.now() > deadline) throw new Error("Optional-seed replay did not settle");
+            await new Promise<void>(resolve => {
+                setImmediate(resolve);
+            });
+            view = replay.getStatus(test.file, admitted.id)!;
+        } while (view.status === "running" || view.status === "queued");
+        expect(test.controls.live).toBe(0);
+        return view;
+    };
+    try {
+        const generated = await run({round: 1});
+        expect(generated).toMatchObject({status: "completed", seed: expect.any(String), descriptor: {round: 1, seed: expect.any(String), totalBet: 0.05}});
+        const seed = generated.seed!;
+        expect(seed).toMatch(/^[0-9a-f-]{36}$/);
+        expect(test.jobs.get(test.file, generated.id)?.request.seed).toBe(seed);
+        expect(generated.descriptor).not.toHaveProperty("stateBefore");
+        expect(generated.descriptor).not.toHaveProperty("stateAfter");
+        expect(generated.descriptor).not.toHaveProperty("artifact");
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost(seed));
+        try {
+            const observed = await collectPokieWasmReplay(runtime, {round: 1, seed});
+            expect(generated.descriptor).toMatchObject({seed, screen: observed.finalRound!.screen, credits: observed.finalRound!.credits,
+                totalBet: observed.totalBet, totalWin: observed.totalWin, totalPayout: observed.totalPayout});
+        } finally {
+            await runtime.dispose();
+        }
+        const repeated = await run({round: 1, seed});
+        expect(repeated.descriptor).toMatchObject({seed, screen: generated.descriptor!.screen, credits: generated.descriptor!.credits,
+            totalBet: generated.descriptor!.totalBet, totalWin: generated.descriptor!.totalWin});
+        const artifactResponse = await test.network("/api/project/wasm/artifact");
+        const artifact = await artifactResponse.json() as {projectRoot: string; generation: string; manifest: {artifact: {sha256: string}}};
+        const binding = {owner: "seed-test", projectRoot: artifact.projectRoot, generation: artifact.generation, artifactIdentity: artifact.manifest.artifact.sha256};
+        for (const malformed of ["", "   ", 42, null, {}, []]) {
+            const request = {round: 1, seed: malformed};
+            const diagnostic = '"seed" must be a non-empty string when given.';
+            expect(() => validateReplayRequest(request)).toThrow(diagnostic);
+            const before = test.jobs.list(test.file).length;
+            const direct = await test.network("/api/project/wasm/jobs", {method: "POST", body: JSON.stringify({...binding, operation: "replay", request})});
+            expect(await direct.json()).toEqual({error: diagnostic});
+            const publicResponse = await test.owner.fetch("/api/project/replays", {method: "POST", body: JSON.stringify(request)});
+            expect(publicResponse.ok).toBe(false);
+            expect(await publicResponse.json()).toEqual({error: diagnostic});
+            expect(test.jobs.list(test.file)).toHaveLength(before);
+            expect(test.controls.live).toBe(0);
+            for (const seed of ["0", " exact seed "]) expect(await run({round: 1, seed})).toMatchObject({status: "completed", seed, descriptor: {seed}});
+        }
+        // Shape-valid input reaches execution and fails without poisoning later fresh sessions.
+        expect(await run({round: 1, seed: "0", entryCommands: [{kind: "spin", bet: 0.1}]})).toMatchObject({status: "failed"});
+        for (let index = 0; index < 2; index++) expect(await run({round: 1})).toMatchObject({status: "completed"});
+        for (const [operation, request] of [["simulation", {rounds: 1}], ["browser-play", {action: "new"}], ["browser-play", {action: "restore", state: {}}]]) {
+            const response = await test.network("/api/project/wasm/jobs", {method: "POST", body: JSON.stringify({...binding, operation, request})});
+            expect(response.ok).toBe(false);
+            expect(await response.json()).toMatchObject({error: expect.stringContaining("runtime.play")});
+        }
+        expect(test.jobs.get(test.file, generated.id)?.result?.detail?.descriptor).toEqual(generated.descriptor);
+        expect(test.recorder.list()).toHaveLength(0);
+        expect(test.controls.live).toBe(0);
+    } finally {
+        await test.close();
+    }
+});
+
 it("V2C-22-RESTORE-REJECTION retains an executed foreign-checkpoint failure and the original playable owner", async () => {
     const fixture = createCanonicalWasmFixture({availableBets: [0.05, 7.5, 1e-7]});
     const test = await browserOwner(fixture);

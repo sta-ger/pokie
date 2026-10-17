@@ -37,6 +37,45 @@ import type {StudioReplayJobView} from "../../../../cli/studio/replay/StudioRepl
 import {createCanonicalWasmFixture} from "../../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
+it("retains a generated seed before direct WASM replay admission and reproduces its executable result", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "v2c22-replay-seed-"));
+    const artifact = path.join(directory, "game.wasm");
+    const fixture = createCanonicalWasmFixture({capabilities: ["runtime.replay", "runtime.serialize"], availableBets: [0.05]});
+    fs.writeFileSync(artifact, fixture.bytes);
+    fs.writeFileSync(`${artifact}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+    const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository());
+    const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
+    service.attachJobService(jobs);
+    try {
+        const input = {round: 3};
+        const started = service.start(artifact, input);
+        if (started.status !== "created") throw new Error(JSON.stringify(started));
+        expect(input).toEqual({round: 3});
+        const seed = started.job.seed;
+        expect(seed).toMatch(/^[0-9a-f-]{36}$/);
+        expect(jobs.get(artifact, started.job.id)?.request.seed).toBe(seed);
+        const generated = await waitForTerminal(service, artifact, started.job.id);
+        expect(generated).toMatchObject({status: "completed", descriptor: {seed, round: 3, stateAfter: {seed, sequence: 3}}});
+        const rejected = service.start(artifact, {round: 1, seed, entryCommands: [{kind: "spin", bet: 0.1}]});
+        if (rejected.status !== "created") throw new Error(JSON.stringify(rejected));
+        expect(await waitForTerminal(service, artifact, rejected.job.id)).toMatchObject({status: "failed"});
+        for (let index = 0; index < 2; index++) {
+            const retry = service.start(artifact, {round: 3, seed});
+            if (retry.status !== "created") throw new Error(JSON.stringify(retry));
+            const reproduced = await waitForTerminal(service, artifact, retry.job.id);
+            expect(reproduced).toMatchObject({status: "completed", descriptor: {seed, screen: generated.descriptor!.screen,
+                credits: generated.descriptor!.credits, totalBet: generated.descriptor!.totalBet, totalWin: generated.descriptor!.totalWin,
+                stateBefore: generated.descriptor!.stateBefore, stateAfter: generated.descriptor!.stateAfter}});
+        }
+        expect(service.getDownload(artifact, generated.id)).toMatchObject({status: "ok", descriptor: generated.descriptor});
+        expect(service.getActiveCount()).toBe(0);
+    } finally {
+        await service.cancelAll();
+        await jobs.completeGracefulShutdown();
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
 it("replays portable purchase entries as logical rounds and rejects changed simulation configurations", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "v2c21-replay-"));
     const artifact = path.join(directory, "game.wasm");

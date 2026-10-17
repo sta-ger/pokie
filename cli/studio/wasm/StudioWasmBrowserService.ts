@@ -160,7 +160,6 @@ export class StudioWasmBrowserService {
             if (request.convergence || (request.workers as number) > 1) throw new Error("WASM browser simulation supports one Worker and a fixed round budget. Set Workers to 1 and disable adaptive stopping.");
         } else if (operation === "replay") {
             request = {...validateReplayRequest(value.request)};
-            if (!request.seed) throw new Error("WASM replay requires a deterministic seed.");
             if (request.recording || value.request.outcomeSource) throw new Error("Use a WASM recorded round or seed replay for this artifact.");
             if (request.simulationId) {
                 const simulation = this.jobs.get(canonicalStudioProjectIdentity(artifact.projectRoot), request.simulationId as string);

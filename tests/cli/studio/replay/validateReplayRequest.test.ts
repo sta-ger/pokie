@@ -10,6 +10,10 @@ describe("validateReplayRequest", () => {
         expect(validateReplayRequest({round: 42, seed: "demo"})).toEqual({round: 42, seed: "demo"});
     });
 
+    it.each(["0", " exact seed "])("preserves the exact supplied seed %p", seed => {
+        expect(validateReplayRequest({round: 1, seed})).toEqual({round: 1, seed});
+    });
+
     it("requires the recorded seed and mode for exact outcome-library replay without changing package replay", () => {
         expect(() => validateReplayRequest({round: 42}, {requireOutcomeSourceProvenance: true})).toThrow(/without a seed/i);
         expect(() => validateReplayRequest({round: 42, seed: "demo"}, {requireOutcomeSourceProvenance: true})).toThrow(/without its recorded mode/i);
@@ -55,7 +59,7 @@ describe("validateReplayRequest", () => {
         expect(() => validateReplayRequest({round: 1, seed: "   "})).toThrow('"seed" must be a non-empty string when given.');
     });
 
-    it("rejects a non-string seed", () => {
-        expect(() => validateReplayRequest({round: 1, seed: 42})).toThrow('"seed" must be a non-empty string when given.');
+    it.each([42, null, {}, []])("rejects a non-string seed %p without coercion", seed => {
+        expect(() => validateReplayRequest({round: 1, seed})).toThrow('"seed" must be a non-empty string when given.');
     });
 });

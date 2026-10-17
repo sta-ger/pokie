@@ -204,6 +204,9 @@ export class StudioReplayExecutionService {
             if (!declaration.manifest.capabilities.includes("runtime.replay")) {
                 return {status: "unsupported", message: "This canonical WASM artifact does not declare runtime.replay; it cannot replay a game round."};
             }
+            // Resolve optional forward-replay input once, before retaining the job,
+            // so execution and later reproduction use the same seeded host stream.
+            request = {...request, seed: request.seed ?? crypto.randomUUID()};
         }
         const common = this.jobService?.start({
             projectId: projectRoot,
