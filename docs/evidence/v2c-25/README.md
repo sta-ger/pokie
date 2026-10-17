@@ -38,8 +38,54 @@ being represented as visual proof by these PNGs.
 ## Remaining verification
 
 This collection is not approval. It does not authenticate the requested PAR,
-declared-custom-TS, native-weighted-artifact, occupied-destination, reload-active-job,
-Studio cancellation/retry, all-six-capability, or sampled held-out-CI branches. The
-second and final permitted Studio launch was already consumed; the Play-session action
-also exposed a neutral rendered-action resolver ambiguity before activation, so it did
-not establish a Play round. No product defect is asserted from that driver limitation.
+native-weighted-artifact, occupied-destination, all-six-capability, or sampled held-out-CI
+branches. The recovery run below authenticates the active-job reload, cancellation,
+exact retry, and post-apply Play branches; it also reveals the declared-custom-TS CLI
+defect rather than completing that required surface.
+
+## Recovery collection and verified CLI defect
+
+A fresh isolated Studio run is retained at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-25-4ca8c3dc98dd8e89/run-2026-10-17T15-44-45-854Z/transcript.json`.
+Its authenticated build receipt is for this candidate's `npm run build-cli` (exit 0;
+output-tree SHA-256 `f5deb09b190390a7626815cd55adccca230c82578a44104ce848e02b7e4e7505`).
+
+The rendered Studio run submitted a sampled seeded search with target RTP 0.75,
+budget 3, seed `v2c-25-recovery-sampled`, and the same Blueprint tunable/locks above.
+It rendered queued work, then, after one browser reload, reattached the same active job
+as `running: 1 / 3 candidates search`. One accepted cancellation rendered 62,000 search
+observations and the action-local terminal `Verdict: cancelled` / `Optimization cancelled`
+after 12,055 ms. The browser-worker inspection after terminal was empty. A subsequent
+exact-finite retry (seed `v2c-25-recovery-exact`) rendered an exact 0.75 preview and
+diff `/paytable/A/2 2 → 3`; one explicit apply reported `Authored changes applied`.
+The resulting public Play session then completed one ordinary round: stake 1, payout 0.
+
+The two new PNGs were independently opened and inspected at 1440×956:
+
+- `studio-reload-cancel.png` SHA-256
+  `f9fca08094c794687157e439afa09176d51bcb18805df6a49fd9fe1b41cd7695` clearly shows
+  the cancellation terminal, observations, source revision, policy, and no held-out result.
+- `studio-post-apply-round.png` SHA-256
+  `bbdf7b055e6f818a77f621f0ef0919207d4bd0d90fbc1dc441542d859f7da787` clearly shows
+  the post-apply Play round, one delivery, stake 1, payout 0, reel result, and credits.
+
+For the required declared custom executable package, a harness-only fixture
+`v2c-25-custom-ts` was created with executable SHA-256
+`6e560940832028495c7fa172973db57196756b79ee1a6a64a5e4d9c847512d52`, parameters
+SHA-256 `54984251787f5ba76a76dee790096571e075d64de463a6b007524aa04a450dd9`, and
+the public `declarePackageTuning` contract SHA-256
+`e5a232d38e05e803468626dabd5d1833155f2818196319fbda4558fa2fa26c7e` for
+`/paytable/A/2`. Its canonical public command was:
+
+```sh
+node ./dist/cli/pokie.js optimize "$HARNESS/v2c-25-custom-ts" \
+  --policy "$HARNESS/v2c-25-custom-ts/policy.json" \
+  --out "$HARNESS/v2c-25-custom-ts-output" --format json
+```
+
+It deterministically exited 1 before optimization with `Cannot find module
+'.../dist/src/gamepackage/internal/runtimeLocation.mjs' imported from
+'.../dist/src/gamepackage/resolvePokieGameEntryModule.js'`. The candidate source contains
+the tracked helper, but the successful `build-cli` output omits it from `dist/src` while
+the compiled resolver dynamically imports it. This is a P1 product defect in the
+canonical CLI's declared-custom-TS workflow, not a driver failure.
