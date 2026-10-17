@@ -56,7 +56,8 @@ before executable acquisition and candidate writes. Detached candidates and save
 bind declared runtime dependencies to the same installed packages resolved from the source
 project (including project-local installations), rather than resolving from scratch ancestry.
 These external installations must remain available; saving does not vendor them. Saved
-packages are loaded and measured at the destination before publication is accepted.
+packages retain source/build timestamps for stale-entry detection and are loaded
+and measured at the destination before publication is accepted.
 Dependencies remain ordinary external package dependencies;
 `node_modules`, `.git` and loader caches are excluded from authored-byte identity.
 Filesystem aliases in authored input/publication paths are rejected.
@@ -163,7 +164,8 @@ Exit codes: success **0**, operational failure **1**, infeasible **2**, invalid
 cancellation and waits for owned work to settle. Node orchestration is kept out
 of browser entrypoints; Studio imports the same pure policy validator.
 
-Publication rejects destinations inside the owned run workspace. Each save owns
+Publication rejects destinations inside the optimization scratch root and owned run
+workspaces, including other retained candidates. Each save owns
 independent authored file bytes, supports cross-filesystem destinations, and survives
 candidate discard. External dependency bindings continue to identify the source
 installation. Rollback removes only files and directories owned by that save.
