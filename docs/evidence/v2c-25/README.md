@@ -137,7 +137,83 @@ At 1440×956 it visibly shows the sampled support boundary and metric row; the t
 is readable and includes the target, held-out estimate, CI, confidence, observation
 count, policy limits, locks, constraints, and the mathematical diff.
 
-This continuation remains incomplete: it does not yet collect the requested real
-PAR/native-weighted-artifact six-type matrix, occupied-destination rejection, or a
-current direct canonical-child cancellation exit receipt. Those are not inferred
-from historical results.
+That preceding continuation was incomplete; the following bounded addition records
+the later current-candidate observations. It does not reinterpret the historical
+rows above.
+
+## Current-candidate completion addition
+
+All commands below used `node ./dist/cli/pokie.js` from the candidate checkout,
+with runtime-only fixtures and receipts under the assigned harness. No test suite or
+official gate was rerun.
+
+The finite PAR policy used target RTP `0.75`, exact-finite budget `3`, seed
+`v2c-25-par-current`, tunable `/paytable/A/2 = [2,3,4]`, and the Blueprint's
+payline/reel/B-paytable/bet locks. `par export` produced a PAR workbook, and
+`optimize <workbook> --out <new workbook>` exited 0. Its receipt
+`v2c-25-par-preview.json` (SHA-256
+`1cac7a585753d65f054518ed643f2cf8ea6d1b0d38f7621ba37ae9bd65e20e84`) reports
+adapter `parWorkbook`, same-type readback, evaluations `0.5` then `0.75`, and the
+selected 0.75 candidate. Public `inspect` identifies both inputs as PAR workbooks;
+their inventories and SHA-256 hashes are retained as `v2c-25-par-output.sha256`.
+
+`build --target outcomeLibrary --exact` produced a native two-outcome library: the
+winning `outcome-92d7fefe2949e936` initially has weight 1 and the losing outcome
+weight 3. An exact native-outcome policy changed only that declared winning weight
+to 3, targeted RTP 1, and exited 0 to a new same-type outcome-library directory.
+`v2c-25-native-preview.json` has SHA-256
+`6cc00d7d3dd07e788a297974aefeb866e0d47b06aca14518eae831d60be43a61` and reports
+native integer-weight preservation, native readback, and measured RTP 1. Source and
+output inventories are `v2c-25-native-source.sha256` and
+`v2c-25-native-output.sha256`. The public CLI also built and inspected the complete
+current six-type surface: Blueprint, PAR workbook, declared TS package, outcome
+library, Stake adapter, and canonical WASM. Passing the canonical WASM to optimize
+exited 4 with the explicit unsupported diagnostic `Opaque WASM: missing bound
+source/build tuning provenance.` (`v2c-25-wasm-unsupported.json`), rather than
+silently converting it.
+
+Two current mutation-rejection probes preserved their inventories. After previewing
+a copied Blueprint, an external edit changed only locked `/paytable/B/2`; canonical
+reviewed apply exited 1 with `Reviewed source or policy changed; run a fresh
+preview.` (`v2c-25-stale-source-apply.json`, SHA-256
+`811fb48469d48178d4e8c1e172bf8ed2c1840f43219c70c370cc712a92ef7ff9`), while
+`v2c-25-stale-mutated.before.sha256` and `.after.sha256` match. Optimizing to a
+directory containing only `sentinel.txt` likewise exited 1, explicitly said the
+destination already exists and is never overwritten, and left identical before/after
+inventories (`v2c-25-occupied.json`, SHA-256
+`1beb382ef00c2e943b37b1b2d52cb154b3057c349890592d5dedf96dfc0b749e`). The
+rejection probes did not apply changes. Separately, a clean review/apply proof used
+the same declared policy and fixed seed `v2c-25-post-apply-current`: the reviewed
+apply selected `/paytable/A/2` 2 to 3, then the same public 1,000-round one-worker
+simulation changed from total win 518, RTP 0.518, max win 2 to total win 777, RTP
+0.777, max win 3. The four receipts are
+`v2c-25-payout-proof-{before,preview,apply,after}.json`, with SHA-256 respectively
+`4ea070b092f316b037a57cb26fb9e62f15b71cd5cd69ef7689e8a830da7fafec`,
+`c9955e8e1fa7c169d343b67de26d2c3794237a4d294b94be2c2d7be5447318d0`,
+`e6bc3449b7e0af13c53878700a40326ebf0488eeef4103c5b44e902b0fb150fc`, and
+`f4fcca6c971fdc9520558bb54889ca5b732c387453aea5f0bd8173cafc241c99`.
+
+For direct cancellation, a seeded-search policy used one worker, one-million-sample
+search and assessment settings, target 0.75, budget 3, and the same declared
+tunable/locks. The canonical child emitted real `preparing` and `search` progress
+at 1,000 and 2,000 samples before one `SIGINT`; the harness directly waited for
+that child and recorded exit **6**, not a wrapper timeout. Its terminal result is
+`status:"cancelled"`, phase `search`, searchSamples 2,000
+(`v2c-25-cli-cancel-direct.json`, SHA-256
+`df2ea6343f8b15bb5a2b440348e18254097f1d88d3031be232feb41fa608c079`). A fresh
+post-cancel canonical retry exited 0 (`v2c-25-post-cancel-retry.json`, SHA-256
+`665b2a52a2fb73d372b79f823e423f00161a339a76f72b959aa7e20fc4938d8d`). The prior
+candidate-bound Studio cancellation/reload receipt remains the preserved rendered
+worker-drain and reattachment observation.
+
+One fresh rendered Studio launch, retained at
+`run-2026-10-17T18-47-07-127Z/transcript.json`, opened the isolated Blueprint via
+the public Home/Projects controls and recorded two further action-local terminal
+rows. The exact finite request with target `0.6`, seed `v2c-25-studio-infeasible`,
+and budget 3 was accepted and rendered `Verdict: infeasible` after all three
+candidates. Replacing it with target `0.75`, seed `v2c-25-studio-budget`, and budget
+1 was accepted and rendered `Verdict: exhausted`, one candidate evaluated and one
+budget unit consumed. A short driver probe had looked for the non-rendered wording
+`budget-limited`; the retained local terminal is the product's actual `exhausted`
+wording, not a defect. This transcript SHA-256 is
+`46476edba8c3aee121678a2f66fe916573a7365aa77de77b27f935227f49f714`.
