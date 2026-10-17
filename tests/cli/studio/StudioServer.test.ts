@@ -89,6 +89,10 @@ const fixtureCommandAuthority: Pick<PokieGame, "getSessionCommandCapabilities"> 
 const COMPILED_CJS_ENTRY = path.join(REPO_ROOT, "dist", "cjs", "index.js");
 const COMPILED_CJS_PACKAGE_JSON = path.join(REPO_ROOT, "dist", "cjs", "package.json");
 const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js");
+// Real source reads snapshot the host installation and its dependency graph, even when the
+// contract validator is injected. Allow the same bounded budget as offline materialization
+// under the controller's concurrent Jest launcher; route-only cases keep the default timeout.
+const REAL_RUNTIME_TEST_TIMEOUT_MS = 300000;
 type PendingGameLoad = (game: PokieGame) => void;
 type PendingLoadStarted = () => void;
 
@@ -3602,7 +3606,7 @@ describe("StudioServer", () => {
             expect(status).toBe(200);
             expect(body).toEqual({...report, advanced: unsupportedDeclarationReport("tsPackage")});
             expect(validate).toHaveBeenCalledWith(sampleSlotRoot);
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         it("forwards a validation report with errors", async () => {
             await openSampleSlot();
@@ -3622,7 +3626,7 @@ describe("StudioServer", () => {
             expect(body).toEqual({...report, advanced: unsupportedDeclarationReport("tsPackage")});
             expect(validate).toHaveBeenCalledWith(sampleSlotRoot);
             expect(JSON.stringify(body)).not.toContain("\\n    at ");
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         it("forwards a validation report with only warnings (still valid)", async () => {
             await openSampleSlot();
@@ -3641,7 +3645,7 @@ describe("StudioServer", () => {
             expect(status).toBe(200);
             expect(body).toEqual({...report, advanced: unsupportedDeclarationReport("tsPackage")});
             expect(validate).toHaveBeenCalledWith(sampleSlotRoot);
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         it("reports failed source acquisition before attempting contract validation", async () => {
             const missingRoot = path.join(studioRoot, "missing-slot");
@@ -3679,7 +3683,7 @@ describe("StudioServer", () => {
 
             expect(health.status).toBe(200);
             expect(health.body).toEqual({status: "ok"});
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
     });
 
     describe("starting directly into project mode (pokie . / pokie <path>)", () => {
@@ -6487,7 +6491,7 @@ describe("StudioServer", () => {
             expect(secondDescriptor.totalBet).toBe(firstDescriptor.totalBet);
             expect(secondDescriptor.totalWin).toBe(firstDescriptor.totalWin);
             expect(secondDescriptor.screen).toEqual(firstDescriptor.screen);
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
     });
 
     describe("Project Dashboard: Play (POST /api/project/play/session, /api/project/play/sessions/:id/spin)", () => {
