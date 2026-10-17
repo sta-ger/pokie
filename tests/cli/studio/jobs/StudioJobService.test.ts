@@ -30,6 +30,22 @@ describe("StudioJobService", () => {
         expect(restarted.get("/project-b", "job-1")).toBeUndefined();
     });
 
+    it("records consumed optimization previews without rewriting mathematical evidence or sibling terminals", () => {
+        let nextId = 0;
+        const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => `apply-${++nextId}`);
+        const result = {summary: "Optimization inconclusive", detail: {status: "inconclusive", evidence: {measured: [0.7]}}};
+        for (const operation of ["optimization", "simulation"]) {
+            const start = service.start({projectId: "/a", operation, request: {}, conflictKey: operation});
+            if (start.status !== "created") throw Error("Expected admission");
+            service.complete(start.job.id, result);
+            service.recordOptimizationApply("/other", start.job.id, "/other");
+            expect(service.get("/a", start.job.id)?.result).toEqual(result);
+            service.recordOptimizationApply("/a", start.job.id, "/a");
+            expect(service.get("/a", start.job.id)?.result?.detail).toEqual(result.detail);
+            expect(service.get("/a", start.job.id)?.result?.provenance).toEqual(operation === "optimization" ? {authoredApply: {path: "/a"}} : undefined);
+        }
+    });
+
     it("lists retained jobs across projects when Home must protect an opening operation", () => {
         let nextId = 0;
         const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => `job-${++nextId}`);
@@ -341,6 +357,6 @@ it("retains idle Worker cleanup failure after admission closes and refuses grace
         const restarted = new StudioJobService(repository);
         expect(restarted.list()).toEqual([failure]);
     } finally {
-        fs.rmSync(directory, {recursive: true, force: true}); 
+        fs.rmSync(directory, {recursive: true, force: true});
     }
 });

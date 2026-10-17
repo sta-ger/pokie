@@ -60,11 +60,13 @@ import type {
     StudioStakeEngineExportView,
 } from "./types.js";
 
-export async function listProjectJobs(fetchImpl: FetchLike, signal?: AbortSignal): Promise<StudioJobView[]> {
+export async function listProjectJobs(fetchImpl: FetchLike, signal?: AbortSignal, expectedProjectRoot?: string): Promise<StudioJobView[]> {
     const response = await fetchImpl("/api/project/jobs", {cache: "no-store", ...(signal === undefined ? {} : {signal})});
     if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to list Studio jobs"));
-    const body = await response.json() as {jobs?: unknown};
-    return Array.isArray(body.jobs) ? body.jobs as StudioJobView[] : [];
+    const body = await response.json() as {jobs?: unknown; projectRoot?: string};
+    if (expectedProjectRoot && body.projectRoot && body.projectRoot !== expectedProjectRoot) return [];
+    const jobs = Array.isArray(body.jobs) ? body.jobs as StudioJobView[] : [];
+    return jobs;
 }
 
 /** Discovers retained Design/project-opening jobs before a project context exists. */
@@ -1446,7 +1448,7 @@ export async function previewMathDefinitionDiff(fetchImpl: FetchLike, request: {
     return body as import("./types.js").MathDefinitionDiff;
 }
 
-export async function optimizationAction<T>(fetchImpl: FetchLike, action: "support" | "start" | "save", body: unknown, signal?: AbortSignal): Promise<T> {
+export async function optimizationAction<T>(fetchImpl: FetchLike, action: "support" | "start" | "save" | "apply", body: unknown, signal?: AbortSignal): Promise<T> {
     const response = await fetchImpl(`/api/project/optimization/${action}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body), signal});
     const value = await response.json() as T & {error?: string};
     if (!response.ok) throw new Error(value.error ?? "Optimization request failed.");

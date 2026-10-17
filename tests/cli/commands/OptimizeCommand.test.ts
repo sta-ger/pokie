@@ -117,3 +117,21 @@ it.each(["search", "assessment"])("cancels from phase-aware stochastic %s progre
     expect(process.listenerCount("SIGINT")).toBe(listeners);
     progress.mockRestore();
 });
+
+it("requires an unchanged reviewed source, candidate and policy for explicit authored apply", async () => {
+    const command = new OptimizeCommand();
+    expect(await command.run([source, "--policy", policy])).toBe(0);
+    const review = path.join(directory, "review.json");
+    fs.writeFileSync(review, JSON.stringify(JSON.parse(stdout.mock.calls[stdout.mock.calls.length - 1][0])));
+    const before = fs.readFileSync(source);
+    const changed = optimizationRequest();
+    changed.policy.locks.push("/manifest");
+    fs.writeFileSync(policy, JSON.stringify(changed));
+    expect(await command.run([source, "--policy", policy, "--apply", review])).toBe(1);
+    expect(fs.readFileSync(source)).toEqual(before);
+    fs.writeFileSync(policy, JSON.stringify(optimizationRequest()));
+    expect(await command.run([source, "--policy", policy, "--apply", review])).toBe(0);
+    expect(JSON.parse(fs.readFileSync(source, "utf8")).paytable.A[2]).toBe(3);
+    expect(await command.run([source, "--policy", policy, "--apply", review])).toBe(1);
+    expect(await command.run([source, "--policy", policy, "--apply", review, "--out", path.join(directory, "out")])).toBe(3);
+});

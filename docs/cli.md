@@ -4003,3 +4003,14 @@ unsupported before executable acquisition. Artifact conversion remains under
 Exit statuses: success `0`, operational failure `1`, proven infeasible `2`, invalid
 request `3`, unsupported `4`, budget exhausted `5`, cancelled `6`. Only exhaustive
 supported search can prove infeasibility; errors and exhaustion retain distinct verdicts.
+
+Optimization uses the shared engine: `pokie optimize SOURCE --policy request.json --format json`
+prints a review without changing source; `--progress` writes phase/count JSON to stderr. To save an
+independent same-type artifact use `--out NEW_OR_EMPTY_DESTINATION`. For explicit authored
+Blueprint/PAR/declared-package apply, capture the preview outside the source tree in `review.json`,
+inspect it, then run `pokie optimize SOURCE --policy request.json --apply review.json`.
+The latter reruns the request and checks reviewed source, request and candidate revisions before
+committing. Changed locks/source/policy require another review; `--apply` cannot combine with `--out`.
+Exit codes remain success/attained 0, operational failure 1, infeasible 2, invalid 3, unsupported 4,
+exhausted 5, SIGINT cancellation 6 and inconclusive 7. See [optimization](optimization.md) for the six
+conditional adapters, author opt-in, confidence evidence, apply rollback and restart limits.

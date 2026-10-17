@@ -1,3 +1,9 @@
+import {StudioServer} from "../../../cli/studio/StudioServer.js";
+import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
+import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
+import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
+import {passthroughRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
+import {createTunableBlueprintGame} from "../../../src/optimization/createTunableBlueprintGame.js";
 import * as recipes from "../../../src/optimization/internal/createOptimizationSimulationGame.js";
 import {declarePackageTuning} from "../../../src/optimization/DeclaredTuningContract.js";
 import fs from "fs";
@@ -44,7 +50,7 @@ it("persists and reloads the full sampled verdict without granting lost process-
     const reloaded = new FileStudioJobRepository(path.join(directory, "jobs"));
     expect(reloaded.get(job.id)!.result).toEqual(completed.result);
     const fresh = new StudioOptimizationService(new StudioJobService(reloaded), new ProjectOptimizationService(path.join(directory, "fresh")));
-    const save = {expectedProjectRoot: source, jobId: job.id, destination: path.join(directory, "lost.json")};
+    const save = {request, expectedProjectRoot: source, jobId: job.id, destination: path.join(directory, "lost.json")};
     expect((await fresh.handle("POST", "save", save, context())).status).toBe(409);
     const output = path.join(directory, "candidate.json");
     expect((await routes.handle("POST", "save", {...save, destination: output}, context())).status).toBe(200);
@@ -66,8 +72,8 @@ it("runs through durable jobs, preserves terminal evidence on reload and saves o
     const reloaded = new FileStudioJobRepository(path.join(directory, "jobs"));
     expect(reloaded.get(job.id)?.result).toEqual(jobs.get(source, job.id)?.result);
     const output = path.join(directory, "saved.blueprint.json");
-    expect((await routes.handle("POST", "save", {expectedProjectRoot: source, jobId: job.id, destination: output}, context())).status).toBe(200);
-    expect((await routes.handle("POST", "save", {expectedProjectRoot: source, jobId: job.id, destination: output}, context())).status).toBe(409);
+    expect((await routes.handle("POST", "save", {request, expectedProjectRoot: source, jobId: job.id, destination: output}, context())).status).toBe(200);
+    expect((await routes.handle("POST", "save", {request, expectedProjectRoot: source, jobId: job.id, destination: output}, context())).status).toBe(409);
 });
 it("rejects stale source and conflicting requests while cancellation drains a real executor", async () => {
     const request = optimizationRequest();
@@ -117,7 +123,7 @@ it("discards stale Project results and retains the operational verdict", async (
             await routes.handle(
                 "POST",
                 "save",
-                {expectedProjectRoot: source, jobId: job.id, destination: path.join(directory, "stale.json")},
+                {request, expectedProjectRoot: source, jobId: job.id, destination: path.join(directory, "stale.json")},
                 context(),
             )
         ).status,
@@ -225,5 +231,81 @@ it("keeps cancelling until game release settles, then persists cleanup recovery 
         rejectRelease(new Error("test teardown"));
         await routes.drain();
         factory.mockRestore();
+    }
+});
+
+it("binds direct HTTP-style save and authored apply to the current reviewed policy, then consumes apply", async () => {
+    const request = optimizationRequest();
+    const support = await preview(request);
+    const started = await routes.handle("POST", "start", {request, expectedProjectRoot: source, sourceRevision: support.sourceRevision}, context());
+    await routes.drain();
+    const {job} = started.body as {job: StudioJobView};
+    const changed = structuredClone(request);
+    changed.policy.locks.push("/manifest");
+    const before = fs.readFileSync(source);
+    for (const action of ["save", "apply"] as const) {
+        const response = await routes.handle("POST", action, {request: changed, expectedProjectRoot: source, jobId: job.id, destination: path.join(directory, "rejected.json")}, context());
+        expect(response.status).toBe(409);
+        expect(fs.readFileSync(source)).toEqual(before);
+        expect(fs.existsSync(path.join(directory, "rejected.json"))).toBe(false);
+    }
+    const body = {request, expectedProjectRoot: source, jobId: job.id};
+    expect((await routes.handle("POST", "apply", body, context())).status).toBe(200);
+    expect(JSON.parse(fs.readFileSync(source, "utf8")).paytable.A[2]).toBe(3);
+    expect(jobs.get(source, job.id)?.result?.provenance).toMatchObject({authoredApply: {path: source}});
+    expect((await routes.handle("POST", "apply", body, context())).status).toBe(409);
+    await routes.shutdown();
+});
+
+it("routes actual HTTP apply through retained authority, refreshes the runtime, and rejects repeated apply", async () => {
+    const repository = new FileStudioJobRepository(path.join(directory, "http-jobs"));
+    const httpJobs = new StudioJobService(repository);
+    let terminal!: () => void;
+    const completed = new Promise<void>(resolve => {
+        terminal = resolve;
+    });
+    const save = repository.save.bind(repository);
+    const persisted = jest.spyOn(repository, "save").mockImplementation(job => {
+        save(job);
+        if (job.operation === "optimization" && job.status === "completed") terminal();
+    });
+    const loadedValues: number[] = [];
+    const loadGame = (file: string) => {
+        const model = JSON.parse(fs.readFileSync(file, "utf8"));
+        loadedValues.push(model.paytable.A[2]);
+        return Promise.resolve(createTunableBlueprintGame(model));
+    };
+    const home = new StudioHomeService("1.3.0", undefined, loadGame);
+    const server = new StudioServer({pokieVersion: "1.3.0", port: 0, studioRoot: directory, initialContext: {mode: "project", projectRoot: source},
+        jobService: httpJobs, homeService: home, blueprintService: new StudioBlueprintService("1.3.0", directory, home),
+        projectRegistrationService: new StudioProjectRegistrationService(), loadGame, resolveRuntimePackageRoot: passthroughRuntimePackageResolver});
+    try {
+        const address = await server.start();
+        const base = `http://${address.host}:${address.port}`;
+        const post = (action: string, body: unknown) => fetch(`${base}/api/project/optimization/${action}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+        const request = optimizationRequest();
+        const supportResponse = await post("support", {expectedProjectRoot: source, request});
+        expect(supportResponse.status).toBe(200);
+        const support = await supportResponse.json() as {sourceRevision: string};
+        const started = await post("start", {expectedProjectRoot: source, request, sourceRevision: support.sourceRevision});
+        expect(started.status).toBe(202);
+        const {job} = await started.json() as {job: StudioJobView};
+        await completed;
+        const changed = structuredClone(request);
+        changed.policy.locks.push("/manifest");
+        const before = fs.readFileSync(source);
+        expect((await post("apply", {expectedProjectRoot: source, request: changed, jobId: job.id})).status).toBe(409);
+        expect(fs.readFileSync(source)).toEqual(before);
+        const body = {expectedProjectRoot: source, request, jobId: job.id};
+        expect((await post("apply", body)).status).toBe(200);
+        const contextResponse = await fetch(`${base}/api/project/context`);
+        expect(await contextResponse.json()).toMatchObject({status: "loaded", projectRoot: source, type: "blueprint"});
+        expect(loadedValues).toEqual(expect.arrayContaining([2, 3]));
+        expect(loadedValues[loadedValues.length - 1]).toBe(3);
+        expect(JSON.parse(fs.readFileSync(source, "utf8")).paytable.A[2]).toBe(3);
+        expect((await post("apply", body)).status).toBe(409);
+    } finally {
+        await server.stop();
+        persisted.mockRestore();
     }
 });

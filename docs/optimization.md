@@ -297,3 +297,52 @@ and a late release failure takes precedence over cancellation. Publication
 uses existing new/empty destination and ownership-aware rollback rules, including the evidence and
 WASM companions. Independent review, production bundle/packaging and controller gates remain separate
 from these implementation tests.
+
+## Reviewed authored apply
+
+Artifact publication and authored apply are separate operations. `publish(candidate, request,
+newDestination)` and CLI `--out` preserve the source and require a new/empty destination.
+`apply(candidate, currentRequest)` explicitly commits Blueprint JSON, canonical PAR paytable
+cells/provenance, or a declared TS package's parameter file and contract model hash. Outcome
+Library, Stake and WASM remain generated artifacts: save them to a new destination. Source
+code, package metadata, dependency bindings, workbook declarations and locked model fields
+are not tuning inputs unless the documented contract grants that field.
+
+For the CLI, first capture and inspect the JSON preview **outside the source project tree**:
+
+```sh
+pokie optimize SOURCE --policy request.json --format json > review.json
+pokie optimize SOURCE --policy request.json --apply review.json --format json
+```
+
+The second command reruns the same bounded deterministic request, then requires the resulting
+candidate revision, source identity/revision and normalized policy revision to equal the reviewed
+preview. It obtains a fresh process-local engine receipt; persisted JSON never restores an engine
+receipt. A changed lock, source, selected candidate or policy requires a fresh review. `--apply` and
+`--out` are mutually exclusive. A default preview discards its temporary candidate after printing.
+The apply response keeps its mathematical verdict, including inconclusive/exhausted best-so-far
+results; deliberate application does not certify a target that was not attained.
+
+Studio Overview presents per-target units, population, requested value/tolerance, measured result
+and verdict. Sampled measurements use the held-out assessment with confidence bounds, confidence
+level and actual observations; search estimates remain only in expanded provenance. Exact results
+are labelled exact. Tunables, locks, protected files, constraint checks, precision and native parameter
+changes remain visible; authored definition changes reuse the shared definition differ. A native
+weight preview preserves uint64 strings and does not imply a Blueprint conversion.
+
+`POST /api/project/optimization/apply` takes `{expectedProjectRoot, jobId, request}`; artifact
+`/save` additionally requires `destination`. Both check the submitted current normalized policy
+through the retained shared authority. Apply validates a detached same-type copy and native readback
+before committing, compares source and candidate revisions again at the write boundary, and consumes
+the old preview. TS parameter and contract writes roll back together on write/cleanup failure;
+rollback preserves conflicting external edits and reports recovery instructions. Failed staging
+cleanup occurs before authored mutation. Studio clears the old Play session, refreshes its project
+runtime from committed bytes, and requires fresh support/review for another apply.
+
+Browser reload reattaches server-owned jobs through canonical identity. Server restart retains
+terminal evidence but cannot resume an optimization search or restore candidate apply/save authority.
+Use a fresh support check and run after cancellation, operational failure, restart or lost authority.
+The generic recover endpoint only resumes separately supported generation jobs. Project close/switch
+and shutdown request cancellation and drain owned optimization executions/candidates; independently
+published artifacts survive candidate cleanup. Independent browser/API/CLI verification and production
+bundle/package gates remain controller-owned.

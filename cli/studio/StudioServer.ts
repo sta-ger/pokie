@@ -596,6 +596,7 @@ export class StudioServer implements StudioServerHandling {
             for (const job of this.activeCommonJobs()) {
                 if (job.id !== excludeJobId) this.jobService.cancel(job.projectId, job.id);
             }
+            await this.optimizationService?.releaseCandidates();
         } finally {
             this.validationTransitions--;
         }
@@ -765,7 +766,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        this.sendJson(res, 200, {jobs: this.jobService.list(this.canonicalPathIdentity(this.currentContext.projectRoot))});
+        this.sendJson(res, 200, {projectRoot: this.currentContext.projectRoot, projectId: this.canonicalPathIdentity(this.currentContext.projectRoot), jobs: this.jobService.list(this.canonicalPathIdentity(this.currentContext.projectRoot))});
     }
 
     private isHomeScopedJob(job: StudioJobView): boolean {
@@ -1169,17 +1170,34 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const optimizationRoute = (/^\/api\/project\/optimization\/(support|start|save)$/).exec(url.pathname);
+        const optimizationRoute = (/^\/api\/project\/optimization\/(support|start|save|apply)$/).exec(url.pathname);
         if (optimizationRoute) {
             const context = this.currentContext;
             if (context.mode !== "project") {
                 this.sendJson(res, 409, {error: "No active Project."});
                 return;
             }
+            if (this.validationTransitions > 0) {
+                this.sendJson(res, 409, {error: "Project transition is draining active work. Retry after it finishes."});
+                return;
+            }
+            if (method === "POST" && optimizationRoute[1] === "apply") {
+                if (this.activeCommonJobs().length) {
+                    this.sendJson(res, 409, {error: "Wait for active Project work to finish before applying authored changes."});
+                    return;
+                }
+                await this.playService.reset();
+            }
             this.optimizationService ??= new StudioOptimizationService(this.jobService);
-            const result = await this.optimizationService.handle(method, optimizationRoute[1] as "support" | "start" | "save", await this.readJsonBody(req), {
-                projectRoot: context.projectRoot, projectId: this.canonicalPathIdentity(context.projectRoot), isCurrent: () => this.currentContext === context,
+            const result = await this.optimizationService.handle(method, optimizationRoute[1] as "support" | "start" | "save" | "apply", await this.readJsonBody(req), {
+                projectRoot: context.projectRoot, projectId: this.canonicalPathIdentity(context.projectRoot), isCurrent: () => this.currentContext === context && this.validationTransitions === 0,
             });
+            if (optimizationRoute[1] === "apply" && result.status === 200 && this.currentContext === context) {
+                // Invalidate all runtime preparations and rebuild the dashboard from committed bytes.
+                this.currentContext = {...context};
+                this.startProjectDashboardLoad(context.projectRoot);
+                await Promise.all([...this.dashboardLoads]);
+            }
             this.sendJson(res, result.status, result.body);
             return;
         }

@@ -1,3 +1,4 @@
+import {OptimizationPreview} from "./OptimizationPreview";
 import {Alert, Button, Code, Stack, Text, Textarea, TextInput, Title} from "@mantine/core";
 import {useEffect, useRef, useState} from "react";
 import {optimizationAction} from "../../api/apiClient";
@@ -26,7 +27,7 @@ const initialRequest: StudioOptimizationRequest = {
     },
 };
 /** One shared policy form, available in runtime, native outcome and artifact dashboards. */
-export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
+export function OptimizationPanel({projectRoot, onApplied}: {projectRoot: string; onApplied?: () => void}) {
     const fetchImpl = useStudioApi();
     const [text, setText] = useState(JSON.stringify(initialRequest, null, 2));
     const [support, setSupport] = useState<StudioOptimizationSupport>();
@@ -34,6 +35,7 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
     const [error, setError] = useState<string>();
     const [destination, setDestination] = useState("");
     const [saved, setSaved] = useState<string>();
+    const [applied, setApplied] = useState(false);
     const [started, setStarted] = useState<StudioJobView>();
     const generation = useRef(0);
     const edited = useRef(false);
@@ -41,6 +43,7 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
     const jobs = useProjectJobs(fetchImpl, projectRoot, 0);
     useEffect(
         () => {
+            setApplied(false);
             setSupport(undefined);
             setStarted(undefined);
             setSaved(undefined);
@@ -55,10 +58,10 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
         },
         [projectRoot],
     );
-    const projectJobs = jobs.jobs.filter((item) => item.projectId === projectRoot);
+    const projectJobs = jobs.jobs;
     const job =
         projectJobs.find((item) => item.id === started?.id) ??
-        (started?.projectId === projectRoot ? started : undefined) ??
+        started ??
         projectJobs.find((item) => item.operation === "optimization");
     useEffect(() => {
         if (!edited.current && job?.request.request) {
@@ -75,7 +78,7 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
     }
     const result = matchesRequest ? (job?.result?.detail as StudioOptimizationResult | undefined) : undefined;
     const active = job !== undefined && ["queued", "running", "cancelling"].includes(job.status);
-    const action = async (kind: "support" | "start" | "save"): Promise<void> => {
+    const action = async (kind: "support" | "start" | "save" | "apply"): Promise<void> => {
         const current = ++generation.current;
         controller.current?.abort();
         controller.current = new AbortController();
@@ -100,17 +103,26 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
                     controller.current.signal,
                 );
                 if (current === generation.current) {
+                    setApplied(false);
                     setStarted(value.job);
                     jobs.refresh();
                 }
             } else {
-                const value = await optimizationAction<{outputPath: string}>(
+                const value = await optimizationAction<{outputPath: string; warning?: string}>(
                     fetchImpl,
                     kind,
-                    {jobId: job?.id, destination, expectedProjectRoot: projectRoot},
+                    {jobId: job?.id, request, destination, expectedProjectRoot: projectRoot},
                     controller.current.signal,
                 );
-                if (current === generation.current) setSaved(value.outputPath);
+                if (current === generation.current) {
+                    setSaved(value.outputPath);
+                    if (value.warning) setError(value.warning);
+                    if (kind === "apply") {
+                        setApplied(true);
+                        setSupport(undefined);
+                        onApplied?.();
+                    }
+                }
             }
         } catch (failure) {
             if (current === generation.current) setError(failure instanceof Error ? failure.message : String(failure));
@@ -122,8 +134,7 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
         <Stack mt="lg">
             <Title order={3}>Optimize math</Title>
             <Text size="sm">
-                Review an exact or sampled same-type candidate, then save it to a new destination. Authored source changes require
-                a separate save or apply.
+                Review the targets and changes, then explicitly apply authored Blueprint/PAR/declared package parameters or save a same-type artifact to a new destination.
             </Text>
             <Textarea
                 label="Math targets and optimization policy (JSON)"
@@ -183,15 +194,21 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
                     <Text>Verdict: {result.status}</Text>
                     {result.candidate && !["success", "attained"].includes(result.status) && <Alert color="yellow">Best-so-far candidate; targets are not approved. Saving preserves this verdict.</Alert>}
                     {result.diagnostics.length > 0 && <Alert color="red" role="alert">{result.diagnostics.map((item) => `${item.path}: ${item.message}`).join("; ")}</Alert>}
-                    {result.evidence && <Code block>{JSON.stringify(result.evidence, null, 2)}</Code>}
+                    {result.evidence && <>
+                        <OptimizationPreview evidence={result.evidence} />
+                        <details><summary>Full evidence and provenance</summary><Code block>{JSON.stringify(result.evidence, null, 2)}</Code></details>
+                    </>}
                 </>
             )}
             {job?.error && <Alert color="red" role="alert">{job.error}</Alert>}
             {job?.recovery && <Alert color="yellow" role="alert">Recovery ({job.recovery.action}): {job.recovery.reason}</Alert>}
             {jobs.connectionError && <Alert color="red" role="alert">{jobs.connectionError}</Alert>}
             {jobs.actionError && <Alert color="red" role="alert">{jobs.actionError}</Alert>}
-            {result?.candidate && ["success", "attained", "inconclusive", "exhausted"].includes(result.status) && job?.status === "completed" && (
+            {!applied && !job?.result?.provenance?.authoredApply && result?.candidate && ["success", "attained", "inconclusive", "exhausted"].includes(result.status) && job?.status === "completed" && (
                 <>
+                    { ["blueprint", "parWorkbook", "tsPackage"].includes(result.candidate.type) && <Button disabled={busy} onClick={() => {
+                        action("apply");
+                    }}>Apply reviewed changes to source</Button>}
                     <TextInput
                         label="Candidate destination"
                         value={destination}
@@ -207,6 +224,7 @@ export function OptimizationPanel({projectRoot}: {projectRoot: string}) {
                     </Button>
                 </>
             )}
+            {(applied || Boolean(job?.result?.provenance?.authoredApply)) && <Alert color="green">Authored changes applied. Check support and run a fresh preview before applying again.</Alert>}
             {saved && <Alert color="green">Candidate saved: {saved}</Alert>}
             {error && (
                 <Alert color="red" role="alert">

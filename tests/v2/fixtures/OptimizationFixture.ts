@@ -33,3 +33,17 @@ export const stochasticOptimizationRequest = (): OptimizationRequest => {
     request.targets[0].tolerance = {kind: "absolute", value: 0.15};
     return request;
 };
+
+export const declaredOptimizationGameCode = `const p = require('@fromstan/pokie');
+const data = require('./parameters.json');
+function config() {
+ const c = new p.VideoSlotConfig(); c.setAvailableBets(data.availableBets); c.setReelsNumber(data.reels); c.setReelsSymbolsNumber(data.rows);
+ c.setAvailableSymbols(data.symbols); c.setWildSymbols([]); c.setScatterSymbols([]);
+ c.setSymbolsSequences(data.reelStrips.map(s => new p.SymbolsSequence().fromArray(s)));
+ const lines = new p.CustomLinesDefinitions(); data.paylines.forEach((line,i) => lines.setLineDefinition(String(i), line)); c.setLinesDefinitions(lines);
+ const table = new p.Paytable(data.availableBets); for (const [symbol, amounts] of Object.entries(data.paytable)) for (const [count, amount] of Object.entries(amounts)) table.setPayoutForSymbol(symbol, Number(count), amount); c.setPaytable(table); return c;
+}
+module.exports = {getManifest: () => data.manifest, getConfigHash: () => p.computeGameBlueprintHash(data),
+ createSession() { const c = config(); return new p.VideoSlotSession(c, new p.SymbolsCombinationsGenerator(c, new p.SeededRandomNumberGenerator(1))); },
+ createExactEnumerationSession(forced) { return new p.VideoSlotSession(config(), forced); }};
+`;
