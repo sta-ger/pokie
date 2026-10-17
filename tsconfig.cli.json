@@ -4,6 +4,6 @@
         "outDir": "dist",
         "rootDir": "."
     },
-    "include": ["cli"],
+    "include": ["cli", "src/simulation/parallel/internal/simulationWorkerEntry.ts"],
     "exclude": ["cli/client", "cli/studio-client"]
 }

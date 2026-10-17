@@ -4,7 +4,6 @@ import fs from "fs";
 import path from "path";
 import {execFileSync} from "child_process";
 import ts from "typescript";
-import {writeOptimizationWorkerEntry} from "../../v2/fixtures/OptimizationWorkerFixture.js";
 import {OptimizeCommand} from "../../../cli/commands/OptimizeCommand.js";
 import {optimizationBlueprint, optimizationRequest, stochasticOptimizationRequest, declaredOptimizationGameCode} from "../../v2/fixtures/OptimizationFixture.js";
 let directory: string;
@@ -34,16 +33,23 @@ it.each([
     ["CommonJS", "dist/cjs", "build-cjs:compile", ts.ModuleKind.CommonJS],
     ["CLI", "dist/src", "build-cli:compile", ts.ModuleKind.ES2022],
 ] as const)("resolves the packaged %s default through the real coordinator and drains optimization workers", (_label, tree, script, moduleKind) => {
+    const configFile = tree === "dist/src" ? "tsconfig.cli.json" : "tsconfig.prod.json";
+    const config = ts.readConfigFile(path.resolve(configFile), ts.sys.readFile);
+    expect(config.error).toBeUndefined();
+    const inputs = ts.parseJsonConfigFileContent(config.config, ts.sys, path.resolve("."));
+    expect(inputs.errors).toEqual([]);
+    // A dynamic URL is not a TypeScript import. The consuming compiler must own the entry.
+    expect(inputs.fileNames).toContain(path.resolve("src/simulation/parallel/internal/simulationWorkerEntry.ts"));
     const installation = path.join(directory, "native-runtime");
     const emitted = new Set<string>();
-    // Only emit the coordinator's runtime imports, rather than running a package build.
+    // Emit only the coordinator and worker runtime closure, without running a package build.
     // Native Node must call from parallel/ into internal/; direct helper calls hid the defect.
     const emit = (relative: string): void => {
         if (emitted.has(relative)) return;
         emitted.add(relative);
         const sourceText = fs.readFileSync(path.resolve("src", relative), "utf8");
-        const esm = ts.transpileModule(sourceText, {compilerOptions: {module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022, esModuleInterop: true}}).outputText;
-        const output = moduleKind === ts.ModuleKind.ES2022 ? esm : ts.transpileModule(sourceText, {compilerOptions: {module: moduleKind, target: ts.ScriptTarget.ES2022, esModuleInterop: true}}).outputText;
+        const esm = ts.transpileModule(sourceText, {compilerOptions: {module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2015, esModuleInterop: true}}).outputText;
+        const output = moduleKind === ts.ModuleKind.ES2022 ? esm : ts.transpileModule(sourceText, {compilerOptions: {module: moduleKind, target: ts.ScriptTarget.ES2015, esModuleInterop: true}}).outputText;
         const file = path.join(installation, tree, relative.replace(/\.ts$/, ".js"));
         fs.mkdirSync(path.dirname(file), {recursive: true});
         fs.writeFileSync(file, output);
@@ -52,6 +58,7 @@ it.each([
         }
     };
     emit("simulation/parallel/SimulationWorkerCoordinator.ts");
+    emit("simulation/parallel/internal/simulationWorkerEntry.ts");
     fs.writeFileSync(path.join(installation, "package.json"), JSON.stringify({type: "module"}));
     if (moduleKind === ts.ModuleKind.CommonJS) fs.writeFileSync(path.join(installation, tree, "package.json"), JSON.stringify({type: "commonjs"}));
     const asset = "simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs";
@@ -61,11 +68,9 @@ it.each([
     const copy = scripts[script].split(" && ").find(command => command.startsWith(`shx cp src/${asset} `));
     expect(copy).toBeDefined();
     execFileSync(process.execPath, [path.resolve("node_modules/shx/lib/cli.js"), ...copy!.split(" ").slice(1)], {cwd: installation, timeout: 5000});
-    // Run the real source worker at the resolved package entry, using the existing source loader.
-    // The controller still owns compilation/packaging of the complete worker dependency graph.
-    const sourceWorker = writeOptimizationWorkerEntry(directory);
-    fs.writeFileSync(path.join(installation, tree, "simulation/parallel/internal/simulationWorkerEntry.js"),
-        moduleKind === ts.ModuleKind.CommonJS ? fs.readFileSync(sourceWorker, "utf8") : `import ${JSON.stringify(sourceWorker)};`);
+    // Native evaluation of the actual emitted entry is essential: a CommonJS source loader
+    // hides ESM initialization-order failures before the worker can send its first message.
+    const emittedWorker = path.join(installation, tree, "simulation/parallel/internal/simulationWorkerEntry.js");
     const probe = path.join(installation, "probe.mjs");
     fs.writeFileSync(probe, `import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -101,6 +106,17 @@ const invalid = requests.map(({optimizationRecipe, ...request}) => ({...request,
 await assert.rejects(coordinator.run(invalid), /worker|package/i);
 drained();
 await success(); await success();
+// A native startup failure cannot acknowledge runtime release. Retain its cause while
+// rejecting cleanup, then restore the exact entry and reuse this same coordinator twice.
+const entry = ${JSON.stringify(emittedWorker)};
+fs.renameSync(entry, entry + '.held');
+try {
+    await assert.rejects(coordinator.run(requests), error => /cleanup unconfirmed/i.test(error.message) && /Cannot find module/.test(error.message));
+    drained();
+} finally {
+    fs.renameSync(entry + '.held', entry);
+}
+await success(); await success();
 const active = new AbortController();
 let samples = 0;
 await assert.rejects(coordinator.run(requests.map(request => ({...request, rounds: 10000000})), {
@@ -108,7 +124,7 @@ await assert.rejects(coordinator.run(requests.map(request => ({...request, round
 }), /cancel/i);
 assert.ok(samples > 0); drained();
 await success();
-await success(new SimulationWorkerCoordinator(pathToFileURL(${JSON.stringify(sourceWorker)})));
+await success(new SimulationWorkerCoordinator(pathToFileURL(${JSON.stringify(emittedWorker)})));
 assert.deepEqual(fs.readFileSync(process.argv[2]), before);
 console.log('Native default: two-worker samples, rejection/reuse, active cancel, retry, override and termination passed.');
 `);
