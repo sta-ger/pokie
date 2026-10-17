@@ -380,14 +380,15 @@ it("uses the canonical evaluated geometry for omitted paylines in search and ass
     fs.writeFileSync(source, JSON.stringify(geometry));
     const request = stochasticOptimizationRequest();
     request.policy.tunables[0].values = [1];
-    request.policy.sampling!.minEventCount = 0;
     request.policy.locks = ["/screenGeometry", "/reelStrips", "/paytable/B", "/availableBets"];
     request.targets[0] = {metric: "rtp", unit: "ratio", value: 2, tolerance: {kind: "absolute", value: 0.1}};
-    const result = await service.optimize(await resolve(source), request);
+    const project = await resolve(source);
+    expect((await service.support(project, request)).supported).toBe(true);
+    const result = await service.optimize(project, request);
     expect(result.diagnostics).toEqual([]);
-    expect(result.status).toBe("attained");
+    expect(result.status).toBe("inconclusive");
     expect(result.evidence!.evaluations![0].measured).toEqual([2]);
-    expect(result.evidence!.stochastic!.assessment).toMatchObject({returnBound: 2, estimates: [2], targets: [{verdict: "attained"}]});
+    expect(result.evidence!.stochastic!.assessment).toMatchObject({returnBound: 2, estimates: [2], targets: [{verdict: "inconclusive", reason: "insufficient success/failure event coverage"}]});
     await service.discard(result.candidate!);
 });
 
