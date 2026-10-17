@@ -119,6 +119,8 @@ export type OptimizationOptions = {
     isCurrent?: () => boolean;
     signal?: AbortSignal;
     onProgress?: (evidence: OptimizationEvidence) => void;
+    /** Synchronous notification after authored commit and receipt consumption, before yielding. */
+    onAuthoredCommit?: () => void;
 };
 
 export type OptimizationSamplingPolicy = {

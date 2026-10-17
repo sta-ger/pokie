@@ -5,7 +5,7 @@ import {digest, assertNoFilesystemAliases} from "./optimizationData.js";
 /** Synchronous commit section: no application task can interleave the multi-file write.
  * External edits are compared before replacement and rollback only restores owned bytes.
  */
-export function applyAuthoredFiles(files: {file: string; before: Buffer; after: Buffer}[], assertCurrent: () => void, stagingParent: string, ownership: Set<string>): void {
+export function applyAuthoredFiles(files: {file: string; before: Buffer; after: Buffer}[], assertCurrent: () => void, stagingParent: string, ownership: Set<string>, validateCommitted: () => void): void {
     const prepared: {file: string; temporary: string; before: Buffer; after: Buffer; installed?: fs.Stats}[] = [];
     let failure: unknown;
     try {
@@ -29,10 +29,13 @@ export function applyAuthoredFiles(files: {file: string; before: Buffer; after: 
             item.installed = fs.statSync(staged);
             fs.renameSync(staged, item.file);
         }
+        validateCommitted();
         for (const item of prepared) {
             fs.rmSync(item.temporary, {recursive: true});
             ownership.delete(item.temporary);
         }
+        // Cleanup is also an external filesystem boundary; recheck the whole state.
+        validateCommitted();
         return;
     } catch (error) {
         failure = error;
@@ -52,5 +55,5 @@ export function applyAuthoredFiles(files: {file: string; before: Buffer; after: 
             recovery.push(`${item.file}: ${String(error)}`);
         }
     }
-    throw new Error(`Authored apply failed: ${String(failure)}${recovery.length ? ` Recovery required: ${recovery.join("; ")}` : " Original source restored."}`);
+    throw new Error(`Authored apply failed: ${String(failure)}${recovery.length ? ` Recovery required: ${recovery.join("; ")}` : " Owned replacements restored; refresh source and optimize again."}`);
 }

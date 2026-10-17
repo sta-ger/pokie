@@ -1,3 +1,4 @@
+import {ArtifactPublicationOwnership} from "../../../src/project/ArtifactPublicationOwnership.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
@@ -30,6 +31,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
     await routes.drain();
+    jest.restoreAllMocks();
     fs.rmSync(directory, {recursive: true, force: true});
 });
 async function preview(request = optimizationRequest()) {
@@ -257,55 +259,285 @@ it("binds direct HTTP-style save and authored apply to the current reviewed poli
     await routes.shutdown();
 });
 
-it("routes actual HTTP apply through retained authority, refreshes the runtime, and rejects repeated apply", async () => {
+function latch() {
+    let release!: () => void;
+    const promise = new Promise<void>(resolve => {
+        release = resolve;
+    });
+    return {promise, release};
+}
+
+async function httpStudio(loadGame = (file: string) => Promise.resolve(createTunableBlueprintGame(JSON.parse(fs.readFileSync(file, "utf8"))))) {
     const repository = new FileStudioJobRepository(path.join(directory, "http-jobs"));
     const httpJobs = new StudioJobService(repository);
-    let terminal!: () => void;
-    const completed = new Promise<void>(resolve => {
-        terminal = resolve;
-    });
+    const completed = latch();
     const save = repository.save.bind(repository);
-    const persisted = jest.spyOn(repository, "save").mockImplementation(job => {
+    jest.spyOn(repository, "save").mockImplementation(job => {
         save(job);
-        if (job.operation === "optimization" && job.status === "completed") terminal();
+        if (job.operation === "optimization" && job.status === "completed") completed.release();
     });
-    const loadedValues: number[] = [];
-    const loadGame = (file: string) => {
-        const model = JSON.parse(fs.readFileSync(file, "utf8"));
-        loadedValues.push(model.paytable.A[2]);
-        return Promise.resolve(createTunableBlueprintGame(model));
-    };
-    const home = new StudioHomeService("1.3.0", undefined, loadGame);
+    const home = new StudioHomeService("1.3.0", undefined, loadGame, undefined, passthroughRuntimePackageResolver);
     const server = new StudioServer({pokieVersion: "1.3.0", port: 0, studioRoot: directory, initialContext: {mode: "project", projectRoot: source},
         jobService: httpJobs, homeService: home, blueprintService: new StudioBlueprintService("1.3.0", directory, home),
         projectRegistrationService: new StudioProjectRegistrationService(), loadGame, resolveRuntimePackageRoot: passthroughRuntimePackageResolver});
+    const address = await server.start();
+    const base = `http://${address.host}:${address.port}`;
+    const post = (route: string, body: unknown) => fetch(`${base}/api/${route}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    const request = optimizationRequest();
+    const supportResponse = await post("project/optimization/support", {expectedProjectRoot: source, request});
+    expect(supportResponse.status).toBe(200);
+    const support = await supportResponse.json() as {sourceRevision: string};
+    const started = await post("project/optimization/start", {expectedProjectRoot: source, request, sourceRevision: support.sourceRevision});
+    expect(started.status).toBe(202);
+    const {job} = await started.json() as {job: StudioJobView};
+    await completed.promise;
+    return {server, base, post, request, job, body: {expectedProjectRoot: source, request, jobId: job.id}};
+}
+
+it.each(["ready", "preparing"])("actual HTTP apply preserves rejected sessions and invalidates an overlapping %s Play session", async phase => {
+    const loadedValues: number[] = [];
+    const loaderEntered = latch();
+    const loaderGate = latch();
+    let holdNextLoad = false;
+    const releaseGame = jest.fn();
+    const loadGame = async (file: string) => {
+        const model = JSON.parse(fs.readFileSync(file, "utf8"));
+        loadedValues.push(model.paytable.A[2]);
+        const game = createTunableBlueprintGame(model);
+        if (holdNextLoad) {
+            holdNextLoad = false;
+            const release = game.release!;
+            game.release = async () => {
+                releaseGame();
+                await release();
+            };
+            loaderEntered.release();
+            await loaderGate.promise;
+        }
+        return game;
+    };
+    const {server, base, post, request, body} = await httpStudio(loadGame);
+    const validated = latch();
+    const commitGate = latch();
+    const committed = latch();
     try {
-        const address = await server.start();
-        const base = `http://${address.host}:${address.port}`;
-        const post = (action: string, body: unknown) => fetch(`${base}/api/project/optimization/${action}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
-        const request = optimizationRequest();
-        const supportResponse = await post("support", {expectedProjectRoot: source, request});
-        expect(supportResponse.status).toBe(200);
-        const support = await supportResponse.json() as {sourceRevision: string};
-        const started = await post("start", {expectedProjectRoot: source, request, sourceRevision: support.sourceRevision});
-        expect(started.status).toBe(202);
-        const {job} = await started.json() as {job: StudioJobView};
-        await completed;
+        const created = await post("project/play/session", {seed: "old-session"});
+        expect(created.status).toBe(201);
+        const old = await created.json() as {session: {sessionId: string}};
         const changed = structuredClone(request);
         changed.policy.locks.push("/manifest");
         const before = fs.readFileSync(source);
-        expect((await post("apply", {expectedProjectRoot: source, request: changed, jobId: job.id})).status).toBe(409);
+        for (const rejected of [null, {...body, expectedProjectRoot: directory}, {...body, request: changed}, {...body, jobId: "unavailable"}]) {
+            expect((await post("project/optimization/apply", rejected)).status).toBeGreaterThanOrEqual(400);
+            expect(fs.readFileSync(source)).toEqual(before);
+            const spin = await post(`project/play/sessions/${old.session.sessionId}/spin`, {bet: 1});
+            expect(spin.status).toBe(200);
+            expect(await spin.json()).toMatchObject({status: "ok", session: {sessionId: old.session.sessionId}});
+        }
+        const failure = jest.spyOn(ProjectOptimizationService.prototype, "publish").mockRejectedValueOnce(new Error("native validation refused"));
+        expect((await post("project/optimization/apply", body)).status).toBe(409);
+        failure.mockRestore();
         expect(fs.readFileSync(source)).toEqual(before);
-        const body = {expectedProjectRoot: source, request, jobId: job.id};
-        expect((await post("apply", body)).status).toBe(200);
+        expect((await post(`project/play/sessions/${old.session.sessionId}/spin`, {bet: 1})).status).toBe(200);
+        const publish = ProjectOptimizationService.prototype.publish;
+        jest.spyOn(ProjectOptimizationService.prototype, "publish").mockImplementation(async function (this: ProjectOptimizationService, ...args) {
+            const output = await Reflect.apply(publish, this, args);
+            validated.release();
+            await commitGate.promise;
+            return output;
+        });
+        const rename = fs.renameSync;
+        jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+            const result = rename(from, to);
+            if (String(from).includes(".pokie-apply-") && String(to) === source) committed.release();
+            return result;
+        });
+        const applying = post("project/optimization/apply", body);
+        await validated.promise;
+        expect(fs.readFileSync(source)).toEqual(before);
+        holdNextLoad = phase === "preparing";
+        const overlapping = post("project/play/session", {seed: "overlapping-session"});
+        let overlappingId: string | undefined;
+        if (phase === "ready") {
+            const response = await overlapping;
+            expect(response.status).toBe(201);
+            overlappingId = (await response.json() as {session: {sessionId: string}}).session.sessionId;
+        } else {
+            await loaderEntered.promise;
+        }
+        commitGate.release();
+        await committed.promise;
+        if (phase === "preparing") {
+            expect((await post("project/play/session", {})).status).toBe(409);
+            expect((await post(`project/play/sessions/${old.session.sessionId}/spin`, {})).status).toBe(409);
+            loaderGate.release();
+            expect((await overlapping).status).toBe(409);
+            expect(releaseGame).toHaveBeenCalledTimes(1);
+        }
+        expect((await applying).status).toBe(200);
         const contextResponse = await fetch(`${base}/api/project/context`);
         expect(await contextResponse.json()).toMatchObject({status: "loaded", projectRoot: source, type: "blueprint"});
         expect(loadedValues).toEqual(expect.arrayContaining([2, 3]));
         expect(loadedValues[loadedValues.length - 1]).toBe(3);
         expect(JSON.parse(fs.readFileSync(source, "utf8")).paytable.A[2]).toBe(3);
-        expect((await post("apply", body)).status).toBe(409);
+        for (const id of [old.session.sessionId, overlappingId].filter(Boolean)) expect((await post(`project/play/sessions/${id}/spin`, {})).status).toBe(404);
+        const fresh = await post("project/play/session", {seed: "committed-session"});
+        expect(fresh.status).toBe(201);
+        const freshId = (await fresh.json() as {session: {sessionId: string}}).session.sessionId;
+        const winning = await post(`project/play/sessions/${freshId}/find-any-win`, {});
+        expect(winning.status).toBe(200);
+        const played = await winning.json() as {status: string; session: {bet: number; win: number}};
+        expect(played.status).toBe("ok");
+        expect(played.session.win).toBeGreaterThan(0);
+        expect(played.session.win / played.session.bet).toBeCloseTo(3);
+        expect((await post("project/optimization/apply", body)).status).toBe(409);
+        expect((await post(`project/play/sessions/${freshId}/spin`, {})).status).toBe(200);
     } finally {
+        commitGate.release();
+        loaderGate.release();
         await server.stop();
-        persisted.mockRestore();
     }
+});
+
+it.each(["shutdown", "close", "switch"])("actual HTTP %s invalidates and drains an admitted apply before mutation", async lifecycle => {
+    const {server, post, body} = await httpStudio();
+    const entered = latch();
+    const gate = latch();
+    const draining = latch();
+    const before = fs.readFileSync(source);
+    const unowned = path.join(directory, "unowned-output.json");
+    fs.writeFileSync(unowned, "external output");
+    const publish = ProjectOptimizationService.prototype.publish;
+    jest.spyOn(ProjectOptimizationService.prototype, "publish").mockImplementation(async function (this: ProjectOptimizationService, ...args) {
+        const output = await Reflect.apply(publish, this, args);
+        entered.release();
+        await gate.promise;
+        return output;
+    });
+    const release = StudioOptimizationService.prototype.releaseCandidates;
+    jest.spyOn(StudioOptimizationService.prototype, "releaseCandidates").mockImplementation(function (this: StudioOptimizationService) {
+        const result = Reflect.apply(release, this, []);
+        draining.release();
+        return result;
+    });
+    let stopped = false;
+    try {
+        const applying = post("project/optimization/apply", body);
+        await entered.promise;
+        let finished = false;
+        const transition = lifecycle === "shutdown" ? server.stop().then(() => {
+            stopped = true;
+        })
+            : post(lifecycle === "close" ? "projects/close" : "home/projects/open", lifecycle === "close" ? {confirmActiveJobs: true} : {projectRoot: source, confirmActiveJobs: true});
+        transition.then(() => {
+            finished = true;
+        }).catch(() => undefined);
+        await draining.promise;
+        expect(finished).toBe(false);
+        expect(fs.readFileSync(source)).toEqual(before);
+        gate.release();
+        const rejected = await applying;
+        expect(rejected.status).toBe(409);
+        expect(await rejected.json()).toMatchObject({error: expect.stringMatching(/cancelled|changed/)});
+        const result = await transition;
+        if (result) expect(result.status).toBe(200);
+        expect(fs.readFileSync(source)).toEqual(before);
+        expect(fs.readFileSync(unowned, "utf8")).toBe("external output");
+        expect(fs.readdirSync(directory).some(name => name.startsWith(".pokie-"))).toBe(false);
+    } finally {
+        gate.release();
+        if (!stopped) await server.stop();
+    }
+});
+
+it.each(["save", "apply"] as const)("shutdown aborts an admitted %s and rolls back only owned outputs", async action => {
+    const optimizer = new ProjectOptimizationService(path.join(directory, "scratch"));
+    routes = new StudioOptimizationService(jobs, optimizer);
+    const request = optimizationRequest();
+    const support = await preview(request);
+    const started = await routes.handle("POST", "start", {request, expectedProjectRoot: source, sourceRevision: support.sourceRevision}, context());
+    await routes.drain();
+    const {job} = started.body as {job: StudioJobView};
+    const entered = latch();
+    const gate = latch();
+    const destination = path.join(directory, "owned-output.json");
+    const unowned = path.join(directory, "unowned-output.json");
+    fs.writeFileSync(unowned, "external output");
+    const before = fs.readFileSync(source);
+    if (action === "save") {
+        const publish = ArtifactPublicationOwnership.prototype.publish;
+        jest.spyOn(ArtifactPublicationOwnership.prototype, "publish").mockImplementation(async function (this: ArtifactPublicationOwnership, ...args) {
+            await Reflect.apply(publish, this, args);
+            entered.release();
+            await gate.promise;
+        });
+    } else {
+        const publish = optimizer.publish;
+        jest.spyOn(optimizer, "publish").mockImplementation(async function (this: ProjectOptimizationService, ...args) {
+            entered.release();
+            await gate.promise;
+            return Reflect.apply(publish, this, args);
+        });
+    }
+    const pending = routes.handle("POST", action, {request, expectedProjectRoot: source, jobId: job.id, destination}, context());
+    await entered.promise;
+    if (action === "save") expect(fs.existsSync(destination)).toBe(true);
+    let finished = false;
+    const shutdown = routes.shutdown().then(() => {
+        finished = true;
+    });
+    expect(finished).toBe(false);
+    gate.release();
+    expect((await pending).status).toBe(409);
+    await shutdown;
+    expect(fs.readFileSync(source)).toEqual(before);
+    expect(fs.existsSync(destination)).toBe(false);
+    expect(fs.readFileSync(unowned, "utf8")).toBe("external output");
+    expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+    expect(fs.readdirSync(directory).some(name => name.startsWith(".pokie-"))).toBe(false);
+});
+
+it("shutdown drains committed apply refresh and retains a truthful successful disposition", async () => {
+    const request = optimizationRequest();
+    const support = await preview(request);
+    const started = await routes.handle("POST", "start", {request, expectedProjectRoot: source, sourceRevision: support.sourceRevision}, context());
+    await routes.drain();
+    const {job} = started.body as {job: StudioJobView};
+    const committed = latch();
+    const cleanup = latch();
+    const pending = routes.handle("POST", "apply", {request, expectedProjectRoot: source, jobId: job.id}, {
+        ...context(), onAuthoredCommit: () => {
+            committed.release();
+            return cleanup.promise;
+        },
+    });
+    await committed.promise;
+    expect(JSON.parse(fs.readFileSync(source, "utf8")).paytable.A[2]).toBe(3);
+    let finished = false;
+    const shutdown = routes.shutdown().then(() => {
+        finished = true;
+    });
+    expect(finished).toBe(false);
+    cleanup.release();
+    expect((await pending).status).toBe(200);
+    await shutdown;
+    expect(jobs.get(source, job.id)?.result?.provenance).toMatchObject({authoredApply: {path: source}});
+    expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+});
+
+it("reports a committed apply with recovery information and fails lifecycle completion if runtime cleanup fails", async () => {
+    const owned = new StudioOptimizationService(jobs, new ProjectOptimizationService(path.join(directory, "scratch")));
+    const request = optimizationRequest();
+    const support = await owned.handle("POST", "support", {request, expectedProjectRoot: source}, context());
+    const started = await owned.handle("POST", "start", {request, expectedProjectRoot: source, sourceRevision: (support.body as {sourceRevision: string}).sourceRevision}, context());
+    await owned.drain();
+    const {job} = started.body as {job: StudioJobView};
+    const response = await owned.handle("POST", "apply", {request, expectedProjectRoot: source, jobId: job.id}, {
+        ...context(), onAuthoredCommit: () => Promise.reject(new Error("runtime release refused")),
+    });
+    expect(response).toMatchObject({status: 200, body: {outputPath: source, warning: expect.stringMatching(/Source was applied.*runtime refresh failed/)}});
+    expect(JSON.parse(fs.readFileSync(source, "utf8")).paytable.A[2]).toBe(3);
+    expect(jobs.get(source, job.id)?.result?.provenance).toMatchObject({authoredApply: {path: source}});
+    await expect(owned.shutdown()).rejects.toThrow(/runtime release refused/);
+    expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
 });

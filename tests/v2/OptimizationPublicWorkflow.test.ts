@@ -272,6 +272,81 @@ it("preserves concurrent parameter edits during failed multi-file rollback and r
     await service.discard(result.candidate!);
 });
 
+it.each(["replacement", "cleanup", "protected source"])("rejects complete authored-state drift during %s without consuming authority", async boundary => {
+    const {file, request} = await fixture("tsPackage");
+    const result = await service.optimize(await resolve(file), request);
+    const parameters = path.join(file, "parameters.json");
+    const contract = path.join(file, "pokie-tuning.json");
+    const originalParameters = fs.readFileSync(parameters);
+    const originalContract = fs.readFileSync(contract);
+    const executable = path.join(file, "index.cjs");
+    const originalExecutable = fs.readFileSync(executable);
+    const competing = boundary === "protected source" ? executable : parameters;
+    const external = Buffer.concat([fs.readFileSync(competing), Buffer.from("\n ")]);
+    const edit = () => fs.writeFileSync(competing, external);
+    if (boundary === "cleanup") {
+        const remove = fs.rmSync;
+        jest.spyOn(fs, "rmSync").mockImplementation((target, options) => {
+            const value = remove(target, options);
+            if (String(target).includes(".pokie-apply-")) edit();
+            return value;
+        });
+    } else {
+        const rename = fs.renameSync;
+        jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+            const value = rename(from, to);
+            // Both replacements succeed; the competing edit is otherwise invisible to the writer.
+            if (String(from).includes(".pokie-apply-") && String(to) === contract) edit();
+            return value;
+        });
+    }
+    const committed = jest.fn();
+    await expect(service["apply"](result.candidate!, request, {onAuthoredCommit: committed})).rejects.toThrow(/Concurrent edit.*Refresh and optimize again/);
+    expect(committed).not.toHaveBeenCalled();
+    expect(fs.readFileSync(competing)).toEqual(external);
+    expect(fs.readFileSync(contract)).toEqual(originalContract);
+    if (boundary === "protected source") expect(fs.readFileSync(parameters)).toEqual(originalParameters);
+    else expect(fs.readFileSync(executable)).toEqual(originalExecutable);
+    jest.restoreAllMocks();
+    // Restore the external edit explicitly as its author, then reuse the still-unconsumed receipt.
+    fs.writeFileSync(parameters, originalParameters);
+    fs.writeFileSync(executable, originalExecutable);
+    await service["apply"](result.candidate!, request, {onAuthoredCommit: committed});
+    expect(committed).toHaveBeenCalledTimes(1);
+    await service.discard(result.candidate!);
+    expect(fs.readdirSync(directory).some(name => name.startsWith(".pokie-"))).toBe(false);
+});
+
+it.each(["staging", "replacement"])("rechecks cancellation at the authored %s boundary before consuming authority", async boundary => {
+    const {file, request} = await fixture("blueprint");
+    const result = await service.optimize(await resolve(file), request);
+    const original = fs.readFileSync(file);
+    const controller = new AbortController();
+    if (boundary === "staging") {
+        const write = fs.writeFileSync;
+        jest.spyOn(fs, "writeFileSync").mockImplementation((target, data, options) => {
+            const value = write(target, data, options);
+            if (String(target).includes(".pokie-apply-")) controller.abort();
+            return value;
+        });
+    } else {
+        const rename = fs.renameSync;
+        jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+            const value = rename(from, to);
+            if (String(from).includes(".pokie-apply-")) controller.abort();
+            return value;
+        });
+    }
+    const committed = jest.fn();
+    await expect(service["apply"](result.candidate!, request, {signal: controller.signal, onAuthoredCommit: committed})).rejects.toThrow(/Apply cancelled/);
+    expect(committed).not.toHaveBeenCalled();
+    expect(fs.readFileSync(file)).toEqual(original);
+    expect(fs.readdirSync(directory).some(name => name.startsWith(".pokie-"))).toBe(false);
+    jest.restoreAllMocks();
+    await service["apply"](result.candidate!, request);
+    await service.discard(result.candidate!);
+});
+
 it("retains staging cleanup ownership without mutating source and cleans it on discard", async () => {
     const {file, request} = await fixture("blueprint");
     const before = fs.readFileSync(file);

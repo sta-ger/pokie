@@ -469,13 +469,17 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
         const receipt = this.receipts.get(candidate.path);
         if (!receipt || this.applied.has(candidate.path) || jsonHash(receipt.candidate) !== jsonHash(candidate) || candidate.requestRevision !== jsonHash(request)) throw new Error("Unknown or modified candidate/policy receipt; optimize again.");
         const source = {type: candidate.type, rootPath: candidate.sourcePath};
-        const assertCurrent = (): void => {
+        const assertActive = (): void => {
             if (this.applied.has(candidate.path)) throw new Error("Preview already applied; optimize again.");
             if (options.signal?.aborted) throw new OptimizationCancelledError("Apply cancelled.");
             if (options.isCurrent && !options.isCurrent()) throw new Error("Project/request changed during apply.");
+        };
+        const assertCurrent = (): void => {
+            assertActive();
             if (projectRevision(source) !== candidate.sourceRevision || projectRevision({type: candidate.type, rootPath: candidate.path}) !== candidate.revision) throw new Error("Source or reviewed candidate changed; optimize again.");
         };
         assertCurrent();
+        const committedInventory = sourceInventory(source);
         // Use the same native publication/readback authority before entering the mutation section.
         const temporary = fs.mkdtempSync(path.join(path.dirname(candidate.sourcePath), ".pokie-review-"));
         const stages = this.applyStages.get(candidate.path) ?? new Set<string>();
@@ -505,9 +509,23 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
         }
         if (validationFailed) throw validationError;
         assertCurrent();
-        applyAuthoredFiles(files, assertCurrent, path.dirname(candidate.sourcePath), stages);
+        for (const item of files) {
+            const name = candidate.type === "tsPackage" ? path.relative(candidate.sourcePath, item.file).split(path.sep).join("/") : path.basename(item.file);
+            committedInventory[name] = digest(item.after);
+        }
+        applyAuthoredFiles(files, assertCurrent, path.dirname(candidate.sourcePath), stages, () => {
+            assertActive();
+            if (projectRevision(source) !== jsonHash(committedInventory) || projectRevision({type: candidate.type, rootPath: candidate.path}) !== candidate.revision) {
+                throw new Error(`Concurrent edit changed the committed authored state or reviewed candidate. Refresh and optimize again. Recovery required: inspect ${candidate.sourcePath}; external edits are retained.`);
+            }
+        });
         // The old receipt is consumed even when the selected values equal the source.
         this.applied.add(candidate.path);
+        try {
+            options.onAuthoredCommit?.();
+        } catch (error) {
+            throw new Error(`Authored source committed and preview consumed at ${candidate.sourcePath}, but commit notification failed: ${String(error)}. Reopen the project before retrying.`);
+        }
         return candidate.sourcePath;
     }
     public async discard(candidate: OptimizationCandidate): Promise<void> {
