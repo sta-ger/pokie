@@ -331,3 +331,5 @@ variant order, weight, full-array and context/model changes. See
 [reels and sequences](docs/reels-and-sequences.md#whole-sequence-studio-and-par-workflow).
 Per-symbol weights and weighted outcome libraries remain separate capabilities;
 WASM does not support whole-sequence variants.
+
+See [finite same-type math optimization](docs/optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.

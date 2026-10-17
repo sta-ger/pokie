@@ -432,3 +432,5 @@ cannot establish arbitrary TypeScript executable fidelity. Undeclared max-win
 policy and unsupported nested collaborators remain unknown. Source-path
 acquisition owns and releases its snapshot; a direct supplied game remains
 caller-owned. See [V2C-19](v2-completion/V2C-19.md) for supported checks and limits.
+
+See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.

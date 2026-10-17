@@ -64,6 +64,7 @@ import {CertificationTab} from "./CertificationTab";
 import {ExportDeployTab} from "./ExportDeployTab";
 import {GameModelTab} from "./GameModelTab";
 import {OutcomeSourceOverview} from "./OutcomeSourceOverview";
+import {OptimizationPanel} from "./OptimizationPanel";
 import {OverviewTab} from "./OverviewTab";
 import {PlayTab} from "./PlayTab";
 import {ProvablyFairTab} from "./ProvablyFairTab";
@@ -1391,6 +1392,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     ? <WasmManifestInspection projectRoot={header.projectRoot} summary={header.wasmPresentation.inspectionSummary} />
                                     : <Text>This {describeProjectType(header.type).toLowerCase()} can be republished from Build/Export.</Text>
                             )}
+                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} />}
                             {activeTab === "gameModel" && (
                                 // GameModelTab owns all of its own fetch state locally (no page-level hook),
                                 // so a genuine project switch needs a full remount, not just a re-render of a

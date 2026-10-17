@@ -3979,3 +3979,5 @@ Definition `diff` includes advanced validation changes. Its existing opt-in
 `--ci` policy treats unresolved advanced analysis as exit 2, rather than accepting
 an unchanged unknown source. [V2C-19](v2-completion/V2C-19.md) lists assumptions,
 adapter support and the separate structural save/build gates.
+
+See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.

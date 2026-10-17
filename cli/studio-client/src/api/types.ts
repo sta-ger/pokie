@@ -1597,3 +1597,8 @@ export type PackageBlueprintExtractionResult = {
     blueprint?: unknown;
     blueprintHash?: string;
 };
+
+// Types only: no Node orchestration enters the browser bundle.
+export type StudioOptimizationRequest = import("../../../../src/optimization/OptimizationPolicy.js").OptimizationRequest;
+export type StudioOptimizationResult = import("../../../../src/optimization/OptimizationPolicy.js").OptimizationResult;
+export type StudioOptimizationSupport = {supported: boolean; reason: string; adapter: string; writable?: string[]; sourceRevision: string};

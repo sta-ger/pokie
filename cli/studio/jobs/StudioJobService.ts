@@ -30,8 +30,8 @@ export type StudioJobExecutorContext = {
 
 export type StudioJobExecutorTerminal =
     | {readonly status: "completed"; readonly result: StudioJobResultView}
-    | {readonly status: "failed"; readonly error: string; readonly recovery?: StudioJobRecoveryView}
-    | {readonly status: "recovery-required"; readonly recovery: StudioJobRecoveryView}
+    | {readonly status: "failed"; readonly error: string; readonly recovery?: StudioJobRecoveryView; readonly result?: StudioJobResultView}
+    | {readonly status: "recovery-required"; readonly recovery: StudioJobRecoveryView; readonly result?: StudioJobResultView}
     | {readonly status: "cancelled"; readonly result?: StudioJobResultView; readonly recovery?: StudioJobRecoveryView};
 
 export type StudioJobExecutionResult<T> =
@@ -194,39 +194,17 @@ export class StudioJobService {
             ? {status: "recovery-required", recovery: {action: "retry", reason: `Executor cleanup could not be confirmed after cancellation: ${error instanceof Error ? error.message : String(error)}`}}
             : {status: "failed", error: error instanceof Error ? error.message : String(error)},
     ): Promise<StudioJobExecutionResult<T>> {
-        const started = this.start(input);
-        if (started.status !== "created") return started;
+        const execution = await this.executeStarted(this.start(input), executor, terminalForResult, terminalForException);
+        return execution;
+    }
 
-        const job = this.markRunning(started.job.id) ?? started.job;
-        const signal = this.signal(job.id);
-        if (signal === undefined) throw new Error(`Studio job "${job.id}" has no cancellation handle.`);
-        const context: StudioJobExecutorContext = {job, signal, progress: (progress) => this.progress(job.id, progress)};
-        let settle!: () => void;
-        const completion = new Promise<void>((resolve) => {
-            settle = resolve;
-        });
-        this.pendingExecutors.add(completion);
-        try {
-            const value = await executor(context);
-            // A domain executor may have supplied finer-grained snapshots while it
-            // worked.  Once it returns, though, the only truthful remaining work
-            // is committing its terminal record.  Persist that boundary instead
-            // of leaving a reconnecting client on a misleading "running" stage.
-            this.progress(job.id, {stage: "Finalizing", unit: "work", current: "indeterminate", total: "indeterminate", message: "Persisting the terminal result."});
-            this.persistExecutorTerminal(job.id, terminalForResult(value, signal.aborted));
-            return {status: "executed", job: this.repository.get(job.id) ?? job, value};
-        } catch (error) {
-            const terminal = terminalForException(error, signal.aborted);
-            // An exception cannot attest that cancellation cleanup succeeded,
-            // even when a compatibility mapper supplies a cancelled label.
-            this.persistExecutorTerminal(job.id, signal.aborted && terminal.status === "cancelled"
-                ? {status: "recovery-required", recovery: {action: terminal.recovery?.action ?? "retry", reason: `Executor cleanup could not be confirmed after cancellation: ${error instanceof Error ? error.message : String(error)}`}}
-                : terminal);
-            throw error;
-        } finally {
-            settle();
-            this.pendingExecutors.delete(completion);
-        }
+    /** Admit an asynchronous HTTP operation synchronously; the existing executor owner drains it. */
+    public launch<T>(input: StudioJobStartInput, executor: (context: StudioJobExecutorContext) => Promise<T>,
+        terminalForResult: (value: T, cancelled: boolean) => StudioJobExecutorTerminal): {started: StudioJobStartResult; completion?: Promise<StudioJobExecutionResult<T>>} {
+        const started = this.start(input);
+        return started.status === "created"
+            ? {started, completion: this.executeStarted(started, executor, terminalForResult, (error, cancelled) => cancelled ? {status: "recovery-required", recovery: {action: "retry", reason: `Cleanup could not be confirmed: ${error instanceof Error ? error.message : String(error)}`}} : {status: "failed", error: error instanceof Error ? error.message : String(error)})}
+            : {started};
     }
 
     /** Cancellation is only a request; executor cleanup calls cancelled(). */
@@ -288,6 +266,42 @@ export class StudioJobService {
         }
     }
 
+    private async executeStarted<T>(started: StudioJobStartResult, executor: (context: StudioJobExecutorContext) => Promise<T>,
+        terminalForResult: (value: T, cancelled: boolean) => StudioJobExecutorTerminal,
+        terminalForException: (error: unknown, cancelled: boolean) => StudioJobExecutorTerminal): Promise<StudioJobExecutionResult<T>> {
+        if (started.status !== "created") return started;
+        const job = this.markRunning(started.job.id) ?? started.job;
+        const signal = this.signal(job.id);
+        if (signal === undefined) throw new Error(`Studio job "${job.id}" has no cancellation handle.`);
+        const context: StudioJobExecutorContext = {job, signal, progress: (progress) => this.progress(job.id, progress)};
+        let settle!: () => void;
+        const completion = new Promise<void>((resolve) => {
+            settle = resolve;
+        });
+        this.pendingExecutors.add(completion);
+        try {
+            const value = await executor(context);
+            // A domain executor may have supplied finer-grained snapshots while it
+            // worked.  Once it returns, though, the only truthful remaining work
+            // is committing its terminal record.  Persist that boundary instead
+            // of leaving a reconnecting client on a misleading "running" stage.
+            this.progress(job.id, {stage: "Finalizing", unit: "work", current: "indeterminate", total: "indeterminate", message: "Persisting the terminal result."});
+            this.persistExecutorTerminal(job.id, terminalForResult(value, signal.aborted));
+            return {status: "executed", job: this.repository.get(job.id) ?? job, value};
+        } catch (error) {
+            const terminal = terminalForException(error, signal.aborted);
+            // An exception cannot attest that cancellation cleanup succeeded,
+            // even when a compatibility mapper supplies a cancelled label.
+            this.persistExecutorTerminal(job.id, signal.aborted && terminal.status === "cancelled"
+                ? {status: "recovery-required", recovery: {action: terminal.recovery?.action ?? "retry", reason: `Executor cleanup could not be confirmed after cancellation: ${error instanceof Error ? error.message : String(error)}`}}
+                : terminal);
+            throw error;
+        } finally {
+            settle();
+            this.pendingExecutors.delete(completion);
+        }
+    }
+
     private terminal(id: string, status: Extract<StudioJobView["status"], "completed" | "failed" | "cancelled" | "recovery-required">, fields: Partial<StudioJobView>): StudioJobView | undefined {
         const current = this.repository.get(id);
         if (current === undefined || isStudioJobTerminal(current.status)) return current;
@@ -299,10 +313,10 @@ export class StudioJobService {
     private persistExecutorTerminal(id: string, terminal: StudioJobExecutorTerminal): StudioJobView | undefined {
         if (terminal.status === "recovery-required") {
             this.executorCleanupFailed = true;
-            return this.terminal(id, "recovery-required", {recovery: terminal.recovery});
+            return this.terminal(id, "recovery-required", {recovery: terminal.recovery, ...(terminal.result ? {result: terminal.result} : {})});
         }
         if (terminal.status === "completed") return this.complete(id, terminal.result);
-        if (terminal.status === "failed") return this.fail(id, terminal.error, terminal.recovery);
+        if (terminal.status === "failed") return this.fail(id, terminal.error, terminal.recovery, terminal.result);
         return this.cancelled(id, terminal.result, terminal.recovery);
     }
     private transition(id: string, mutate: (job: StudioJobView) => StudioJobView): StudioJobView | undefined {

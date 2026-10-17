@@ -420,3 +420,5 @@ closed over reachable entry values; persistent jackpot/modifier state and
 lifetime wallet/counter overflow retain limitations. Max-win declarations are
 checked in their declared units/scope and never install an enforcement cap.
 See [the full source/mechanic boundary](v2-completion/V2C-19.md).
+
+See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.

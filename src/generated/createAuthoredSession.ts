@@ -1,3 +1,4 @@
+import type {SymbolsCombinationsGenerating} from "../session/videoslot/combinations/SymbolsCombinationsGenerating.js";
 import type {PortableRandomNumberGenerator} from "../session/videoslot/combinations/internal/PortableRandomNumberGenerator.js";
 import type {GameBlueprint} from "./GameBlueprint.js";
 import {resolveSharedSlotMathModel} from "./resolveSharedSlotMathModel.js";
@@ -34,7 +35,8 @@ import {SingleTierJackpotAwarding} from "../session/videoslot/jackpot/SingleTier
 /** Resolved declarative assembly shared by generated packages and portable hosts.
  * No extraction, filesystem access, code evaluation or alternate feature engine.
  */
-export function createAuthoredSession(blueprint: GameBlueprint, random: SeededRandomNumberGenerator | PortableRandomNumberGenerator) {
+export function createAuthoredSession(blueprint: GameBlueprint, random: SeededRandomNumberGenerator | PortableRandomNumberGenerator, forcedGenerator?: SymbolsCombinationsGenerating) {
+    if (forcedGenerator && Object.entries(blueprint.mechanics ?? {}).some(([key, value]) => value !== undefined && key !== "freeGames")) throw new Error("Forced exact enumeration is unavailable for stateful authored mechanics.");
     const config = new VideoSlotConfig();
     config.setAvailableBets(blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]);
     config.setReelsNumber(blueprint.reels);
@@ -63,8 +65,8 @@ export function createAuthoredSession(blueprint: GameBlueprint, random: SeededRa
     const bounded = {...(cascade ? {cascade} : {}), ...(respins ? {respins} : {}), ...(collection ? {collection} : {}), ...(weightedBonus ? {weightedBonus} : {})};
     let session: VideoSlotSessionHandling;
     if (Object.keys(bounded).length) session = new BoundedVideoSlotSession(config, generator, bounded, calculator);
-    else if (resolved instanceof VideoSlotWithFreeGamesConfig) session = new VideoSlotWithFreeGamesSession(resolved, generator, calculator);
-    else session = new VideoSlotSession(resolved, generator, calculator);
+    else if (resolved instanceof VideoSlotWithFreeGamesConfig) session = new VideoSlotWithFreeGamesSession(resolved, forcedGenerator ?? generator, calculator);
+    else session = new VideoSlotSession(resolved, forcedGenerator ?? generator, calculator);
     const hold = blueprint.mechanics?.holdAndWin;
     if (hold) session = new VideoSlotWithHoldAndWinSession(session, hold.initialRespins, new SymbolSetHoldAndWinCollector(hold.symbolEffects), new MinimumCountHoldAndWinTrigger(hold.minimumCount), new SumWithMultiplierHoldAndWinPayoutAggregator(hold.payout.amountsAreBetMultiples));
     const modes = resolveBetModeCodegenWiring(blueprint);
