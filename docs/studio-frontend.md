@@ -456,3 +456,5 @@ request cancellation and unmount invalidate old responses; retry checks the
 current source. Server shutdown aborts and drains owned analysis requests.
 Definition comparison also retains advanced validation changes and limitations.
 See [V2C-19](v2-completion/V2C-19.md).
+
+See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.

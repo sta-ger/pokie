@@ -197,7 +197,9 @@
         "docs/weighted-bonus.md",
         "examples/blueprints/bounded-*.blueprint.json",
         "examples/blueprints/weighted-bonus.blueprint.json",
-        "examples/blueprints/wild-*.blueprint.json"
+        "examples/blueprints/wild-*.blueprint.json",
+        "docs/optimization.md",
+        "docs/v2-completion/V2C-23.md"
     ],
     "dependencies": {
         "commander": "^14.0.3",

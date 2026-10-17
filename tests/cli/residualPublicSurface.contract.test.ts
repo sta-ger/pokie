@@ -55,10 +55,10 @@ describe("residual public CLI surface", () => {
             .sort();
 
         // This coverage map is immutable P7 evidence.  P8 adds the public
-        // portable-artifact runner, so compare the historical command tree to
+        // portable-artifact runner and V2C-23 adds optimization, so compare the historical command tree to
         // its historical portion rather than rewriting the completed audit.
-        expect(coverage.initialInventory.rootCommands).toEqual([...commandNames.filter((name) => name !== "run"), "export"].sort());
-        expect(commandNames).toContain("run");
+        expect(coverage.initialInventory.rootCommands).toEqual([...commandNames.filter((name) => name !== "run" && name !== "optimize"), "export"].sort());
+        expect(commandNames).toEqual(expect.arrayContaining(["run", "optimize"]));
         expect(coverage.initialInventory.nestedVerbs).toEqual(nestedVerbs);
         for (const command of publicCommands) {
             const help = command.getCommanderCommand().helpInformation();
@@ -80,7 +80,7 @@ describe("residual public CLI surface", () => {
 
         expect(docs).toContain("`blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`");
         expect(docs).toContain("`parWorkbook` and `wasm` are file destinations");
-        expect(docs).toContain("the portable `run` command and WASM inspect/validate/sim/replay paths use the integrity-checked `pokie/wasm`\nruntime instead");
+        expect(docs).toContain("portable `run` command and WASM inspect/validate/sim/replay paths use the integrity-checked `@fromstan/pokie/wasm`\nruntime instead");
         expect(docs).not.toContain("are shipped today, built on the same [game package]");
         expect(wasmBoundary).toContain("canonical identity, but authorizes no runtime operation by itself");
         expect(wasmBoundary).toContain("declared `runtime.play`, `runtime.serialize`, `runtime.replay`, and `artifact.inspect` operations grant their\nmatching capabilities independently");

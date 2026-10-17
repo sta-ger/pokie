@@ -1445,3 +1445,10 @@ export async function previewMathDefinitionDiff(fetchImpl: FetchLike, request: {
     if (!response.ok) throw new Error((body as {error?: string}).error ?? `Comparison failed (HTTP ${response.status}).`);
     return body as import("./types.js").MathDefinitionDiff;
 }
+
+export async function optimizationAction<T>(fetchImpl: FetchLike, action: "support" | "start" | "save", body: unknown, signal?: AbortSignal): Promise<T> {
+    const response = await fetchImpl(`/api/project/optimization/${action}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body), signal});
+    const value = await response.json() as T & {error?: string};
+    if (!response.ok) throw new Error(value.error ?? "Optimization request failed.");
+    return value;
+}

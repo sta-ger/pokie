@@ -1,10 +1,11 @@
+import {recognizesNativeStakeTuningManifest} from "../optimization/internal/NativeStakeTuningManifest.js";
 import fs from "fs";
 import path from "path";
 import {BlueprintProjectTargetAdapter} from "./BlueprintProjectTargetAdapter.js";
 import {OutcomeLibraryProjectTargetAdapter} from "./OutcomeLibraryProjectTargetAdapter.js";
 import {ParWorkbookProjectTargetAdapter} from "./ParWorkbookProjectTargetAdapter.js";
 import type {PokieProject} from "./PokieProject.js";
-import {PROJECT_TYPE_CAPABILITIES, wasmProjectCapabilities} from "./ProjectCapabilities.js";
+import {PROJECT_TYPE_CAPABILITIES, NATIVE_STAKE_PROJECT_CAPABILITIES, wasmProjectCapabilities} from "./ProjectCapabilities.js";
 import {ProjectTargetAmbiguousError} from "./ProjectTargetAmbiguousError.js";
 import type {ProjectResolving} from "./ProjectResolving.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
@@ -158,6 +159,7 @@ export class ProjectTargetResolver implements ProjectResolving {
     }
 
     private async capabilitiesFor(type: PokieProject["type"], rootPath: string) {
+        if (type === "stakeAdapter" && recognizesNativeStakeTuningManifest(rootPath)) return NATIVE_STAKE_PROJECT_CAPABILITIES;
         if (type !== "wasm") return PROJECT_TYPE_CAPABILITIES[type];
         const raw = await fs.promises.readFile(wasmComponentManifestSidecarPath(rootPath), "utf-8");
         return wasmProjectCapabilities(JSON.parse(raw) as Parameters<typeof wasmProjectCapabilities>[0]);

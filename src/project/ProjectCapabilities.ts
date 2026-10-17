@@ -53,6 +53,9 @@ export function wasmProjectCapabilities(manifest: Pick<PokieWasmComponentManifes
     return capabilities;
 }
 
+/** Native tuned Stake directories support exact native inspection/analysis, without lossy exchange. */
+export const NATIVE_STAKE_PROJECT_CAPABILITIES: ProjectCapabilities = [OUTCOME_SOURCE_READ_CAPABILITY];
+
 // The one place that decides which ProjectCapability each ProjectType grants — every other file in this
 // module (ProjectTargetResolver stamping a resolved PokieProject, describeUnsupportedProjectOperation when it
 // looks for an alternative type) reads this map rather than re-deciding "does this type support that

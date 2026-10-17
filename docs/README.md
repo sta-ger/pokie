@@ -314,3 +314,5 @@ Recorded executable package audit replay is documented in
 [CLI](cli.md#replay-recorded-package-evidence). The
 [V2C-07 candidate receipt](v2-completion/V2C-07.md) records implementer checks and
 identifies controller-owned independent verification still pending.
+
+See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.

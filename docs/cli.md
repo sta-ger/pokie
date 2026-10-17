@@ -3722,8 +3722,8 @@ Each step builds on the same `<packageRoot>`:
 
 ## What's next
 
-All 21 public top-level commands this file documents (`build`/`certification`/`client`/`create`/`dev`/`diff`/
-`edit`/`fairness`/`generate`/`import`/`init`/`inspect`/`par`/`reel`/`replay`/`report`/`run`/`sample`/
+All 22 public top-level commands this file documents (`build`/`certification`/`client`/`create`/`dev`/`diff`/
+`edit`/`fairness`/`generate`/`import`/`init`/`inspect`/`optimize`/`par`/`reel`/`replay`/`report`/`run`/`sample`/
 `serve`/`sim`/`validate`) are shipped today. Package-oriented workflows use the shared
 [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`);
 the positional Studio Project, portable `run` command and WASM inspect/validate/sim/replay paths use the integrity-checked `@fromstan/pokie/wasm`
@@ -3956,7 +3956,7 @@ No history database is created.
 `--ci` applies only to definition comparisons; using it for statistics is an
 error (2). SIGINT cancels definition acquisition and waits for owned extraction
 cleanup. Existing top-level statistical diff still succeeds on differences;
-`pokie stakeengine diff` retains its 0/1/2 threshold contract. These defaults are
+the Stake aggregate comparison retains its 0/1/2 threshold contract. These defaults are
 not silently changed by adding definition comparison.
 
 Existing report/report-set results add `comparisonKind: "simulation-statistics"`;
@@ -3979,3 +3979,26 @@ Definition `diff` includes advanced validation changes. Its existing opt-in
 `--ci` policy treats unresolved advanced analysis as exit 2, rather than accepting
 an unchanged unknown source. [V2C-19](v2-completion/V2C-19.md) lists assumptions,
 adapter support and the separate structural save/build gates.
+
+See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.
+
+
+## `pokie optimize <source>`
+
+`pokie optimize game.blueprint.json --policy targets.json --out candidate.blueprint.json`
+searches the declared finite tuning domain and saves a validated candidate of the same
+project type to a new or empty destination. Omit `--out` to review evidence and the diff;
+the temporary candidate is then discarded. Authored input stays separate from explicit
+save/apply. `--format json` is the structured result format; `--progress` writes progress
+records to stderr. Ctrl-C cancels and drains owned work.
+
+The policy file contains `{targets, policy}` as documented in
+[optimization.md](optimization.md), including units/tolerances, declared tunables,
+locks, constraints, seed, positive candidate budget and exact population limit.
+Opaque or tampered packages and WASM without bound source/tuning authority are
+unsupported before executable acquisition. Artifact conversion remains under
+`pokie build SOURCE --target TARGET`.
+
+Exit statuses: success `0`, operational failure `1`, proven infeasible `2`, invalid
+request `3`, unsupported `4`, budget exhausted `5`, cancelled `6`. Only exhaustive
+supported search can prove infeasibility; errors and exhaustion retain distinct verdicts.

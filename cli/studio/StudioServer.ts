@@ -1,3 +1,4 @@
+import {StudioOptimizationService} from "./optimization/StudioOptimizationService.js";
 import {StudioWasmBrowserService} from "./wasm/StudioWasmBrowserService.js";
 import {readValidationSourceRevision} from "../validation/readValidationSourceRevision.js";
 import {AdvancedModelSourceValidator} from "../../src/validation/AdvancedModelSourceValidator.js";
@@ -303,6 +304,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly stakeEngineExportService: StudioStakeEngineExportService;
     private readonly artifactBuildService: StudioArtifactBuildService;
     private readonly jobService: StudioJobService;
+    private optimizationService?: StudioOptimizationService;
     private readonly wasmBrowserService: StudioWasmBrowserService;
     // The persistent Studio project registry -- see StudioServerOptions.projectRegistrationService's own
     // doc comment for the default's FileStudioProjectRegistry-vs-app-data-unresolved fallback story.
@@ -541,6 +543,7 @@ export class StudioServer implements StudioServerHandling {
         // Request every domain cancellation before waiting for any executor.
         // Listener closure alone cannot attest to worker or staging cleanup.
         const drains = await Promise.allSettled([
+            this.optimizationService?.shutdown(),
             browserDrain,
             listenerClosed,
             Promise.allSettled([...this.advancedValidations.values()]),
@@ -1163,6 +1166,21 @@ export class StudioServer implements StudioServerHandling {
                 if (this.currentContext === context) this.projectDashboard = dashboard;
             }
             this.sendJson(res, 200, this.projectDashboard ?? {status: "empty"});
+            return;
+        }
+
+        const optimizationRoute = (/^\/api\/project\/optimization\/(support|start|save)$/).exec(url.pathname);
+        if (optimizationRoute) {
+            const context = this.currentContext;
+            if (context.mode !== "project") {
+                this.sendJson(res, 409, {error: "No active Project."});
+                return;
+            }
+            this.optimizationService ??= new StudioOptimizationService(this.jobService);
+            const result = await this.optimizationService.handle(method, optimizationRoute[1] as "support" | "start" | "save", await this.readJsonBody(req), {
+                projectRoot: context.projectRoot, projectId: this.canonicalPathIdentity(context.projectRoot), isCurrent: () => this.currentContext === context,
+            });
+            this.sendJson(res, result.status, result.body);
             return;
         }
 

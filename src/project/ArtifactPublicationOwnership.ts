@@ -11,6 +11,11 @@ type DirectoryOwnership = NonNullable<ArtifactBuildResult["publishedDirectoryOwn
 export class ArtifactPublicationOwnership {
     public readonly files: FileOwnership[] = [];
     public readonly directories: DirectoryOwnership[] = [];
+    private readonly independentFiles: boolean;
+
+    public constructor(independentFiles = false) {
+        this.independentFiles = independentFiles;
+    }
 
     public async ensureDirectory(directory: string, requireEmpty = false): Promise<void> {
         directory = path.resolve(directory);
@@ -60,12 +65,54 @@ export class ArtifactPublicationOwnership {
         await this.ensureDirectory(path.dirname(outputPath));
         assertArtifactBuildNotCancelled(options);
         try {
-            await fs.promises.link(stagedPath, outputPath);
-            this.files.push({path: outputPath, dev: staged.dev, ino: staged.ino});
+            if (this.independentFiles) {
+                await this.publishIndependent(stagedPath, outputPath, staged);
+            } else {
+                await fs.promises.link(stagedPath, outputPath);
+                this.files.push({path: outputPath, dev: staged.dev, ino: staged.ino});
+            }
             assertArtifactBuildNotCancelled(options);
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new ArtifactBuildConflictError(`"${outputPath}" already exists. Choose a different --out path.`);
             throw error;
+        }
+    }
+
+    private async publishIndependent(stagedPath: string, outputPath: string, staged: fs.Stats): Promise<void> {
+        if (staged.isSymbolicLink()) {
+            // Allocate on the destination filesystem, then publish the known inode.
+            // A post-symlink lstat of outputPath could instead claim another writer's link.
+            const directory = await fs.promises.mkdtemp(path.join(path.dirname(outputPath), ".pokie-publication-"));
+            const allocated = await fs.promises.lstat(directory);
+            const temporaryFiles: FileOwnership[] = [];
+            try {
+                const temporary = path.join(directory, "link");
+                await fs.promises.symlink(await fs.promises.readlink(stagedPath), temporary);
+                const owned = await fs.promises.lstat(temporary);
+                temporaryFiles.push({path: temporary, dev: owned.dev, ino: owned.ino});
+                await fs.promises.link(temporary, outputPath);
+                this.files.push({path: outputPath, dev: owned.dev, ino: owned.ino});
+            } finally {
+                await rollbackArtifactPublication({
+                    publishedFileOwnership: temporaryFiles,
+                    publishedDirectoryOwnership: [
+                        ...this.directories.map(guard => ({...guard, removeOnRollback: false})),
+                        {path: directory, dev: allocated.dev, ino: allocated.ino, removeOnRollback: true},
+                    ],
+                });
+            }
+            return;
+        }
+        const file = await fs.promises.open(outputPath, "wx", staged.mode);
+        try {
+            const owned = await file.stat();
+            this.files.push({path: outputPath, dev: owned.dev, ino: owned.ino});
+            await file.chmod(staged.mode);
+            await file.writeFile(fs.createReadStream(stagedPath));
+            // Preserve source/build ordering on our allocation, even if its path was replaced.
+            await file.utimes(staged.atime, staged.mtime);
+        } finally {
+            await file.close();
         }
     }
 }

@@ -2342,6 +2342,12 @@ describe("CLI dispatch contract (cli/dispatch.ts, the real entry point cli/pokie
                     expect(logSpy).toHaveBeenCalled();
                 }
 
+                if (testCase.command === "validate") {
+                    // The structural validator is intentionally stubbed; absent source authority must remain failed.
+                    if (testCase.expectStdout === "json") expect(JSON.parse(String(logSpy.mock.calls[0][0])).advanced.status).toBe("failed");
+                    else expect(logSpy.mock.calls.map(call => String(call[0])).join("\n")).toContain("advanced        failed");
+                }
+
                 // Everything below only runs once the assertions above have already proven this exact case's
                 // real dispatch() call resolved with its expected exit code and stream behavior -- so every
                 // OBSERVED_OPTION_VALUES write from here on is derived strictly from what THIS invocation

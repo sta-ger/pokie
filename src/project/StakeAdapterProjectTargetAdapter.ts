@@ -1,3 +1,4 @@
+import {recognizesNativeStakeTuningManifest} from "../optimization/internal/NativeStakeTuningManifest.js";
 import {isRecognizedStakeEngineExportDirectory} from "../stakeengine/isRecognizedStakeEngineExportDirectory.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
 
@@ -10,6 +11,7 @@ export class StakeAdapterProjectTargetAdapter implements ProjectTargetTypeAdapte
     public readonly targetKind = "directory";
 
     public recognize(resolvedPath: string): Promise<string | undefined> {
+        if (recognizesNativeStakeTuningManifest(resolvedPath)) return Promise.resolve("integrity-bound native Stake weight tuning candidate");
         if (!isRecognizedStakeEngineExportDirectory(resolvedPath)) {
             return Promise.resolve(undefined);
         }

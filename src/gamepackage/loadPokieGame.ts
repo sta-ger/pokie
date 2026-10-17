@@ -1,3 +1,4 @@
+import {isPokieGame} from "./isPokieGame.js";
 import type {PokieGame} from "./PokieGame.js";
 import {PokieGameContractValidationRule} from "./PokieGameContractValidationRule.js";
 import {PokieGameEntryModuleLoading, resolvePokieGameEntryModule} from "./resolvePokieGameEntryModule.js";
@@ -23,7 +24,12 @@ export async function loadPokieGameRuntime(
 
     const validation = new ValidationResult(new PokieGameContractValidationRule().validate(candidate, options?.detachManifestData));
     if (validation.hasErrors()) {
-        await release();
+        try {
+            // A rejected manifest still belongs to an acquired executable with its own resources.
+            if (isPokieGame(candidate)) await candidate.release?.();
+        } finally {
+            await release();
+        }
         const issues = validation
             .getIssues()
             .map((issue) => `  - ${issue.code}: ${issue.message}`)

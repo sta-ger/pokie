@@ -412,3 +412,5 @@ See [finite weighted bonus outcomes](weighted-bonus.md) for selection identity,
 payout/duration units, authoring/interchange, restoration/replay, statistics and
 custom-rule/target boundaries. The [launch support register](v2-completion/launch-mechanics-support.md)
 maps every mandatory family separately from arbitrary custom callbacks.
+
+See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.
