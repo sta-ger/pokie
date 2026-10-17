@@ -236,3 +236,21 @@ including once with the rendered `Design Your Game` section. The transcript reta
 the two driver errors, a clean Studio output tail, no browser Worker targets, and no
 downloads. No optimization request was accepted; this is a driver collection block,
 not a product finding and not proof of any missing workflow branch.
+
+## Current recovery observation — worker-backed Studio optimization failure
+
+The positional public Studio entry opened the retained, unchanged Blueprint fixture
+in a new isolated profile. Its rendered two-worker sampled request used seed
+`v2c-25-studio-workers2-cancel`, budget `3`, target RTP `0.75`, tunable
+`/paytable/A/2 = [2,3,4]`, the retained locks, and `sampling.workers = 2`.
+The request-specific support check rendered writable `/paytable/A/2` and
+`/paytable/B/2`; the single Run optimization activation then rendered
+`running: 1 / 3 candidates preparing` and its own Cancel optimization control.
+It terminally rendered `Verdict: failure` after 31 ms, before samples or a worker
+target appeared: `SimulationWorkerCoordinator` attempted to import the missing
+`dist/esm/simulation/parallel/resolveDefaultWorkerEntryUrl.mjs`. The packaged
+resolver is actually retained at `dist/esm/simulation/parallel/internal/`, while
+its `new Function(... import(specifier))` relative import resolves from the caller
+directory. The transcript is in the assigned harness at
+`run-2026-10-17T18-59-44-053Z/transcript.json` (SHA-256
+`c74b397b1496a00eee802e5ba9d7fada0de06117833fd9558d786ec641efb88c`).
