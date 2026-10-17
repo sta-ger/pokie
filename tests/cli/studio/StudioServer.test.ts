@@ -4303,7 +4303,9 @@ describe("StudioServer", () => {
             fs.writeFileSync(wasmFile, fixture.bytes);
             fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
             const jobs = createIsolatedJobService(wasmStudioRoot);
+            const homeService = new StudioHomeService("1.3.0");
             wasmServer = new StudioServer({pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: wasmStudioRoot,
+                homeService, blueprintService: new StudioBlueprintService("1.3.0", wasmStudioRoot, homeService),
                 jobService: jobs, initialContext: {mode: "project", projectRoot: wasmFile}});
             const address = await wasmServer.start();
             const url = `http://${address.host}:${address.port}`;
