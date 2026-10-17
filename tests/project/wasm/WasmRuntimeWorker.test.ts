@@ -1200,8 +1200,17 @@ it("V2C-22-SIMULATION-REPLAY-BINDING admits only retained single/all-mode steps 
                 const replay = await run("replays", {round: 2, seed: "0", simulationId: all.id, modeName, unit: "step"});
                 const observed = await collectPokieWasmReplay(reference, {round: 2, seed: "0", modeName});
                 expect(replay.result!.detail!.descriptor).toMatchObject({round: 2, seed: "0", modePolicy: {betModeId: modeName}, totalBet: reports.modes[modeName].totalBet,
-                    totalWin: reports.modes[modeName].totalWin, totalPayout: observed.totalPayout, screen: observed.finalRound!.screen, credits: observed.finalRound!.credits,
-                    stateAfter: observed.stateAfter});
+                    totalWin: reports.modes[modeName].totalWin, totalPayout: observed.totalPayout, screen: observed.finalRound!.screen, credits: observed.finalRound!.credits});
+                const comparable = (state: import("../../../src/wasm/PokieWasmRuntimeApi.js").PokieWasmFeatureSessionState) => {
+                    const source = state.feature.analytics!.source;
+                    expect(source).toEqual(expect.any(String));
+                    expect(state.feature.analyticsCheckpoint!.state.source).toBe(source);
+                    expect(state.feature.lastRound!.analytics!.source).toBe(source);
+                    // Observer identity is session-local; retain every mathematical/RNG field
+                    // and assert the source links before normalizing the independent identities.
+                    return JSON.parse(JSON.stringify(state, (key, value: unknown) => key === "source" && value === source ? "observer" : value)) as unknown;
+                };
+                expect(comparable((replay.result!.detail!.descriptor as {stateAfter: Parameters<typeof comparable>[0]}).stateAfter)).toEqual(comparable(observed.stateAfter as Parameters<typeof comparable>[0]));
             }
         } finally {
             reference.dispose();
