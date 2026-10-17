@@ -90,3 +90,54 @@ It deterministically exited 1 before optimization with `Cannot find module
 the tracked helper, but the successful `build-cli` output omits it from `dist/src` while
 the compiled resolver dynamically imports it. This is a P1 product defect in the
 canonical CLI's declared-custom-TS workflow, not a driver failure.
+
+## Current candidate continuation — fbd605ab8b630d9f41e5296988159f806600805d
+
+The preceding custom-TS failure is retained historical evidence for its older
+candidate, not a current finding. The current candidate's controller-owned build
+receipt is at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-25-f699fc52f81bcf45/candidate-builds/fbd605ab8b630d9f41e5296988159f806600805d/result.json`:
+`npm run build-cli` exited 0 and produced output-tree SHA-256
+`f501c269e53e9ae356465fbea51a012cae0aa5ed4b4bf96ceef58f30debe4eb9`.
+
+The isolated declared-package fixture used the public `declarePackageTuning`
+contract for `/paytable/A/2`, seed `v2c-25-custom-current`, exact-finite budget
+3, target RTP 0.75, and locks `/paylines`, `/reelStrips`, `/paytable/B`, and
+`/availableBets`. After removing a malformed first attempt whose policy file had
+incorrectly been placed inside the declared package (and therefore rightly made
+its source identity stale), the canonical commands below both exited 0:
+
+```sh
+node ./dist/cli/pokie.js optimize "$HARNESS/v2c-25-custom-current" \
+  --policy "$HARNESS/v2c-25-custom-current-policy.json" \
+  --out "$HARNESS/v2c-25-custom-current-output" --format json
+node ./dist/cli/pokie.js optimize "$HARNESS/v2c-25-custom-current" \
+  --policy "$HARNESS/v2c-25-custom-current-policy.json" \
+  --apply "$HARNESS/v2c-25-custom-current.preview.json" --format json
+```
+
+The preview (`783e1f22a042c3e46039b2a599b7ef5de05347a31909517ac6c7e47f3804dc52`)
+and apply (`417f3ef3ec9c88c32101274e11fc1705864f7ee30350d6232b367fd6c8627fd1`)
+both report `tsPackage`, same-type native readback, selected `/paytable/A/2: 3`,
+and measured RTP 0.75. Before/after inventories show that only `parameters.json`
+and its reviewed tuning metadata changed; `index.cjs` and `package.json` hashes
+were unchanged. All full JSON receipts and the fixture remain outside Git in the
+assigned harness.
+
+The same candidate-bound rendered Studio run started from the public home route,
+added the isolated Blueprint via its visible project controls, and submitted one
+supported sampled request (seed `v2c-25-sampled-current`, target 0.75, tolerance
+0.15, budget 3, 6,000 held-out samples). Its terminal rendered preview reported
+attained RTP 0.755, CI `[0.7024009544707753, 0.8075990455292247]`, confidence 0.95,
+all four locks, constraints `{}`, and `/paytable/A/2` 2 to 3. The full transcript is
+`run-2026-10-17T18-40-08-409Z/transcript.json`; the independently inspected capture
+`1-observation.png` has SHA-256
+`2e420d3c790e678398214f74f71a992da9bf69d3460fa40106263f6e53069d3e`.
+At 1440×956 it visibly shows the sampled support boundary and metric row; the table
+is readable and includes the target, held-out estimate, CI, confidence, observation
+count, policy limits, locks, constraints, and the mathematical diff.
+
+This continuation remains incomplete: it does not yet collect the requested real
+PAR/native-weighted-artifact six-type matrix, occupied-destination rejection, or a
+current direct canonical-child cancellation exit receipt. Those are not inferred
+from historical results.
