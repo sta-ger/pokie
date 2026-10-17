@@ -643,6 +643,8 @@ it("rejects publication within owned workspaces and saves independent bytes that
     const request = optimizationRequest();
     const result = await service.optimize(await resolve(source), request);
     await expect(service.publish(result.candidate!, request, path.join(result.candidate!.workspace, "sibling.json"))).rejects.toThrow("inside source");
+    const otherCandidate = (await service.optimize(await resolve(source), request)).candidate!;
+    await expect(service.publish(result.candidate!, request, path.join(otherCandidate.workspace, "sibling.json"))).rejects.toThrow("inside source");
     const first = path.join(directory, "first.json");
     const second = path.join(directory, "second.json");
     // EXDEV from hard-link publication must be irrelevant to ordinary saves.

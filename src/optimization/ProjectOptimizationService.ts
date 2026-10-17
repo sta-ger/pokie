@@ -340,6 +340,7 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
         assertArtifactDestinationIsSafe(candidate.sourcePath, destination);
         assertArtifactDestinationIsSafe(candidate.path, destination);
         assertArtifactDestinationIsSafe(candidate.workspace, destination);
+        assertArtifactDestinationIsSafe(this.scratchRoot, destination);
         const directory = fs.statSync(candidate.path).isDirectory();
         assertArtifactDestinationAvailable(destination, directory ? "directory" : "file");
         const members = [[candidate.path, destination]];
