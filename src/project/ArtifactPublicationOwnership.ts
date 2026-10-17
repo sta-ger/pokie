@@ -71,6 +71,8 @@ export class ArtifactPublicationOwnership {
             } else await fs.promises.link(stagedPath, outputPath);
             const published = await fs.promises.lstat(outputPath);
             this.files.push({path: outputPath, dev: published.dev, ino: published.ino});
+            // Preserve source/build ordering used by the package loader's stale-entry check.
+            if (this.independentFiles && !staged.isSymbolicLink()) await fs.promises.utimes(outputPath, staged.atime, staged.mtime);
             assertArtifactBuildNotCancelled(options);
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new ArtifactBuildConflictError(`"${outputPath}" already exists. Choose a different --out path.`);

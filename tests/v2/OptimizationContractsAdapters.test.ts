@@ -555,6 +555,16 @@ it("retains project-local dependency identity through evaluation, independent sa
     fs.mkdirSync(dependency, {recursive: true});
     fs.writeFileSync(path.join(dependency, "package.json"), JSON.stringify({name, version: "1.0.0", main: "index.cjs"}));
     fs.writeFileSync(path.join(dependency, "index.cjs"), "module.exports = {value: 42};");
+    fs.mkdirSync(path.join(root, "src"));
+    fs.mkdirSync(path.join(root, "dist"));
+    fs.writeFileSync(path.join(root, "src", "authored.ts"), "// Authored source, compiled into dist/index.cjs.\n");
+    fs.writeFileSync(path.join(root, "dist", "index.cjs"), fs.readFileSync(path.join(root, "index.cjs"), "utf8").replace("'./parameters.json'", "'../parameters.json'"));
+    fs.rmSync(path.join(root, "index.cjs"));
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "tunable", version: "1.0.0", pokie: {entry: "dist/index.cjs"}, dependencies: {[name]: "1.0.0"}}));
+    fs.utimesSync(path.join(root, "src", "authored.ts"), new Date("2000-01-01"), new Date("2000-01-01"));
+    fs.utimesSync(path.join(root, "dist", "index.cjs"), new Date("2001-01-01"), new Date("2001-01-01"));
+    fs.rmSync(path.join(root, "pokie-tuning.json"));
+    declarePackageTuning(root, "parameters.json", ["/paytable/A/2"]);
     const request = optimizationRequest();
     const result = await service.optimize(await resolve(root), request);
     expect(result.diagnostics).toEqual([]);
@@ -574,8 +584,8 @@ it("retains project-local dependency identity through evaluation, independent sa
         await runtime.release();
     }
     expect(new Set(fs.readFileSync(loads, "utf8").trim().split("\n"))).toEqual(new Set([path.join(dependency, "index.cjs")]));
-    fs.appendFileSync(path.join(saved, "index.cjs"), "\n// independently edited");
-    expect(fs.readFileSync(path.join(second, "index.cjs"), "utf8")).not.toContain("independently edited");
+    fs.appendFileSync(path.join(saved, "dist", "index.cjs"), "\n// independently edited");
+    expect(fs.readFileSync(path.join(second, "dist", "index.cjs"), "utf8")).not.toContain("independently edited");
 });
 
 it("rolls back publication when the saved executable cannot load", async () => {

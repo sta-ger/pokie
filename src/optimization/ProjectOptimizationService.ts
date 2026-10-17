@@ -362,7 +362,10 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
             // Optional resolver provenance is not proof of a loadable, measured runtime.
             const adapter = await acquireOptimizationAdapter(reopened, request.policy);
             const readback = await adapter.read(destination);
-            const measured = await adapter.measure(destination, readback, request.targets, request.policy, options.signal);
+            const maxConstraint = request.policy.constraints?.maxWin;
+            const evaluatedTargets = maxConstraint ? [...request.targets, {metric: "maxWin" as const, unit: maxConstraint.unit, value: maxConstraint.value}] : request.targets;
+            const measured = await adapter.measure(destination, readback, evaluatedTargets, request.policy, options.signal);
+            if (maxConstraint && measured[measured.length - 1] > maxConstraint.value) throw new Error("Published runtime violates the reviewed maximum win.");
             if (!targetsMatch(request.targets, measured)) throw new Error("Published runtime does not demonstrate the reviewed target.");
             const sameBytes = directory
                 ? projectRevision(reopened) === candidate.revision

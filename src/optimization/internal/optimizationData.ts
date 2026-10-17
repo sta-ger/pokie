@@ -117,6 +117,7 @@ export function assertOnlyTuned(before: unknown, after: unknown, policy: Optimiz
 export function copyPackage(from: string, to: string): void {
     fs.cpSync(from, to, {
         recursive: true,
+        preserveTimestamps: true,
         filter: (file) => !["node_modules", ".git", ".pokie-runtime-cache"].includes(path.basename(file)),
     });
 }
