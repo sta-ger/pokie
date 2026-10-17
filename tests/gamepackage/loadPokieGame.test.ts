@@ -15,6 +15,7 @@ it("preserves the installed host closure across its nested CommonJS scope for un
     const installation = path.join(host, "node_modules", "@fromstan", "pokie");
     const cjs = path.join(installation, "dist", "cjs");
     const game = path.join(root, "external-game");
+    const runtimeTemporaryRoot = path.join(root, "runtime-tmp");
     // Emit only the affected production modules and their value imports. This is an ordinary
     // resolution fixture, not a package build or a source-module resolution hook.
     const emitted = new Set<string>();
@@ -32,6 +33,7 @@ it("preserves the installed host closure across its nested CommonJS scope for un
         }
     };
     try {
+        fs.mkdirSync(runtimeTemporaryRoot);
         emit("gamepackage/loadPokieGame.ts");
         emit("optimization/internal/optimizationData.ts");
         const manifest = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf8"));
@@ -68,8 +70,10 @@ module.exports = {getManifest: () => ({id: 'unchanged-game', name: runtime.hostP
         const script = path.join(host, "probe.cjs");
         fs.writeFileSync(script, `const assert = require('node:assert/strict'), fs = require('fs'), path = require('path');
 const runtime = require('@fromstan/pokie');
-const game = process.argv[2], installation = process.argv[3], leaf = process.argv[4];
+const game = process.argv[2], installation = process.argv[3], leaf = process.argv[4], temporaryRoot = process.argv[5];
 (async () => {
+ assert.equal(require('os').tmpdir(), temporaryRoot);
+ assert.deepEqual(fs.readdirSync(temporaryRoot), []);
  assert.throws(() => require('module').createRequire(path.join(game, 'game.cjs')).resolve('@fromstan/pokie'), /Cannot find module/);
  const outside = require.cache[require.resolve('@fromstan/pokie')];
  const first = await runtime.loadPokieGameRuntime(game);
@@ -93,13 +97,15 @@ const game = process.argv[2], installation = process.argv[3], leaf = process.arg
  assert.equal(second.game.getManifest().name, 'function:function:after');
  assert.deepEqual(firstSession.lazy(), ['function', 'function', 'before']);
  for (const session of [firstSession, secondSession]) {
+   assert.equal(path.dirname(session.root), temporaryRoot);
    for (const file of session.paths) assert.ok(file.startsWith(session.root + path.sep), file);
  }
  assert.notEqual(firstSession.root, secondSession.root);
  fs.writeFileSync(leaf, "throw new Error('host leaf rejected');");
- const temporaryRoots = fs.readdirSync(require('os').tmpdir()).filter(name => name.startsWith('pokie-runtime-')).sort();
+ const temporaryRoots = fs.readdirSync(temporaryRoot).sort();
+ assert.deepEqual(temporaryRoots, [path.basename(firstSession.root), path.basename(secondSession.root)].sort());
  await assert.rejects(runtime.loadPokieGameRuntime(game), /host leaf rejected/);
- assert.deepEqual(fs.readdirSync(require('os').tmpdir()).filter(name => name.startsWith('pokie-runtime-')).sort(), temporaryRoots);
+ assert.deepEqual(fs.readdirSync(temporaryRoot).sort(), temporaryRoots);
  fs.writeFileSync(leaf, "module.exports = 'before';");
  assert.equal(await runtime.packageExecutableRevision(game), before);
  for (let i = 0; i < 2; i++) {
@@ -112,14 +118,19 @@ const game = process.argv[2], installation = process.argv[3], leaf = process.arg
    assert.equal(fs.existsSync(session.root), false);
    assert.ok(Object.keys(require.cache).every(file => !file.startsWith(session.root + path.sep)));
  }
+ assert.deepEqual(fs.readdirSync(temporaryRoot), []);
  assert.equal(require.cache[require.resolve('@fromstan/pokie')], outside);
  assert.deepEqual(runtime.hostProbe(), ['function', 'function', 'before']);
  assert.equal(fs.existsSync(path.join(game, 'node_modules')), false);
  assert.equal(JSON.parse(fs.readFileSync(path.join(game, 'package.json'))).dependencies, undefined);
  console.log(JSON.stringify({closure: true, privatePaths: true, revision: true, overlay: true, recovered: true, cleanup: true}));
 })().catch(error => { console.error(error); process.exitCode = 1; });`);
-        expect(JSON.parse(execFileSync(process.execPath, [script, game, installation, path.join(leaf, "index.js")], {
+        // Direct Jest and npm launches must exercise the same child. Own its temporary namespace
+        // so concurrent suites cannot add/remove entries observed by the rejection cleanup check.
+        const childEnvironment = Object.fromEntries(Object.entries(process.env).filter(([name]) => !(/^npm_/i).test(name) && name !== "INIT_CWD"));
+        expect(JSON.parse(execFileSync(process.execPath, [script, game, installation, path.join(leaf, "index.js"), runtimeTemporaryRoot], {
             cwd: host, encoding: "utf8", timeout: 60000,
+            env: {...childEnvironment, TMPDIR: runtimeTemporaryRoot, TMP: runtimeTemporaryRoot, TEMP: runtimeTemporaryRoot},
         }))).toEqual({closure: true, privatePaths: true, revision: true, overlay: true, recovered: true, cleanup: true});
     } finally {
         fs.rmSync(root, {recursive: true, force: true});
