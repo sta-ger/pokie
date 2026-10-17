@@ -83,14 +83,23 @@ export class ArtifactPublicationOwnership {
             // Allocate on the destination filesystem, then publish the known inode.
             // A post-symlink lstat of outputPath could instead claim another writer's link.
             const directory = await fs.promises.mkdtemp(path.join(path.dirname(outputPath), ".pokie-publication-"));
+            const allocated = await fs.promises.lstat(directory);
+            const temporaryFiles: FileOwnership[] = [];
             try {
                 const temporary = path.join(directory, "link");
                 await fs.promises.symlink(await fs.promises.readlink(stagedPath), temporary);
                 const owned = await fs.promises.lstat(temporary);
+                temporaryFiles.push({path: temporary, dev: owned.dev, ino: owned.ino});
                 await fs.promises.link(temporary, outputPath);
                 this.files.push({path: outputPath, dev: owned.dev, ino: owned.ino});
             } finally {
-                await fs.promises.rm(directory, {recursive: true, force: true});
+                await rollbackArtifactPublication({
+                    publishedFileOwnership: temporaryFiles,
+                    publishedDirectoryOwnership: [
+                        ...this.directories.map(guard => ({...guard, removeOnRollback: false})),
+                        {path: directory, dev: allocated.dev, ino: allocated.ino, removeOnRollback: true},
+                    ],
+                });
             }
             return;
         }

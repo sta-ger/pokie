@@ -883,6 +883,38 @@ it("removes an uncontested independent output when cancellation follows its time
     await expect(service.publish(result.candidate!, request, destination)).resolves.toBe(destination);
 });
 
+it("guards copied dependency links and temporary cleanup against ancestor replacement", async () => {
+    const staged = path.join(directory, "staged-link");
+    fs.symlinkSync(source, staged);
+    const parent = path.join(directory, "dependency-output");
+    const moved = path.join(directory, "moved-dependencies");
+    const output = path.join(parent, "dependency-link");
+    const publication = new ArtifactPublicationOwnership(true);
+    const controller = new AbortController();
+    let competitor: string | undefined;
+    const link = fs.promises.link.bind(fs.promises);
+    jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+        await link(from, to);
+        if (String(to) === output) {
+            fs.renameSync(parent, moved);
+            fs.mkdirSync(parent);
+            fs.linkSync(path.join(moved, "dependency-link"), output);
+            // A matching private-directory name under a new ancestor is still foreign.
+            const replacedStaging = path.join(parent, path.basename(path.dirname(String(from))));
+            fs.mkdirSync(replacedStaging);
+            competitor = path.join(replacedStaging, "unrelated.bin");
+            fs.writeFileSync(competitor, "competing directory contents");
+            controller.abort();
+        }
+    });
+    await expect(publication.publish(staged, output, {signal: controller.signal})).rejects.toThrow(/cancelled/i);
+    await rollbackArtifactPublication({publishedFileOwnership: publication.files, publishedDirectoryOwnership: publication.directories});
+    expect(competitor).toBeDefined();
+    expect(fs.readFileSync(competitor!, "utf8")).toBe("competing directory contents");
+    expect(fs.lstatSync(output).ino).toBe(fs.lstatSync(path.join(moved, "dependency-link")).ino);
+    expect(fs.readlinkSync(output)).toBe(source);
+});
+
 it("honors library project context before acquisition and while selecting a result", async () => {
     expect((await service.optimize(await resolve(source), optimizationRequest(), {isCurrent: () => false})).status).toBe("failure");
     expect(fs.existsSync(path.join(directory, "scratch"))).toBe(false);
