@@ -14,6 +14,7 @@ import type {StudioJobService} from "../jobs/StudioJobService.js";
 
 export type StudioOptimizationContext = {projectRoot: string; projectId: string; isCurrent(): boolean};
 export class StudioOptimizationService {
+    private accepting = true;
     private readonly executions = new Set<Promise<unknown>>();
     private readonly candidates = new Map<string, {candidate: OptimizationCandidate; request: OptimizationRequest}>();
     private readonly jobs: StudioJobService;
@@ -22,7 +23,23 @@ export class StudioOptimizationService {
         this.jobs = jobs;
         this.optimizer = optimizer;
     }
-    public async handle(
+    public handle(method: string, action: "support" | "start" | "save", body: unknown, context: StudioOptimizationContext): Promise<{status: number; body: unknown}> {
+        if (!this.accepting) return Promise.resolve({status: 409, body: {error: "Studio optimization is shutting down."}});
+        const execution = this.handleOwned(method, action, body, context);
+        this.executions.add(execution);
+        execution.finally(() => this.executions.delete(execution)).catch(() => undefined);
+        return execution;
+    }
+    public async drain(): Promise<void> {
+        while (this.executions.size) await Promise.all([...this.executions]);
+    }
+    public async shutdown(): Promise<void> {
+        this.accepting = false;
+        await this.drain();
+        for (const retained of this.candidates.values()) await this.optimizer.discard(retained.candidate);
+        this.candidates.clear();
+    }
+    private async handleOwned(
         method: string,
         action: "support" | "start" | "save",
         body: unknown,
@@ -149,8 +166,5 @@ export class StudioOptimizationService {
                 },
             };
         }
-    }
-    public async drain(): Promise<void> {
-        await Promise.all([...this.executions]);
     }
 }

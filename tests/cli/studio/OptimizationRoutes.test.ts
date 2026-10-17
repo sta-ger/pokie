@@ -101,3 +101,13 @@ it("discards stale Project results and retains the operational verdict", async (
         ).status,
     ).toBe(409);
 });
+
+it("drains support/execution ownership on shutdown and rejects further work", async () => {
+    const request = optimizationRequest();
+    const support = await preview(request);
+    const started = await routes.handle("POST", "start", {request, sourceRevision: support.sourceRevision}, context());
+    expect(started.status).toBe(202);
+    await routes.shutdown();
+    expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+    expect((await routes.handle("POST", "support", {request}, context())).status).toBe(409);
+});

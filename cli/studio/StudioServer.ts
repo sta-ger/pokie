@@ -543,6 +543,7 @@ export class StudioServer implements StudioServerHandling {
         // Request every domain cancellation before waiting for any executor.
         // Listener closure alone cannot attest to worker or staging cleanup.
         const drains = await Promise.allSettled([
+            this.optimizationService?.shutdown(),
             browserDrain,
             listenerClosed,
             Promise.allSettled([...this.advancedValidations.values()]),

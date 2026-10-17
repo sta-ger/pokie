@@ -243,7 +243,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "diff",
-        description: "Compare two simulation reports or two resolved precomputed-outcome projects and highlight what changed.",
+        description: "Compare mathematical definitions, simulation statistics or exact outcome aggregate analyses.",
         verbs: [
             {
                 verb: undefined,
@@ -560,7 +560,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
             {
                 verb: undefined,
                 usage:
-                    "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+                    "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--mode <betModeId>] [--out <file>] [--format json]\n" +
                     "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
                     "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
                 positionals: ["packageRoot"],
@@ -2156,7 +2156,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: [],
         expectedExitCode: 1,
         expectedError:
-            "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+            "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--mode <betModeId>] [--out <file>] [--format json]\n" +
             "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
             "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
@@ -2167,7 +2167,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["pkg"],
         expectedExitCode: 1,
         expectedError:
-            "--round is required. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+            "--round is required. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--mode <betModeId>] [--out <file>] [--format json]\n" +
             "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
             "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
@@ -2178,7 +2178,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["pkg", "--round", "0"],
         expectedExitCode: 1,
         expectedError:
-            "--round must be a positive integer. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+            "--round must be a positive integer. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--mode <betModeId>] [--out <file>] [--format json]\n" +
             "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
             "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
@@ -2189,7 +2189,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["pkg", "--round", "3", "--format", "xml"],
         expectedExitCode: 1,
         expectedError:
-            '--format only supports "json". Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n' +
+            '--format only supports "json". Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--mode <betModeId>] [--out <file>] [--format json]\n' +
             "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
             "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
@@ -2589,7 +2589,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "<packageRoot> --format json (accepted --format value, machine-readable shape)",
         args: ["pkg", "--format", "json"],
-        expectedExitCode: 0,
+        // The option seam supplies structural validity; the nonexistent source has no advanced authority.
+        expectedExitCode: 3,
         expectStdout: "json",
     },
     {
@@ -2597,7 +2598,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "<packageRoot> --out <file> (accepted --out value, default --format summary)",
         args: ["pkg", "--out", "validate-out.json"],
-        expectedExitCode: 0,
+        // Accepted formatting/output options do not turn unavailable advanced validation into success.
+        expectedExitCode: 3,
         expectStdout: "text",
     },
 
@@ -2996,7 +2998,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["pkg", "--round"],
         expectedExitCode: 1,
         expectedError:
-            "--round must be a positive integer. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+            "--round must be a positive integer. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--mode <betModeId>] [--out <file>] [--format json]\n" +
             "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
             "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
@@ -3007,7 +3009,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["pkg", "--round", "3", "--seed"],
         expectedExitCode: 1,
         expectedError:
-            "--seed requires a value. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+            "--seed requires a value. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--mode <betModeId>] [--out <file>] [--format json]\n" +
             "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
             "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
@@ -3018,7 +3020,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["pkg", "--round", "3", "--out"],
         expectedExitCode: 1,
         expectedError:
-            "--out requires a file path. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+            "--out requires a file path. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--mode <betModeId>] [--out <file>] [--format json]\n" +
             "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
             "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
@@ -3029,7 +3031,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["pkg", "--round", "3", "--format"],
         expectedExitCode: 1,
         expectedError:
-            "--format only supports \"json\". Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+            "--format only supports \"json\". Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--mode <betModeId>] [--out <file>] [--format json]\n" +
             "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
             "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
