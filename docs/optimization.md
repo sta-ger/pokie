@@ -66,6 +66,10 @@ Every load copies the resolved runtime dependency graph to invocation-owned path
 transitive and peer dependencies and the host runtime. Enumeration, search, held-out assessment and
 publication therefore cannot reuse exports from an earlier installation revision. Existing live
 consumers keep their own modules; releasing a runtime removes only its private files and CJS cache.
+For an older game that omits its POKIE dependency, the host fallback binds the enclosing POKIE
+installation, including its runtime dependencies. The nested `dist/cjs/package.json` controls
+CommonJS scope and self-references; it does not replace the installation manifest as dependency
+authority. Runtime copies, detached candidate links and executable revisions use that same root.
 Dependencies remain ordinary external package dependencies;
 `node_modules`, `.git` and loader caches are excluded from authored-byte identity.
 Filesystem aliases in authored input/publication paths are rejected.

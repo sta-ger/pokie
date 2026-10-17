@@ -5,8 +5,126 @@ import {execFileSync} from "child_process";
 import {pathToFileURL} from "url";
 import os from "os";
 import path from "path";
+import ts from "typescript";
 
 const fixturesRoot = path.join(__dirname, "fixtures");
+
+it("preserves the installed host closure across its nested CommonJS scope for unchanged external games", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cjs-host-"));
+    const host = path.join(root, "host");
+    const installation = path.join(host, "node_modules", "@fromstan", "pokie");
+    const cjs = path.join(installation, "dist", "cjs");
+    const game = path.join(root, "external-game");
+    // Emit only the affected production modules and their value imports. This is an ordinary
+    // resolution fixture, not a package build or a source-module resolution hook.
+    const emitted = new Set<string>();
+    const emit = (relative: string): void => {
+        if (emitted.has(relative)) return;
+        emitted.add(relative);
+        const output = ts.transpileModule(fs.readFileSync(path.resolve("src", relative), "utf8"), {
+            compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true},
+        }).outputText;
+        const file = path.join(cjs, relative.replace(/\.ts$/, ".js"));
+        fs.mkdirSync(path.dirname(file), {recursive: true});
+        fs.writeFileSync(file, output);
+        for (const match of output.matchAll(/require\("(\.[^"]+\.js)"\)/g)) {
+            emit(path.join(path.dirname(relative), match[1]).replace(/\.js$/, ".ts"));
+        }
+    };
+    try {
+        emit("gamepackage/loadPokieGame.ts");
+        emit("optimization/internal/optimizationData.ts");
+        const manifest = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf8"));
+        fs.writeFileSync(path.join(installation, "package.json"), JSON.stringify({
+            name: manifest.name, version: manifest.version, type: "module",
+            exports: {".": {require: "./dist/cjs/index.js"}},
+            dependencies: {...manifest.dependencies, "host-behavior": "1"},
+            optionalDependencies: {"missing-host-optional": "1"},
+        }));
+        execFileSync(process.execPath, [path.resolve("write-cjs-package-json.js")], {cwd: installation});
+        expect(JSON.parse(fs.readFileSync(path.join(cjs, "package.json"), "utf8")).dependencies).toBeUndefined();
+        fs.mkdirSync(path.join(installation, "node_modules"));
+        for (const name of Object.keys(manifest.dependencies)) {
+            fs.symlinkSync(fs.realpathSync(path.resolve("node_modules", name)), path.join(installation, "node_modules", name), "dir");
+        }
+        const behavior = path.join(installation, "node_modules", "host-behavior");
+        const leaf = path.join(behavior, "node_modules", "host-leaf");
+        fs.mkdirSync(leaf, {recursive: true});
+        fs.writeFileSync(path.join(behavior, "package.json"), JSON.stringify({name: "host-behavior", main: "index.js", dependencies: {"host-leaf": "1"}}));
+        fs.writeFileSync(path.join(behavior, "index.js"), "module.exports = require('host-leaf');");
+        fs.writeFileSync(path.join(leaf, "package.json"), JSON.stringify({name: "host-leaf", main: "index.js"}));
+        fs.writeFileSync(path.join(leaf, "index.js"), "module.exports = 'before';");
+        fs.writeFileSync(path.join(cjs, "index.js"), `Object.assign(exports,
+ require('./gamepackage/loadPokieGame.js'), require('./gamepackage/resolvePokieGameEntryModule.js'),
+ require('./optimization/internal/optimizationData.js'));
+const {Workbook} = require('exceljs'), {Command} = require('commander'), behavior = require('host-behavior');
+exports.hostProbe = () => [typeof new Workbook().addWorksheet, typeof new Command().parse, behavior];
+exports.hostPaths = () => [__filename, require.resolve('exceljs'), require.resolve('commander'), require.resolve('host-behavior')];`);
+        fs.mkdirSync(game);
+        fs.writeFileSync(path.join(game, "package.json"), JSON.stringify({name: "unchanged-game", pokie: {entry: "game.cjs"}}));
+        fs.writeFileSync(path.join(game, "game.cjs"), `const runtime = require('@fromstan/pokie');
+module.exports = {getManifest: () => ({id: 'unchanged-game', name: runtime.hostProbe().join(':'), version: '1.0.0'}),
+ createSession: () => ({root: __dirname, paths: runtime.hostPaths(), lazy: () => runtime.hostProbe()})};`);
+        const script = path.join(host, "probe.cjs");
+        fs.writeFileSync(script, `const assert = require('node:assert/strict'), fs = require('fs'), path = require('path');
+const runtime = require('@fromstan/pokie');
+const game = process.argv[2], installation = process.argv[3], leaf = process.argv[4];
+(async () => {
+ assert.throws(() => require('module').createRequire(path.join(game, 'game.cjs')).resolve('@fromstan/pokie'), /Cannot find module/);
+ const outside = require.cache[require.resolve('@fromstan/pokie')];
+ const first = await runtime.loadPokieGameRuntime(game);
+ const firstSession = first.game.createSession();
+ assert.equal(first.game.getManifest().name, 'function:function:before');
+ const roots = await runtime.resolvePokieGameDependencyRoots(game);
+ assert.equal(roots['@fromstan/pokie'], installation);
+ assert.equal((await runtime.resolvePokieGameDependencyRoots(installation, false))['missing-host-optional'], null);
+ const detached = path.join(path.dirname(game), 'detached');
+ runtime.copyPackage(game, detached);
+ await runtime.createPokieGameDependencyOverlay(detached, game);
+ assert.equal(fs.realpathSync(path.join(detached, 'node_modules/@fromstan/pokie')), installation);
+ const before = await runtime.packageExecutableRevision(game);
+ assert.equal(await runtime.packageExecutableRevision(detached), before);
+ fs.writeFileSync(leaf, "module.exports = 'after';");
+ const after = await runtime.packageExecutableRevision(game);
+ assert.notEqual(after, before);
+ assert.equal(await runtime.packageExecutableRevision(detached), after);
+ const second = await runtime.loadPokieGameRuntime(detached);
+ const secondSession = second.game.createSession();
+ assert.equal(second.game.getManifest().name, 'function:function:after');
+ assert.deepEqual(firstSession.lazy(), ['function', 'function', 'before']);
+ for (const session of [firstSession, secondSession]) {
+   for (const file of session.paths) assert.ok(file.startsWith(session.root + path.sep), file);
+ }
+ assert.notEqual(firstSession.root, secondSession.root);
+ fs.writeFileSync(leaf, "throw new Error('host leaf rejected');");
+ const temporaryRoots = fs.readdirSync(require('os').tmpdir()).filter(name => name.startsWith('pokie-runtime-')).sort();
+ await assert.rejects(runtime.loadPokieGameRuntime(game), /host leaf rejected/);
+ assert.deepEqual(fs.readdirSync(require('os').tmpdir()).filter(name => name.startsWith('pokie-runtime-')).sort(), temporaryRoots);
+ fs.writeFileSync(leaf, "module.exports = 'before';");
+ assert.equal(await runtime.packageExecutableRevision(game), before);
+ for (let i = 0; i < 2; i++) {
+   const restored = await runtime.loadPokieGame(game);
+   assert.equal(restored.getManifest().name, 'function:function:before');
+   await runtime.releasePokieGame(restored);
+ }
+ await first.release(); await first.release(); await second.release();
+ for (const session of [firstSession, secondSession]) {
+   assert.equal(fs.existsSync(session.root), false);
+   assert.ok(Object.keys(require.cache).every(file => !file.startsWith(session.root + path.sep)));
+ }
+ assert.equal(require.cache[require.resolve('@fromstan/pokie')], outside);
+ assert.deepEqual(runtime.hostProbe(), ['function', 'function', 'before']);
+ assert.equal(fs.existsSync(path.join(game, 'node_modules')), false);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(game, 'package.json'))).dependencies, undefined);
+ console.log(JSON.stringify({closure: true, privatePaths: true, revision: true, overlay: true, recovered: true, cleanup: true}));
+})().catch(error => { console.error(error); process.exitCode = 1; });`);
+        expect(JSON.parse(execFileSync(process.execPath, [script, game, installation, path.join(leaf, "index.js")], {
+            cwd: host, encoding: "utf8", timeout: 60000,
+        }))).toEqual({closure: true, privatePaths: true, revision: true, overlay: true, recovered: true, cleanup: true});
+    } finally {
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+}, 90000);
 
 describe("readPokiePackageConfig", () => {
     it("reads the pokie.entry field from package.json", () => {

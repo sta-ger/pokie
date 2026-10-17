@@ -195,20 +195,29 @@ async function resolveHostPokieRuntimeRoot(): Promise<string | undefined> {
     // Bind omitted runtime dependencies to the installation executing this loader, even when a
     // global CLI or embedding application opens a project outside its own node_modules ancestry.
     // Explicit dependencies are resolved from the project's ancestry before this fallback is used.
-    if (typeof __filename === "string") return findPackageRoot(__filename);
+    if (typeof __filename === "string") return findHostInstallationRoot(__filename);
     // A native import preserves the ESM location helper when TypeScript also emits this source as CJS.
     // eslint-disable-next-line no-new-func -- the helper must retain import.meta in both compiled trees.
     const locate = new Function("return import('./internal/runtimeLocation.mjs')") as () => Promise<{runtimeLocation(): string}>;
-    return findPackageRoot(fileURLToPath((await locate()).runtimeLocation()));
+    return findHostInstallationRoot(fileURLToPath((await locate()).runtimeLocation()));
 }
 
-function findPackageRoot(filePath: string): string | undefined {
+function findHostInstallationRoot(filePath: string): string | undefined {
+    let installationRoot: string | undefined;
     let current = path.dirname(filePath);
-    while (path.dirname(current) !== current) {
-        if (fs.existsSync(path.join(current, "package.json"))) return current;
+    // dist/cjs/package.json repeats the name for self-references and sets module scope,
+    // but the enclosing installation owns exports, assets and runtime dependencies.
+    // Keep that entire installation as the shared overlay/copy/revision authority.
+    // Stop at node_modules so a containing application's manifests cannot replace it.
+    while (path.dirname(current) !== current && path.basename(current) !== "node_modules") {
+        const manifestPath = path.join(current, "package.json");
+        if (fs.existsSync(manifestPath)) {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {name?: string};
+            if (manifest.name === "@fromstan/pokie") installationRoot = current;
+        }
         current = path.dirname(current);
     }
-    return undefined;
+    return installationRoot;
 }
 
 function declaredRuntimeDependencies(packageRoot: string): string[] {
