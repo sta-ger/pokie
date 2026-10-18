@@ -216,7 +216,7 @@ async function waitForOutcomeLibraryJob(baseUrl: string, id: string): Promise<Re
     // Snapshot acquisition now yields while copying the real installed graph.
     // Budget elapsed time for that phase as well as generation, rather than
     // exhausting a small number of polls while the worker is still preparing it.
-    const deadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
+    const deadline = Date.now() + REAL_RUNTIME_TEST_TIMEOUT_MS;
     let lastJob: Record<string, unknown> | undefined;
     while (Date.now() < deadline) {
         const response = await get(`${baseUrl}/api/project/outcome-libraries/generate/jobs/${id}`);
@@ -231,7 +231,10 @@ async function waitForOutcomeLibraryJob(baseUrl: string, id: string): Promise<Re
 }
 
 async function waitForOutcomeLibraryJobProgress(baseUrl: string, id: string): Promise<Record<string, unknown>> {
-    const deadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
+    // The service announces generation before the conversion planner revalidates
+    // its real package source. Numeric progress follows that independent load;
+    // use the existing real-runtime budget for the complete preparation path.
+    const deadline = Date.now() + REAL_RUNTIME_TEST_TIMEOUT_MS;
     let lastJob: Record<string, unknown> | undefined;
     while (Date.now() < deadline) {
         const response = await get(`${baseUrl}/api/project/outcome-libraries/generate/jobs/${id}`);
