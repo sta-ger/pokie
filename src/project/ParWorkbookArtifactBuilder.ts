@@ -44,7 +44,7 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
     public async inspectConversion(source: PokieProject) {
         if (source.type === "blueprint") return inspectParSheetConversion(this.loadBlueprint(source.rootPath), source.rootPath);
         const imported = await this.importer.importFromFile(source.rootPath);
-        return inspectParSheetConversion(imported.blueprint, undefined, {conversionReport: parSheetConversionReport(imported.issues, imported.conversionEvidence), losslessEligible: imported.conversionEvidence?.losslessEligible ?? false});
+        return inspectParSheetConversion(imported.blueprint, undefined, {conversionReport: parSheetConversionReport(imported.issues, imported.conversionEvidence ?? {issues: [], facts: [], losslessEligible: false}), losslessEligible: imported.conversionEvidence?.losslessEligible ?? false});
     }
 
     public async validate(source: PokieProject): Promise<void> {
@@ -104,7 +104,7 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
             reportArtifactBuildProgress(options, {status: "running", message: "Publishing PAR workbook"});
             const exportIssues = await this.exporter.exportToFile(imported.blueprint, destinationPath, source.rootPath, {
                 losslessEligible: imported.conversionEvidence?.losslessEligible ?? false,
-                conversionReport: parSheetConversionReport(imported.issues, imported.conversionEvidence),
+                conversionReport: parSheetConversionReport(imported.issues, imported.conversionEvidence ?? {issues: [], facts: [], losslessEligible: false}),
                 onPublication: owned => {
                     publication = owned;
                 },
@@ -118,7 +118,7 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
             }
 
             reportArtifactBuildProgress(options, {status: "completed"});
-            return {outputPath: destinationPath, publishedFileOwnership: publication === undefined ? [] : [publication], parConversion: parSheetConversionReport([...imported.issues, ...exportIssues], imported.conversionEvidence)};
+            return {outputPath: destinationPath, publishedFileOwnership: publication === undefined ? [] : [publication], parConversion: parSheetConversionReport([...imported.issues, ...exportIssues], imported.conversionEvidence ?? {issues: [], facts: [], losslessEligible: false})};
         } catch (error) {
             await rollbackArtifactPublication({publishedFileOwnership: publication === undefined ? [] : [publication]});
             if (options?.signal?.aborted) {

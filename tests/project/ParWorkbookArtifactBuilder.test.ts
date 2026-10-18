@@ -8,6 +8,7 @@ import {
     ParSheetExporter,
     ParSheetImporter,
     ParWorkbookArtifactBuilder,
+    BlueprintArtifactBuilder,
     PokieProject,
     PROJECT_TYPE_CAPABILITIES,
     type ParSheetExporting,
@@ -101,6 +102,16 @@ describe("ParWorkbookArtifactBuilder", () => {
         const imported = await new ParSheetImporter().importFromFile(destinationFile);
         expect(imported.issues.filter((issue) => issue.severity === "error")).toEqual([]);
         expect(imported.blueprint).toMatchObject({manifest: blueprint.manifest, reelStrips: blueprint.reelStrips, paytable: blueprint.paytable});
+    });
+
+    it("keeps legacy importer evidence optional without certifying an unobserved lossless import", async () => {
+        const importer = {importFromFile: () => Promise.resolve({blueprint, provenance: undefined, issues: []})};
+        const result = await new BlueprintArtifactBuilder(importer).build(parWorkbookProjectOf(sourceFile), path.join(dir, "legacy.json"));
+        expect(result.parConversion?.losslessEligible).toBe(false);
+        expect(JSON.parse(fs.readFileSync(result.conversionEvidencePath!, "utf8")).losslessEligible).toBe(false);
+        const republished = await new ParWorkbookArtifactBuilder("1", importer).build(parWorkbookProjectOf(sourceFile), destinationFile);
+        expect(republished.parConversion?.losslessEligible).toBe(false);
+        expect((await new ParSheetImporter().importFromFile(destinationFile)).conversionEvidence?.losslessEligible).toBe(false);
     });
 
     it("reports Blueprint validation diagnostics without creating a PAR workbook", async () => {

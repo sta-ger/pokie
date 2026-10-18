@@ -228,7 +228,6 @@ export class ParSheetImporter implements ParSheetImporting {
         // leaving them as generic diagnostics would let a matching Meta hash
         // incorrectly advertise an edited workbook as lossless.
         for (const issue of issues) {
-            if (issue.code === "parsheet-provenance-present") continue;
             if (!facts.some((fact) => fact.code === issue.code && fact.message === issue.message)) {
                 facts.push({kind: conversionFactKindForIssue(issue), code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})});
             }

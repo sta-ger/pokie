@@ -394,12 +394,18 @@ export class ArtifactBuilderRegistry {
             return this.applyDestinationPolicy(plannedSource, target, planningOptions, plan);
         }
         let plan = this.planner.plan(plannedSource, target, planningOptions);
-        if (source.type === "parWorkbook") {
-            const imported = await new ParSheetImporter().importFromFile(source.rootPath);
-            plan = {...plan, parConversion: parSheetConversionReport(imported.issues, imported.conversionEvidence)};
-            if (target === "parWorkbook") plan = {...plan, parConversion: await inspectParSheetConversion(imported.blueprint, undefined, {conversionReport: plan.parConversion})};
-        } else if (source.type === "blueprint" && target === "parWorkbook") {
-            plan = {...plan, parConversion: await inspectParSheetConversion(loadGameBlueprint(source.rootPath), source.rootPath)};
+        try {
+            if (source.type === "parWorkbook") {
+                const imported = await new ParSheetImporter().importFromFile(source.rootPath);
+                plan = {...plan, parConversion: parSheetConversionReport(imported.issues, imported.conversionEvidence)};
+                if (target === "parWorkbook") plan = {...plan, parConversion: await inspectParSheetConversion(imported.blueprint, undefined, {conversionReport: plan.parConversion})};
+            } else if (source.type === "blueprint" && target === "parWorkbook") {
+                plan = {...plan, parConversion: await inspectParSheetConversion(loadGameBlueprint(source.rootPath), source.rootPath)};
+            }
+        } catch (error) {
+            // Diagnostic collection is read-only. Execution/validate still use the
+            // selected builder's source boundary, including injected extensions.
+            plan = {...plan, parConversion: parSheetConversionReport([{code: "parsheet-read-failed", severity: "error", message: error instanceof Error ? error.message : String(error)}])};
         }
         return this.applyDestinationPolicy(plannedSource, target, planningOptions, plan);
     }

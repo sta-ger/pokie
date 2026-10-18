@@ -661,6 +661,7 @@ describe("V2C-26 review conversion boundaries", () => {
         await workbook.xlsx.writeFile(source);
         const imported = await new api.ParSheetImporter().importFromFile(source);
         expect(imported.conversionEvidence?.losslessEligible).toBe(false);
+        const expectedFacts = imported.conversionEvidence!.facts.filter(fact => fact.code !== "parsheet-provenance-present");
         const codes: Record<string, string> = {formula: "parsheet-formula-cell", ignored: "parsheet-unknown-sheet"};
         const expected = codes[kind] ?? first.parConversion!.issues.find(issue => issue.details?.losslessEligible === false)!.code;
         const output = path.join(directory, "republished.xlsx");
@@ -670,19 +671,19 @@ describe("V2C-26 review conversion boundaries", () => {
         for (const report of [plan.parConversion, result.parConversion]) {
             expect(report?.losslessEligible).toBe(false);
             expect(report?.issues).toContainEqual(expect.objectContaining({code: expected}));
-            expect(report?.facts).toEqual(expect.arrayContaining(imported.conversionEvidence!.facts));
+            expect(report?.facts).toEqual(expect.arrayContaining(expectedFacts));
         }
         const second = await new api.ParSheetImporter().importFromFile(output);
-        expect(second.conversionEvidence?.facts).toEqual(expect.arrayContaining(imported.conversionEvidence!.facts));
+        expect(second.conversionEvidence?.facts).toEqual(expect.arrayContaining(expectedFacts));
         const durable = await new api.BlueprintArtifactBuilder().build((await new api.ProjectTargetResolver().resolve(output))!, path.join(directory, "durable.json"));
-        expect(JSON.parse(fs.readFileSync(durable.conversionEvidencePath!, "utf8")).facts).toEqual(expect.arrayContaining(imported.conversionEvidence!.facts));
+        expect(JSON.parse(fs.readFileSync(durable.conversionEvidencePath!, "utf8")).facts).toEqual(expect.arrayContaining(expectedFacts));
         const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
         expect(await new BuildCommand("1").run([source, "--target", "parWorkbook", "--out", path.join(directory, "dry.xlsx"), "--dry-run"])).toBe(0);
         expect(log.mock.calls.flat().join("\n")).toContain(expected);
         const studio = new StudioArtifactBuildService("1");
         const studioPath = path.join(directory, "studio.xlsx");
-        expect(await studio.preview(source, "parWorkbook", studioPath)).toMatchObject({status: "ok", plan: {parConversion: {facts: expect.arrayContaining(imported.conversionEvidence!.facts)}}});
-        expect(await studio.build(source, "parWorkbook", studioPath)).toMatchObject({status: "ok", parConversion: {facts: expect.arrayContaining(imported.conversionEvidence!.facts)}});
+        expect(await studio.preview(source, "parWorkbook", studioPath)).toMatchObject({status: "ok", plan: {parConversion: {facts: expect.arrayContaining(expectedFacts)}}});
+        expect(await studio.build(source, "parWorkbook", studioPath)).toMatchObject({status: "ok", parConversion: {facts: expect.arrayContaining(expectedFacts)}});
     });
 
     it.each((["numeric", "wide", "native"] as const).flatMap(domain => ["weights", "books", "index", "provenance", "coordinated payout"].map(change => ({domain, change}))))("rejects retained $domain Stake preview after valid $change change and accepts fresh preparation", async ({domain, change}) => {
