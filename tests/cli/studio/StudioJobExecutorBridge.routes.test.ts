@@ -208,6 +208,8 @@ describe("StudioJobService executor bridge routes", () => {
         const response = await post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "dossier", modes: [{modeName: "base", seed: "s", sampleCount: 2}], output: {formats: ["pdf"], templateFile: "presentation.json"}});
         expect(response).toMatchObject({status: 200, body: {status: "ok", manifest: {dossier: {support: {coverage: "unavailable"}}}}});
         const retained = jobs.get(projectRoot, "bridge-job")!;
+        expect(retained.result?.summary).toContain("preparation only");
+        expect(retained.result?.summary).toContain("Model representation: unavailable");
         expect(retained.request).toMatchObject({inputIdentity: expect.stringMatching(/^sha256:/), output: {formats: ["pdf"], templateFile: "presentation.json"}});
         const download = retained.result!.outputs!.find(output => output.path === "dossier.pdf")!.downloadPath!;
         await server!.stop();

@@ -196,7 +196,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
         setDownloadError("");
         try {
             const blob = await downloadCertificationDossier(fetchImpl, outDir.trim(), buildView.manifest.evidenceContentHash, file);
-            if (requestId !== buildRequestIdRef.current) return;
+            if (!mountedRef.current || requestId !== buildRequestIdRef.current) return;
             const url = URL.createObjectURL(blob),
                 anchor = document.createElement("a");
             anchor.href = url;
@@ -204,7 +204,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
             anchor.click();
             URL.revokeObjectURL(url);
         } catch (error) {
-            if (requestId === buildRequestIdRef.current) setDownloadError(errorMessage(error));
+            if (mountedRef.current && requestId === buildRequestIdRef.current) setDownloadError(errorMessage(error));
         }
     }
 
@@ -247,6 +247,13 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     const [buildView, setBuildView] = useState<CertificationBuildRequestView>({status: "idle"});
     const buildRequestIdRef = useRef(0);
     const buildGuard = useDoubleSubmitGuard();
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
     // Same "outdated" distinction as validateOutdated above, for a completed Build silently invalidated by
     // a later mode/output-directory edit -- the case validateOutdated alone can't cover, since editing
     // modes/outDir (unlike bundleDir) never touches Validate at all, only Build. Cleared the instant a
@@ -555,6 +562,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                         warnings={buildView.status === "ok" || buildView.status === "error" ? buildView.warnings : []}
                     />
                 )}
+                {buildView.status === "ok" && <Text size="sm" mb="sm">Model representation: {buildView.manifest.dossier?.support.coverage ?? "unavailable"}. {buildView.manifest.dossier?.support.limitations.join(" ")}</Text>}
                 {inspectReachable ? (
                     <QuickActions>
                         <Button onClick={() => setActiveStep(3)}>Continue to Inspect</Button>

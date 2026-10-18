@@ -179,9 +179,10 @@ const root = process.argv[2], cert = path.join(root, "dossier"), source = path.j
 const authorities = {modelSource, reportFiles: [path.join(root, "report.json")], replayFiles: [path.join(root, "replay.json")], sourceRevision: "source-revision", candidateRevision: "candidate-revision"};
 const original = JSON.parse(fs.readFileSync(path.join(cert, "manifest.json"), "utf8"));
 const hash = raw => "sha256:" + crypto.createHash("sha256").update(raw).digest("hex");
-const rejects = async dossier => {
+const rejects = async (dossier, expectedMessage) => {
     const issues = await new api.CertificationEvidenceBundleVerifier().verify(cert, {sourceBundleDir: source, dossier});
     assert(issues.some(issue => issue.code === "certification-dossier-authority-mismatch"), JSON.stringify(issues));
+    if (expectedMessage) assert(issues.some(issue => issue.message.includes(expectedMessage)), JSON.stringify(issues));
 };
 const publish = async manifest => {
     manifest.evidenceContentHash = api.computeCertificationEvidenceContentHash(manifest);
@@ -208,13 +209,15 @@ assert(!fs.existsSync(path.join(root, "refused")));
 candidate = structuredClone(original);
 const recording = candidate.dossier.reproduction.recordings[0].value;
 recording.deliveries[0].after.credits += 1;
+recording.deliveries[0].result.credits += 1;
 const {hash: oldHash, ...body} = recording;
 recording.hash = api.computeAuditRoundHash(body);
+api.validateAuditRoundRecording(recording);
 const rawReplay = JSON.stringify(recording);
 candidate.dossier.reproduction.recordings[0] = {raw: rawReplay, hash: hash(rawReplay), value: recording};
 await publish(candidate);
 const replacedReplay = path.join(root, "rehashed-replay.json"); fs.writeFileSync(replacedReplay, rawReplay);
-await rejects({...authorities, replayFiles: [replacedReplay]});
+await rejects({...authorities, replayFiles: [replacedReplay]}, "audit-execution-mismatch");
 await publish(original);
 console.log(JSON.stringify({closed: ["candidate", "model", "valid-report-substitution", "false-report-math", "rehashed-runtime-replay"]}));
 `);
