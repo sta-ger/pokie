@@ -1,5 +1,6 @@
 import {generatedMechanicsGame, mechanicsSession} from "./fixtures/ExistingMechanicsGame.js";
 import {Worker} from "worker_threads";
+import {execFileSync} from "node:child_process";
 import {pathToFileURL} from "url";
 import {SimulationWorkerCoordinator} from "../../src/simulation/parallel/SimulationWorkerCoordinator.js";
 import {writeOptimizationWorkerEntry} from "./fixtures/OptimizationWorkerFixture.js";
@@ -66,6 +67,55 @@ async function fixture(type: ProjectType) {
     }
     return {file, request};
 }
+
+it("retains authenticated archive/install pins through the optimization gate-test correction", () => {
+    const root = fs.mkdtempSync(path.join(directory, "retained-candidate-"));
+    try {
+        // Use native installed resolution, without Jest's POKIE source aliases.
+        execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from "node:assert/strict";
+            import {mkdir, readFile, writeFile} from "node:fs/promises";
+            import {execFileSync} from "node:child_process";
+            import path from "node:path";
+            import {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} from ${JSON.stringify(pathToFileURL(path.resolve("tests/testUtils/createP911CandidateFixture.mjs")).href)};
+            import {readP911Candidate, readP911CandidateFromEnvironment} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
+            const fixture = await candidateFixture(${JSON.stringify(root)});
+            const options = {repository: fixture.repository};
+            const original = await readP911Candidate(fixture.reference, options);
+            for (const file of ["tests/project/ArtifactBuilderRegistry.test.ts", "tests/cli/studio/StudioArtifactBuildService.test.ts",
+                "tests/v2/fixtures/PackageExtractionFixture.ts", "tests/v2/OptimizationPublicWorkflow.test.ts",
+                "scripts/p9-11-candidate.mjs", "tests/testUtils/createP911CandidateFixture.mjs", "docs/v2-completion/V2C-26.md"])
+                assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
+            const reviewedId = await commitP911ToolingDescendant(fixture);
+            const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
+            const selected = await readP911CandidateFromEnvironment(environment, options);
+            assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, [...P911_TOOLING_DESCENDANT_PATHS].sort());
+            assert.equal(selected.equivalence.reviewedId, reviewedId);
+            assert.deepEqual({...selected, equivalence: original.equivalence}, original);
+            for (const reference of [fixture.handoff.browserDriver, fixture.handoff.buildReceipt, fixture.handoff.installReceipt,
+                {path: fixture.handoff.archivePath}, {path: path.join(selected.packageRoot, "dist/cli/pokie.js")}]) {
+                const bytes = await readFile(reference.path);
+                await writeFile(reference.path, "changed pinned input");
+                await assert.rejects(readP911CandidateFromEnvironment(environment, options),
+                    /authenticated controller browser driver required|receipt digest mismatch|archive digest mismatch|stale installed asset/);
+                await writeFile(reference.path, bytes);
+            }
+            assert.deepEqual(await readP911CandidateFromEnvironment(environment, options), selected);
+            // A neighboring test and product/build inputs remain protected, even after admission.
+            for (const file of ["tests/v2/OptimizationPublicWorkflow.extra.test.ts", "src/index.ts", "package.json", "tsconfig.prod.json"]) {
+                const target = path.join(fixture.repository, file);
+                await mkdir(path.dirname(target), {recursive: true});
+                await writeFile(target, "changed protected input");
+                execFileSync("git", ["add", "."], {cwd: fixture.repository});
+                execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "protected input rejection fixture"], {cwd: fixture.repository});
+                await assert.rejects(readP911CandidateFromEnvironment(environment, options), /product\\/build inputs changed/);
+                execFileSync("git", ["reset", "--hard", reviewedId], {cwd: fixture.repository, stdio: "ignore"});
+            }
+        `], {timeout: 30_000, stdio: ["ignore", "pipe", "pipe"]});
+    } finally {
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});
 
 // The TS case repeats isolated executable acquisition for engine/CLI publication,
 // independent readback and reviewed apply. Allow the complete serial workflow to
@@ -178,34 +228,44 @@ it.each(["locks", "candidate", "source", "deleted", "authority"])("refuses %s dr
     await service.discard(result.candidate!);
 });
 
+// Optimize and both apply attempts each validate real isolated package runtimes.
+// Use the public package workflow's bounded budget under concurrent gate workers.
 it.each(["write", "cleanup"])("rolls back both TS authored files on %s failure and permits a fresh retry", async failure => {
     const {file, request} = await fixture("tsPackage");
     const project = await resolve(file);
     const before = sourceInventory(project);
     const result = await service.optimize(project, request);
+    expect(result.status).toBe("success");
+    let injectedFailures = 0;
     if (failure === "write") {
         const rename = fs.renameSync;
         jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-            if (String(from).includes(".pokie-apply-") && String(to).endsWith("pokie-tuning.json")) throw Error("injected metadata write failure");
+            if (String(from).includes(".pokie-apply-") && String(to).endsWith("pokie-tuning.json")) {
+                injectedFailures++;
+                throw Error("injected metadata write failure");
+            }
             return rename(from, to);
         });
     } else {
         const remove = fs.rmSync;
-        let failed = false;
         jest.spyOn(fs, "rmSync").mockImplementation((target, options) => {
-            if (String(target).includes(".pokie-apply-") && !failed) {
-                failed = true;
+            if (String(target).includes(".pokie-apply-") && injectedFailures === 0) {
+                injectedFailures++;
                 throw Error("injected cleanup failure");
             }
             return remove(target, options);
         });
     }
     await expect(service["apply"](result.candidate!, request)).rejects.toThrow(/apply failed/);
+    expect(injectedFailures).toBe(1);
     jest.restoreAllMocks();
     expect(sourceInventory(project)).toEqual(before);
     await service["apply"](result.candidate!, request);
+    const authored = await acquireOptimizationAdapter(await resolve(file), request.policy);
+    expect(await authored.read(file)).toMatchObject({paytable: {A: {2: 3}}});
+    await expect(service["apply"](result.candidate!, request)).rejects.toThrow(/receipt|applied/);
     await service.discard(result.candidate!);
-});
+}, 180000);
 
 it.each(["search", "assessment"])("active sampled %s reload reattaches, drains cancellation and retries without changing source/locks", async phase => {
     const {file} = await fixture("blueprint");
