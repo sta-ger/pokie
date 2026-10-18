@@ -8,6 +8,7 @@ import {
     buildGameBuildInfo,
     buildGameModelProjection,
     computeGameBlueprintHash,
+    computeBlueprintHash,
     computeArtifactInputBindingHash,
     GameBlueprint,
     GameBlueprintValidating,
@@ -19,6 +20,8 @@ import {
     validateBlueprintReelSequences,
     ParSheetExporter,
     ParSheetExporting,
+    ParSheetFilePublication,
+    rollbackArtifactPublication,
     ParSheetImporter,
     ParSheetImporting,
     RandomGameBlueprintGenerating,
@@ -751,6 +754,8 @@ export class StudioBlueprintService {
             return {status: "error", error: plan.diagnostic?.message ?? "PAR export is unavailable."};
         }
         let terminalFailure: unknown;
+        let publication: ParSheetFilePublication | undefined;
+        const rollback = () => rollbackArtifactPublication({publishedFileOwnership: publication === undefined ? [] : [publication]});
         try {
             const execution = await this.planner.executeConversionPlan(plan, {
                 currentSource: () => this.blueprintSourceIdentity(blueprint, sourcePath),
@@ -776,8 +781,11 @@ export class StudioBlueprintService {
                 // PAR export performs its own atomic publication. The
                 // operation owns its ordering and terminal boundary; the
                 // shared policy has already ruled out a borrowed target.
-                publish: () => this.parSheetExporter.exportToFile(blueprint, resolved, sourcePath, {signal}),
-                cleanup: () => undefined,
+                publish: () => this.parSheetExporter.exportToFile(blueprint, resolved, sourcePath, {signal, losslessEligible: this.parDraftLosslessEligible(blueprint, sourcePath), onPublication: owned => {
+                    publication = owned;
+                }}),
+                rollback,
+                cleanup: ({error}) => error === undefined ? undefined : rollback(),
                 signal,
                 onTerminalFailure: (error) => {
                     terminalFailure = error;
@@ -1081,6 +1089,18 @@ export class StudioBlueprintService {
                 fs.promises.rm(temporaryBlueprint, {force: true}),
                 fs.promises.rm(`${temporaryBlueprint}.conversion-evidence.json`, {force: true}),
             ]);
+        }
+    }
+
+    private parDraftLosslessEligible(blueprint: unknown, sourcePath?: string): boolean | undefined {
+        if (sourcePath === undefined || path.extname(sourcePath).toLowerCase() !== ".xlsx") return undefined;
+        // The browser supplies a draft and source path, never authority to erase
+        // the workbook's losses. Reuse the byte-bound, restart-safe import record.
+        try {
+            const trusted = this.loadPreparedParImport(sourcePath);
+            return trusted?.losslessEligible === true && trusted.importedBlueprintHash === computeBlueprintHash(blueprint as GameBlueprint);
+        } catch {
+            return false;
         }
     }
 

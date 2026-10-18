@@ -513,6 +513,12 @@ you specifically need every outcome and have sized memory and storage for the fu
 republish their recognized artifact to a new destination. Every writer is atomic and validates its input before
 publishing, never attempting to recover a game model from an outcome-based artifact.
 
+Prepared Stake previews bind the consumed index, CSV weights, compressed books and
+provenance, including native optimizer inventories. A valid source edit requires a
+fresh preview; refreshing its native inventory does not refresh an older operation.
+Cancellation or registration rollback removes only owned publication output and
+preserves unrelated replacement directories and their contents.
+
 For random game generation, there is no `build random`/`--random` — generation and building are two separate,
 explicit steps: [`pokie create --random`](#pokie-create-name---random) writes a Blueprint Project, then `pokie
 build <the written file> --target tsPackage --out <dir>` turns it into a real package.
@@ -982,7 +988,7 @@ Options:
 
 Successful imports also write `<blueprint>.conversion-evidence.json`. The sidecar records the source workbook,
 verbatim Meta cells, parsed provenance, diagnostics, formula/ignored/default facts, and whether the imported
-Blueprint hash proves lossless eligibility. It is part of the publication: an existing sidecar is never overwritten.
+supported schema, matching represented hash and retained conversion facts justify lossless eligibility. It is part of the publication: an existing sidecar is never overwritten.
 
 Exit code is non-zero (and nothing is written) if there are any error-level diagnostics.
 
@@ -1055,6 +1061,15 @@ issue, and verifies it against the blueprint it just assembled:
   `parsheet-provenance-hash-mismatch` (warning) — the workbook was likely hand-edited (or otherwise changed) since
   `pokie par export <config.json>` produced it;
 - otherwise, `parsheet-provenance-present` (info) — the recorded hash matches the imported data.
+
+A missing, malformed or unsupported schema cannot qualify for lossless eligibility,
+even when the represented hash matches. An explicitly invalid `Lossless Eligible`
+value produces a field diagnostic and remains ineligible. Older supported workbooks
+may omit that optional field. `Meta` also retains detailed conversion diagnostics
+and loss facts in `Conversion Evidence`; canonical build previews/results and Studio
+show those observations. Re-export retains prior import/materialization losses from
+the workbook or its Blueprint conversion-evidence sidecar. A new matching hash does
+not erase that history.
 
 ## `pokie reel generate <blueprint.json>`
 
@@ -4014,3 +4029,31 @@ committing. Changed locks/source/policy require another review; `--apply` cannot
 Exit codes remain success/attained 0, operational failure 1, infeasible 2, invalid 3, unsupported 4,
 exhausted 5, SIGINT cancellation 6 and inconclusive 7. See [optimization](optimization.md) for the six
 conditional adapters, author opt-in, confidence evidence, apply rollback and restart limits.
+
+### V2C-26 interchange domains
+
+PAR preserves represented weighted sequence identities/order/context, launch mechanics,
+retrigger and bet-mode contracts, explicit zero/omitted payouts (including empty symbol
+maps), fractional bets and the resolved Game Model. Empty optional arrays/strings
+canonicalize to absence. Geometry and nonrepresentable package policies fail before
+publication. Generated/default/shared-weight reel sources become literal snapshots;
+formula cached values, ignored cells/sheets and inferred defaults remain disclosed
+in Meta and conversion evidence. A prior ineligible Blueprint sidecar cannot be
+upgraded by re-export. Import into a Studio draft does not save the source; save/apply
+remains explicit.
+
+Stake IDs and raw payouts are nonnegative safe integers through 9007199254740991.
+Weights are positive UInt64 decimal integers through 18446744073709551615 and their
+aggregate may exceed UInt64 on the exact Stake payload path. `import SOURCE --out NEW`
+retains a Stake adapter when native numeric Outcome Library limits would be exceeded;
+`build NEW --target stakeAdapter --out OTHER` republishes it exactly. Numeric library
+export requires safe-integer weights; native bundles also require safe totals.
+Inspect/report/analyze/diff retain rare nonzero values (moments are binary64
+approximations; wide totals/bucket weights and capped decimal probability strings
+retain their separate documented domains). No UInt64 payout guarantee is implied.
+
+New conversions use new/empty destinations, preserve source bytes and publish complete
+outputs. The ordinary direct Stake library exporter also permits a recognized prior
+export rebuild; canonical artifact operations reject occupied outputs and evidence
+companions. Retired direct Studio Stake routes remain retired in favor of prepared
+artifact preview/build and pollable jobs.

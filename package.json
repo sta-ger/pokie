@@ -200,7 +200,8 @@
         "examples/blueprints/wild-*.blueprint.json",
         "docs/optimization.md",
         "docs/v2-completion/V2C-23.md",
-        "docs/v2-completion/V2C-25.md"
+        "docs/v2-completion/V2C-25.md",
+        "docs/v2-completion/V2C-26.md"
     ],
     "dependencies": {
         "commander": "^14.0.3",

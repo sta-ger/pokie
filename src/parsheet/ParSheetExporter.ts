@@ -1,3 +1,7 @@
+import {ParSheetImporter} from "./ParSheetImporter.js";
+import {computeBlueprintHash} from "./computeBlueprintHash.js";
+import {parSheetConversionReport, parseParSheetConversionReport, type ParSheetConversionReport} from "./ParSheetConversionReport.js";
+import fs from "fs";
 import {ReelSequencesSheetMapper} from "./mapping/ReelSequencesSheetMapper.js";
 import type {ReelSequencesSheetMapping} from "./mapping/ReelSequencesSheetMapping.js";
 import ExcelJS from "exceljs";
@@ -84,7 +88,7 @@ export function prepareBlueprintForParSheetExport(
 
     if (authored.reelSequences !== undefined) return {blueprint: {...authored}, issues: validationIssues};
 
-    if (authored.reelStrips !== undefined) return {blueprint: removeSharedWeights({...authored}), issues: validationIssues};
+    if (authored.reelStrips !== undefined) return {blueprint: removeSharedWeights({...authored}), issues: authored.symbolWeights === undefined ? validationIssues : [...validationIssues, materializationIssue("parsheet-shared-weights-ignored", "symbolWeights is ignored when literal reelStrips are authored; the workbook retains the literal reels only.")]};
 
     // `symbolWeights` and the omitted engine-default weighting both describe playable canonical
     // Blueprints but have no physical strip. Freeze the same deterministic sample Studio presents.
@@ -213,6 +217,12 @@ export class ParSheetExporter implements ParSheetExporting {
         const issues = prepared.issues;
         if (prepared.blueprint === undefined) return issues;
         const typedBlueprint = prepared.blueprint;
+        const report = await inspectParSheetConversion(blueprint, sourcePath, options, prepared.issues);
+        issues.splice(0, issues.length, ...report.issues);
+        // A valid reconstructed model does not erase errors encountered while reading its source.
+        // Reject the complete conversion report before allocating or serializing any output.
+        if (issues.some(issue => issue.severity === "error")) return issues;
+        const priorLossless = report.losslessEligible;
 
         const workbook = new ExcelJS.Workbook();
         addSheet(
@@ -255,22 +265,22 @@ export class ParSheetExporter implements ParSheetExporting {
                 this.pokieVersion,
                 this.now(),
                 sourcePath,
-                options?.losslessEligible !== false && !issues.some((issue) => issue.details?.losslessEligible === false),
+                priorLossless,
+                report,
             ),
         );
 
         options?.onProgress?.({message: "Serializing PAR workbook"});
         assertNotCancelled(options);
-        if (this.writeWorkbook === defaultWriteWorkbook) {
-            await writeFileAtomically(filePath, (tempPath) => workbook.xlsx.writeFile(tempPath), () => {
-                options?.onProgress?.({message: "Committing PAR workbook"});
-                assertNotCancelled(options);
-            }, false);
-        } else {
-            await this.writeWorkbook(workbook, filePath);
+        await writeFileAtomically(filePath, tempPath => this.writeWorkbook === defaultWriteWorkbook
+            ? workbook.xlsx.writeFile(tempPath)
+            : this.writeWorkbook(workbook, tempPath), () => {
             options?.onProgress?.({message: "Committing PAR workbook"});
             assertNotCancelled(options);
-        }
+        }, false, publication => {
+            options?.onPublication?.(publication);
+            assertNotCancelled(options);
+        });
         return issues;
     }
 
@@ -288,4 +298,32 @@ function addSheet(workbook: ExcelJS.Workbook, sheetName: string, grid: SheetGrid
     grid.forEach((row) => {
         worksheet.addRow(row);
     });
+}
+
+/** Shared read-only preview of the same preparation/history consumed by the writer. */
+export async function inspectParSheetConversion(blueprint: unknown, sourcePath?: string, options?: ParSheetExportOptions, preparedIssues?: readonly ValidationIssue[]): Promise<ParSheetConversionReport> {
+    const issues = [...(preparedIssues ?? prepareBlueprintForParSheetExport(blueprint).issues)];
+    const histories: ParSheetConversionReport[] = options?.conversionReport ? [options.conversionReport] : [];
+    let eligible = options?.losslessEligible !== false;
+    if (sourcePath !== undefined) {
+        try {
+            if (fs.existsSync(`${sourcePath}.conversion-evidence.json`)) {
+                const history = JSON.parse(fs.readFileSync(`${sourcePath}.conversion-evidence.json`, "utf8"));
+                histories.push(parseParSheetConversionReport(history));
+                if (history.importedBlueprintHash !== undefined) eligible = eligible && history.importedBlueprintHash === computeBlueprintHash(blueprint as GameBlueprint);
+            } else if ((/\.xlsx$/i).test(sourcePath) && fs.existsSync(sourcePath)) {
+                const imported = await new ParSheetImporter().importFromFile(sourcePath);
+                histories.push(parSheetConversionReport(imported.issues, imported.conversionEvidence));
+                eligible = eligible && imported.conversionEvidence?.importedBlueprintHash === computeBlueprintHash(blueprint as GameBlueprint);
+            }
+        } catch {
+            eligible = false;
+        }
+    }
+    for (const history of histories) {
+        issues.push(...history.issues);
+        eligible = eligible && history.losslessEligible;
+    }
+    if (!eligible) issues.push(materializationIssue("parsheet-prior-conversion-loss", "Prior conversion evidence is ineligible, changed or unavailable; re-export cannot upgrade that boundary to lossless."));
+    return parSheetConversionReport(issues, {issues: [], facts: histories.flatMap(history => history.facts), losslessEligible: eligible});
 }

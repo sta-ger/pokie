@@ -12,6 +12,7 @@ import {
     OUTCOME_LIBRARY_READ_CAPABILITY,
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     STAKE_ADAPTER_EXPORT_CAPABILITY,
+    STAKE_ADAPTER_EXCHANGE_CAPABILITY,
     type ProjectCapability,
 } from "./ProjectCapability.js";
 import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
@@ -156,7 +157,7 @@ export function computeArtifactInputBindingHash(
 // authoritative implementation of that runtime.
 export function computeProjectInputBindingHash(project: Pick<PokieProject, "rootPath" | "type">): string {
     return computeArtifactInputBindingHash(
-        [project.rootPath],
+        [project.rootPath, ...(project.type === "blueprint" ? [`${project.rootPath}.conversion-evidence.json`] : [])],
         project.type === "tsPackage"
             ? {ignoredDirectoryPaths: [path.join(project.rootPath, "node_modules")]}
             : {},
@@ -202,6 +203,7 @@ export type ArtifactConversionPreflight = {
 };
 
 export type ArtifactConversionPlan = {
+    readonly parConversion?: import("../parsheet/ParSheetConversionReport.js").ParSheetConversionReport;
     readonly packageExtraction?: import("../generated/PackageBlueprintExtraction.js").PackageBlueprintExtractionResult;
     readonly status: "planned" | "unavailable" | "conflict";
     readonly source: ArtifactIdentity;
@@ -280,7 +282,7 @@ export type ArtifactConversionExecutionResult<ReadResult, PublishedResult> = {
  * a new durable POKIE artifact, but does not make a reverse/lossless build
  * edge available to the source artifact.
  */
-export type ArtifactImportOutputKind = "blueprint" | "outcomeLibrary";
+export type ArtifactImportOutputKind = "blueprint" | "outcomeLibrary" | "stakeAdapter";
 
 export type ArtifactImportOutputPlan = {
     readonly status: "planned" | "unavailable";
@@ -649,10 +651,13 @@ export class ArtifactConversionPlanner {
     public planImportOutputIdentity(source: ArtifactIdentity, outputKind: ArtifactImportOutputKind, destinationPath: string): ArtifactImportOutputPlan {
         const destinationKind = outputKind === "blueprint" ? "file" : "directory";
         const expectedSource = outputKind === "blueprint" ? "parWorkbook" : "stakeAdapter";
-        const requiredCapability = outputKind === "blueprint" ? PAR_WORKBOOK_EXCHANGE_CAPABILITY : STAKE_ADAPTER_EXPORT_CAPABILITY;
+        const requiredCapability = outputKind === "blueprint" ? PAR_WORKBOOK_EXCHANGE_CAPABILITY : STAKE_ADAPTER_EXCHANGE_CAPABILITY;
+        const stakeLosses = outputKind === "stakeAdapter"
+            ? ["Exact Stake payload retained with UInt64 weights and original events/provenance. Native numeric Outcome Library sampling is unavailable."]
+            : ["Stake Engine import reconstructs a POKIE Outcome Library from its manifest and does not recover a game model or a lossless reverse edge."];
         const losses = outputKind === "blueprint"
             ? ["PAR is an exchange snapshot. Import creates a Blueprint and does not establish a reverse or lossless conversion edge."]
-            : ["Stake Engine import reconstructs a POKIE Outcome Library from its manifest and does not recover a game model or a lossless reverse edge."];
+            : stakeLosses;
         const output: ArtifactIdentity & {readonly kind: ArtifactImportOutputKind} = {
             kind: outputKind,
             canonicalLocation: path.resolve(destinationPath),

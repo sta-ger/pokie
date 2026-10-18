@@ -1,3 +1,4 @@
+import {recognizesNativeStakeTuningManifest} from "../../src/optimization/internal/NativeStakeTuningManifest.js";
 import {readValidationSourceRevision} from "../validation/readValidationSourceRevision.js";
 import {AdvancedModelSourceValidator} from "../../src/validation/AdvancedModelSourceValidator.js";
 import type {AdvancedModelValidationReport} from "../../src/validation/AdvancedModelValidation.js";
@@ -16,6 +17,7 @@ import {
     ProjectTargetUnsupportedError,
     ProjectTargetResolver,
     StakeEngineImporter,
+    StakeEngineOutcomeSourceReader,
     StakeEngineImporting,
     ValidationIssue,
     describeWasmRecovery,
@@ -349,6 +351,10 @@ export class ValidateCommand implements CliCommandHandling {
 
     private async validateStakeEngineExport(stakeDir: string): Promise<ValidateReport> {
         try {
+            if (recognizesNativeStakeTuningManifest(stakeDir)) {
+                const result = await new StakeEngineOutcomeSourceReader().readFromDirectory(stakeDir);
+                return this.reportFromIssues(stakeDir, "stake-engine", result.issues);
+            }
             const result = await this.stakeEngineImporter.importFromDirectory(stakeDir);
             return this.reportFromIssues(stakeDir, "stake-engine", result.issues);
         } catch {

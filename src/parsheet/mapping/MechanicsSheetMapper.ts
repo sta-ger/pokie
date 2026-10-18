@@ -13,6 +13,9 @@ export class MechanicsSheetMapper implements MechanicsSheetMapping {
         const issues: ValidationIssue[] = [];
         if (rows[0]?.[0] === "Mechanic" && rows[0]?.[1] === "Configuration JSON") {
             const mechanics: Record<string, unknown> = {};
+            if (rows.some(row => row.slice(2).some(cell => cellToText(cell) !== undefined))) {
+                issues.push({code: "parsheet-mechanics-extra-cells", severity: "warning", message: "Mechanics JSON uses only Mechanic and Configuration JSON; extra cells were ignored."});
+            }
             rows.slice(1).forEach((row, index) => {
                 if (isBlankRow(row)) return;
                 const name = cellToText(row[0]);

@@ -1,6 +1,6 @@
 import {evaluatorValidationCases} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {loadPokieWasmFileRuntime} from "../../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
-import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -24,6 +24,14 @@ function buildBlueprint(overrides: Record<string, unknown> = {}): Record<string,
 }
 
 describe("StudioArtifactBuildService", () => {
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     let workDir: string;
     let service: StudioArtifactBuildService;
 
@@ -256,7 +264,7 @@ describe("StudioArtifactBuildService", () => {
         expect(unregister).toHaveBeenCalledWith(destination);
         expect(fs.readFileSync(competitor)).toEqual(bytes);
         expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", path.basename(competitor)].sort());
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     describe.each([
         {target: "tsPackage", empty: false},
@@ -318,7 +326,7 @@ describe("StudioArtifactBuildService", () => {
             expect(survivingFiles.sort()).toEqual([competitor, sentinel].sort());
             if (empty) expect(fs.statSync(destination).ino).toBe(callerInode);
             expect(fs.readdirSync(workDir).some(name => name.startsWith(".pokie-"))).toBe(false);
-        });
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     });
 
     it.each([false, true])("preserves a replaced WASM integrity sidecar during registration rollback (cancelled: %s)", async cancelled => {

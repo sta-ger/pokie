@@ -1,5 +1,6 @@
+import {parSheetConversionReport} from "../parsheet/ParSheetConversionReport.js";
 import {ArtifactPublicationOwnership, rollbackArtifactPublication} from "./ArtifactPublicationOwnership.js";
-import {prepareBlueprintForParSheetExport} from "../parsheet/ParSheetExporter.js";
+import {inspectParSheetConversion, prepareBlueprintForParSheetExport} from "../parsheet/ParSheetExporter.js";
 import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import {PackageBlueprintExtraction} from "../generated/PackageBlueprintExtraction.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
@@ -278,6 +279,9 @@ export class ArtifactBuilderRegistry {
         // ProjectTargetResolver (for example, an embedded CLI or API caller).
         // Bind PAR bytes here, at the registry's plan boundary, so execution's
         // drift guard always compares against a hash prepared for this plan.
+        if (source.type === "stakeAdapter") {
+            plannedSource = {...source, configurationProvenance: {...source.configurationProvenance, inputBindingHash: computeProjectInputBindingHash(source)}};
+        }
         if (source.type === "parWorkbook") {
             plannedSource = {
                 ...source,
@@ -298,6 +302,7 @@ export class ArtifactBuilderRegistry {
                 configurationProvenance: {
                     ...source.configurationProvenance,
                     configurationHash: computeArtifactInputBindingHash([source.rootPath]),
+                    inputBindingHash: computeProjectInputBindingHash(source),
                 },
             };
         }
@@ -385,9 +390,24 @@ export class ArtifactBuilderRegistry {
             }
             if (inputBindingHash !== computeProjectInputBindingHash(source)) boundary = "Package source changed during model extraction; prepare a new plan.";
             if (boundary) plan = {...plan, status: "unavailable", steps: [], diagnostic: {code: "unsupported-boundary", failedEdge: {from: source.type, to: target}, message: boundary, recovery: "Supply a complete supported public effective-model descriptor, or open the authored Blueprint."}};
+            if (target === "parWorkbook" && extraction.blueprint) plan = {...plan, parConversion: await inspectParSheetConversion(extraction.blueprint)};
             return this.applyDestinationPolicy(plannedSource, target, planningOptions, plan);
         }
-        return this.applyDestinationPolicy(plannedSource, target, planningOptions, this.planner.plan(plannedSource, target, planningOptions));
+        let plan = this.planner.plan(plannedSource, target, planningOptions);
+        try {
+            if (source.type === "parWorkbook") {
+                const imported = await new ParSheetImporter().importFromFile(source.rootPath);
+                plan = {...plan, parConversion: parSheetConversionReport(imported.issues, imported.conversionEvidence)};
+                if (target === "parWorkbook") plan = {...plan, parConversion: await inspectParSheetConversion(imported.blueprint, undefined, {conversionReport: plan.parConversion})};
+            } else if (source.type === "blueprint" && target === "parWorkbook") {
+                plan = {...plan, parConversion: await inspectParSheetConversion(loadGameBlueprint(source.rootPath), source.rootPath)};
+            }
+        } catch (error) {
+            // Diagnostic collection is read-only. Execution/validate still use the
+            // selected builder's source boundary, including injected extensions.
+            plan = {...plan, parConversion: parSheetConversionReport([{code: "parsheet-read-failed", severity: "error", message: error instanceof Error ? error.message : String(error)}])};
+        }
+        return this.applyDestinationPolicy(plannedSource, target, planningOptions, plan);
     }
 
     public describe(target: ArtifactTargetType): ArtifactBuildTargetDescriptor {
@@ -638,7 +658,7 @@ export class ArtifactBuilderRegistry {
             result = await this.executeSelectedPlan(selectedPlan, imported, terminalPath, options);
             // Builders own only private staging paths. The registry owns each actual
             // terminal publication, including the WASM integrity sidecar.
-            result = {...result, outputPath: destinationPath, publishedFileOwnership: publication.files, publishedDirectoryOwnership: publication.directories};
+            result = {...result, publishedStakeDirectoryOwnership: undefined, outputPath: destinationPath, publishedFileOwnership: publication.files, publishedDirectoryOwnership: publication.directories};
             assertArtifactBuildNotCancelled(options);
             const currentDestination = this.checkDestination(target, destinationPath, source.rootPath);
             if (!currentDestination.available) throw new ArtifactBuildConflictError(currentDestination.message ?? "The destination is unavailable.");
@@ -671,6 +691,7 @@ export class ArtifactBuilderRegistry {
                 ...result,
                 publishedFileOwnership: publication.files,
                 publishedDirectoryOwnership: publication.directories,
+                parConversion: result.parConversion ?? modelResult.parConversion,
                 conversionEvidencePath: durableEvidence,
                 importedBlueprintPath: durableBlueprint,
                 ...(plan.packageExtraction ? {packageExtraction: plan.packageExtraction} : {}),

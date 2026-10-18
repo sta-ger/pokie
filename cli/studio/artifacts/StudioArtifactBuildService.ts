@@ -400,9 +400,11 @@ export class StudioArtifactBuildService {
                         reusedCompatibleProject: true,
                     }
                     : {}),
+                ...(result.parConversion === undefined ? {} : {parConversion: result.parConversion}),
                 ...(result.importedBlueprintPath !== undefined ? {importedBlueprintPath: result.importedBlueprintPath} : {}),
                 ...(result.conversionEvidencePath !== undefined ? {conversionEvidencePath: result.conversionEvidencePath} : {}),
-                ...(result.stakeManifest !== undefined ? {stakeManifest: result.stakeManifest, stakeFiles: result.stakeFiles ?? []} : {}),
+                ...(result.stakeManifest !== undefined ? {stakeManifest: result.stakeManifest} : {}),
+                ...(result.stakeFiles !== undefined || result.stakeManifest !== undefined ? {stakeFiles: result.stakeFiles ?? []} : {}),
                 ...(operation === undefined ? {} : {stakePrerequisiteProvenance: this.stakePrerequisiteProvenance(operation, result)}),
             };
         } catch (error) {
@@ -842,6 +844,7 @@ export class StudioArtifactBuildService {
                     });
                 }
             }
+            if (projectRoot === result.outputPath && (plan.target.kind === "stakeAdapter" || result.publishedStakeDirectoryOwnership !== undefined)) continue;
             if (result.publishedDirectoryOwnership?.some(entry => projectRoot === entry.path) || result.publishedFileOwnership?.some(entry => entry.path === projectRoot)) continue;
             if (projectRoot === result.outputPath && outputDestinationExisted) {
                 // The destination was a caller-owned empty directory at
@@ -858,7 +861,7 @@ export class StudioArtifactBuildService {
         const assertRegistrationCleanup = (): void => {
             if (registrationCleanupErrors.length) throw new Error(`Could not confirm Studio registration rollback: ${registrationCleanupErrors.map(error => error instanceof Error ? error.message : String(error)).join("; ")}`);
         };
-        if (result.publishedDirectoryOwnership !== undefined || result.publishedFileOwnership !== undefined) {
+        if (result.publishedStakeDirectoryOwnership !== undefined || result.publishedDirectoryOwnership !== undefined || result.publishedFileOwnership !== undefined) {
             await rollbackArtifactPublication(result);
             assertRegistrationCleanup();
             return;

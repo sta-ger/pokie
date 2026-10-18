@@ -21,6 +21,7 @@ export type StudioArtifactBuildView =
           /** Durable PAR import records, when this artifact was derived from a workbook. */
           readonly importedBlueprintPath?: string;
           readonly conversionEvidencePath?: string;
+          readonly parConversion?: import("@fromstan/pokie").ArtifactBuildResult["parConversion"];
           readonly preflight?: {readonly estimatedItemCount?: string; readonly estimatedBytes?: string; readonly complexityWarning?: string};
           /** Exact Stake publication evidence for the goal-oriented Stake card. */
           readonly stakeManifest?: StakeEngineManifest;

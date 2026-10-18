@@ -218,3 +218,18 @@ custom code/services, PAR geometry, or paid-grid outcome-library/Stake targets.
 See [the current WASM boundary](../wasm-compatibility-boundary.md) and
 [the candidate receipt](V2C-21.md). Independent approval and controller gates are
 separate from implementation test evidence.
+
+V2C-26 PAR fidelity coverage reopens actual ExcelJS workbooks for every existing
+mechanic, bounded progression composition, modifier and weighted bonus in the
+authored catalogues, using exact/weighted reel sequences and fractional bets.
+Represented hashes, Game Model projection and seeded runtime/restoration are checked
+together. Empty optional arrays canonicalize to absence; empty paytable symbol maps
+are represented by symbol-only rows. Geometry/custom mechanics/unknown policies are
+rejected rather than certified lossless. Independent public-candidate CLI verification
+and controller gates are separately required; source tests are not that approval.
+
+PAR lossless eligibility also excludes ignored headerless data, duplicate columns,
+unknown or duplicate Meta keys and ignored Meta columns, even when the represented
+math hash matches. Studio draft re-export keeps the server's byte-bound import
+history across restart; unprepared/edited drafts or an ineligible import cannot
+restore a lossless claim. Import and re-export do not implicitly save the draft.

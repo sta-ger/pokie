@@ -132,16 +132,17 @@ describe("StakeEngineOutcomeSourceReader", () => {
     });
 
     it("reports stakeengine-standalone-outcome-ratio-not-representable (a warning, not blocking) when a payoutMultiplier can't be reversed without hidden rounding, and still returns the mode", async () => {
+        // One unit at cost 3 is reversible; seven at cost 1 still fails every exact forward check.
         const library = buildSingleOutcomeStakeEngineLibrary({libraryId: "tamper-lib", betMode: "base", stake: 1, totalWin: 0});
-        const modes: StakeEngineExportModeInput[] = [{modeName: "base", cost: 3, library}];
+        const modes: StakeEngineExportModeInput[] = [{modeName: "base", cost: 1, library}];
         const exportDir = path.join(dir, "export");
         await new StakeEngineExporter("1.3.0").exportToDirectory(modes, exportDir);
 
         const csvPath = path.join(exportDir, "lookup_base.csv");
-        fs.writeFileSync(csvPath, fs.readFileSync(csvPath, "utf-8").replace(/,\d+$/m, ",1"));
+        fs.writeFileSync(csvPath, fs.readFileSync(csvPath, "utf-8").replace(/,\d+$/m, ",7"));
         const booksPath = path.join(exportDir, "books_base.jsonl.zst");
         const lines = readBooksLines(booksPath);
-        lines[0].payoutMultiplier = 1;
+        lines[0].payoutMultiplier = 7;
         fs.writeFileSync(booksPath, zlib.zstdCompressSync(Buffer.from(lines.map((line) => JSON.stringify(line)).join("\n") + "\n", "utf-8")));
 
         const result = await new StakeEngineOutcomeSourceReader().readFromDirectory(exportDir);
@@ -150,7 +151,7 @@ describe("StakeEngineOutcomeSourceReader", () => {
         expect(result.issues.some((issue) => issue.severity === "error")).toBe(false);
         expect(result.modes.length).toBe(1);
         expect(result.modes[0].outcomes[0].ratio).toBeUndefined();
-        expect(result.modes[0].outcomes[0].payoutMultiplier).toBe(1);
+        expect(result.modes[0].outcomes[0].payoutMultiplier).toBe(7);
     });
 
     describe("tampered/foreign directories", () => {
@@ -319,6 +320,6 @@ it.each(["0", "-1", "0.5", "Infinity", "NaN", "18446744073709551616"])("rejects 
         fs.writeFileSync(path.join(dir, "lookup.csv"), `0,${weight},0\n1,1,200\n`);
         const source = await new StakeEngineOutcomeSourceReader().readFromDirectory(dir);
         expect(source.modes).toEqual([]);
-        expect(source.issues).toContainEqual(expect.objectContaining({code: ["0.5", "Infinity", "NaN"].includes(weight) ? "stakeengine-standalone-csv-malformed-row" : "stakeengine-standalone-outcome-weight-not-positive-integer", severity: "error"}));
+        expect(source.issues).toContainEqual(expect.objectContaining({code: "stakeengine-standalone-outcome-weight-not-positive-integer", severity: "error"}));
     });
 });

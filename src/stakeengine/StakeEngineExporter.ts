@@ -1,3 +1,6 @@
+import type {StakeEngineExactSourceExporting} from "./StakeEngineExactSourceExporting.js";
+import {publishExactStakeSource} from "./internal/publishExactStakeSource.js";
+import type {StakeEngineExactSource} from "./StakeEngineExactSource.js";
 import fs from "fs";
 import path from "path";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
@@ -56,7 +59,7 @@ type ModeBuildResult = {
 // throwing, a disk write failing — leaves an existing outDir completely untouched; a re-export into the same
 // outDir starts from nothing (not the previous directory's contents), so a mode that no longer appears in this
 // run's "modes" never leaves its old CSV/books behind.
-export class StakeEngineExporter<T extends string | number = string> implements StakeEngineExporting<T> {
+export class StakeEngineExporter<T extends string | number = string> implements StakeEngineExporting<T>, StakeEngineExactSourceExporting {
     private readonly pokieVersion: string;
     private readonly validator: StakeEngineExportValidating<T>;
     private readonly eventsProjector: StakeEngineRoundEventsProjecting<T>;
@@ -88,6 +91,11 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         this.beforeCommit = beforeCommit;
     }
 
+    /** Re-export exact imported UInt64 payloads without constructing numeric libraries. */
+    public exportExactSourceToDirectory(source: StakeEngineExactSource, outDir: string, options?: StakeEngineExportOptions): Promise<StakeEngineExportResult> {
+        return Promise.resolve().then(() => publishExactStakeSource(source, outDir, options));
+    }
+
     // Runs full validation itself (StakeEngineExportValidator, which always runs WeightedOutcomeLibraryValidator
     // against every mode's library first) — the caller never needs to validate first. Preflights the entire
     // export in memory before touching the filesystem at all: on any validation error (structural, or an
@@ -109,7 +117,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             // Reject an external holder before mode construction can allocate
             // any publication scratch beside it.
             assertSafeToReplaceStakeEngineExportDirectory(outDir);
-            const destinationOwnership = capturePublishDirectoryOwnership(outDir);
+            const destinationOwnership = options?.destinationOwnership ?? capturePublishDirectoryOwnership(outDir);
             preflightAtomicDirectoryPublication(outDir, destinationOwnership.destinationIdentity === undefined);
 
             const buildResults: ModeBuildResult[] = [];

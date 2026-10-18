@@ -9,7 +9,7 @@ import type {StakeEngineImportSourceProvenance} from "./StakeEngineImportSourceP
 import type {StakeEngineIndex, StakeEngineIndexModeEntry} from "./StakeEngineIndex.js";
 import {STAKE_ENGINE_MANIFEST_SCHEMA_VERSION, type StakeEngineManifest, type StakeEngineManifestModeEntry} from "./StakeEngineManifest.js";
 
-type ParsedCsvRow = {readonly id: number; readonly weight: number; readonly payoutMultiplier: number};
+type ParsedCsvRow = {readonly id: number; readonly weight: bigint; readonly payoutMultiplier: number};
 type ParsedBookLine = {readonly id: number; readonly payoutMultiplier: number};
 
 const MODE_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
@@ -237,16 +237,6 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             });
         }
 
-        const totalWeight = csvRows.reduce((sum, row) => sum + row.weight, 0);
-        if (!Number.isSafeInteger(totalWeight)) {
-            issues.push({
-                code: "stakeengine-import-total-weight-overflow",
-                severity: "error",
-                message: `mode "${modeName}": the sum of all outcome weights (${totalWeight}) overflows a safe integer.`,
-                details: {modeName},
-            });
-        }
-
         const csvById = new Map(csvRows.map((row) => [row.id, row]));
         const booksById = new Map(bookLines.map((line) => [line.id, line]));
 
@@ -289,11 +279,11 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
 
         csvLines.forEach((line, position) => {
             const fields = line.split(",");
-            if (fields.length !== 3 || fields.some((field) => !(/^-?\d+$/).test(field))) {
+            if (fields.length !== 3) {
                 issues.push({
                     code: "stakeengine-import-csv-malformed-row",
                     severity: "error",
-                    message: `mode "${modeName}": lookup CSV row ${position} ("${line}") is not exactly 3 comma-separated integer fields.`,
+                    message: `mode "${modeName}": lookup CSV row ${position} ("${line}") must contain exactly 3 comma-separated fields: id, weight, payoutMultiplier.`,
                     details: {modeName, position},
                 });
                 sawError = true;
@@ -306,7 +296,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 issues.push({
                     code: "stakeengine-import-outcome-id-not-integer",
                     severity: "error",
-                    message: `mode "${modeName}": lookup CSV row ${position}'s id ("${idField}") is not a canonical non-negative integer string.`,
+                    message: `mode "${modeName}": lookup CSV row ${position}'s id ("${idField}") is not a canonical non-negative safe integer string (0 through 9007199254740991).`,
                     details: {modeName, position},
                 });
                 sawError = true;
@@ -324,12 +314,12 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             }
             seenIds.add(id);
 
-            const weight = Number(weightField);
-            if (!isSafeNonNegativeInteger(weight) || weight <= 0) {
+            const weight = (/^\d+$/).test(weightField) ? BigInt(weightField) : BigInt(0);
+            if (weight <= BigInt(0) || weight > BigInt("18446744073709551615")) {
                 issues.push({
                     code: "stakeengine-import-outcome-weight-not-positive-integer",
                     severity: "error",
-                    message: `mode "${modeName}": outcome ${id}'s weight (${weightField}) is not a positive safe integer.`,
+                    message: `mode "${modeName}": outcome ${id}'s weight (${weightField}) is not a positive UInt64 integer.`,
                     details: {modeName, id},
                 });
                 sawError = true;
@@ -337,7 +327,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             }
 
             const payoutMultiplier = Number(payoutMultiplierField);
-            if (!isSafeNonNegativeInteger(payoutMultiplier)) {
+            if (!(/^\d+$/).test(payoutMultiplierField) || !isSafeNonNegativeInteger(payoutMultiplier)) {
                 issues.push({
                     code: "stakeengine-import-outcome-payout-multiplier-not-safe-integer",
                     severity: "error",

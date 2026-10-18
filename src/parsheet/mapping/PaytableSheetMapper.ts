@@ -34,6 +34,11 @@ export class PaytableSheetMapper implements PaytableSheetMapping {
                     return;
                 }
 
+                // A symbol-only row explicitly represents an authored empty payout map.
+                if (cellToText(row[matchesIndex]) === undefined && cellToText(row[multiplierIndex]) === undefined) {
+                    if (!(symbol in paytable)) paytable[symbol] = {};
+                    return;
+                }
                 const matches = cellToNumber(row[matchesIndex]);
                 if (matches === undefined) {
                     issues.push({
@@ -82,6 +87,7 @@ export class PaytableSheetMapper implements PaytableSheetMapping {
             const matchCounts = Object.keys(payouts)
                 .map(Number)
                 .sort((a, b) => a - b);
+            if (matchCounts.length === 0) rows.push([symbol]);
             for (const matches of matchCounts) {
                 rows.push([symbol, matches, payouts[String(matches)]]);
             }

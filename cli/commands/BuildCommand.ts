@@ -423,6 +423,7 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`  artifact root    ${result.outputPath}`);
         console.log(`  target           ${target}`);
         console.log(`  source           ${project.rootPath}`);
+        if (result.parConversion) this.printParConversion(result.parConversion);
         if (result.importedBlueprintPath !== undefined) console.log(`  imported Blueprint ${result.importedBlueprintPath}`);
         if (result.packageExtraction) this.printExtraction(result.packageExtraction);
         if (result.conversionEvidencePath !== undefined) console.log(`  conversion evidence ${result.conversionEvidencePath}`);
@@ -530,7 +531,14 @@ export class BuildCommand implements CliCommandHandling {
     // summary, but expose the selected executable steps, reuse choice and
     // irreversible boundary instead of making a user infer them from target
     // names or a command-specific branch.
+    private printParConversion(report: NonNullable<import("@fromstan/pokie").ArtifactBuildResult["parConversion"]>): void {
+        console.log(`  PAR lossless eligible ${report.losslessEligible}`);
+        for (const issue of report.issues) console.log(`  ${issue.severity} ${issue.code}: ${issue.message}`);
+        for (const fact of report.facts) console.log(`  ${fact.kind} ${fact.code}: ${fact.message}`);
+    }
+
     private printPlanSummary(plan: ArtifactConversionPlan): void {
+        if (plan.parConversion) this.printParConversion(plan.parConversion);
         console.log("Conversion plan:");
         console.log(`  steps            ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}`);
         console.log(`  estimated work   ${plan.preflight.estimatedWork}`);

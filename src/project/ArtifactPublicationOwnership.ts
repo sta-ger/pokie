@@ -1,3 +1,4 @@
+import {removePublishedDirectoryIfOwned} from "../stakeengine/internal/publishDirectoryAtomically.js";
 import fs from "fs";
 import path from "path";
 import {assertArtifactBuildNotCancelled, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
@@ -118,7 +119,17 @@ export class ArtifactPublicationOwnership {
 }
 
 /** Remove only unchanged publications; nonempty directories and replaced ancestors survive. */
-export async function rollbackArtifactPublication(result: Pick<ArtifactBuildResult, "publishedFileOwnership" | "publishedDirectoryOwnership">): Promise<void> {
+export async function rollbackArtifactPublication(result: Pick<ArtifactBuildResult, "publishedFileOwnership" | "publishedDirectoryOwnership" | "publishedStakeDirectoryOwnership">): Promise<void> {
+    const stake = result.publishedStakeDirectoryOwnership;
+    if (stake !== undefined && removePublishedDirectoryIfOwned(stake) && stake.restoreEmptyOnRollback) {
+        // The publisher displaced a caller-created empty directory. Restore an empty
+        // destination only after removing our own identity; never clear a replacement.
+        try {
+            await fs.promises.mkdir(stake.outDir);
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        }
+    }
     const directories = result.publishedDirectoryOwnership ?? [];
     const stillOwned = async (entry: FileOwnership): Promise<boolean> => {
         for (const guard of directories) {

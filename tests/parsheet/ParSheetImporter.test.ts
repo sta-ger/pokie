@@ -480,13 +480,14 @@ describe("ParSheetImporter", () => {
             });
             const importer = new ParSheetImporter();
 
-            const {issues} = await importer.importFromFile(filePath);
+            const {issues, conversionEvidence} = await importer.importFromFile(filePath);
 
             expect(issues).toEqual(
                 expect.arrayContaining([
                     expect.objectContaining({code: "parsheet-provenance-schema-mismatch", severity: "warning", details: {recorded: 99, expected: 1}}),
                 ]),
             );
+            expect(conversionEvidence?.losslessEligible).toBe(false);
             // Requirement: "present" is withheld unless schema is supported *and* the hash matches —
             // even though the recorded hash here is otherwise correct.
             expect(issues.some((issue) => issue.code === "parsheet-provenance-present")).toBe(false);

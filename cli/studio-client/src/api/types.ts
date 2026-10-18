@@ -1,3 +1,4 @@
+import type {ParSheetConversionReport} from "../../../../src/parsheet/ParSheetConversionReport.js";
 import type {AdvancedModelValidationReport} from "../../../../src/validation/AdvancedModelValidation.js";
 export type {MathDefinitionDiff} from "../../../../src/diff/MathDefinitionDiff.js";
 import type {WeightedBonusStatistics} from "../../../../src/session/videoslot/authored/WeightedBonus.js";
@@ -1492,6 +1493,7 @@ export type StudioArtifactTargetType = "blueprint" | "tsPackage" | "outcomeLibra
 // JSON-safe mirror of the server planner.  Studio deliberately consumes this payload instead of maintaining
 // another source/target table in the browser.
 export type StudioArtifactConversionPlan = {
+    parConversion?: ParSheetConversionReport;
     packageExtraction?: PackageBlueprintExtractionResult;
     status: "planned" | "unavailable" | "conflict";
     source: {kind: string; canonicalLocation?: string; recognitionProvenance?: string; capabilities: string[]; configurationProvenance?: {inputBindingHash?: string; configurationHash?: string; pokieVersion?: string; generationSemantics?: "exact" | "boundedSample"; gameId?: string; gameVersion?: string; manifestIdentity?: string; sampleCount?: string; sampleSeed?: string}};
@@ -1532,6 +1534,7 @@ export type StudioArtifactBuildView =
           stakePrerequisiteProvenance?: {route: "reuse" | "generate" | "publish"; selectedPrerequisiteLocation?: string; disposition: "borrowed" | "owned" | "transient" | "none"; sourceGameId?: string; sourceGameVersion?: string; sourceConfigurationHash?: string; sourcePokieVersion?: string; generationSemantics?: "exact" | "boundedSample"; sampleCount?: string; sampleSeed?: string; maxExactOutcomeSpaceSize?: string; compatibilityPolicyVersion?: string};
           importedBlueprintPath?: string;
           conversionEvidencePath?: string;
+          parConversion?: ParSheetConversionReport;
       }
     | {status: "unsupported"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}
     | {status: "conflict"; target: StudioArtifactTargetType; message: string; plan: StudioArtifactConversionPlan}

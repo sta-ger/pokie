@@ -23,9 +23,11 @@ this importer. Rather than invent plausible-looking stand-ins, the importer uses
 | `wins` | one synthetic win component per step with `totalWin > 0`, flagged via `metadata.stakeEngineImportSynthetic: true` — see below |
 | `provenance.pokieVersion` | substituted with `pokie-manifest.json`'s own `pokieVersion` |
 
-Within the supported safe-integer numeric format, everything else round-trips **exactly**: outcome `id`/`weight`/`payoutMultiplier`, mode `cost`, `betMode`/
-`stake`, `libraryId`, and `provenance.game`/`configHash` — all recovered from `pokie-manifest.json`, the one
-place they survive (Stake's own files never carry them at all).
+Within the supported format, Stake-facing outcome IDs, weights and raw integer payout multipliers
+round-trip exactly. Manifest fields (`cost`, `betMode`, `stake`, `libraryId`, game and config identity)
+are retained. Reconstructed native fractional ratios and currency amounts are binary64 approximations;
+their floating-point bits need not match the original native objects. Each accepted reversal must
+reproduce the original raw Stake integer under the shared forward calculation.
 
 **Do not expect `computeWeightedOutcomeLibraryHash(importedLibrary)` to match `pokie-manifest.json`'s own recorded
 `libraryHash`** — it won't, because `roundId`/`wins`/`provenance.pokieVersion` differ from the original by design.
@@ -59,14 +61,15 @@ is the honest outcome — not inventing stand-in values for them.
 ## Stake unit reversal — explicit, never rounded
 
 The forward conversion is `stakeUnits = ratio * cost * 100` (see [Stake Engine Export](stake-engine-export.md#stake-unit-conversion--explicit-never-rounded)).
-The reverse is `ratio = stakeUnits / cost / 100` — but a plain division can't, on its own, guarantee no *hidden*
-rounding slipped in via float error. So every reversal (`convertStakeUnitsToRatio`/`convertStakeUnitsToRawAmount`)
-self-checks by re-running the *exact* forward computation on the candidate result and requiring it to land back
-on the original integer exactly; if it doesn't, the value is reported as
-`stakeengine-import-payout-multiplier-not-invertible`/`stakeengine-import-win-amount-not-invertible` rather than
-silently accepted with a slightly-off ratio. A `payoutMultiplier`/amount that round-tripped through
-the adapter export at a given `cost` always reverses cleanly; only a hand-tampered or genuinely corrupted
-file would fail this check.
+Reversal first evaluates `stakeUnits / cost / 100`, retaining established successful results.
+If an intermediate rounding error prevents exact forward recovery, it also tries
+`stakeUnits / (cost * 100)` and `(stakeUnits / 100) / cost`. Every candidate is checked by the
+shared forward conversion; no rounding or clamping is applied. This supports one raw unit at cost 3
+as a native approximation of 1/300. A value with no accepted candidate, such as seven units at cost 1,
+remains `stakeengine-import-payout-multiplier-not-invertible`/`stakeengine-import-win-amount-not-invertible`.
+That rejection can reflect a binary64 representability limit as well as malformed edits; it does
+not by itself prove file corruption. Positive native payouts that underflow to zero during forward
+scaling are rejected before publication.
 
 ## Reconstructing events: a single forward scan
 
@@ -189,12 +192,12 @@ Two layers, mirroring the exporter's own "validate everything before building" d
 | `stakeengine-import-mode-cost-mismatch` | `index.json` and the manifest disagree on a mode's `cost` |
 | `stakeengine-import-csv-missing` / `stakeengine-import-csv-unreadable` | a mode's lookup CSV is absent / couldn't be read |
 | `stakeengine-import-books-missing` / `stakeengine-import-books-unreadable` / `stakeengine-import-books-invalid-zstd` | a mode's books file is absent / couldn't be read / isn't a valid zstd frame |
-| `stakeengine-import-csv-malformed-row` | a CSV row isn't exactly three comma-separated integer fields |
+| `stakeengine-import-csv-malformed-row` | a CSV row does not have exactly three comma-separated fields (invalid field values have specific diagnostics) |
 | `stakeengine-import-books-invalid-json-line` / `stakeengine-import-books-malformed-line` | a decompressed books line isn't parseable JSON at all, vs. parses but has the wrong shape — reported as two distinct codes rather than collapsed into one |
 | `stakeengine-import-outcome-id-not-integer` | a CSV row's or book line's `id` isn't a canonical non-negative safe integer |
-| `stakeengine-import-outcome-weight-not-positive-integer` | a CSV row's `weight` isn't a positive safe integer |
+| `stakeengine-import-outcome-weight-not-positive-integer` | a CSV row's `weight` isn't a positive UInt64 decimal integer |
 | `stakeengine-import-outcome-payout-multiplier-not-safe-integer` | a CSV/book `payoutMultiplier` isn't a safe integer |
-| `stakeengine-import-total-weight-overflow` | the sum of a mode's weights would overflow `Number.isSafeInteger` |
+| `stakeengine-import-exact-payload` | informational: weights/total exceed native numeric library limits; exact Stake payload interchange is used |
 | `stakeengine-import-duplicate-csv-id` / `stakeengine-import-duplicate-book-id` | the same `id` appears twice within a mode's CSV, or within its books |
 | `stakeengine-import-csv-books-count-mismatch` / `stakeengine-import-csv-books-id-set-mismatch` | the CSV and books disagree on how many outcomes there are, or which ids exist — matched **by id**, never by row position |
 | `stakeengine-import-csv-books-payout-multiplier-mismatch` | the same id's CSV and book `payoutMultiplier` disagree |
@@ -274,3 +277,31 @@ POKIE accepts nonnegative safe-integer numeric Stake IDs and raw payouts (at mos
 Standalone reading supports positive UInt64 weights with exact BigInt weight accounting,
 while native persisted bundles and import/export retain their existing numeric weight restrictions.
 Numeric analytics are approximate; standalone decimal fractions are capped at 40 fractional digits.
+
+## Exact wide-weight interchange (V2C-26)
+
+Positive CSV weights range from 1 through **18446744073709551615** (UInt64).
+Aggregate totals are accumulated as BigInt and may exceed UInt64; the required
+`18446744073709551615 + 1 = 18446744073709551616` distribution is accepted.
+IDs and raw Stake integer payouts remain nonnegative safe integers through
+**9007199254740991**, independently of weight precision. Payout ratios and stakes
+may be fractional when forward/reverse cost scaling is exactly reversible.
+
+Native persisted Outcome Libraries still require safe integer weights and totals.
+For an otherwise compatible POKIE export exceeding that native domain,
+`StakeEngineImporter` returns `exactSource` with captured payload bytes and an
+explicit `stakeengine-import-exact-payload` diagnostic; `modes` is empty. It never
+rescales weights or constructs a misleading numeric library. The import writer
+publishes a **Stake adapter project**, preserving CSV/books/index/manifest bytes.
+Canonical `pokie import`, its Stake alias and their JSON output identify that
+payload. Reopen it with the importer, analyze/report/diff it as an Outcome Source,
+and re-export with `pokie build SOURCE --target stakeAdapter --out NEW` or
+`StakeEngineExporter.exportExactSourceToDirectory(result.exactSource, NEW)`.
+Native numeric sampling/Outcome Library selectors remain unavailable for this
+payload and diagnose that boundary explicitly. This is a bounded interchange
+path, not a widening of the native sampling SDK or bundle schema.
+
+Exact payload publication accepts only new/empty directories and revalidates the
+captured bytes. Cancellation and write/commit failure remove owned staging and
+leave existing destination claimants and source bytes intact. Ordinary native
+imports keep their reconstructed Outcome Library format and its disclosed losses.

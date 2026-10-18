@@ -1,3 +1,4 @@
+import {publishExactStakeSource} from "./internal/publishExactStakeSource.js";
 import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
 import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
@@ -24,6 +25,12 @@ export class StakeEngineImportWriter<T extends string | number = string> impleme
         outDir: string,
         options?: StakeEngineImportWriteOptions,
     ): Promise<{issues: readonly ValidationIssue[]}> {
+        if (importResult.issues.some(issue => issue.severity === "error")) return {issues: importResult.issues};
+        if (importResult.exactSource !== undefined) {
+            await options?.assertDestinationAvailable?.();
+            const result = publishExactStakeSource(importResult.exactSource, outDir, {signal: options?.signal});
+            return result.publication === undefined ? {issues: result.issues} : withPublishedDirectoryOwnership({issues: result.issues}, result.publication);
+        }
         const result = await this.bundleWriter.writeToDirectory(
             importResult.modes.map((mode) => ({
                 modeName: mode.modeName,

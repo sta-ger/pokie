@@ -5,7 +5,9 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {GameBlueprint} from "../../src/generated/GameBlueprint.js";
-import {ParSheetExporter} from "../../src/parsheet/ParSheetExporter.js";
+import {ParSheetExporter, inspectParSheetConversion} from "../../src/parsheet/ParSheetExporter.js";
+import {parSheetConversionReport} from "../../src/parsheet/ParSheetConversionReport.js";
+import {GameBlueprintValidator} from "../../src/generated/GameBlueprintValidator.js";
 import {ParSheetImporter} from "../../src/parsheet/ParSheetImporter.js";
 
 describe("ParSheetExporter", () => {
@@ -66,6 +68,128 @@ describe("ParSheetExporter", () => {
         } finally {
             await loaded.release();
         }
+    });
+
+    it("retains an authored empty symbol payout map, omitted counts and explicit zeros in a real XLSX", async () => {
+        const authored = {...blueprint, paytable: {A: {}, W: {2: 0}}, availableBets: [0.05, 7.5, 1e-7]};
+        expect((await new ParSheetExporter("1").exportToFile(authored, filePath)).some(issue => issue.severity === "error")).toBe(false);
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(filePath);
+        expect(workbook.getWorksheet("Paytable")!.getCell("A2").value).toBe("A");
+        const imported = await new ParSheetImporter().importFromFile(filePath);
+        expect(imported.blueprint.paytable).toEqual(authored.paytable);
+        expect(imported.blueprint.availableBets).toEqual(authored.availableBets);
+        expect(imported.conversionEvidence).toMatchObject({losslessEligible: true, provenanceHashMatches: true});
+    });
+
+    it("retains a prior non-lossless import across Blueprint re-export", async () => {
+        const source = path.join(dir, "imported.json");
+        fs.writeFileSync(source, JSON.stringify(blueprint));
+        fs.writeFileSync(`${source}.conversion-evidence.json`, JSON.stringify({losslessEligible: false}));
+        const issues = await new ParSheetExporter("1").exportToFile(blueprint, filePath, source);
+        expect(issues.some(issue => issue.code === "parsheet-prior-conversion-loss")).toBe(true);
+        expect((await new ParSheetImporter().importFromFile(filePath)).conversionEvidence?.losslessEligible).toBe(false);
+    });
+
+    it.each(["explicit report", "source workbook"])("rejects retained Mechanics errors from %s before serialization and remains reusable", async history => {
+        const source = path.join(dir, "malformed.xlsx");
+        const writeWorkbook = jest.fn((workbook: ExcelJS.Workbook, target: string) => workbook.xlsx.writeFile(target));
+        const exporter = new ParSheetExporter("1", undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, writeWorkbook);
+        await exporter.exportToFile(blueprint, source);
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(source);
+        workbook.addWorksheet("Mechanics").addRows([["Mechanic", "Configuration JSON"], ["cascade", "{"]]);
+        await workbook.xlsx.writeFile(source);
+        const before = fs.readFileSync(source);
+        const imported = await new ParSheetImporter().importFromFile(source);
+        const diagnostic = imported.issues.find(issue => issue.code === "parsheet-mechanics-invalid")!;
+        expect(diagnostic).toMatchObject({severity: "error", path: "Mechanics.2"});
+        expect(new GameBlueprintValidator().validate(imported.blueprint).filter(issue => issue.severity === "error")).toEqual([]);
+        const report = parSheetConversionReport(imported.issues, imported.conversionEvidence);
+        const retained = JSON.stringify(report);
+        const onPublication = jest.fn(),
+            onProgress = jest.fn();
+        writeWorkbook.mockClear();
+
+        for (const claimedEligible of [false, true]) {
+            const options = {
+                ...(history === "explicit report" ? {conversionReport: {...report, losslessEligible: claimedEligible}} : {}),
+                losslessEligible: claimedEligible, onPublication, onProgress,
+            };
+            const origin = history === "source workbook" ? source : undefined;
+            const inspected = await inspectParSheetConversion(imported.blueprint, origin, options);
+            expect(inspected.issues).toContainEqual(diagnostic);
+            expect(inspected.facts).toEqual(expect.arrayContaining(report.facts));
+            expect(inspected.losslessEligible).toBe(false);
+            // Include a source alias and a foreign file: even their bytes must stay untouched.
+            for (const target of [filePath, path.join(dir, "foreign.xlsx"), source]) {
+                if (target.endsWith("foreign.xlsx")) fs.writeFileSync(target, "foreign destination");
+                const inventory = Object.fromEntries(fs.readdirSync(dir).map(name => [name, fs.readFileSync(path.join(dir, name)).toString("base64")]));
+                const issues = await exporter.exportToFile(imported.blueprint, target, origin, options);
+                expect(issues).toContainEqual(diagnostic);
+                expect(writeWorkbook).not.toHaveBeenCalled();
+                expect(Object.fromEntries(fs.readdirSync(dir).map(name => [name, fs.readFileSync(path.join(dir, name)).toString("base64")]))).toEqual(inventory);
+            }
+        }
+        expect(writeWorkbook).not.toHaveBeenCalled();
+        expect(onProgress).not.toHaveBeenCalled();
+        expect(onPublication).not.toHaveBeenCalled();
+        expect(JSON.stringify(report)).toBe(retained);
+        expect(fs.readFileSync(source)).toEqual(before);
+
+        // Reuse the already successful/rejected instance with independently repaired source bytes.
+        workbook.removeWorksheet("Mechanics");
+        await workbook.xlsx.writeFile(source);
+        const repaired = await new ParSheetImporter().importFromFile(source);
+        for (const target of [filePath, path.join(dir, "subsequent.xlsx")]) {
+            const issues = await exporter.exportToFile(repaired.blueprint, target, source, {conversionReport: parSheetConversionReport(repaired.issues, repaired.conversionEvidence)});
+            expect(issues.some(issue => issue.severity === "error")).toBe(false);
+            expect((await new ParSheetImporter().importFromFile(target)).conversionEvidence?.losslessEligible).toBe(true);
+        }
+        expect(writeWorkbook).toHaveBeenCalledTimes(2);
+    });
+
+    it("rolls back cancellation after the exclusive workbook link and retries cleanly", async () => {
+        const controller = new AbortController();
+        const link = fs.promises.link.bind(fs.promises);
+        const publication = jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
+            await link(from, to);
+            controller.abort();
+        });
+        try {
+            await expect(new ParSheetExporter("1").exportToFile(blueprint, filePath, undefined, {signal: controller.signal})).rejects.toThrow(/cancelled/);
+        } finally {
+            publication.mockRestore();
+        }
+        expect(fs.existsSync(filePath)).toBe(false);
+        expect(fs.readdirSync(dir)).toEqual([]);
+        await new ParSheetExporter("1").exportToFile(blueprint, filePath);
+        expect((await new ParSheetImporter().importFromFile(filePath)).conversionEvidence?.losslessEligible).toBe(true);
+    });
+
+    it("rejects unsupported geometry before touching the workbook destination", async () => {
+        const issues = await new ParSheetExporter("1").exportToFile({...blueprint, screenGeometry: {}}, filePath);
+        expect(issues).toContainEqual(expect.objectContaining({code: "parsheet-screen-geometry-unsupported", severity: "error"}));
+        expect(fs.existsSync(filePath)).toBe(false);
+    });
+
+    it.each(["cancel", "write failure"])("drains real workbook serialization and removes owned staging on %s", async kind => {
+        const controller = new AbortController();
+        const source = path.join(dir, "source.json");
+        fs.writeFileSync(source, JSON.stringify(blueprint));
+        const before = fs.readFileSync(source);
+        const writeWorkbook = async (workbook: ExcelJS.Workbook, target: string): Promise<void> => {
+            const serialization = workbook.xlsx.writeFile(target);
+            if (kind === "cancel") controller.abort();
+            await serialization;
+            if (kind === "write failure") throw new Error("injected workbook write failure");
+        };
+        const exporter = new ParSheetExporter("1", undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, writeWorkbook);
+        await expect(exporter.exportToFile(blueprint, filePath, source, {signal: controller.signal})).rejects.toThrow(kind === "cancel" ? /cancelled/ : /injected workbook write failure/);
+        expect(fs.readdirSync(dir)).toEqual(["source.json"]);
+        expect(fs.readFileSync(source)).toEqual(before);
+        await new ParSheetExporter("1").exportToFile(blueprint, filePath, source);
+        expect((await new ParSheetImporter().importFromFile(filePath)).conversionEvidence?.losslessEligible).toBe(true);
     });
 
     it("writes every sheet, with no error-level issues, for a fully-populated blueprint", async () => {

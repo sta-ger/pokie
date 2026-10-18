@@ -47,6 +47,10 @@ const tooling = new Set([
     "tests/cli/studio/StudioArtifactBuildService.test.ts",
     "tests/v2/fixtures/PackageExtractionFixture.ts",
     "docs/v2-completion/V2C-11.md",
+    // V2C-26 bounded cancellation-test correction and its current-step evidence only.
+    "tests/project/ArtifactBuilderRegistry.test.ts",
+    "tests/v2/OptimizationPublicWorkflow.test.ts",
+    "docs/v2-completion/V2C-26.md",
     "tests/testUtils/createP911CandidateFixture.mjs",
     "tests/scripts/p9-11-corrective-closeout.test.mjs", "tests/packaging/npmPackSmoke.test.ts", "tests/packaging/P805ValeraProgrammer.test.ts",
 ]);

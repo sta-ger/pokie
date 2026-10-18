@@ -1,3 +1,4 @@
+import {parSheetConversionReport} from "../parsheet/ParSheetConversionReport.js";
 import fs from "fs";
 import path from "path";
 import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
@@ -121,6 +122,7 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
             reportArtifactBuildProgress(options, {status: "completed"});
             return {
                 outputPath: destinationPath,
+                ...(extraction ? {} : {parConversion: parSheetConversionReport(imported.issues, imported.conversionEvidence ?? {issues: [], facts: [], losslessEligible: false})}),
                 conversionEvidencePath: evidencePath,
                 publishedFileOwnership: publication.files,
                 publishedDirectoryOwnership: publication.directories,

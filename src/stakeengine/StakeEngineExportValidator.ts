@@ -192,16 +192,16 @@ export class StakeEngineExportValidator<T extends string | number = string> impl
                 issues.push({
                     code: "stakeengine-outcome-id-not-integer",
                     severity: "error",
-                    message: `mode "${mode.modeName}": outcome id "${outcome.id}" is not a canonical non-negative integer string, as Stake Engine requires.`,
+                    message: `mode "${mode.modeName}": outcome id "${outcome.id}" must be a canonical non-negative safe integer string (0 through 9007199254740991).`,
                     details: {modeName: mode.modeName, id: outcome.id},
                 });
             }
 
-            if (!Number.isInteger(outcome.weight)) {
+            if (!Number.isSafeInteger(outcome.weight) || outcome.weight <= 0) {
                 issues.push({
                     code: "stakeengine-outcome-weight-not-integer",
                     severity: "error",
-                    message: `mode "${mode.modeName}": outcome "${outcome.id}" has a non-integer weight (${outcome.weight}); Stake Engine requires integer weights.`,
+                    message: `mode "${mode.modeName}": outcome "${outcome.id}" has an unsupported numeric weight (${outcome.weight}); Numeric library export requires positive safe integer weights; use exact Stake payload interchange for UInt64 weights.`,
                     details: {modeName: mode.modeName, id: outcome.id, weight: outcome.weight},
                 });
             }

@@ -205,8 +205,9 @@ export class ParSheetImporter implements ParSheetImporting {
         let metaSheet: readonly (readonly unknown[])[] | undefined;
         if (sheetsByName.has("Meta")) {
             metaSheet = rawSheetToGrid(sheetsByName.get("Meta")!);
-            provenance = this.provenanceMapper.fromRows(gridFor("Meta")).value;
-            issues.push(...this.verifyProvenance(provenance, blueprint));
+            const mapped = this.provenanceMapper.fromRows(gridFor("Meta"));
+            provenance = mapped.value;
+            issues.push(...mapped.issues, ...this.verifyProvenance(provenance, blueprint));
         } else {
             issues.push({
                 code: "parsheet-provenance-missing",
@@ -215,6 +216,10 @@ export class ParSheetImporter implements ParSheetImporting {
             });
         }
 
+        if (provenance?.conversionReport !== undefined) {
+            issues.push(...provenance.conversionReport.issues);
+            facts.push(...provenance.conversionReport.facts);
+        }
         issues.push(...this.validator.validate(blueprint));
 
         // Mapper diagnostics are the only place some parsers report that an
@@ -236,7 +241,11 @@ export class ParSheetImporter implements ParSheetImporting {
         const importedBlueprintHash = computeBlueprintHash(blueprint);
         const provenanceHashMatches = provenance?.blueprintHash === importedBlueprintHash;
         const losslessEligible = provenanceHashMatches &&
+            provenance?.schemaVersion === GAME_BLUEPRINT_SCHEMA_VERSION &&
+            !issues.some(issue => issue.code === "parsheet-provenance-malformed") &&
             provenance?.losslessEligible !== false &&
+            provenance?.conversionReport?.losslessEligible !== false &&
+            !issues.some(issue => issue.details?.losslessEligible === false) &&
             !issues.some((issue) => issue.severity === "error") &&
             !facts.some((fact) => fact.kind === "ignored" || fact.kind === "formulaMaterialized" || fact.kind === "inferredOrDefaulted");
         return {blueprint, provenance, issues, conversionEvidence: {metaSheet, facts, losslessEligible, importedBlueprintHash, provenanceHashMatches}};
@@ -320,7 +329,7 @@ export class ParSheetImporter implements ParSheetImporting {
                 message: `This file was exported by pokie${provenance.pokieVersion ? ` v${provenance.pokieVersion}` : ""}${
                     provenance.exportedAt ? ` on ${provenance.exportedAt}` : ""
                 }, and its recorded hash matches the imported data.`,
-                details: {...provenance},
+                details: {...provenance, conversionReport: undefined},
             });
         }
 
@@ -391,6 +400,17 @@ function sheetToGrid(worksheet: ExcelJS.Worksheet, sheetName: string, issues: Va
             cells.push(cellValueToPrimitive(cell.value));
         });
         grid.push(cells);
+    });
+    const header = grid[0] ?? [];
+    const headerlessColumns = new Set<number>();
+    for (const row of grid.slice(1)) row.forEach((value, index) => {
+        if (cellToText(value) !== undefined && cellToText(header[index]) === undefined) headerlessColumns.add(index);
+    });
+    for (const index of headerlessColumns) issues.push({
+        code: "parsheet-headerless-data",
+        severity: "warning",
+        message: `Sheet "${sheetName}" has data in column ${index + 1} without a header; that data is ignored.`,
+        details: {sheet: sheetName, column: index + 1},
     });
     if (formulaCellCount > 0) {
         facts.push({

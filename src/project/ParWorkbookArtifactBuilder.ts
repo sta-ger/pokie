@@ -1,5 +1,7 @@
-import {ParSheetExporter, prepareBlueprintForParSheetExport} from "../parsheet/ParSheetExporter.js";
-import type {ParSheetExporting} from "../parsheet/ParSheetExporting.js";
+import {parSheetConversionReport} from "../parsheet/ParSheetConversionReport.js";
+import {rollbackArtifactPublication} from "./ArtifactPublicationOwnership.js";
+import {ParSheetExporter, inspectParSheetConversion, prepareBlueprintForParSheetExport} from "../parsheet/ParSheetExporter.js";
+import type {ParSheetExporting, ParSheetFilePublication} from "../parsheet/ParSheetExporting.js";
 import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
 import type {ParSheetImporting} from "../parsheet/ParSheetImporting.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
@@ -7,8 +9,6 @@ import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import {
     assertArtifactBuildNotCancelled,
     ArtifactBuildCancelledError,
-    captureArtifactDestinationState,
-    cleanupIncompleteArtifactOutput,
     reportArtifactBuildProgress,
     type ArtifactBuildOptions,
 } from "./ArtifactBuildOptions.js";
@@ -41,6 +41,12 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
         this.loadBlueprint = loadBlueprint;
     }
 
+    public async inspectConversion(source: PokieProject) {
+        if (source.type === "blueprint") return inspectParSheetConversion(this.loadBlueprint(source.rootPath), source.rootPath);
+        const imported = await this.importer.importFromFile(source.rootPath);
+        return inspectParSheetConversion(imported.blueprint, undefined, {conversionReport: parSheetConversionReport(imported.issues, imported.conversionEvidence ?? {issues: [], facts: [], losslessEligible: false}), losslessEligible: imported.conversionEvidence?.losslessEligible ?? false});
+    }
+
     public async validate(source: PokieProject): Promise<void> {
         if (source.type === "blueprint") {
             this.assertBlueprintCanExport(source.rootPath);
@@ -61,7 +67,7 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
         assertArtifactBuildNotCancelled(options);
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
-        const destinationState = captureArtifactDestinationState(destinationPath, this.destinationKind);
+        let publication: ParSheetFilePublication | undefined;
 
         try {
             reportArtifactBuildProgress(options, {status: "running", message: "Reading PAR workbook"});
@@ -69,15 +75,19 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
                 reportArtifactBuildProgress(options, {status: "running", message: "Preparing Blueprint reel source for PAR workbook"});
                 this.assertBlueprintCanExport(source.rootPath);
                 reportArtifactBuildProgress(options, {status: "running", message: "Publishing PAR workbook"});
+                const conversion = await this.inspectConversion(source);
                 const exportIssues = await this.exporter.exportToFile(this.loadBlueprint(source.rootPath), destinationPath, source.rootPath, {
                     signal: options?.signal,
+                    onPublication: owned => {
+                        publication = owned;
+                    },
                     onProgress: (progress) => reportArtifactBuildProgress(options, {status: "running", message: progress.message}),
                 });
                 const exportErrors = exportIssues.filter((issue) => issue.severity === "error");
                 if (exportErrors.length > 0) throw new Error(this.exportErrorMessage(source.rootPath, destinationPath, exportErrors));
                 assertArtifactBuildNotCancelled(options);
                 reportArtifactBuildProgress(options, {status: "completed"});
-                return {outputPath: destinationPath};
+                return {outputPath: destinationPath, publishedFileOwnership: publication === undefined ? [] : [publication], parConversion: parSheetConversionReport(exportIssues, conversion)};
             }
 
             const imported = await this.importer.importFromFile(source.rootPath);
@@ -94,6 +104,10 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
             reportArtifactBuildProgress(options, {status: "running", message: "Publishing PAR workbook"});
             const exportIssues = await this.exporter.exportToFile(imported.blueprint, destinationPath, source.rootPath, {
                 losslessEligible: imported.conversionEvidence?.losslessEligible ?? false,
+                conversionReport: parSheetConversionReport(imported.issues, imported.conversionEvidence ?? {issues: [], facts: [], losslessEligible: false}),
+                onPublication: owned => {
+                    publication = owned;
+                },
                 signal: options?.signal,
                 onProgress: (progress) => reportArtifactBuildProgress(options, {status: "running", message: progress.message}),
             });
@@ -104,9 +118,9 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
             }
 
             reportArtifactBuildProgress(options, {status: "completed"});
-            return {outputPath: destinationPath};
+            return {outputPath: destinationPath, publishedFileOwnership: publication === undefined ? [] : [publication], parConversion: parSheetConversionReport([...imported.issues, ...exportIssues], imported.conversionEvidence ?? {issues: [], facts: [], losslessEligible: false})};
         } catch (error) {
-            await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
+            await rollbackArtifactPublication({publishedFileOwnership: publication === undefined ? [] : [publication]});
             if (options?.signal?.aborted) {
                 if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
             } else reportArtifactBuildProgress(options, {status: "failed", message: "PAR workbook publishing failed"});

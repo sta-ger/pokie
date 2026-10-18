@@ -74,12 +74,33 @@ describe("ImportCommand", () => {
 
             expect(await new ImportCommand("1.3.0").run([stakeDir, "--out", importedDir, "--format", "json"])).toBe(0);
             expect(await new InspectCommand().run([importedDir])).toBe(0);
-            expect(await new ValidateCommand().run([importedDir, "--deep"])).toBe(0);
+            // Reconstructed outcomes pass the deep contract check, but do not establish
+            // a complete transition model for the separate advanced proof.
+            expect(await new ValidateCommand().run([importedDir, "--deep", "--format", "json"])).toBe(2);
+            expect(JSON.parse(String(logSpy.mock.calls[logSpy.mock.calls.length - 1][0]))).toMatchObject({
+                project: {path: importedDir, kind: "outcome-library"},
+                deep: true,
+                valid: true,
+                errors: [],
+                issues: [],
+                advanced: {verdict: "inconclusive", executableFidelity: "unverified"},
+            });
             expect(await new StakeEngineCommand("1.3.0").run(["export", path.join(importedDir, "config.json"), "--out", reExportedDir])).toBe(0);
             expect(fs.existsSync(path.join(reExportedDir, "pokie-manifest.json"))).toBe(true);
             expect(JSON.parse(String(logSpy.mock.calls[0][0]))).toEqual(
                 expect.objectContaining({stakeDir, outDir: importedDir, files: expect.arrayContaining(["manifest.json", "config.json"])}),
             );
+
+            // The inconclusive proof must not mask a deep contract failure.
+            const outcomesFile = path.join(importedDir, "outcomes_base.jsonl");
+            const outcomes = fs.readFileSync(outcomesFile, "utf-8");
+            fs.writeFileSync(outcomesFile, "!" + outcomes.slice(1));
+            expect(await new ValidateCommand().run([importedDir, "--deep", "--format", "json"])).toBe(1);
+            expect(JSON.parse(String(logSpy.mock.calls[logSpy.mock.calls.length - 1][0]))).toMatchObject({
+                deep: true,
+                valid: false,
+                errors: expect.arrayContaining([expect.objectContaining({code: "outcome-library-bundle-outcomes-line-invalid-json"})]),
+            });
         } finally {
             logSpy.mockRestore();
             errorSpy.mockRestore();

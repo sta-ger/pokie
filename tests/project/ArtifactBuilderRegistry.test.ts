@@ -1,9 +1,11 @@
 import {ArtifactBuildCancelledError} from "../../src/project/ArtifactBuildOptions.js";
 import {ArtifactPublicationOwnership} from "../../src/project/ArtifactPublicationOwnership.js";
-import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {execFileSync} from "node:child_process";
+import {pathToFileURL} from "node:url";
 import type {ArtifactBuilder} from "../../src/project/ArtifactBuilder.js";
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
 import {PackageBlueprintExtraction} from "../../src/generated/PackageBlueprintExtraction.js";
@@ -24,7 +26,63 @@ import {
 import type {PokieProject} from "../../src/project/PokieProject.js";
 
 describe("ArtifactBuilderRegistry", () => {
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     const registry = new ArtifactBuilderRegistry();
+
+    it("retains the pinned candidate through the complete V2C-26 gate-test delta", () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-v2c26-retained-candidate-"));
+        try {
+            // Use native installed resolution, without Jest's POKIE source aliases.
+            execFileSync(process.execPath, ["--input-type=module", "-e", `
+                import assert from "node:assert/strict";
+                import {mkdir, readFile, writeFile} from "node:fs/promises";
+                import {execFileSync} from "node:child_process";
+                import path from "node:path";
+                import {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} from ${JSON.stringify(pathToFileURL(path.resolve("tests/testUtils/createP911CandidateFixture.mjs")).href)};
+                import {readP911Candidate, readP911CandidateFromEnvironment} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
+                const fixture = await candidateFixture(${JSON.stringify(root)});
+                const options = {repository: fixture.repository};
+                const original = await readP911Candidate(fixture.reference, options);
+                for (const file of ["tests/project/ArtifactBuilderRegistry.test.ts", "tests/cli/studio/StudioArtifactBuildService.test.ts",
+                    "tests/v2/fixtures/PackageExtractionFixture.ts", "docs/v2-completion/V2C-26.md"])
+                    assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
+                const reviewedId = await commitP911ToolingDescendant(fixture);
+                const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
+                const selected = await readP911CandidateFromEnvironment(environment, options);
+                assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, [...P911_TOOLING_DESCENDANT_PATHS].sort());
+                assert.equal(selected.equivalence.reviewedId, reviewedId);
+                assert.deepEqual({...selected, equivalence: original.equivalence}, original);
+                for (const reference of [fixture.handoff.browserDriver, fixture.handoff.buildReceipt, fixture.handoff.installReceipt,
+                    {path: fixture.handoff.archivePath}, {path: path.join(selected.packageRoot, "dist/cli/pokie.js")}]) {
+                    const bytes = await readFile(reference.path);
+                    await writeFile(reference.path, "changed pinned input");
+                    await assert.rejects(readP911CandidateFromEnvironment(environment, options),
+                        /authenticated controller browser driver required|receipt digest mismatch|archive digest mismatch|stale installed asset/);
+                    await writeFile(reference.path, bytes);
+                }
+                assert.deepEqual(await readP911CandidateFromEnvironment(environment, options), selected);
+                // A neighboring test and product/build inputs remain protected, even after admission.
+                for (const file of ["tests/project/ArtifactBuilderRegistry.extra.test.ts", "src/index.ts", "package.json", "tsconfig.prod.json"]) {
+                    const target = path.join(fixture.repository, file);
+                    await mkdir(path.dirname(target), {recursive: true});
+                    await writeFile(target, "changed protected input");
+                    execFileSync("git", ["add", "."], {cwd: fixture.repository});
+                    execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "protected input rejection fixture"], {cwd: fixture.repository});
+                    await assert.rejects(readP911CandidateFromEnvironment(environment, options), /product\\/build inputs changed/);
+                    execFileSync("git", ["reset", "--hard", reviewedId], {cwd: fixture.repository, stdio: "ignore"});
+                }
+            `], {timeout: 30_000, stdio: ["ignore", "pipe", "pipe"]});
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
 
     it.each(["declared", "unknown"] as const)("refuses %s max-win policy in every model conversion and direct publication", async type => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-policy-conversion-"));
@@ -89,7 +147,7 @@ describe("ArtifactBuilderRegistry", () => {
                 progress.push(value.status);
                 if (value.message === "Extracting public package model into Blueprint") fixture.arm();
             }})).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
-            await fixture.readStarted;
+            await fixture.waitForRead(checked);
             expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
             expect(fs.existsSync(destination)).toBe(false);
             controller.abort();
@@ -105,18 +163,23 @@ describe("ArtifactBuilderRegistry", () => {
             fixture.restore();
             fs.rmSync(root, {recursive: true, force: true});
         }
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("propagates cancellation into validation's initial preparation when no plan is supplied", async () => {
+        // Exercise the real loader with direct-Jest caller context even under the npm wrapper.
+        const callerEnvironment = Object.entries(process.env).filter(([key]) =>
+            key.startsWith("npm_lifecycle_") || key.startsWith("npm_package_") || key === "INIT_CWD" || key === "TMPDIR");
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-unprepared-validation-"));
         const fixture = writePausedDescriptorPackage(root, undefined, {pauseAtRead: 1});
         const snapshots = runtimeSnapshotNames(fixture.source);
         const project: PokieProject = {type: "tsPackage", rootPath: fixture.source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
         const controller = new AbortController();
         try {
+            for (const [key] of callerEnvironment) Reflect.deleteProperty(process.env, key);
+            expect(path.dirname(os.tmpdir())).toBe(path.resolve(__dirname, "../../node_modules/.cache/pokie-tmp"));
             const checked = expect(registry.validate("blueprint", project, undefined, {signal: controller.signal}))
                 .rejects.toBeInstanceOf(ArtifactBuildCancelledError);
-            await fixture.readStarted;
+            await fixture.waitForRead(checked);
             expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
             controller.abort();
             fixture.settle();
@@ -124,10 +187,14 @@ describe("ArtifactBuilderRegistry", () => {
             expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
             expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
         } finally {
-            fixture.restore();
-            fs.rmSync(root, {recursive: true, force: true});
+            try {
+                fixture.restore();
+                fs.rmSync(root, {recursive: true, force: true});
+            } finally {
+                for (const [key, value] of callerEnvironment) process.env[key] = value;
+            }
         }
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     describe.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)("package %s validation lifecycle", target => {
         it.each([true, false])("releases the validation snapshot with cancellation=%s and preserves optional callers", async cancel => {
@@ -149,7 +216,7 @@ describe("ArtifactBuilderRegistry", () => {
                     }})
                     : registry.validate(target, project, plan);
                 const checked = cancel ? expect(running).rejects.toBeInstanceOf(ArtifactBuildCancelledError) : expect(running).resolves.toBeUndefined();
-                await fixture.readStarted;
+                await fixture.waitForRead(checked);
                 expect(fixture.readCount).toBe(2);
                 expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
                 if (cancel) controller.abort();
@@ -179,7 +246,7 @@ describe("ArtifactBuilderRegistry", () => {
                 fixture.arm();
                 const checked = expect(registry.validate(target, project, plan, {signal: new AbortController().signal}))
                     .rejects.toThrow(/source configuration or generation provenance changed/);
-                await fixture.readStarted;
+                await fixture.waitForRead(checked);
                 fixture.settle();
                 await checked;
                 expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
@@ -212,7 +279,7 @@ describe("ArtifactBuilderRegistry", () => {
             const plan = await registry.preparePlan(project, "wasm", {destinationPath: path.join(root, "output")});
             fixture.arm();
             running = registry.validate("wasm", project, plan);
-            await fixture.readStarted;
+            await fixture.waitForRead(running);
             expect(fixture.readCount).toBe(2);
             const validationSnapshots = runtimeSnapshotNames(fixture.source);
             expect(validationSnapshots).toHaveLength(1);
@@ -286,6 +353,10 @@ describe("ArtifactBuilderRegistry", () => {
         {sourceType: "parWorkbook", target: "stakeAdapter", empty: false},
         {sourceType: "parWorkbook", target: "stakeAdapter", empty: true},
     ] as const)("downstream $sourceType -> $target (caller directory: $empty)", ({sourceType, target, empty}) => {
+        // Every package-source path snapshots the real runtime graph, including failures
+        // before attachment. Share the lifecycle budget across the whole matrix so the
+        // parallel controller launcher has the same allowance as cancellation cases.
+        const timeout = sourceType === "tsPackage" ? PACKAGE_EXTRACTION_TEST_TIMEOUT : undefined;
         let root: string;
         let project: PokieProject;
         let destination: string;
@@ -360,26 +431,31 @@ describe("ArtifactBuilderRegistry", () => {
             expect(fs.readFileSync(path.join(destination, "competing.bin"))).toEqual(bytes);
             if (empty) expect(fs.statSync(destination).ino).toBe(callerDirectoryInode);
             expect(fs.readdirSync(root).some(name => name.startsWith(".pokie-"))).toBe(false);
-        });
+        }, timeout);
 
         it.each(["blueprint", "evidence"])("rejects a competing retained %s created after preflight without changing its bytes", async member => {
             const plan = await registry.preparePlan(project, target, {destinationPath: destination});
             const link = fs.promises.link.bind(fs.promises);
+            let conflicts = 0;
             jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
                 if (String(to) === memberPath("blueprint")) {
+                    conflicts++;
                     addSentinel();
                     fs.writeFileSync(memberPath(member), bytes);
                 }
                 await link(from, to);
             });
             await expect(registry.executePlan(plan, project, destination)).rejects.toThrow(/already exists/);
+            expect(conflicts).toBe(1);
             assertCleanup(memberPath(member));
-        });
+        }, timeout);
 
         it("preserves unrelated companion contents and competing evidence on attachment I/O failure", async () => {
             const link = fs.promises.link.bind(fs.promises);
+            let failures = 0;
             jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
                 if (String(to) === memberPath("evidence")) {
+                    failures++;
                     addSentinel();
                     fs.writeFileSync(memberPath("evidence"), bytes);
                     throw new Error("injected attachment failure");
@@ -387,11 +463,14 @@ describe("ArtifactBuilderRegistry", () => {
                 await link(from, to);
             });
             await expect(registry.build(target, project, destination)).rejects.toThrow("injected attachment failure");
+            expect(failures).toBe(1);
             assertCleanup(memberPath("evidence"));
-        });
+        }, timeout);
 
         it.each(["terminal", "blueprint", "evidence"])("preserves a replaced %s when attachment is cancelled", async member => {
             const controller = new AbortController();
+            const sourceHash = computeProjectInputBindingHash(project);
+            let cancellations = 0;
             const terminal = terminalPath();
             const competitor = member === "terminal" ? terminal : memberPath(member);
             const boundary = member === "evidence" ? memberPath("evidence") : memberPath("blueprint");
@@ -399,6 +478,7 @@ describe("ArtifactBuilderRegistry", () => {
             jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
                 await link(from, to);
                 if (String(to) === boundary) {
+                    cancellations++;
                     addSentinel();
                     const replacement = path.join(root, "replacement.tmp");
                     fs.writeFileSync(replacement, bytes);
@@ -406,9 +486,11 @@ describe("ArtifactBuilderRegistry", () => {
                     controller.abort();
                 }
             });
-            await expect(registry.build(target, project, destination, {signal: controller.signal})).rejects.toThrow(/cancelled/i);
+            await expect(registry.build(target, project, destination, {signal: controller.signal})).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+            expect(cancellations).toBe(1);
             assertCleanup(competitor);
-        });
+            expect(computeProjectInputBindingHash(project)).toBe(sourceHash);
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
         it("returns a complete rollback inventory and correctly bound retained evidence on success", async () => {
             const result = await registry.build(target, project, destination);
@@ -429,7 +511,7 @@ describe("ArtifactBuilderRegistry", () => {
                 expect(result.publishedDirectoryOwnership?.find(entry => entry.path === destination)?.removeOnRollback).toBe(false);
             }
             expect(fs.readdirSync(root).some(name => name.startsWith(".pokie-"))).toBe(false);
-        });
+        }, timeout);
     });
 
     describe.each(["tsPackage", "parWorkbook"] as const)("exclusive %s Blueprint publication", sourceType => {
