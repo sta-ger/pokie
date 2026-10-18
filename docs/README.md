@@ -317,3 +317,8 @@ Recorded executable package audit replay is documented in
 identifies controller-owned independent verification still pending.
 
 See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.
+
+
+## Canonical dossier preparation (V2C-27)
+
+[Canonical evidence dossier and local PDF/template contract](certification-evidence-bundle.md): model-bound preparation, reproducible report/replay evidence, partial/unavailable disclosures and new-or-empty publication. Independent assessment remains separate.

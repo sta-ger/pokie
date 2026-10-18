@@ -3,6 +3,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+    certificationDossierFileName,
+    CertificationDossierRenderer,
     CertificationEvidenceBundleBuilder,
     CertificationEvidenceBundleManifest,
     CertificationEvidenceBundleVerifier,
@@ -31,8 +33,12 @@ function readCertManifest(certDir: string): CertificationEvidenceBundleManifest 
     return JSON.parse(fs.readFileSync(path.join(certDir, "manifest.json"), "utf-8")) as CertificationEvidenceBundleManifest;
 }
 
-function writeCertManifest(certDir: string, manifest: CertificationEvidenceBundleManifest): void {
+async function writeCertManifest(certDir: string, manifest: CertificationEvidenceBundleManifest): Promise<void> {
     fs.writeFileSync(path.join(certDir, "manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
+    if (computeCertificationEvidenceContentHash(manifest) === manifest.evidenceContentHash) for (const format of manifest.presentation.formats) {
+        const file = certificationDossierFileName(format);
+        fs.writeFileSync(path.join(certDir, file), await new CertificationDossierRenderer().render(manifest, format));
+    }
 }
 
 function readCertSampleLines(certDir: string, samplesFile: string): CertificationEvidenceSampleRecord[] {
@@ -55,18 +61,18 @@ function sha256OfBytes(bytes: Buffer): string {
 // internally self-consistent (per CertificationEvidenceBundleValidator's own checks) — isolating whatever the
 // caller actually tampered as the one thing left for the live cross-check (CertificationEvidenceBundleVerifier)
 // to catch, rather than also tripping an unrelated self-consistency issue.
-function rewriteCertSamplesAndFixUpHashes(
+async function rewriteCertSamplesAndFixUpHashes(
     certDir: string,
     manifest: CertificationEvidenceBundleManifest,
     modeName: string,
     records: readonly CertificationEvidenceSampleRecord[],
-): void {
+): Promise<void> {
     const modeEntry = manifest.modes.find((entry) => entry.modeName === modeName)!;
     writeCertSampleLines(certDir, modeEntry.samplesFile, records);
     const newSamplesHash = sha256OfBytes(fs.readFileSync(path.join(certDir, modeEntry.samplesFile)));
     const updatedModes = manifest.modes.map((entry) => (entry.modeName === modeName ? {...entry, samplesHash: newSamplesHash} : entry));
     const draft = {...manifest, modes: updatedModes};
-    writeCertManifest(certDir, {...draft, evidenceContentHash: computeCertificationEvidenceContentHash(draft)});
+    await writeCertManifest(certDir, {...draft, evidenceContentHash: computeCertificationEvidenceContentHash(draft)});
 }
 
 describe("CertificationEvidenceBundleVerifier", () => {
@@ -142,7 +148,7 @@ describe("CertificationEvidenceBundleVerifier", () => {
 
     it("ignores a spoofed manifest.sourceBundleDir entirely, using only the explicitly given option", async () => {
         const manifest = readCertManifest(certDir);
-        writeCertManifest(certDir, {...manifest, sourceBundleDir: path.join(tmpRoot, "does-not-exist-and-should-never-be-read")});
+        await writeCertManifest(certDir, {...manifest, sourceBundleDir: path.join(tmpRoot, "does-not-exist-and-should-never-be-read")});
 
         const issues = await verifier.verify(certDir, {sourceBundleDir: bundleDir});
 
@@ -201,7 +207,7 @@ describe("CertificationEvidenceBundleVerifier", () => {
     it("rejects an unsafe samplesFile path in the manifest without ever reading outside certDir", async () => {
         const manifest = readCertManifest(certDir);
         const tamperedModes = manifest.modes.map((entry) => ({...entry, samplesFile: "../outside.jsonl"}));
-        writeCertManifest(certDir, {...manifest, modes: tamperedModes});
+        await writeCertManifest(certDir, {...manifest, modes: tamperedModes});
         fs.writeFileSync(path.join(tmpRoot, "outside.jsonl"), "should never be read\n");
 
         const issues = await verifier.verify(certDir, {sourceBundleDir: bundleDir});
@@ -228,6 +234,13 @@ describe("CertificationEvidenceBundleVerifier", () => {
         expect(codes).not.toContain("certification-evidence-verify-sample-sequence-mismatch");
     });
 
+    it("rejects a self-consistently rehashed candidate revision selected by no authority", async () => {
+        const manifest = readCertManifest(certDir);
+        const draft = {...manifest, dossier: {...manifest.dossier, identity: {...manifest.dossier.identity, candidateRevision: "unselected-candidate"}}};
+        await writeCertManifest(certDir, {...draft, evidenceContentHash: computeCertificationEvidenceContentHash(draft)});
+        expect(await verifier.verify(certDir, {sourceBundleDir: bundleDir})).toEqual(expect.arrayContaining([expect.objectContaining({code: "certification-dossier-authority-mismatch"})]));
+    });
+
     it("detects a recordHash forged self-consistently with its own {id, weight, artifact}, via the live index cross-check", async () => {
         const manifest = readCertManifest(certDir);
         const modeEntry = manifest.modes[0];
@@ -240,7 +253,7 @@ describe("CertificationEvidenceBundleVerifier", () => {
             recordHash: computeCertificationSampleRecordHash({id: original.outcomeId, weight: forgedWeight, artifact: original.artifact}),
         };
         const updatedRecords = records.map((record, index) => (index === 0 ? forgedRecord : record));
-        rewriteCertSamplesAndFixUpHashes(certDir, manifest, modeEntry.modeName, updatedRecords);
+        await rewriteCertSamplesAndFixUpHashes(certDir, manifest, modeEntry.modeName, updatedRecords);
 
         const issues = await verifier.verify(certDir, {sourceBundleDir: bundleDir});
         const codes = issues.map((issue) => issue.code);
@@ -273,7 +286,7 @@ describe("CertificationEvidenceBundleVerifier", () => {
             artifact: substituteOutcome.artifact,
         };
         const updatedRecords = records.map((record, index2) => (index2 === 0 ? substitutedRecord : record));
-        rewriteCertSamplesAndFixUpHashes(certDir, manifest, modeEntry.modeName, updatedRecords);
+        await rewriteCertSamplesAndFixUpHashes(certDir, manifest, modeEntry.modeName, updatedRecords);
 
         const issues = await verifier.verify(certDir, {sourceBundleDir: bundleDir});
         const codes = issues.map((issue) => issue.code);

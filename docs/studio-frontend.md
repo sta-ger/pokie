@@ -458,3 +458,8 @@ Definition comparison also retains advanced validation changes and limitations.
 See [V2C-19](v2-completion/V2C-19.md).
 
 See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.
+
+
+## Canonical dossier preparation (V2C-27)
+
+Certification supports explicit model/report/replay/revision/template inputs, persisted request identity, partial/unavailable model disclosures and bounded JSON/console/Markdown/HTML/PDF downloads. Field edits invalidate inspection/export; downloads revalidate retained job inputs and reject changed source/model/evidence/template files. Cancellation cleanup failures remain failures. Every dossier is preparation only, never regulatory/RNG certification. See [the canonical dossier](certification-evidence-bundle.md).

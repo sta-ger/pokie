@@ -269,6 +269,36 @@ describe("CertificationCommand", () => {
         });
     });
 
+    it("threads presentation formats through real new/empty publication and preserves all inputs", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "certification-dossier-cli-"));
+        try {
+            const bundle = path.join(root, "bundle"),
+                out = path.join(root, "out"),
+                config = path.join(root, "config.json"),
+                template = path.join(root, "presentation.json");
+            await buildSourceOutcomeLibraryBundle(bundle);
+            fs.writeFileSync(template, JSON.stringify({schemaVersion: 1, title: "Assessment <candidate>", introduction: "Local preparation", sections: ["identity", "rules", "statistics", "validation", "reproduction", "support"]}));
+            fs.writeFileSync(config, JSON.stringify({modes: [{modeName: "base", seed: "s", sampleCount: 2}], output: {formats: ["html", "pdf"], templateFile: "presentation.json"}}));
+            const before = fs.readFileSync(template),
+                source = fs.readFileSync(path.join(bundle, "manifest.json"));
+            fs.mkdirSync(out);
+            const inode = fs.statSync(out).ino;
+            const command = new CertificationCommand("1.3.0");
+            expect(await command.run(["build", bundle, config, "--out", out])).toBe(0);
+            expect(fs.statSync(out).ino).toBe(inode);
+            expect(fs.readFileSync(path.join(out, "dossier.pdf"), "ascii")).toContain("%PDF-1.4");
+            expect(fs.readFileSync(path.join(out, "dossier.html"), "utf8")).toContain("Assessment &lt;candidate&gt;");
+            expect(fs.existsSync(path.join(out, "dossier.md"))).toBe(false);
+            expect(logSpy.mock.calls.flat().join(" ")).toContain("preparation only");
+            expect(await command.run(["verify", out, "--source", bundle, "--template", template])).toBe(0);
+            await expect(command.run(["build", bundle, config, "--out", out])).rejects.toThrow(/new or empty/);
+            expect(fs.readFileSync(template)).toEqual(before);
+            expect(fs.readFileSync(path.join(bundle, "manifest.json"))).toEqual(source);
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
     describe("verify", () => {
         it("verifies the given certification directory and prints a success line when there are no issues", async () => {
             const verifier = createStubVerifier([]);
@@ -277,8 +307,16 @@ describe("CertificationCommand", () => {
             const exitCode = await command.run(["verify", "/project/certification", "--source", "/project/bundle"]);
 
             expect(exitCode).toBe(0);
-            expect(verifier.calledWith).toEqual({certDir: "/project/certification", options: {sourceBundleDir: "/project/bundle"}});
+            expect(verifier.calledWith).toEqual({certDir: "/project/certification", options: {sourceBundleDir: "/project/bundle", signal: expect.any(AbortSignal)}});
             expect(logSpy.mock.calls.flat().join("\n")).toContain("verified successfully");
+        });
+
+        it("resolves explicit relocated model/report/replay authorities relative to their file", async () => {
+            const verifier = createStubVerifier([]);
+            const loadJson = createStubJsonStore({"/relocated/authorities.json": {modelSource: "model", reportFiles: ["report.json"], replayFiles: ["replay.json"], candidateRevision: "candidate"}});
+            const command = new CertificationCommand("1.3.0", undefined, verifier, loadJson);
+            await command.run(["verify", "/project/certification", "--source", "/relocated/bundle", "--authorities", "/relocated/authorities.json"]);
+            expect(verifier.calledWith?.options?.dossier).toEqual({modelSource: "/relocated/model", reportFiles: ["/relocated/report.json"], replayFiles: ["/relocated/replay.json"], candidateRevision: "candidate"});
         });
 
         it("passes --source through to the verifier", async () => {
@@ -287,7 +325,7 @@ describe("CertificationCommand", () => {
 
             await command.run(["verify", "/project/certification", "--source", "/project/bundle"]);
 
-            expect(verifier.calledWith?.options).toEqual({sourceBundleDir: "/project/bundle"});
+            expect(verifier.calledWith?.options).toEqual({sourceBundleDir: "/project/bundle", signal: expect.any(AbortSignal)});
         });
 
         it("prints an error summary and returns 1 when the verifier reports error-level issues", async () => {

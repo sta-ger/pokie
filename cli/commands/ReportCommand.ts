@@ -3,6 +3,7 @@ import {projectOutcomeSourceSimulationReport} from "../../src/reporting/projectO
 import type {OutcomeSourceSimulationReport} from "../../src/project/simulateOutcomeSourceProject.js";
 import {Command} from "commander";
 import {
+    CertificationDossierRenderer, CertificationEvidenceBundleValidator, loadCertificationDossierTemplate, type CertificationEvidenceBundleManifest, type CertificationDossierTemplate,
     HtmlSimulationReportRenderer,
     isSimulationReportSet,
     MarkdownSimulationReportRenderer,
@@ -30,11 +31,11 @@ import {renderOutcomeSourceHtml, renderOutcomeSourceMarkdown} from "./internal/r
 import {writeOutputFileAtomically} from "./internal/writeOutputFile.js";
 
 type SimulationReportFormat = "markdown" | "html";
-type ReportFormat = SimulationReportFormat | "json";
+type ReportFormat = SimulationReportFormat | "json" | "console" | "pdf";
 
 type ReportPathAlternative = {readonly error: Error};
 
-const USAGE = "Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]";
+const USAGE = "Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json|console|pdf] [--template <json>] [--out <file>]";
 
 export class ReportCommand implements CliCommandHandling {
     private readonly readFile: (file: string) => string;
@@ -72,7 +73,7 @@ export class ReportCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Render a pokie sim report or a resolved outcome-library/Stake adapter analysis as JSON, Markdown, or HTML.";
+        return "Render simulation/outcome analysis as JSON, Markdown or HTML, or a canonical evidence dossier as JSON, console, Markdown, HTML or local PDF.";
     }
 
     public getCommanderCommand(): Command {
@@ -80,7 +81,7 @@ export class ReportCommand implements CliCommandHandling {
     }
 
     public async run(args: string[]): Promise<void> {
-        let parsedArgs: {reportPath: string; format: ReportFormat; out?: string};
+        let parsedArgs: {reportPath: string; format: ReportFormat; out?: string; template?: string};
         try {
             parsedArgs = this.parseArgs(args);
         } catch (error) {
@@ -89,7 +90,7 @@ export class ReportCommand implements CliCommandHandling {
             }
             throw error;
         }
-        const {reportPath, format, out} = parsedArgs;
+        const {reportPath, format, out, template} = parsedArgs;
 
         const project = (await this.resolveProjectSafely(reportPath)) ?? this.recognizeStandaloneStakeOutcomeDirectory(reportPath);
         if (project?.type === "outcomeLibrary" || project?.type === "stakeAdapter") {
@@ -113,7 +114,7 @@ export class ReportCommand implements CliCommandHandling {
             throw new Error(describeWasmUnsupportedOperation("create a simulation report"));
         }
 
-        let parsed: SimulationReport | SimulationReportSet;
+        let parsed: SimulationReport | SimulationReportSet | CertificationEvidenceBundleManifest;
         try {
             parsed = this.readReportJson(reportPath);
         } catch (error) {
@@ -121,6 +122,20 @@ export class ReportCommand implements CliCommandHandling {
             throw alternative.error;
         }
 
+        if ("dossier" in parsed) {
+            const issues = await new CertificationEvidenceBundleValidator().validate(path.dirname(path.resolve(reportPath)));
+            if (issues.some(issue => issue.severity === "error")) throw new Error(`Invalid dossier: ${issues.map(issue => issue.message).join("; ")}`);
+            let selectedTemplate: CertificationDossierTemplate | undefined;
+            if (template) selectedTemplate = loadCertificationDossierTemplate(template);
+            const result = await new CertificationDossierRenderer().render(parsed, format, selectedTemplate ?? parsed.presentation.template);
+            if (out) writeOutputFileAtomically(out, result, true);
+            if (Buffer.isBuffer(result)) {
+                if (!out) throw new Error("PDF dossier output requires --out <new-file>.");
+                console.log(`PDF dossier written to "${out}".`);
+            } else console.log(result);
+            return;
+        }
+        if (format === "pdf" || format === "console" || template) throw new Error("PDF/console and template selection require a canonical dossier manifest.json; simulation reports support json, markdown, html.");
         let rendered: string;
         if (format === "json") {
             rendered = JSON.stringify(parsed, null, 4);
@@ -136,19 +151,20 @@ export class ReportCommand implements CliCommandHandling {
     // the two can never drift apart. `resultRef` is written by the action; parseArgs() supplies its own
     // real box and reads it back once parsing resolves, while getCommanderCommand() never parses this
     // tree at all, so its own default box is never read.
-    private buildCommand(resultRef: {reportPath?: string; format?: ReportFormat; out?: string} = {}): Command {
+    private buildCommand(resultRef: {reportPath?: string; format?: ReportFormat; out?: string; template?: string} = {}): Command {
         return createCommanderCliCommand("report")
             .description(this.getDescription())
             .argument("<projectOrSimulationReportJson>", "a supported outcome project or pokie sim JSON report")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--format <value>", '"markdown", "html", or "json" (default: "markdown")', (value: string) => {
-                if (value !== "markdown" && value !== "html" && value !== "json") {
+            .option("--format <value>", '"markdown", "html", "json", "console" or "pdf" (dossier only for console/pdf; default: "markdown")', (value: string) => {
+                if (value !== "markdown" && value !== "html" && value !== "json" && value !== "pdf" && value !== "console") {
                     throw new Error(`--format must be "markdown", "html", or "json". ${USAGE}`);
                 }
                 return value as ReportFormat;
             })
+            .option("--template <json>", "version 1 dossier presentation template (local JSON, no resources)")
             .option("--out <file>", "file path to write the rendered report to")
-            .action((path: string, excess: string[], options: {format?: ReportFormat; out?: string}) => {
+            .action((path: string, excess: string[], options: {format?: ReportFormat; out?: string; template?: string}) => {
                 // An empty-string positional is "present" as far as Commander's own required-argument
                 // check is concerned, but the pre-Commander behavior this preserves treated it the same
                 // as an entirely missing one.
@@ -158,6 +174,7 @@ export class ReportCommand implements CliCommandHandling {
                 resultRef.reportPath = path;
                 resultRef.format = options.format ?? "markdown";
                 resultRef.out = options.out;
+                resultRef.template = options.template;
             });
     }
 
@@ -207,8 +224,8 @@ export class ReportCommand implements CliCommandHandling {
     }
 
 
-    private parseArgs(args: string[]): {reportPath: string; format: ReportFormat; out?: string} {
-        const resultRef: {reportPath?: string; format?: ReportFormat; out?: string} = {};
+    private parseArgs(args: string[]): {reportPath: string; format: ReportFormat; out?: string; template?: string} {
+        const resultRef: {reportPath?: string; format?: ReportFormat; out?: string; template?: string} = {};
         const command = this.buildCommand(resultRef);
 
         try {
@@ -225,10 +242,10 @@ export class ReportCommand implements CliCommandHandling {
             });
         }
 
-        return {reportPath: resultRef.reportPath!, format: resultRef.format!, out: resultRef.out};
+        return {reportPath: resultRef.reportPath!, format: resultRef.format!, out: resultRef.out, template: resultRef.template};
     }
 
-    private readReportJson(reportPath: string): SimulationReport | SimulationReportSet {
+    private readReportJson(reportPath: string): SimulationReport | SimulationReportSet | CertificationEvidenceBundleManifest {
         let contents: string;
         try {
             contents = this.readFile(reportPath);

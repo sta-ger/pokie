@@ -49,6 +49,7 @@ export async function simulateOutcomeSourceProject(
     rounds: number,
     randomSource: WeightedOutcomeRandomSource,
     seed?: string,
+    options?: {signal?: AbortSignal},
 ): Promise<OutcomeSourceSimulationResult> {
     const diagnostic = describeUnsupportedProjectOperation(project, OUTCOME_SOURCE_SIMULATE_OPERATION);
     if (diagnostic !== undefined) {
@@ -66,6 +67,10 @@ export async function simulateOutcomeSourceProject(
     let lastReplay: PreGeneratedRoundReplayDescriptor | undefined;
     const startedAt = Date.now();
     for (let round = 0; round < rounds; round++) {
+        if (options?.signal?.aborted) throw new Error("Outcome-source simulation cancelled.");
+        if (options && round > 0 && round % 32 === 0) await new Promise<void>(resolve => {
+            setImmediate(resolve);
+        });
         const replayRound = round + 1;
         const roundRandomSource = seed === undefined ? randomSource : new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(seed, replayRound));
         const selection = await outcomeSource.drawOutcome(roundRandomSource);

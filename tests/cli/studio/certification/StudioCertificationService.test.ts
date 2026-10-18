@@ -28,6 +28,43 @@ describe("StudioCertificationService", () => {
         fs.rmSync(tmpRoot, {recursive: true, force: true});
     });
 
+    it("retains template/input identities and downloads validated local PDF from a caller-owned empty directory", async () => {
+        await buildSourceOutcomeLibraryBundle(path.join(tmpRoot, "bundle"));
+        const template = path.join(tmpRoot, "template.json");
+        fs.writeFileSync(template, JSON.stringify({schemaVersion: 1, title: "Assessment", introduction: "Local", sections: ["identity", "rules", "statistics", "validation", "reproduction", "support"]}));
+        const request = {bundleDir: "bundle", outDir: "out", modes: [{modeName: "base", seed: "s", sampleCount: 2}], output: {templateFile: "template.json", formats: ["pdf", "html"] as const}};
+        const service = new StudioCertificationService("1.3.0");
+        const identity = service.requestIdentity(tmpRoot, request);
+        fs.mkdirSync(path.join(tmpRoot, "out"));
+        const inode = fs.statSync(path.join(tmpRoot, "out")).ino;
+        const result = await service.build(tmpRoot, request.bundleDir, request.modes, request.outDir, {output: request.output});
+        expect(result.status).toBe("ok");
+        if (result.status !== "ok") throw new Error(JSON.stringify(result));
+        expect(fs.statSync(path.join(tmpRoot, "out")).ino).toBe(inode);
+        expect(result.manifest.dossier.support.notice).toContain("preparation only");
+        const pdf = await service.download(tmpRoot, request, "dossier.pdf", result.manifest.evidenceContentHash);
+        expect(pdf.mime).toBe("application/pdf");
+        expect(pdf.bytes.toString()).toContain("%PDF-1.4");
+        await expect(service.download(tmpRoot, request, "../template.json", result.manifest.evidenceContentHash)).rejects.toThrow(/unknown/);
+        expect(await service.build(tmpRoot, request.bundleDir, request.modes, request.outDir)).toMatchObject({status: "load-error"});
+        fs.writeFileSync(template, fs.readFileSync(template, "utf8") + " ");
+        expect(service.requestIdentity(tmpRoot, request)).not.toBe(identity);
+    });
+
+    it("rejects escaping evidence inputs and preserves cleanup failures after cancellation", async () => {
+        await buildSourceOutcomeLibraryBundle(path.join(tmpRoot, "bundle"));
+        const service = new StudioCertificationService("1.3.0");
+        const modes = [{modeName: "base", seed: "s", sampleCount: 2}];
+        expect(await service.build(tmpRoot, "bundle", modes, "out", {dossier: {modelSource: "../foreign"}})).toMatchObject({status: "load-error", error: expect.stringContaining("outside")});
+        const controller = new AbortController();
+        expect(await service.build(tmpRoot, "bundle", modes, "out", {signal: controller.signal, onProgress: stage => {
+            if (stage === "Rendering pdf") controller.abort();
+        }})).toMatchObject({status: "load-error", error: expect.stringContaining("cancelled")});
+        expect(fs.existsSync(path.join(tmpRoot, "out"))).toBe(false);
+        const broken = new StudioCertificationService("1.3.0", {buildFromBundle: () => Promise.reject(new Error("staging cleanup failed: retained owned path"))});
+        expect(await broken.build(tmpRoot, "bundle", modes, "out", {signal: controller.signal})).toMatchObject({status: "load-error", error: expect.stringContaining("cleanup failed")});
+    });
+
     describe("validateSourceBundle", () => {
         it("splits deep-validation issues by severity for a real source bundle", async () => {
             await buildSourceOutcomeLibraryBundle(path.join(tmpRoot, "bundle"), ["base"]);

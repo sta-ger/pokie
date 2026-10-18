@@ -1,3 +1,8 @@
+import {resolveSafeCertificationEvidenceFilePath} from "./internal/resolveSafeCertificationEvidenceFilePath.js";
+import {parseCertificationJson} from "./internal/parseCertificationJson.js";
+import {acquireCertificationDossier, certificationSourceHash, dossierHash} from "./internal/acquireCertificationDossier.js";
+import {CertificationDossierRenderer, DEFAULT_CERTIFICATION_DOSSIER_TEMPLATE, validateCertificationDossierTemplate} from "./CertificationDossierRenderer.js";
+import {certificationDossierFileName, validateCertificationDossierInputs, validateCertificationDossierOutput, type CertificationDossierTemplate, type CertificationDossierFormat} from "./CertificationDossier.js";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -133,8 +138,19 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
         // cleanup decision. This leaves an external directory untouched and
         // avoids allocating adjacent staging output for a refused request.
         assertSafeToReplaceCertificationEvidenceDirectory(outDir);
+        const physical = (file: string): string => {
+            const absolute = path.resolve(file);
+            if (fs.existsSync(absolute)) return fs.realpathSync(absolute);
+            return path.join(physical(path.dirname(absolute)), path.basename(absolute));
+        };
+        const outputIdentity = physical(outDir);
+        for (const input of [bundleDir, options?.dossier?.modelSource, ...(options?.dossier?.reportFiles ?? []), ...(options?.dossier?.replayFiles ?? []), options?.output?.templateFile]) {
+            if (!input) continue;
+            const inputIdentity = physical(input);
+            if (inputIdentity === outputIdentity || inputIdentity.startsWith(outputIdentity + path.sep) || outputIdentity.startsWith(inputIdentity + path.sep)) throw new Error("Certification source/output overlap is not permitted, including symlink aliases.");
+        }
         const destinationOwnership = capturePublishDirectoryOwnership(outDir);
-        preflightAtomicDirectoryPublication(outDir, destinationOwnership.destinationIdentity === undefined);
+        preflightAtomicDirectoryPublication(outDir, true);
         const upfrontIssues = this.validateModesInput(modes);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
             return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
@@ -142,6 +158,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
 
         let sourceManifest: OutcomeLibraryBundleManifest;
         try {
+            if (!resolveSafeCertificationEvidenceFilePath(bundleDir, "manifest.json")) throw new Error("Source manifest is missing, symlinked or unsafe.");
             sourceManifest = await this.reader.readManifest(bundleDir);
         } catch (error) {
             return this.failed(outDir, upfrontIssues, [
@@ -152,6 +169,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
                 },
             ]);
         }
+        if (sourceManifest.files.some(file => !resolveSafeCertificationEvidenceFilePath(bundleDir, file))) return this.failed(outDir, upfrontIssues, [{code: "certification-dossier-source-unsafe", severity: "error", message: "Source inventory contains a missing, symlinked or escaping file."}]);
         const initialManifestHash = hashManifest(sourceManifest);
 
         const deepValidationIssues = await this.bundleValidator.validate(bundleDir, {deep: true});
@@ -192,6 +210,29 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
             ]);
         }
 
+        assertNotCancelled(options);
+        options?.onStage?.("Acquiring model and evidence");
+        let dossier;
+        let templateArtifactHash: string | null = null;
+        let template: CertificationDossierTemplate = DEFAULT_CERTIFICATION_DOSSIER_TEMPLATE;
+        const formats: readonly CertificationDossierFormat[] = options?.output?.formats ?? ["json", "console", "markdown", "html", "pdf"];
+        try {
+            validateCertificationDossierInputs(options?.dossier ?? {});
+            validateCertificationDossierOutput(options?.output ?? {});
+            if (!formats.length || new Set(formats).size !== formats.length || formats.some(format => !["json", "console", "markdown", "html", "pdf"].includes(format))) throw new Error("Dossier formats must be a nonempty unique selection of json, console, markdown, html, pdf; YAML is unimplemented.");
+            if (options?.output?.templateFile) {
+                certificationSourceHash(options.output.templateFile);
+                templateArtifactHash = sha256OfBytes(fs.readFileSync(options.output.templateFile));
+                template = parseCertificationJson(fs.readFileSync(options.output.templateFile, "utf8")) as CertificationDossierTemplate;
+            }
+            validateCertificationDossierTemplate(template);
+            dossier = await acquireCertificationDossier(sourceManifest, initialManifestHash, options?.dossier, options?.signal, bundleDir);
+        } catch (error) {
+            if (error instanceof Error && (/cleanup failed/).test(error.message)) throw error;
+            assertNotCancelled(options);
+            return this.failed(outDir, upfrontIssues, [{code: "certification-dossier-input-invalid", severity: "error", message: error instanceof Error ? error.message : String(error)}]);
+        }
+        const presentation = {template, templateHash: dossierHash(template), templateArtifactHash, formats};
         const stagingDir = `${outDir}.staging-${crypto.randomBytes(6).toString("hex")}`;
         fs.mkdirSync(stagingDir, {recursive: true});
         let publication: PublishedDirectoryOwnership | undefined;
@@ -216,10 +257,12 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
                 return this.failed(outDir, upfrontIssues, [...deepValidationIssues, driftIssue]);
             }
 
-            const relativeFiles = [...modeEntries.map((entry) => entry.samplesFile), "manifest.json"];
+            const relativeFiles = [...modeEntries.map((entry) => entry.samplesFile), ...formats.map(certificationDossierFileName), "manifest.json"];
             const generatedAt = this.now().toISOString();
 
             const draftManifest = {
+                dossier,
+                presentation,
                 schemaVersion: CERTIFICATION_EVIDENCE_BUNDLE_MANIFEST_SCHEMA_VERSION,
                 generatedBy: "pokie certification build",
                 pokieVersion: this.pokieVersion,
@@ -237,6 +280,14 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
                 sourceBundleDir: bundleDir,
                 evidenceContentHash: computeCertificationEvidenceContentHash(draftManifest),
             };
+            const renderer = new CertificationDossierRenderer();
+            for (const format of formats) {
+                assertNotCancelled(options);
+                options?.onStage?.(`Rendering ${format}`);
+                const rendered = await renderer.render(manifest, format, template, options?.signal);
+                this.writeFile(path.join(stagingDir, certificationDossierFileName(format)), rendered);
+            }
+            assertNotCancelled(options);
             this.writeFile(path.join(stagingDir, "manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
 
             // Publish-time self-check: validates the fully-assembled staging directory exactly the way any
@@ -247,12 +298,25 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
                 return this.failed(outDir, upfrontIssues, [...deepValidationIssues, ...stagingIssues]);
             }
 
+            assertNotCancelled(options);
+            // Reacquire every explicit authority before commit, closing changes during sampling/rendering.
+            const finalDossier = await acquireCertificationDossier(sourceManifest, initialManifestHash, options?.dossier, options?.signal, bundleDir);
+            if (dossierHash(finalDossier) !== dossierHash(dossier)) throw new Error("Dossier authorities changed before publication.");
+            if (options?.output?.templateFile && (dossierHash(parseCertificationJson(fs.readFileSync(options.output.templateFile, "utf8"))) !== presentation.templateHash || sha256OfBytes(fs.readFileSync(options.output.templateFile)) !== templateArtifactHash)) throw new Error("Template changed before publication.");
+            const finalSourceDrift = await this.detectSourceBundleDrift(bundleDir, modes, initialManifestHash, initialIndexes);
+            if (finalSourceDrift) return this.failed(outDir, upfrontIssues, [finalSourceDrift]);
+            options?.onStage?.("Publishing dossier");
             const published = publishDirectoryAtomically({
                 outDir,
                 ownership: destinationOwnership,
+                preserveEmptyDestination: true,
                 renameDirectory: this.renameDirectory,
                 removeDirectory: this.removeDirectory,
-                beforeCommit: this.beforeCommit,
+                beforeCommit: () => {
+                    this.beforeCommit?.();
+                    assertNotCancelled(options);
+
+                },
                 writeFilesIntoTempDir: (tempDir) => {
                     for (const file of relativeFiles) {
                         this.renameDirectory(path.join(stagingDir, file), path.join(tempDir, file));
@@ -260,6 +324,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
                 },
             });
             publication = published.publication;
+            const artifactHashes = Object.fromEntries(relativeFiles.map(file => [file, sha256OfBytes(this.readFileBytes(path.join(outDir, file)))]));
             assertNotCancelled(options);
 
             const finalIssues = [...upfrontIssues, ...deepValidationIssues];
@@ -267,17 +332,24 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
                 finalIssues.push({code: "certification-evidence-build-stale-cleanup-failed", severity: "warning", message: published.cleanupWarning, details: {outDir}});
             }
 
-            return {outDir, files: relativeFiles, manifest, issues: finalIssues, publication};
+            return {outDir, files: relativeFiles, artifactHashes, manifest, issues: finalIssues, publication};
         } catch (error) {
-            if (publication !== undefined) removePublishedDirectoryIfOwned(publication);
+            if (publication !== undefined) {
+                if (!removePublishedDirectoryIfOwned(publication)) throw new Error(`Certification rollback cleanup failed at "${outDir}": publication ownership changed; preserve competing files and inspect the retained output. Original failure: ${String(error)}`);
+                publication = undefined;
+            }
             throw error;
         } finally {
-            try {
-                this.removeDirectory(stagingDir);
-            } catch {
-                // best-effort only — the staging directory is purely internal scratch space, never part of the
-                // published result either way.
-            }
+            this.cleanupStaging(stagingDir, publication);
+        }
+    }
+
+    private cleanupStaging(stagingDir: string, publication?: PublishedDirectoryOwnership): void {
+        try {
+            this.removeDirectory(stagingDir);
+        } catch (error) {
+            if (publication !== undefined) removePublishedDirectoryIfOwned(publication);
+            throw new Error(`Certification staging cleanup failed at "${stagingDir}": ${error instanceof Error ? error.message : String(error)}. Inspect and remove only this operation-owned staging directory before retrying.`);
         }
     }
 

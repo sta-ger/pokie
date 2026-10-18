@@ -3,6 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+    CERTIFICATION_DOSSIER_SECTIONS,
     CertificationEvidenceBundleBuilder,
     CertificationEvidenceBundleManifest,
     CertificationEvidenceBundleValidator,
@@ -46,6 +47,36 @@ describe("CertificationEvidenceBundleValidator", () => {
     it("reports no issues for a freshly built, untouched bundle", async () => {
         const issues = await validator.validate(certDir);
         expect(issues).toEqual([]);
+    });
+
+    it.each(CERTIFICATION_DOSSIER_SECTIONS)("rejects missing mandatory %s even after rehashing", async section => {
+        const manifest = readManifest(certDir);
+        Reflect.deleteProperty(manifest.dossier, section);
+        const modified = {...manifest, evidenceContentHash: computeCertificationEvidenceContentHash(manifest)};
+        writeManifest(certDir, modified);
+        expect(await validator.validate(certDir)).toEqual(expect.arrayContaining([expect.objectContaining({code: "certification-dossier-invalid", severity: "error"})]));
+    });
+
+    it.each(["dossier", "runtime", "template", "legacy"])("rejects incompatible %s versions", async kind => {
+        const manifest = readManifest(certDir);
+        if (kind === "dossier") Reflect.set(manifest.dossier, "schemaVersion", 2);
+        if (kind === "runtime") Reflect.set(manifest.dossier.identity, "runtimeVersion", "pokie.session-runtime.v99");
+        if (kind === "template") Reflect.set(manifest.presentation.template, "schemaVersion", 2);
+        if (kind === "legacy") Reflect.set(manifest, "schemaVersion", 1);
+        writeManifest(certDir, {...manifest, evidenceContentHash: computeCertificationEvidenceContentHash(manifest)});
+        expect((await validator.validate(certDir)).some(issue => issue.severity === "error")).toBe(true);
+    });
+
+    it("rejects duplicated required sections, unsafe rendered files and altered output", async () => {
+        const manifest = readManifest(certDir);
+        const raw = JSON.stringify(manifest).replace('"rules":', '"rules":{},"rules":');
+        fs.writeFileSync(path.join(certDir, "manifest.json"), raw);
+        expect((await validator.validate(certDir)).some(issue => (/Duplicate/).test(issue.message))).toBe(true);
+        writeManifest(certDir, manifest);
+        const file = path.join(certDir, "dossier.pdf");
+        fs.unlinkSync(file);
+        fs.symlinkSync(path.join(bundleDir, "manifest.json"), file);
+        expect((await validator.validate(certDir)).some(issue => issue.code === "certification-dossier-invalid")).toBe(true);
     });
 
     it("reports manifest-missing when manifest.json doesn't exist", async () => {

@@ -8,6 +8,8 @@ import type {PublishedDirectoryOwnership} from "../stakeengine/internal/publishD
 // none was.
 export type CertificationEvidenceBundleBuildResult = {
     readonly outDir: string;
+    /** SHA-256 of exact published bytes; content identity is separate and deterministic. */
+    readonly artifactHashes?: Readonly<Record<string, string>>;
     readonly files: readonly string[];
     readonly manifest: CertificationEvidenceBundleManifest | undefined;
     readonly issues: readonly ValidationIssue[];

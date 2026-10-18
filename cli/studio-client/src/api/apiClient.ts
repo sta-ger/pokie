@@ -1,3 +1,4 @@
+import type {CertificationDossierInputs, CertificationDossierOutput} from "../../../../src/certification/CertificationDossier.js";
 import type {SessionCommand} from "../../../../src/runtime/SessionCommand.js";
 import type {
     FairnessCommitment,
@@ -124,7 +125,7 @@ export async function recoverProjectJob(fetchImpl: FetchLike, id: string, signal
 export type FetchLike = (
     url: string,
     init?: {method?: string; headers?: Record<string, string>; body?: string; cache?: "no-store"; signal?: AbortSignal},
-) => Promise<{ok: boolean; status: number; json(): Promise<unknown>}>;
+) => Promise<{ok: boolean; status: number; json(): Promise<unknown>; blob?(): Promise<Blob>}>;
 
 // `/api/home/projects/open` only succeeds after Studio has selected a project context. Keep that
 // contract precise so every caller routes from the server-resolved project identity rather than the
@@ -1259,11 +1260,12 @@ export async function buildCertificationEvidenceBundle(
     bundleDir: string,
     modes: CertificationBuildModeInput[],
     outDir: string,
+    configuration?: {dossier?: CertificationDossierInputs; output?: CertificationDossierOutput},
 ): Promise<StudioCertificationBuildView> {
     const response = await fetchImpl("/api/project/certification/build", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({bundleDir, modes, outDir}),
+        body: JSON.stringify({bundleDir, modes, outDir, ...configuration}),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to build the certification/evidence bundle"));
@@ -1453,4 +1455,12 @@ export async function optimizationAction<T>(fetchImpl: FetchLike, action: "suppo
     const value = await response.json() as T & {error?: string};
     if (!response.ok) throw new Error(value.error ?? "Optimization request failed.");
     return value;
+}
+
+export async function downloadCertificationDossier(fetchImpl: FetchLike, outDir: string, identity: string, file: string): Promise<Blob> {
+    const query = new URLSearchParams({outDir, identity, file});
+    const response = await fetchImpl(`/api/project/certification/download?${query}`);
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Dossier download failed; inputs may have changed"));
+    if (!response.blob) throw new Error("Binary dossier download is unavailable in this transport.");
+    return response.blob();
 }

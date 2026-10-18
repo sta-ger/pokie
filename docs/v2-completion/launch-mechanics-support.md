@@ -233,3 +233,8 @@ unknown or duplicate Meta keys and ignored Meta columns, even when the represent
 math hash matches. Studio draft re-export keeps the server's byte-bound import
 history across restart; unprepared/edited drafts or an ineligible import cannot
 restore a lossless claim. Import and re-export do not implicitly save the draft.
+
+
+## Canonical dossier preparation (V2C-27)
+
+V2C-27 adds versioned canonical dossier sections through the existing builder/verifier, authoritative model rules/field coverage, canonical statistics and executable audit replay when explicitly supplied. Formats are JSON, console text, Markdown, HTML and local selectable-text PDF. Partial/custom/unknown model authority remains visible. Outcome-only dossiers cannot establish originating rules; SDK/fairness evidence is explicitly unavailable. YAML is optional and unimplemented. This is assessment preparation, not certification; independent review and controller gates remain separate. See [the dossier contract](../certification-evidence-bundle.md) and [implementation receipt](V2C-27.md).

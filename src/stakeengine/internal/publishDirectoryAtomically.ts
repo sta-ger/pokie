@@ -5,6 +5,8 @@ import path from "path";
 
 export type PublishDirectoryAtomicallyOptions = {
     readonly outDir: string;
+    /** New-or-empty workflow: retain a caller-owned empty directory inode and publish manifest last. */
+    readonly preserveEmptyDestination?: boolean;
     readonly writeFilesIntoTempDir: (tempDir: string) => void;
     readonly renameDirectory?: (from: string, to: string) => void;
     readonly removeDirectory?: (dirPath: string) => void;
@@ -71,6 +73,8 @@ export function capturePublishDirectoryOwnership(directory: string): PublishDire
 export type PublishedDirectoryOwnership = {
     readonly outDir: string;
     readonly identity: PublishDirectoryAtomicallyDestinationIdentity;
+    readonly retainEmptyDirectory?: boolean;
+    readonly members?: readonly {name: string; identity: PublishDirectoryAtomicallyDestinationIdentity; hash: string}[];
 };
 
 export type PublishDirectoryAtomicallyResult = {
@@ -139,6 +143,23 @@ export function preflightAtomicDirectoryPublication(
  */
 export function removePublishedDirectoryIfOwned(publication: PublishedDirectoryOwnership): boolean {
     const outDir = path.resolve(publication.outDir);
+    if (publication.members !== undefined) {
+        if (!sameIdentity(capturePublishDirectoryIdentity(outDir), publication.identity)) return false;
+        for (const member of [...publication.members].reverse()) {
+            const file = path.join(outDir, member.name);
+            if (sameIdentity(capturePublishDirectoryIdentity(file), member.identity) && crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex") === member.hash) fs.unlinkSync(file);
+        }
+        if (!publication.retainEmptyDirectory) {
+            try {
+                fs.rmdirSync(outDir);
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code === "ENOTEMPTY") return false;
+                throw error;
+
+            }
+        }
+        return true;
+    }
     const nonce = crypto.randomBytes(12).toString("hex");
     const privateDir = path.join(path.dirname(outDir), `.${path.basename(outDir)}.rollback-${nonce}`);
     fs.mkdirSync(privateDir, {recursive: false});
@@ -199,12 +220,13 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
     const nonce = crypto.randomBytes(12).toString("hex");
     const tempDir = path.join(path.dirname(outDir), `.${path.basename(outDir)}.tmp-${nonce}`);
     let tempIdentity: PublishDirectoryAtomicallyDestinationIdentity | undefined;
+    let installedPublication: PublishedDirectoryOwnership | undefined;
 
     const removeScratch = (): void => {
         try {
             removeDirectory(tempDir);
-        } catch {
-            // This invocation owns tempDir exclusively.
+        } catch (error) {
+            if (options.preserveEmptyDestination) throw new Error(`Publication scratch cleanup failed at "${tempDir}": ${error instanceof Error ? error.message : String(error)}`);
         }
     };
 
@@ -217,6 +239,35 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
         options.beforeCommit?.();
         assertDestinationUnchanged(outDir, ownership, expectedAbsent, claimed);
 
+        if (options.preserveEmptyDestination && !expectedAbsent) {
+            if (fs.readdirSync(outDir).length !== 0) throw claimed(`Destination "${outDir}" is no longer empty.`);
+            const members: {name: string; identity: PublishDirectoryAtomicallyDestinationIdentity; hash: string}[] = [];
+            const publication: PublishedDirectoryOwnership = {outDir, identity: ownership.destinationIdentity!, members, retainEmptyDirectory: true};
+            try {
+                const names = fs.readdirSync(tempDir).sort((a, b) => {
+                    if (a === "manifest.json") return 1;
+                    if (b === "manifest.json") return -1;
+                    return a.localeCompare(b);
+                });
+                for (const name of names) {
+                    if (!sameIdentity(capturePublishDirectoryIdentity(outDir), publication.identity) || fs.readdirSync(outDir).some(entry => !members.some(member => member.name === entry))) throw claimed(`Destination "${outDir}" was claimed during publication.`);
+                    const source = path.join(tempDir, name);
+                    if (!fs.lstatSync(source).isFile()) throw new Error("Empty-directory publication supports physical files only.");
+                    const identity = capturePublishDirectoryIdentity(source)!;
+                    const hash = crypto.createHash("sha256").update(fs.readFileSync(source)).digest("hex");
+                    fs.linkSync(source, path.join(outDir, name));
+                    members.push({name, identity, hash});
+                }
+                options.afterCommit?.();
+                if (!sameIdentity(capturePublishDirectoryIdentity(outDir), publication.identity) || fs.readdirSync(outDir).some(entry => !members.some(member => member.name === entry))) throw claimed(`Destination "${outDir}" was claimed at commit.`);
+                removeDirectory(tempDir);
+                return withPublishedDirectoryOwnership({}, publication);
+            } catch (error) {
+                if (!removePublishedDirectoryIfOwned(publication)) throw new Error(`Publication rollback cleanup failed at "${outDir}"; ownership changed. Original error: ${String(error)}`);
+                throw error;
+            }
+        }
+        const newMembers = options.preserveEmptyDestination ? fs.readdirSync(tempDir).map(name => ({name, identity: capturePublishDirectoryIdentity(path.join(tempDir, name))!, hash: crypto.createHash("sha256").update(fs.readFileSync(path.join(tempDir, name))).digest("hex")})) : undefined;
         if (expectedAbsent) installAbsentDirectory(tempDir, outDir, claimed);
         else exchangeDirectories(tempDir, outDir);
 
@@ -233,7 +284,8 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
             restoreDisplacedDestination(tempDir, outDir, tempIdentity);
             throw claimed(`Destination "${outDir}" was claimed during publication commit.`);
         }
-        const publication: PublishedDirectoryOwnership = {outDir, identity: installedIdentity};
+        const publication: PublishedDirectoryOwnership = {outDir, identity: installedIdentity, ...(newMembers ? {members: newMembers} : {})};
+        installedPublication = publication;
         options.afterCommit?.();
         if (!sameIdentity(capturePublishDirectoryIdentity(outDir), publication.identity)) {
             throw claimed(`Destination "${outDir}" was claimed immediately after publication.`);
@@ -251,6 +303,7 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
             }, publication);
         }
     } catch (error) {
+        if (options.preserveEmptyDestination && installedPublication && !removePublishedDirectoryIfOwned(installedPublication)) throw new Error(`Publication rollback cleanup failed at "${outDir}"; ownership changed. Original error: ${String(error)}`);
         removeScratch();
         throw error;
     }

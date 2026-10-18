@@ -1,3 +1,4 @@
+import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationEvidenceBundleTestFixtures.js";
 import fs from "fs";
 import http from "http";
 import os from "os";
@@ -153,7 +154,7 @@ describe("StudioJobService executor bridge routes", () => {
         expect(executorSignal?.aborted).toBe(true);
         await cleanupObserved;
         await expect(first).resolves.toEqual({status: 200, body: {status: "load-error", error: "cleanup completed"}});
-        expect(jobs.get(projectRoot, "bridge-job")).toMatchObject({status: "cancelled", result: {summary: "Certification evidence build cancelled after staging cleanup."}});
+        expect(jobs.get(projectRoot, "bridge-job")).toMatchObject({status: "cancelled", result: {summary: "Certification evidence build cancellation settled; inspect the retained executor result for cleanup diagnostics."}});
         expect(jobs.signal("bridge-job")).toBeUndefined();
 
         const failedValidation = jest.fn(() => Promise.reject(new Error("executor exploded")));
@@ -188,11 +189,63 @@ describe("StudioJobService executor bridge routes", () => {
             status: 409,
             body: {activeJobId: "bridge-job", recovery: {action: "retry"}},
         });
+        for (const changed of [{output: {formats: ["pdf"]}}, {dossier: {modelSource: "other-model"}}, {output: {templateFile: "other-template.json"}}]) {
+            await expect(post(`${baseUrl}/api/project/certification/build`, {...request, ...changed})).resolves.toMatchObject({status: 409, body: {activeJobId: "bridge-job"}});
+        }
         expect(build).toHaveBeenCalledTimes(1);
         expect(jobs.list(projectRoot)).toMatchObject([{conflictKey: `certification-output:${path.join(projectRoot, "shared-certification")}`}]);
 
         release?.({status: "ok", manifest: {generatedBy: "test"}, files: [], warnings: []});
         await expect(first).resolves.toMatchObject({status: 200, body: {status: "ok"}});
+    });
+
+    it("serves real dossier PDF bytes from a retained successful job and rejects stale template exports after restart", async () => {
+        await buildSourceOutcomeLibraryBundle(path.join(projectRoot, "bundle"));
+        const template = path.join(projectRoot, "presentation.json");
+        fs.writeFileSync(template, JSON.stringify({schemaVersion: 1, title: "Retained assessment", introduction: "Preparation only", sections: ["identity", "rules", "statistics", "validation", "reproduction", "support"]}));
+        const service = new StudioCertificationService("1.3.0");
+        const baseUrl = await start(service);
+        const response = await post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "dossier", modes: [{modeName: "base", seed: "s", sampleCount: 2}], output: {formats: ["pdf"], templateFile: "presentation.json"}});
+        expect(response).toMatchObject({status: 200, body: {status: "ok", manifest: {dossier: {support: {coverage: "unavailable"}}}}});
+        const retained = jobs.get(projectRoot, "bridge-job")!;
+        expect(retained.request).toMatchObject({inputIdentity: expect.stringMatching(/^sha256:/), output: {formats: ["pdf"], templateFile: "presentation.json"}});
+        const download = retained.result!.outputs!.find(output => output.path === "dossier.pdf")!.downloadPath!;
+        await server!.stop();
+        const restartedJobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
+        const restartedBaseUrl = await start(service, restartedJobs);
+        const bytes = await new Promise<{status: number; type: string; body: Buffer}>((resolve, reject) => {
+            http.get(`${restartedBaseUrl}${download}`, {agent: false}, res => {
+                const chunks: Buffer[] = [];
+                res.on("data", (chunk: Buffer) => chunks.push(chunk));
+                res.on("error", reject);
+                res.on("end", () => resolve({status: res.statusCode ?? 0, type: String(res.headers["content-type"]), body: Buffer.concat(chunks)}));
+            }).on("error", reject);
+        });
+        expect(bytes.status).toBe(200);
+        expect(bytes.type).toBe("application/pdf");
+        expect(bytes.body.toString()).toContain("%PDF-1.4");
+        expect(bytes.body).toEqual(fs.readFileSync(path.join(projectRoot, "dossier", "dossier.pdf")));
+        fs.appendFileSync(template, " ");
+        await expect(get(`${restartedBaseUrl}${download}`)).resolves.toMatchObject({status: 409, body: {error: expect.stringContaining("changed")}});
+    });
+
+    it("records cancellation cleanup failure as failed rather than confirmed-cleaned cancellation", async () => {
+        let release!: (value: unknown) => void, began!: () => void;
+        const started = new Promise<void>(resolve => {
+            began = resolve;
+        });
+        const build = jest.fn(() => new Promise<unknown>(resolve => {
+            release = resolve;
+            began();
+
+        }));
+        const baseUrl = await start({build} as unknown as StudioCertificationService);
+        const response = post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "out", modes: [{modeName: "base", seed: "s", sampleCount: 1}]});
+        await started;
+        jobs.cancel(projectRoot, "bridge-job");
+        release({status: "load-error", error: "Certification staging cleanup failed: owned staging retained"});
+        await response;
+        expect(jobs.get(projectRoot, "bridge-job")).toMatchObject({status: "failed", error: expect.stringContaining("cleanup failed")});
     });
 
     it("locks a deployment delivery resource while exact retries reattach without a second delivery", async () => {

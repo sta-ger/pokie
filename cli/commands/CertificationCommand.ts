@@ -2,6 +2,11 @@ import {Command} from "commander";
 import fs from "fs";
 import path from "path";
 import {
+    CERTIFICATION_PREPARATION_NOTICE,
+    CertificationDossierInputs,
+    CertificationDossierOutput,
+    validateCertificationDossierInputs,
+    validateCertificationDossierOutput,
     CERTIFICATION_BUILD_OPERATION,
     CERTIFICATION_VERIFY_OPERATION,
     CertificationEvidenceBundleBuilder,
@@ -32,7 +37,7 @@ const CONFIG_HINT =
     "docs/certification-evidence-bundle.md for the format.";
 
 type BuildDescriptorModeEntry = {modeName: string; seed: string; sampleCount: number};
-type BuildDescriptor = {modes: BuildDescriptorModeEntry[]};
+type BuildDescriptor = {modes: BuildDescriptorModeEntry[]; dossier?: CertificationDossierInputs; output?: CertificationDossierOutput};
 
 // Two CLI verbs ("pokie certification build"/"pokie certification verify") sharing one command, the same way
 // OutcomeLibraryCommand owns "build"/"validate" and StakeEngineCommand owns "export"/"import" — cli/pokie.ts
@@ -160,14 +165,23 @@ export class CertificationCommand implements CliCommandHandling {
             .argument("<certDir>", "an existing certification/evidence bundle directory built by \"pokie certification build\"")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--source <bundleDir>", "the outcome-library bundle the certification bundle was built from (required)")
-            .action(async (certDir: string, excess: string[], options: {source?: string}) => {
+            .option("--template <json>", "explicit custom presentation template authority")
+            .option("--authorities <json>", "explicit relocated model/report/replay/revision authorities JSON")
+            .action(async (certDir: string, excess: string[], options: {source?: string; authorities?: string; template?: string}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${VERIFY_USAGE}`);
                 }
                 if (options.source === undefined) {
                     throw new Error(`--source <bundleDir> is required. ${VERIFY_USAGE}`);
                 }
-                exitCodeRef.value = await this.executeVerify(certDir, options.source);
+                const controller = new AbortController();
+                const onCancel = () => controller.abort();
+                process.once("SIGINT", onCancel);
+                try {
+                    exitCodeRef.value = await this.executeVerify(certDir, options.source, options.authorities, controller.signal, options.template);
+                } finally {
+                    process.off("SIGINT", onCancel);
+                }
             });
 
         return parent;
@@ -186,7 +200,7 @@ export class CertificationCommand implements CliCommandHandling {
 
         let result: CertificationEvidenceBundleBuildResult;
         try {
-            result = await this.builder.buildFromBundle(bundleDir, modes, outDir, {signal});
+            result = await this.builder.buildFromBundle(bundleDir, modes, outDir, {signal, ...(descriptor.dossier ? {dossier: descriptor.dossier} : {}), ...(descriptor.output ? {output: descriptor.output} : {})});
         } catch (error) {
             if (error instanceof CertificationEvidenceBundleBuildCancelledError) {
                 console.error("Certification/evidence build was cancelled. No incomplete evidence was published; retry the same command when ready.");
@@ -203,6 +217,8 @@ export class CertificationCommand implements CliCommandHandling {
             return 1;
         }
 
+        console.log(CERTIFICATION_PREPARATION_NOTICE);
+        if (result.manifest) console.log(`Model coverage: ${result.manifest.dossier.support.coverage}. ${result.manifest.dossier.support.limitations.join(" ")}`);
         console.log(`Built a certification/evidence bundle from "${bundleDir}" to "${outDir}":`);
         for (const file of result.files) {
             console.log(`  wrote  ${file}`);
@@ -214,10 +230,16 @@ export class CertificationCommand implements CliCommandHandling {
         return 0;
     }
 
-    private async executeVerify(certDir: string, sourceBundleDir: string): Promise<number> {
+    private async executeVerify(certDir: string, sourceBundleDir: string, authoritiesPath?: string, signal?: AbortSignal, templateFile?: string): Promise<number> {
         await this.checkOutcomeLibrarySource(sourceBundleDir, CERTIFICATION_VERIFY_OPERATION);
 
-        const issues = await this.verifier.verify(certDir, {sourceBundleDir});
+        let dossier: CertificationDossierInputs | undefined;
+        if (authoritiesPath) {
+            const raw = this.loadJson(authoritiesPath);
+            validateCertificationDossierInputs(raw);
+            dossier = this.resolveAuthorities(raw, authoritiesPath);
+        }
+        const issues = await this.verifier.verify(certDir, {sourceBundleDir, ...(dossier ? {dossier} : {}), ...(signal ? {signal} : {}), ...(templateFile ? {templateFile} : {})});
         const errors = issues.filter((issue) => issue.severity === "error");
         const rest = issues.filter((issue) => issue.severity !== "error");
 
@@ -227,6 +249,7 @@ export class CertificationCommand implements CliCommandHandling {
             return 1;
         }
 
+        console.log(CERTIFICATION_PREPARATION_NOTICE);
         console.log(`"${certDir}" verified successfully as a certification/evidence bundle.`);
         for (const issue of rest) {
             console.log(`  ${issue.severity}  ${issue.code}: ${issue.message}`);
@@ -260,6 +283,11 @@ export class CertificationCommand implements CliCommandHandling {
         }
     }
 
+    private resolveAuthorities(input: CertificationDossierInputs, configPath: string): CertificationDossierInputs {
+        const resolve = (file: string) => path.resolve(path.dirname(configPath), file);
+        return {...input, ...(input.modelSource ? {modelSource: resolve(input.modelSource)} : {}), ...(input.reportFiles ? {reportFiles: input.reportFiles.map(resolve)} : {}), ...(input.replayFiles ? {replayFiles: input.replayFiles.map(resolve)} : {})};
+    }
+
     private loadDescriptor(configPath: string): BuildDescriptor {
         const parsed = this.loadJson(configPath);
         if (typeof parsed !== "object" || parsed === null || !Array.isArray((parsed as {modes?: unknown}).modes)) {
@@ -280,7 +308,11 @@ export class CertificationCommand implements CliCommandHandling {
             return {modeName: e.modeName, seed: e.seed, sampleCount: e.sampleCount};
         });
 
-        return {modes};
+        const extra = parsed as {dossier?: unknown; output?: unknown};
+        if (extra.dossier !== undefined) validateCertificationDossierInputs(extra.dossier);
+        if (extra.output !== undefined) validateCertificationDossierOutput(extra.output);
+        const output = extra.output as CertificationDossierOutput | undefined;
+        return {modes, ...(extra.dossier ? {dossier: this.resolveAuthorities(extra.dossier as CertificationDossierInputs, configPath)} : {}), ...(output ? {output: {...output, ...(output.templateFile ? {templateFile: path.resolve(path.dirname(configPath), output.templateFile)} : {})}} : {})};
     }
 
 }

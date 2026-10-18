@@ -2,7 +2,7 @@ import {Alert, Anchor, Button, CopyButton, Group, NumberInput, Stepper, Table, T
 import {useDisclosure} from "@mantine/hooks";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState, type ReactNode} from "react";
-import {browseFilesystem, buildCertificationEvidenceBundle, validateCertificationSourceBundle, type CertificationBuildModeInput} from "../../api/apiClient";
+import {browseFilesystem, downloadCertificationDossier, buildCertificationEvidenceBundle, validateCertificationSourceBundle, type CertificationBuildModeInput} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {
@@ -64,7 +64,9 @@ type DetectedBundleView = {status: "loading"} | {status: "found"; path: string} 
 
 const CERTIFICATION_STORAGE_PREFIX = "pokie-studio:certification:";
 
-type PersistedCertificationFields = {bundleDir: string; outDir: string; modes: ModeFields[]};
+type DossierFields = {modelSource: string; reportFiles: string; replayFiles: string; templateFile: string; sourceRevision: string; candidateRevision: string; formats: string};
+const EMPTY_DOSSIER: DossierFields = {modelSource: "", reportFiles: "", replayFiles: "", templateFile: "", sourceRevision: "", candidateRevision: "", formats: ""};
+type PersistedCertificationFields = {bundleDir: string; outDir: string; modes: ModeFields[]; dossierFields?: DossierFields};
 
 function certificationStorageKey(projectRoot: string | undefined): string {
     return `${CERTIFICATION_STORAGE_PREFIX}${projectRoot ?? "no-project"}`;
@@ -92,7 +94,7 @@ function loadPersistedCertificationFields(projectRoot: string | undefined): Pers
         if (typeof parsed.bundleDir !== "string" || typeof parsed.outDir !== "string" || !Array.isArray(parsed.modes) || !parsed.modes.every(isPersistedModeFields)) {
             return undefined;
         }
-        return {bundleDir: parsed.bundleDir, outDir: parsed.outDir, modes: parsed.modes};
+        return {bundleDir: parsed.bundleDir, outDir: parsed.outDir, modes: parsed.modes, dossierFields: parsed.dossierFields && Object.keys(EMPTY_DOSSIER).every(key => typeof Reflect.get(parsed.dossierFields!, key) === "string") ? parsed.dossierFields : undefined};
     } catch {
         return undefined;
     }
@@ -173,6 +175,38 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     const [bundleDir, setBundleDir] = useState(() => persistedFields?.bundleDir ?? "");
     const [outDir, setOutDir] = useState(() => persistedFields?.outDir ?? "certification");
     const [modes, setModes] = useState<ModeFields[]>(() => persistedFields?.modes ?? [EMPTY_MODE]);
+    const [dossierFields, setDossierFields] = useState<DossierFields>(() => persistedFields?.dossierFields ?? EMPTY_DOSSIER);
+    const [downloadError, setDownloadError] = useState("");
+    function dossierConfiguration() {
+        const list = (text: string) => text.split(",").map(file => file.trim()).filter(Boolean);
+        return {
+            dossier: {...(dossierFields.modelSource.trim() ? {modelSource: dossierFields.modelSource.trim()} : {}), ...(dossierFields.reportFiles.trim() ? {reportFiles: list(dossierFields.reportFiles)} : {}), ...(dossierFields.replayFiles.trim() ? {replayFiles: list(dossierFields.replayFiles)} : {}), ...(dossierFields.sourceRevision.trim() ? {sourceRevision: dossierFields.sourceRevision.trim()} : {}), ...(dossierFields.candidateRevision.trim() ? {candidateRevision: dossierFields.candidateRevision.trim()} : {})},
+            ...(dossierFields.templateFile.trim() || dossierFields.formats.trim() ? {output: {...(dossierFields.templateFile.trim() ? {templateFile: dossierFields.templateFile.trim()} : {}), ...(dossierFields.formats.trim() ? {formats: list(dossierFields.formats) as ("json" | "console" | "markdown" | "html" | "pdf")[]} : {})}} : {}),
+        };
+    }
+    function changeDossierField(key: keyof DossierFields, value: string): void {
+        const next = {...dossierFields, [key]: value};
+        setDossierFields(next);
+        savePersistedCertificationFields(projectRoot, {bundleDir, outDir, modes, dossierFields: next});
+        invalidateBuild();
+    }
+    async function downloadDossier(file: string): Promise<void> {
+        if (buildView.status !== "ok") return;
+        const requestId = buildRequestIdRef.current;
+        setDownloadError("");
+        try {
+            const blob = await downloadCertificationDossier(fetchImpl, outDir.trim(), buildView.manifest.evidenceContentHash, file);
+            if (requestId !== buildRequestIdRef.current) return;
+            const url = URL.createObjectURL(blob),
+                anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = file;
+            anchor.click();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            if (requestId === buildRequestIdRef.current) setDownloadError(errorMessage(error));
+        }
+    }
 
     useEffect(() => {
         if (recoveryRequest === undefined) return;
@@ -182,8 +216,16 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
         if (typeof recoveryRequest.bundleDir === "string") setBundleDir(recoveryRequest.bundleDir);
         if (typeof recoveryRequest.outDir === "string") setOutDir(recoveryRequest.outDir);
         if (recoveredModes !== undefined) setModes(recoveredModes);
+        const recoveredDossier = recoveryRequest.dossier as Record<string, unknown> | undefined;
+        const recoveredOutput = recoveryRequest.output as Record<string, unknown> | undefined;
+        const fields: DossierFields = {...EMPTY_DOSSIER};
+        for (const key of ["modelSource", "sourceRevision", "candidateRevision"] as const) if (typeof recoveredDossier?.[key] === "string") fields[key] = recoveredDossier[key] as string;
+        for (const key of ["reportFiles", "replayFiles"] as const) if (Array.isArray(recoveredDossier?.[key])) fields[key] = (recoveredDossier[key] as string[]).join(", ");
+        if (typeof recoveredOutput?.templateFile === "string") fields.templateFile = recoveredOutput.templateFile;
+        if (Array.isArray(recoveredOutput?.formats)) fields.formats = recoveredOutput.formats.join(", ");
+        setDossierFields(fields);
         if (typeof recoveryRequest.bundleDir === "string" && typeof recoveryRequest.outDir === "string" && recoveredModes !== undefined) {
-            savePersistedCertificationFields(projectRoot, {bundleDir: recoveryRequest.bundleDir, outDir: recoveryRequest.outDir, modes: recoveredModes});
+            savePersistedCertificationFields(projectRoot, {bundleDir: recoveryRequest.bundleDir, outDir: recoveryRequest.outDir, modes: recoveredModes, dossierFields: fields});
         }
     }, [projectRoot, recoveryRequest]);
 
@@ -214,6 +256,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
 
     function invalidateBuild(): void {
         buildRequestIdRef.current++;
+        setDownloadError("");
         if (buildView.status !== "idle" && buildView.status !== "loading") {
             setBuildOutdated(true);
         }
@@ -233,7 +276,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
 
     function handleBundleDirChange(value: string): void {
         setBundleDir(value);
-        savePersistedCertificationFields(projectRoot, {bundleDir: value, outDir, modes});
+        savePersistedCertificationFields(projectRoot, {bundleDir: value, outDir, modes, dossierFields});
         if (validateView.status !== "idle") {
             invalidateValidate();
         }
@@ -241,7 +284,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
 
     function handleModesChange(next: ModeFields[]): void {
         setModes(next);
-        savePersistedCertificationFields(projectRoot, {bundleDir, outDir, modes: next});
+        savePersistedCertificationFields(projectRoot, {bundleDir, outDir, modes: next, dossierFields});
         if (buildView.status !== "idle") {
             invalidateBuild();
         }
@@ -249,7 +292,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
 
     function handleOutDirChange(value: string): void {
         setOutDir(value);
-        savePersistedCertificationFields(projectRoot, {bundleDir, outDir: value, modes});
+        savePersistedCertificationFields(projectRoot, {bundleDir, outDir: value, modes, dossierFields});
         if (buildView.status !== "idle") {
             invalidateBuild();
         }
@@ -266,6 +309,8 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
         clearPersistedCertificationFields(projectRoot);
         setBundleDir("");
         setOutDir("certification");
+        setDossierFields(EMPTY_DOSSIER);
+        invalidateBuild();
         setModes([{...EMPTY_MODE}]);
         if (validateView.status !== "idle") {
             invalidateValidate();
@@ -331,7 +376,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
         const requestId = ++buildRequestIdRef.current;
         setBuildOutdated(false);
         setBuildView({status: "loading"});
-        buildCertificationEvidenceBundle(fetchImpl, bundleDir.trim(), modeInputs, outDir.trim())
+        buildCertificationEvidenceBundle(fetchImpl, bundleDir.trim(), modeInputs, outDir.trim(), Object.values(dossierFields).some(value => value.trim()) ? dossierConfiguration() : undefined)
             .then((result) => {
                 if (requestId !== buildRequestIdRef.current) {
                     return;
@@ -424,7 +469,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
     // Studio owns creation and inspection, while independent verification remains the canonical CLI
     // verifier. The handoff is tied to the actual source/output of this successful build; source
     // validation alone never claims to verify an already-written evidence directory.
-    const certificationVerifyCommand = `pokie certification verify ${outDir.trim()} --source ${bundleDir.trim()}`;
+    const certificationVerifyCommand = `pokie certification verify ${outDir.trim()} --source ${bundleDir.trim()}${Object.values(dossierFields).some(value => value.trim()) ? " --authorities authorities.json" : ""}${dossierFields.templateFile.trim() ? ` --template ${dossierFields.templateFile.trim()}` : ""}`;
 
     function renderValidateStep(): ReactNode {
         if (!validateReachable) {
@@ -529,6 +574,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                 by pokie&apos;s own CertificationEvidenceBundleBuilder/Validator, never re-derived in this UI.
             </Text>
 
+            <Alert color="blue" mb="sm">Certification-ready preparation only. Integrity verification is not regulatory approval, independent RNG certification, compliance sign-off or a guarantee of executable correctness.</Alert>
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
                 <Stepper.Step label="Select/configure" description="Bundle & modes" aria-current={activeStep === 0 ? "step" : undefined} />
                 <Stepper.Step
@@ -637,6 +683,13 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                             </CopyButton>
                         </QuickActions>
                     </PageSection>
+                    <PageSection legend="Model and evidence authorities">
+                        <Text size="sm">An explicit model binds readable rules to the source artifacts. Omitted model, simulation or runtime replay evidence stays visibly unavailable. All paths belong to this project; use separate source and dossier directories.</Text>
+                        {([
+                            ["modelSource", "Model source path"], ["reportFiles", "Simulation report paths (comma separated)"], ["replayFiles", "Audit replay paths (comma separated)"], ["sourceRevision", "Source revision"], ["candidateRevision", "Candidate revision"], ["templateFile", "Presentation template path (optional)"], ["formats", "Output formats (comma separated; empty means all)"],
+                        ] as const).map(([key, label]) => <TextInput key={key} label={label} value={dossierFields[key]} onChange={event => changeDossierField(key, event.currentTarget.value)} mb="xs" />)}
+                        <Text size="xs">The default output includes JSON, console text, Markdown, HTML and a local PDF. Templates customize presentation and retain every required disclosure. YAML is optional and unimplemented.</Text>
+                    </PageSection>
                     <Text size="sm" fw={600} mb={4}>
                         Modes to sample
                     </Text>
@@ -715,6 +768,11 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                             </Text>
                         </PageSection>
 
+                        <PageSection legend="Dossier support and model rules">
+                            <Text size="sm">Coverage: {buildResult.manifest.dossier?.support.coverage ?? "unavailable"}</Text>
+                            <Text size="sm">{buildResult.manifest.dossier?.support.limitations.join(" ")}</Text>
+                            <CodeBlock>{JSON.stringify(buildResult.manifest.dossier, null, 2)}</CodeBlock>
+                        </PageSection>
                         <PageSection legend="Independent verification">
                             <Text size="sm" c="dimmed" mb="sm">
                                 To verify this existing evidence bundle against the same source outside Studio, run
@@ -753,7 +811,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                                                 <Table.Td>{mode.modeName}</Table.Td>
                                                 <Table.Td style={{overflowWrap: "anywhere"}}>{mode.libraryHash}</Table.Td>
                                                 <Table.Td>{mode.outcomeCount.toLocaleString()}</Table.Td>
-                                                <Table.Td>{(mode.analysis.rtp * 100).toFixed(2)}%</Table.Td>
+                                                <Table.Td>{String(mode.analysis.rtp * 100)}%</Table.Td>
                                                 <Table.Td>
                                                     {mode.sampleCount.toLocaleString()} (seed &quot;{mode.sampleSeed}&quot;)
                                                 </Table.Td>
@@ -774,7 +832,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                         <PageSection legend="Files">
                             {buildResult.files.map((file) => (
                                 <Text key={file} size="sm" style={{overflowWrap: "anywhere"}}>
-                                    {file}
+                                    {file}{buildResult.artifactHashes?.[file] ? ` — ${buildResult.artifactHashes[file]}` : ""}
                                 </Text>
                             ))}
                         </PageSection>
@@ -807,17 +865,15 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                                 {outDir}
                             </Text>
                         </PageSection>
+                        {downloadError && <ErrorState message={downloadError} />}
                         <QuickActions>
-                            <Button
-                                onClick={() =>
-                                    downloadJsonBlob(
-                                        `certification-${buildResult.manifest.game.id}-${buildResult.manifest.game.version}-manifest.json`,
-                                        buildResult.manifest,
-                                    )
-                                }
-                            >
-                                Download manifest.json
-                            </Button>
+                            <Button onClick={() => downloadJsonBlob("authorities.json", dossierConfiguration().dossier)}>Download authorities.json</Button>
+                            {buildResult.files.filter(file => file.startsWith("dossier.")).map(file => <Button key={file} onClick={() => {
+                                return downloadDossier(file);
+                            }}>Download {file}</Button>)}
+                            <Button onClick={() => {
+                                return downloadDossier("manifest.json");
+                            }}>Download manifest.json</Button>
                         </QuickActions>
                     </div>
                 ))}

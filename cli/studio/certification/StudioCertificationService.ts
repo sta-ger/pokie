@@ -1,4 +1,11 @@
+import path from "path";
+import {certificationSourceHash, dossierHash} from "../../../src/certification/internal/acquireCertificationDossier.js";
+import {resolveSafeCertificationEvidenceFilePath} from "../../../src/certification/internal/resolveSafeCertificationEvidenceFilePath.js";
 import {
+    CERTIFICATION_PREPARATION_NOTICE,
+    CertificationEvidenceBundleVerifier,
+    CertificationDossierInputs,
+    CertificationDossierOutput,
     CertificationEvidenceBundleBuilder,
     CertificationEvidenceBundleBuildCancelledError,
     CertificationEvidenceBundleBuilding,
@@ -10,7 +17,7 @@ import fs from "fs";
 import {resolveProjectDirectory} from "../outcomeLibrary/resolveProjectDirectory.js";
 import type {StudioCertificationBuildView} from "./StudioCertificationBuildView.js";
 import type {StudioCertificationSourceValidateView} from "./StudioCertificationSourceValidateView.js";
-import type {ValidatedCertificationBuildModeInput} from "./validateCertificationBuildRequest.js";
+import type {ValidatedCertificationBuildRequest, ValidatedCertificationBuildModeInput} from "./validateCertificationBuildRequest.js";
 
 export type StudioCertificationProgressReporting = (
     stage: string,
@@ -21,6 +28,8 @@ export type StudioCertificationProgressReporting = (
 ) => void;
 
 export type StudioCertificationExecutionOptions = {
+    readonly dossier?: CertificationDossierInputs;
+    readonly output?: CertificationDossierOutput;
     readonly signal?: AbortSignal;
     readonly onProgress?: StudioCertificationProgressReporting;
 };
@@ -49,6 +58,28 @@ export class StudioCertificationService {
         this.builder = builder;
         this.bundleValidator = bundleValidator;
         this.realpath = realpath;
+    }
+
+    public requestIdentity(projectRoot: string, request: ValidatedCertificationBuildRequest): string {
+        const inputs = this.resolveDossierPaths(projectRoot, request.dossier, request.output);
+        const source = resolveProjectDirectory(projectRoot, request.bundleDir, this.realpath);
+        if (source.status === "error") throw new Error(source.message);
+        return dossierHash({sourceManifest: certificationSourceHash(path.join(source.resolvedPath, "manifest.json")), inputs: [inputs.dossier?.modelSource, ...(inputs.dossier?.reportFiles ?? []), ...(inputs.dossier?.replayFiles ?? []), inputs.output?.templateFile].filter((file): file is string => file !== undefined).map(certificationSourceHash)});
+    }
+
+    public async download(projectRoot: string, request: ValidatedCertificationBuildRequest, file: string, identity: string): Promise<{bytes: Buffer; mime: string}> {
+        const out = resolveProjectDirectory(projectRoot, request.outDir, this.realpath);
+        const source = resolveProjectDirectory(projectRoot, request.bundleDir, this.realpath);
+        if (out.status === "error" || source.status === "error") throw new Error("Dossier paths are outside this project.");
+        const inputs = this.resolveDossierPaths(projectRoot, request.dossier, request.output);
+        const issues = await new CertificationEvidenceBundleVerifier().verify(out.resolvedPath, {sourceBundleDir: source.resolvedPath, dossier: inputs.dossier, templateFile: inputs.output?.templateFile});
+        if (issues.some(issue => issue.severity === "error")) throw new Error(`Dossier inputs are stale or invalid: ${issues.map(issue => issue.message).join("; ")}`);
+        const manifest = JSON.parse(fs.readFileSync(path.join(out.resolvedPath, "manifest.json"), "utf8")) as {evidenceContentHash: string; files: string[]};
+        if (manifest.evidenceContentHash !== identity || !manifest.files.includes(file)) throw new Error("Dossier identity/file is stale or unknown.");
+        const safe = resolveSafeCertificationEvidenceFilePath(out.resolvedPath, file);
+        if (!safe) throw new Error("Unsafe dossier download path.");
+        const mime = ({".pdf": "application/pdf", ".html": "text/html; charset=utf-8", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8"} as Record<string, string>)[path.extname(file)] ?? "application/json; charset=utf-8";
+        return {bytes: fs.readFileSync(safe), mime};
     }
 
     // The exact preflight CertificationEvidenceBundleBuilder itself runs (and aborts the whole build on)
@@ -89,7 +120,7 @@ export class StudioCertificationService {
         outDir: string,
         options?: AbortSignal | StudioCertificationExecutionOptions,
     ): Promise<StudioCertificationBuildView> {
-        const {signal, onProgress} = executionOptions(options);
+        const {signal, onProgress, dossier, output} = executionOptions(options);
         const sampleCount = modes.reduce((total, mode) => total + mode.sampleCount, 0);
         onProgress?.("Resolving inputs", "build stages", 0, 3, "Resolving the evidence source and staging destination.");
         const resolvedBundle = resolveProjectDirectory(projectRoot, bundleDir, this.realpath);
@@ -108,9 +139,12 @@ export class StudioCertificationService {
         }));
 
         try {
+            const resolvedInputs = this.resolveDossierPaths(projectRoot, dossier, output);
             onProgress?.("Sampling evidence", "samples", 0, sampleCount, `Building evidence for ${modes.length} mode${modes.length === 1 ? "" : "s"}.`);
             const result = await this.builder.buildFromBundle(resolvedBundle.resolvedPath, modeInputs, resolvedOutDir.resolvedPath, {
                 signal,
+                ...resolvedInputs,
+                onStage: stage => onProgress?.(stage, "stages", "indeterminate", "indeterminate", stage),
                 onSample: (completed, total) => onProgress?.("Sampling evidence", "samples", completed, total, `Verified ${completed} of ${total} certification samples.`),
             });
             onProgress?.("Validating publication", "build stages", 3, 3, "Checking the atomically published certification manifest.");
@@ -119,7 +153,7 @@ export class StudioCertificationService {
             if (result.manifest === undefined || errors.length > 0) {
                 return {status: "error", errors, warnings};
             }
-            return {status: "ok", manifest: result.manifest, files: result.files, warnings};
+            return {status: "ok", manifest: result.manifest, files: result.files, warnings, artifactHashes: result.artifactHashes, preparationNotice: CERTIFICATION_PREPARATION_NOTICE};
         } catch (error) {
             if (error instanceof CertificationEvidenceBundleBuildCancelledError) {
                 return {
@@ -133,4 +167,17 @@ export class StudioCertificationService {
             };
         }
     }
+    private resolveDossierPaths(projectRoot: string, dossier?: CertificationDossierInputs, output?: CertificationDossierOutput): {dossier?: CertificationDossierInputs; output?: CertificationDossierOutput} {
+        const resolve = (input: string): string => {
+            const result = resolveProjectDirectory(projectRoot, input, this.realpath);
+            if (result.status === "error") throw new Error(result.message);
+            return result.resolvedPath;
+        };
+        return {
+            ...(dossier ? {dossier: {...dossier, ...(dossier.modelSource ? {modelSource: resolve(dossier.modelSource)} : {}), ...(dossier.reportFiles ? {reportFiles: dossier.reportFiles.map(resolve)} : {}), ...(dossier.replayFiles ? {replayFiles: dossier.replayFiles.map(resolve)} : {})}} : {}),
+            ...(output ? {output: {...output, ...(output.templateFile ? {templateFile: resolve(output.templateFile)} : {})}} : {}),
+        };
+    }
+
+
 }

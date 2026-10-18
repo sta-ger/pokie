@@ -398,3 +398,8 @@ answered here.
 
 Cloud and private RGS remain product hypotheses. Local `serve`/`dev` and this SDK are implemented primitives;
 they do not establish either product. See the [reviewed status register](audit-corrections/README.md).
+
+
+## Canonical dossier preparation (V2C-27)
+
+Dossier preparation does not infer SDK acceptance from artifact identity. The current dossier explicitly marks SDK evidence unavailable. A local versioned SDK diagnostic and target capabilities are engineering compatibility evidence, never provider acceptance or regulatory approval. See [dossier boundaries](certification-evidence-bundle.md).

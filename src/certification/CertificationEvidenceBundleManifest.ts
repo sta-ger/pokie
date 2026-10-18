@@ -1,10 +1,11 @@
+import type {CertificationDossier, CertificationDossierFormat, CertificationDossierTemplate} from "./CertificationDossier.js";
 import type {PokieGameManifest} from "../gamepackage/PokieGameManifest.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {WeightedOutcomeLibraryAnalysis} from "../weightedoutcome/WeightedOutcomeLibraryAnalysis.js";
 
 // Tracks this type's own shape (not the pokie package version), same convention as
 // OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION/STAKE_ENGINE_MANIFEST_SCHEMA_VERSION.
-export const CERTIFICATION_EVIDENCE_BUNDLE_MANIFEST_SCHEMA_VERSION = 1;
+export const CERTIFICATION_EVIDENCE_BUNDLE_MANIFEST_SCHEMA_VERSION = 2;
 
 // One mode's certification evidence: the same libraryHash/outcomeCount/totalWeight/analysis an
 // OutcomeLibraryBundleManifestModeEntry already carries — read straight off the source bundle's own manifest.json
@@ -40,6 +41,8 @@ export type CertificationEvidenceDeepValidation = {
 // by drawing samples through OutcomeLibraryBundleReading.drawOutcome (the same weighted-draw algorithm the
 // pre-generated runtime itself uses).
 export type CertificationEvidenceBundleManifest = {
+    readonly dossier: CertificationDossier;
+    readonly presentation: {readonly template: CertificationDossierTemplate; readonly templateHash: string; readonly templateArtifactHash: string | null; readonly formats: readonly CertificationDossierFormat[]};
     readonly schemaVersion: number;
     readonly generatedBy: string;
     readonly pokieVersion: string;

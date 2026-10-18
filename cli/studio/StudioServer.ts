@@ -1404,6 +1404,29 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "GET" && url.pathname === "/api/project/certification/download") {
+            if (this.currentContext.mode !== "project") {
+                this.sendJson(res, 409, {error: "No active project."});
+                return;
+
+            }
+            try {
+                const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
+                const identity = url.searchParams.get("identity") ?? "";
+                const outDir = url.searchParams.get("outDir") ?? "";
+                const file = url.searchParams.get("file") ?? "";
+                const job = this.jobService.list(projectRoot).find(item => item.operation === "certification-build" && item.status === "completed" && item.request.outDir === outDir && (item.result?.provenance?.manifest as {evidenceContentHash?: string} | undefined)?.evidenceContentHash === identity);
+                if (!job) throw new Error("No successful retained dossier matches this request.");
+                const request = validateCertificationBuildRequest(job.request);
+                if (typeof job.request.inputIdentity === "string" && this.certificationService.requestIdentity(projectRoot, request) !== job.request.inputIdentity) throw new Error("Dossier input files changed; prepare a fresh dossier.");
+                const download = await this.certificationService.download(projectRoot, request, file, identity);
+                res.writeHead(200, {"Content-Type": download.mime, "Content-Disposition": `attachment; filename="${file.replace(/[^a-zA-Z0-9_.-]/g, "_")}"`, "Content-Length": download.bytes.length});
+                res.end(download.bytes);
+            } catch (error) {
+                this.sendJson(res, 409, {error: error instanceof Error ? error.message : String(error)});
+            }
+            return;
+        }
         if (method === "POST" && url.pathname === "/api/project/certification/build") {
             await this.handleBuildCertificationEvidenceBundle(req, res);
             return;
@@ -2752,7 +2775,7 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res,
             {
-                projectId: projectRoot, operation: "deployment", request: {...validated, sourceProjectId: projectRoot} as unknown as Readonly<Record<string, unknown>>, conflictKey: `deployment-delivery:${validated.targetId}`, recoveryOnRestart: recovery,
+                projectId: projectRoot, operation: "deployment", request: {...validated, sourceProjectId: projectRoot, ...(typeof this.certificationService.requestIdentity === "function" ? {inputIdentity: this.certificationService.requestIdentity(projectRoot, validated)} : {})} as unknown as Readonly<Record<string, unknown>>, conflictKey: `deployment-delivery:${validated.targetId}`, recoveryOnRestart: recovery,
                 initialProgress: {stage: "Planning deployment", unit: "pipeline stages", current: 0, total: "indeterminate", message: "Validating artifacts and delivery boundaries."},
                 // runDeployment always resolves its planner view for an
                 // operation outcome.  Keep reconnects in that shape too; a
@@ -3283,7 +3306,7 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res,
             {
-                projectId: projectRoot, operation: "certification-build", request: {...validated, sourceProjectId: projectRoot} as unknown as Readonly<Record<string, unknown>>,
+                projectId: projectRoot, operation: "certification-build", request: {...validated, sourceProjectId: projectRoot, ...(typeof this.certificationService.requestIdentity === "function" ? {inputIdentity: this.certificationService.requestIdentity(projectRoot, validated)} : {})} as unknown as Readonly<Record<string, unknown>>,
                 conflictKey: `certification-output:${this.canonicalPathIdentity(path.resolve(projectRoot, validated.outDir))}`,
                 recoveryOnRestart: recovery,
                 initialProgress: {stage: "Building evidence", unit: "evidence files", current: "indeterminate", total: "indeterminate", message: "Writing certification evidence to a staging destination."},
@@ -3291,15 +3314,16 @@ export class StudioServer implements StudioServerHandling {
             },
             ({signal, progress}) => this.certificationService.build(projectRoot, validated.bundleDir, validated.modes, validated.outDir, {
                 signal,
+                ...(validated.dossier ? {dossier: validated.dossier} : {}), ...(validated.output ? {output: validated.output} : {}),
                 onProgress: (stage, unit, current, total, message) => progress({stage, unit, current, total, message}),
             }),
             (result, cancelled) => {
-                if (cancelled) return {status: "cancelled", result: {summary: "Certification evidence build cancelled after staging cleanup."}, recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: "Certification evidence build completed.", outputs: result.files.map((file) => ({path: file, label: "Certification evidence"})), provenance: {bundleDir: validated.bundleDir, manifest: result.manifest}, detail: {outDir: validated.outDir}}};
+                if (cancelled) return result.status === "load-error" && (/cleanup failed/).test(result.error) ? {status: "failed", error: result.error, recovery} : {status: "cancelled", result: {summary: "Certification evidence build cancellation settled; inspect the retained executor result for cleanup diagnostics."}, recovery};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Certification evidence build completed.", outputs: result.files.map((file) => ({path: file, label: "Certification evidence", downloadPath: `/api/project/certification/download?${new URLSearchParams({outDir: validated.outDir, identity: result.manifest.evidenceContentHash, file})}`})), provenance: {bundleDir: validated.bundleDir, manifest: result.manifest, artifactHashes: result.artifactHashes ?? {}}, detail: {outDir: validated.outDir, templateHash: result.manifest.presentation?.templateHash}}};
                 return {status: "failed", error: result.status === "load-error" ? result.error : "Certification evidence build failed.", recovery: {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."}};
             },
-            (error, cancelled) => cancelled
-                ? {status: "cancelled", result: {summary: "Certification evidence build cancelled after staging cleanup."}, recovery}
+            (error, cancelled) => cancelled && !(error instanceof Error && (/cleanup failed/).test(error.message))
+                ? {status: "cancelled", result: {summary: "Certification evidence build cancellation settled; inspect the retained executor result for cleanup diagnostics."}, recovery}
                 : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery: {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."}},
         );
         if (execution === undefined) return;

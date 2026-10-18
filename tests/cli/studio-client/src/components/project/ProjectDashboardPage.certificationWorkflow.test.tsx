@@ -150,13 +150,56 @@ describe("ProjectDashboardPage - Certification workflow", () => {
         await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
         expect(await screen.findByText(/Certification evidence for A v1\.0\.0/)).toBeInTheDocument();
         expect(screen.getByText("sha256:lib-base")).toBeInTheDocument();
-        expect(screen.getByText("95.00%")).toBeInTheDocument();
+        expect(screen.getByText("95%")).toBeInTheDocument();
         expect(screen.getByText("pokie certification verify certification --source ./bundle")).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Copy verification command"})).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Continue to Export"}));
         expect(await screen.findByRole("button", {name: "Download manifest.json"})).toBeInTheDocument();
         expect(screen.getByText("certification")).toBeInTheDocument();
+    });
+
+    it("submits persisted dossier authorities/template/formats and invalidates inspection/export when they change", async () => {
+        const user = userEvent.setup(),
+            requests: unknown[] = [];
+        const view = okBuildView();
+        if (view.status !== "ok") throw new Error("expected fixture");
+        view.files.push("dossier.pdf", "dossier.html");
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/certification/validate-source": () => ({ok: true, status: 200, body: {status: "ok", errors: [], warnings: []}}),
+            "/api/project/certification/build": call => {
+                requests.push(JSON.parse(call.init?.body ?? "{}"));
+                return {ok: true, status: 200, body: view};
+
+            },
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToCertificationTab(user);
+        await user.type(screen.getByLabelText("Model source path"), "sources/model");
+        await user.type(screen.getByLabelText("Simulation report paths (comma separated)"), "sources/report.json");
+        await user.type(screen.getByLabelText("Audit replay paths (comma separated)"), "sources/audit.json");
+        await user.type(screen.getByLabelText("Presentation template path (optional)"), "sources/template.json");
+        await user.type(screen.getByLabelText("Output formats (comma separated; empty means all)"), "pdf, html");
+        await fillSelectStep(user, "sources/library");
+        await user.click(screen.getByRole("button", {name: "Validate source bundle"}));
+        await screen.findByText("Clean");
+        await user.click(screen.getByRole("button", {name: "Continue to Build bundle"}));
+        await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
+        await screen.findByText("Clean");
+        expect(requests).toEqual([expect.objectContaining({dossier: {modelSource: "sources/model", reportFiles: ["sources/report.json"], replayFiles: ["sources/audit.json"]}, output: {templateFile: "sources/template.json", formats: ["pdf", "html"]}})]);
+        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
+        expect(screen.getAllByText(/preparation only/i).length).toBeGreaterThan(0);
+        await user.click(screen.getByRole("button", {name: "Continue to Export"}));
+        expect(screen.getByRole("button", {name: "Download dossier.pdf"})).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
+        await user.type(screen.getByLabelText("Presentation template path (optional)"), ".changed");
+        expect(screen.getByRole("button", {name: /Manifest & artifacts/i})).toBeDisabled();
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        await user.click(screen.getByRole("button", {name: "Certification"}));
+        expect(await screen.findByLabelText("Model source path")).toHaveValue("sources/model");
+        expect(screen.getByLabelText("Presentation template path (optional)")).toHaveValue("sources/template.json.changed");
+        expect(screen.getByLabelText("Output formats (comma separated; empty means all)")).toHaveValue("pdf, html");
     });
 
     it("shows a clear invalid state for the source bundle and never offers Continue to Build bundle", async () => {

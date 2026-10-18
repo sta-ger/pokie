@@ -1,5 +1,9 @@
+import type {CertificationDossierInputs, CertificationDossierOutput} from "./CertificationDossier.js";
 /** Lifecycle controls for a certification publication. */
 export type CertificationEvidenceBundleBuildOptions = {
+    readonly dossier?: CertificationDossierInputs;
+    readonly output?: CertificationDossierOutput;
+    readonly onStage?: (stage: string) => void;
     readonly signal?: AbortSignal;
     /** Called after each fully verified sample is retained in staging. */
     readonly onSample?: (completed: number, total: number) => void;

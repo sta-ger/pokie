@@ -1,9 +1,12 @@
+import {DEFAULT_CERTIFICATION_DOSSIER_TEMPLATE, loadCertificationDossierTemplate} from "./CertificationDossierRenderer.js";
+import {parseCertificationJson} from "./internal/parseCertificationJson.js";
+import {acquireCertificationDossier, dossierHash} from "./internal/acquireCertificationDossier.js";
 import fs from "fs";
 import path from "path";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedOutcomeRandomSource.js";
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
-import {resolveSafeStakeEngineFilePath} from "../stakeengine/internal/resolveSafeStakeEngineFilePath.js";
+import {resolveSafeCertificationEvidenceFilePath} from "./internal/resolveSafeCertificationEvidenceFilePath.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {OutcomeLibraryBundleManifest} from "../weightedoutcome/bundle/OutcomeLibraryBundleManifest.js";
 import type {OutcomeLibraryBundleModeIndex} from "../weightedoutcome/bundle/OutcomeLibraryBundleModeIndex.js";
@@ -126,7 +129,7 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
 
         let manifest: CertificationEvidenceBundleManifest;
         try {
-            const parsed: unknown = JSON.parse(fs.readFileSync(path.join(certDir, "manifest.json"), "utf-8"));
+            const parsed: unknown = parseCertificationJson(fs.readFileSync(path.join(certDir, "manifest.json"), "utf-8"));
             if (!isManifestShape(parsed)) {
                 return [
                     ...structuralIssues,
@@ -151,6 +154,7 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
 
         const issues: ValidationIssue[] = [...structuralIssues];
 
+        if (!resolveSafeCertificationEvidenceFilePath(sourceBundleDir, "manifest.json")) return [...issues, {code: "certification-dossier-source-unsafe", severity: "error", message: "Explicit source manifest is missing or symlinked."}];
         let sourceManifest: OutcomeLibraryBundleManifest;
         try {
             sourceManifest = await this.reader.readManifest(sourceBundleDir);
@@ -161,6 +165,21 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
                 message: `could not read "${sourceBundleDir}"'s own manifest.json: ${error instanceof Error ? error.message : String(error)}.`,
             });
             return issues;
+        }
+
+        if (sourceManifest.files.some(file => !resolveSafeCertificationEvidenceFilePath(sourceBundleDir, file))) return [...issues, {code: "certification-dossier-source-unsafe", severity: "error", message: "Source inventory contains a missing, symlinked or escaping file."}];
+        try {
+            if (manifest.presentation.templateArtifactHash !== null) {
+                if (!options.templateFile) throw new Error("Explicit templateFile authority is required for a custom template; pass --template <json>.");
+                const template = loadCertificationDossierTemplate(options.templateFile);
+                if (dossierHash(template) !== manifest.presentation.templateHash || sha256OfBytes(fs.readFileSync(options.templateFile)) !== manifest.presentation.templateArtifactHash) throw new Error("Template differs from the explicitly selected raw/semantic authority.");
+            } else if (manifest.presentation.templateHash !== dossierHash(DEFAULT_CERTIFICATION_DOSSIER_TEMPLATE)) throw new Error("Unselected custom template has no explicit artifact authority.");
+            if (manifest.dossier.rules.status === "available" && !options.dossier?.modelSource) throw new Error("Explicit dossier modelSource authority is required; retained model locations are never followed.");
+            if ((options.dossier?.reportFiles?.length ?? 0) !== manifest.dossier.statistics.estimates.length || (options.dossier?.replayFiles?.length ?? 0) !== manifest.dossier.reproduction.recordings.length) throw new Error("Explicit reportFiles/replayFiles authorities must cover every attached item.");
+            const actual = await acquireCertificationDossier(sourceManifest, dossierHash(sourceManifest), options.dossier, options.signal, sourceBundleDir);
+            if (dossierHash(actual) !== dossierHash(manifest.dossier)) throw new Error("Dossier model/report/replay/revision evidence differs from selected authority or runtime reproduction.");
+        } catch (error) {
+            issues.push({code: "certification-dossier-authority-mismatch", severity: "error", message: error instanceof Error ? error.message : String(error)});
         }
 
         // Detects tampering/corruption of the source bundle's own on-disk files ("library files" drift) — a
@@ -250,7 +269,7 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
             });
         }
 
-        const safeSamplesPath = resolveSafeStakeEngineFilePath(certDir, modeEntry.samplesFile);
+        const safeSamplesPath = resolveSafeCertificationEvidenceFilePath(certDir, modeEntry.samplesFile);
         if (safeSamplesPath === undefined) {
             issues.push({
                 code: "certification-evidence-verify-path-unsafe",
@@ -325,7 +344,7 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
         lines.forEach((line, position) => {
             let parsedLine: unknown;
             try {
-                parsedLine = JSON.parse(line);
+                parsedLine = parseCertificationJson(line);
             } catch (error) {
                 issues.push({
                     code: "certification-evidence-bundle-sample-line-invalid-json",

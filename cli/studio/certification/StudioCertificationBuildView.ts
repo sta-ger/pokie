@@ -6,6 +6,8 @@ import type {CertificationEvidenceBundleManifest, ValidationIssue} from "@fromst
 export type StudioCertificationBuildView =
     | {
           readonly status: "ok";
+          readonly artifactHashes?: Readonly<Record<string, string>>;
+          readonly preparationNotice?: string;
           readonly manifest: CertificationEvidenceBundleManifest;
           readonly files: readonly string[];
           readonly warnings: readonly ValidationIssue[];
