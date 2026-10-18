@@ -2,7 +2,7 @@ import {resolveSafeCertificationEvidenceFilePath} from "./internal/resolveSafeCe
 import {parseCertificationJson} from "./internal/parseCertificationJson.js";
 import {acquireCertificationDossier, certificationSourceHash, dossierHash} from "./internal/acquireCertificationDossier.js";
 import {CertificationDossierRenderer, DEFAULT_CERTIFICATION_DOSSIER_TEMPLATE, validateCertificationDossierTemplate} from "./CertificationDossierRenderer.js";
-import {certificationDossierFileName, validateCertificationDossierInputs, validateCertificationDossierOutput, type CertificationDossierTemplate, type CertificationDossierFormat} from "./CertificationDossier.js";
+import {certificationDossierFileName, validateCertificationDossierInputs, validateCertificationDossierOutput, type CertificationDossierTemplate, type CertificationDossierFormat, type CertificationDossier} from "./CertificationDossier.js";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -303,9 +303,16 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
             const finalDossier = await acquireCertificationDossier(sourceManifest, initialManifestHash, options?.dossier, options?.signal, bundleDir);
             if (dossierHash(finalDossier) !== dossierHash(dossier)) throw new Error("Dossier authorities changed before publication.");
             if (options?.output?.templateFile && (dossierHash(parseCertificationJson(fs.readFileSync(options.output.templateFile, "utf8"))) !== presentation.templateHash || sha256OfBytes(fs.readFileSync(options.output.templateFile)) !== templateArtifactHash)) throw new Error("Template changed before publication.");
+            options?.onStage?.("Publishing dossier");
+            // Let a host deliver cancellation queued during the last source/reproduction check.
+            await new Promise<void>(resolve => {
+                setImmediate(resolve);
+            });
+            assertNotCancelled(options);
+            this.assertAuthorityBytesUnchanged(dossier, templateArtifactHash, options);
             const finalSourceDrift = await this.detectSourceBundleDrift(bundleDir, modes, initialManifestHash, initialIndexes);
             if (finalSourceDrift) return this.failed(outDir, upfrontIssues, [finalSourceDrift]);
-            options?.onStage?.("Publishing dossier");
+            assertNotCancelled(options);
             const published = publishDirectoryAtomically({
                 outDir,
                 ownership: destinationOwnership,
@@ -342,6 +349,23 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
         } finally {
             this.cleanupStaging(stagingDir, publication);
         }
+    }
+
+    private assertAuthorityBytesUnchanged(dossier: CertificationDossier, templateArtifactHash: string | null, options?: CertificationEvidenceBundleBuildOptions): void {
+        const inputs = options?.dossier;
+        const modelHash = inputs?.modelSource ? certificationSourceHash(inputs.modelSource) : null;
+        if (modelHash !== dossier.identity.modelArtifactHash) throw new Error("Model bytes changed before dossier commit.");
+        const reports = inputs?.reportFiles ?? [], 
+            replays = inputs?.replayFiles ?? [];
+        if (reports.length !== dossier.statistics.estimates.length || replays.length !== dossier.reproduction.recordings.length) throw new Error("Evidence selection changed before dossier commit.");
+        const attachments = [...reports.map((file, index) => ({file, hash: dossier.statistics.estimates[index].hash})), ...replays.map((file, index) => ({file, hash: dossier.reproduction.recordings[index].hash}))];
+        for (const {file, hash} of attachments) {
+            certificationSourceHash(file);
+            if (sha256OfBytes(fs.readFileSync(file)) !== hash) throw new Error("Evidence attachment bytes changed before dossier commit.");
+        }
+        const templateFile = options?.output?.templateFile;
+        if (templateFile) certificationSourceHash(templateFile);
+        if ((templateFile ? sha256OfBytes(fs.readFileSync(templateFile)) : null) !== templateArtifactHash) throw new Error("Template bytes changed before dossier commit.");
     }
 
     private cleanupStaging(stagingDir: string, publication?: PublishedDirectoryOwnership): void {

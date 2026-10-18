@@ -127,7 +127,7 @@ export async function acquireCertificationDossier(source: OutcomeLibraryBundleMa
                 const declaredTarget = loaded.game.getBetModes?.().find(mode => mode.id === report.betMode)?.targetRtp;
                 if (report.targetRtp !== undefined && report.targetRtp !== declaredTarget) throw new Error("Simulation report declared RTP target differs from the selected model's mode declaration.");
                 const result = await new ParallelSimulationRunner(inputs.modelSource, report.requestedRounds, {
-                    seed: report.seed, workers: report.workers, signal, betModeId: report.betMode, convergence: report.convergence, requireCleanup: true,
+                    seed: report.seed, workers: report.workers, signal, chunkSize: 1000, betModeId: report.betMode, convergence: report.convergence, requireCleanup: true,
                 }).run();
                 reproduced = new SimulationReportBuilder().build({...result, requestedRounds: report.requestedRounds, seed: report.seed, durationMs: report.durationMs, pokieVersion: source.artifactPokieVersion, targetRtp: report.targetRtp});
                 if (result.configHash !== modelHash) throw new Error("Reproduced simulation model differs from the report.");
@@ -147,7 +147,12 @@ export async function acquireCertificationDossier(source: OutcomeLibraryBundleMa
                 check();
                 const attachment = readJson(file);
                 validateAuditRoundRecording(attachment.value, loaded.game);
-                new AuditRoundReplay().replay(loaded.game, attachment.value, signal);
+                for (const progress of new AuditRoundReplay().execute(loaded.game, attachment.value, signal)) {
+                    if (progress.completedDeliveries % 32 === 0) await new Promise<void>(resolve => {
+                        setImmediate(resolve);
+                    });
+                    check();
+                }
                 recordings.push({hash: attachment.hash, raw: attachment.raw, value: attachment.value});
             }
         }

@@ -94,13 +94,32 @@ describe("CertificationEvidenceBundleBuilder", () => {
         const controller = new AbortController();
         const build = new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION).buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 2}], certDir, {
             signal: controller.signal, onStage: current => {
-                if (current === stage) controller.abort();
+                if (current !== stage) return;
+                setImmediate(() => controller.abort());
             },
         });
         await expect(build).rejects.toBeInstanceOf(CertificationEvidenceBundleBuildCancelledError);
         expect(fs.statSync(certDir).ino).toBe(inode);
         expect(fs.readdirSync(certDir)).toEqual([]);
         expect(siblingLeftovers(certDir)).toEqual([]);
+    });
+
+    it("rejects source drift queued at the final publication yield", async () => {
+        await buildSourceOutcomeLibraryBundle(bundleDir);
+        const result = await new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION).buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 2}], certDir, {
+            onStage: stage => {
+                if (stage !== "Publishing dossier") return;
+                setImmediate(() => {
+                    const file = path.join(bundleDir, "manifest.json");
+                    const source = JSON.parse(fs.readFileSync(file, "utf8"));
+                    source.generatedAt = "changed-at-commit";
+                    fs.writeFileSync(file, JSON.stringify(source));
+                });
+            },
+        });
+        expect(result.manifest).toBeUndefined();
+        expect(result.issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "certification-evidence-build-source-bundle-drift"})]));
+        expect(fs.existsSync(certDir)).toBe(false);
     });
 
     it("reports PDF write and cleanup failures without a successful dossier", async () => {
