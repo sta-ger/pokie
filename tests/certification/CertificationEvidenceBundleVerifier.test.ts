@@ -97,20 +97,21 @@ describe("CertificationEvidenceBundleVerifier", () => {
         fs.rmSync(tmpRoot, {recursive: true, force: true});
     });
 
-    it("stops acquisition cancellation before source validation or native sample draws", async () => {
+    it.each(["acquisition aborted", "Dossier runtime cleanup failed: retained workers"])("stops acquisition cancellation before source validation or native sample draws: %s", async failure => {
         const controller = new AbortController();
         const model = path.join(tmpRoot, "model.json");
         fs.writeFileSync(model, "{}");
         const read = jest.spyOn(MathDefinitionSourceReader.prototype, "read").mockImplementation(() => {
             controller.abort();
-            return Promise.reject(new Error("acquisition aborted"));
+            return Promise.reject(new Error(failure));
         });
         const validate = jest.fn(() => Promise.resolve([]));
         const reader = new OutcomeLibraryBundleReader();
         const draw = jest.spyOn(reader, "drawOutcome");
         try {
             const issues = await new CertificationEvidenceBundleVerifier(undefined, {validate}, reader).verify(certDir, {sourceBundleDir: bundleDir, dossier: {modelSource: model}, signal: controller.signal});
-            expect(issues).toEqual([expect.objectContaining({code: "certification-evidence-verify-cancelled", severity: "error"})]);
+            expect(issues).toEqual([expect.objectContaining({code: failure.includes("cleanup failed") ? "certification-evidence-verify-cleanup-failed" : "certification-evidence-verify-cancelled", severity: "error"})]);
+            if (failure.includes("cleanup failed")) expect(issues[0].message).toBe(failure);
             expect(validate).not.toHaveBeenCalled();
             expect(draw).not.toHaveBeenCalled();
         } finally {

@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {CertificationEvidenceBundleBuildCancelledError, CertificationEvidenceBundleBuilder, OutcomeLibraryBundleValidating, ValidationIssue} from "@fromstan/pokie";
+import {CertificationEvidenceBundleVerifier, CertificationEvidenceBundleBuildCancelledError, CertificationEvidenceBundleBuilder, OutcomeLibraryBundleValidating, ValidationIssue} from "@fromstan/pokie";
 import {StudioCertificationService} from "../../../../cli/studio/certification/StudioCertificationService.js";
 import {buildSourceOutcomeLibraryBundle, CERTIFICATION_TEST_POKIE_VERSION} from "../../../certification/CertificationEvidenceBundleTestFixtures.js";
 
@@ -63,6 +63,20 @@ describe("StudioCertificationService", () => {
         expect(fs.existsSync(path.join(tmpRoot, "out"))).toBe(false);
         const broken = new StudioCertificationService("1.3.0", {buildFromBundle: () => Promise.reject(new Error("staging cleanup failed: retained owned path"))});
         expect(await broken.build(tmpRoot, "bundle", modes, "out", {signal: controller.signal})).toMatchObject({status: "load-error", error: expect.stringContaining("cleanup failed")});
+    });
+
+    it("preserves failed download runtime cleanup even when cancellation is requested", async () => {
+        const controller = new AbortController();
+        const verify = jest.spyOn(CertificationEvidenceBundleVerifier.prototype, "verify").mockImplementation(() => {
+            controller.abort();
+            return Promise.resolve([{code: "certification-evidence-verify-cleanup-failed", severity: "error", message: "Dossier runtime cleanup failed: retained worker needs inspection"}]);
+        });
+        try {
+            const service = new StudioCertificationService("1.3.0");
+            await expect(service.download(tmpRoot, {bundleDir: "bundle", outDir: "out", modes: []}, "dossier.pdf", "identity", controller.signal)).rejects.toThrow("Dossier runtime cleanup failed: retained worker needs inspection");
+        } finally {
+            verify.mockRestore();
+        }
     });
 
     it("passes source cancellation to the deep validator and never returns success", async () => {

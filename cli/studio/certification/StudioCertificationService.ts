@@ -75,6 +75,8 @@ export class StudioCertificationService {
         if (out.status === "error" || source.status === "error") throw new Error("Dossier paths are outside this project.");
         const inputs = this.resolveDossierPaths(projectRoot, request.dossier, request.output);
         const issues = await new CertificationEvidenceBundleVerifier().verify(out.resolvedPath, {sourceBundleDir: source.resolvedPath, dossier: inputs.dossier, templateFile: inputs.output?.templateFile, signal});
+        const cleanupFailure = issues.find(issue => issue.code === "certification-evidence-verify-cleanup-failed");
+        if (cleanupFailure) throw new Error(cleanupFailure.message);
         if (signal?.aborted) throw new CertificationEvidenceBundleBuildCancelledError();
         if (issues.some(issue => issue.severity === "error")) throw new Error(`Dossier inputs are stale or invalid: ${issues.map(issue => issue.message).join("; ")}`);
         const manifest = JSON.parse(fs.readFileSync(path.join(out.resolvedPath, "manifest.json"), "utf8")) as {evidenceContentHash: string; files: string[]};

@@ -92,6 +92,7 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
         try {
             return await this.verifyInternal(certDir, options);
         } catch (error) {
+            if (error instanceof Error && (/cleanup failed/).test(error.message)) return [{code: "certification-evidence-verify-cleanup-failed", severity: "error", message: error.message}];
             if (options?.signal?.aborted || error instanceof CertificationEvidenceBundleBuildCancelledError) return [{code: "certification-evidence-verify-cancelled", severity: "error", message: "Certification verification cancelled after owned work settled; verification did not succeed."}];
             return [
                 {
@@ -184,6 +185,8 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
             const actual = await acquireCertificationDossier(sourceManifest, dossierHash(sourceManifest), options.dossier, options.signal, sourceBundleDir);
             if (dossierHash(actual) !== dossierHash(manifest.dossier)) throw new Error("Dossier model/report/replay/revision evidence differs from selected authority or runtime reproduction.");
         } catch (error) {
+            if (error instanceof Error && (/cleanup failed/).test(error.message)) throw error;
+            if (error instanceof CertificationEvidenceBundleBuildCancelledError) throw error;
             checkCancellation(options.signal);
             issues.push({code: "certification-dossier-authority-mismatch", severity: "error", message: error instanceof Error ? error.message : String(error)});
         }
