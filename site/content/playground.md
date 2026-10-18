@@ -37,6 +37,8 @@ Convert source through `pokie build model.blueprint.json --target wasm --out fre
 
 The browser adapter tunes existing numeric paytable leaves in simple literal-reel base line models. It reuses the shared strict policy validator, seeded Cartesian ordering, lock/fixed/count/sum checks and held-out Hoeffding/Bonferroni assessment. Search and assessment have independent seed streams. Preview shows the request, constraints, budget, consumed work, population, target units, parameter diff and canonical math-definition diff. A confidence interval fully inside the tolerance with adequate event coverage is attained; partial domain coverage is exhausted, and uncertainty is inconclusive. Invalid and unsupported requests fail with their reason. Cancellation/deadline output is never a completed candidate. There is no browser filesystem publication or arbitrary package execution.
 
+Editing any input immediately revokes preview authority and clears results and downloads. A stale review remains labelled until replaced or discarded: Apply reviewed candidate explicitly rejects it without changing the draft. Reverting the edit does not restore authority; generate a new preview before applying. Reset, Restore, Cancel, Discard and reload remove the review entirely.
+
 ## Code-first example
 
 [Download complete browser-safe extension source](../examples/extension.ts). It composes existing session/generator interfaces and executes actual math. Compile it with TypeScript in an installed package consumer and call extensionRound(seed, bet). It runs through the browser library API; custom executable collaborators cannot be compiled as a declarative WASM model. The gallery itself uses canonical Blueprint math rather than evaluating visitor-supplied JavaScript.

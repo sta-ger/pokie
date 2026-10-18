@@ -7,6 +7,8 @@ import {
     type PokieWasmWorkerPort,
 } from "../../src/wasm/browser.js";
 import {browserModelHash} from "../../src/optimization/BrowserBlueprintOptimization.js";
+import {validateOptimizationRequest} from "../../src/optimization/validateOptimizationRequest.js";
+import {assertOnlyTuned} from "../../src/optimization/internal/optimizationModel.js";
 import type {GameBlueprint} from "../../src/generated/GameBlueprint.js";
 
 export type DraftSettings = {seed: string; bet: number; mode?: string; rounds: number};
@@ -120,6 +122,7 @@ export class PlaygroundController {
         this.invalidate("Interrupted/reset: starting a replacement operation.");
         const generation = this.generation;
         try {
+            const request = action === "optimize" ? validateOptimizationRequest(extra) : undefined;
             const prepared = await this.prepare(draft);
             if (generation !== this.generation) throw new Error("Interrupted before Worker creation.");
             const {settings, blueprint} = prepared.draft;
@@ -176,7 +179,7 @@ export class PlaygroundController {
                     },
                 };
             } else if (action === "replay-play") command = {type: "replay", ...(extra as {state: never; commands: Record<string, unknown>[]})};
-            else if (action === "optimize") command = {type: "optimize", request: extra, blueprint};
+            else if (action === "optimize") command = {type: "optimize", request, blueprint};
             else command = {type: "view"};
             const start = performance.now();
             const result = await client.request(command, (progress) => {
@@ -198,8 +201,10 @@ export class PlaygroundController {
                 if (candidate.candidate) {
                     if (
                         candidate.sourceRevision !== (await browserModelHash(blueprint)) ||
+                        candidate.requestRevision !== (await browserModelHash(request)) ||
                         candidate.candidateRevision !== (await browserModelHash(candidate.candidate))
                     ) throw new Error("Candidate identity mismatch.");
+                    assertOnlyTuned(blueprint, candidate.candidate, request!.policy);
                     if (generation !== this.generation) throw new Error("Interrupted: stale optimization candidate discarded.");
                     this.preview = {
                         source: prepared.revision,
@@ -228,15 +233,17 @@ export class PlaygroundController {
     }
     public async applyCandidate(draft: PlaygroundDraft, request: unknown, candidate: GameBlueprint): Promise<GameBlueprint> {
         const preview = this.preview;
+        const submitted = structuredClone(draft);
         if (
             !preview ||
-            preview.source !== (await browserModelHash(draft)) ||
+            preview.source !== (await browserModelHash(submitted)) ||
             preview.requestRevision !== (await browserModelHash(request)) ||
             preview.revision !== (await browserModelHash(candidate))
         ) throw new Error("Stale preview: model, settings, policy or candidate changed. Run optimization again.");
+        if (this.preview !== preview) throw new Error("Stale preview: invalidated during apply. Run optimization again.");
         const next = structuredClone(preview.candidate);
-        await this.prepare({...draft, blueprint: next});
-        if (this.preview !== preview) throw new Error("Preview invalidated during apply.");
+        await this.prepare({...submitted, blueprint: next});
+        if (this.preview !== preview) throw new Error("Stale preview: invalidated during apply. Run optimization again.");
         this.invalidate("Interrupted/reset: candidate explicitly applied; runtime will be recreated for the new identity.");
         return next;
     }

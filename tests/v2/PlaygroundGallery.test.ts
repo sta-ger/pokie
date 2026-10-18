@@ -17,6 +17,8 @@ import {
 import {PokieWasmWorkerProtocol} from "../../src/wasm/worker.js";
 import {browserModelHash, optimizeBrowserBlueprint} from "../../src/optimization/BrowserBlueprintOptimization.js";
 import {validateSimulationReportExtensions} from "../../src/reporting/validateSimulationReportExtensions.js";
+import {validateOptimizationRequest} from "../../src/optimization/validateOptimizationRequest.js";
+import type {GameBlueprint} from "../../src/generated/GameBlueprint.js";
 
 Reflect.defineProperty(globalThis, "crypto", {value: webcrypto, configurable: true});
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -37,6 +39,7 @@ class TestPort implements PokieWasmWorkerPort {
     public terminated = false;
     public onProgress?: () => void;
     public beforeResponse?: (type: string) => void;
+    public transformOptimization?: (value: unknown) => Promise<unknown>;
     public readonly listeners = new Map<string, Set<(event: MessageEvent & ErrorEvent) => void>>();
     private progressTimer?: ReturnType<typeof setInterval>;
     private readonly protocol = new PokieWasmWorkerProtocol(() => this.onProgress?.());
@@ -74,7 +77,10 @@ class TestPort implements PokieWasmWorkerPort {
             this.deliver(this.behavior, {message: "load failed"});
             return;
         }
-        this.protocol.handle(data.request).then((response) => {
+        this.protocol.handle(data.request).then(async (response) => {
+            if (response.ok && data.request.type === "optimize" && this.transformOptimization) {
+                response = {...response, result: await this.transformOptimization(response.result)};
+            }
             this.beforeResponse?.(data.request.type);
             this.deliver("message", {data: this.behavior === "malformed" ? {} : {...response, scope: data.scope, type: "response"}});
         });
@@ -313,6 +319,110 @@ it("rejects input replacement during asynchronous candidate identity verificatio
         controller.dispose();
     }
 });
+
+it("binds returned candidates to submitted authority even when dependent result copies are edited together", async () => {
+    type Result = Awaited<ReturnType<typeof optimizeBrowserBlueprint>>;
+    let tamper: string | undefined;
+    const controller = new PlaygroundController(() => {
+        const port = new TestPort();
+        port.transformOptimization = async (value) => {
+            const result = value as Result;
+            if (!tamper || !result.candidate) return result;
+            if (tamper === "request") {
+                result.request.policy.seed = "forged";
+                result.evidence.request = clone(result.request);
+                result.requestRevision = await browserModelHash(result.request);
+            } else if (tamper === "source") {
+                const source = draft().blueprint;
+                source.paytable.B[2] = 1;
+                result.sourceRevision = await browserModelHash(source);
+                result.evidence.sourceRevision = result.sourceRevision;
+            } else {
+                if (tamper === "presence") result.candidate.winModel = {type: "lines"};
+                else result.candidate.paytable.B[2] = 1;
+                if (tamper !== "single") result.candidateRevision = await browserModelHash(result.candidate);
+            }
+            return result;
+        };
+        return port;
+    }, () => undefined);
+    try {
+        await controller.run(draft(), "inspect");
+        for (tamper of ["single", "coordinated", "presence", "request", "source"]) {
+            await expect(controller.run(draft(), "optimize", galleryPolicy)).rejects.toThrow(/identity mismatch|undeclared|Lock/);
+            expect(controller.diagnostics()).toEqual({workers: 0, timers: 0, pending: 0});
+            tamper = undefined;
+            const run = await controller.run(draft(), "optimize", galleryPolicy);
+            const result = run.result as Result;
+            expect("candidate" in result).toBe(true);
+            if (result.candidate) await expect(controller.applyCandidate(draft(), galleryPolicy, result.candidate)).resolves.toEqual(result.candidate);
+            await controller.run(draft(), "play");
+        }
+    } finally {
+        controller.dispose();
+    }
+}, 30000);
+
+it("uses the strict policy owner without coercion across direct, Worker and recovering controller calls", async () => {
+    const malformed = clone(galleryPolicy) as unknown as {policy: {stake: unknown}};
+    malformed.policy.stake = "0.05";
+    expect(() => validateOptimizationRequest(malformed)).toThrow(/policy\/stake/);
+    await expect(optimizeBrowserBlueprint(draft().blueprint, malformed, {yieldToHost})).rejects.toThrow(/policy\/stake/);
+    const artifact = await createBlueprintWasmArtifact(draft().blueprint);
+    const worker = new PokieWasmWorkerProtocol();
+    const controller = new PlaygroundController(() => new TestPort(), () => undefined);
+    try {
+        expect(await worker.handle({id: "init", type: "instantiate", ...artifact, seed: "gallery-29"})).toMatchObject({ok: true});
+        expect(await worker.handle({id: "bad", type: "optimize", blueprint: draft().blueprint, request: malformed}))
+            .toMatchObject({ok: false, error: expect.stringContaining("policy/stake")});
+        for (let i = 0; i < 2; i++) {
+            expect(await worker.handle({id: `good-${i}`, type: "optimize", blueprint: draft().blueprint, request: galleryPolicy})).toMatchObject({ok: true});
+        }
+        await controller.run(draft(), "play");
+        await expect(controller.run(draft(), "optimize", malformed)).rejects.toThrow(/policy\/stake/);
+        for (let i = 0; i < 2; i++) await controller.run(draft(), "optimize", galleryPolicy);
+        expect(malformed.policy.stake).toBe("0.05");
+        expect(controller.diagnostics()).toEqual({workers: 0, timers: 0, pending: 0});
+    } finally {
+        await worker.handle({id: "dispose", type: "dispose"});
+        controller.dispose();
+    }
+}, 30000);
+
+it("rejects edits/reversion and asynchronous invalidation during Apply, then reuses fresh preview authority", async () => {
+    const statuses: string[] = [];
+    const controller = new PlaygroundController(() => new TestPort(), (event) => statuses.push(event.status));
+    const b = draft();
+    try {
+        for (const stage of ["before", "hash", "prepare"]) {
+            const run = await controller.run(b, "optimize", galleryPolicy);
+            const candidate = (run.result as {candidate: GameBlueprint}).candidate;
+            const digest = globalThis.crypto.subtle.digest.bind(globalThis.crypto.subtle);
+            let hashes = 0;
+            const observer = jest.spyOn(globalThis.crypto.subtle, "digest").mockImplementation(async (algorithm, data) => {
+                const bytes = await digest(algorithm, data);
+                if (++hashes === (stage === "hash" ? 1 : 4)) controller.invalidate();
+                return bytes;
+            });
+            try {
+                if (stage === "before") controller.invalidate();
+                // Even exact restoration of every input cannot restore an accepted transition.
+                await expect(controller.applyCandidate(clone(b), clone(galleryPolicy), clone(candidate))).rejects.toThrow(/Stale preview/);
+                expect(controller.diagnostics()).toEqual({workers: 0, timers: 0, pending: 0});
+                expect(statuses[statuses.length - 1]).toBe("interrupted");
+            } finally {
+                observer.mockRestore();
+            }
+            for (let reuse = 0; reuse < 2; reuse++) {
+                const fresh = await controller.run(b, "optimize", galleryPolicy);
+                const next = (fresh.result as {candidate: GameBlueprint}).candidate;
+                await expect(controller.applyCandidate(b, galleryPolicy, next)).resolves.toEqual(next);
+            }
+        }
+    } finally {
+        controller.dispose();
+    }
+}, 30000);
 
 let browser: PublicDocsBrowser | undefined,
     preview: ChildProcess | undefined,
@@ -554,6 +664,77 @@ describe("locally built public gallery rendered actions", () => {
         expect(await ev("document.querySelectorAll('#pg-download-buttons button, #pg-screen .pg-win').length")).toBe(0);
         expect(await ev("document.querySelector('#pg-apply').disabled && document.querySelector('#pg-replay-play').disabled")).toBe(true);
     }
+
+    it("V2C-29-ACCEPTANCE executes public stale-preview rejection after edits, reversion and coordinated changes", async () => {
+        for (const field of ["seed", "bet", "mode", "rounds", "model", "policy", "coordinated"]) {
+            await example("optimize");
+            await click("optimize");
+            await download("optimization.json");
+            const original = await ev<string>("document.querySelector('#pg-model').value");
+            if (field === "seed") {
+                await ev("document.querySelector('#pg-seed').focus(); document.querySelector('#pg-seed').select()");
+                await browser!.send("Input.insertText", {text: "gallery-29-stale"});
+                expect(await ev("document.querySelector('#pg-seed').value")).toBe("gallery-29-stale");
+                expect(await ev("JSON.parse(document.querySelector('#pg-policy').value).policy.seed")).toBe("gallery-29-stale");
+                // Restoring both synchronized values must not restore authority.
+                await set("seed", "gallery-29");
+            } else if (field === "coordinated") {
+                const changed = JSON.parse(original) as GameBlueprint;
+                changed.paytable.A[2] = 2;
+                await set("model", JSON.stringify(changed));
+                await set("seed", "coordinated");
+                await set("bet", "7.5");
+            } else if (field === "model") {
+                const changed = JSON.parse(original) as GameBlueprint;
+                changed.winModel = {type: "lines"};
+                await set(field, JSON.stringify(changed));
+            } else if (field === "policy") {
+                const changed = clone(galleryPolicy);
+                changed.targets[0].value = 0.6;
+                await set(field, JSON.stringify(changed));
+            } else await set(field, {bet: "7.5", mode: "base", rounds: "128"}[field]!);
+            expect(await ev("document.querySelector('#pg-preview').textContent")).toContain("Stale preview");
+            expect(await ev("document.querySelector('#pg-apply').disabled")).toBe(false);
+            expect(await ev("document.querySelector('#pg-summary').textContent")).toBe("No current result. Run again with the current inputs.");
+            expect(await ev("document.querySelector('#pg-download-status').textContent")).toBe("");
+            expect(await ev("document.querySelectorAll('#pg-download-buttons button').length")).toBe(0);
+            const edited = await ev("document.querySelector('#pg-model').value");
+            await ev("document.querySelector('#pg-apply').focus()");
+            await browser!.key(" ", "Space", 32);
+            await browser!.until("document.querySelector('#pg-status').dataset.status === 'failed'");
+            expect(await ev("document.querySelector('#pg-status').textContent")).toMatch(/^Stale preview:/);
+            expect(await ev("document.querySelector('#pg-model').value")).toBe(edited);
+            await expectCleared();
+            expect(await ev("window.ownedWorkers.size")).toBe(0);
+            expect(await ev("document.activeElement.dataset.action")).toBe("inspect");
+            expect(await ev("(() => { const r = document.activeElement.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.top >= 0 && r.bottom <= innerHeight; })()"))
+                .toBe(true);
+        }
+        await ev("document.querySelector('#pg-reset').click()");
+        for (let reuse = 0; reuse < 2; reuse++) {
+            await click("optimize");
+            const next = await download("candidate.blueprint.json");
+            await ev("document.querySelector('#pg-apply').click()");
+            await browser!.until("document.querySelector('#pg-status').textContent.startsWith('Applied')");
+            await click("inspect");
+            expect(await download("model.blueprint.json")).toEqual(next);
+            expect(await ev("window.ownedWorkers.size")).toBe(0);
+        }
+    }, 60000);
+
+    it("protects edited inputs and replacement results from a delayed Apply callback", async () => {
+        await example("optimize");
+        await click("optimize");
+        const original = await ev("document.querySelector('#pg-model').value");
+        const immediate = await ev("(() => { document.querySelector('#pg-apply').click(); const disabled = document.querySelector('#pg-apply').disabled; const seed = document.querySelector('#pg-seed'); seed.value = 'edited-during-apply'; seed.dispatchEvent(new Event('input')); return disabled; })()");
+        expect(immediate).toBe(true);
+        await click("inspect");
+        expect(await ev("document.querySelector('#pg-model').value")).toBe(original);
+        expect(await ev("JSON.parse(document.querySelector('#pg-identity').textContent).seed")).toBe("edited-during-apply");
+        expect(await ev("document.querySelector('#pg-status').textContent")).toContain("inspect completed");
+        expect(await ev("document.querySelector('#pg-preview').textContent")).toBe("No current candidate.");
+        expect(await ev("window.ownedWorkers.size")).toBe(0);
+    }, 15000);
 
     it("clears rendered payout/RTP/optimization and download conclusions at every invalidation boundary", async () => {
         await example("lines");

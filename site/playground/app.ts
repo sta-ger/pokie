@@ -57,24 +57,28 @@ function mount(root: HTMLElement): void {
             button.disabled = busy;
         });
         element<HTMLButtonElement>("cancel").disabled = !busy;
+        for (const id of ["apply", "discard"]) element<HTMLButtonElement>(id).disabled = busy || !candidate;
         const progress = element<HTMLProgressElement>("progress");
         progress.hidden = !busy;
         progress.max = event.progress?.total ?? 1;
         progress.value = event.progress?.completed ?? 0;
     }
-    function clear(): void {
+    function clear(retainReview = false): void {
         uiGeneration++;
         displayed = undefined;
-        candidate = undefined;
+        if (!retainReview) candidate = undefined;
         reports = undefined;
         element("identity").textContent = "Inputs changed. Run again to bind a current identity.";
         element("output").textContent = "No current output.";
-        element("preview").textContent = "No current candidate.";
+        element("preview").textContent = candidate
+            ? "Stale preview: inputs changed. Apply will reject this review; generate a new preview or discard it."
+            : "No current candidate.";
         element("summary").textContent = "No current result. Run again with the current inputs.";
         element("download-status").textContent = "";
         element("screen").replaceChildren();
         element("download-buttons").replaceChildren();
-        for (const id of ["apply", "discard", "replay-play"]) element<HTMLButtonElement>(id).disabled = true;
+        for (const id of ["apply", "discard"]) element<HTMLButtonElement>(id).disabled = !candidate;
+        element<HTMLButtonElement>("replay-play").disabled = true;
     }
     function draft(): PlaygroundDraft {
         if (model.value.length > 65536) throw new Error("Blueprint exceeds 64 KiB limit.");
@@ -112,8 +116,9 @@ function mount(root: HTMLElement): void {
     update({status: "idle", message: "Idle / reset. Reload never restores a running job, result or applicable candidate."});
     select.addEventListener("change", () => replace(select.value));
     for (const input of [model, policy, ...["seed", "bet", "mode", "rounds"].map((id) => element(id))]) input.addEventListener("input", () => {
+        // Revoke authority immediately; retain only the review for an explicit stale-Apply rejection.
         controller.invalidate();
-        clear();
+        clear(true);
     });
     const focusAction = (): void => root.querySelector<HTMLButtonElement>("[data-action=inspect]")!.focus();
     for (const id of ["seed", "bet"]) element(id).addEventListener("input", () => {
@@ -262,15 +267,21 @@ function mount(root: HTMLElement): void {
     });
     element("apply").addEventListener("click", () => {
         (async () => {
+            const version = uiGeneration;
             try {
                 if (!candidate) throw new Error("No current candidate.");
+                update({status: "validating", message: "Checking reviewed candidate against current inputs…"});
                 const next = await controller.applyCandidate(draft(), JSON.parse(policy.value), candidate);
+                if (version !== uiGeneration) return;
                 model.value = JSON.stringify(next, null, 2);
                 clear();
                 focusAction();
                 update({status: "idle", message: "Applied to draft. Inspect or run the new identity; download/save is separate."});
             } catch (error) {
-                update({status: "failed", message: String(error)});
+                if (version !== uiGeneration) return;
+                clear();
+                focusAction();
+                update({status: "failed", message: error instanceof Error ? error.message : String(error)});
             }
         })();
     });
