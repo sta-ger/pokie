@@ -665,30 +665,28 @@ it("retains project-local dependency identity through evaluation, independent sa
 });
 
 it("rolls back publication when the saved executable cannot load", async () => {
-    const {root} = declaredPackage();
+    const rejectLoad = path.join(directory, "reject-load");
+    const loadAttempt = path.join(directory, "load-attempt");
+    const {root} = declaredPackage("load-failure", `if (require('fs').existsSync(${JSON.stringify(rejectLoad)})) { require('fs').writeFileSync(${JSON.stringify(loadAttempt)}, __filename); throw Error('saved executable cannot load'); }\n`);
     const request = optimizationRequest();
     const result = await service.optimize(await resolve(root), request);
     expect(result.diagnostics).toEqual([]);
     expect(result.status).toBe("success");
+    const reviewed = sourceInventory({type: "tsPackage", rootPath: result.candidate!.path});
     const destination = path.join(directory, "unloadable");
-    const open = fs.promises.open.bind(fs.promises);
-    const copy = jest.spyOn(fs.promises, "open").mockImplementation(async (output, flags, mode) => {
-        const file = await open(output, flags, mode);
-        if (String(output) === path.join(destination, "index.cjs") && flags === "wx") {
-            const write = file.writeFile.bind(file);
-            jest.spyOn(file, "writeFile").mockImplementation(async (data, options) => {
-                await write(data, options);
-                fs.writeFileSync(output, "throw Error('saved executable cannot load');");
-            });
-        }
-        return file;
-    });
+    // Fail at the loader boundary without changing reviewed source bytes. Corrupting
+    // the copied entry only reaches the earlier tuning-contract identity rejection.
+    fs.writeFileSync(rejectLoad, "reject");
     try {
         await expect(service.publish(result.candidate!, request, destination)).rejects.toThrow("saved executable cannot load");
     } finally {
-        copy.mockRestore();
+        fs.rmSync(rejectLoad, {force: true});
     }
     expect(fs.existsSync(destination)).toBe(false);
+    const attemptedEntry = fs.readFileSync(loadAttempt, "utf8");
+    expect(attemptedEntry).toContain("pokie-runtime-");
+    expect(fs.existsSync(attemptedEntry)).toBe(false);
+    expect(sourceInventory({type: "tsPackage", rootPath: result.candidate!.path})).toEqual(reviewed);
     await expect(service.publish(result.candidate!, request, destination)).resolves.toBe(destination);
 });
 
