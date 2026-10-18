@@ -589,9 +589,27 @@ describe("ProjectDashboardPage - Certification workflow", () => {
         expect(screen.queryByText(/incomplete/)).not.toBeInTheDocument();
     });
 
-    it("marks a completed Build (not Validate) as Outdated when only modes/output directory change, and marks Validate Outdated instead when the bundle directory changes", async () => {
+    const authorityEdits = [
+        {label: "Model source path", value: ".", configuration: {dossier: {modelSource: "."}}},
+        {label: "Simulation report paths (comma separated)", value: "report.json", configuration: {dossier: {reportFiles: ["report.json"]}}},
+        {label: "Audit replay paths (comma separated)", value: "audit.json", configuration: {dossier: {replayFiles: ["audit.json"]}}},
+        {label: "Source revision", value: "source-edit", configuration: {dossier: {sourceRevision: "source-edit"}}},
+        {label: "Candidate revision", value: "da533839dbcb9c2a16fcacc3ae5866f65636d04b-authority-edit", configuration: {dossier: {candidateRevision: "da533839dbcb9c2a16fcacc3ae5866f65636d04b-authority-edit"}}},
+        {label: "Presentation template path (optional)", value: "template.json", configuration: {dossier: {}, output: {templateFile: "template.json"}}},
+        {label: "Output formats (comma separated; empty means all)", value: "html, pdf", configuration: {dossier: {}, output: {formats: ["html", "pdf"]}}},
+    ];
+
+    it.each([
+        {label: "Seed", edits: [{label: "Seed", value: "-changed"}], configuration: {}},
+        {label: "Output directory", edits: [{label: "Output directory", value: "-changed"}], configuration: {}},
+        ...authorityEdits.map(edit => ({label: edit.label, edits: [edit], configuration: edit.configuration})),
+        {label: "all dossier fields together", edits: authorityEdits, configuration: {
+            dossier: {modelSource: ".", reportFiles: ["report.json"], replayFiles: ["audit.json"], sourceRevision: "source-edit", candidateRevision: "da533839dbcb9c2a16fcacc3ae5866f65636d04b-authority-edit"},
+            output: {templateFile: "template.json", formats: ["html", "pdf"]},
+        }},
+    ])("marks Build as Outdated after editing $label and restores Inspect/Export only after rebuilding", async ({label, edits, configuration}) => {
         const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({
+        const {fetchImpl, calls} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/project/certification/validate-source": () => ({ok: true, status: 200, body: {status: "ok", errors: [], warnings: []}}),
             "/api/project/certification/build": () => ({ok: true, status: 200, body: okBuildView()}),
@@ -606,24 +624,49 @@ describe("ProjectDashboardPage - Certification workflow", () => {
         await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
         await screen.findByText("Clean");
 
-        // Editing a mode field (not the bundle directory) invalidates only Build -- Validate's own result
-        // is untouched, so only the Build-specific Outdated message should render.
-        await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
-        await user.type(screen.getByLabelText("Seed"), "-changed");
+        // Modes, output and dossier edits all invalidate Build while retaining source validation.
+        if (label !== "Output directory") await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
+        for (const edit of edits) await user.type(screen.getByLabelText(edit.label), edit.value);
+        if (label === "Output directory") await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
+        expect(screen.getByRole("button", {name: /Inspect Manifest/})).toBeDisabled();
+        expect(screen.getByRole("button", {name: /Export Download manifest/})).toBeDisabled();
 
         expect(
             await screen.findByText(
-                /Outdated -- the modes or output directory changed since the last Build run\. Its result no longer reflects what's configured here; rerun Build certification bundle before Inspect\/Export are offered again\./,
+                /Outdated -- the build configuration changed since the last Build run\. Its result no longer reflects what's configured here; rerun Build certification bundle before Inspect\/Export are offered again\./,
             ),
         ).toBeInTheDocument();
         expect(screen.queryByText(/Outdated -- the bundle directory changed since the last Validate run/)).not.toBeInTheDocument();
 
-        // Re-running Build clears the notice.
+        // A new successful Build submits the edited authorities and restores both downstream steps.
         await user.click(screen.getByRole("button", {name: /Build bundle/i}));
         await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
         await screen.findByText("Clean");
+        const buildRequests = () => calls.filter(call => call.url === "/api/project/certification/build").map(call => JSON.parse(call.init?.body ?? "{}"));
+        expect(buildRequests()).toEqual([
+            {bundleDir: "./bundle", outDir: "certification", modes: [{modeName: "base", seed: "cert-seed-1", sampleCount: 100}]},
+            {bundleDir: "./bundle", outDir: label === "Output directory" ? "certification-changed" : "certification", modes: [{modeName: "base", seed: label === "Seed" ? "cert-seed-1-changed" : "cert-seed-1", sampleCount: 100}], ...configuration},
+        ]);
+        expect(screen.getByRole("button", {name: /Inspect Manifest/})).toBeEnabled();
+        expect(screen.getByRole("button", {name: /Export Download manifest/})).toBeEnabled();
         await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
-        expect(screen.queryByText(/Outdated -- the modes or output directory changed/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Outdated -- the build configuration changed/)).not.toBeInTheDocument();
+
+        // Clearing optional fields cannot revive a previous result; absence is submitted on rebuild.
+        if (edits.some(edit => authorityEdits.some(authority => authority.label === edit.label))) {
+            for (const edit of edits) await user.clear(screen.getByLabelText(edit.label));
+            expect(screen.getByRole("button", {name: /Inspect Manifest/})).toBeDisabled();
+            expect(screen.getByRole("button", {name: /Export Download manifest/})).toBeDisabled();
+            expect(screen.getByText(/Outdated -- the build configuration changed/)).toBeInTheDocument();
+            await user.click(screen.getByRole("button", {name: /Build bundle/i}));
+            await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
+            await screen.findByText("Clean");
+            expect(buildRequests()[2]).toEqual(buildRequests()[0]);
+            expect(screen.getByRole("button", {name: /Inspect Manifest/})).toBeEnabled();
+            expect(screen.getByRole("button", {name: /Export Download manifest/})).toBeEnabled();
+            await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
+            expect(screen.queryByText(/Outdated -- the build configuration changed/)).not.toBeInTheDocument();
+        }
 
         // Editing the bundle directory instead invalidates both Validate and Build -- only the broader
         // Validate-specific Outdated message should render, not a duplicate Build-specific one.
@@ -633,6 +676,6 @@ describe("ProjectDashboardPage - Certification workflow", () => {
                 /Outdated -- the bundle directory changed since the last Validate run\. Its result no longer reflects what's configured here; rerun Validate before Build bundle is offered again\./,
             ),
         ).toBeInTheDocument();
-        expect(screen.queryByText(/Outdated -- the modes or output directory changed since the last Build run/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Outdated -- the build configuration changed since the last Build run/)).not.toBeInTheDocument();
     });
 });

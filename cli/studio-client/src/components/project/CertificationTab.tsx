@@ -255,8 +255,8 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
         };
     }, []);
     // Same "outdated" distinction as validateOutdated above, for a completed Build silently invalidated by
-    // a later mode/output-directory edit -- the case validateOutdated alone can't cover, since editing
-    // modes/outDir (unlike bundleDir) never touches Validate at all, only Build. Cleared the instant a
+    // a later build-configuration edit -- modes, output directory and dossier authorities only touch
+    // Build; bundleDir also invalidates Validate. Cleared the instant a
     // fresh Build run starts. Rendered on Select/configure (where modes live) rather than duplicating the
     // validateOutdated banner's own "rerun Validate" guidance whenever both are true at once.
     const [buildOutdated, setBuildOutdated] = useState(false);
@@ -634,7 +634,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                     )}
                     {!validateOutdated && buildOutdated && (
                         <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
-                            Outdated -- the modes or output directory changed since the last Build run. Its
+                            Outdated -- the build configuration changed since the last Build run. Its
                             result no longer reflects what&apos;s configured here; rerun Build certification
                             bundle before Inspect/Export are offered again.
                         </Alert>
