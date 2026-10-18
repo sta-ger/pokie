@@ -4,6 +4,26 @@ import os from "os";
 import type {GameBlueprint} from "@fromstan/pokie";
 import {fractionalBetBlueprint} from "../../fixtures/math/FractionalBetFixture.js";
 
+// These tests copy the real host runtime and dependency graph several times per conversion.
+export const PACKAGE_EXTRACTION_TEST_TIMEOUT = 120_000;
+
+/** Give direct Jest and npm launches the same clone-local snapshot storage. */
+export function createPackageExtractionTestEnvironment(): () => void {
+    const cache = path.resolve(__dirname, "../../../node_modules/.cache/pokie-tmp");
+    fs.mkdirSync(cache, {recursive: true});
+    const directory = fs.mkdtempSync(path.join(cache, "pokie-package-extraction-"));
+    const original = process.env.TMPDIR;
+    process.env.TMPDIR = directory;
+    return () => {
+        try {
+            fs.rmSync(directory, {recursive: true, force: true});
+        } finally {
+            if (original === undefined) Reflect.deleteProperty(process.env, "TMPDIR");
+            else process.env.TMPDIR = original;
+        }
+    };
+}
+
 export function writeDescriptorPackage(
     parent: string,
     options: {name?: string; model?: Partial<GameBlueprint>; legacy?: boolean; descriptorBody?: string} = {},
@@ -65,7 +85,15 @@ export function writePausedDescriptorPackage(
         started();
         return gate.then(() => read);
     });
-    return {source, control, readStarted, settle, get readCount() {
+    // An import/snapshot failure must fail at its actual boundary, rather than leave the
+    // test waiting forever for a descriptor which can no longer be reached.
+    const waitForRead = (operation: Promise<unknown>): Promise<void> => Promise.race([
+        readStarted,
+        operation.then(() => {
+            throw new Error("Package operation settled before the paused descriptor read");
+        }),
+    ]);
+    return {source, control, readStarted, waitForRead, settle, get readCount() {
         return readCount;
     }, arm: () => {
         armed = true;

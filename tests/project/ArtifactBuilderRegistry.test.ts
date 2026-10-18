@@ -1,6 +1,6 @@
 import {ArtifactBuildCancelledError} from "../../src/project/ArtifactBuildOptions.js";
 import {ArtifactPublicationOwnership} from "../../src/project/ArtifactPublicationOwnership.js";
-import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -26,6 +26,14 @@ import {
 import type {PokieProject} from "../../src/project/PokieProject.js";
 
 describe("ArtifactBuilderRegistry", () => {
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     const registry = new ArtifactBuilderRegistry();
 
     it("retains the pinned candidate through the complete V2C-26 gate-test delta", () => {
@@ -42,7 +50,8 @@ describe("ArtifactBuilderRegistry", () => {
                 const fixture = await candidateFixture(${JSON.stringify(root)});
                 const options = {repository: fixture.repository};
                 const original = await readP911Candidate(fixture.reference, options);
-                for (const file of ["tests/project/ArtifactBuilderRegistry.test.ts", "docs/v2-completion/V2C-26.md"])
+                for (const file of ["tests/project/ArtifactBuilderRegistry.test.ts", "tests/cli/studio/StudioArtifactBuildService.test.ts",
+                    "tests/v2/fixtures/PackageExtractionFixture.ts", "docs/v2-completion/V2C-26.md"])
                     assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
                 const reviewedId = await commitP911ToolingDescendant(fixture);
                 const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
@@ -138,7 +147,7 @@ describe("ArtifactBuilderRegistry", () => {
                 progress.push(value.status);
                 if (value.message === "Extracting public package model into Blueprint") fixture.arm();
             }})).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
-            await fixture.readStarted;
+            await fixture.waitForRead(checked);
             expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
             expect(fs.existsSync(destination)).toBe(false);
             controller.abort();
@@ -154,7 +163,7 @@ describe("ArtifactBuilderRegistry", () => {
             fixture.restore();
             fs.rmSync(root, {recursive: true, force: true});
         }
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("propagates cancellation into validation's initial preparation when no plan is supplied", async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-unprepared-validation-"));
@@ -165,7 +174,7 @@ describe("ArtifactBuilderRegistry", () => {
         try {
             const checked = expect(registry.validate("blueprint", project, undefined, {signal: controller.signal}))
                 .rejects.toBeInstanceOf(ArtifactBuildCancelledError);
-            await fixture.readStarted;
+            await fixture.waitForRead(checked);
             expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
             controller.abort();
             fixture.settle();
@@ -176,7 +185,7 @@ describe("ArtifactBuilderRegistry", () => {
             fixture.restore();
             fs.rmSync(root, {recursive: true, force: true});
         }
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     describe.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)("package %s validation lifecycle", target => {
         it.each([true, false])("releases the validation snapshot with cancellation=%s and preserves optional callers", async cancel => {
@@ -198,7 +207,7 @@ describe("ArtifactBuilderRegistry", () => {
                     }})
                     : registry.validate(target, project, plan);
                 const checked = cancel ? expect(running).rejects.toBeInstanceOf(ArtifactBuildCancelledError) : expect(running).resolves.toBeUndefined();
-                await fixture.readStarted;
+                await fixture.waitForRead(checked);
                 expect(fixture.readCount).toBe(2);
                 expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
                 if (cancel) controller.abort();
@@ -228,7 +237,7 @@ describe("ArtifactBuilderRegistry", () => {
                 fixture.arm();
                 const checked = expect(registry.validate(target, project, plan, {signal: new AbortController().signal}))
                     .rejects.toThrow(/source configuration or generation provenance changed/);
-                await fixture.readStarted;
+                await fixture.waitForRead(checked);
                 fixture.settle();
                 await checked;
                 expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
@@ -261,7 +270,7 @@ describe("ArtifactBuilderRegistry", () => {
             const plan = await registry.preparePlan(project, "wasm", {destinationPath: path.join(root, "output")});
             fixture.arm();
             running = registry.validate("wasm", project, plan);
-            await fixture.readStarted;
+            await fixture.waitForRead(running);
             expect(fixture.readCount).toBe(2);
             const validationSnapshots = runtimeSnapshotNames(fixture.source);
             expect(validationSnapshots).toHaveLength(1);
@@ -465,7 +474,7 @@ describe("ArtifactBuilderRegistry", () => {
             expect(cancellations).toBe(1);
             assertCleanup(competitor);
             expect(computeProjectInputBindingHash(project)).toBe(sourceHash);
-        }, 120_000);
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
         it("returns a complete rollback inventory and correctly bound retained evidence on success", async () => {
             const result = await registry.build(target, project, destination);
