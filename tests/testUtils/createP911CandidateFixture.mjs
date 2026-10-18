@@ -35,6 +35,9 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "tests/cli/studio/StudioArtifactBuildService.test.ts",
     "tests/v2/fixtures/PackageExtractionFixture.ts",
     "docs/v2-completion/V2C-11.md",
+    // Complete V2C-26 gate correction, independently named from the reader.
+    "tests/project/ArtifactBuilderRegistry.test.ts",
+    "docs/v2-completion/V2C-26.md",
     "scripts/p9-11-candidate.mjs", "tests/testUtils/createP911CandidateFixture.mjs",
     "tests/scripts/p9-11-corrective-closeout.test.mjs", "tests/scripts/p9-11-produce-candidate.test.mjs",
     "docs/audit-corrections/README.md", "docs/audit-corrections/p9-11-closeout.md",
