@@ -8,8 +8,7 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 const GAME = {id: "a", name: "A", version: "1.0.0"};
 
 const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: number; body: unknown}> = {
-    // Certification is available only to a project that directly reads an outcome-library artifact.
-    // A Blueprint reaches this workflow only after Build/Export has produced that artifact.
+    // Keep coverage for libraries opened directly as well as the package-bound workflow below.
     "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME, type: "outcomeLibrary", capabilities: ["outcomeLibrary.read"]}}),
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
@@ -91,6 +90,68 @@ async function fillSelectStep(user: ReturnType<typeof userEvent.setup>, bundleDi
 }
 
 describe("ProjectDashboardPage - Certification workflow", () => {
+    it("keeps the runtime package open while configuring its library, current model and disjoint output", async () => {
+        const user = userEvent.setup();
+        const requests: unknown[] = [];
+        const request = {bundleDir: "outcomelibrary", outDir: "/evidence/a-dossier", modes: [{modeName: "base", seed: "cert-seed-1", sampleCount: 100}], dossier: {modelSource: "."}};
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME, type: "tsPackage", capabilities: ["runtime.execute"]}}),
+            "/api/project/certification/validate-source": () => ({ok: true, status: 200, body: {status: "ok", errors: [], warnings: []}}),
+            "/api/project/certification/build": call => {
+                requests.push(JSON.parse(call.init?.body ?? "{}"));
+                return {ok: true, status: 200, body: requests.length === 1
+                    ? {status: "error", errors: [{code: "certification-dossier-input-invalid", severity: "error", message: "Selected model identity does not match source artifact configHash"}], warnings: []}
+                    : okBuildView({files: ["manifest.json", "dossier.html", "dossier.pdf"]})};
+            },
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/%2Fgames%2Fa/certification"]});
+        await screen.findByLabelText("Source outcome-library bundle directory");
+        expect(screen.getByRole("button", {name: "Certification"})).toBeEnabled();
+        expect(screen.getByText(/keep the runtime package open/)).toBeInTheDocument();
+        await user.type(screen.getByLabelText("Model source path"), ".");
+        await fillSelectStep(user, request.bundleDir);
+        await user.click(screen.getByRole("button", {name: "Validate source bundle"}));
+        await screen.findByText("Clean");
+        await user.click(screen.getByRole("button", {name: "Continue to Build bundle"}));
+        await user.clear(screen.getByLabelText("Output directory"));
+        await user.type(screen.getByLabelText("Output directory"), request.outDir);
+        await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
+        await screen.findByText(/Selected model identity does not match/);
+        expect(screen.getByRole("button", {name: /Inspect Manifest/})).toBeDisabled();
+        expect(screen.queryByRole("button", {name: "Continue to Inspect"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Download dossier.pdf"})).not.toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
+        await screen.findByText("Clean");
+        expect(requests).toEqual([request, request]);
+        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
+        await screen.findByText(/Certification evidence for A/);
+        await user.click(screen.getByRole("button", {name: "Continue to Export"}));
+        expect(screen.getByRole("button", {name: "Download dossier.pdf"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Download dossier.html"})).toBeEnabled();
+        await user.click(screen.getByRole("button", {name: /Select\/configure/}));
+        expect(screen.getByLabelText("Model source path")).toHaveValue(".");
+        await user.type(screen.getByLabelText("Source revision"), "changed-authority");
+        expect(screen.queryByRole("button", {name: "Download dossier.pdf"})).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: /Export Download manifest/})).toBeDisabled();
+    });
+
+    it.each([
+        ["blueprint", "blueprint.build"],
+        ["parWorkbook", "parWorkbook.exchange"],
+        ["stakeAdapter", "stakeAdapter.exchange"],
+        ["wasm", "wasm.runtime.execute"],
+    ])("keeps Certification unavailable for %s without a package or native library capability", async (type, capability) => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME, type, capabilities: [capability]}}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/%2Fgames%2Fa/certification"]});
+        await screen.findByRole("heading", {name: "A"});
+        expect(screen.queryByRole("button", {name: "Certification"})).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Model source path")).not.toBeInTheDocument();
+    });
+
     it("restores a retained certification build from a direct project entry and submits it only after an explicit Build", async () => {
         const user = userEvent.setup();
         const buildCalls: unknown[] = [];

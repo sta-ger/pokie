@@ -166,8 +166,13 @@ fairness. These separate contracts must not be presented as certification author
 
 ### Studio destinations and cancellation
 
-For an opened runtime package, select `modelSource: "."` and an explicit absolute,
-new or empty output directory outside that package, for example `/work/evidence/game-dossier`.
+Open the runtime package in Studio and choose **Certification**. Keep that package open:
+select its generated outcome-library directory (for example `outcomelibrary`) as the source,
+select `modelSource: "."`, and choose an explicit absolute, new or empty output directory
+outside that package, for example `/work/evidence/game-dossier`. Certification remains available
+when a native outcome library is opened directly, but that directory is not an executable model:
+omit the model for visibly unavailable model evidence, or reopen its original package for model-bound
+rules. Studio never infers a parent package or substitutes one for the selected model.
 Relative outputs remain project-contained. Absolute output selections reject symbolic links in
 existing ancestors; all destinations still pass the builder's physical source/output overlap and
 ownership checks. Build, retained request identity, retry/recovery and download revalidation resolve

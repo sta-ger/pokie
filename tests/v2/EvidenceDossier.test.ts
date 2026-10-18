@@ -282,11 +282,30 @@ import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import {StudioCertificationService} from "./StudioCertificationService.mjs";
+import {acquireCertificationDossier} from "${sourcePrefix}certification/internal/acquireCertificationDossier.js";
 const root = process.argv[2], project = path.join(root, "model"), output = path.join(root, "studio-dossier");
-fs.cpSync(path.join(root, "source"), path.join(project, "source"), {recursive: true});
-const request = {bundleDir: "source", outDir: output, modes: ${JSON.stringify(modes)}, dossier: {modelSource: "."}};
+const library = path.join(project, "outcomelibrary");
+fs.cpSync(path.join(root, "source"), library, {recursive: true});
+const request = {bundleDir: "outcomelibrary", outDir: output, modes: ${JSON.stringify(modes)}, dossier: {modelSource: "."}};
 const service = new StudioCertificationService("1.3.0");
+// The independently observed input remains invalid at the shared acquisition owner
+// and its builder/Studio callers: a readable library is not a package model.
+assert.equal(fs.existsSync(path.join(library, "package.json")), false);
+const sourceManifest = JSON.parse(fs.readFileSync(path.join(library, "manifest.json"), "utf8"));
+await assert.rejects(acquireCertificationDossier(sourceManifest, "unused", {modelSource: library}), /package.json/);
+const api = await import("@fromstan/pokie");
+const rejected = await new api.CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(library, request.modes, output, {dossier: {modelSource: library}});
+assert(rejected.issues.some(issue => issue.code === "certification-dossier-input-invalid" && /package.json/.test(issue.message)), JSON.stringify(rejected));
+const wrongContext = await service.build(library, ".", request.modes, output, {dossier: request.dossier});
+assert.equal(wrongContext.status, "error", JSON.stringify(wrongContext));
+assert(wrongContext.errors.some(issue => issue.code === "certification-dossier-input-invalid" && /package.json/.test(issue.message)));
+assert.equal(fs.existsSync(output), false);
+// The same used service recovers by opening the actual package, without changing
+// modelSource, synthesizing a model, or weakening source/output separation.
 const identity = service.requestIdentity(project, request);
+const overlap = await service.build(project, request.bundleDir, request.modes, "nested-dossier", {dossier: request.dossier});
+assert.equal(overlap.status, "load-error", JSON.stringify(overlap));
+assert.equal(fs.existsSync(path.join(project, "nested-dossier")), false);
 const built = await service.build(project, request.bundleDir, request.modes, request.outDir, {dossier: request.dossier});
 assert.equal(built.status, "ok", JSON.stringify(built));
 assert.equal(built.manifest.dossier.identity.modelHash, ${JSON.stringify(original.manifest.dossier.identity.modelHash)});
@@ -296,12 +315,18 @@ assert(pdf.bytes.equals(fs.readFileSync(path.join(output, "dossier.pdf"))));
 assert.equal((await service.build(project, request.bundleDir, request.modes, output, {dossier: request.dossier})).status, "load-error");
 const retry = await service.build(project, request.bundleDir, request.modes, output + "-retry", {dossier: request.dossier});
 assert.equal(retry.status, "ok", JSON.stringify(retry));
-fs.appendFileSync(path.join(project, "index.cjs"), "\\n// changed selected model\\n");
+const modelFile = path.join(project, "index.cjs"), originalModel = fs.readFileSync(modelFile);
+fs.appendFileSync(modelFile, "\\n// changed selected model\\n");
 assert.notEqual(service.requestIdentity(project, request), identity);
 await assert.rejects(service.download(project, request, "dossier.pdf", built.manifest.evidenceContentHash), /stale|invalid/);
-console.log("opened-package build/download/retry/stale-authority passed");
+fs.writeFileSync(modelFile, originalModel);
+assert.equal(service.requestIdentity(project, request), identity);
+const restored = await service.download(project, request, "dossier.pdf", built.manifest.evidenceContentHash);
+const fresh = await new StudioCertificationService("1.3.0").download(project, request, "dossier.pdf", built.manifest.evidenceContentHash);
+assert(restored.bytes.equals(pdf.bytes) && fresh.bytes.equals(pdf.bytes));
+console.log("library rejection/opened-package build/download/retry/stale-authority/restoration passed");
 `);
-            expect(execFileSync(process.execPath, [studioScript, relocated], {encoding: "utf8", timeout: 120000})).toContain("opened-package build/download/retry/stale-authority passed");
+            expect(execFileSync(process.execPath, [studioScript, relocated], {encoding: "utf8", timeout: 120000})).toContain("library rejection/opened-package build/download/retry/stale-authority/restoration passed");
         } finally {
             runtime.dispose();
         }

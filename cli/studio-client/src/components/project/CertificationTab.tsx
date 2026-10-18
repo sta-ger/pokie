@@ -692,7 +692,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                         </QuickActions>
                     </PageSection>
                     <PageSection legend="Model and evidence authorities">
-                        <Text size="sm">An explicit model binds readable rules to the source artifacts. Omitted model, simulation or runtime replay evidence stays visibly unavailable. All paths belong to this project; use separate source and dossier directories.</Text>
+                        <Text size="sm">For model-bound evidence, keep the runtime package open, select its generated outcome-library directory above, and use . as the model source. An outcome-library directory is not an executable model. Omitted model, simulation or runtime replay evidence stays visibly unavailable. Evidence inputs belong to the opened project. When the package itself is the model, choose an absolute, new or empty output directory outside that package.</Text>
                         {([
                             ["modelSource", "Model source path"], ["reportFiles", "Simulation report paths (comma separated)"], ["replayFiles", "Audit replay paths (comma separated)"], ["sourceRevision", "Source revision"], ["candidateRevision", "Candidate revision"], ["templateFile", "Presentation template path (optional)"], ["formats", "Output formats (comma separated; empty means all)"],
                         ] as const).map(([key, label]) => <TextInput key={key} label={label} value={dossierFields[key]} onChange={event => changeDossierField(key, event.currentTarget.value)} mb="xs" />)}
