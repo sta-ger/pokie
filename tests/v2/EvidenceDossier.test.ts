@@ -7,7 +7,6 @@ import {execFileSync} from "node:child_process";
 import {
     certificationDossierTables,
     MathDefinitionSourceReader,
-    computeCertificationEvidenceContentHash,
     CERTIFICATION_DOSSIER_SECTIONS,
     CERTIFICATION_PREPARATION_NOTICE,
     CertificationDossierRenderer,
@@ -71,24 +70,25 @@ describe("canonical evidence dossier", () => {
 
     it("retains non-horizontal paylines, roles, dimensions and authored/effective reel generation in every projection", async () => {
         const source = path.join(directory, "source");
-        await buildSourceOutcomeLibraryBundle(source);
-        const built = await new CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(source, modes, path.join(directory, "out"));
-        const blueprint = {...fractionalBetBlueprint(), rows: 3, symbols: ["A", "B", "WILD_ROLE", "SCATTER_ROLE"], wilds: ["WILD_ROLE"], scatters: ["SCATTER_ROLE"], paylines: [[2, 0, 1]],
-            reelStripGeneration: Array.from({length: 3}, () => ({type: "generated" as const, length: 7, symbolCounts: {A: 2, B: 3, WILD_ROLE: 1, SCATTER_ROLE: 1}, seed: 987654}))};
+        const blueprint = {...fractionalBetBlueprint(), rows: 3, symbols: ["A", "B", "WILDROLE", "SCATTERROLE"], wilds: ["WILDROLE"], scatters: ["SCATTERROLE"], paylines: [[2, 0, 1]],
+            reelStripGeneration: Array.from({length: 3}, () => ({type: "generated" as const, length: 7, symbolCounts: {A: 2, B: 3, WILDROLE: 1, SCATTERROLE: 1}, seed: 987654}))};
         Reflect.deleteProperty(blueprint, "reelStrips");
         const definition = await new MathDefinitionSourceReader().read({kind: "blueprint", model: blueprint});
         expect(definition.support).toBe("complete");
-        const original = built.manifest!;
-        const draft = {...original, configHash: definition.identity.revision!, dossier: {...original.dossier,
-            identity: {...original.dossier.identity, modelHash: definition.identity.revision!, modelArtifactHash: "sha256:" + "a".repeat(64)},
-            rules: {status: "available" as const, definition}, validation: {...original.dossier.validation, model: "advanced-declared-model" as const}, support: {...original.dossier.support, coverage: "complete" as const},}};
-        const manifest = {...draft, evidenceContentHash: computeCertificationEvidenceContentHash(draft)};
+        const model = path.join(directory, "model.json");
+        fs.writeFileSync(model, JSON.stringify(blueprint));
+        const artifact = buildRoundArtifact({roundId: "rules-fixture", provenance: {game: blueprint.manifest, configHash: definition.identity.revision!, pokieVersion: "1.3.0"}, betMode: "base", stake: 0.01,
+            steps: [{screen: [["A", "B", "B"], ["B", "A", "B"], ["B", "B", "A"]], winEvaluationResult: new WinEvaluationResult({valueWins: [new ValueWinComponent(new WinningValue("B", [[0, 2], [1, 0], [2, 1]], 0.02))]})}]});
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{modeName: "base", libraryId: "rules-fixture", outcomes: [{id: "0", weight: 1, artifact}]}], source);
+        const built = await new CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(source, modes, path.join(directory, "out"), {dossier: {modelSource: model}});
+        expect(built.issues).toEqual([]);
+        const manifest = built.manifest!;
         const tables = certificationDossierTables(manifest);
         expect(tables.find(table => table.title === "Model paylines")?.rows).toEqual(expect.arrayContaining([["authored.0.0", "2"], ["effective.0.1", "0"], ["effective.0.2", "1"]]));
         for (const dimension of ["rows", "reels"]) expect(tables.find(table => table.title === `Model ${dimension}`)?.rows).toEqual([["authored", "3"], ["effective", "3"]]);
         for (const format of ["json", "console", "markdown", "html", "pdf"] as const) {
             const text = (await new CertificationDossierRenderer().render(manifest, format)).toString();
-            for (const field of ["paylines", "wilds", "scatters", "rows", "reels", "reelStripGeneration", "reelStrips", "WILD_ROLE", "SCATTER_ROLE", "987654", "authored", "effective"]) expect(text).toContain(field);
+            for (const field of ["paylines", "wilds", "scatters", "rows", "reels", "reelStripGeneration", "reelStrips", "WILDROLE", "SCATTERROLE", "987654", "authored", "effective"]) expect(text).toContain(field);
             if (format === "json") expect(JSON.parse(text).dossier.rules.definition.authored.paylines).toEqual([[2, 0, 1]]);
             else for (const [key, value] of [["authored.0.0", "2"], ["effective.0.1", "0"], ["effective.0.2", "1"]]) expect(text).toMatch(new RegExp(`${key.replace(/\./g, "\\.")}[^\\n]*${value}`));
         }
