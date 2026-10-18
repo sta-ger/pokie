@@ -97,6 +97,7 @@ describe("ReportCommand", () => {
             const bytes = fs.readFileSync(output);
             expect(bytes.toString()).toContain("%PDF-1.4");
             expect(bytes.toString()).toContain("preparation only");
+            expect(log.mock.calls.flat().join(" ")).toContain("preparation only");
             await expect(command.run([path.join(out, "manifest.json"), "--format", "pdf", "--out", output])).rejects.toThrow();
             expect(fs.readFileSync(output)).toEqual(bytes);
             const template = path.join(root, "broken.json"),

@@ -3,7 +3,7 @@ import {projectOutcomeSourceSimulationReport} from "../../src/reporting/projectO
 import type {OutcomeSourceSimulationReport} from "../../src/project/simulateOutcomeSourceProject.js";
 import {Command} from "commander";
 import {
-    CertificationDossierRenderer, CertificationEvidenceBundleValidator, loadCertificationDossierTemplate, type CertificationEvidenceBundleManifest, type CertificationDossierTemplate,
+    CERTIFICATION_PREPARATION_NOTICE, CertificationDossierRenderer, CertificationEvidenceBundleValidator, loadCertificationDossierTemplate, type CertificationEvidenceBundleManifest, type CertificationDossierTemplate,
     HtmlSimulationReportRenderer,
     isSimulationReportSet,
     MarkdownSimulationReportRenderer,
@@ -131,6 +131,7 @@ export class ReportCommand implements CliCommandHandling {
             if (out) writeOutputFileAtomically(out, result, true);
             if (Buffer.isBuffer(result)) {
                 if (!out) throw new Error("PDF dossier output requires --out <new-file>.");
+                console.log(CERTIFICATION_PREPARATION_NOTICE);
                 console.log(`PDF dossier written to "${out}".`);
             } else console.log(result);
             return;
@@ -259,6 +260,8 @@ export class ReportCommand implements CliCommandHandling {
         } catch (error) {
             throw new Error(`"${reportPath}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
         }
+
+        if (parsed && typeof parsed === "object" && "dossier" in parsed) return parsed as CertificationEvidenceBundleManifest;
 
         // Historical sampled outcome reports are not static outcome-source analyses.
         if (typeof parsed === "object" && parsed !== null && "libraryId" in parsed && !("rounds" in parsed)) {

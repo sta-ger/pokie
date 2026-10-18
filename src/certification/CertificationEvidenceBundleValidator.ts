@@ -374,9 +374,8 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
                 issues.push({
                     code: "certification-evidence-bundle-manifest-files-entry-unsafe",
                     severity: "error",
-                    message: `manifest.json's "files" entry "${file}" is not a safe filename.`,
+                    message: `manifest.json's "files" entry "${file}" is missing or not a safe physical file.`,
                 });
-                continue;
             }
 
             if (!expected.has(file)) {

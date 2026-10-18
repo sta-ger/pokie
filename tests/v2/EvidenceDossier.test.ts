@@ -198,7 +198,7 @@ const simulation = await new api.ParallelSimulationRunner(modelSource, 16, {seed
 const otherReport = new api.SimulationReportBuilder().build({...simulation, requestedRounds: 16, seed: "other-statistics", durationMs: 12, pokieVersion: "1.3.0"});
 candidate = structuredClone(original);
 const rawReport = JSON.stringify(otherReport);
-candidate.dossier.statistics.estimates[0] = {raw: rawReport, hash: hash(rawReport), value: otherReport};
+candidate.dossier.statistics.estimates[0] = {raw: rawReport, hash: hash(rawReport), value: JSON.parse(rawReport)};
 await publish(candidate); await rejects(authorities); await publish(original);
 const badReport = structuredClone(otherReport); badReport.totalWin += 1; badReport.rtp = badReport.totalWin / badReport.totalBet;
 const badFile = path.join(root, "bad-report.json"); fs.writeFileSync(badFile, JSON.stringify(badReport));

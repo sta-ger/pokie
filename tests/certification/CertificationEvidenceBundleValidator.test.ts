@@ -3,6 +3,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+    certificationDossierFileName,
+    CertificationDossierRenderer,
     CERTIFICATION_DOSSIER_SECTIONS,
     CertificationEvidenceBundleBuilder,
     CertificationEvidenceBundleManifest,
@@ -240,7 +242,9 @@ describe("CertificationEvidenceBundleValidator", () => {
                 issues: [{code: "blueprint-reels-invalid", severity: "error" as const, message: "reels must be positive", path: "reels"}],
             },
         };
-        writeManifest(certDir, {...draft, evidenceContentHash: computeCertificationEvidenceContentHash(draft)});
+        const updated = {...draft, evidenceContentHash: computeCertificationEvidenceContentHash(draft)};
+        writeManifest(certDir, updated);
+        for (const format of updated.presentation.formats) fs.writeFileSync(path.join(certDir, certificationDossierFileName(format)), await new CertificationDossierRenderer().render(updated, format));
 
         const issues = await validator.validate(certDir);
         expect(issues).toEqual([]);
