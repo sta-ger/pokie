@@ -513,6 +513,12 @@ you specifically need every outcome and have sized memory and storage for the fu
 republish their recognized artifact to a new destination. Every writer is atomic and validates its input before
 publishing, never attempting to recover a game model from an outcome-based artifact.
 
+Prepared Stake previews bind the consumed index, CSV weights, compressed books and
+provenance, including native optimizer inventories. A valid source edit requires a
+fresh preview; refreshing its native inventory does not refresh an older operation.
+Cancellation or registration rollback removes only owned publication output and
+preserves unrelated replacement directories and their contents.
+
 For random game generation, there is no `build random`/`--random` — generation and building are two separate,
 explicit steps: [`pokie create --random`](#pokie-create-name---random) writes a Blueprint Project, then `pokie
 build <the written file> --target tsPackage --out <dir>` turns it into a real package.
@@ -982,7 +988,7 @@ Options:
 
 Successful imports also write `<blueprint>.conversion-evidence.json`. The sidecar records the source workbook,
 verbatim Meta cells, parsed provenance, diagnostics, formula/ignored/default facts, and whether the imported
-Blueprint hash proves lossless eligibility. It is part of the publication: an existing sidecar is never overwritten.
+supported schema, matching represented hash and retained conversion facts justify lossless eligibility. It is part of the publication: an existing sidecar is never overwritten.
 
 Exit code is non-zero (and nothing is written) if there are any error-level diagnostics.
 
@@ -1055,6 +1061,15 @@ issue, and verifies it against the blueprint it just assembled:
   `parsheet-provenance-hash-mismatch` (warning) — the workbook was likely hand-edited (or otherwise changed) since
   `pokie par export <config.json>` produced it;
 - otherwise, `parsheet-provenance-present` (info) — the recorded hash matches the imported data.
+
+A missing, malformed or unsupported schema cannot qualify for lossless eligibility,
+even when the represented hash matches. An explicitly invalid `Lossless Eligible`
+value produces a field diagnostic and remains ineligible. Older supported workbooks
+may omit that optional field. `Meta` also retains detailed conversion diagnostics
+and loss facts in `Conversion Evidence`; canonical build previews/results and Studio
+show those observations. Re-export retains prior import/materialization losses from
+the workbook or its Blueprint conversion-evidence sidecar. A new matching hash does
+not erase that history.
 
 ## `pokie reel generate <blueprint.json>`
 
