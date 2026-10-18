@@ -1,0 +1,27 @@
+{
+  "origin": "https://pokie.fromstan.com",
+  "pages": [
+    {"route": "/", "title": "FromStan / POKIE", "source": "site/content/home.md", "description": "Open-source game math, headless runtime and local authoring tools."},
+    {"route": "/docs/", "title": "Documentation", "source": "site/content/docs.md", "description": "Choose a task, understand support, and follow a reproducible workflow."},
+    {"route": "/docs/getting-started/", "title": "Getting started: create and init", "source": "site/content/getting-started.md", "description": "Install a local candidate, create a Blueprint or initialize a TypeScript package."},
+    {"route": "/docs/cli-api/", "title": "CLI, API and build reference", "source": "site/content/cli-api.md", "description": "Public commands, artifact builds and ESM, CommonJS and browser exports."},
+    {"route": "/docs/studio/", "title": "Studio and durable jobs", "source": "site/content/studio.md", "description": "Local design, edit, build, play and observe cancellable work."},
+    {"route": "/docs/extraction/", "title": "Package extraction", "source": "site/content/extraction.md", "description": "Preview a complete declared model, save a Blueprint and retain conversion evidence."},
+    {"route": "/docs/weighted-sequences/", "title": "Weighted whole-sequence reels", "source": "site/content/weighted-sequences.md", "description": "Edit ordered reel alternatives, preview weights and preserve logical-round identity."},
+    {"route": "/docs/mechanics/", "title": "Mechanics and support", "source": "site/content/mechanics.md", "description": "Authored features, code-first extensions and format-specific support limits."},
+    {"route": "/docs/reproducibility/", "title": "Validate, sim, report and replay", "source": "site/content/reproducibility.md", "description": "Seeded runs, executable audit replay and dossier preparation with honest evidence limits."},
+    {"route": "/docs/optimization/", "title": "Optimizer: review, save and apply", "source": "site/content/optimization.md", "description": "Bounded exact or seeded math search with source-specific tuning authority."},
+    {"route": "/docs/interop/", "title": "Interop: PAR, Stake and WASM", "source": "site/content/interop.md", "description": "Source authority, numeric fidelity and supported artifact conversions."},
+    {"route": "/docs/architecture/", "title": "Architecture and extension points", "source": "site/content/architecture.md", "description": "Compose domain math, command orchestration, state storage and wallet boundaries."},
+    {"route": "/docs/server/", "title": "Server and compliance boundaries", "source": "site/content/server.md", "description": "Local adapters, transactional stores and external-wallet reconciliation limits."},
+    {"route": "/404.html", "title": "Page not found", "source": "site/content/not-found.md", "description": "Recover a missing documentation link."}
+  ],
+  "examples": [
+    {"source": "examples/blueprints/sample-slot.blueprint.json", "kind": "blueprint"},
+    {"source": "site/examples/weighted.blueprint.json", "kind": "blueprint"},
+    {"source": "site/examples/session.ts", "kind": "typescript"},
+    {"source": "site/examples/browser.ts", "kind": "typescript"},
+    {"source": "site/examples/optimize.ts", "kind": "typescript"},
+    {"source": "site/examples/policy.json", "kind": "policy"}
+  ]
+}

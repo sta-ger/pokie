@@ -4,4 +4,6 @@ dist
 coverage
 node_modules
 .DS_Store
+site/.output/
+site/.output-staging-*/
 *.tgz

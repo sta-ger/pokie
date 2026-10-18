@@ -97,7 +97,7 @@ describe("V2C-01 delivery identity", () => {
             const manifest = {id: "private-slot", name: "Private slot", version: "0.1.0"};
             const scaffold = new GamePackageCreator(metadata.version).create(directory, "private-slot");
             expect(JSON.parse(fs.readFileSync(path.join(scaffold.projectRoot, "package.json"), "utf8")).dependencies).toEqual({[identity]: `^${metadata.version}`});
-            const blueprint = {manifest, reels: 1, rows: 1, symbols: ["A"], reelStrips: [["A"]], paylines: [[0]], paytable: {A: {1: 1}}};
+            const blueprint = {manifest, reels: 2, rows: 1, symbols: ["A"], reelStrips: [["A"], ["A"]], paylines: [[0, 0]], paytable: {A: {2: 1}}};
             expect(renderBuiltGameModule(blueprint, metadata.version)).toContain(`require("${identity}")`);
             expect(renderEntryModule(manifest)).toContain(`from "${identity}"`);
             const generated = new GamePackageGenerator(metadata.version).generate(blueprint, directory, path.join(directory, "generated"));
@@ -270,7 +270,7 @@ describe("V2C-01 delivery identity", () => {
     });
 
     it("classifies maintained delivery text separately from immutable history and product contracts", () => {
-        const maintained = [path.join(root, "README.md"), ...metadata.files.filter((name: string) => name.startsWith("docs/")).map((name: string) => path.join(root, name)), ...["src", "cli", "examples"].flatMap(name => files(path.join(root, name)))];
+        const maintained = [path.join(root, "README.md"), ...metadata.files.filter((name: string) => name.startsWith("docs/")).map((name: string) => path.join(root, name)), ...["src", "cli", "examples", "site/content", "site/examples"].flatMap(name => files(path.join(root, name)))];
 
         expect(maintained.filter(file => (/\.(?:ts|tsx|js|mjs|md|html|json)$/).test(file) && staleDeliveryIdentity.test(fs.readFileSync(file, "utf8")))).toEqual([]);
         expect(fs.readFileSync(path.join(root, "docs/pokie-phase4-inventory.md"), "utf8")).toContain("sta-ger/pokie-examples");

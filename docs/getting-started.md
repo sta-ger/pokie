@@ -4,6 +4,13 @@
 
 ## Install
 
+The scoped identity below is the intended public installation form, not a claim of registry
+availability or a released 1.3.0. For this unpublished candidate, install a controller-produced
+local archive (`npm install /absolute/path/to/fromstan-pokie.tgz`) or an already built checkout,
+then use the installed `pokie` executable. The [public Getting started target](https://pokie.fromstan.com/docs/getting-started/)
+has the bounded local-candidate journey; [site build/preview instructions](../site/README.md)
+remain usable before the separately controlled deployment.
+
 ```
 npm install @fromstan/pokie
 ```
