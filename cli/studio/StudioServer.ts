@@ -1767,8 +1767,12 @@ export class StudioServer implements StudioServerHandling {
                     const abortPreparation = () => preparation?.controller.abort();
                     signal.addEventListener("abort", abortPreparation, {once: true});
                     try {
-                    // Preserve the established Home executor argument/DTO contract;
-                    // `sourcePath` above is only the durable canonical job identity.
+                        // Honour the confirmed cancellation before loading the next
+                        // runtime. Its asynchronous snapshot may take long enough
+                        // for the old project's generator to publish otherwise.
+                        if (validated.confirmActiveJobs) await this.cancelActiveJobsForOldProject(job.id);
+                        // Preserve the established Home executor argument/DTO contract;
+                        // `sourcePath` above is only the durable canonical job identity.
                         progress({stage: "Materializing runtime", unit: "opening stages", current: 1, total: 3, message: "Loading the project and materializing any required runtime."});
                         const dashboard = await this.homeService.openProject(validated.projectRoot, {
                             signal: preparation.controller.signal,

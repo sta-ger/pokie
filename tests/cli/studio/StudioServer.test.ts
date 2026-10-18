@@ -5377,6 +5377,84 @@ describe("StudioServer", () => {
             };
         }
 
+        it.each([false, true])("cancels confirmed old-project work before destination loading settles (load fails=%s)", async fails => {
+            const oldRoot = path.join(projectStudioRoot, "old-project");
+            const destination = path.join(projectStudioRoot, "next-project");
+            const game = createFakeGame({id: "switch-slot", name: "Switch Slot", version: "1.0.0"});
+            const jobs = createIsolatedJobService(projectStudioRoot);
+            let oldSignal: AbortSignal | undefined;
+            let notifyOldStarted!: () => void;
+            const oldStarted = new Promise<void>(resolve => {
+                notifyOldStarted = resolve;
+            });
+            const oldExecution = jobs.launch({
+                projectId: oldRoot, operation: "certification-build", request: {}, conflictKey: `certification:${oldRoot}`,
+            }, async ({signal}) => {
+                oldSignal = signal;
+                await new Promise<void>(resolve => {
+                    signal.addEventListener("abort", () => resolve(), {once: true});
+                    notifyOldStarted();
+                });
+            }, () => ({status: "cancelled"}));
+            if (oldExecution.started.status !== "created") throw new Error("Expected a newly owned executor.");
+            const oldId = oldExecution.started.job.id;
+            await oldStarted;
+
+            let releaseDestination!: () => void;
+            const destinationGate = new Promise<void>(resolve => {
+                releaseDestination = resolve;
+            });
+            let notifyDestinationStarted!: () => void;
+            const destinationStarted = new Promise<void>(resolve => {
+                notifyDestinationStarted = resolve;
+            });
+            const loader = jest.fn(async (root: string) => {
+                if (root === destination) {
+                    notifyDestinationStarted();
+                    await destinationGate;
+                    if (fails) throw new Error("Destination runtime failed to load.");
+                }
+                return game;
+            });
+            const resolver = (runtimePath: string) => Promise.resolve({runtimePath, release: () => Promise.resolve()});
+            const home = new StudioHomeService("1.0.0", undefined, loader, undefined, resolver);
+            projectServer = new StudioServer({
+                pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot: projectStudioRoot,
+                homeService: home, loadGame: loader, resolveRuntimePackageRoot: resolver, jobService: jobs,
+                blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, home),
+                initialContext: {mode: "project", projectRoot: oldRoot},
+            });
+            let opening: ReturnType<typeof post> | undefined;
+            try {
+                const address = await projectServer.start();
+                const url = `http://${address.host}:${address.port}`;
+                expect(await post(`${url}/api/home/projects/open`, {projectRoot: destination})).toMatchObject({
+                    status: 409, body: {code: "active-jobs-require-confirmation", operations: ["certification-build"]},
+                });
+                expect(loader).not.toHaveBeenCalledWith(destination);
+                expect(oldSignal?.aborted).toBe(false);
+
+                opening = post(`${url}/api/home/projects/open`, {projectRoot: destination, confirmActiveJobs: true});
+                await destinationStarted;
+                // The destination is still held, so cancellation cannot be an
+                // accidental consequence of its eventual dashboard publication.
+                expect(oldSignal?.aborted).toBe(true);
+                await oldExecution.completion;
+                expect(jobs.get(oldRoot, oldId)).toMatchObject({status: "cancelled"});
+                expect((await get(`${url}/api/context`)).body).toEqual({mode: "project", projectRoot: oldRoot});
+
+                releaseDestination();
+                expect(await opening).toMatchObject(fails ? {status: 400, body: {error: "Destination runtime failed to load."}} : {status: 200});
+                expect((await get(`${url}/api/context`)).body).toEqual({mode: "project", projectRoot: fails ? oldRoot : destination});
+                expect(jobs.get(oldRoot, oldId)).toMatchObject({status: "cancelled"});
+            } finally {
+                jobs.cancel(oldRoot, oldId);
+                releaseDestination();
+                await opening;
+                await oldExecution.completion;
+            }
+        });
+
         it("POST /api/projects/close cancels the old project's active simulation and replay", async () => {
             const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
             const simGate = createControlledYield();
