@@ -8,6 +8,9 @@ import {POKIE_WASM_RUNTIME_VERSION, POKIE_WASM_RUNTIME_API_VERSION} from "../../
 import {POKIE_WASM_ABI_VERSION, POKIE_WASM_CONTRACT_VERSION} from "../../src/project/wasm/PokieWasmComponentManifest.js";
 import {GAME_BLUEPRINT_SCHEMA_VERSION} from "../../src/generated/GameBlueprint.js";
 import {ROUND_ARTIFACT_SCHEMA_VERSION} from "../../src/artifact/RoundArtifact.js";
+import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION} from "../../src/weightedoutcome/bundle/OutcomeLibraryBundleManifest.js";
+import {CERTIFICATION_EVIDENCE_BUNDLE_MANIFEST_SCHEMA_VERSION} from "../../src/certification/CertificationEvidenceBundleManifest.js";
+import {DEFAULT_CERTIFICATION_DOSSIER_TEMPLATE} from "../../src/certification/CertificationDossierRenderer.js";
 import {GamePackageGenerator} from "../../src/generated/GamePackageGenerator.js";
 import {buildPackageJsonPatch} from "../../src/gamepackage/buildPackageJsonPatch.js";
 import {createBlueprintWasmArtifact} from "../../src/wasm/createBlueprintWasmArtifact.js";
@@ -157,6 +160,9 @@ describe("V2C-30 release preparation", () => {
 
     it("preserves independent schemas/exports and produces executable 2.0 WASM bytes", async () => {
         expect([GAME_BLUEPRINT_SCHEMA_VERSION, ROUND_ARTIFACT_SCHEMA_VERSION]).toEqual([1, 1]);
+        expect([OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION, CERTIFICATION_EVIDENCE_BUNDLE_MANIFEST_SCHEMA_VERSION]).toEqual([1, 2]);
+        expect(DEFAULT_CERTIFICATION_DOSSIER_TEMPLATE.schemaVersion).toBe(1);
+        expect(JSON.parse(read("templates/certification-dossier.v1.json")).schemaVersion).toBe(1);
         expect([POKIE_WASM_CONTRACT_VERSION, POKIE_WASM_ABI_VERSION, POKIE_WASM_RUNTIME_API_VERSION]).toEqual(["1.0.0", "3.0.0", "2.1.0"]);
         expect(Object.keys(metadata.exports)).toEqual([".", "./client/player", "./browser", "./wasm"]);
         expect(Object.keys(metadata.exports["."])).toEqual(["import", "require"]);
@@ -178,6 +184,7 @@ describe("V2C-30 release preparation", () => {
             expect(read(name)).not.toMatch(/1\.3\.0|v1\.3|ABI [12]\.0/);
         }
         expect(read("CHANGELOG.md")).toContain("2.0.0 — unpublished candidate");
+        expect(read("CHANGELOG.md")).toContain("evidence bundle manifest 2 containing dossier 1 and template 1");
         expect(read("docs/v2-completion/V2C-29.md")).toContain("1.3.0");
     });
 

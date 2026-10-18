@@ -1,4 +1,4 @@
-# Launch mechanics workflow register — V2C-15 candidate
+# Launch mechanics workflow register — POKIE 2.0 candidate
 
 This register covers mandatory authored workflows. It does not replace
 `GameMechanicCompatibilityCatalog`, which describes random strategies. The
@@ -10,10 +10,11 @@ owner. Additional cases name variant-specific edge, rejection and expiry tests. 
 expectations in `WeightedBonusAuthoring.test.ts` prevent deleting a family/row
 from making completeness pass.
 
-Candidate execution and independent acceptance are distinct. Every row below
-has an implemented path and fixtures; current candidate execution is recorded
-in [V2C-15](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-15.md). Independent approval and controller gates remain **open**
-for every cell until those authorities record acceptance. Historical
+Implementation coverage, historical execution and independent acceptance are distinct. Every row below
+has an implemented path and fixtures; historical workflow execution is recorded
+in [V2C-15](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-15.md). Those observations do not establish execution or acceptance of the current 2.0 candidate.
+Current focused checks are recorded in [V2C-30](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-30.md).
+Independent approval and controller gates remain **open** for the current candidate until those authorities record acceptance. Historical
 [V2C-12](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-12.md), [V2C-13](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-13.md), and [V2C-14](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-14.md) receipts are
 preserved, and are not current-candidate execution evidence.
 

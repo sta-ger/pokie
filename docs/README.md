@@ -7,7 +7,7 @@ in this repository; hosting is separately controlled. Build locally with `npm ru
 and preview with `npm run site:preview`. See [static handoff instructions](https://github.com/fromstan/pokie/blob/develop/site/README.md).
 The source guides below remain available independently of deployment.
 
-**POKIE** is a server-side video slot game logic framework for JavaScript/TypeScript. This folder is the API
+**POKIE** provides ISC-licensed game math, a headless JavaScript/TypeScript runtime, CLI and local Studio. This folder is the API
 reference: what every class/interface does, its constructor and methods, and how to configure or replace it.
 
 For installation and a quick taste of the API, see the [main README](../README.md). For end-to-end example games,
