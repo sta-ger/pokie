@@ -3,7 +3,8 @@ import fs from "fs";
 import http from "http";
 import os from "os";
 import path from "path";
-import {buildGameBuildInfo, loadPokieGame, loadPokieGameRuntime, ProjectTargetResolver, releasePokieGame, resolvePokieGameEntryModule} from "@fromstan/pokie";
+import {Worker} from "worker_threads";
+import {buildGameBuildInfo, loadPokieGame, loadPokieGameRuntime, PokieGamePackageValidator, ProjectTargetResolver, releasePokieGame, resolvePokieGameEntryModule} from "@fromstan/pokie";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioCertificationService} from "../../../cli/studio/certification/StudioCertificationService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
@@ -119,20 +120,35 @@ describe("StudioJobService executor bridge routes", () => {
         const {runtime} = writeInstalledRuntime(projectRoot);
         const shell = "<!doctype html><html><body><div id=\"root\">Studio shell</div></body></html>";
         fs.writeFileSync(path.join(directory, "index.html"), shell);
-        const copy = fs.promises.cp.bind(fs.promises);
-        let resume!: () => void;
-        const held = new Promise<void>(resolve => {
-            resume = resolve;
-        });
+        const emit = Worker.prototype.emit;
+        const postMessage = Worker.prototype.postMessage;
+        let heldEmission: (() => void) | undefined;
+        const resume = (): void => {
+            const emission = heldEmission;
+            heldEmission = undefined;
+            emission?.();
+        };
         let heldSnapshot: string | undefined;
-        // Hold one *real* installed-runtime copy at its completion boundary. The public
-        // listener must work while the resolver is still awaiting this filesystem work.
-        const copying = jest.spyOn(fs.promises, "cp").mockImplementation(async (source, destination, options) => {
-            await copy(source, destination, options);
-            if (source === path.join(runtime, "dist") && heldSnapshot === undefined) {
-                heldSnapshot = path.resolve(String(destination), "..", "..", "..", "..");
-                await held;
+        const runtimeWorkers = new Set<Worker>();
+        let runtimeDestination: string | undefined;
+        const posting = jest.spyOn(Worker.prototype, "postMessage").mockImplementation(function(this: Worker, message: {source?: string; destination?: string}) {
+            if (message.source === runtime) {
+                runtimeWorkers.add(this);
+                runtimeDestination = message.destination;
             }
+            Reflect.apply(postMessage, this, [message]);
+        });
+        // Hold the acknowledgement from one *real* installed-runtime copy. The worker
+        // must finish and the resolver must drain it before accepting a loaded result.
+        const copying = jest.spyOn(Worker.prototype, "emit").mockImplementation(function(this: Worker, event: string | symbol, ...args: unknown[]) {
+            if (event === "message" && runtimeWorkers.has(this) && heldSnapshot === undefined) {
+                heldSnapshot = path.resolve(runtimeDestination!, "..", "..", "..");
+                heldEmission = () => {
+                    Reflect.apply(emit, this, [event, ...args]);
+                };
+                return true;
+            }
+            return Reflect.apply(emit, this, [event, ...args]);
         });
         try {
             const baseUrl = await start(new StudioCertificationService("1.3.0"));
@@ -177,16 +193,19 @@ describe("StudioJobService executor bridge routes", () => {
                 await server!.stop();
             }
             expect(fs.existsSync(snapshot)).toBe(false);
+            for (const worker of runtimeWorkers) expect(worker.threadId).toBe(-1);
         } finally {
             resume();
             await server?.stop();
             copying.mockRestore();
+            posting.mockRestore();
         }
     });
 
     it("preserves isolated lazy dependencies across rejection, repair, repeated use and concurrent release", async () => {
         const {leaf} = writeInstalledRuntime(projectRoot);
         const resolver = new ProjectTargetResolver();
+        const validator = new PokieGamePackageValidator();
         const first = await loadPokieGameRuntime(projectRoot);
         type SnapshotSession = {root: string; lazy(): string; paths(): string[]};
         const session = first.game.createSession() as unknown as SnapshotSession;
@@ -197,6 +216,7 @@ describe("StudioJobService executor bridge routes", () => {
             // provenance resolver and the recovering dashboard consumer without coercion.
             fs.writeFileSync(leaf, "exports.label = '';");
             await expect(loadPokieGameRuntime(projectRoot)).rejects.toThrow("pokie-game-manifest-invalid-name");
+            await expect(validator.validate(projectRoot)).resolves.toMatchObject({valid: false, errors: [{code: "pokie-game-manifest-invalid-name"}]});
             expect((await resolver.resolve(projectRoot))?.configurationProvenance).toBeUndefined();
             await expect(loadProjectDashboardContext(projectRoot)).resolves.toMatchObject({status: "error", error: expect.stringContaining("pokie-game-manifest-invalid-name")});
             expect(session.lazy()).toBe("Installed before");
@@ -206,6 +226,7 @@ describe("StudioJobService executor bridge routes", () => {
                 const recovered = await loadPokieGameRuntime(projectRoot);
                 try {
                     expect(recovered.game.getManifest().name).toBe("Installed after");
+                    await expect(validator.validate(projectRoot)).resolves.toMatchObject({valid: true, game: {name: "Installed after"}});
                     expect((await resolver.resolve(projectRoot))?.configurationProvenance).toMatchObject({configurationHash: "Installed after", manifestIdentity: "installed-game@1.0.0"});
                     await expect(loadProjectDashboardContext(projectRoot)).resolves.toMatchObject({status: "loaded", game: {name: "Installed after"}});
                 } finally {
@@ -267,22 +288,38 @@ describe("StudioJobService executor bridge routes", () => {
     });
 
     it.each(["explicit", "compatibility"])("cleans a failed dependency copy and retains %s cleanup rejection until the owner handles it", async api => {
-        const {leaf} = writeInstalledRuntime(projectRoot);
-        const copy = fs.promises.cp.bind(fs.promises);
-        let failedRoot: string | undefined;
-        const copying = jest.spyOn(fs.promises, "cp").mockImplementation(async (source, destination, options) => {
-            await copy(source, destination, options);
-            if (source === leaf) {
-                failedRoot = path.resolve(String(destination), "..", "..", "..", "..");
-                throw new Error("Installed dependency copy failed");
-            }
-        });
+        writeInstalledRuntime(projectRoot);
+        const resolver = new ProjectTargetResolver();
+        const validator = new PokieGamePackageValidator();
+        const broken = path.join(projectRoot, "node_modules", "broken-copy");
+        const manifestPath = path.join(projectRoot, "package.json");
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        manifest.dependencies["broken-copy"] = "1";
+        fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+        // An installed dependency that is a file instead of a package directory fails in
+        // the actual copy worker, after it has already copied the project's root files.
+        fs.writeFileSync(broken, "not a package directory");
+        const creating = jest.spyOn(fs.promises, "mkdtemp");
         try {
-            await expect(resolvePokieGameEntryModule(projectRoot)).rejects.toThrow("Installed dependency copy failed");
-            expect(failedRoot).toBeDefined();
-            expect(fs.existsSync(failedRoot!)).toBe(false);
+            await expect(resolvePokieGameEntryModule(projectRoot)).rejects.toThrow(/ENOTDIR|not a directory/);
+            await expect(loadPokieGameRuntime(projectRoot)).rejects.toThrow(/ENOTDIR|not a directory/);
+            await expect(validator.validate(projectRoot)).resolves.toMatchObject({valid: false, errors: [{code: "pokie-package-load-failed", message: expect.stringMatching(/ENOTDIR|not a directory/)}]});
+            expect((await resolver.resolve(projectRoot))?.configurationProvenance).toBeUndefined();
+            await expect(loadProjectDashboardContext(projectRoot)).resolves.toMatchObject({status: "error", error: expect.stringMatching(/ENOTDIR|not a directory/)});
+            for (const result of creating.mock.results) {
+                const failedRoot = await result.value as string;
+                expect(fs.existsSync(failedRoot)).toBe(false);
+            }
         } finally {
-            copying.mockRestore();
+            creating.mockRestore();
+        }
+        fs.unlinkSync(broken);
+        fs.mkdirSync(broken);
+        fs.writeFileSync(path.join(broken, "package.json"), '{"name":"broken-copy"}');
+        for (let attempt = 0; attempt < 2; attempt++) {
+            await expect(validator.validate(projectRoot)).resolves.toMatchObject({valid: true, game: {name: "Installed before"}});
+            expect((await resolver.resolve(projectRoot))?.configurationProvenance).toMatchObject({configurationHash: "Installed before"});
+            await expect(loadProjectDashboardContext(projectRoot)).resolves.toMatchObject({status: "loaded", game: {name: "Installed before"}});
         }
         const repaired = api === "explicit" ? await resolvePokieGameEntryModule(projectRoot) : await (async () => {
             const game = await loadPokieGame(projectRoot);
