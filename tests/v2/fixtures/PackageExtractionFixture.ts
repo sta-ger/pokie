@@ -13,11 +13,17 @@ export function createPackageExtractionTestEnvironment(): () => void {
     fs.mkdirSync(cache, {recursive: true});
     const directory = fs.mkdtempSync(path.join(cache, "pokie-package-extraction-"));
     const original = process.env.TMPDIR;
+    const originalTmpdir = os.tmpdir;
     process.env.TMPDIR = directory;
+    // Node's POSIX os.tmpdir() reads the native environment, not Jest's process.env copy.
+    // Set the OS boundary explicitly too. A plain override survives callers' restoreAllMocks();
+    // the suite owns restoring it after every operation has drained.
+    os.tmpdir = () => directory;
     return () => {
         try {
             fs.rmSync(directory, {recursive: true, force: true});
         } finally {
+            os.tmpdir = originalTmpdir;
             if (original === undefined) Reflect.deleteProperty(process.env, "TMPDIR");
             else process.env.TMPDIR = original;
         }

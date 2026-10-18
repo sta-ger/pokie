@@ -166,12 +166,17 @@ describe("ArtifactBuilderRegistry", () => {
     }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("propagates cancellation into validation's initial preparation when no plan is supplied", async () => {
+        // Exercise the real loader with direct-Jest caller context even under the npm wrapper.
+        const callerEnvironment = Object.entries(process.env).filter(([key]) =>
+            key.startsWith("npm_lifecycle_") || key.startsWith("npm_package_") || key === "INIT_CWD" || key === "TMPDIR");
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-unprepared-validation-"));
         const fixture = writePausedDescriptorPackage(root, undefined, {pauseAtRead: 1});
         const snapshots = runtimeSnapshotNames(fixture.source);
         const project: PokieProject = {type: "tsPackage", rootPath: fixture.source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
         const controller = new AbortController();
         try {
+            for (const [key] of callerEnvironment) Reflect.deleteProperty(process.env, key);
+            expect(path.dirname(os.tmpdir())).toBe(path.resolve(__dirname, "../../node_modules/.cache/pokie-tmp"));
             const checked = expect(registry.validate("blueprint", project, undefined, {signal: controller.signal}))
                 .rejects.toBeInstanceOf(ArtifactBuildCancelledError);
             await fixture.waitForRead(checked);
@@ -182,8 +187,12 @@ describe("ArtifactBuilderRegistry", () => {
             expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
             expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
         } finally {
-            fixture.restore();
-            fs.rmSync(root, {recursive: true, force: true});
+            try {
+                fixture.restore();
+                fs.rmSync(root, {recursive: true, force: true});
+            } finally {
+                for (const [key, value] of callerEnvironment) process.env[key] = value;
+            }
         }
     }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
