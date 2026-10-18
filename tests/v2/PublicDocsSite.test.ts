@@ -252,12 +252,14 @@ describe("public documentation production build", () => {
 
     it("keeps both WASM guides consistent with declared-mode help and supported replay addressing", () => {
         const commands = new JSDOM(html("/docs/cli-api/")).window.document;
-        expect(commands.getElementById("pokie-sim")!.nextElementSibling!.textContent).toContain(
-            "declared modes support --mode <id|all>",
-        );
-        expect(commands.getElementById("pokie-replay")!.nextElementSibling!.textContent).toContain(
-            "declared features support --mode and --unit logical-round",
-        );
+        const simHelp = commands.getElementById("pokie-sim")!.nextElementSibling!.textContent!.replace(/\s+/g, " ");
+        const replayHelp = commands
+            .getElementById("pokie-replay")!
+            .nextElementSibling!.textContent!.replace(/\s+/g, " ");
+        expect(simHelp).toContain("--mode <betModeId>");
+        expect(simHelp).toContain('"all" for every declared mode');
+        expect(replayHelp).toContain("--mode <modeName>");
+        expect(replayHelp).toContain("--unit <unit> package replay address unit: step or logical-round");
         for (const route of ["/docs/interop/", "/docs/reproducibility/"]) {
             const prose = new JSDOM(html(route)).window.document.querySelector("article")!.textContent!;
             expect(prose).toContain(
@@ -292,11 +294,7 @@ describe("public documentation production build", () => {
                 "complete seeded policy",
                 "docs/optimization.md#seeded-search-and-held-out-assessment",
             ],
-            [
-                "/docs/interop/",
-                "PAR import/export source guide",
-                "docs/cli.md#workbook-format",
-            ],
+            ["/docs/interop/", "PAR import/export source guide", "docs/cli.md#workbook-format"],
         ];
         for (const [route, label, destination] of destinations) {
             const document = new JSDOM(html(route)).window.document;
