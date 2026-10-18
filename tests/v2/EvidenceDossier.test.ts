@@ -90,7 +90,7 @@ describe("canonical evidence dossier", () => {
             const text = (await new CertificationDossierRenderer().render(manifest, format)).toString();
             for (const field of ["paylines", "wilds", "scatters", "rows", "reels", "reelStripGeneration", "reelStrips", "WILD_ROLE", "SCATTER_ROLE", "987654", "authored", "effective"]) expect(text).toContain(field);
             if (format === "json") expect(JSON.parse(text).dossier.rules.definition.authored.paylines).toEqual([[2, 0, 1]]);
-            else for (const [key, value] of [["authored.0.0", "2"], ["effective.0.1", "0"], ["effective.0.2", "1"]]) expect(text).toMatch(new RegExp(`${key.replaceAll(".", "\\.")}[^\\n]*${value}`));
+            else for (const [key, value] of [["authored.0.0", "2"], ["effective.0.1", "0"], ["effective.0.2", "1"]]) expect(text).toMatch(new RegExp(`${key.replace(/\./g, "\\.")}[^\\n]*${value}`));
         }
     });
 
@@ -275,7 +275,7 @@ console.log(JSON.stringify({closed: ["candidate", "model", "valid-report-substit
             emitAdapter("cli/studio/isPathWithin.ts", "isPathWithin.mjs");
             emitAdapter("cli/studio/outcomeLibrary/resolveProjectDirectory.ts", "resolveProjectDirectory.mjs", source => source.replace("../isPathWithin.js", "./isPathWithin.mjs"));
             const sourcePrefix = pathToFileURL(path.join(runtime.directory, "node_modules/@fromstan/pokie/dist/esm/")).href;
-            emitAdapter("cli/studio/certification/StudioCertificationService.ts", "StudioCertificationService.mjs", source => source.replaceAll("../../../src/", sourcePrefix).replace("../outcomeLibrary/resolveProjectDirectory.js", "./resolveProjectDirectory.mjs"));
+            emitAdapter("cli/studio/certification/StudioCertificationService.ts", "StudioCertificationService.mjs", source => source.split("../../../src/").join(sourcePrefix).replace("../outcomeLibrary/resolveProjectDirectory.js", "./resolveProjectDirectory.mjs"));
             const studioScript = path.join(runtime.directory, "studio-package.mjs");
             fs.writeFileSync(studioScript, `
 import fs from "node:fs";
