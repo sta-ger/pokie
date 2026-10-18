@@ -206,6 +206,11 @@ const badFile = path.join(root, "bad-report.json"); fs.writeFileSync(badFile, JS
 const refused = await new api.CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(source, ${JSON.stringify(modes)}, path.join(root, "refused"), {dossier: {...authorities, reportFiles: [badFile]}});
 assert(!refused.manifest && refused.issues.some(issue => /deterministic execution/.test(issue.message)), JSON.stringify(refused.issues));
 assert(!fs.existsSync(path.join(root, "refused")));
+const badTarget = {...otherReport, targetRtp: 0.42, rtpDeviation: otherReport.rtp - 0.42};
+const targetFile = path.join(root, "bad-target.json"); fs.writeFileSync(targetFile, JSON.stringify(badTarget));
+const targetResult = await new api.CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(source, ${JSON.stringify(modes)}, path.join(root, "refused-target"), {dossier: {...authorities, reportFiles: [targetFile]}});
+assert(!targetResult.manifest && targetResult.issues.some(issue => /declared RTP target/.test(issue.message)), JSON.stringify(targetResult.issues));
+assert(!fs.existsSync(path.join(root, "refused-target")));
 candidate = structuredClone(original);
 const recording = candidate.dossier.reproduction.recordings[0].value;
 recording.deliveries[0].after.credits += 1;
@@ -219,11 +224,11 @@ await publish(candidate);
 const replacedReplay = path.join(root, "rehashed-replay.json"); fs.writeFileSync(replacedReplay, rawReplay);
 await rejects({...authorities, replayFiles: [replacedReplay]}, "audit-execution-mismatch");
 await publish(original);
-console.log(JSON.stringify({closed: ["candidate", "model", "valid-report-substitution", "false-report-math", "rehashed-runtime-replay"]}));
+console.log(JSON.stringify({closed: ["candidate", "model", "valid-report-substitution", "false-report-math", "false-report-target", "rehashed-runtime-replay"]}));
 `);
             console.info("V2C-27 fixture identities", JSON.stringify({evidenceContentHash: original.manifest.evidenceContentHash, modelHash: original.manifest.dossier.identity.modelHash, modelArtifactHash: original.manifest.dossier.identity.modelArtifactHash, sourceManifestHash: original.manifest.sourceBundleManifestHash, templateHash: original.manifest.presentation.templateHash, pdfHash: original.artifactHashes["dossier.pdf"]}));
             const attacks = JSON.parse(execFileSync(process.execPath, [attackScript, relocated], {encoding: "utf8", timeout: 120000})) as {closed: string[]};
-            expect(attacks.closed).toEqual(["candidate", "model", "valid-report-substitution", "false-report-math", "rehashed-runtime-replay"]);
+            expect(attacks.closed).toEqual(["candidate", "model", "valid-report-substitution", "false-report-math", "false-report-target", "rehashed-runtime-replay"]);
             const manifest = JSON.parse(fs.readFileSync(path.join(relocated, "dossier", "manifest.json"), "utf8")) as CertificationEvidenceBundleManifest;
             for (const format of ["json", "console", "markdown", "html", "pdf"] as const) {
                 const text = (await new CertificationDossierRenderer().render(manifest, format)).toString();

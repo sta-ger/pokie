@@ -60,12 +60,14 @@ export function validateDossierReport(value: unknown, modelHash: string | null, 
         const native = report as SimulationReport & {libraryHash?: string; libraryId?: string; modeName?: string};
         const mode = source.modes.find(entry => entry.modeName === native.modeName);
         validateSimulationStatisticsForReport(Reflect.get(native, "statistics"));
+        if (report.targetRtp !== undefined) throw new Error("Native outcome bundles have no declared RTP target authority; do not infer one from their exact distribution.");
         if (!mode || report.reproducibility.configHash !== undefined || mode.libraryHash !== report.reproducibility.libraryHash || mode.libraryHash !== native.libraryHash || mode.libraryId !== native.libraryId || report.betMode !== native.modeName) throw new Error("Outcome-source report does not bind the selected mode/library; a library hash is not a model hash.");
     } else if (!modelHash || report.reproducibility.configHash !== modelHash) throw new Error("Simulation report does not bind the selected actual model; game name/version alone is insufficient.");
     if (report.reproducibility.seed !== report.seed || dossierHash(report.reproducibility.game) !== dossierHash(report.game)) throw new Error("Contradictory simulation seed/game reproducibility metadata.");
     if (report.reproducibility.pokieVersion !== source.artifactPokieVersion) throw new Error("Simulation report runtime version is incompatible with the source artifacts.");
     for (const field of ["totalBet", "totalWin", "rtp", "hitFrequency", "maxWin", "durationMs", "spinsPerSecond"] as const) if (!Number.isFinite(report[field]) || report[field] < 0) throw new Error(`Invalid simulation report ${field}.`);
     if (!Number.isSafeInteger(report.rounds) || !Number.isSafeInteger(report.requestedRounds) || report.rounds < 0 || report.requestedRounds < report.rounds || report.reproducibility.actualRounds !== report.rounds || report.reproducibility.requestedRounds !== report.requestedRounds) throw new Error("Inconsistent simulation report populations.");
+    if (report.targetRtp === undefined && report.rtpDeviation !== undefined || report.targetRtp !== undefined && (!Number.isFinite(report.targetRtp) || !Number.isFinite(report.rtpDeviation) || Math.abs(report.rtpDeviation! - (report.rtp - report.targetRtp)) > 1e-10)) throw new Error("Simulation target/deviation metadata is inconsistent; deviations use ratio units.");
     if (report.totalBet > 0 && Math.abs(report.rtp - report.totalWin / report.totalBet) > 1e-10) throw new Error("Simulation report RTP contradicts its stake/payout amounts.");
     if (report.reproducibility.libraryHash === undefined && report.betMode !== undefined && !source.modes.some(mode => mode.betMode === report.betMode)) throw new Error("Simulation report mode is not in the selected source.");
 }
@@ -122,6 +124,8 @@ export async function acquireCertificationDossier(source: OutcomeLibraryBundleMa
                 seedStrategy = result.report.workerSeedStrategy!;
             } else {
                 if (!inputs.modelSource || !loaded) throw new Error("Runtime statistics require an explicitly selected executable package; a definition alone cannot grant execution.");
+                const declaredTarget = loaded.game.getBetModes?.().find(mode => mode.id === report.betMode)?.targetRtp;
+                if (report.targetRtp !== undefined && report.targetRtp !== declaredTarget) throw new Error("Simulation report declared RTP target differs from the selected model's mode declaration.");
                 const result = await new ParallelSimulationRunner(inputs.modelSource, report.requestedRounds, {
                     seed: report.seed, workers: report.workers, signal, betModeId: report.betMode, convergence: report.convergence, requireCleanup: true,
                 }).run();
