@@ -1,5 +1,6 @@
+import {parSheetConversionReport} from "../parsheet/ParSheetConversionReport.js";
 import {rollbackArtifactPublication} from "./ArtifactPublicationOwnership.js";
-import {ParSheetExporter, prepareBlueprintForParSheetExport} from "../parsheet/ParSheetExporter.js";
+import {ParSheetExporter, inspectParSheetConversion, prepareBlueprintForParSheetExport} from "../parsheet/ParSheetExporter.js";
 import type {ParSheetExporting, ParSheetFilePublication} from "../parsheet/ParSheetExporting.js";
 import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
 import type {ParSheetImporting} from "../parsheet/ParSheetImporting.js";
@@ -40,6 +41,12 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
         this.loadBlueprint = loadBlueprint;
     }
 
+    public async inspectConversion(source: PokieProject) {
+        if (source.type === "blueprint") return inspectParSheetConversion(this.loadBlueprint(source.rootPath), source.rootPath);
+        const imported = await this.importer.importFromFile(source.rootPath);
+        return inspectParSheetConversion(imported.blueprint, undefined, {conversionReport: parSheetConversionReport(imported.issues, imported.conversionEvidence), losslessEligible: imported.conversionEvidence?.losslessEligible ?? false});
+    }
+
     public async validate(source: PokieProject): Promise<void> {
         if (source.type === "blueprint") {
             this.assertBlueprintCanExport(source.rootPath);
@@ -68,6 +75,7 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
                 reportArtifactBuildProgress(options, {status: "running", message: "Preparing Blueprint reel source for PAR workbook"});
                 this.assertBlueprintCanExport(source.rootPath);
                 reportArtifactBuildProgress(options, {status: "running", message: "Publishing PAR workbook"});
+                const conversion = await this.inspectConversion(source);
                 const exportIssues = await this.exporter.exportToFile(this.loadBlueprint(source.rootPath), destinationPath, source.rootPath, {
                     signal: options?.signal,
                     onPublication: owned => {
@@ -79,7 +87,7 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
                 if (exportErrors.length > 0) throw new Error(this.exportErrorMessage(source.rootPath, destinationPath, exportErrors));
                 assertArtifactBuildNotCancelled(options);
                 reportArtifactBuildProgress(options, {status: "completed"});
-                return {outputPath: destinationPath, publishedFileOwnership: publication === undefined ? [] : [publication]};
+                return {outputPath: destinationPath, publishedFileOwnership: publication === undefined ? [] : [publication], parConversion: parSheetConversionReport(exportIssues, conversion)};
             }
 
             const imported = await this.importer.importFromFile(source.rootPath);
@@ -96,6 +104,7 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
             reportArtifactBuildProgress(options, {status: "running", message: "Publishing PAR workbook"});
             const exportIssues = await this.exporter.exportToFile(imported.blueprint, destinationPath, source.rootPath, {
                 losslessEligible: imported.conversionEvidence?.losslessEligible ?? false,
+                conversionReport: parSheetConversionReport(imported.issues, imported.conversionEvidence),
                 onPublication: owned => {
                     publication = owned;
                 },
@@ -109,7 +118,7 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
             }
 
             reportArtifactBuildProgress(options, {status: "completed"});
-            return {outputPath: destinationPath, publishedFileOwnership: publication === undefined ? [] : [publication]};
+            return {outputPath: destinationPath, publishedFileOwnership: publication === undefined ? [] : [publication], parConversion: parSheetConversionReport([...imported.issues, ...exportIssues], imported.conversionEvidence)};
         } catch (error) {
             await rollbackArtifactPublication({publishedFileOwnership: publication === undefined ? [] : [publication]});
             if (options?.signal?.aborted) {

@@ -58,6 +58,15 @@ import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {PathInput} from "../common/PathInput";
 
+function ParConversionDiagnostics({report}: {report: StudioArtifactConversionPlan["parConversion"]}) {
+    if (report === undefined) return null;
+    return <>
+        <Text size="sm">PAR lossless eligible: {String(report.losslessEligible)}</Text>
+        <IssueList title="PAR conversion diagnostics" issues={[...report.issues]} />
+        {report.facts.map((fact, index) => <Text size="sm" key={index}>{fact.kind}: {fact.code} — {fact.message}</Text>)}
+    </>;
+}
+
 const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: string}> = {
     outcomeLibrary: {
         legend: "Outcome libraries",
@@ -737,6 +746,7 @@ function TargetCard({
                                 )}
                                 {artifactPreview.result.plan?.packageExtraction && artifactPreview.result.plan.source.configurationProvenance?.inputBindingHash && <Text size="sm">Source binding: {artifactPreview.result.plan.source.configurationProvenance.inputBindingHash}</Text>}
                                 <PackageExtractionDiagnostics extraction={artifactPreview.result.plan?.packageExtraction} />
+                                <ParConversionDiagnostics report={artifactPreview.result.plan?.parConversion} />
                                 {artifactPreview.result.plan?.preflight.losses.map((loss, index) => <Text key={index} size="sm" c="orange">Data boundary: {loss}</Text>)}
                                 {artifactPreview.result.plan?.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []).map((loss, index) => <Text key={index} size="sm" c="orange">PAR import boundary: {loss}</Text>)}
                                 {artifactPreview.status === "conflict" && <ErrorState message="Destination unavailable. Choose a different destination; Build will not overwrite it." />}
@@ -830,6 +840,7 @@ function TargetCard({
                                     {artifactBuildRun.result.importedBlueprintPath !== undefined && ` Imported Blueprint: ${artifactBuildRun.result.importedBlueprintPath}.`}
                                     {artifactBuildRun.result.conversionEvidencePath !== undefined && ` Conversion evidence: ${artifactBuildRun.result.conversionEvidencePath}.`}
                                 </Text>
+                                <ParConversionDiagnostics report={artifactBuildRun.result.parConversion ?? artifactBuildRun.result.plan?.parConversion} />
                                 {artifactBuildRun.result.plan?.packageExtraction && <Text size="sm" c="dimmed">Extraction evidence records this original publication. Subsequent Blueprint edits preserve it as historical provenance.</Text>}
                                 {artifactBuildRun.result.plan !== undefined && (
                                     <Text size="sm" c="dimmed" mt={4}>

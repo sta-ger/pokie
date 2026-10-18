@@ -573,3 +573,206 @@ describe("Stake exact interchange and independent numeric domains", () => {
         expect(inventory(source)).toEqual(before);
     });
 });
+
+describe("V2C-26 review conversion boundaries", () => {
+    it.each(["unsupported schema", "malformed schema", "missing schema", "invalid eligibility", "invalid history", "legacy eligibility", "pristine"])("keeps %s disposition across direct, CLI, Studio and durable re-export", async kind => {
+        const source = path.join(directory, "source.xlsx");
+        await new api.ParSheetExporter("1").exportToFile(boundedBlueprint(), source);
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(source);
+        const meta = workbook.getWorksheet("Meta")!;
+        if (kind === "unsupported schema") meta.getCell("B2").value = 99;
+        if (kind === "malformed schema") meta.getCell("B2").value = "invalid";
+        if (kind === "missing schema") meta.spliceRows(2, 1);
+        if (kind === "invalid eligibility") meta.getCell("B7").value = "invalid";
+        if (kind === "invalid history") meta.getCell("B8").value = "invalid";
+        if (kind === "legacy eligibility") meta.spliceRows(7, 1);
+        await workbook.xlsx.writeFile(source);
+        const before = fs.readFileSync(source);
+        const imported = await new api.ParSheetImporter().importFromFile(source);
+        const eligible = kind === "pristine" || kind === "legacy eligibility";
+        expect(errors(imported.issues)).toEqual([]);
+        expect(imported.conversionEvidence?.provenanceHashMatches).toBe(true);
+        expect(imported.conversionEvidence?.losslessEligible).toBe(eligible);
+        const codes: Record<string, string> = {"unsupported schema": "parsheet-provenance-schema-mismatch", "invalid eligibility": "parsheet-provenance-lossless-invalid", "invalid history": "parsheet-provenance-history-invalid"};
+        const code = codes[kind] ?? "parsheet-provenance-malformed";
+        if (!eligible) expect(imported.issues).toContainEqual(expect.objectContaining({code}));
+        const direct = path.join(directory, "direct.xlsx");
+        await new api.ParSheetExporter("1").exportToFile(imported.blueprint, direct, source);
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const cli = path.join(directory, "cli.xlsx");
+        expect(await new BuildCommand("1").run([source, "--target", "parWorkbook", "--out", cli])).toBe(0);
+        if (!eligible) expect(log.mock.calls.flat().join("\n")).toContain(code);
+        const studioPath = path.join(directory, "studio.xlsx");
+        const studio = new StudioArtifactBuildService("1");
+        const preview = await studio.preview(source, "parWorkbook", studioPath);
+        expect(preview).toMatchObject({status: "ok", plan: {parConversion: {losslessEligible: eligible}}});
+        const result = await studio.build(source, "parWorkbook", studioPath);
+        expect(result).toMatchObject({status: "ok", parConversion: {losslessEligible: eligible}});
+        const blueprintPath = path.join(directory, "imported.json");
+        const publication = await new api.BlueprintArtifactBuilder().build((await new api.ProjectTargetResolver().resolve(source))!, blueprintPath);
+        const evidence = JSON.parse(fs.readFileSync(publication.conversionEvidencePath!, "utf8"));
+        expect(evidence.losslessEligible).toBe(eligible);
+        const durable = path.join(directory, "durable.xlsx");
+        await new api.ParWorkbookArtifactBuilder("1").build((await new api.ProjectTargetResolver().resolve(blueprintPath))!, durable);
+        const aliasBlueprint = path.join(directory, "alias.json"),
+            aliasWorkbook = path.join(directory, "alias.xlsx");
+        expect(await new ParCommand("1").run(["import", source, "--out", aliasBlueprint, "--format", "json"])).toBe(0);
+        expect(await new ParCommand("1").run(["export", aliasBlueprint, "--out", aliasWorkbook])).toBe(0);
+        const draftService = new StudioBlueprintService("1", path.join(directory, "studio-home"), new StudioHomeService("1"));
+        const draft = await draftService.importParSheet(source);
+        expect(draft.status).toBe("ok");
+        if (draft.status !== "ok") throw new Error("Expected imported draft");
+        const draftPath = path.join(directory, "draft-export.xlsx");
+        expect((await draftService.exportParSheet(draft.blueprint, draftPath, false, source)).status).toBe("ok");
+        for (const output of [direct, cli, studioPath, durable, draftPath, aliasWorkbook]) {
+            const reopened = await new api.ParSheetImporter().importFromFile(output);
+            expect(reopened.conversionEvidence?.losslessEligible).toBe(eligible);
+            if (!eligible) expect(reopened.conversionEvidence?.facts).toContainEqual(expect.objectContaining({code}));
+        }
+        expect(fs.readFileSync(source)).toEqual(before);
+    });
+
+    it.each(["formula", "ignored", "default reels", "shared weights", "generated reels"])("discloses and retains %s facts in canonical plans, results and evidence", async kind => {
+        const model = boundedBlueprint();
+        if (kind === "generated reels") {
+            model.reelStripGeneration = model.reelStrips!.map(strip => ({type: "generated" as const, length: strip.length, symbolCounts: Object.fromEntries(model.symbols.map(symbol => [symbol, strip.filter(value => value === symbol).length])), seed: 17}));
+        }
+        if (kind === "default reels" || kind === "shared weights" || kind === "generated reels") Reflect.deleteProperty(model, "reelStrips");
+        if (kind === "shared weights") model.symbolWeights = Object.fromEntries(model.symbols.map(symbol => [symbol, 1]));
+        const blueprint = path.join(directory, "source.json");
+        fs.writeFileSync(blueprint, JSON.stringify(model));
+        const source = path.join(directory, "source.xlsx");
+        const registry = new api.ArtifactBuilderRegistry("1");
+        const project = (await new api.ProjectTargetResolver().resolve(blueprint))!;
+        const initialPlan = await registry.preparePlan(project, "parWorkbook", {destinationPath: source});
+        const first = await registry.executePlan(initialPlan, project, source);
+        if (kind === "default reels" || kind === "shared weights" || kind === "generated reels") {
+            expect(initialPlan.parConversion?.losslessEligible).toBe(false);
+            expect(first.parConversion).toEqual(initialPlan.parConversion);
+        }
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(source);
+        if (kind === "formula") {
+            const cell = workbook.getWorksheet("AvailableBets")!.getCell("A2");
+            cell.value = {formula: "1", result: cell.value as number};
+        }
+        if (kind === "ignored") workbook.addWorksheet("Author Notes").addRow(["unrepresented"]);
+        await workbook.xlsx.writeFile(source);
+        const imported = await new api.ParSheetImporter().importFromFile(source);
+        expect(imported.conversionEvidence?.losslessEligible).toBe(false);
+        const codes: Record<string, string> = {formula: "parsheet-formula-cell", ignored: "parsheet-unknown-sheet"};
+        const expected = codes[kind] ?? first.parConversion!.issues.find(issue => issue.details?.losslessEligible === false)!.code;
+        const output = path.join(directory, "republished.xlsx");
+        const resolved = (await new api.ProjectTargetResolver().resolve(source))!;
+        const plan = await registry.preparePlan(resolved, "parWorkbook", {destinationPath: output});
+        const result = await registry.executePlan(plan, resolved, output);
+        for (const report of [plan.parConversion, result.parConversion]) {
+            expect(report?.losslessEligible).toBe(false);
+            expect(report?.issues).toContainEqual(expect.objectContaining({code: expected}));
+            expect(report?.facts).toEqual(expect.arrayContaining(imported.conversionEvidence!.facts));
+        }
+        const second = await new api.ParSheetImporter().importFromFile(output);
+        expect(second.conversionEvidence?.facts).toEqual(expect.arrayContaining(imported.conversionEvidence!.facts));
+        const durable = await new api.BlueprintArtifactBuilder().build((await new api.ProjectTargetResolver().resolve(output))!, path.join(directory, "durable.json"));
+        expect(JSON.parse(fs.readFileSync(durable.conversionEvidencePath!, "utf8")).facts).toEqual(expect.arrayContaining(imported.conversionEvidence!.facts));
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        expect(await new BuildCommand("1").run([source, "--target", "parWorkbook", "--out", path.join(directory, "dry.xlsx"), "--dry-run"])).toBe(0);
+        expect(log.mock.calls.flat().join("\n")).toContain(expected);
+        const studio = new StudioArtifactBuildService("1");
+        const studioPath = path.join(directory, "studio.xlsx");
+        expect(await studio.preview(source, "parWorkbook", studioPath)).toMatchObject({status: "ok", plan: {parConversion: {facts: expect.arrayContaining(imported.conversionEvidence!.facts)}}});
+        expect(await studio.build(source, "parWorkbook", studioPath)).toMatchObject({status: "ok", parConversion: {facts: expect.arrayContaining(imported.conversionEvidence!.facts)}});
+    });
+
+    it.each((["numeric", "wide", "native"] as const).flatMap(domain => ["weights", "books", "index", "provenance", "coordinated payout"].map(change => ({domain, change}))))("rejects retained $domain Stake preview after valid $change change and accepts fresh preparation", async ({domain, change}) => {
+        const source = await stakeFixture();
+        if (domain === "numeric") fs.writeFileSync(path.join(source, "lookup_base.csv"), "0,1,0\n1,1,200\n");
+        if (domain === "native") {
+            fs.renameSync(path.join(source, "pokie-manifest.json"), path.join(source, "optimization-input-pokie-manifest.json"));
+            writeNativeStakeTuningManifest(source);
+        }
+        const resolver = new api.ProjectTargetResolver();
+        const project = (await resolver.resolve(source))!;
+        expect(project.configurationProvenance?.inputBindingHash).toBeDefined();
+        const registry = new api.ArtifactBuilderRegistry("1");
+        const output = path.join(directory, "stale");
+        const plan = await registry.preparePlan(project, "stakeAdapter", {destinationPath: output});
+        const studio = new StudioArtifactBuildService("1");
+        const operation = (await studio.prepareStakeProjection(source, path.join(directory, "studio")))!;
+        if (change === "weights") fs.writeFileSync(path.join(source, "lookup_base.csv"), domain === "numeric" ? "0,1,0\n1,2,200\n" : "0,18446744073709551614,0\n1,2,200\n");
+        if (change === "books") {
+            // Valid changed book encoding, consumed by both native and numeric readers.
+            const file = path.join(source, "books_base.jsonl.zst");
+            const rows = zlib.zstdDecompressSync(fs.readFileSync(file)).toString("utf8").trim().split("\n").map(row => JSON.stringify(JSON.parse(row), null, 0));
+            fs.writeFileSync(file, zlib.zstdCompressSync(Buffer.from(`${rows.join("\r\n")}\r\n`)));
+        }
+        if (change === "coordinated payout") {
+            const weights = path.join(source, "lookup_base.csv"),
+                books = path.join(source, "books_base.jsonl.zst");
+            fs.writeFileSync(weights, fs.readFileSync(weights, "utf8").replace(/200/g, "300"));
+            fs.writeFileSync(books, zlib.zstdCompressSync(Buffer.from(zlib.zstdDecompressSync(fs.readFileSync(books)).toString("utf8").replace(/200/g, "300"))));
+        }
+        if (change === "index") {
+            const file = path.join(source, "index.json");
+            fs.writeFileSync(file, JSON.stringify(JSON.parse(fs.readFileSync(file, "utf8"))));
+        }
+        if (change === "provenance") {
+            const file = path.join(source, domain === "native" ? "optimization-input-pokie-manifest.json" : "pokie-manifest.json");
+            const manifest = JSON.parse(fs.readFileSync(file, "utf8"));
+            manifest.generatedAt = "2026-10-18T00:00:00.000Z";
+            fs.writeFileSync(file, JSON.stringify(manifest));
+        }
+        if (domain === "native") writeNativeStakeTuningManifest(source);
+        const changed = inventory(source);
+        await expect(registry.executePlan(plan, project, output)).rejects.toThrow(/changed|stale/);
+        expect(await studio.executeStakeProjection(operation)).toMatchObject({status: "error", message: expect.stringMatching(/changed|stale/)});
+        expect(fs.existsSync(output)).toBe(false);
+        expect(fs.existsSync(operation.destinationPath)).toBe(false);
+        const fresh = (await resolver.resolve(source))!;
+        await registry.build("stakeAdapter", fresh, output);
+        expect(fs.readFileSync(path.join(output, "lookup_base.csv"))).toEqual(fs.readFileSync(path.join(source, "lookup_base.csv")));
+        const next = (await studio.prepareStakeProjection(source, operation.destinationPath))!;
+        expect(await studio.executeStakeProjection(next)).toMatchObject({status: "ok"});
+        expect(inventory(source)).toEqual(changed);
+        // The same previously used owners remain usable after executed rejection.
+        await registry.build("stakeAdapter", fresh, path.join(directory, "subsequent"));
+    });
+
+    it.each((["numeric", "wide", "native"] as const).flatMap(domain => [false, true].flatMap(replace => [false, true].map(cancel => ({domain, replace, cancel})))))("guards $domain ownership at Studio rollback (replacement $replace, cancellation $cancel)", async ({domain, replace, cancel}) => {
+        const source = await stakeFixture();
+        if (domain === "numeric") fs.writeFileSync(path.join(source, "lookup_base.csv"), "0,1,0\n1,1,200\n");
+        if (domain === "native") {
+            fs.renameSync(path.join(source, "pokie-manifest.json"), path.join(source, "optimization-input-pokie-manifest.json"));
+            writeNativeStakeTuningManifest(source);
+        }
+        const before = inventory(source);
+        const output = path.join(directory, "published");
+        fs.mkdirSync(output);
+        const controller = new AbortController();
+        const registry = new api.ArtifactBuilderRegistry("1");
+        const execute = registry.executePlan.bind(registry);
+        jest.spyOn(registry, "executePlan").mockImplementation(async (...args) => {
+            const result = await execute(...args);
+            expect(result.publishedStakeDirectoryOwnership?.outDir).toBe(output);
+            // Exercise Studio's outer registration boundary using a real publication.
+            return {...result, managedProjectRoots: [output]};
+        });
+        const studio = new StudioArtifactBuildService("1", registry, undefined, () => {
+            if (replace) {
+                fs.renameSync(output, `${output}.displaced`);
+                fs.mkdirSync(output);
+                fs.writeFileSync(path.join(output, "foreign.txt"), "independent publication");
+            }
+            if (!cancel) throw new Error("registration failed");
+            controller.abort();
+            return Promise.resolve();
+        });
+        expect(await studio.build(source, "stakeAdapter", output, {signal: controller.signal})).toMatchObject({status: cancel ? "cancelled" : "error"});
+        if (replace) expect(fs.readFileSync(path.join(output, "foreign.txt"), "utf8")).toBe("independent publication");
+        else expect(fs.readdirSync(output)).toEqual([]);
+        expect(inventory(source)).toEqual(before);
+        const retry = path.join(directory, "retry");
+        expect(await new StudioArtifactBuildService("1").build(source, "stakeAdapter", retry)).toMatchObject({status: "ok"});
+    });
+});

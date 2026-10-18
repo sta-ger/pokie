@@ -1,3 +1,4 @@
+import {parseParSheetConversionReport} from "../ParSheetConversionReport.js";
 import {GAME_BLUEPRINT_SCHEMA_VERSION, type GameBlueprint} from "../../generated/GameBlueprint.js";
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import {computeBlueprintHash} from "../computeBlueprintHash.js";
@@ -7,7 +8,7 @@ import type {ProvenanceSheetMapping} from "./ProvenanceSheetMapping.js";
 import {cellToNumber, cellToText, isBlankRow} from "./sheetCellParsing.js";
 
 const COLUMNS = ["Key", "Value"];
-const KNOWN_KEYS = ["Schema Version", "Pokie Version", "Exported At", "Source", "Blueprint Hash", "Lossless Eligible"];
+const KNOWN_KEYS = ["Schema Version", "Pokie Version", "Exported At", "Source", "Blueprint Hash", "Lossless Eligible", "Conversion Evidence"];
 
 // Meta fields are optional, but ignored or ambiguous content must be disclosed before a lossless
 // claim. Whether the parsed provenance is
@@ -73,11 +74,24 @@ export class ProvenanceSheetMapper implements ProvenanceSheetMapping {
         const losslessEligible = values.get("Lossless Eligible");
         if (losslessEligible === "true") provenance.losslessEligible = true;
         if (losslessEligible === "false") provenance.losslessEligible = false;
+        if (losslessEligible !== undefined && losslessEligible !== "true" && losslessEligible !== "false") {
+            provenance.losslessEligible = false;
+            issues.push({code: "parsheet-provenance-lossless-invalid", severity: "warning", message: 'Meta "Lossless Eligible" must be the literal true or false.', details: {value: losslessEligible, losslessEligible: false}});
+        }
 
+        const history = values.get("Conversion Evidence");
+        if (history !== undefined) {
+            try {
+                provenance.conversionReport = parseParSheetConversionReport(JSON.parse(history));
+            } catch {
+                provenance.losslessEligible = false;
+                issues.push({code: "parsheet-provenance-history-invalid", severity: "warning", message: "Meta Conversion Evidence is malformed; prior losses cannot be established.", details: {losslessEligible: false}});
+            }
+        }
         return {value: provenance, issues};
     }
 
-    public toRows(blueprint: GameBlueprint, pokieVersion: string, exportedAt: Date, sourcePath: string | undefined, losslessEligible = true): SheetGrid {
+    public toRows(blueprint: GameBlueprint, pokieVersion: string, exportedAt: Date, sourcePath: string | undefined, losslessEligible?: boolean, conversionReport?: import("../ParSheetConversionReport.js").ParSheetConversionReport): SheetGrid {
         return [
             COLUMNS,
             ["Schema Version", GAME_BLUEPRINT_SCHEMA_VERSION],
@@ -85,7 +99,8 @@ export class ProvenanceSheetMapper implements ProvenanceSheetMapping {
             ["Exported At", exportedAt.toISOString()],
             ["Source", sourcePath ?? ""],
             ["Blueprint Hash", computeBlueprintHash(blueprint)],
-            ["Lossless Eligible", String(losslessEligible)],
+            ["Lossless Eligible", String(losslessEligible ?? true)],
+            ...(conversionReport === undefined ? [] : [["Conversion Evidence", JSON.stringify(conversionReport)]]),
         ];
     }
 }

@@ -216,6 +216,10 @@ export class ParSheetImporter implements ParSheetImporting {
             });
         }
 
+        if (provenance?.conversionReport !== undefined) {
+            issues.push(...provenance.conversionReport.issues);
+            facts.push(...provenance.conversionReport.facts);
+        }
         issues.push(...this.validator.validate(blueprint));
 
         // Mapper diagnostics are the only place some parsers report that an
@@ -224,6 +228,7 @@ export class ParSheetImporter implements ParSheetImporting {
         // leaving them as generic diagnostics would let a matching Meta hash
         // incorrectly advertise an edited workbook as lossless.
         for (const issue of issues) {
+            if (issue.code === "parsheet-provenance-present") continue;
             if (!facts.some((fact) => fact.code === issue.code && fact.message === issue.message)) {
                 facts.push({kind: conversionFactKindForIssue(issue), code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})});
             }
@@ -237,7 +242,11 @@ export class ParSheetImporter implements ParSheetImporting {
         const importedBlueprintHash = computeBlueprintHash(blueprint);
         const provenanceHashMatches = provenance?.blueprintHash === importedBlueprintHash;
         const losslessEligible = provenanceHashMatches &&
+            provenance?.schemaVersion === GAME_BLUEPRINT_SCHEMA_VERSION &&
+            !issues.some(issue => issue.code === "parsheet-provenance-malformed") &&
             provenance?.losslessEligible !== false &&
+            provenance?.conversionReport?.losslessEligible !== false &&
+            !issues.some(issue => issue.details?.losslessEligible === false) &&
             !issues.some((issue) => issue.severity === "error") &&
             !facts.some((fact) => fact.kind === "ignored" || fact.kind === "formulaMaterialized" || fact.kind === "inferredOrDefaulted");
         return {blueprint, provenance, issues, conversionEvidence: {metaSheet, facts, losslessEligible, importedBlueprintHash, provenanceHashMatches}};
@@ -321,7 +330,7 @@ export class ParSheetImporter implements ParSheetImporting {
                 message: `This file was exported by pokie${provenance.pokieVersion ? ` v${provenance.pokieVersion}` : ""}${
                     provenance.exportedAt ? ` on ${provenance.exportedAt}` : ""
                 }, and its recorded hash matches the imported data.`,
-                details: {...provenance},
+                details: {...provenance, conversionReport: undefined},
             });
         }
 

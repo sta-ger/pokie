@@ -6,6 +6,7 @@ export type ParSheetFilePublication = {readonly path: string; readonly dev: numb
 export type ParSheetExportOptions = {
     /** A republished workbook cannot upgrade previously ineligible conversion evidence. */
     readonly losslessEligible?: boolean;
+    readonly conversionReport?: import("./ParSheetConversionReport.js").ParSheetConversionReport;
     readonly signal?: AbortSignal;
     /** Synchronous ownership notification; the export may still fail or cancel before resolving. */
     readonly onPublication?: (publication: ParSheetFilePublication) => void;

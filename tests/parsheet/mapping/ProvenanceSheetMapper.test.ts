@@ -58,6 +58,12 @@ describe("ProvenanceSheetMapper", () => {
         expect(mapper.fromRows(rows).value.losslessEligible).toBe(false);
     });
 
+    it.each(["invalid", "", "TRUE", "0"])("retains and diagnoses invalid explicit eligibility %s", value => {
+        const result = mapper.fromRows([["Key", "Value"], ["Lossless Eligible", value]]);
+        expect(result.value.losslessEligible).toBe(false);
+        expect(result.issues).toContainEqual(expect.objectContaining({code: "parsheet-provenance-lossless-invalid", details: {value, losslessEligible: false}}));
+    });
+
     it("returns no value and no issues for an empty sheet", () => {
         const {value, issues} = mapper.fromRows([]);
 

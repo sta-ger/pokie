@@ -1,3 +1,6 @@
+import {ParSheetImporter} from "./ParSheetImporter.js";
+import {computeBlueprintHash} from "./computeBlueprintHash.js";
+import {parSheetConversionReport, parseParSheetConversionReport, type ParSheetConversionReport} from "./ParSheetConversionReport.js";
 import fs from "fs";
 import {ReelSequencesSheetMapper} from "./mapping/ReelSequencesSheetMapper.js";
 import type {ReelSequencesSheetMapping} from "./mapping/ReelSequencesSheetMapping.js";
@@ -214,16 +217,9 @@ export class ParSheetExporter implements ParSheetExporting {
         const issues = prepared.issues;
         if (prepared.blueprint === undefined) return issues;
         const typedBlueprint = prepared.blueprint;
-        let priorLossless = options?.losslessEligible !== false;
-        if (sourcePath !== undefined && fs.existsSync(`${sourcePath}.conversion-evidence.json`)) {
-            try {
-                const prior = JSON.parse(fs.readFileSync(`${sourcePath}.conversion-evidence.json`, "utf8")) as {losslessEligible?: boolean};
-                priorLossless = priorLossless && prior.losslessEligible === true;
-            } catch {
-                priorLossless = false;
-            }
-        }
-        if (!priorLossless) issues.push(materializationIssue("parsheet-prior-conversion-loss", "Prior conversion evidence is ineligible, changed or unavailable; re-export cannot upgrade that boundary to lossless."));
+        const report = await inspectParSheetConversion(blueprint, sourcePath, options, prepared.issues);
+        issues.splice(0, issues.length, ...report.issues);
+        const priorLossless = report.losslessEligible;
 
         const workbook = new ExcelJS.Workbook();
         addSheet(
@@ -266,7 +262,8 @@ export class ParSheetExporter implements ParSheetExporting {
                 this.pokieVersion,
                 this.now(),
                 sourcePath,
-                priorLossless && !issues.some((issue) => issue.details?.losslessEligible === false),
+                priorLossless,
+                report,
             ),
         );
 
@@ -298,4 +295,32 @@ function addSheet(workbook: ExcelJS.Workbook, sheetName: string, grid: SheetGrid
     grid.forEach((row) => {
         worksheet.addRow(row);
     });
+}
+
+/** Shared read-only preview of the same preparation/history consumed by the writer. */
+export async function inspectParSheetConversion(blueprint: unknown, sourcePath?: string, options?: ParSheetExportOptions, preparedIssues?: readonly ValidationIssue[]): Promise<ParSheetConversionReport> {
+    const issues = [...(preparedIssues ?? prepareBlueprintForParSheetExport(blueprint).issues)];
+    const histories: ParSheetConversionReport[] = options?.conversionReport ? [options.conversionReport] : [];
+    let eligible = options?.losslessEligible !== false;
+    if (sourcePath !== undefined) {
+        try {
+            if (fs.existsSync(`${sourcePath}.conversion-evidence.json`)) {
+                const history = JSON.parse(fs.readFileSync(`${sourcePath}.conversion-evidence.json`, "utf8"));
+                histories.push(parseParSheetConversionReport(history));
+                if (history.importedBlueprintHash !== undefined) eligible = eligible && history.importedBlueprintHash === computeBlueprintHash(blueprint as GameBlueprint);
+            } else if ((/\.xlsx$/i).test(sourcePath) && fs.existsSync(sourcePath)) {
+                const imported = await new ParSheetImporter().importFromFile(sourcePath);
+                histories.push(parSheetConversionReport(imported.issues, imported.conversionEvidence));
+                eligible = eligible && imported.conversionEvidence?.importedBlueprintHash === computeBlueprintHash(blueprint as GameBlueprint);
+            }
+        } catch {
+            eligible = false;
+        }
+    }
+    for (const history of histories) {
+        issues.push(...history.issues);
+        eligible = eligible && history.losslessEligible;
+    }
+    if (!eligible) issues.push(materializationIssue("parsheet-prior-conversion-loss", "Prior conversion evidence is ineligible, changed or unavailable; re-export cannot upgrade that boundary to lossless."));
+    return parSheetConversionReport(issues, {issues: [], facts: histories.flatMap(history => history.facts), losslessEligible: eligible});
 }

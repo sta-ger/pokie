@@ -157,7 +157,7 @@ export function computeArtifactInputBindingHash(
 // authoritative implementation of that runtime.
 export function computeProjectInputBindingHash(project: Pick<PokieProject, "rootPath" | "type">): string {
     return computeArtifactInputBindingHash(
-        [project.rootPath],
+        [project.rootPath, ...(project.type === "blueprint" ? [`${project.rootPath}.conversion-evidence.json`] : [])],
         project.type === "tsPackage"
             ? {ignoredDirectoryPaths: [path.join(project.rootPath, "node_modules")]}
             : {},
@@ -203,6 +203,7 @@ export type ArtifactConversionPreflight = {
 };
 
 export type ArtifactConversionPlan = {
+    readonly parConversion?: import("../parsheet/ParSheetConversionReport.js").ParSheetConversionReport;
     readonly packageExtraction?: import("../generated/PackageBlueprintExtraction.js").PackageBlueprintExtractionResult;
     readonly status: "planned" | "unavailable" | "conflict";
     readonly source: ArtifactIdentity;

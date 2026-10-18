@@ -95,6 +95,7 @@ describe("ParWorkbookArtifactBuilder", () => {
         expect(result).toEqual({
             outputPath: destinationFile,
             publishedFileOwnership: [{path: destinationFile, dev: published.dev, ino: published.ino}],
+            parConversion: expect.objectContaining({losslessEligible: true}),
         });
 
         const imported = await new ParSheetImporter().importFromFile(destinationFile);

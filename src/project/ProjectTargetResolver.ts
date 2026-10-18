@@ -187,7 +187,7 @@ export class ProjectTargetResolver implements ProjectResolving {
                 const blueprint = loadGameBlueprint(rootPath) as {manifest: {id: string; version: string}};
                 return {
                     configurationHash: computeGameBlueprintHash(blueprint as never),
-                    inputBindingHash: computeArtifactInputBindingHash([rootPath]),
+                    inputBindingHash: computeProjectInputBindingHash({type, rootPath}),
                     gameId: blueprint.manifest.id,
                     gameVersion: blueprint.manifest.version,
                     manifestIdentity: `${blueprint.manifest.id}@${blueprint.manifest.version}`,
@@ -220,6 +220,7 @@ export class ProjectTargetResolver implements ProjectResolving {
                     await releasePokieGame(game);
                 }
             }
+            if (type === "stakeAdapter") return {inputBindingHash: computeProjectInputBindingHash({type, rootPath})};
             if (type === "parWorkbook") {
                 const inputBindingHash = computeArtifactInputBindingHash([rootPath]);
                 return {configurationHash: inputBindingHash, inputBindingHash};

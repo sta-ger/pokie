@@ -16,6 +16,9 @@ export type ManagedOutcomeProjectOwnership = {
 
 export type ArtifactBuildResult = {
     readonly outputPath: string;
+    /** Atomic Stake publisher identity; pathname-only cleanup is never authorized. */
+    readonly publishedStakeDirectoryOwnership?: import("../stakeengine/internal/publishDirectoryAtomically.js").PublishedDirectoryOwnership & {readonly restoreEmptyOnRollback?: boolean};
+    readonly parConversion?: import("../parsheet/ParSheetConversionReport.js").ParSheetConversionReport;
     /** Identities of exclusively published files, retained for registration rollback. */
     readonly publishedFileOwnership?: readonly {readonly path: string; readonly dev: number; readonly ino: number}[];
     /** Directory identities guard file rollback; only operation-created empty directories are removed. */

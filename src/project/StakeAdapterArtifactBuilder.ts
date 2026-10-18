@@ -1,3 +1,4 @@
+import {computeProjectInputBindingHash} from "./ArtifactConversionPlanner.js";
 import fs from "fs";
 import path from "path";
 import type {StakeEngineExactSource} from "../stakeengine/StakeEngineExactSource.js";
@@ -66,6 +67,10 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
         const destinationOwnership = capturePublishDirectoryOwnership(destinationPath);
 
+        const sourceBinding = computeProjectInputBindingHash(source);
+        const assertSourceUnchanged = () => {
+            if (sourceBinding !== computeProjectInputBindingHash(source)) throw new Error("Stake source changed during preparation; prepare a new preview before publication.");
+        };
         let publication: PublishedDirectoryOwnership | undefined;
         try {
             const prepared = source.type === "outcomeLibrary" ? {modes: await this.readOutcomeLibraryModes(source.rootPath), exactSource: undefined} : await this.readStakeSource(source.rootPath);
@@ -74,6 +79,7 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
                 const preflight = exactPreflight(exact);
                 reportArtifactBuildProgress(options, {status: "preflight", preflight, message: "Validated exact Stake payload; native numeric sampling is unavailable"});
                 assertArtifactBuildNotCancelled(options);
+                assertSourceUnchanged();
                 const result = publishExactStakeSource(exact, destinationPath, {
                     signal: options?.signal,
                     destinationOwnership,
@@ -82,7 +88,7 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
                 publication = result.publication;
                 assertArtifactBuildNotCancelled(options);
                 reportArtifactBuildProgress(options, {status: "completed", preflight, completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount});
-                return {outputPath: result.outDir, preflight, stakeManifest: result.manifest, stakeFiles: result.files};
+                return {outputPath: result.outDir, preflight, stakeManifest: result.manifest, stakeFiles: result.files, publishedStakeDirectoryOwnership: publication === undefined ? undefined : {...publication, restoreEmptyOnRollback: destinationOwnership.destinationIdentity !== undefined}};
             }
             const modes = prepared.modes;
             const preflight = stakePreflight(modes);
@@ -97,6 +103,7 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
             }
             reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: "Publishing Stake export"});
             assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
+            assertSourceUnchanged();
             const result = await this.exporter.exportToDirectory(modes, destinationPath, {
                 signal: options?.signal,
                 destinationOwnership,
@@ -122,7 +129,7 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
             }
 
             reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount, preflight});
-            return {outputPath: result.outDir, preflight, stakeManifest: result.manifest, stakeFiles: result.files};
+            return {outputPath: result.outDir, preflight, stakeManifest: result.manifest, stakeFiles: result.files, publishedStakeDirectoryOwnership: publication === undefined ? undefined : {...publication, restoreEmptyOnRollback: destinationOwnership.destinationIdentity !== undefined}};
         } catch (error) {
             // Atomic publishers clean their staging on failure. Only a returned ownership token
             // authorizes removal of a public path; a claimant may have appeared during source reads.

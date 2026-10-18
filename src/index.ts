@@ -208,6 +208,7 @@ export * from "./optimization/OptimizationPolicy.js";
 export * from "./optimization/ProjectOptimizationService.js";
 export * from "./optimization/createTunableBlueprintGame.js";
 export * from "./optimization/validateOptimizationRequest.js";
+export * from "./parsheet/ParSheetConversionReport.js";
 export * from "./parsheet/ParSheetExporter.js";
 export * from "./parsheet/ParSheetExporting.js";
 export * from "./parsheet/ParSheetImportResult.js";
