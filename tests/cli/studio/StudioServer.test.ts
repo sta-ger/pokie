@@ -212,30 +212,39 @@ async function del(url: string): Promise<{status: number; body: unknown}> {
 }
 
 async function waitForOutcomeLibraryJob(baseUrl: string, id: string): Promise<Record<string, unknown>> {
-    for (let attempt = 0; attempt < 600; attempt++) {
+    // Snapshot acquisition now yields while copying the real installed graph.
+    // Budget elapsed time for that phase as well as generation, rather than
+    // exhausting a small number of polls while the worker is still preparing it.
+    const deadline = Date.now() + 60000;
+    let lastJob: Record<string, unknown> | undefined;
+    while (Date.now() < deadline) {
         const response = await get(`${baseUrl}/api/project/outcome-libraries/generate/jobs/${id}`);
         const job = response.body as Record<string, unknown>;
+        lastJob = job;
         if (job.status !== "queued" && job.status !== "running") return job;
         await new Promise<void>((resolve) => {
-            setTimeout(resolve, 10);
+            setTimeout(resolve, 50);
         });
     }
-    throw new Error(`Outcome Library job ${id} did not finish.`);
+    throw new Error(`Outcome Library job ${id} did not finish: ${JSON.stringify(lastJob)}.`);
 }
 
 async function waitForOutcomeLibraryJobProgress(baseUrl: string, id: string): Promise<Record<string, unknown>> {
-    for (let attempt = 0; attempt < 100; attempt++) {
+    const deadline = Date.now() + 60000;
+    let lastJob: Record<string, unknown> | undefined;
+    while (Date.now() < deadline) {
         const response = await get(`${baseUrl}/api/project/outcome-libraries/generate/jobs/${id}`);
         const job = response.body as Record<string, unknown>;
+        lastJob = job;
         if (job.progress !== undefined) return job;
         if (job.status !== "queued" && job.status !== "running") {
             throw new Error(`Outcome Library job ${id} completed before reporting observable progress.`);
         }
         await new Promise<void>((resolve) => {
-            setTimeout(resolve, 10);
+            setTimeout(resolve, 50);
         });
     }
-    throw new Error(`Outcome Library job ${id} did not report observable progress.`);
+    throw new Error(`Outcome Library job ${id} did not report observable progress: ${JSON.stringify(lastJob)}.`);
 }
 
 function expectNoOutcomeLibraryPublication(projectRoot: string, outDir: string): void {
@@ -1571,11 +1580,11 @@ describe("StudioServer", () => {
             notifyRelease = resolve;
         });
         let snapshotRoot: string | undefined;
-        const remove = fs.rmSync;
-        const removeSpy = jest.spyOn(fs, "rmSync").mockImplementation((target, options) => {
+        const remove = fs.promises.rm;
+        const removeSpy = jest.spyOn(fs.promises, "rm").mockImplementation((target, options) => {
             if (resource === "game" && target === snapshotRoot) {
                 notifyRelease();
-                throw new Error(failureMessage);
+                return Promise.reject(new Error(failureMessage));
             }
             return remove(target, options);
         });
@@ -1644,7 +1653,7 @@ describe("StudioServer", () => {
             finishLoad?.(game);
             removeSpy.mockRestore();
             if (!shutdownAttempted) await lifecycleServer.stop().catch(() => undefined);
-            if (snapshotRoot !== undefined) remove(snapshotRoot, {recursive: true, force: true});
+            if (snapshotRoot !== undefined) await remove(snapshotRoot, {recursive: true, force: true});
         }
     });
 
