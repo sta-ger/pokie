@@ -668,6 +668,8 @@ it("rolls back publication when the saved executable cannot load", async () => {
     const {root} = declaredPackage();
     const request = optimizationRequest();
     const result = await service.optimize(await resolve(root), request);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.status).toBe("success");
     const destination = path.join(directory, "unloadable");
     const open = fs.promises.open.bind(fs.promises);
     const copy = jest.spyOn(fs.promises, "open").mockImplementation(async (output, flags, mode) => {
@@ -681,8 +683,11 @@ it("rolls back publication when the saved executable cannot load", async () => {
         }
         return file;
     });
-    await expect(service.publish(result.candidate!, request, destination)).rejects.toThrow();
-    copy.mockRestore();
+    try {
+        await expect(service.publish(result.candidate!, request, destination)).rejects.toThrow("saved executable cannot load");
+    } finally {
+        copy.mockRestore();
+    }
     expect(fs.existsSync(destination)).toBe(false);
     await expect(service.publish(result.candidate!, request, destination)).resolves.toBe(destination);
 });
