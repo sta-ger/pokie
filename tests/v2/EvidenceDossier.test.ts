@@ -146,7 +146,7 @@ const issues = await new api.CertificationEvidenceBundleVerifier().verify(path.j
 console.log(JSON.stringify({pid: process.pid, issues, manifest: built.manifest, artifactHashes: built.artifactHashes}));
 `);
             const root = path.join(runtime.directory, "original");
-            const original = JSON.parse(execFileSync(process.execPath, [script, root, "initialize"], {encoding: "utf8", timeout: 120000})) as {pid: number; issues: unknown[]; manifest: CertificationEvidenceBundleManifest};
+            const original = JSON.parse(execFileSync(process.execPath, [script, root, "initialize"], {encoding: "utf8", timeout: 120000})) as {pid: number; issues: unknown[]; manifest: CertificationEvidenceBundleManifest; artifactHashes: Record<string, string>};
             expect(original.pid).not.toBe(process.pid);
             expect(original.issues).toEqual([]);
             expect(original.manifest.dossier.support.coverage).toBe("partial");
@@ -218,6 +218,7 @@ await rejects({...authorities, replayFiles: [replacedReplay]});
 await publish(original);
 console.log(JSON.stringify({closed: ["candidate", "model", "valid-report-substitution", "false-report-math", "rehashed-runtime-replay"]}));
 `);
+            console.info("V2C-27 fixture identities", JSON.stringify({evidenceContentHash: original.manifest.evidenceContentHash, modelHash: original.manifest.dossier.identity.modelHash, modelArtifactHash: original.manifest.dossier.identity.modelArtifactHash, sourceManifestHash: original.manifest.sourceBundleManifestHash, templateHash: original.manifest.presentation.templateHash, pdfHash: original.artifactHashes["dossier.pdf"]}));
             const attacks = JSON.parse(execFileSync(process.execPath, [attackScript, relocated], {encoding: "utf8", timeout: 120000})) as {closed: string[]};
             expect(attacks.closed).toEqual(["candidate", "model", "valid-report-substitution", "false-report-math", "rehashed-runtime-replay"]);
             const manifest = JSON.parse(fs.readFileSync(path.join(relocated, "dossier", "manifest.json"), "utf8")) as CertificationEvidenceBundleManifest;
