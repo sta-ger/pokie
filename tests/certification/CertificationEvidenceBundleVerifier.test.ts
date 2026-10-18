@@ -3,6 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+    MathDefinitionSourceReader,
     certificationDossierFileName,
     CertificationDossierRenderer,
     CertificationEvidenceBundleBuilder,
@@ -94,6 +95,41 @@ describe("CertificationEvidenceBundleVerifier", () => {
 
     afterEach(() => {
         fs.rmSync(tmpRoot, {recursive: true, force: true});
+    });
+
+    it("stops acquisition cancellation before source validation or native sample draws", async () => {
+        const controller = new AbortController();
+        const model = path.join(tmpRoot, "model.json");
+        fs.writeFileSync(model, "{}");
+        const read = jest.spyOn(MathDefinitionSourceReader.prototype, "read").mockImplementation(() => {
+            controller.abort();
+            return Promise.reject(new Error("acquisition aborted"));
+        });
+        const validate = jest.fn(() => Promise.resolve([]));
+        const reader = new OutcomeLibraryBundleReader();
+        const draw = jest.spyOn(reader, "drawOutcome");
+        try {
+            const issues = await new CertificationEvidenceBundleVerifier(undefined, {validate}, reader).verify(certDir, {sourceBundleDir: bundleDir, dossier: {modelSource: model}, signal: controller.signal});
+            expect(issues).toEqual([expect.objectContaining({code: "certification-evidence-verify-cancelled", severity: "error"})]);
+            expect(validate).not.toHaveBeenCalled();
+            expect(draw).not.toHaveBeenCalled();
+        } finally {
+            read.mockRestore(); 
+        }
+    });
+
+    it("stops native sample verification after an in-flight draw settles", async () => {
+        const controller = new AbortController();
+        const reader = new OutcomeLibraryBundleReader();
+        const original = reader.drawOutcome.bind(reader);
+        const draw = jest.spyOn(reader, "drawOutcome").mockImplementation(async (...args) => {
+            const result = await original(...args);
+            controller.abort();
+            return result;
+        });
+        const issues = await new CertificationEvidenceBundleVerifier(undefined, undefined, reader).verify(certDir, {sourceBundleDir: bundleDir, signal: controller.signal});
+        expect(issues).toEqual([expect.objectContaining({code: "certification-evidence-verify-cancelled", severity: "error"})]);
+        expect(draw).toHaveBeenCalledTimes(1);
     });
 
     it("verifies cleanly right after a build, against the unchanged source bundle", async () => {

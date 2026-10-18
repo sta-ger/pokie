@@ -225,28 +225,66 @@ describe("CertificationEvidenceBundleBuilder", () => {
         expect(siblingLeftovers(certDir)).toEqual([]);
     });
 
-    it("removes its published evidence container when cancellation arrives after commit", async () => {
+    it.each([false, true])("cancels after observing published files (existing empty destination: %s)", async existing => {
         await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
+        if (existing) fs.mkdirSync(certDir);
+        const identity = existing ? fs.statSync(certDir).ino : undefined;
         const controller = new AbortController();
+        let observed = false;
         const builder = new CertificationEvidenceBundleBuilder(
-            CERTIFICATION_TEST_POKIE_VERSION,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            () => controller.abort(),
+            CERTIFICATION_TEST_POKIE_VERSION, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, undefined,
+            () => {
+                expect(JSON.parse(fs.readFileSync(path.join(certDir, "manifest.json"), "utf8"))).toHaveProperty("evidenceContentHash");
+                expect(fs.readFileSync(path.join(certDir, "dossier.pdf")).toString()).toContain("%PDF-1.4");
+                observed = true;
+                controller.abort();
+            },
         );
-
         await expect(builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}], certDir, {signal: controller.signal}))
             .rejects.toThrow(CertificationEvidenceBundleBuildCancelledError);
-
-        expect(fs.existsSync(certDir)).toBe(false);
+        expect(observed).toBe(true);
+        if (existing) {
+            expect(fs.statSync(certDir).ino).toBe(identity);
+            expect(fs.readdirSync(certDir)).toEqual([]);
+        } else expect(fs.existsSync(certDir)).toBe(false);
         expect(siblingLeftovers(certDir)).toEqual([]);
+    });
+
+    it.each([[false, "replacement"], [true, "replacement"], [false, "rewrite"], [true, "rewrite"]] as const)("rejects same-name mutation after installation and preserves the competing file (empty: %s, %s)", async (existing, mutation) => {
+        await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
+        if (existing) fs.mkdirSync(certDir);
+        const identity = existing ? fs.statSync(certDir).ino : undefined;
+        const builder = new CertificationEvidenceBundleBuilder(
+            CERTIFICATION_TEST_POKIE_VERSION, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, undefined,
+            () => {
+                const member = path.join(certDir, "dossier.pdf");
+                if (mutation === "replacement") fs.unlinkSync(member);
+                fs.writeFileSync(member, "competing replacement");
+            },
+        );
+        await expect(builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 1}], certDir)).rejects.toThrow(/claimed|ownership changed/);
+        expect(fs.readdirSync(certDir)).toEqual(["dossier.pdf"]);
+        expect(fs.readFileSync(path.join(certDir, "dossier.pdf"), "utf8")).toBe("competing replacement");
+        if (existing) expect(fs.statSync(certDir).ino).toBe(identity);
+        expect(siblingLeftovers(certDir)).toEqual([]);
+    });
+
+    it("passes cancellation into deep validation and stops before sampling", async () => {
+        await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
+        const controller = new AbortController();
+        const validate = jest.fn((_dir: string, options?: {signal?: AbortSignal; throwIfAborted?: () => void}) => {
+            expect(options?.signal).toBe(controller.signal);
+            controller.abort();
+            options?.throwIfAborted?.();
+            return Promise.resolve([]);
+        });
+        const onSample = jest.fn();
+        const builder = new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION, undefined, {validate});
+        await expect(builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 1}], certDir, {signal: controller.signal, onSample})).rejects.toThrow(CertificationEvidenceBundleBuildCancelledError);
+        expect(onSample).not.toHaveBeenCalled();
+        expect(fs.existsSync(certDir)).toBe(false);
     });
 
     it("yields within a large single mode so cancellation stops sampling and cleans staging", async () => {

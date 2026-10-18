@@ -3,6 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+    CertificationEvidenceBundleBuildCancelledError,
     certificationDossierFileName,
     CertificationDossierRenderer,
     CERTIFICATION_DOSSIER_SECTIONS,
@@ -44,6 +45,43 @@ describe("CertificationEvidenceBundleValidator", () => {
 
     afterEach(() => {
         fs.rmSync(tmpRoot, {recursive: true, force: true});
+    });
+
+    it("stops regenerated rendering on cancellation without converting it to invalid evidence", async () => {
+        const controller = new AbortController();
+        const original = CertificationDossierRenderer.prototype.render;
+        const render = jest.spyOn(CertificationDossierRenderer.prototype, "render").mockImplementation(async function(this: CertificationDossierRenderer, manifest, format, template, signal) {
+            expect(signal).toBe(controller.signal);
+            const output = await Reflect.apply(original, this, [manifest, format, template, signal]);
+            controller.abort();
+            return output;
+        });
+        try {
+            await expect(validator.validate(certDir, controller.signal)).rejects.toThrow(CertificationEvidenceBundleBuildCancelledError);
+            expect(render).toHaveBeenCalledTimes(1);
+        } finally {
+            render.mockRestore(); 
+        }
+    });
+
+    it("cancels inside local PDF regeneration and drains the renderer before rejecting", async () => {
+        const controller = new AbortController();
+        const original = CertificationDossierRenderer.prototype.render;
+        let settled = false;
+        const render = jest.spyOn(CertificationDossierRenderer.prototype, "render").mockImplementation(async function(this: CertificationDossierRenderer, manifest, format, template, signal) {
+            if (format === "pdf") setImmediate(() => controller.abort());
+            try {
+                return await Reflect.apply(original, this, [manifest, format, template, signal]); 
+            } finally {
+                if (format === "pdf") settled = true; 
+            }
+        });
+        try {
+            await expect(validator.validate(certDir, controller.signal)).rejects.toThrow(CertificationEvidenceBundleBuildCancelledError);
+            expect(settled).toBe(true);
+        } finally {
+            render.mockRestore(); 
+        }
     });
 
     it("reports no issues for a freshly built, untouched bundle", async () => {

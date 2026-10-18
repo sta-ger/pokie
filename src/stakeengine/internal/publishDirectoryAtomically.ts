@@ -146,8 +146,7 @@ export function removePublishedDirectoryIfOwned(publication: PublishedDirectoryO
     if (publication.members !== undefined) {
         if (!sameIdentity(capturePublishDirectoryIdentity(outDir), publication.identity)) return false;
         for (const member of [...publication.members].reverse()) {
-            const file = path.join(outDir, member.name);
-            if (sameIdentity(capturePublishDirectoryIdentity(file), member.identity) && crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex") === member.hash) fs.unlinkSync(file);
+            if (publishedMemberMatches(outDir, member)) fs.unlinkSync(path.join(outDir, member.name));
         }
         if (!publication.retainEmptyDirectory) {
             try {
@@ -259,8 +258,9 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
                     members.push({name, identity, hash});
                 }
                 options.afterCommit?.();
-                if (!sameIdentity(capturePublishDirectoryIdentity(outDir), publication.identity) || fs.readdirSync(outDir).some(entry => !members.some(member => member.name === entry))) throw claimed(`Destination "${outDir}" was claimed at commit.`);
+                if (!publishedMembersMatch(publication)) throw claimed(`Destination "${outDir}" was claimed at commit (member identity or contents changed).`);
                 removeDirectory(tempDir);
+                if (!publishedMembersMatch(publication)) throw claimed(`Destination "${outDir}" changed before publication completed.`);
                 return withPublishedDirectoryOwnership({}, publication);
             } catch (error) {
                 if (!removePublishedDirectoryIfOwned(publication)) throw new Error(`Publication rollback cleanup failed at "${outDir}"; ownership changed. Original error: ${String(error)}`);
@@ -287,7 +287,7 @@ export function publishDirectoryAtomically(options: PublishDirectoryAtomicallyOp
         const publication: PublishedDirectoryOwnership = {outDir, identity: installedIdentity, ...(newMembers ? {members: newMembers} : {})};
         installedPublication = publication;
         options.afterCommit?.();
-        if (!sameIdentity(capturePublishDirectoryIdentity(outDir), publication.identity)) {
+        if (!sameIdentity(capturePublishDirectoryIdentity(outDir), publication.identity) || (publication.members !== undefined && !publishedMembersMatch(publication))) {
             throw claimed(`Destination "${outDir}" was claimed immediately after publication.`);
         }
 
@@ -416,4 +416,17 @@ function sameSnapshot(left: readonly SnapshotEntry[], right: readonly SnapshotEn
         const other = right[index];
         return entry.relativePath === other.relativePath && entry.device === other.device && entry.inode === other.inode && entry.size === other.size && entry.modified === other.modified && entry.changed === other.changed && entry.directory === other.directory;
     });
+}
+
+function publishedMemberMatches(outDir: string, member: NonNullable<PublishedDirectoryOwnership["members"]>[number]): boolean {
+    const file = path.join(outDir, member.name);
+    if (!sameIdentity(capturePublishDirectoryIdentity(file), member.identity)) return false;
+    return fs.lstatSync(file).isFile() && crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex") === member.hash;
+}
+
+function publishedMembersMatch(publication: PublishedDirectoryOwnership): boolean {
+    if (!sameIdentity(capturePublishDirectoryIdentity(publication.outDir), publication.identity)) return false;
+    const names = fs.readdirSync(publication.outDir);
+    const members = publication.members!;
+    return names.length === members.length && members.every(member => names.includes(member.name) && publishedMemberMatches(publication.outDir, member));
 }

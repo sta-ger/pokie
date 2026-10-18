@@ -458,6 +458,24 @@ describe("ReportCommand outcome-source project routing", () => {
         provenance: "test fixture",
     };
 
+    it.each(["outcomeLibrary", "stakeAdapter"] as const)("rejects dossier templates before %s analysis or output writes", async type => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "report-options-"));
+        try {
+            const output = path.join(root, "existing.html");
+            fs.writeFileSync(output, "caller-owned bytes");
+            const analyze = jest.fn();
+            const project = {...outcomeLibraryProject, type, capabilities: PROJECT_TYPE_CAPABILITIES[type]};
+            const command = new ReportCommand(createStubReadFile({}), undefined, undefined, stubProjectResolver(project), {analyze});
+            for (const template of ["missing.json", "invalid.json"]) {
+                await expect(command.run([project.rootPath, "--template", template, "--format", "html", "--out", output])).rejects.toThrow(/--template.*only.*dossier/);
+            }
+            expect(analyze).not.toHaveBeenCalled();
+            expect(fs.readFileSync(output, "utf8")).toBe("caller-owned bytes");
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true}); 
+        }
+    });
+
     it('renders a canonical-reader-backed exact analysis, with limitations, for a resolved "outcomeLibrary" project', async () => {
         const report: OutcomeSourceProjectReport = {
             rootPath: "/libraries/base",

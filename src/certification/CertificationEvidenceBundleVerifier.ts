@@ -1,3 +1,4 @@
+import {CertificationEvidenceBundleBuildCancelledError} from "./CertificationEvidenceBundleBuildOptions.js";
 import {DEFAULT_CERTIFICATION_DOSSIER_TEMPLATE, loadCertificationDossierTemplate} from "./CertificationDossierRenderer.js";
 import {parseCertificationJson} from "./internal/parseCertificationJson.js";
 import {acquireCertificationDossier, dossierHash} from "./internal/acquireCertificationDossier.js";
@@ -91,6 +92,7 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
         try {
             return await this.verifyInternal(certDir, options);
         } catch (error) {
+            if (options?.signal?.aborted || error instanceof CertificationEvidenceBundleBuildCancelledError) return [{code: "certification-evidence-verify-cancelled", severity: "error", message: "Certification verification cancelled after owned work settled; verification did not succeed."}];
             return [
                 {
                     code: "certification-evidence-verify-malformed",
@@ -102,7 +104,9 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
     }
 
     private async verifyInternal(certDir: string, options: CertificationEvidenceVerifyOptions | undefined): Promise<ValidationIssue[]> {
-        const structuralIssues = await this.validator.validate(certDir);
+        checkCancellation(options?.signal);
+        const structuralIssues = await this.validator.validate(certDir, options?.signal);
+        checkCancellation(options?.signal);
         if (structuralIssues.some((issue) => MANIFEST_UNREADABLE_CODES.has(issue.code))) {
             return structuralIssues;
         }
@@ -167,6 +171,7 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
             return issues;
         }
 
+        checkCancellation(options.signal);
         if (sourceManifest.files.some(file => !resolveSafeCertificationEvidenceFilePath(sourceBundleDir, file))) return [...issues, {code: "certification-dossier-source-unsafe", severity: "error", message: "Source inventory contains a missing, symlinked or escaping file."}];
         try {
             if (manifest.presentation.templateArtifactHash !== null) {
@@ -179,6 +184,7 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
             const actual = await acquireCertificationDossier(sourceManifest, dossierHash(sourceManifest), options.dossier, options.signal, sourceBundleDir);
             if (dossierHash(actual) !== dossierHash(manifest.dossier)) throw new Error("Dossier model/report/replay/revision evidence differs from selected authority or runtime reproduction.");
         } catch (error) {
+            checkCancellation(options.signal);
             issues.push({code: "certification-dossier-authority-mismatch", severity: "error", message: error instanceof Error ? error.message : String(error)});
         }
 
@@ -186,8 +192,9 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
         // shallow check by default, the same "never defeat the whole point of a streaming bundle" discipline
         // OutcomeLibraryBundleValidating itself follows; each sampled outcome below is still independently
         // deep-checked, just for exactly the records this evidence actually cites.
-        issues.push(...(await this.sourceValidator.validate(sourceBundleDir)));
+        issues.push(...(await this.sourceValidator.validate(sourceBundleDir, {signal: options.signal})));
 
+        checkCancellation(options.signal);
         if (sha256OfBytes(JSON.stringify(toCanonicalJson(sourceManifest))) !== manifest.sourceBundleManifestHash) {
             issues.push({
                 code: "certification-evidence-verify-source-bundle-manifest-changed",
@@ -218,7 +225,7 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
                 });
                 continue;
             }
-            await this.verifyModeAgainstLiveBundle(certDir, sourceBundleDir, sourceManifest, rawModeEntry, issues);
+            await this.verifyModeAgainstLiveBundle(certDir, sourceBundleDir, sourceManifest, rawModeEntry, issues, options.signal);
         }
 
         return issues;
@@ -230,7 +237,9 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
         sourceManifest: OutcomeLibraryBundleManifest,
         modeEntry: CertificationEvidenceBundleModeEntry,
         issues: ValidationIssue[],
+        signal?: AbortSignal,
     ): Promise<void> {
+        checkCancellation(signal);
         const sourceEntry = sourceManifest.modes.find((entry) => entry.modeName === modeEntry.modeName);
         if (sourceEntry === undefined) {
             issues.push({
@@ -318,7 +327,8 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
             }
         }
 
-        await this.verifySampleSequence(sourceBundleDir, modeEntry, records, issues);
+        checkCancellation(signal);
+        await this.verifySampleSequence(sourceBundleDir, modeEntry, records, issues, signal);
     }
 
     // Reads and parses "samplesPath" defensively: a missing file, a line that isn't valid JSON, or a line that
@@ -381,15 +391,21 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
         modeEntry: CertificationEvidenceBundleModeEntry,
         records: readonly SafeSampleRecord[],
         issues: ValidationIssue[],
+        signal?: AbortSignal,
     ): Promise<void> {
         const recordedIdByPosition = new Map(records.map(({position, record}) => [position, record.outcomeId]));
         const randomSource = this.randomSourceFactory(modeEntry.sampleSeed);
 
         for (let position = 0; position < modeEntry.sampleCount; position++) {
+            if (position % 32 === 0) await new Promise<void>(resolve => {
+                setImmediate(resolve); 
+            });
+            checkCancellation(signal);
             let expectedOutcomeId: string;
             try {
                 expectedOutcomeId = (await this.reader.drawOutcome(sourceBundleDir, modeEntry.modeName, randomSource)).id;
             } catch (error) {
+                checkCancellation(signal);
                 issues.push({
                     code: "certification-evidence-verify-source-bundle-outcome-invariant",
                     severity: "error",
@@ -399,6 +415,7 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
                 continue;
             }
 
+            checkCancellation(signal);
             const recordedOutcomeId = recordedIdByPosition.get(position);
             if (recordedOutcomeId !== undefined && recordedOutcomeId !== expectedOutcomeId) {
                 issues.push({
@@ -410,4 +427,8 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
             }
         }
     }
+}
+
+function checkCancellation(signal?: AbortSignal): void {
+    if (signal?.aborted) throw new CertificationEvidenceBundleBuildCancelledError();
 }

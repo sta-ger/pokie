@@ -53,7 +53,7 @@ export function certificationDossierTables(manifest: CertificationEvidenceBundle
             const authored = definition.authored && typeof definition.authored === "object" && !Array.isArray(definition.authored) ? definition.authored : {};
             return [
                 {title: "Model rules / PAR representation", rows: rows({support: definition.support, identity: definition.identity, limits: definition.limits})},
-                ...["symbols", "paytable", "reelStrips", "reelSequences", "availableBets", "betModes", "winModel", "mechanics", "screenGeometry", "maxWinPolicy"].map(field => ({title: `Model ${field}`, rows: rows({authored: authored[field] ?? null, effective: effective[field] ?? null})})),
+                ...Array.from(new Set([...Object.keys(authored), ...Object.keys(effective)])).sort().map(field => ({title: `Model ${field}`, rows: rows({authored: authored[field] ?? null, effective: effective[field] ?? null})})),
                 {title: "Field authority and conversion diagnostics", rows: rows({fields: definition.fields, diagnostics: definition.diagnostics})},
                 {title: "Advanced model validation", rows: rows(definition.advanced ?? null)},
             ];

@@ -94,6 +94,7 @@ export class ReportCommand implements CliCommandHandling {
 
         const project = (await this.resolveProjectSafely(reportPath)) ?? this.recognizeStandaloneStakeOutcomeDirectory(reportPath);
         if (project?.type === "outcomeLibrary" || project?.type === "stakeAdapter") {
+            if (template !== undefined) throw new Error("--template is supported only for canonical dossier inputs.");
             let outcomeSourceReport: OutcomeSourceProjectReport;
             try {
                 outcomeSourceReport = await this.outcomeSourceAnalyzer.analyze(project);

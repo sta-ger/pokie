@@ -1,3 +1,4 @@
+import {CertificationEvidenceBundleBuildCancelledError} from "./CertificationEvidenceBundleBuildOptions.js";
 import {certificationDossierFileName} from "./CertificationDossier.js";
 import {parseCertificationJson} from "./internal/parseCertificationJson.js";
 import {CertificationDossierRenderer, validateCertificationDossierTemplate} from "./CertificationDossierRenderer.js";
@@ -19,7 +20,7 @@ import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
 // Validates a candidate certification/evidence bundle directory *by itself* — never throws (top-level
 // catch-all "certification-evidence-bundle-malformed"), mirroring OutcomeLibraryBundleValidator's own
-// never-throw contract. Reads manifest.json plus every mode's own samples_<modeName>.jsonl, recomputing:
+// never-throw contract, except explicit cancellation. Reads manifest.json plus every mode's own samples_<modeName>.jsonl, recomputing:
 // - the whole manifest's own evidenceContentHash (covers schemaVersion/pokieVersion/game/configHash/
 //   artifactPokieVersion/sourceBundleManifestHash/every mode's own metrics+samplesHash/deep-validation issues in
 //   one unified check — see computeCertificationEvidenceContentHash);
@@ -35,10 +36,11 @@ import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 // source Outcome Library Bundle it was built from — that needs the source bundle to still be reachable, and is
 // exactly what CertificationEvidenceBundleVerifying adds on top of this validator.
 export class CertificationEvidenceBundleValidator implements CertificationEvidenceBundleValidating {
-    public async validate(certDir: string): Promise<ValidationIssue[]> {
+    public async validate(certDir: string, signal?: AbortSignal): Promise<ValidationIssue[]> {
         try {
-            return await this.validateInternal(certDir);
+            return await this.validateInternal(certDir, signal);
         } catch (error) {
+            if (signal?.aborted || error instanceof CertificationEvidenceBundleBuildCancelledError) throw new CertificationEvidenceBundleBuildCancelledError();
             return Promise.resolve([
                 {
                     code: "certification-evidence-bundle-malformed",
@@ -49,7 +51,8 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
         }
     }
 
-    private async validateInternal(certDir: string): Promise<ValidationIssue[]> {
+    private async validateInternal(certDir: string, signal?: AbortSignal): Promise<ValidationIssue[]> {
+        checkCancellation(signal);
         const manifestPath = path.join(certDir, "manifest.json");
         if (!fs.existsSync(manifestPath)) {
             return [{code: "certification-evidence-bundle-manifest-missing", severity: "error", message: `"${manifestPath}" does not exist.`}];
@@ -112,12 +115,15 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
             if (presentation.templateArtifactHash !== null && !(/^sha256:[a-f0-9]{64}$/).test(presentation.templateArtifactHash)) throw new Error("Invalid template raw artifact identity.");
             if (dossierHash(presentation.template) !== presentation.templateHash || !Array.isArray(presentation.formats) || !presentation.formats.length || new Set(presentation.formats).size !== presentation.formats.length) throw new Error("Invalid template identity or formats.");
             for (const format of presentation.formats) {
+                checkCancellation(signal);
                 const file = resolveSafeCertificationEvidenceFilePath(certDir, certificationDossierFileName(format));
                 if (!file) throw new Error("Unsafe dossier output path.");
-                const expected = await new CertificationDossierRenderer().render(manifest, format, presentation.template);
+                const expected = await new CertificationDossierRenderer().render(manifest, format, presentation.template, signal);
+                checkCancellation(signal);
                 if (!fs.readFileSync(file).equals(Buffer.from(expected))) throw new Error(`Rendered ${format} differs from canonical dossier; regenerate all requested files.`);
             }
         } catch (error) {
+            checkCancellation(signal);
             issues.push({code: "certification-dossier-invalid", severity: "error", message: error instanceof Error ? error.message : String(error)});
         }
 
@@ -141,6 +147,7 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
         const seenExact = new Set<string>();
         const seenCaseInsensitive = new Map<string, string>();
         for (const modeEntry of manifest.modes) {
+            checkCancellation(signal);
             if (!isModeEntryShape(modeEntry)) {
                 issues.push({
                     code: "certification-evidence-bundle-mode-field-invalid",
@@ -204,7 +211,7 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
                 continue;
             }
 
-            this.validateSamplesFile(safeSamplesPath, modeEntry, issues);
+            await this.validateSamplesFile(safeSamplesPath, modeEntry, issues, signal);
         }
 
         this.validateFilesInventory(certDir, manifest, issues);
@@ -212,7 +219,7 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
         return issues;
     }
 
-    private validateSamplesFile(samplesPath: string, modeEntry: CertificationEvidenceBundleModeEntry, issues: ValidationIssue[]): void {
+    private async validateSamplesFile(samplesPath: string, modeEntry: CertificationEvidenceBundleModeEntry, issues: ValidationIssue[], signal?: AbortSignal): Promise<void> {
         if (!fs.existsSync(samplesPath)) {
             issues.push({
                 code: "certification-evidence-bundle-samples-file-missing",
@@ -246,7 +253,11 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
             });
         }
 
-        lines.forEach((line, position) => {
+        for (const [position, line] of lines.entries()) {
+            if (position % 32 === 0) await new Promise<void>(resolve => {
+                setImmediate(resolve); 
+            });
+            checkCancellation(signal);
             let parsedLine: unknown;
             try {
                 parsedLine = parseCertificationJson(line);
@@ -257,7 +268,7 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
                     message: `mode "${modeEntry.modeName}": line ${position} of "${modeEntry.samplesFile}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}.`,
                     details: {modeName: modeEntry.modeName, position},
                 });
-                return;
+                continue;
             }
 
             if (!isSampleRecordShape(parsedLine)) {
@@ -267,7 +278,7 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
                     message: `mode "${modeEntry.modeName}": line ${position} of "${modeEntry.samplesFile}" doesn't match the expected sample record shape.`,
                     details: {modeName: modeEntry.modeName, position},
                 });
-                return;
+                continue;
             }
 
             if (parsedLine.sampleIndex !== position) {
@@ -324,7 +335,7 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
                     message: `mode "${modeEntry.modeName}": line ${position}'s own artifact can't be re-canonicalized: ${error instanceof Error ? error.message : String(error)}.`,
                     details: {modeName: modeEntry.modeName, position},
                 });
-                return;
+                continue;
             }
             if (recomputedArtifactHash !== parsedLine.artifactHash) {
                 issues.push({
@@ -344,7 +355,7 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
                     details: {modeName: modeEntry.modeName, position, issues: artifactIssues},
                 });
             }
-        });
+        }
     }
 
     private validateFilesInventory(certDir: string, manifest: import("./CertificationEvidenceBundleManifest.js").CertificationEvidenceBundleManifest, issues: ValidationIssue[]): void {
@@ -400,4 +411,8 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
             }
         }
     }
+}
+
+function checkCancellation(signal?: AbortSignal): void {
+    if (signal?.aborted) throw new CertificationEvidenceBundleBuildCancelledError();
 }

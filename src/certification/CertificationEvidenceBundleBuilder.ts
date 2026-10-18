@@ -96,6 +96,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
     private readonly removeDirectory: (dirPath: string) => void;
     private readonly selfValidator: CertificationEvidenceBundleValidating;
     private readonly beforeCommit: (() => void) | undefined;
+    private readonly afterCommit: (() => void) | undefined;
 
     constructor(
         pokieVersion: string,
@@ -113,6 +114,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
         // Lets the direct builder contract test the final shared-publication
         // boundary while preserving the production writer's single path.
         beforeCommit: (() => void) | undefined = undefined,
+        afterCommit: (() => void) | undefined = undefined,
     ) {
         this.pokieVersion = pokieVersion;
         this.reader = reader;
@@ -125,6 +127,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
         this.removeDirectory = removeDirectory;
         this.selfValidator = selfValidator;
         this.beforeCommit = beforeCommit;
+        this.afterCommit = afterCommit;
     }
 
     public async buildFromBundle(
@@ -172,7 +175,8 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
         if (sourceManifest.files.some(file => !resolveSafeCertificationEvidenceFilePath(bundleDir, file))) return this.failed(outDir, upfrontIssues, [{code: "certification-dossier-source-unsafe", severity: "error", message: "Source inventory contains a missing, symlinked or escaping file."}]);
         const initialManifestHash = hashManifest(sourceManifest);
 
-        const deepValidationIssues = await this.bundleValidator.validate(bundleDir, {deep: true});
+        const deepValidationIssues = await this.bundleValidator.validate(bundleDir, {deep: true, signal: options?.signal, throwIfAborted: () => assertNotCancelled(options)});
+        assertNotCancelled(options);
         if (deepValidationIssues.some((issue) => issue.severity === "error")) {
             return this.failed(outDir, upfrontIssues, deepValidationIssues);
         }
@@ -293,7 +297,8 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
             // Publish-time self-check: validates the fully-assembled staging directory exactly the way any
             // other consumer would validate a published bundle — an internal inconsistency here is a bug in
             // this class, not a caller error, but it must never make it to outDir either way.
-            const stagingIssues = await this.selfValidator.validate(stagingDir);
+            const stagingIssues = await this.selfValidator.validate(stagingDir, options?.signal);
+            assertNotCancelled(options);
             if (stagingIssues.some((issue) => issue.severity === "error")) {
                 return this.failed(outDir, upfrontIssues, [...deepValidationIssues, ...stagingIssues]);
             }
@@ -324,6 +329,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
                     assertNotCancelled(options);
 
                 },
+                afterCommit: this.afterCommit,
                 writeFilesIntoTempDir: (tempDir) => {
                     for (const file of relativeFiles) {
                         this.renameDirectory(path.join(stagingDir, file), path.join(tempDir, file));

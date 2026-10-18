@@ -112,6 +112,7 @@ export async function acquireCertificationDossier(source: OutcomeLibraryBundleMa
             if (report.reproducibility.libraryHash !== undefined) {
                 if (!sourceBundleDir || report.workers !== 1 || !report.betMode) throw new Error("Outcome-source report reproduction requires the explicit source bundle, mode and single-process sampler.");
                 const result = await simulateOutcomeSourceProject({type: "outcomeLibrary", rootPath: sourceBundleDir, capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary, provenance: "explicit dossier authority"}, report.betMode, report.requestedRounds, new SeededWeightedOutcomeRandomSource(report.seed), report.seed, {signal});
+                check();
                 if (!result.supported) throw new Error(result.diagnostic.message);
                 reproduced = projectOutcomeSourceSimulationReport(result.report);
                 if (dossierHash(Reflect.get(report, "statistics")) !== dossierHash(result.report.statistics)) throw new Error("Outcome-source statistics differ from deterministic execution.");
@@ -129,6 +130,7 @@ export async function acquireCertificationDossier(source: OutcomeLibraryBundleMa
                 const result = await new ParallelSimulationRunner(inputs.modelSource, report.requestedRounds, {
                     seed: report.seed, workers: report.workers, signal, chunkSize: 1000, betModeId: report.betMode, convergence: report.convergence, requireCleanup: true,
                 }).run();
+                check();
                 reproduced = new SimulationReportBuilder().build({...result, requestedRounds: report.requestedRounds, seed: report.seed, durationMs: report.durationMs, pokieVersion: source.artifactPokieVersion, targetRtp: report.targetRtp});
                 if (result.configHash !== modelHash) throw new Error("Reproduced simulation model differs from the report.");
                 seedStrategy = result.workerSeedStrategy;

@@ -63,16 +63,19 @@ export class StudioCertificationService {
     public requestIdentity(projectRoot: string, request: ValidatedCertificationBuildRequest): string {
         const inputs = this.resolveDossierPaths(projectRoot, request.dossier, request.output);
         const source = resolveProjectDirectory(projectRoot, request.bundleDir, this.realpath);
+        const out = this.resolveOutputDirectory(projectRoot, request.outDir);
+        if (out.status === "error") throw new Error(out.message);
         if (source.status === "error") throw new Error(source.message);
-        return dossierHash({sourceManifest: certificationSourceHash(path.join(source.resolvedPath, "manifest.json")), inputs: [inputs.dossier?.modelSource, ...(inputs.dossier?.reportFiles ?? []), ...(inputs.dossier?.replayFiles ?? []), inputs.output?.templateFile].filter((file): file is string => file !== undefined).map(certificationSourceHash)});
+        return dossierHash({outDir: out.resolvedPath, sourceManifest: certificationSourceHash(path.join(source.resolvedPath, "manifest.json")), inputs: [inputs.dossier?.modelSource, ...(inputs.dossier?.reportFiles ?? []), ...(inputs.dossier?.replayFiles ?? []), inputs.output?.templateFile].filter((file): file is string => file !== undefined).map(certificationSourceHash)});
     }
 
-    public async download(projectRoot: string, request: ValidatedCertificationBuildRequest, file: string, identity: string): Promise<{bytes: Buffer; mime: string}> {
-        const out = resolveProjectDirectory(projectRoot, request.outDir, this.realpath);
+    public async download(projectRoot: string, request: ValidatedCertificationBuildRequest, file: string, identity: string, signal?: AbortSignal): Promise<{bytes: Buffer; mime: string}> {
+        const out = this.resolveOutputDirectory(projectRoot, request.outDir);
         const source = resolveProjectDirectory(projectRoot, request.bundleDir, this.realpath);
         if (out.status === "error" || source.status === "error") throw new Error("Dossier paths are outside this project.");
         const inputs = this.resolveDossierPaths(projectRoot, request.dossier, request.output);
-        const issues = await new CertificationEvidenceBundleVerifier().verify(out.resolvedPath, {sourceBundleDir: source.resolvedPath, dossier: inputs.dossier, templateFile: inputs.output?.templateFile});
+        const issues = await new CertificationEvidenceBundleVerifier().verify(out.resolvedPath, {sourceBundleDir: source.resolvedPath, dossier: inputs.dossier, templateFile: inputs.output?.templateFile, signal});
+        if (signal?.aborted) throw new CertificationEvidenceBundleBuildCancelledError();
         if (issues.some(issue => issue.severity === "error")) throw new Error(`Dossier inputs are stale or invalid: ${issues.map(issue => issue.message).join("; ")}`);
         const manifest = JSON.parse(fs.readFileSync(path.join(out.resolvedPath, "manifest.json"), "utf8")) as {evidenceContentHash: string; files: string[]};
         if (manifest.evidenceContentHash !== identity || !manifest.files.includes(file)) throw new Error("Dossier identity/file is stale or unknown.");
@@ -98,7 +101,7 @@ export class StudioCertificationService {
 
         try {
             onProgress?.("Deep validation", "validation stages", 1, 2, "Checking evidence files and immutable provenance.");
-            const issues = await this.bundleValidator.validate(resolved.resolvedPath, {deep: true});
+            const issues = await this.bundleValidator.validate(resolved.resolvedPath, {deep: true, signal});
             if (signal?.aborted) {
                 return {status: "load-error", error: "Certification source validation was cancelled after its last settled validation boundary."};
             }
@@ -127,7 +130,7 @@ export class StudioCertificationService {
         if (resolvedBundle.status === "error") {
             return {status: "load-error", error: resolvedBundle.message};
         }
-        const resolvedOutDir = resolveProjectDirectory(projectRoot, outDir, this.realpath);
+        const resolvedOutDir = this.resolveOutputDirectory(projectRoot, outDir);
         if (resolvedOutDir.status === "error") {
             return {status: "load-error", error: resolvedOutDir.message};
         }
@@ -167,6 +170,27 @@ export class StudioCertificationService {
             };
         }
     }
+    // An explicit absolute destination permits current-package models to publish outside
+    // their hashed source tree. Relative paths remain project-contained. Never follow a
+    // symlink in either the selected destination or any existing ancestor.
+    private resolveOutputDirectory(projectRoot: string, outDir: string): ReturnType<typeof resolveProjectDirectory> {
+        if (!path.isAbsolute(outDir)) return resolveProjectDirectory(projectRoot, outDir, this.realpath);
+        const resolvedPath = path.resolve(outDir);
+        try {
+            for (let current = resolvedPath; ; current = path.dirname(current)) {
+                try {
+                    if (fs.lstatSync(current).isSymbolicLink()) throw new Error(`Destination ancestor is a symbolic link: "${current}".`);
+                } catch (error) {
+                    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+                }
+                if (current === path.dirname(current)) break;
+            }
+            return {status: "ok", resolvedPath};
+        } catch (error) {
+            return {status: "error", message: `Cannot resolve dossier destination: ${error instanceof Error ? error.message : String(error)}`};
+        }
+    }
+
     private resolveDossierPaths(projectRoot: string, dossier?: CertificationDossierInputs, output?: CertificationDossierOutput): {dossier?: CertificationDossierInputs; output?: CertificationDossierOutput} {
         const resolve = (input: string): string => {
             const result = resolveProjectDirectory(projectRoot, input, this.realpath);

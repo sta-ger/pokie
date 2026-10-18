@@ -231,6 +231,87 @@ describe("StudioJobService executor bridge routes", () => {
         await expect(get(`${restartedBaseUrl}${download}`)).resolves.toMatchObject({status: 409, body: {error: expect.stringContaining("changed")}});
     });
 
+    it.each(["missing", "escaping", "symlinked", "over-budget"])("retains actionable %s authority failures inside the certification job", async kind => {
+        await buildSourceOutcomeLibraryBundle(path.join(projectRoot, "bundle"));
+        let modelSource = "missing.json";
+        if (kind === "escaping") modelSource = "../escape.json";
+        if (kind === "symlinked") {
+            fs.writeFileSync(path.join(projectRoot, "target.json"), "{}");
+            fs.symlinkSync(path.join(projectRoot, "target.json"), path.join(projectRoot, "alias.json"));
+            modelSource = "alias.json";
+        }
+        if (kind === "over-budget") {
+            const fd = fs.openSync(path.join(projectRoot, "oversized.json"), "w");
+            try {
+                fs.ftruncateSync(fd, 64 * 1024 * 1024 + 1); 
+            } finally {
+                fs.closeSync(fd); 
+            }
+            modelSource = "oversized.json";
+        }
+        const service = new StudioCertificationService("1.3.0");
+        const build = jest.spyOn(service, "build");
+        const baseUrl = await start(service);
+        expect(await post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "out", modes: [{modeName: "base", seed: "s", sampleCount: 1}], dossier: {modelSource}})).toMatchObject({status: 200, body: {status: "load-error", error: expect.stringContaining("Could not acquire certification authorities")}});
+        expect(jobs.get(projectRoot, "bridge-job")).toMatchObject({status: "failed", error: expect.stringContaining("Select existing physical project-local inputs"), recovery: {action: "rebuild"}});
+        expect(jobs.get(projectRoot, "bridge-job")?.result?.outputs).toBeUndefined();
+        expect(build).not.toHaveBeenCalled();
+        expect(fs.existsSync(path.join(projectRoot, "out"))).toBe(false);
+    });
+
+    it.each(["disconnect", "project-close", "shutdown"])("aborts and drains download-owned reproduction on %s", async trigger => {
+        await buildSourceOutcomeLibraryBundle(path.join(projectRoot, "bundle"));
+        const service = new StudioCertificationService("1.3.0");
+        const baseUrl = await start(service);
+        await post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "out", modes: [{modeName: "base", seed: "s", sampleCount: 1}]});
+        const retained = jobs.get(projectRoot, "bridge-job")!;
+        const downloadPath = retained.result!.outputs!.find(output => output.path === "dossier.pdf")!.downloadPath!;
+        let began!: () => void, aborted!: () => void, finishCleanup!: () => void;
+        const started = new Promise<void>(resolve => {
+            began = resolve; 
+        });
+        const cancelled = new Promise<void>(resolve => {
+            aborted = resolve; 
+        });
+        const cleanup = new Promise<void>(resolve => {
+            finishCleanup = resolve; 
+        });
+        let drained = false;
+        jest.spyOn(service, "download").mockImplementation(async (_root, _request, _file, _identity, signal) => {
+            began();
+            await new Promise<void>(resolve => {
+                signal!.addEventListener("abort", () => {
+                    aborted();
+                    resolve();
+                }, {once: true});
+            });
+            await cleanup;
+            drained = true;
+            throw new Error("Reproduction cancelled after owned runtime cleanup");
+        });
+        const request = http.get(`${baseUrl}${downloadPath}`, {agent: false}, response => {
+            response.resume(); 
+        });
+        request.on("error", () => undefined);
+        await started;
+        let transitionSettled = false;
+        let transition: Promise<unknown>;
+        if (trigger === "shutdown") transition = server!.stop();
+        else if (trigger === "project-close") transition = post(`${baseUrl}/api/projects/close`, {confirmActiveJobs: true});
+        else transition = Promise.resolve(request.destroy());
+        const settled = Promise.resolve(transition).then(() => {
+            transitionSettled = true; 
+        });
+        await cancelled;
+        expect(drained).toBe(false);
+        if (trigger !== "disconnect") expect(transitionSettled).toBe(false);
+        finishCleanup();
+        await settled;
+        // A disconnect has no caller awaiting its route; server shutdown must still drain it.
+        if (trigger === "disconnect") await server!.stop();
+        expect(drained).toBe(true);
+    });
+
     it("records cancellation cleanup failure as failed rather than confirmed-cleaned cancellation", async () => {
         let release!: (value: unknown) => void, began!: () => void;
         const started = new Promise<void>(resolve => {

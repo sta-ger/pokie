@@ -65,6 +65,34 @@ describe("StudioCertificationService", () => {
         expect(await broken.build(tmpRoot, "bundle", modes, "out", {signal: controller.signal})).toMatchObject({status: "load-error", error: expect.stringContaining("cleanup failed")});
     });
 
+    it("passes source cancellation to the deep validator and never returns success", async () => {
+        const controller = new AbortController();
+        const validate = jest.fn((_dir: string, options?: {deep?: boolean; signal?: AbortSignal}) => {
+            expect(options).toEqual({deep: true, signal: controller.signal});
+            controller.abort();
+            return Promise.resolve([]);
+        });
+        const service = new StudioCertificationService("1.3.0", undefined, {validate});
+        expect(await service.validateSourceBundle(tmpRoot, "bundle", controller.signal)).toMatchObject({status: "load-error", error: expect.stringContaining("cancelled")});
+    });
+
+    it("accepts explicit disjoint absolute destinations consistently and rejects symlink aliases", async () => {
+        const project = path.join(tmpRoot, "project");
+        fs.mkdirSync(project);
+        await buildSourceOutcomeLibraryBundle(path.join(project, "bundle"));
+        const request = {bundleDir: "bundle", outDir: path.join(tmpRoot, "output"), modes: [{modeName: "base", seed: "s", sampleCount: 1}]};
+        const service = new StudioCertificationService("1.3.0");
+        const identity = service.requestIdentity(project, request);
+        const result = await service.build(project, request.bundleDir, request.modes, request.outDir);
+        expect(result.status).toBe("ok");
+        if (result.status !== "ok") throw new Error(JSON.stringify(result));
+        expect(service.requestIdentity(project, request)).toBe(identity);
+        expect((await service.download(project, request, "dossier.pdf", result.manifest.evidenceContentHash)).mime).toBe("application/pdf");
+        fs.symlinkSync(tmpRoot, path.join(project, "alias"));
+        expect(await service.build(project, "bundle", request.modes, path.join(project, "alias", "new-output"))).toMatchObject({status: "load-error", error: expect.stringContaining("symbolic link")});
+        expect(fs.existsSync(path.join(tmpRoot, "new-output"))).toBe(false);
+    });
+
     describe("validateSourceBundle", () => {
         it("splits deep-validation issues by severity for a real source bundle", async () => {
             await buildSourceOutcomeLibraryBundle(path.join(tmpRoot, "bundle"), ["base"]);

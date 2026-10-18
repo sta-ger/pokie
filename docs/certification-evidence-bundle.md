@@ -163,3 +163,20 @@ from a bundle or game name. Existing [SDK diagnostics](external-adapter-sdk.md) 
 compatibility, never provider acceptance; existing [HMAC fairness proofs](provably-fair.md) establish
 only their versioned deterministic outcome-selection checks, never precommit timing or general game
 fairness. These separate contracts must not be presented as certification authority.
+
+### Studio destinations and cancellation
+
+For an opened runtime package, select `modelSource: "."` and an explicit absolute,
+new or empty output directory outside that package, for example `/work/evidence/game-dossier`.
+Relative outputs remain project-contained. Absolute output selections reject symbolic links in
+existing ancestors; all destinations still pass the builder's physical source/output overlap and
+ownership checks. Build, retained request identity, retry/recovery and download revalidation resolve
+the same destination. Inputs remain project-local and are never copied to enable this workflow.
+
+Deep validation, regenerated dossier validation and native sample verification accept cancellation.
+Verification returns an error diagnostic after cancellation and starts no later phase. Studio aborts
+and drains download reproduction on disconnect, project close/change and shutdown. Invalid authority
+fingerprints are retained as failed certification jobs with correction/rebuild guidance and no downloads.
+The shared human-readable rules projection retains every authored/effective field, including paylines,
+wild/scatter roles, dimensions and reel-generation inputs. `report --template` is dossier-only, including
+when the input resolves to an outcome library or Stake adapter.

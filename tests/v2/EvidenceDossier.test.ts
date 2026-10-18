@@ -1,8 +1,13 @@
+import ts from "typescript";
+import {pathToFileURL} from "node:url";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {execFileSync} from "node:child_process";
 import {
+    certificationDossierTables,
+    MathDefinitionSourceReader,
+    computeCertificationEvidenceContentHash,
     CERTIFICATION_DOSSIER_SECTIONS,
     CERTIFICATION_PREPARATION_NOTICE,
     CertificationDossierRenderer,
@@ -62,6 +67,31 @@ describe("canonical evidence dossier", () => {
             }
         }
         expect(Object.keys(result.artifactHashes!)).toEqual(result.files);
+    });
+
+    it("retains non-horizontal paylines, roles, dimensions and authored/effective reel generation in every projection", async () => {
+        const source = path.join(directory, "source");
+        await buildSourceOutcomeLibraryBundle(source);
+        const built = await new CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(source, modes, path.join(directory, "out"));
+        const blueprint = {...fractionalBetBlueprint(), rows: 3, symbols: ["A", "B", "WILD_ROLE", "SCATTER_ROLE"], wilds: ["WILD_ROLE"], scatters: ["SCATTER_ROLE"], paylines: [[2, 0, 1]],
+            reelStripGeneration: Array.from({length: 3}, () => ({type: "generated" as const, length: 7, symbolCounts: {A: 2, B: 3, WILD_ROLE: 1, SCATTER_ROLE: 1}, seed: 987654}))};
+        Reflect.deleteProperty(blueprint, "reelStrips");
+        const definition = await new MathDefinitionSourceReader().read({kind: "blueprint", model: blueprint});
+        expect(definition.support).toBe("complete");
+        const original = built.manifest!;
+        const draft = {...original, configHash: definition.identity.revision!, dossier: {...original.dossier,
+            identity: {...original.dossier.identity, modelHash: definition.identity.revision!, modelArtifactHash: "sha256:" + "a".repeat(64)},
+            rules: {status: "available" as const, definition}, validation: {...original.dossier.validation, model: "advanced-declared-model" as const}, support: {...original.dossier.support, coverage: "complete" as const},}};
+        const manifest = {...draft, evidenceContentHash: computeCertificationEvidenceContentHash(draft)};
+        const tables = certificationDossierTables(manifest);
+        expect(tables.find(table => table.title === "Model paylines")?.rows).toEqual(expect.arrayContaining([["authored.0.0", "2"], ["effective.0.1", "0"], ["effective.0.2", "1"]]));
+        for (const dimension of ["rows", "reels"]) expect(tables.find(table => table.title === `Model ${dimension}`)?.rows).toEqual([["authored", "3"], ["effective", "3"]]);
+        for (const format of ["json", "console", "markdown", "html", "pdf"] as const) {
+            const text = (await new CertificationDossierRenderer().render(manifest, format)).toString();
+            for (const field of ["paylines", "wilds", "scatters", "rows", "reels", "reelStripGeneration", "reelStrips", "WILD_ROLE", "SCATTER_ROLE", "987654", "authored", "effective"]) expect(text).toContain(field);
+            if (format === "json") expect(JSON.parse(text).dossier.rules.definition.authored.paylines).toEqual([[2, 0, 1]]);
+            else for (const [key, value] of [["authored.0.0", "2"], ["effective.0.1", "0"], ["effective.0.2", "1"]]) expect(text).toMatch(new RegExp(`${key.replaceAll(".", "\\.")}[^\\n]*${value}`));
+        }
     });
 
     it("preserves tiny nonzero probabilities and fractional stakes, escaping authored template text", async () => {
@@ -236,6 +266,42 @@ console.log(JSON.stringify({closed: ["candidate", "model", "valid-report-substit
                 expect(text).toContain("unverified");
                 expect(text).toContain("candidate-revision");
             }
+            // Compile the real Studio adapter beside the same fresh public runtime. The
+            // opened package remains the model; only its outcome bundle is attached.
+            const emitAdapter = (relative: string, output: string, rewrite: (source: string) => string = source => source): void => {
+                const source = fs.readFileSync(path.join(process.cwd(), relative), "utf8");
+                fs.writeFileSync(path.join(runtime.directory, output), ts.transpileModule(rewrite(source), {compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022}}).outputText);
+            };
+            emitAdapter("cli/studio/isPathWithin.ts", "isPathWithin.mjs");
+            emitAdapter("cli/studio/outcomeLibrary/resolveProjectDirectory.ts", "resolveProjectDirectory.mjs", source => source.replace("../isPathWithin.js", "./isPathWithin.mjs"));
+            const sourcePrefix = pathToFileURL(path.join(runtime.directory, "node_modules/@fromstan/pokie/dist/esm/")).href;
+            emitAdapter("cli/studio/certification/StudioCertificationService.ts", "StudioCertificationService.mjs", source => source.replaceAll("../../../src/", sourcePrefix).replace("../outcomeLibrary/resolveProjectDirectory.js", "./resolveProjectDirectory.mjs"));
+            const studioScript = path.join(runtime.directory, "studio-package.mjs");
+            fs.writeFileSync(studioScript, `
+import fs from "node:fs";
+import path from "node:path";
+import assert from "node:assert/strict";
+import {StudioCertificationService} from "./StudioCertificationService.mjs";
+const root = process.argv[2], project = path.join(root, "model"), output = path.join(root, "studio-dossier");
+fs.cpSync(path.join(root, "source"), path.join(project, "source"), {recursive: true});
+const request = {bundleDir: "source", outDir: output, modes: ${JSON.stringify(modes)}, dossier: {modelSource: "."}};
+const service = new StudioCertificationService("1.3.0");
+const identity = service.requestIdentity(project, request);
+const built = await service.build(project, request.bundleDir, request.modes, request.outDir, {dossier: request.dossier});
+assert.equal(built.status, "ok", JSON.stringify(built));
+assert.equal(built.manifest.dossier.identity.modelHash, ${JSON.stringify(original.manifest.dossier.identity.modelHash)});
+assert.equal(service.requestIdentity(project, request), identity);
+const pdf = await service.download(project, request, "dossier.pdf", built.manifest.evidenceContentHash);
+assert(pdf.bytes.equals(fs.readFileSync(path.join(output, "dossier.pdf"))));
+assert.equal((await service.build(project, request.bundleDir, request.modes, output, {dossier: request.dossier})).status, "load-error");
+const retry = await service.build(project, request.bundleDir, request.modes, output + "-retry", {dossier: request.dossier});
+assert.equal(retry.status, "ok", JSON.stringify(retry));
+fs.appendFileSync(path.join(project, "index.cjs"), "\\n// changed selected model\\n");
+assert.notEqual(service.requestIdentity(project, request), identity);
+await assert.rejects(service.download(project, request, "dossier.pdf", built.manifest.evidenceContentHash), /stale|invalid/);
+console.log("opened-package build/download/retry/stale-authority passed");
+`);
+            expect(execFileSync(process.execPath, [studioScript, relocated], {encoding: "utf8", timeout: 120000})).toContain("opened-package build/download/retry/stale-authority passed");
         } finally {
             runtime.dispose();
         }
