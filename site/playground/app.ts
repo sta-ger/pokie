@@ -280,8 +280,8 @@ function mount(root: HTMLElement): void {
             } catch (error) {
                 if (version !== uiGeneration) return;
                 clear();
-                focusAction();
                 update({status: "failed", message: error instanceof Error ? error.message : String(error)});
+                focusAction();
             }
         })();
     });
