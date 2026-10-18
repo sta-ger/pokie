@@ -20,4 +20,3 @@ export function resolveCanonicalWasmGameModel(blueprint: GameBlueprint): PokieWa
     }
     return resolveResolvedCanonicalWasmGameModel(materialized);
 }
-

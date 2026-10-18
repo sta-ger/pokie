@@ -76,4 +76,3 @@ export function paytablePaths(model: {paytable: Record<string, Record<string, nu
         Object.keys(amounts).map((count) => `/paytable/${escape(symbol)}/${escape(count)}`),
     );
 }
-
