@@ -56,7 +56,8 @@ try {
         const suffix = fragment ? `#${fragment}` : '';
         if (downloads.has(file)) return downloads.get(file) + suffix;
         if (sources.has(file)) return sources.get(file) + suffix;
-        if (!fragment && inventory.aliases[file]) return inventory.aliases[file];
+        // Site sources resolve above; explicit repository guides retain their maintained detail.
+        // Do not alias them to summary pages, even when they share a topic or basename.
         if (fragment) {
             if (file.endsWith('.md')) {
                 const rendered = renderMarkdown(fs.readFileSync(target, 'utf8'), value => value);

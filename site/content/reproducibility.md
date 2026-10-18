@@ -23,7 +23,15 @@ pokie replay COMPATIBLE_PACKAGE --recording audit-round.json
 
 An executable `pokie.audit-round.v1` recording carries compatibility identity, state, commands and evidence. Verification uses the same runtime without a live wallet or session. It requires compatible executable bytes/dependencies, complete custom state codecs and seeded RNG continuation. A public visible result or presentation DTO cannot restore hidden future state. Live-only sessions cannot claim durable restoration or exact audit replay. Mismatch is a failure to investigate; it is not fixed by relabelling the artifact.
 
-Canonical WASM has a portable replay path: use the **same explicit seed** for `run`, `sim` and `replay`, whose defaults differ. For WASM simulation use `--workers 1`, fixed rounds, no adaptive convergence or `--mode`; WASM replay does not accept `--mode`. `replay --round N` executes through N rounds. Native library simulation/replay requires a declared `--mode` and explicit seed; its authority is the library distribution.
+## Canonical WASM replay
+
+Canonical WASM has a portable replay path: use the **same explicit seed** for `run`, `sim` and `replay`, whose defaults differ. For WASM simulation use `--workers 1`, fixed rounds and no adaptive convergence.
+
+Simulation and replay accept `--mode <id>` only when the component declares that bet mode. Unknown IDs fail; ordinary components without declared modes reject mode selection. `sim --mode all` requires declared modes and runs the full `--rounds` budget independently for each mode, starting each with the same seed; it produces separate mode reports.
+
+Replay defaults to `--unit step`: `--round N` addresses N accepted mathematical plays, excluding delivery-only frames. Feature-aware components also support `--unit logical-round` to complete N logical entries, optionally with a declared `--mode <id>`. Mode selection applies at entries; pending feature continuations keep their entry selection. Ordinary components reject logical-round addressing. `all` is a simulation selector, not a replay mode.
+
+Native library simulation/replay requires a declared `--mode` and explicit seed; its authority is the library distribution.
 
 ## RNG choices
 

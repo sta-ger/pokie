@@ -250,6 +250,77 @@ describe("public documentation production build", () => {
         }
     });
 
+    it("keeps both WASM guides consistent with declared-mode help and supported replay addressing", () => {
+        const commands = new JSDOM(html("/docs/cli-api/")).window.document;
+        expect(commands.getElementById("pokie-sim")!.nextElementSibling!.textContent).toContain(
+            "declared modes support --mode <id|all>",
+        );
+        expect(commands.getElementById("pokie-replay")!.nextElementSibling!.textContent).toContain(
+            "declared features support --mode and --unit logical-round",
+        );
+        for (const route of ["/docs/interop/", "/docs/reproducibility/"]) {
+            const prose = new JSDOM(html(route)).window.document.querySelector("article")!.textContent!;
+            expect(prose).toContain(
+                "Simulation and replay accept --mode <id> only when the component declares that bet mode",
+            );
+            expect(prose).toContain("Unknown IDs fail");
+            expect(prose).toContain("ordinary components without declared modes reject mode selection");
+            expect(prose).toContain("sim --mode all requires declared modes");
+            expect(prose).toContain("full --rounds budget independently for each mode");
+            expect(prose).toContain("same seed");
+            expect(prose).toContain("--workers 1");
+            expect(prose).toContain("no adaptive convergence");
+            expect(prose).toContain("Replay defaults to --unit step");
+            expect(prose).toContain("N accepted mathematical plays, excluding delivery-only frames");
+            expect(prose).toContain("--unit logical-round to complete N logical entries");
+            expect(prose).toContain("optionally with a declared --mode <id>");
+            expect(prose).toContain("pending feature continuations keep their entry selection");
+            expect(prose).toContain("Ordinary components reject logical-round addressing");
+            expect(prose).toContain("all is a simulation selector, not a replay mode");
+            expect(prose).not.toMatch(
+                /no adaptive convergence or --mode|replay (?:also rejects|does not accept) --mode/,
+            );
+        }
+    });
+
+    it("preserves maintained source-guide destinations alongside local summary navigation", () => {
+        const sourceRoot = "https://github.com/fromstan/pokie/blob/develop/";
+        const destinations = [
+            ["/docs/optimization/", "Full policy and authority details", "docs/optimization.md"],
+            [
+                "/docs/optimization/",
+                "complete seeded policy",
+                "docs/optimization.md#seeded-search-and-held-out-assessment",
+            ],
+            [
+                "/docs/interop/",
+                "PAR import/export source guide",
+                "docs/cli.md#pokie-par-import-inputxlsx--pokie-par-export-configjson",
+            ],
+        ];
+        for (const [route, label, destination] of destinations) {
+            const document = new JSDOM(html(route)).window.document;
+            const link = [...document.querySelectorAll("article a")].find((item) => item.textContent === label);
+            expect(link?.getAttribute("href")).toBe(sourceRoot + destination);
+        }
+        // The former README/getting-started aliases had no callers. Inventoried site
+        // sources still provide local summaries, including optimizer and CLI entry points.
+        const summaries = [
+            ["/", "Start with a Blueprint", "/docs/getting-started/"],
+            ["/", "Explore the documentation", "/docs/"],
+            ["/docs/", "Optimization", "/docs/optimization/"],
+            ["/docs/cli-api/", "optimization", "/docs/optimization/"],
+            ["/docs/mechanics/", "optimization", "/docs/optimization/"],
+            ["/docs/architecture/", "optimizer example", "/docs/optimization/#direct-library-ownership"],
+            ["/docs/interop/", "Build contract", "/docs/cli-api/#build-and-conversion"],
+        ];
+        for (const [route, label, destination] of summaries) {
+            const document = new JSDOM(html(route)).window.document;
+            const link = [...document.querySelectorAll("article a")].find((item) => item.textContent === label);
+            expect(link?.getAttribute("href")).toBe(destination);
+        }
+    });
+
     it("renders source-linked domain/calculation/state/wallet explanations, ownership and truthful ISC positioning", () => {
         const architecture = new JSDOM(html("/docs/architecture/")).window.document;
         for (const id of [

@@ -16,12 +16,6 @@
     {"route": "/docs/server/", "title": "Server and compliance boundaries", "source": "site/content/server.md", "description": "Local adapters, transactional stores and external-wallet reconciliation limits."},
     {"route": "/404.html", "title": "Page not found", "source": "site/content/not-found.md", "description": "Recover a missing documentation link."}
   ],
-  "aliases": {
-    "docs/README.md": "/docs/",
-    "docs/getting-started.md": "/docs/getting-started/",
-    "docs/cli.md": "/docs/cli-api/",
-    "docs/optimization.md": "/docs/optimization/"
-  },
   "examples": [
     {"source": "examples/blueprints/sample-slot.blueprint.json", "kind": "blueprint"},
     {"source": "site/examples/weighted.blueprint.json", "kind": "blueprint"},
