@@ -97,7 +97,7 @@ describe("V2C-01 delivery identity", () => {
             const manifest = {id: "private-slot", name: "Private slot", version: "0.1.0"};
             const scaffold = new GamePackageCreator(metadata.version).create(directory, "private-slot");
             expect(JSON.parse(fs.readFileSync(path.join(scaffold.projectRoot, "package.json"), "utf8")).dependencies).toEqual({[identity]: `^${metadata.version}`});
-            const blueprint = {manifest, reels: 1, rows: 1, symbols: ["A"], reelStrips: [["A"]], paylines: [[0]], paytable: {A: {1: 1}}};
+            const blueprint = {manifest, reels: 2, rows: 1, symbols: ["A"], reelStrips: [["A"], ["A"]], paylines: [[0, 0]], paytable: {A: {2: 1}}};
             expect(renderBuiltGameModule(blueprint, metadata.version)).toContain(`require("${identity}")`);
             expect(renderEntryModule(manifest)).toContain(`from "${identity}"`);
             const generated = new GamePackageGenerator(metadata.version).generate(blueprint, directory, path.join(directory, "generated"));
