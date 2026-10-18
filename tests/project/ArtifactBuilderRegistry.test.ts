@@ -353,6 +353,10 @@ describe("ArtifactBuilderRegistry", () => {
         {sourceType: "parWorkbook", target: "stakeAdapter", empty: false},
         {sourceType: "parWorkbook", target: "stakeAdapter", empty: true},
     ] as const)("downstream $sourceType -> $target (caller directory: $empty)", ({sourceType, target, empty}) => {
+        // Every package-source path snapshots the real runtime graph, including failures
+        // before attachment. Share the lifecycle budget across the whole matrix so the
+        // parallel controller launcher has the same allowance as cancellation cases.
+        const timeout = sourceType === "tsPackage" ? PACKAGE_EXTRACTION_TEST_TIMEOUT : undefined;
         let root: string;
         let project: PokieProject;
         let destination: string;
@@ -427,26 +431,31 @@ describe("ArtifactBuilderRegistry", () => {
             expect(fs.readFileSync(path.join(destination, "competing.bin"))).toEqual(bytes);
             if (empty) expect(fs.statSync(destination).ino).toBe(callerDirectoryInode);
             expect(fs.readdirSync(root).some(name => name.startsWith(".pokie-"))).toBe(false);
-        });
+        }, timeout);
 
         it.each(["blueprint", "evidence"])("rejects a competing retained %s created after preflight without changing its bytes", async member => {
             const plan = await registry.preparePlan(project, target, {destinationPath: destination});
             const link = fs.promises.link.bind(fs.promises);
+            let conflicts = 0;
             jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
                 if (String(to) === memberPath("blueprint")) {
+                    conflicts++;
                     addSentinel();
                     fs.writeFileSync(memberPath(member), bytes);
                 }
                 await link(from, to);
             });
             await expect(registry.executePlan(plan, project, destination)).rejects.toThrow(/already exists/);
+            expect(conflicts).toBe(1);
             assertCleanup(memberPath(member));
-        });
+        }, timeout);
 
         it("preserves unrelated companion contents and competing evidence on attachment I/O failure", async () => {
             const link = fs.promises.link.bind(fs.promises);
+            let failures = 0;
             jest.spyOn(fs.promises, "link").mockImplementation(async (from, to) => {
                 if (String(to) === memberPath("evidence")) {
+                    failures++;
                     addSentinel();
                     fs.writeFileSync(memberPath("evidence"), bytes);
                     throw new Error("injected attachment failure");
@@ -454,12 +463,10 @@ describe("ArtifactBuilderRegistry", () => {
                 await link(from, to);
             });
             await expect(registry.build(target, project, destination)).rejects.toThrow("injected attachment failure");
+            expect(failures).toBe(1);
             assertCleanup(memberPath("evidence"));
-        });
+        }, timeout);
 
-        // Package source revalidation snapshots the real host runtime/dependency graph repeatedly
-        // before attachment. Allow bounded I/O contention with the parallel Studio gate worker;
-        // keep the real writers, precise cancellation boundary and complete rollback assertions.
         it.each(["terminal", "blueprint", "evidence"])("preserves a replaced %s when attachment is cancelled", async member => {
             const controller = new AbortController();
             const sourceHash = computeProjectInputBindingHash(project);
@@ -504,7 +511,7 @@ describe("ArtifactBuilderRegistry", () => {
                 expect(result.publishedDirectoryOwnership?.find(entry => entry.path === destination)?.removeOnRollback).toBe(false);
             }
             expect(fs.readdirSync(root).some(name => name.startsWith(".pokie-"))).toBe(false);
-        });
+        }, timeout);
     });
 
     describe.each(["tsPackage", "parWorkbook"] as const)("exclusive %s Blueprint publication", sourceType => {
