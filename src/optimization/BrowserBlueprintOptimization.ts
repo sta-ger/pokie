@@ -60,6 +60,8 @@ export async function optimizeBrowserBlueprint(
     ) throw new Error(
         "invalid: playground limits are 16 candidates, 8192 search/assessment samples, 2048 per candidate, four tunables and one Worker.",
     );
+    if (control.signal?.aborted) throw new Error("cancelled: optimization drained");
+    await createBlueprintWasmArtifact(source);
     checkPolicyPaths(source, p, paytablePaths(source));
     preflightConstraints(source, p);
     for (const field of p.tunables) if (field.values.some((v) => typeof v !== "number" || v > 100)) throw new Error("invalid: browser paytable domains require numeric values at most 100.");
@@ -85,7 +87,7 @@ export async function optimizeBrowserBlueprint(
                 signal: control.signal,
                 chunkSize: sampling.chunkSize,
                 yieldToHost: control.yieldToHost,
-                observations: {events: [], buckets: []},
+                recordReturnObservations: true,
                 onProgress: (done) => {
                     control.onProgress?.(searchSamples + assessmentSamples + done, sampling.searchBudget + sampling.assessmentSamples);
                 },

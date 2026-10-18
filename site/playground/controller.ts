@@ -178,6 +178,7 @@ export class PlaygroundController {
                         candidate.sourceRevision !== (await browserModelHash(blueprint)) ||
                         candidate.candidateRevision !== (await browserModelHash(candidate.candidate))
                     ) throw new Error("Candidate identity mismatch.");
+                    if (generation !== this.generation) throw new Error("Interrupted: stale optimization candidate discarded.");
                     this.preview = {
                         source: prepared.revision,
                         candidate: structuredClone(candidate.candidate),
@@ -186,6 +187,7 @@ export class PlaygroundController {
                     };
                 }
             }
+            if (generation !== this.generation) throw new Error("Interrupted: stale result discarded.");
             this.emit({
                 status: "completed",
                 message: `${action} completed. ${

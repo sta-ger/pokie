@@ -12,7 +12,7 @@ Work is bounded to 64 KiB input, 8192 accepted simulation steps, 1024 replay ste
 
 ## Reproduce downloads locally
 
-After installing the checked POKIE package and a supported Node version, download model.blueprint.json, model.wasm, model.wasm.pokie-wasm.json and settings.json into a new directory. Sidecar placement is adjacent to the WASM bytes. run.json includes those same bytes and identities plus the actual output; it is a playground bundle, not a certification dossier or executable audit recording. reports.json contains canonical SimulationReport objects, one per independent mode. replay.json contains actual restorable runtime state and commands; replay-observation.json is explicitly public observation only.
+After installing the checked POKIE package and a supported Node version, download model.blueprint.json, model.wasm, model.wasm.pokie-wasm.json and settings.json into a new directory. Sidecar placement is adjacent to the WASM bytes. run.json includes those same bytes and identities plus the actual output; it is a playground bundle, not a certification dossier or executable audit recording. report.json is a canonical SimulationReport or independent-mode SimulationReportSet, directly consumable by CLI report; reports.json is a convenience array of the same per-mode reports. replay.json contains actual restorable runtime state and commands; replay-observation.json is explicitly public observation only.
 
 Download [reproduce.mjs](../examples/reproduce.mjs), place it alongside those files, then run:
 
@@ -21,12 +21,13 @@ node reproduce.mjs
 pokie inspect model.wasm
 pokie validate model.wasm
 pokie run model.wasm --seed gallery-29
-pokie sim model.wasm --rounds 256 --seed gallery-29
-pokie report model.wasm --rounds 256 --seed gallery-29
-pokie replay --help
+pokie sim model.wasm --rounds 256 --workers 1 --seed gallery-29 --format json --out cli-simulation.json
+pokie report cli-simulation.json --format markdown --out cli-report.md
+pokie report report.json --format html --out downloaded-report.html
+pokie replay model.wasm --seed gallery-29 --round 128 --unit step --out cli-replay.json
 ```
 
-The shared-library runner reads the exact seed, denomination, mode, accepted-step count, initial funding, artifact hash and runtime/schema versions from settings.json. CLI sim/report have no selectable bet flag: they use the model default. Use the runner for a selected 7.5 or 1e-7 denomination, or any other non-default setting. The run/replay CLI help describes its supported state/audit inputs; do not pass a public observation as a checkpoint. The runner demonstrates the runtime-state replay API separately.
+The shared-library runner reads the exact seed, denomination, mode, accepted-step count, initial funding, artifact hash and runtime/schema versions from settings.json. These CLI examples demonstrate the default-bet command surface; the shared runner reproduces the exact displayed funding and selections. CLI sim has no selectable bet flag: they use the model default. Use the runner for a selected 7.5 or 1e-7 denomination, or any other non-default setting. The run/replay CLI help describes its supported state/audit inputs; do not pass a public observation as a checkpoint. The runner demonstrates the runtime-state replay API separately.
 
 Convert source through `pokie build model.blueprint.json --target wasm --out fresh/model.wasm`; every artifact destination must be new or empty. Authored changes require explicit apply/save. The browser Apply action changes only the draft; subsequent downloads explicitly save the new revision.
 
@@ -36,7 +37,7 @@ The browser adapter tunes existing numeric paytable leaves in simple literal-ree
 
 ## Code-first example
 
-[Download complete browser-safe extension source](../examples/extension.ts). It composes existing session/generator interfaces and executes actual math. Compile it with TypeScript in an installed package consumer and call extensionRound(seed). It runs through the browser library API; custom executable collaborators cannot be compiled as a declarative WASM model. The gallery itself uses canonical Blueprint math rather than evaluating visitor-supplied JavaScript.
+[Download complete browser-safe extension source](../examples/extension.ts). It composes existing session/generator interfaces and executes actual math. Compile it with TypeScript in an installed package consumer and call extensionRound(seed, bet). It runs through the browser library API; custom executable collaborators cannot be compiled as a declarative WASM model. The gallery itself uses canonical Blueprint math rather than evaluating visitor-supplied JavaScript.
 
 
 With TypeScript installed locally and a consumer `package.json` containing `"type": "module"`, compile and run the extension:

@@ -372,9 +372,16 @@ it("tunes Stake native uint64 lookup weights and retains book/event bytes and mo
     expect(result.diagnostics).toEqual([]);
     expect(result).toMatchObject({status: "success", candidate: {type: "stakeAdapter"}, evidence: {measured: [1]}});
     const candidateProject = await resolve(result.candidate!.path);
-    expect(candidateProject.capabilities).toEqual(["outcomeSource.read"]);
-    expect(describeUnsupportedProjectOperation(candidateProject, "stakeEngine.export")?.recovery).toContain("save the reviewed candidate");
-    await expect(new StakeAdapterArtifactBuilder("1.3.0").validate(candidateProject)).rejects.toThrow("native uint64");
+    expect(candidateProject.capabilities).toEqual(["outcomeSource.read", "stakeAdapter.export"]);
+    expect(describeUnsupportedProjectOperation(candidateProject, "stakeEngine.export")).toBeUndefined();
+    const builder = new StakeAdapterArtifactBuilder("1.3.0");
+    await expect(builder.validate(candidateProject)).resolves.toBeUndefined();
+    const nativeExport = path.join(directory, "native-export");
+    await builder.build(candidateProject, nativeExport);
+    const exportedSource = await new StakeEngineOutcomeSourceReader().readFromDirectory(nativeExport);
+    expect(exportedSource.issues.filter(issue => issue.severity === "error")).toEqual([]);
+    expect(exportedSource.modes[0].outcomes.map(outcome => outcome.weight)).toEqual([BigInt("18446744073709551615"), BigInt("18446744073709551615")]);
+    expect(fs.readFileSync(path.join(nativeExport, index.modes[0].events))).toEqual(book);
     const saved = path.join(directory, "saved-stake");
     await service.publish(result.candidate!, request, saved);
     await service.discard(result.candidate!);
@@ -697,21 +704,23 @@ it.each(["success", "hash-failure", "manifest-failure", "evaluation-failure", "c
     }
     // Observe exact real allocations without depending on npm's TMPDIR or comparing a
     // shared directory whose other snapshots can disappear during concurrent suites.
-    const allocate = jest.spyOn(fs, "mkdtempSync");
+    const allocate = jest.spyOn(fs.promises, "mkdtemp");
     try {
         const result = await service.optimize(await resolve(root), optimizationRequest());
         expect(result.status).toBe(({success: "success", "hash-failure": "unsupported", "manifest-failure": "failure", "evaluation-failure": "failure", "cleanup-failure": "failure"} as Record<string, string>)[scenario]);
         const acquisitions = scenario === "success" ? 2 : 1;
         expect(fs.readFileSync(marker, "utf8").trim().split("\n")).toHaveLength(acquisitions);
-        const snapshots = allocate.mock.calls.flatMap(([prefix], index) => {
+        const snapshots = await Promise.all(allocate.mock.calls.flatMap(([prefix], index) => {
             if (path.basename(String(prefix)) !== "pokie-runtime-") return [];
             const allocation = allocate.mock.results[index];
             expect(allocation.type).toBe("return");
-            expect(typeof allocation.value).toBe("string");
-            return [allocation.value as string];
-        });
+            return [allocation.value as Promise<string>];
+        }));
         expect(snapshots).toHaveLength(acquisitions);
-        for (const snapshot of snapshots) expect(fs.existsSync(snapshot)).toBe(false);
+        for (const snapshot of snapshots) {
+            expect(typeof snapshot).toBe("string");
+            expect(fs.existsSync(snapshot)).toBe(false);
+        }
         if (scenario === "cleanup-failure") expect(result.diagnostics).toEqual([{path: "cleanup", message: expect.stringContaining("game cleanup failed")}]);
     } finally {
         allocate.mockRestore();

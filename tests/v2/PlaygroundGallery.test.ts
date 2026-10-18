@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import {execFileSync, spawn, type ChildProcess} from "node:child_process";
 import {webcrypto} from "node:crypto";
+import {extensionRound} from "../../site/examples/extension.js";
+import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {PublicDocsBrowser} from "./helpers/PublicDocsBrowser.js";
 import {galleryModels, galleryPolicy} from "../../site/playground/models.js";
 import {PlaygroundController, PLAYGROUND_LIMITS, type PlaygroundDraft} from "../../site/playground/controller.js";
@@ -33,9 +35,11 @@ const yieldToHost = () =>
 /** Protocol-backed transport for deterministic lifecycle faults; rendered tests below use real Workers. */
 class TestPort implements PokieWasmWorkerPort {
     public terminated = false;
+    public onProgress?: () => void;
+    public beforeResponse?: (type: string) => void;
     public readonly listeners = new Map<string, Set<(event: MessageEvent & ErrorEvent) => void>>();
     private progressTimer?: ReturnType<typeof setInterval>;
-    private readonly protocol = new PokieWasmWorkerProtocol();
+    private readonly protocol = new PokieWasmWorkerProtocol(() => this.onProgress?.());
     private readonly behavior: string;
     public constructor(behavior = "normal") {
         this.behavior = behavior;
@@ -70,11 +74,10 @@ class TestPort implements PokieWasmWorkerPort {
             this.deliver(this.behavior, {message: "load failed"});
             return;
         }
-        this.protocol
-            .handle(data.request)
-            .then((response) =>
-                this.deliver("message", {data: this.behavior === "malformed" ? {} : {...response, scope: data.scope, type: "response"}}),
-            );
+        this.protocol.handle(data.request).then((response) => {
+            this.beforeResponse?.(data.request.type);
+            this.deliver("message", {data: this.behavior === "malformed" ? {} : {...response, scope: data.scope, type: "response"}});
+        });
     }
     public deliver(type: string, event: object): void {
         this.listeners.get(type)?.forEach((listener) => listener(event as MessageEvent & ErrorEvent));
@@ -82,6 +85,11 @@ class TestPort implements PokieWasmWorkerPort {
 }
 
 it("executes known answers, seeded replay, tiny/fractional/zero fidelity and byte-bound artifacts", async () => {
+    for (const bet of [0.05, 7.5, 1e-7]) {
+        const observed = extensionRound("gallery-29", bet);
+        expect(observed).toEqual(extensionRound("gallery-29", bet));
+        expect(observed.generatedScreens).toBeGreaterThan(1);
+    }
     for (const bet of [0.05, 7.5, 1e-7]) for (const symbol of ["A", "B", "Z"]) {
         const b = draft().blueprint;
         b.reelStrips = [[symbol], [symbol]];
@@ -132,10 +140,15 @@ it("owns cancellation during initialization/execution, deadline, Worker faults, 
         controller.dispose();
     }
     const ports: TestPort[] = [];
+    let workerProgress!: () => void;
+    const created = new Promise<void>((resolve) => {
+        workerProgress = resolve;
+    });
     const controller = new PlaygroundController(
         () => {
             const p = new TestPort();
             ports.push(p);
+            p.onProgress = workerProgress;
             return p;
         },
         () => undefined,
@@ -144,12 +157,37 @@ it("owns cancellation during initialization/execution, deadline, Worker faults, 
     long.settings.rounds = 8192;
     const pending = controller.run(long, "sim");
     const rejection = expect(pending).rejects.toThrow();
+    await created;
     await yieldToHost();
     controller.cancel();
     await rejection;
     const successful = await controller.run(draft(), "play");
     expect(successful.action).toBe("play");
     ports[0]?.deliver("message", {data: {ok: true, result: "late"}});
+    expect(controller.diagnostics()).toEqual({workers: 0, timers: 0, pending: 0});
+    controller.dispose();
+});
+
+it("rejects numeric/mode/work input before Worker creation and recovers construction failure", async () => {
+    let constructions = 0;
+    const controller = new PlaygroundController(
+        () => {
+            constructions++;
+            if (constructions === 1) throw new Error("Worker construction unavailable");
+            return new TestPort();
+        },
+        () => undefined,
+    );
+    for (const settings of [
+        {...draft().settings, bet: NaN},
+        {...draft().settings, mode: "missing"},
+        {...draft().settings, rounds: 8193},
+    ]) {
+        await expect(controller.run({...draft(), settings}, "sim")).rejects.toThrow();
+    }
+    expect(constructions).toBe(0);
+    await expect(controller.run(draft(), "inspect")).rejects.toThrow(/construction/);
+    await expect(controller.run(draft(), "play")).resolves.toHaveProperty("action", "play");
     expect(controller.diagnostics()).toEqual({workers: 0, timers: 0, pending: 0});
     controller.dispose();
 });
@@ -175,7 +213,9 @@ it("generates real held-out candidates, canonical diff and same-type explicit ap
     expect((await controller.applyCandidate(b, galleryPolicy, candidate)).manifest).toEqual(b.blueprint.manifest);
     await expect(controller.applyCandidate(b, galleryPolicy, candidate)).rejects.toThrow(/Stale/);
     await controller.run(b, "optimize", galleryPolicy);
-    await expect(controller.applyCandidate({...b, settings: {...b.settings, seed: "changed"}}, galleryPolicy, candidate)).rejects.toThrow(/Stale/);
+    await expect(controller.applyCandidate({...b, settings: {...b.settings, seed: "changed"}}, galleryPolicy, candidate)).rejects.toThrow(
+        /Stale/,
+    );
     const exhausted = clone(galleryPolicy);
     exhausted.policy.budget = 1;
     expect((await optimizeBrowserBlueprint(b.blueprint, exhausted, {yieldToHost})).status).toBe("exhausted");
@@ -187,10 +227,52 @@ it("generates real held-out candidates, canonical diff and same-type explicit ap
     const edited = clone(candidate);
     edited.paytable.A[2] += 1;
     await expect(controller.applyCandidate(b, galleryPolicy, edited)).rejects.toThrow(/Stale/);
+    const changedPolicy = clone(galleryPolicy);
+    changedPolicy.policy.seed = "changed-policy";
+    await expect(controller.applyCandidate(b, changedPolicy, candidate)).rejects.toThrow(/Stale/);
+    await expect(
+        optimizeBrowserBlueprint({...b.blueprint, manifest: {id: "", name: "Invalid", version: "1"}}, galleryPolicy, {yieldToHost}),
+    ).rejects.toThrow();
+    const excluded = clone(galleryPolicy) as unknown as {policy: Record<string, unknown>};
+    excluded.policy.constraints = {sums: [{paths: ["/paytable/A/2", "/paytable/B/2"], value: 3}]};
+    expect((await optimizeBrowserBlueprint(b.blueprint, excluded, {yieldToHost})).status).toBe("infeasible");
     const abort = new AbortController();
     abort.abort();
     await expect(optimizeBrowserBlueprint(b.blueprint, galleryPolicy, {yieldToHost, signal: abort.signal})).rejects.toThrow(/cancelled/);
     controller.dispose();
+});
+
+it("rejects input replacement during asynchronous candidate identity verification", async () => {
+    let armed = false;
+    const statuses: string[] = [];
+    const controller = new PlaygroundController(
+        () => {
+            const port = new TestPort();
+            port.beforeResponse = (type) => {
+                if (type === "optimize") armed = true;
+            };
+            return port;
+        },
+        (event) => statuses.push(event.status),
+    );
+    const digest = globalThis.crypto.subtle.digest.bind(globalThis.crypto.subtle);
+    const observer = jest.spyOn(globalThis.crypto.subtle, "digest").mockImplementation((algorithm, data) =>
+        digest(algorithm, data).then((bytes) => {
+            if (armed) {
+                armed = false;
+                controller.invalidate("Interrupted/reset: replaced during candidate verification.");
+            }
+            return bytes;
+        }),
+    );
+    try {
+        await expect(controller.run(draft(), "optimize", galleryPolicy)).rejects.toThrow(/Interrupted|stale/);
+        expect(statuses).not.toContain("completed");
+        expect(controller.diagnostics()).toEqual({workers: 0, timers: 0, pending: 0});
+    } finally {
+        observer.mockRestore();
+        controller.dispose();
+    }
 });
 
 let browser: PublicDocsBrowser | undefined,
@@ -306,6 +388,7 @@ describe("locally built public gallery rendered actions", () => {
             if (item.id === "lines") {
                 const reproduction = path.join(scratch, "reproduction");
                 fs.mkdirSync(reproduction);
+                fs.writeFileSync(path.join(reproduction, "model.blueprint.json"), JSON.stringify(bundle.blueprint));
                 fs.writeFileSync(path.join(reproduction, "model.wasm"), new Uint8Array(bundle.wasm));
                 fs.writeFileSync(path.join(reproduction, "model.wasm.pokie-wasm.json"), JSON.stringify(bundle.manifest));
                 fs.writeFileSync(path.join(reproduction, "settings.json"), JSON.stringify(bundle.settings));
@@ -320,15 +403,29 @@ describe("locally built public gallery rendered actions", () => {
                         ],
                         {cwd: reproduction, encoding: "utf8", timeout: 10000, stdio: "pipe"},
                     );
+                const canonicalReport = await download("report.json");
+                const reportFile = path.join(reproduction, "report.json");
+                fs.writeFileSync(reportFile, JSON.stringify(canonicalReport));
+                const markdownFile = path.join(reproduction, "report.md");
+                await new ReportCommand().run([reportFile, "--format", "markdown", "--out", markdownFile]);
+                expect(fs.readFileSync(markdownFile, "utf8")).toContain("gallery-lines");
                 const rerun = JSON.parse(runReproduction());
                 expect(rerun.simulation[0].statistics.totalPayout).toBe((bundle.reports[0] as {totalWin: number}).totalWin);
                 fs.writeFileSync(path.join(reproduction, "settings.json"), JSON.stringify({...bundle.settings, runtimeVersion: "bad"}));
                 expect(runReproduction).toThrow();
+                fs.writeFileSync(path.join(reproduction, "settings.json"), JSON.stringify(bundle.settings));
+                fs.writeFileSync(
+                    path.join(reproduction, "model.blueprint.json"),
+                    JSON.stringify({...(bundle.blueprint as object), manifest: {id: "tampered", name: "Tampered", version: "1"}}),
+                );
+                expect(runReproduction).toThrow();
             }
             if (item.id === "free-games") {
+                expect((bundle.blueprint as ReturnType<typeof draft>["blueprint"]).mechanics?.freeGames?.awardsByCount[1]).toBe(0);
                 await set("mode", "all");
                 await click("sim");
                 expect(((await download("reports.json")) as {betMode: string}[]).map((r) => r.betMode)).toEqual(["base", "ante"]);
+                expect(Object.keys(((await download("report.json")) as {modes: object}).modes)).toEqual(["base", "ante"]);
                 await set("mode", "");
             }
             await click("report");
@@ -360,6 +457,9 @@ describe("locally built public gallery rendered actions", () => {
         await click("play");
         expect(await ev("document.querySelectorAll('#pg-screen .pg-win').length")).toBe(2);
         await example("optimize");
+        await set("seed", "changed-seed");
+        expect(await ev("JSON.parse(document.querySelector('#pg-policy').value).policy.seed")).toBe("changed-seed");
+        await set("seed", "gallery-29");
         await click("optimize");
         const evidence = (await download("optimization.json")) as {
             candidate: unknown;
@@ -404,7 +504,7 @@ describe("locally built public gallery rendered actions", () => {
         await example("lines");
         await set("rounds", "8192");
         await ev("document.querySelector('[data-action=sim]').click()");
-        await browser!.until("window.ownedWorkers.size === 1");
+        await browser!.until("window.ownedWorkers.size === 1 && document.querySelector('#pg-progress').value > 0");
         await ev("document.querySelector('#pg-cancel').click()");
         expect(await ev("document.querySelector('#pg-status').dataset.status")).toBe("cancelled");
         expect(await ev("window.ownedWorkers.size")).toBe(0);

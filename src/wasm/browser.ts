@@ -14,4 +14,4 @@ export {sha256CanonicalWasmBytes} from "./PokieWasmCanonicalModule.js";
 export {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 export {SimulationReportBuilder} from "../reporting/SimulationReportBuilder.js";
 export {validateOptimizationRequest} from "../optimization/validateOptimizationRequest.js";
-export {optimizeBrowserBlueprint} from "../optimization/BrowserBlueprintOptimization.js";
+export {optimizeBrowserBlueprint, browserModelHash} from "../optimization/BrowserBlueprintOptimization.js";
