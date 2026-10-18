@@ -3,6 +3,23 @@ import {instantiatePokieWasm, SeededPokieWasmHost} from "../../../src/wasm/Pokie
 import {sha256CanonicalWasmBytes} from "../../../src/wasm/PokieWasmCanonicalModule.js";
 import {evaluatorValidationCases, createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
+import {createBlueprintWasmArtifact} from "../../../src/wasm/createBlueprintWasmArtifact.js";
+import type {GameBlueprint} from "../../../src/generated/GameBlueprint.js";
+
+const optimizationBlueprint = (): GameBlueprint => ({
+    manifest: {id: "worker-optimization", name: "Worker optimization", version: "1"},
+    reels: 2, rows: 1, symbols: ["A", "B"], availableBets: [0.05],
+    reelStrips: [["A", "B"], ["A", "B"]], paytable: {A: {2: 2}, B: {2: 0}},
+});
+const optimizationRequest = {
+    targets: [{metric: "rtp", unit: "ratio", value: 0.5, tolerance: {kind: "absolute", value: 0.5}}],
+    policy: {
+        strategy: "seeded-search-v1", seed: "ownership", budget: 1, maxOutcomes: 64, mode: "base", stake: 0.05, scope: "paid-entry",
+        tunables: [{path: "/paytable/A/2", values: [2]}],
+        sampling: {searchSamples: 32, searchBudget: 32, assessmentSamples: 32, minSamples: 30, minEventCount: 5, confidence: 0.95, chunkSize: 16, workers: 1},
+    },
+};
+
 type WorkerEventListener = (event: MessageEvent & ErrorEvent) => void;
 
 describe("PokieWasmWorkerProtocol", () => {
@@ -791,6 +808,118 @@ it("runs bounded simulation with accepted progress through the shared accumulato
     expect(await active.handle({id: "retry", type: "instantiate", ...fixture, seed: "0"})).toMatchObject({ok: true});
     expect(await active.handle({id: "play", type: "play"})).toMatchObject({ok: true, result: {sequence: 1}});
     await active.handle({id: "dispose", type: "dispose"});
+});
+
+it.each([
+    ["optimize", "optimize"], ["optimize", "simulate"], ["simulate", "optimize"], ["optimize", "replay-target"],
+])("reserves %s ownership before source binding and rejects overlapping %s", async (first, second) => {
+    const blueprint = optimizationBlueprint();
+    const artifact = await createBlueprintWasmArtifact(blueprint);
+    const worker = new PokieWasmWorkerProtocol();
+    const operation = (id: string, type: string) => ({id, type, blueprint, request: optimizationRequest, seed: "ownership", rounds: 256, options: {seed: "ownership", round: 1}});
+    try {
+        expect(await worker.handle({id: "init", type: "instantiate", ...artifact, seed: "ownership"})).toMatchObject({ok: true});
+        const pending = worker.handle(operation("first", first));
+        expect(await worker.handle(operation("overlap", second))).toMatchObject({ok: false, error: expect.stringContaining("already running")});
+        expect(await pending).toMatchObject({ok: true});
+        expect(await worker.handle(operation("fresh", second))).toMatchObject({ok: true});
+    } finally {
+        await worker.handle({id: "dispose", type: "dispose"});
+    }
+});
+
+it("releases optimization ownership after compilation, hash and source-identity binding failures", async () => {
+    const blueprint = optimizationBlueprint();
+    const artifact = await createBlueprintWasmArtifact(blueprint);
+    const worker = new PokieWasmWorkerProtocol();
+    const optimize = {id: "optimize", type: "optimize", blueprint, request: optimizationRequest};
+    const digest = jest.spyOn(globalThis.crypto.subtle, "digest");
+    try {
+        expect(await worker.handle({id: "init", type: "instantiate", ...artifact, seed: "ownership"})).toMatchObject({ok: true});
+        expect(await worker.handle({...optimize, blueprint: {...blueprint, rows: 0}})).toMatchObject({ok: false});
+        expect(await worker.handle(optimize)).toMatchObject({ok: true});
+        digest.mockRejectedValueOnce(new Error("source digest failed"));
+        expect(await worker.handle(optimize)).toMatchObject({ok: false, error: "source digest failed"});
+        expect(await worker.handle(optimize)).toMatchObject({ok: true});
+        expect(await worker.handle({...optimize, blueprint: {...blueprint, paytable: {A: {2: 3}, B: {2: 0}}}})).toMatchObject({ok: false, error: expect.stringContaining("source differs")});
+        expect(await worker.handle(optimize)).toMatchObject({ok: true});
+    } finally {
+        digest.mockRestore();
+        await worker.handle({id: "dispose", type: "dispose"});
+    }
+});
+
+it.each(["cancel", "dispose", "replace"])("releases a source-binding reservation on %s without an old cleanup clearing its successor", async (action) => {
+    const blueprint = optimizationBlueprint();
+    const artifact = await createBlueprintWasmArtifact(blueprint);
+    const worker = new PokieWasmWorkerProtocol();
+    const init = {id: "init", type: "instantiate", ...artifact, seed: "ownership"};
+    const optimize = {id: "optimize", type: "optimize", blueprint, request: optimizationRequest};
+    const nativeDigest = globalThis.crypto.subtle.digest.bind(globalThis.crypto.subtle);
+    const digest = jest.spyOn(globalThis.crypto.subtle, "digest");
+    let releaseOld!: () => void, releaseNew!: () => void;
+    const oldGate = new Promise<void>(resolve => {
+        releaseOld = resolve;
+    });
+    const newGate = new Promise<void>(resolve => {
+        releaseNew = resolve;
+    });
+    let old: ReturnType<typeof worker.handle> | undefined;
+    let fresh: ReturnType<typeof worker.handle> | undefined;
+    try {
+        expect(await worker.handle(init)).toMatchObject({ok: true});
+        digest.mockImplementationOnce(async (algorithm, data) => {
+            await oldGate;
+            return nativeDigest(algorithm, data);
+        });
+        old = worker.handle(optimize);
+        if (action !== "replace") expect(await worker.handle({id: action, type: action})).toMatchObject({ok: true});
+        expect(await worker.handle(init)).toMatchObject({ok: true});
+        digest.mockImplementationOnce(async (algorithm, data) => {
+            await newGate;
+            return nativeDigest(algorithm, data);
+        });
+        fresh = worker.handle({...optimize, id: "fresh"});
+        releaseOld();
+        expect(await old).toMatchObject({ok: false, error: expect.stringMatching(/cancelled|replaced/)});
+        expect(await worker.handle({...optimize, id: "overlap"})).toMatchObject({ok: false, error: expect.stringContaining("already running")});
+        releaseNew();
+        expect(await fresh).toMatchObject({ok: true});
+        expect(await worker.handle({id: "sim", type: "simulate", rounds: 1, seed: "ownership"})).toMatchObject({ok: true});
+    } finally {
+        releaseOld();
+        releaseNew();
+        await Promise.all([old, fresh]);
+        digest.mockRestore();
+        await worker.handle({id: "dispose", type: "dispose"});
+    }
+});
+
+it("cancels active optimization measurements and accepts a fresh owned optimization", async () => {
+    const blueprint = optimizationBlueprint();
+    const artifact = await createBlueprintWasmArtifact(blueprint);
+    let cancelOnce = true;
+    let cancellation: Promise<unknown> | undefined;
+    const progress: number[] = [];
+    const worker = new PokieWasmWorkerProtocol((_id, value) => {
+        progress.push(value.completed);
+        if (cancelOnce) {
+            cancelOnce = false;
+            cancellation = worker.handle({id: "cancel", type: "cancel"});
+        }
+    });
+    const init = {id: "init", type: "instantiate", ...artifact, seed: "ownership"};
+    const optimize = {id: "optimize", type: "optimize", blueprint, request: optimizationRequest};
+    try {
+        expect(await worker.handle(init)).toMatchObject({ok: true});
+        expect(await worker.handle(optimize)).toMatchObject({ok: false, error: expect.stringMatching(/cancelled|disposed/)});
+        await cancellation;
+        expect(progress.length).toBeGreaterThan(0);
+        expect(await worker.handle(init)).toMatchObject({ok: true});
+        expect(await worker.handle(optimize)).toMatchObject({ok: true});
+    } finally {
+        await worker.handle({id: "dispose", type: "dispose"});
+    }
 });
 
 it("offers replay-only initialization and rejects unavailable operations without allocating a play session", async () => {

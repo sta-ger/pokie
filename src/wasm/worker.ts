@@ -98,15 +98,16 @@ export class PokieWasmWorkerProtocol {
                 const capability = request.type === "replay-target" ? "runtime.replay" : "runtime.play";
                 if (!runtime.manifest.capabilities.includes(capability)) throw new Error(`POKIE WASM artifact does not declare ${capability}. Rebuild with the required operation.`);
                 if (this.operation) throw new Error("A WASM Worker operation is already running.");
-                if (request.type === "optimize" && (await createBlueprintWasmArtifact(request.blueprint)).manifest.artifact?.sha256 !== runtime.manifest.artifact?.sha256) throw new Error("Optimization source differs from instantiated artifact.");
-                if (generation !== this.generation || runtime !== this.runtime) throw new Error("The WASM Worker operation was cancelled or replaced during source binding.");
                 const controller = new AbortController();
                 this.operation = controller;
-                runtimeOperationInvoked = true;
                 const yieldToHost = () => new Promise<void>(resolve => {
                     setTimeout(resolve, 0);
                 });
                 try {
+                    // Reserve ownership before source compilation yields to another request.
+                    if (request.type === "optimize" && (await createBlueprintWasmArtifact(request.blueprint)).manifest.artifact?.sha256 !== runtime.manifest.artifact?.sha256) throw new Error("Optimization source differs from instantiated artifact.");
+                    if (generation !== this.generation || runtime !== this.runtime || controller.signal.aborted || this.operation !== controller) throw new Error("The WASM Worker operation was cancelled or replaced during source binding.");
+                    runtimeOperationInvoked = true;
                     let result: unknown;
                     if (request.type === "optimize") {
                         result = await optimizeBrowserBlueprint(request.blueprint, request.request, {signal: controller.signal, yieldToHost,
@@ -161,6 +162,7 @@ export class PokieWasmWorkerProtocol {
 
     private release(): void {
         this.operation?.abort();
+        this.operation = undefined;
         this.session?.dispose();
         this.runtime?.dispose();
         this.session = undefined;

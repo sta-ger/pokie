@@ -6,7 +6,7 @@ import {extensionRound} from "../../site/examples/extension.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {PublicDocsBrowser} from "./helpers/PublicDocsBrowser.js";
 import {galleryModels, galleryPolicy} from "../../site/playground/models.js";
-import {PlaygroundController, PLAYGROUND_LIMITS, type PlaygroundDraft} from "../../site/playground/controller.js";
+import {PlaygroundController, PLAYGROUND_LIMITS, validatePlaygroundDraft, type PlaygroundDraft} from "../../site/playground/controller.js";
 import {
     createBlueprintWasmArtifact,
     instantiatePokieWasm,
@@ -190,6 +190,45 @@ it("rejects numeric/mode/work input before Worker creation and recovers construc
     await expect(controller.run(draft(), "play")).resolves.toHaveProperty("action", "play");
     expect(controller.diagnostics()).toEqual({workers: 0, timers: 0, pending: 0});
     controller.dispose();
+});
+
+it("bounds generated/evaluated preparation before default-line allocation or compilation and retains projection reuse", async () => {
+    const projection = (): PlaygroundDraft => ({...draft(), blueprint: clone(galleryModels.find((m) => m.id === "projection")!.blueprint)});
+    const inputs = [
+        {...projection().blueprint, screenGeometry: {...projection().blueprint.screenGeometry!, generated: {reels: 2, rows: 1000000001}, evaluated: {rowOffset: 0, rows: 1000000000}}, paylines: undefined},
+        {...projection().blueprint, screenGeometry: {...projection().blueprint.screenGeometry!, generated: {reels: 2, rows: 1000000001}}},
+        {...projection().blueprint, screenGeometry: {...projection().blueprint.screenGeometry!, generated: {reels: 1000000000, rows: 3}}},
+        {...draft().blueprint, rows: 1000000000, paylines: undefined},
+        {...draft().blueprint, paylines: Array.from({length: 100}, () => [0, 0])},
+        {...draft().blueprint, rows: 8, symbols: Array.from({length: 100}, (_, i) => `S${i}`)},
+    ];
+    let constructions = 0;
+    const controller = new PlaygroundController(() => {
+        constructions++;
+        return new TestPort();
+    }, () => undefined);
+    const digest = jest.spyOn(globalThis.crypto.subtle, "digest");
+    try {
+        for (const blueprint of inputs) {
+            const input = {...draft(), blueprint};
+            // Admission is tested first: never execute a dangerous compile if this guard regresses.
+            expect(() => validatePlaygroundDraft(input)).toThrow(/preparation limit/);
+            await expect(controller.run(input, "play")).rejects.toThrow(/preparation limit/);
+            expect(constructions).toBe(0);
+            expect(digest).not.toHaveBeenCalled();
+            expect(controller.diagnostics()).toEqual({workers: 0, timers: 0, pending: 0});
+        }
+        const valid = projection();
+        valid.blueprint.paylines = undefined;
+        valid.blueprint.reelStrips = [["A"], ["A"]];
+        const run = await controller.run(valid, "play");
+        expect(run.result).toMatchObject({payout: 0.2});
+        expect(constructions).toBe(1);
+        expect(controller.diagnostics()).toEqual({workers: 0, timers: 0, pending: 0});
+    } finally {
+        digest.mockRestore();
+        controller.dispose();
+    }
 });
 
 it("generates real held-out candidates, canonical diff and same-type explicit apply with stale/policy/budget rejection", async () => {
@@ -491,6 +530,67 @@ describe("locally built public gallery rendered actions", () => {
         );
         expect(await ev("document.querySelector('#pg-download-status').textContent")).toContain("Download failed");
     }, 45000);
+
+    it("rejects a small excessive projection draft before creating a real Worker and reuses the valid example", async () => {
+        await example("projection");
+        const invalid = clone(galleryModels.find((m) => m.id === "projection")!.blueprint);
+        invalid.screenGeometry = {...invalid.screenGeometry!, generated: {reels: 2, rows: 1000000001}, evaluated: {rowOffset: 0, rows: 1000000000}};
+        invalid.paylines = undefined;
+        expect(JSON.stringify(invalid).length).toBeLessThan(1024);
+        expect(() => validatePlaygroundDraft({...draft(), blueprint: invalid})).toThrow(/preparation limit/);
+        await set("model", JSON.stringify(invalid));
+        await ev("document.querySelector('[data-action=play]').click()");
+        await browser!.until("document.querySelector('#pg-status').dataset.status === 'failed'");
+        expect(await ev("document.querySelector('#pg-status').textContent")).toContain("preparation limit");
+        expect(await ev("window.ownedWorkers.size")).toBe(0);
+        await ev("document.querySelector('#pg-reset').click()");
+        await click("play");
+        expect(await ev("window.ownedWorkers.size")).toBe(0);
+    }, 10000);
+
+    async function expectCleared(): Promise<void> {
+        expect(await ev("document.querySelector('#pg-summary').textContent")).toBe("No current result. Run again with the current inputs.");
+        expect(await ev("document.querySelector('#pg-download-status').textContent")).toBe("");
+        expect(await ev("document.querySelectorAll('#pg-download-buttons button, #pg-screen .pg-win').length")).toBe(0);
+        expect(await ev("document.querySelector('#pg-apply').disabled && document.querySelector('#pg-replay-play').disabled")).toBe(true);
+    }
+
+    it("clears rendered payout/RTP/optimization and download conclusions at every invalidation boundary", async () => {
+        await example("lines");
+        await click("play");
+        expect(await ev("document.querySelector('#pg-summary').textContent")).toContain("payout");
+        await download("model.blueprint.json");
+        expect(await ev("document.querySelector('#pg-download-status').textContent")).toContain("Downloaded");
+        await set("seed", "edited");
+        await expectCleared();
+
+        await click("report");
+        expect(await ev("document.querySelector('#pg-summary').textContent")).toContain("RTP");
+        await download("reports.json");
+        expect(await ev("(() => { document.querySelector('[data-action=sim]').click(); const cleared = {summary: document.querySelector('#pg-summary').textContent, download: document.querySelector('#pg-download-status').textContent}; document.querySelector('#pg-cancel').click(); return cleared; })()"))
+            .toEqual({summary: "No current result. Run again with the current inputs.", download: ""});
+        await expectCleared();
+        expect(await ev("window.ownedWorkers.size")).toBe(0);
+
+        await example("optimize");
+        await click("optimize");
+        expect(await ev("document.querySelector('#pg-summary').textContent")).toContain("Optimization");
+        await download("optimization.json");
+        await ev("document.querySelector('#pg-discard').click()");
+        await expectCleared();
+        await click("optimize");
+        await download("optimization.json");
+        await ev("document.querySelector('#pg-apply').click()");
+        await browser!.until("document.querySelector('#pg-status').textContent.startsWith('Applied')");
+        await expectCleared();
+
+        await click("play");
+        await download("model.blueprint.json");
+        await ev("(() => { const e = document.querySelector('#pg-example'); e.value = 'projection'; e.dispatchEvent(new Event('change')); })()");
+        expect(await ev("document.querySelector('#pg-summary').textContent")).toBe(galleryModels.find((m) => m.id === "projection")!.description);
+        expect(await ev("document.querySelector('#pg-download-status').textContent")).toBe("");
+        await click("play");
+    }, 30000);
 
     it("recovers invalid input, cancels real work, resets on reload and renders mobile keyboard controls", async () => {
         await example("lines");

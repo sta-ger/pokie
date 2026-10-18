@@ -70,6 +70,8 @@ function mount(root: HTMLElement): void {
         element("identity").textContent = "Inputs changed. Run again to bind a current identity.";
         element("output").textContent = "No current output.";
         element("preview").textContent = "No current candidate.";
+        element("summary").textContent = "No current result. Run again with the current inputs.";
+        element("download-status").textContent = "";
         element("screen").replaceChildren();
         element("download-buttons").replaceChildren();
         for (const id of ["apply", "discard", "replay-play"]) element<HTMLButtonElement>(id).disabled = true;

@@ -12,16 +12,38 @@ import type {GameBlueprint} from "../../src/generated/GameBlueprint.js";
 export type DraftSettings = {seed: string; bet: number; mode?: string; rounds: number};
 export type PlaygroundDraft = {blueprint: GameBlueprint; settings: DraftSettings};
 export type PlaygroundEvent = {status: string; message: string; progress?: {completed: number; total?: number}};
-export const PLAYGROUND_LIMITS = {inputBytes: 65536, rounds: 8192, replay: 1024, deadlineMs: 20000, idleMs: 5000, outputBytes: 2000000};
+export const PLAYGROUND_LIMITS = {inputBytes: 65536, rounds: 8192, replay: 1024, deadlineMs: 20000, idleMs: 5000, outputBytes: 2000000, cells: 48, lineCells: 192, payoutEntries: 1568, resultPositions: 5376};
 export type PlaygroundArtifact = Awaited<ReturnType<typeof createBlueprintWasmArtifact>>;
 type Command = Parameters<PokieWasmWorkerClient["request"]>[0];
 
 export function validatePlaygroundDraft(value: PlaygroundDraft): void {
     if (new TextEncoder().encode(JSON.stringify(value)).length > PLAYGROUND_LIMITS.inputBytes) throw new Error("Input exceeds the 64 KiB playground limit.");
+    // Check numeric expansion before validation/lowering can construct default lines,
+    // payout tables or screen/result buffers. Input byte size alone does not bound them.
+    const b = value.blueprint;
+    const geometry = b?.screenGeometry;
+    const generatedReels = geometry?.generated?.reels ?? b?.reels;
+    const generatedRows = geometry?.generated?.rows ?? b?.rows;
+    const evaluatedRows = geometry?.evaluated?.rows ?? b?.rows;
+    const visibleRows = geometry
+        ? Math.ceil(geometry.visible?.rowOffset + geometry.visible?.rows) - Math.floor(geometry.visible?.rowOffset)
+        : b?.rows;
+    const boundedInteger = (n: number, max: number): boolean => Number.isSafeInteger(n) && n >= 1 && n <= max;
+    const cells = b?.reels * evaluatedRows;
+    const symbols = b?.symbols?.length ?? 0;
+    const lines = b?.paylines?.length ?? evaluatedRows;
+    if (
+        !boundedInteger(b?.reels, 6) || !boundedInteger(b?.rows, 8) ||
+        !boundedInteger(generatedReels, 6) || !boundedInteger(generatedRows, 8) ||
+        !boundedInteger(evaluatedRows, 8) || !boundedInteger(visibleRows, 8) ||
+        generatedReels * generatedRows > PLAYGROUND_LIMITS.cells ||
+        cells > PLAYGROUND_LIMITS.cells || lines * b.reels > PLAYGROUND_LIMITS.lineCells ||
+        symbols * (cells + 1) > PLAYGROUND_LIMITS.payoutEntries ||
+        (lines + symbols + cells) * cells > PLAYGROUND_LIMITS.resultPositions
+    ) throw new Error("Playground preparation limit: at most 6×8 generated/evaluated/visible cells with bounded line, payout and result allocations.");
     const issues = new GameBlueprintValidator().validate(value.blueprint).filter((i) => i.severity === "error");
     if (issues.length) throw new Error(`Structurally invalid: ${issues.map((i) => `${i.path}: ${i.message}`).join("; ")}`);
-    const b = value.blueprint,
-        s = value.settings;
+    const s = value.settings;
     if (
         b.reels > 6 ||
         b.rows > 8 ||
