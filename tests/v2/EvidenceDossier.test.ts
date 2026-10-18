@@ -136,10 +136,19 @@ describe("canonical evidence dossier", () => {
         expect(await new CertificationEvidenceBundleVerifier().verify(out, {sourceBundleDir: source, dossier: {reportFiles: [reportFile]}})).toEqual([]);
     });
 
-    it("binds real model/report/replay bytes and reproduces relocated inputs in fresh ESM and CJS processes", async () => {
-        const runtime = emitPublicRuntime();
-        try {
-            const script = path.join(runtime.directory, "dossier-process.mjs");
+    describe("fresh public runtime dossier", () => {
+        type DossierProcessResult = {pid: number; issues: unknown[]; manifest: CertificationEvidenceBundleManifest; artifactHashes: Record<string, string>};
+        let runtime: ReturnType<typeof emitPublicRuntime>;
+        let original: DossierProcessResult;
+        let script: string;
+        let reference: string;
+        let relocated: string;
+
+        // Compilation and each real child have separate bounded phases. Their combined
+        // wall time must not share one test deadline when the controller uses busy workers.
+        beforeAll(() => {
+            runtime = emitPublicRuntime();
+            script = path.join(runtime.directory, "dossier-process.mjs");
             fs.writeFileSync(script, `
 import fs from "node:fs";
 import path from "node:path";
@@ -176,7 +185,23 @@ const issues = await new api.CertificationEvidenceBundleVerifier().verify(path.j
 console.log(JSON.stringify({pid: process.pid, issues, manifest: built.manifest, artifactHashes: built.artifactHashes}));
 `);
             const root = path.join(runtime.directory, "original");
-            const original = JSON.parse(execFileSync(process.execPath, [script, root, "initialize"], {encoding: "utf8", timeout: 120000})) as {pid: number; issues: unknown[]; manifest: CertificationEvidenceBundleManifest; artifactHashes: Record<string, string>};
+            original = JSON.parse(execFileSync(process.execPath, [script, root, "initialize"], {encoding: "utf8", timeout: 120000})) as DossierProcessResult;
+            reference = path.join(runtime.directory, "reference");
+            fs.renameSync(root, reference);
+        }, 180000);
+
+        beforeEach(() => {
+            relocated = fs.mkdtempSync(path.join(runtime.directory, "relocated-"));
+            fs.cpSync(reference, relocated, {recursive: true});
+        });
+        afterEach(() => {
+            if (relocated !== undefined) fs.rmSync(relocated, {recursive: true, force: true});
+        });
+        afterAll(() => {
+            runtime?.dispose();
+        });
+
+        it("binds actual model/report/replay bytes and discloses partial custom authority", () => {
             expect(original.pid).not.toBe(process.pid);
             expect(original.issues).toEqual([]);
             expect(original.manifest.dossier.support.coverage).toBe("partial");
@@ -184,20 +209,23 @@ console.log(JSON.stringify({pid: process.pid, issues, manifest: built.manifest, 
             expect(original.manifest.dossier.statistics.estimates).toHaveLength(1);
             expect(original.manifest.dossier.reproduction.runtime).toBe("audit-round-v1");
             expect(original.manifest.dossier.rules.definition?.advanced?.executableFidelity).toBe("unverified");
-            const relocated = path.join(runtime.directory, "relocated");
-            fs.cpSync(root, relocated, {recursive: true});
-            fs.rmSync(root, {recursive: true});
-            for (const extension of ["mjs", "cjs"]) {
-                const launch = path.join(runtime.directory, `verify.${extension}`);
-                const content = fs.readFileSync(script, "utf8");
-                fs.writeFileSync(launch, extension === "mjs" ? content : `(async () => {${content.replace('import fs from "node:fs";', 'const fs = require("node:fs");').replace('import path from "node:path";', 'const path = require("node:path");').replace('import * as api from "@fromstan/pokie";', 'const api = require("@fromstan/pokie");')}})().catch(error => {console.error(error); process.exitCode = 1;});`);
-                const cold = JSON.parse(execFileSync(process.execPath, [launch, relocated, "reproduce"], {encoding: "utf8", timeout: 120000})) as typeof original;
-                expect(cold.pid).not.toBe(original.pid);
-                expect(cold.issues).toEqual([]);
-                expect(cold.manifest.evidenceContentHash).toBe(original.manifest.evidenceContentHash);
-                expect(cold.manifest.dossier.identity).toEqual(original.manifest.dossier.identity);
-                fs.rmSync(path.join(relocated, "reproduced"), {recursive: true});
-            }
+            console.info("V2C-27 fixture identities", JSON.stringify({evidenceContentHash: original.manifest.evidenceContentHash, modelHash: original.manifest.dossier.identity.modelHash, modelArtifactHash: original.manifest.dossier.identity.modelArtifactHash, sourceManifestHash: original.manifest.sourceBundleManifestHash, templateHash: original.manifest.presentation.templateHash, pdfHash: original.artifactHashes["dossier.pdf"]}));
+        });
+
+        it.each(["mjs", "cjs"])("reproduces relocated inputs in a fresh %s process", extension => {
+            expect(fs.existsSync(path.join(runtime.directory, "original"))).toBe(false);
+            const launch = path.join(runtime.directory, `verify.${extension}`);
+            const content = fs.readFileSync(script, "utf8");
+            fs.writeFileSync(launch, extension === "mjs" ? content : `(async () => {${content.replace('import fs from "node:fs";', 'const fs = require("node:fs");').replace('import path from "node:path";', 'const path = require("node:path");').replace('import * as api from "@fromstan/pokie";', 'const api = require("@fromstan/pokie");')}})().catch(error => {console.error(error); process.exitCode = 1;});`);
+            const cold = JSON.parse(execFileSync(process.execPath, [launch, relocated, "reproduce"], {encoding: "utf8", timeout: 120000})) as DossierProcessResult;
+            expect(cold.pid).not.toBe(original.pid);
+            expect(cold.issues).toEqual([]);
+            expect(cold.manifest.evidenceContentHash).toBe(original.manifest.evidenceContentHash);
+            expect(cold.manifest.dossier.identity).toEqual(original.manifest.dossier.identity);
+            fs.rmSync(path.join(relocated, "reproduced"), {recursive: true});
+        }, 180000);
+
+        it("rejects candidate/model/report and rehashed replay substitutions", async () => {
             const attackScript = path.join(runtime.directory, "dossier-attacks.mjs");
             fs.writeFileSync(attackScript, `
 import fs from "node:fs";
@@ -256,7 +284,6 @@ await rejects({...authorities, replayFiles: [replacedReplay]}, "audit-execution-
 await publish(original);
 console.log(JSON.stringify({closed: ["candidate", "model", "valid-report-substitution", "false-report-math", "false-report-target", "rehashed-runtime-replay"]}));
 `);
-            console.info("V2C-27 fixture identities", JSON.stringify({evidenceContentHash: original.manifest.evidenceContentHash, modelHash: original.manifest.dossier.identity.modelHash, modelArtifactHash: original.manifest.dossier.identity.modelArtifactHash, sourceManifestHash: original.manifest.sourceBundleManifestHash, templateHash: original.manifest.presentation.templateHash, pdfHash: original.artifactHashes["dossier.pdf"]}));
             const attacks = JSON.parse(execFileSync(process.execPath, [attackScript, relocated], {encoding: "utf8", timeout: 120000})) as {closed: string[]};
             expect(attacks.closed).toEqual(["candidate", "model", "valid-report-substitution", "false-report-math", "false-report-target", "rehashed-runtime-replay"]);
             const manifest = JSON.parse(fs.readFileSync(path.join(relocated, "dossier", "manifest.json"), "utf8")) as CertificationEvidenceBundleManifest;
@@ -266,6 +293,9 @@ console.log(JSON.stringify({closed: ["candidate", "model", "valid-report-substit
                 expect(text).toContain("unverified");
                 expect(text).toContain("candidate-revision");
             }
+        }, 180000);
+
+        it("builds and downloads from the opened package and rejects stale authorities", () => {
             // Compile the real Studio adapter beside the same fresh public runtime. The
             // opened package remains the model; only its outcome bundle is attached.
             const emitAdapter = (relative: string, output: string, rewrite: (source: string) => string = source => source): void => {
@@ -327,8 +357,6 @@ assert(restored.bytes.equals(pdf.bytes) && fresh.bytes.equals(pdf.bytes));
 console.log("library rejection/opened-package build/download/retry/stale-authority/restoration passed");
 `);
             expect(execFileSync(process.execPath, [studioScript, relocated], {encoding: "utf8", timeout: 120000})).toContain("library rejection/opened-package build/download/retry/stale-authority/restoration passed");
-        } finally {
-            runtime.dispose();
-        }
-    }, 180000);
+        }, 180000);
+    });
 });
