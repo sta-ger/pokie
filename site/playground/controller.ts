@@ -242,7 +242,12 @@ export class PlaygroundController {
         ) throw new Error("Stale preview: model, settings, policy or candidate changed. Run optimization again.");
         if (this.preview !== preview) throw new Error("Stale preview: invalidated during apply. Run optimization again.");
         const next = structuredClone(preview.candidate);
-        await this.prepare({...submitted, blueprint: next});
+        try {
+            await this.prepare({...submitted, blueprint: next});
+        } catch (error) {
+            if (this.preview !== preview) throw new Error("Stale preview: invalidated during apply. Run optimization again.");
+            throw error;
+        }
         if (this.preview !== preview) throw new Error("Stale preview: invalidated during apply. Run optimization again.");
         this.invalidate("Interrupted/reset: candidate explicitly applied; runtime will be recreated for the new identity.");
         return next;
