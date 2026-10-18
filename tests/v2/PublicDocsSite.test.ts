@@ -159,6 +159,14 @@ describe("public documentation production build", () => {
         );
         expect(commandsPage.body.textContent).toContain('require("@fromstan/pokie")');
         for (const example of inventory.examples) {
+            if (example.source === "site/examples/reproduce.mjs") {
+                const runner = fs.readFileSync(path.join(output, "downloads/reproduce.mjs"), "utf8");
+                expect(runner).not.toContain("@fromstan/pokie");
+                expect(runner).toContain("Incompatible settings or artifact identity.");
+                expect(manifest.sourceHashes["src/wasm/PokieWasmRuntime.ts"]).toBeDefined();
+                expect(manifest.sourceHashes["src/optimization/BrowserBlueprintOptimization.ts"]).toBeDefined();
+                continue;
+            }
             expect(fs.readFileSync(path.join(output, "downloads", path.basename(example.source)))).toEqual(
                 fs.readFileSync(path.join(root, example.source)),
             );

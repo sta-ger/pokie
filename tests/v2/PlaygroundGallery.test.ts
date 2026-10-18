@@ -497,6 +497,21 @@ describe("locally built public gallery rendered actions", () => {
         return ev(`window.downloads[${JSON.stringify(name)}].text().then(JSON.parse)`);
     }
 
+    function runDownloadedRunner(directory: string): string {
+        return execFileSync(process.execPath, ["reproduce.mjs"], {
+            cwd: directory, encoding: "utf8", timeout: 20000, stdio: "pipe",
+        });
+    }
+    async function saveReproduction(directory: string): Promise<void> {
+        fs.mkdirSync(directory);
+        const run = await download("run.json") as {wasm: number[]};
+        for (const name of ["model.blueprint.json", "model.wasm.pokie-wasm.json", "settings.json"]) {
+            fs.writeFileSync(path.join(directory, name), JSON.stringify(await download(name)));
+        }
+        fs.writeFileSync(path.join(directory, "model.wasm"), new Uint8Array(run.wasm));
+        fs.writeFileSync(path.join(directory, "reproduce.mjs"), await (await fetch(`${origin}/downloads/reproduce.mjs`)).text());
+    }
+
     it("discovers gallery deep links and runs every model in real Workers with no nonlocal runtime", async () => {
         await browser!.navigate(`${origin}/gallery/`);
         await browser!.until("document.querySelectorAll('#gallery a').length === 7");
@@ -541,17 +556,10 @@ describe("locally built public gallery rendered actions", () => {
                 fs.writeFileSync(path.join(reproduction, "model.wasm"), new Uint8Array(bundle.wasm));
                 fs.writeFileSync(path.join(reproduction, "model.wasm.pokie-wasm.json"), JSON.stringify(bundle.manifest));
                 fs.writeFileSync(path.join(reproduction, "settings.json"), JSON.stringify(bundle.settings));
-                const runReproduction = () =>
-                    execFileSync(
-                        process.execPath,
-                        [
-                            "--no-warnings",
-                            "--loader",
-                            path.join(root, "site/source-loader.mjs"),
-                            path.join(root, "site/examples/reproduce.mjs"),
-                        ],
-                        {cwd: reproduction, encoding: "utf8", timeout: 10000, stdio: "pipe"},
-                    );
+                const runner = await (await fetch(`${origin}/downloads/reproduce.mjs`)).text();
+                expect(runner).not.toContain("@fromstan/pokie");
+                fs.writeFileSync(path.join(reproduction, "reproduce.mjs"), runner);
+                const runReproduction = () => runDownloadedRunner(reproduction);
                 const canonicalReport = await download("report.json");
                 const reportFile = path.join(reproduction, "report.json");
                 fs.writeFileSync(reportFile, JSON.stringify(canonicalReport));
@@ -568,6 +576,9 @@ describe("locally built public gallery rendered actions", () => {
                     JSON.stringify({...(bundle.blueprint as object), manifest: {id: "tampered", name: "Tampered", version: "1"}}),
                 );
                 expect(runReproduction).toThrow();
+                fs.writeFileSync(path.join(reproduction, "model.blueprint.json"), JSON.stringify(bundle.blueprint));
+                expect(JSON.parse(runReproduction()).simulation).toEqual(rerun.simulation);
+                expect(JSON.parse(runReproduction()).simulation).toEqual(rerun.simulation);
             }
             if (item.id === "free-games") {
                 expect((bundle.blueprint as ReturnType<typeof draft>["blueprint"]).mechanics?.freeGames?.awardsByCount[1]).toBe(0);
@@ -619,6 +630,10 @@ describe("locally built public gallery rendered actions", () => {
         expect(evidence.confidenceLevel).toBe(0.95);
         expect(evidence.assessment).toBeDefined();
         expect(evidence.definitionDiff.comparisonKind).toBe("math-definition");
+        const original = path.join(scratch, "original-optimization");
+        await saveReproduction(original);
+        fs.writeFileSync(path.join(original, "optimization.json"), JSON.stringify(evidence));
+        expect(JSON.parse(runDownloadedRunner(original)).optimization).toEqual(evidence);
         const applyPosition = await ev<{x: number; y: number}>(
             "(() => { const button = document.querySelector('#pg-apply'); button.scrollIntoView({block: 'center'}); const r = button.getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; })()",
         );
@@ -635,6 +650,11 @@ describe("locally built public gallery rendered actions", () => {
         expect(await ev("document.querySelector('#pg-apply').disabled")).toBe(true);
         await click("inspect");
         expect(await download("model.blueprint.json")).toEqual(evidence.candidate);
+        await click("sim");
+        const applied = path.join(scratch, "applied-optimization");
+        await saveReproduction(applied);
+        const observed = await download("run.json") as {observation: unknown};
+        expect(JSON.parse(runDownloadedRunner(applied)).simulation).toEqual(observed.observation);
         await ev(
             "URL.createObjectURL = () => { throw new Error('download unavailable'); }; document.querySelector('#pg-download-buttons button').click()",
         );

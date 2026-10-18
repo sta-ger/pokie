@@ -117,6 +117,17 @@ try {
     write('robots.txt', `User-agent: *\nAllow: /\nSitemap: ${inventory.origin}/sitemap.xml\n`);
     write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${inventory.pages.filter(page => page.route !== '/404.html').map(page => `<url><loc>${inventory.origin}${page.route}</loc></url>`).join('')}</urlset>`);
     const browserSources = new Set();
+    // Publish a plain-Node runner using the same sources as the browser runtime.
+    // A clean site checkout has no package distribution for a bare self-import.
+    await bundle({configFile: false, logLevel: 'error', root,
+        resolve: {alias: {'@fromstan/pokie/wasm': path.join(root, 'src/wasm/browser.ts')}},
+        ssr: {noExternal: true},
+        plugins: [{name: 'runner-source-inventory', moduleParsed(info) {
+            if (info.id.startsWith(root + path.sep)) browserSources.add(path.relative(root, info.id));
+        }}],
+        build: {ssr: path.join(root, 'site/examples/reproduce.mjs'), target: 'node20',
+            outDir: path.join(staging, 'downloads'), emptyOutDir: false, minify: false,
+            rollupOptions: {output: {entryFileNames: 'reproduce.mjs', inlineDynamicImports: true}}}});
     await bundle({configFile: false, logLevel: 'error', root,
         plugins: [{name: 'local-browser-boundary', resolveId(id) {
             if (id.startsWith('node:') || builtinModules.includes(id)) throw new Error(`Node import in public playground: ${id}`);

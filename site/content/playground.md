@@ -14,12 +14,17 @@ Work is bounded to 64 KiB input, 8192 accepted simulation steps, 1024 replay ste
 
 ## Reproduce downloads locally
 
-After installing the checked POKIE package and a supported Node version, download model.blueprint.json, model.wasm, model.wasm.pokie-wasm.json and settings.json into a new directory. Sidecar placement is adjacent to the WASM bytes. run.json includes those same bytes and identities plus the actual output; it is a playground bundle, not a certification dossier or executable audit recording. report.json is a canonical SimulationReport or independent-mode SimulationReportSet, directly consumable by CLI report; reports.json is a convenience array of the same per-mode reports. replay.json contains actual restorable runtime state and commands; replay-observation.json is explicitly public observation only.
+With a supported Node version (20.19+ or 22.12+), download model.blueprint.json, model.wasm, model.wasm.pokie-wasm.json and settings.json into a new directory. Sidecar placement is adjacent to the WASM bytes. run.json includes those same bytes and identities plus the actual output; it is a playground bundle, not a certification dossier or executable audit recording. report.json is a canonical SimulationReport or independent-mode SimulationReportSet, directly consumable by CLI report; reports.json is a convenience array of the same per-mode reports. replay.json contains actual restorable runtime state and commands; replay-observation.json is explicitly public observation only.
 
-Download [reproduce.mjs](../examples/reproduce.mjs), place it alongside those files, then run:
+Download the built [reproduce.mjs](../examples/reproduce.mjs) from this site, place it alongside those files, then run from that directory. This standalone download bundles the shared runtime and optimizer from this site build; no package install, checkout distribution, custom loader or network access is needed. The repository's `site/examples/reproduce.mjs` is its build input, not the standalone download.
 
 ```sh
 node reproduce.mjs
+```
+
+For the optional CLI commands below, separately install the checked POKIE package:
+
+```sh
 pokie inspect model.wasm
 pokie validate model.wasm
 pokie run model.wasm --seed gallery-29
