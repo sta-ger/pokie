@@ -8,6 +8,8 @@ POKIEPLAYGROUND
 
 Inspect and Validate check structural validity, supported composition and successful runtime initialization. Play executes one seeded entry. Simulate and Build report sample accepted mathematical steps; delivery frames do not add samples. Replay sample addresses the selected accepted step from the same seed, mode, denomination and funding. For exact entry equality use Replay displayed entry, which uses the actual initial runtime state and command. All-mode simulation produces independent results; choose one mode for Play or Replay.
 
+Preparation rejects geometry above six reels by eight rows in generated, evaluated or visible coordinates before compilation. Derived line coordinates, payout entries and result positions are bounded too, including implicitly generated horizontal lines.
+
 Work is bounded to 64 KiB input, 8192 accepted simulation steps, 1024 replay steps, one Worker, 2 MB retained output, a 5 second silence timeout and a 20 second overall deadline. Optimization uses at most 16 candidates, four tunables and 8192 search and assessment samples. Continuing progress does not extend the deadline. Cancel, replacement, failure, page exit and success terminate owned Workers. Reload always resets jobs, output and candidate authority; drafts are not persisted.
 
 ## Reproduce downloads locally

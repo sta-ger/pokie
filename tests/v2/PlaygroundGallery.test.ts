@@ -221,7 +221,7 @@ it("bounds generated/evaluated preparation before default-line allocation or com
         const valid = projection();
         valid.blueprint.reelStrips = [["A"], ["A"]];
         const run = await controller.run(valid, "play");
-        expect(run.result).toMatchObject({payout: 0.2});
+        expect(run.result).toMatchObject({screen: [["A"], ["A"]], win: 0.2, stake: 0.05});
         expect(constructions).toBe(1);
         await expect(controller.prepare({...valid, blueprint: {...valid.blueprint, paylines: undefined}})).resolves.toHaveProperty("artifact");
         expect(controller.diagnostics()).toEqual({workers: 0, timers: 0, pending: 0});
