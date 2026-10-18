@@ -90,7 +90,12 @@ describe("ParWorkbookArtifactBuilder", () => {
         const builder = new ParWorkbookArtifactBuilder("1.3.0");
 
         await expect(builder.validate(blueprintProjectOf(blueprintFile))).resolves.toBeUndefined();
-        await expect(builder.build(blueprintProjectOf(blueprintFile), destinationFile)).resolves.toEqual({outputPath: destinationFile});
+        const result = await builder.build(blueprintProjectOf(blueprintFile), destinationFile);
+        const published = fs.statSync(destinationFile);
+        expect(result).toEqual({
+            outputPath: destinationFile,
+            publishedFileOwnership: [{path: destinationFile, dev: published.dev, ino: published.ino}],
+        });
 
         const imported = await new ParSheetImporter().importFromFile(destinationFile);
         expect(imported.issues.filter((issue) => issue.severity === "error")).toEqual([]);
@@ -160,8 +165,10 @@ describe("ParWorkbookArtifactBuilder", () => {
     it("removes a partial Unicode-path workbook when its exporter fails", async () => {
         const unicodeDestination = path.join(dir, "отчёт с пробелом.par.xlsx");
         const failingExporter: ParSheetExporting = {
-            exportToFile: (_blueprint, outputPath) => {
+            exportToFile: (_blueprint, outputPath, _sourcePath, options) => {
                 fs.writeFileSync(outputPath, "partial workbook");
+                const published = fs.statSync(outputPath);
+                options?.onPublication?.({path: outputPath, dev: published.dev, ino: published.ino});
                 return Promise.reject(new Error("injected PAR write failure"));
             },
         };
@@ -174,8 +181,10 @@ describe("ParWorkbookArtifactBuilder", () => {
 
     it("removes a partial Blueprint workbook when its exporter fails", async () => {
         const failingExporter: ParSheetExporting = {
-            exportToFile: (_blueprint, outputPath) => {
+            exportToFile: (_blueprint, outputPath, _sourcePath, options) => {
                 fs.writeFileSync(outputPath, "partial workbook");
+                const published = fs.statSync(outputPath);
+                options?.onPublication?.({path: outputPath, dev: published.dev, ino: published.ino});
                 return Promise.reject(new Error("injected Blueprint PAR write failure"));
             },
         };
@@ -184,6 +193,53 @@ describe("ParWorkbookArtifactBuilder", () => {
             "injected Blueprint PAR write failure",
         );
         expect(fs.existsSync(destinationFile)).toBe(false);
+    });
+
+    it.each(["blueprint", "parWorkbook"] as const)("preserves a foreign replacement after a %s export failure", async (sourceType) => {
+        const source = sourceType === "blueprint" ? blueprintProjectOf(blueprintFile) : parWorkbookProjectOf(sourceFile);
+        const sourceBytes = fs.readFileSync(source.rootPath);
+        const failingExporter: ParSheetExporting = {
+            exportToFile: (_blueprint, outputPath, _sourcePath, options) => {
+                fs.writeFileSync(outputPath, "owned workbook");
+                const published = fs.statSync(outputPath);
+                options?.onPublication?.({path: outputPath, dev: published.dev, ino: published.ino});
+                // Keep the original inode allocated so the replacement cannot reuse it.
+                fs.renameSync(outputPath, path.join(dir, "original-publication"));
+                fs.writeFileSync(outputPath, "foreign workbook");
+                return Promise.reject(new Error("injected failure after replacement"));
+            },
+        };
+
+        await expect(new ParWorkbookArtifactBuilder("1.3.0", undefined, failingExporter).build(source, destinationFile)).rejects.toThrow(
+            "injected failure after replacement",
+        );
+        expect(fs.readFileSync(destinationFile, "utf-8")).toBe("foreign workbook");
+        expect(fs.readFileSync(source.rootPath)).toEqual(sourceBytes);
+    });
+
+    it.each(["blueprint", "parWorkbook"] as const)("cleans a real exporter's partial staging file for %s and allows retry", async (sourceType) => {
+        const source = sourceType === "blueprint" ? blueprintProjectOf(blueprintFile) : parWorkbookProjectOf(sourceFile);
+        const sourceBytes = fs.readFileSync(source.rootPath);
+        const unicodeDestination = path.join(dir, "отчёт с пробелом.par.xlsx");
+        const exporter = new ParSheetExporter("1.3.0", undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            (_workbook, stagingPath) => {
+                expect(stagingPath).not.toBe(unicodeDestination);
+                fs.writeFileSync(stagingPath, "partial workbook");
+                return Promise.reject(new Error("injected serialization failure"));
+            });
+
+        await expect(new ParWorkbookArtifactBuilder("1.3.0", undefined, exporter).build(source, unicodeDestination)).rejects.toThrow(
+            "injected serialization failure",
+        );
+        expect(fs.existsSync(unicodeDestination)).toBe(false);
+        expect(fs.readdirSync(dir).filter(entry => entry.startsWith(`.${path.basename(unicodeDestination)}.tmp-`))).toEqual([]);
+        expect(fs.readFileSync(source.rootPath)).toEqual(sourceBytes);
+
+        await new ParWorkbookArtifactBuilder("1.3.0").build(source, unicodeDestination);
+        const imported = await new ParSheetImporter().importFromFile(unicodeDestination);
+        expect(imported.issues.filter(issue => issue.severity === "error")).toEqual([]);
+        expect(imported.blueprint).toMatchObject({manifest: blueprint.manifest, reelStrips: blueprint.reelStrips, paytable: blueprint.paytable});
+        expect(fs.readFileSync(source.rootPath)).toEqual(sourceBytes);
     });
 
     it("cancels at the PAR publish commit callback without leaving a temporary workbook", async () => {

@@ -110,17 +110,34 @@ describe("StakeEngineImporter", () => {
             expect(reExportedBooks).toBe(originalBooks);
         }
 
-        // Every field matches except "generatedAt" (a fresh timestamp) and each mode's "libraryHash" — the
+        // Re-export adds exact source-byte provenance. Other fields match except
+        // "generatedAt" (a fresh timestamp) and each mode's "libraryHash" — the
         // reconstructed library legitimately hashes differently (roundId/wins/provenance.pokieVersion are
         // substituted, not reproduced) even though everything Stake actually cares about round-trips exactly.
         const originalManifest = JSON.parse(fs.readFileSync(path.join(outDir, "pokie-manifest.json"), "utf-8")) as StakeEngineManifest;
         const reExportedManifest = JSON.parse(fs.readFileSync(path.join(importedOutDir, "pokie-manifest.json"), "utf-8")) as StakeEngineManifest;
+        const hashOf = (fileName: string) => `sha256:${crypto.createHash("sha256").update(fs.readFileSync(path.join(outDir, fileName))).digest("hex")}`;
+        const expectedSourceProvenance = {
+            indexHash: hashOf("index.json"),
+            manifestHash: hashOf("pokie-manifest.json"),
+            modes: ["base", "bonus"].map(modeName => ({
+                modeName,
+                csvHash: hashOf(`lookup_${modeName}.csv`),
+                booksHash: hashOf(`books_${modeName}.jsonl.zst`),
+            })),
+        };
+        expect(originalManifest.sourceProvenance).toBeUndefined();
+        expect(importResult.sourceProvenance).toEqual(expectedSourceProvenance);
+        expect(importResult.modes.map(mode => mode.sourceProvenance)).toEqual([expectedSourceProvenance, expectedSourceProvenance]);
         const stripVolatileFields = (manifest: StakeEngineManifest) => ({
             ...manifest,
             generatedAt: undefined,
             modes: manifest.modes.map((mode) => ({...mode, libraryHash: undefined})),
         });
-        expect(stripVolatileFields(reExportedManifest)).toEqual(stripVolatileFields(originalManifest));
+        expect(stripVolatileFields(reExportedManifest)).toEqual({
+            ...stripVolatileFields(originalManifest),
+            sourceProvenance: expectedSourceProvenance,
+        });
     });
 
     it("retains generated-library semantics through the Stake import and re-export boundary", async () => {
