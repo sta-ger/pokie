@@ -7371,6 +7371,16 @@ describe("StudioServer", () => {
                 error: 'Unknown deployment target "does-not-exist".',
                 plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}},
             });
+            const jobs = new FileStudioJobRepository(path.join(deploymentStudioRoot, ".test-studio-jobs")).list();
+            expect(jobs).toHaveLength(1);
+            expect(jobs[0]).toMatchObject({
+                operation: "deployment",
+                status: "failed",
+                request: {targetId: "does-not-exist", sourceProjectId: fs.realpathSync(deploymentProjectRoot)},
+                error: 'Unknown deployment target "does-not-exist".',
+            });
+            // Deployment has selectors, not Certification's bundleDir/dossier inputs.
+            expect(jobs[0].request).not.toHaveProperty("inputIdentity");
         });
 
         it("returns 400, in domain language, when a mode isn't part of the active project's own current build — even for a request that never went through the Configure UI", async () => {
@@ -7613,6 +7623,16 @@ describe("StudioServer", () => {
             expect(view.status).toBe("ok");
             expect(view.manifest?.modes.map((mode) => mode.modeName)).toEqual(["base"]);
             expect(fs.existsSync(path.join(certProjectRoot, "certification", "manifest.json"))).toBe(true);
+            const jobs = new FileStudioJobRepository(path.join(certStudioRoot, ".test-studio-jobs")).list()
+                .filter(job => job.operation === "certification-build");
+            expect(jobs).toHaveLength(1);
+            expect(jobs[0].status).toBe("completed");
+            expect(jobs[0].request.inputIdentity).toMatch(/^sha256:[a-f0-9]{64}$/);
+            expect(jobs[0].request.inputIdentity).toBe(new StudioCertificationService("1.3.0").requestIdentity(certProjectRoot, {
+                bundleDir: "bundle",
+                outDir: "certification",
+                modes: [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}],
+            }));
         });
 
         it("returns an error view (no manifest) when a requested mode isn't in the source bundle", async () => {

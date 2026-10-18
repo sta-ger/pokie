@@ -2775,7 +2775,7 @@ export class StudioServer implements StudioServerHandling {
         const execution = await this.executeCommonOperation(
             res,
             {
-                projectId: projectRoot, operation: "deployment", request: {...validated, sourceProjectId: projectRoot, ...(typeof this.certificationService.requestIdentity === "function" ? {inputIdentity: this.certificationService.requestIdentity(projectRoot, validated)} : {})} as unknown as Readonly<Record<string, unknown>>, conflictKey: `deployment-delivery:${validated.targetId}`, recoveryOnRestart: recovery,
+                projectId: projectRoot, operation: "deployment", request: {...validated, sourceProjectId: projectRoot} as unknown as Readonly<Record<string, unknown>>, conflictKey: `deployment-delivery:${validated.targetId}`, recoveryOnRestart: recovery,
                 initialProgress: {stage: "Planning deployment", unit: "pipeline stages", current: 0, total: "indeterminate", message: "Validating artifacts and delivery boundaries."},
                 // runDeployment always resolves its planner view for an
                 // operation outcome.  Keep reconnects in that shape too; a
