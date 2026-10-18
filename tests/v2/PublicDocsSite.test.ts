@@ -295,7 +295,7 @@ describe("public documentation production build", () => {
             [
                 "/docs/interop/",
                 "PAR import/export source guide",
-                "docs/cli.md#pokie-par-import-inputxlsx--pokie-par-export-configjson",
+                "docs/cli.md#workbook-format",
             ],
         ];
         for (const [route, label, destination] of destinations) {

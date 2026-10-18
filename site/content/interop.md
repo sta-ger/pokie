@@ -11,7 +11,7 @@ pokie build weighted.blueprint.json --target parWorkbook --out weighted.xlsx
 pokie build weighted.xlsx --target blueprint --out returned.blueprint.json
 ```
 
-Start with the [weighted example](weighted-sequences.md). Canonical workbook readback preserves represented math, fractional bets, missing/zero payouts, grants and exact/weighted reels. Lossless eligibility requires complete supported geometry/mechanics, byte-bound provenance and no ignored headerless data, duplicate columns, unknown/duplicate Meta keys or ignored Meta columns. A matching model hash alone is insufficient. Studio import/re-export does not implicitly save the draft. [PAR import/export source guide](../../docs/cli.md#pokie-par-import-inputxlsx--pokie-par-export-configjson).
+Start with the [weighted example](weighted-sequences.md). Canonical workbook readback preserves represented math, fractional bets, missing/zero payouts, grants and exact/weighted reels. Lossless eligibility requires complete supported geometry/mechanics, byte-bound provenance and no ignored headerless data, duplicate columns, unknown/duplicate Meta keys or ignored Meta columns. A matching model hash alone is insufficient. Studio import/re-export does not implicitly save the draft. [PAR import/export source guide](../../docs/cli.md#workbook-format).
 
 ## Outcome libraries and Stake
 
