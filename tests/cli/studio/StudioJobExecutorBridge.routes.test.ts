@@ -129,6 +129,7 @@ describe("StudioJobService executor bridge routes", () => {
             emission?.();
         };
         let heldSnapshot: string | undefined;
+        let holdAcknowledgement = true;
         const runtimeWorkers = new Set<Worker>();
         let runtimeDestination: string | undefined;
         const posting = jest.spyOn(Worker.prototype, "postMessage").mockImplementation(function(this: Worker, message: {source?: string; destination?: string}) {
@@ -141,7 +142,7 @@ describe("StudioJobService executor bridge routes", () => {
         // Hold the acknowledgement from one *real* installed-runtime copy. The worker
         // must finish and the resolver must drain it before accepting a loaded result.
         const copying = jest.spyOn(Worker.prototype, "emit").mockImplementation(function(this: Worker, event: string | symbol, ...args: unknown[]) {
-            if (event === "message" && runtimeWorkers.has(this) && heldSnapshot === undefined) {
+            if (holdAcknowledgement && event === "message" && runtimeWorkers.has(this) && heldSnapshot === undefined) {
                 heldSnapshot = path.resolve(runtimeDestination!, "..", "..", "..");
                 heldEmission = () => {
                     Reflect.apply(emit, this, [event, ...args]);
@@ -161,13 +162,21 @@ describe("StudioJobService executor bridge routes", () => {
                 }).on("error", reject);
             });
             expect(root).toEqual({status: 200, body: shell});
-            // Wait for the real copy, never an assumed delay. This bounded loop also detects
-            // a synchronous-copy regression without leaving a held dashboard load in teardown.
-            let context: unknown;
-            for (let attempt = 0; attempt < 100; attempt++) {
-                context = (await get(`${baseUrl}/api/project/context`)).body;
-                if (heldSnapshot !== undefined || (context as {status: string}).status !== "loading") break;
-            }
+            // HTTP can answer hundreds of times before a worker starts under gate load.
+            // Bound elapsed time rather than the number of successful loading responses.
+            const pollContext = async (observed: () => boolean): Promise<unknown> => {
+                const deadline = Date.now() + 15_000;
+                let context: unknown;
+                do {
+                    context = (await get(`${baseUrl}/api/project/context`)).body;
+                    if (observed() || (context as {status: string}).status !== "loading") return context;
+                    await new Promise<void>(resolve => {
+                        setTimeout(resolve, 50);
+                    });
+                } while (Date.now() < deadline);
+                throw new Error(`Dashboard copy phase did not settle: ${JSON.stringify(context)}`);
+            };
+            let context = await pollContext(() => heldSnapshot !== undefined);
             expect(heldSnapshot).toBeDefined();
             expect(context).toMatchObject({status: "loading", projectRoot});
             const snapshot = heldSnapshot!;
@@ -185,20 +194,23 @@ describe("StudioJobService executor bridge routes", () => {
                 await stopping;
             } else {
                 resume();
-                for (let attempt = 0; attempt < 1000; attempt++) {
-                    context = (await get(`${baseUrl}/api/project/context`)).body;
-                    if ((context as {status: string}).status !== "loading") break;
-                }
+                context = await pollContext(() => false);
                 expect(context).toMatchObject({status: "loaded", type: "tsPackage", game: {id: "installed-game", name: "Installed before", version: "1.0.0"}});
                 await server!.stop();
             }
             expect(fs.existsSync(snapshot)).toBe(false);
             for (const worker of runtimeWorkers) expect(worker.threadId).toBe(-1);
         } finally {
+            // A failed observation may precede the worker's acknowledgement. Never hold a
+            // later message after the last resume, or stop() would wait on this fixture.
+            holdAcknowledgement = false;
             resume();
-            await server?.stop();
-            copying.mockRestore();
-            posting.mockRestore();
+            try {
+                await server?.stop();
+            } finally {
+                copying.mockRestore();
+                posting.mockRestore();
+            }
         }
     });
 
