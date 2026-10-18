@@ -554,7 +554,7 @@ export class StudioServer implements StudioServerHandling {
             listenerClosed,
             Promise.allSettled([...this.advancedValidations.values()]),
             Promise.allSettled([...this.definitionPreviews.values()]),
-            Promise.allSettled([...this.certificationDownloads.values()]),
+            this.drainCertificationDownloads(),
             this.simulationService.cancelAll(),
             this.replayService.cancelAll(),
             this.artifactBuildService.cancelAll(),
@@ -594,7 +594,7 @@ export class StudioServer implements StudioServerHandling {
             for (const controller of this.definitionPreviews.keys()) controller.abort();
             for (const controller of this.certificationDownloads.keys()) controller.abort();
             await Promise.allSettled([...this.definitionPreviews.values()]);
-            await Promise.allSettled([...this.certificationDownloads.values()]);
+            await this.drainCertificationDownloads();
             if (this.currentContext.mode === "project") {
                 const projectId = this.canonicalPathIdentity(this.currentContext.projectRoot);
                 await this.wasmBrowserService.drain(projectId);
@@ -906,6 +906,13 @@ export class StudioServer implements StudioServerHandling {
         const preparation = {generation: ++this.nextRuntimePreparationGeneration, controller: new AbortController()};
         this.runtimePreparation = preparation;
         return preparation;
+    }
+
+    private async drainCertificationDownloads(): Promise<void> {
+        const results = await Promise.allSettled([...this.certificationDownloads.values()]);
+        for (const result of results) {
+            if (result.status === "rejected" && result.reason instanceof Error && (/cleanup failed/).test(result.reason.message)) throw result.reason;
+        }
     }
 
     private cancelRuntimePreparation(): void {

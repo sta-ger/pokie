@@ -259,7 +259,7 @@ describe("StudioJobService executor bridge routes", () => {
         expect(fs.existsSync(path.join(projectRoot, "out"))).toBe(false);
     });
 
-    it.each(["disconnect", "project-close", "shutdown"])("aborts and drains download-owned reproduction on %s", async trigger => {
+    it.each(["disconnect", "project-close", "shutdown", "shutdown-cleanup-failure"])("aborts and drains download-owned reproduction on %s", async trigger => {
         await buildSourceOutcomeLibraryBundle(path.join(projectRoot, "bundle"));
         const service = new StudioCertificationService("1.3.0");
         const baseUrl = await start(service);
@@ -287,7 +287,7 @@ describe("StudioJobService executor bridge routes", () => {
             });
             await cleanup;
             drained = true;
-            throw new Error("Reproduction cancelled after owned runtime cleanup");
+            throw new Error(trigger === "shutdown-cleanup-failure" ? "Dossier runtime cleanup failed: retained worker needs inspection" : "Reproduction cancelled after owned runtime cleanup");
         });
         const request = http.get(`${baseUrl}${downloadPath}`, {agent: false}, response => {
             response.resume(); 
@@ -296,7 +296,7 @@ describe("StudioJobService executor bridge routes", () => {
         await started;
         let transitionSettled = false;
         let transition: Promise<unknown>;
-        if (trigger === "shutdown") transition = server!.stop();
+        if (trigger === "shutdown" || trigger === "shutdown-cleanup-failure") transition = server!.stop();
         else if (trigger === "project-close") transition = post(`${baseUrl}/api/projects/close`, {confirmActiveJobs: true});
         else transition = Promise.resolve(request.destroy());
         const settled = Promise.resolve(transition).then(() => {
@@ -306,7 +306,9 @@ describe("StudioJobService executor bridge routes", () => {
         expect(drained).toBe(false);
         if (trigger !== "disconnect") expect(transitionSettled).toBe(false);
         finishCleanup();
-        await settled;
+        if (trigger === "shutdown-cleanup-failure") {
+            await expect(settled).rejects.toThrow("Dossier runtime cleanup failed: retained worker needs inspection");
+        } else await settled;
         // A disconnect has no caller awaiting its route; server shutdown must still drain it.
         if (trigger === "disconnect") await server!.stop();
         expect(drained).toBe(true);
