@@ -270,7 +270,7 @@ describe("V2C-01 delivery identity", () => {
     });
 
     it("classifies maintained delivery text separately from immutable history and product contracts", () => {
-        const maintained = [path.join(root, "README.md"), ...metadata.files.filter((name: string) => name.startsWith("docs/")).map((name: string) => path.join(root, name)), ...["src", "cli", "examples"].flatMap(name => files(path.join(root, name)))];
+        const maintained = [path.join(root, "README.md"), ...metadata.files.filter((name: string) => name.startsWith("docs/")).map((name: string) => path.join(root, name)), ...["src", "cli", "examples", "site/content", "site/examples"].flatMap(name => files(path.join(root, name)))];
 
         expect(maintained.filter(file => (/\.(?:ts|tsx|js|mjs|md|html|json)$/).test(file) && staleDeliveryIdentity.test(fs.readFileSync(file, "utf8")))).toEqual([]);
         expect(fs.readFileSync(path.join(root, "docs/pokie-phase4-inventory.md"), "utf8")).toContain("sta-ger/pokie-examples");

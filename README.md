@@ -20,6 +20,12 @@ Repository/site targets are [fromstan/pokie](https://github.com/fromstan/pokie) 
 [pokie.fromstan.com](https://pokie.fromstan.com); account access and hosting are external prerequisites.
 The existing 1.3.0 version is candidate planning metadata; this campaign does not release it.
 
+The public-site target provides [Getting started](https://pokie.fromstan.com/docs/getting-started/),
+[CLI/API and build](https://pokie.fromstan.com/docs/cli-api/) and [the docs index](https://pokie.fromstan.com/docs/).
+Deployment is separately controlled; [repository guides](docs/README.md) remain available before hosting.
+Build and preview the actual static site with `npm run site:build` and `npm run site:preview`;
+see [static handoff instructions](site/README.md). Output is isolated in `site/.output/`.
+
 > **⚠️ RNG:** default `PseudorandomNumberGenerator` uses `Math.random()` — not cryptographically secure.
 > `SecureRandomNumberGenerator` gives a stronger, production-like, security-sensitive RNG primitive built on
 > Node's `crypto.randomInt`, but it's a building block, not a certification — real-money/regulated games still need

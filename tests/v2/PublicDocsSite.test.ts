@@ -1,0 +1,654 @@
+import fs from "node:fs";
+import path from "node:path";
+import {createHash} from "node:crypto";
+import {execFileSync, spawn, type ChildProcess} from "node:child_process";
+import {JSDOM} from "jsdom";
+import {GameBlueprintValidator} from "../../src/generated/GameBlueprintValidator.js";
+import {renderBuiltGameModule} from "../../src/generated/renderBuiltGameModule.js";
+import {runInNewContext} from "node:vm";
+import * as api from "../../src/index.js";
+import {seededRound} from "../../site/examples/session.js";
+import {browserRound} from "../../site/examples/browser.js";
+import {optimizeAndPublish} from "../../site/examples/optimize.js";
+import {registerCliCommands} from "../../cli/registerCliCommands.js";
+import {PublicDocsBrowser} from "./helpers/PublicDocsBrowser.js";
+
+const root = path.resolve(__dirname, "../..");
+const inventory = JSON.parse(fs.readFileSync(path.join(root, "site/content.json"), "utf8"));
+const scratch = fs.mkdtempSync(path.join(root, "node_modules/.cache/pokie-tmp/public-docs-"));
+const output = path.join(scratch, "built");
+let preview: ChildProcess | undefined;
+let browser: PublicDocsBrowser | undefined;
+let origin = "";
+
+function node(args: string[]): string {
+    return execFileSync(process.execPath, args, {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 150000,
+        maxBuffer: 8 * 1024 * 1024,
+        stdio: "pipe",
+    });
+}
+function build(): string {
+    // Exercise exactly the documented build entrypoint. Preserve the product output for handoff;
+    // destructive fixtures and preview copies remain test-owned and are removed below.
+    const result = node(["site/build.mjs"]);
+    fs.cpSync(path.join(root, "site/.output"), output, {recursive: true});
+    return result;
+}
+function check(directory = output): string {
+    return node([
+        "--input-type=module",
+        "-e",
+        `import {checkSite} from './site/check.mjs'; console.log(JSON.stringify(checkSite(${JSON.stringify(
+            directory,
+        )})));`,
+    ]);
+}
+function html(route: string): string {
+    return fs.readFileSync(
+        path.join(output, route.endsWith("/") ? `${route.slice(1)}index.html` : route.slice(1)),
+        "utf8",
+    );
+}
+async function stopPreview(): Promise<void> {
+    if (!preview || preview.exitCode !== null || preview.signalCode !== null) return;
+    const owned = preview;
+    await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => owned.kill("SIGKILL"), 3000);
+        owned.once("exit", () => {
+            clearTimeout(timer);
+            resolve();
+        });
+        owned.kill("SIGTERM");
+    });
+}
+async function startPreview(): Promise<void> {
+    preview = spawn(process.execPath, ["site/preview.mjs", "--dir", output, "--port", "0"], {
+        cwd: root,
+        stdio: ["ignore", "pipe", "pipe"],
+    });
+    await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("Documented preview startup timed out")), 10000);
+        let log = "";
+        preview!.stdout!.on("data", (chunk) => {
+            log += chunk;
+            const match = log.match(/Site preview ready: (http:\/\/127\.0\.0\.1:\d+)/);
+            if (match) {
+                origin = match[1];
+                clearTimeout(timer);
+                resolve();
+            }
+        });
+        preview!.once("error", (error) => {
+            clearTimeout(timer);
+            reject(error);
+        });
+        preview!.once("exit", (code) => {
+            clearTimeout(timer);
+            reject(new Error(`Preview exited ${code}: ${log}`));
+        });
+        preview!.stderr!.on("data", (chunk) => {
+            log += chunk;
+        });
+    });
+}
+
+async function cleanup(): Promise<void> {
+    try {
+        await browser?.close();
+    } finally {
+        try {
+            await stopPreview();
+        } finally {
+            fs.rmSync(scratch, {recursive: true, force: true});
+        }
+    }
+}
+function interrupt(signal: NodeJS.Signals): void {
+    cleanup().finally(() => {
+        process.removeListener("SIGINT", onInterrupt);
+        process.removeListener("SIGTERM", onTerminate);
+        process.kill(process.pid, signal);
+    });
+}
+const onInterrupt = (): void => interrupt("SIGINT");
+const onTerminate = (): void => interrupt("SIGTERM");
+process.once("SIGINT", onInterrupt);
+process.once("SIGTERM", onTerminate);
+afterAll(async () => {
+    process.removeListener("SIGINT", onInterrupt);
+    process.removeListener("SIGTERM", onTerminate);
+    await cleanup();
+});
+
+describe("public documentation production build", () => {
+    it("builds actual maintained pages, validated examples, command contracts and a crawlable section search", () => {
+        expect(build()).toContain("Site built:");
+        const manifest = JSON.parse(fs.readFileSync(path.join(output, "build-manifest.json"), "utf8"));
+        expect(manifest.origin).toBe("https://pokie.fromstan.com");
+        expect(manifest.candidate).toBe(
+            execFileSync("git", ["rev-parse", "HEAD"], {cwd: root, encoding: "utf8"}).trim(),
+        );
+        expect(manifest.routes).toEqual(inventory.pages.map((page: {route: string}) => page.route));
+        for (const [file, hash] of Object.entries(manifest.artifactHashes)) {
+            expect(
+                createHash("sha256")
+                    .update(fs.readFileSync(path.join(output, file)))
+                    .digest("hex"),
+            ).toBe(hash);
+        }
+        expect(JSON.parse(check()).pages).toBe(inventory.pages.length);
+        const commandNames = registerCliCommands({
+            version: "1.3.0",
+            pokiePackageRoot: root,
+            clientRoot: "",
+            studioRoot: "",
+        })
+            .map((command) => command.getName())
+            .filter((name) => !name.startsWith("__"));
+        expect(manifest.contracts.commands.map((command: {name: string}) => command.name)).toEqual(commandNames);
+        const commandsPage = new JSDOM(html("/docs/cli-api/")).window.document;
+        for (const name of commandNames) expect(commandsPage.querySelector(`#pokie-${name}`)).not.toBeNull();
+        expect(commandNames).not.toEqual(
+            expect.arrayContaining(["export", "outcomelibrary", "outcomesource", "stakeengine", "studio"]),
+        );
+        expect(manifest.contracts.exports).toEqual(
+            JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).exports,
+        );
+        expect(commandsPage.body.textContent).toContain('require("@fromstan/pokie")');
+        for (const example of inventory.examples) {
+            expect(fs.readFileSync(path.join(output, "downloads", path.basename(example.source)))).toEqual(
+                fs.readFileSync(path.join(root, example.source)),
+            );
+        }
+        expect(fs.readFileSync(path.join(output, "downloads/LICENSE"))).toEqual(
+            fs.readFileSync(path.join(root, "LICENSE")),
+        );
+        expect(Object.keys(manifest.sourceHashes)).not.toEqual(
+            expect.arrayContaining([expect.stringMatching(/\/evidence\/|V2C-\d+\.md/)]),
+        );
+        for (const page of inventory.pages) {
+            const document = new JSDOM(html(page.route)).window.document;
+            expect(document.querySelector("h1")).not.toBeNull();
+            expect(document.querySelector('main#main[tabindex="-1"]')).not.toBeNull();
+            if (page.route !== "/404.html") {
+                expect(
+                    document
+                        .querySelector(`nav[aria-label="Documentation"] a[aria-current="page"]`)
+                        ?.getAttribute("href"),
+                ).toBe(page.route);
+            }
+        }
+    }, 180000);
+
+    it("makes every required topic discoverable through rendered navigation and search, with workflow limits beside instructions", () => {
+        const index = JSON.parse(fs.readFileSync(path.join(output, "search.json"), "utf8"));
+        const topics: Record<string, string> = {
+            create: "/docs/getting-started/",
+            init: "/docs/getting-started/",
+            build: "/docs/cli-api/",
+            validate: "/docs/reproducibility/",
+            sim: "/docs/reproducibility/",
+            report: "/docs/reproducibility/",
+            replay: "/docs/reproducibility/",
+            studio: "/docs/studio/",
+            extraction: "/docs/extraction/",
+            "weighted whole-sequence": "/docs/weighted-sequences/",
+            optimizer: "/docs/optimization/",
+        };
+        const document = new JSDOM(html("/docs/")).window.document;
+        for (const [topic, route] of Object.entries(topics)) {
+            expect(document.querySelector(`nav[aria-label="Documentation"] a[href="${route}"]`)).not.toBeNull();
+            expect(
+                index.some(
+                    (entry: {url: string; text: string; title: string}) =>
+                        entry.url === route && `${entry.title} ${entry.text}`.toLowerCase().includes(topic),
+                ),
+            ).toBe(true);
+        }
+        const expected: Record<string, string[]> = {
+            "/docs/extraction/": [
+                "complete",
+                "conversion-evidence.json",
+                "cannot prove",
+                "Save Blueprint",
+                "Open as Project",
+            ],
+            "/docs/weighted-sequences/": [
+                "equal lengths",
+                "Zero-weight",
+                "logical round",
+                "without consuming RNG",
+                "Save game",
+                "cannot reconstruct",
+            ],
+            "/docs/optimization/": [
+                "inconclusive",
+                "exhausted",
+                "unsupported",
+                "cancelled",
+                "stale source",
+                "uint64",
+                "not proof",
+                "held-out",
+            ],
+            "/docs/studio/": ["drained", "cannot", "restart", "process-local", "cross-project"],
+            "/docs/reproducibility/": [
+                "Math.random()",
+                "YAML is unimplemented",
+                "unavailable",
+                "not certification",
+                "audit-round.v1",
+            ],
+            "/docs/interop/": ["tiny positive", "inspection-only", "sidecar", "no adaptive", "Lossless eligibility"],
+        };
+        for (const [route, phrases] of Object.entries(expected)) {
+            const prose = new JSDOM(html(route)).window.document.querySelector("article")!.textContent!.toLowerCase();
+            for (const phrase of phrases) expect(prose).toContain(phrase.toLowerCase());
+        }
+    });
+
+    it("renders source-linked domain/calculation/state/wallet explanations, ownership and truthful ISC positioning", () => {
+        const architecture = new JSDOM(html("/docs/architecture/")).window.document;
+        for (const id of [
+            "domain-and-session-composition",
+            "calculation-and-command-orchestration",
+            "state-and-persistence",
+            "wallet-and-settlement",
+        ]) {
+            expect(architecture.getElementById(id)).not.toBeNull();
+        }
+        for (const contract of [
+            "PokieGame.ts",
+            "VideoSlotWinCalculating.ts",
+            "SessionRuntimeHandling.ts",
+            "TransactionalRoundStore.ts",
+            "SpinReconciliationService.ts",
+        ]) {
+            expect([...architecture.querySelectorAll("a")].some((link) => link.href.endsWith(contract))).toBe(true);
+        }
+        const all = inventory.pages
+            .map(
+                (page: {route: string}) =>
+                    new JSDOM(html(page.route)).window.document.querySelector("article")!.textContent,
+            )
+            .join("\n");
+        expect(all).toContain("ISC-licensed open-source game math");
+        expect(all).toContain("discard");
+        expect(all).toContain("loaded.release()");
+        expect(all).toContain("not distributed ACID");
+        expect(all).not.toMatch(
+            /AI[- ]first|ready[- ]to[- ](?:deploy|use) casino backend|certified RNG|released 1\.3\.0 is available/i,
+        );
+        const home = html("/");
+        expect(home).toContain("Unpublished candidate");
+        expect(home).toContain("headless");
+        // Content review is still independent authority; these assertions guard concrete claims only.
+    });
+
+    it("executes complete source examples through real APIs, the runtime boundary and bounded optimizer publication", async () => {
+        expect(seededRound()).toEqual(seededRound());
+        expect(browserRound()).toEqual(seededRound());
+        const blueprint = JSON.parse(fs.readFileSync(path.join(root, "site/examples/weighted.blueprint.json"), "utf8"));
+        expect(new GameBlueprintValidator().validate(blueprint).filter((issue) => issue.severity === "error")).toEqual(
+            [],
+        );
+        const module = {exports: {}};
+        runInNewContext(renderBuiltGameModule(blueprint, "1.3.0"), {
+            module,
+            require: (name: string) => {
+                if (name !== "@fromstan/pokie") throw new Error(`Private example import ${name}`);
+                return api;
+            },
+        });
+        const game = module.exports as api.PokieGame;
+        const session = game.createSession({seed: "weighted-28"});
+        const runtime = new api.SessionRuntime(session);
+        try {
+            expect(
+                runtime.execute({kind: "spin", bet: 1, delivery: "composite", roundId: "weighted-docs"}).status,
+            ).toBe("played");
+            expect(runtime.execute({kind: "spin", bet: 7.5}).status).toBe("invalid-command");
+        } finally {
+            runtime.release();
+        }
+        const source = path.join(scratch, "weighted.blueprint.json");
+        const destination = path.join(scratch, "tuned.blueprint.json");
+        fs.writeFileSync(source, JSON.stringify(blueprint));
+        const policy = JSON.parse(fs.readFileSync(path.join(root, "site/examples/policy.json"), "utf8"));
+        expect(await optimizeAndPublish(source, policy, destination)).toBe("success");
+        expect(JSON.parse(fs.readFileSync(destination, "utf8")).paytable.A[2]).toBe(3);
+        expect(JSON.parse(fs.readFileSync(source, "utf8")).paytable.A[2]).toBe(4);
+    }, 30000);
+
+    it("rejects broken emitted routes, assets, fragments, search results and duplicate identities", () => {
+        const directory = path.join(scratch, "broken");
+        fs.cpSync(output, directory, {recursive: true});
+        const file = path.join(directory, "index.html");
+        const original = fs.readFileSync(file, "utf8");
+        const mutations = [
+            ['<a href="/missing/">bad route</a>', /Broken route\/asset\/download/],
+            ['<script src="/missing.js"></script>', /Broken route\/asset\/download/],
+            ['<a href="/docs/#not-a-heading">bad anchor</a>', /Invalid fragment/],
+            ['<h2 id="main">duplicate</h2>', /Duplicate heading\/element identity/],
+        ] as const;
+        for (const [mutation, diagnostic] of mutations) {
+            fs.writeFileSync(file, original.replace("</article>", `${mutation}</article>`));
+            expect(() => check(directory)).toThrow(diagnostic);
+        }
+        fs.writeFileSync(file, original);
+        fs.writeFileSync(
+            path.join(directory, "search.json"),
+            JSON.stringify([{title: "Bad", excerpt: "Bad", text: "bad", url: "/missing/"}]),
+        );
+        expect(() => check(directory)).toThrow(/Broken route\/asset\/download/);
+        fs.rmSync(directory, {recursive: true});
+    });
+
+    it("fails builds for missing content, invalid real examples, broken source references and duplicate routes; preview refuses failed output", () => {
+        const failures = path.join(scratch, "failed-build");
+        const fixture = path.join(scratch, "inventory.json");
+        const invalidBlueprint = path.join(scratch, "invalid.blueprint.json");
+        fs.writeFileSync(invalidBlueprint, JSON.stringify({manifest: {id: "bad"}, reels: -1}));
+        const brokenGuide = path.join(scratch, "broken.md");
+        fs.writeFileSync(brokenGuide, "# Broken source\n\n[Missing](./missing-source.ts)\n");
+        const variants = [
+            {
+                ...inventory,
+                pages: inventory.pages.map((page: {route: string}) =>
+                    page.route === "/docs/" ? {...page, source: "site/content/missing.md"} : page,
+                ),
+            },
+            {...inventory, pages: [...inventory.pages, inventory.pages[0]]},
+            {
+                ...inventory,
+                examples: [...inventory.examples, {source: path.relative(root, invalidBlueprint), kind: "blueprint"}],
+            },
+            {
+                ...inventory,
+                pages: inventory.pages.map((page: {route: string}) =>
+                    page.route === "/docs/" ? {...page, source: path.relative(root, brokenGuide)} : page,
+                ),
+            },
+        ];
+        const diagnostics = [
+            /Missing or invalid source reference/,
+            /Invalid or duplicate route/,
+            /Invalid Blueprint example/,
+            /Missing or invalid source reference/,
+        ];
+        for (const [index, variant] of variants.entries()) {
+            fs.mkdirSync(failures, {recursive: true});
+            fs.writeFileSync(path.join(failures, "build-manifest.json"), "{}");
+            fs.writeFileSync(fixture, JSON.stringify(variant));
+            expect(() => node(["site/build.mjs", "--out", failures, "--inventory", fixture])).toThrow(
+                diagnostics[index],
+            );
+            expect(fs.existsSync(path.join(failures, "build-manifest.json"))).toBe(false);
+            expect(fs.readdirSync(scratch).some((name) => name.startsWith("failed-build-staging-"))).toBe(false);
+        }
+        const result = spawnSyncOutput(["site/preview.mjs", "--dir", failures, "--port", "0"]);
+        expect(result.code).toBe(1);
+        expect(result.stderr).toContain("requires a successful fresh build");
+        const invalidPort = spawnSyncOutput(["site/preview.mjs", "--dir", output, "--port", "wrong"]);
+        expect(invalidPort.code).toBe(1);
+        expect(invalidPort.stderr).toContain("--port must be an integer");
+    }, 180000);
+});
+
+function spawnSyncOutput(args: string[]): {code: number | null; stderr: string} {
+    try {
+        execFileSync(process.execPath, args, {cwd: root, encoding: "utf8", timeout: 10000, stdio: "pipe"});
+        return {code: 0, stderr: ""};
+    } catch (error) {
+        const result = error as {status: number | null; stderr?: Buffer};
+        return {code: result.status, stderr: String(result.stderr)};
+    }
+}
+
+describe("documented production preview in real Chromium", () => {
+    beforeAll(async () => {
+        try {
+            await startPreview();
+            browser = new PublicDocsBrowser(path.join(scratch, "chromium-profile"));
+            await browser.start();
+        } catch (error) {
+            try {
+                await browser?.close();
+            } finally {
+                await stopPreview();
+            }
+            throw error;
+        }
+    }, 30000);
+
+    afterAll(async () => {
+        try {
+            await browser?.close();
+        } finally {
+            await stopPreview();
+        }
+    });
+
+    it("serves direct deep links, real 404 recovery, redirect semantics, downloads and assets through the documented preview", async () => {
+        for (const page of inventory.pages) {
+            const response = await fetch(`${origin}${page.route}`);
+            expect(response.status).toBe(200);
+            expect(await response.text()).toBe(html(page.route));
+        }
+        const redirect = await fetch(`${origin}/docs/architecture`, {redirect: "manual"});
+        expect(redirect.status).toBe(308);
+        expect(redirect.headers.get("location")).toBe("/docs/architecture/");
+        const missing = await fetch(`${origin}/docs/unknown-route/`);
+        expect(missing.status).toBe(404);
+        expect(await missing.text()).toContain("Page not found");
+        for (const url of [
+            "/assets/site.css",
+            "/assets/site.js",
+            "/search.json",
+            "/downloads/LICENSE",
+            "/downloads/session.ts",
+        ]) {
+            const response = await fetch(`${origin}${url}`);
+            expect(response.status).toBe(200);
+            expect((await response.text()).length).toBeGreaterThan(20);
+        }
+        await browser!.navigate(`${origin}/docs/unknown-route/`);
+        expect(await browser!.evaluate("document.querySelector('h1').textContent")).toContain("Page not found");
+        await browser!.evaluate("document.querySelector('article a[href=\"/docs/\"]').click()");
+        await browser!.until("location.pathname === '/docs/' && document.title.startsWith('Documentation')");
+    });
+
+    it("follows native navigation, deep heading anchors, refresh and browser back/forward with active page identity", async () => {
+        await browser!.navigate(`${origin}/docs/architecture/#wallet-and-settlement`);
+        expect(
+            await browser!.evaluate(
+                "document.querySelector('nav[aria-label=\"Documentation\"] [aria-current]').getAttribute('href')",
+            ),
+        ).toBe("/docs/architecture/");
+        await browser!.send("Page.reload");
+        await browser!.until("document.readyState === 'complete' && location.hash === '#wallet-and-settlement'");
+        expect(
+            await browser!.evaluate<number>(
+                "Math.abs(document.querySelector('#wallet-and-settlement').getBoundingClientRect().top)",
+            ),
+        ).toBeLessThan(60);
+        await browser!.evaluate("document.querySelector('aside a[href=\"/docs/optimization/\"]').click()");
+        await browser!.until("location.pathname === '/docs/optimization/' && document.title.startsWith('Optimizer')");
+        await browser!.evaluate("history.back()");
+        await browser!.until(
+            "location.pathname === '/docs/architecture/' && document.title.startsWith('Architecture')",
+        );
+        await browser!.evaluate("history.forward()");
+        await browser!.until("location.pathname === '/docs/optimization/' && document.title.startsWith('Optimizer')");
+        await browser!.evaluate("document.querySelector('.toc a').click()");
+        await browser!.until("location.hash === '#run-a-bounded-exact-search'");
+    });
+
+    it("keeps every rendered page readable and controls reachable at desktop and narrow mobile widths without viewport overflow", async () => {
+        for (const width of [1280, 390]) {
+            await browser!.send("Emulation.setDeviceMetricsOverride", {
+                width,
+                height: 844,
+                deviceScaleFactor: 1,
+                mobile: width < 720,
+            });
+            for (const page of inventory.pages) {
+                await browser!.navigate(`${origin}${page.route}`);
+                const layout = await browser!.evaluate<{
+                    overflow: boolean;
+                    controls: boolean;
+                    text: boolean;
+                    contained: boolean;
+                }>(`(() => {
+                    const controls = [...document.querySelectorAll('aside a, #docs-search, #clear-search')];
+                    return {
+                        overflow: document.documentElement.scrollWidth > innerWidth + 1,
+                        controls: controls.every(element => { const r = element.getBoundingClientRect(); return r.width > 20 && r.left >= 0 && r.right <= innerWidth + 1 && getComputedStyle(element).visibility === 'visible'; }),
+                        text: parseFloat(getComputedStyle(document.querySelector('article')).fontSize) >= 16,
+                        contained: [...document.querySelectorAll('pre, .table-scroll')].every(element => { const r = element.getBoundingClientRect(); return r.right <= innerWidth + 1 && getComputedStyle(element).overflowX === 'auto'; })
+                    };
+                })()`);
+                expect({route: page.route, width, ...layout}).toEqual({
+                    route: page.route,
+                    width,
+                    overflow: false,
+                    controls: true,
+                    text: true,
+                    contained: true,
+                });
+            }
+        }
+    }, 60000);
+
+    it("supports keyboard-only main access, links, labelled search, Enter activation, Space clearing and Escape without hidden focus", async () => {
+        await browser!.navigate(`${origin}/docs/`);
+        await browser!.key("Tab", "Tab", 9);
+        expect(await browser!.evaluate("document.activeElement.className")).toBe("skip");
+        expect(
+            await browser!.evaluate<number>("document.activeElement.getBoundingClientRect().top"),
+        ).toBeGreaterThanOrEqual(0);
+        expect(await browser!.evaluate("getComputedStyle(document.activeElement).outlineStyle")).not.toBe("none");
+        await browser!.key("Enter", "Enter", 13);
+        expect(await browser!.evaluate("document.activeElement.id")).toBe("main");
+        await browser!.key("Tab", "Tab", 9);
+        expect(await browser!.evaluate("document.activeElement.id")).toBe("docs-search");
+        expect(await browser!.evaluate("document.querySelector('label[for=\"docs-search\"]').textContent")).toBe(
+            "Search documentation",
+        );
+        await browser!.send("Input.insertText", {text: "optimizer"});
+        await browser!.until("document.querySelectorAll('#search-results a').length > 0");
+        await browser!.key("Tab", "Tab", 9);
+        expect(await browser!.evaluate("document.activeElement.id")).toBe("clear-search");
+        await browser!.key(" ", "Space", 32);
+        expect(await browser!.evaluate("document.activeElement.id")).toBe("docs-search");
+        expect(await browser!.evaluate("document.querySelector('#docs-search').value")).toBe("");
+        await browser!.send("Input.insertText", {text: "weighted sequence"});
+        await browser!.until("document.querySelectorAll('#search-results a').length > 0");
+        await browser!.key("Escape", "Escape", 27);
+        expect(await browser!.evaluate("document.querySelector('#docs-search').value")).toBe("");
+        await browser!.send("Input.insertText", {text: "package extraction"});
+        await browser!.until("document.querySelectorAll('#search-results a').length > 0");
+        await browser!.key("Tab", "Tab", 9);
+        await browser!.key("Tab", "Tab", 9);
+        expect(await browser!.evaluate("document.activeElement.closest('#search-results') !== null")).toBe(true);
+        await browser!.key("Enter", "Enter", 13);
+        await browser!.until("location.pathname === '/docs/extraction/'");
+    }, 30000);
+
+    it("handles successful, empty and unmatched search, clearing, unavailable/malformed indexes and superseded queries", async () => {
+        await browser!.navigate(`${origin}/docs/`);
+        const query = async (value: string): Promise<void> => {
+            await browser!.evaluate(
+                `(() => { const input = document.querySelector('#docs-search'); input.value = ${JSON.stringify(
+                    value,
+                )}; input.dispatchEvent(new Event('input')); })()`,
+            );
+        };
+        await query("xyz-no-such-documentation");
+        await browser!.until("document.querySelector('#search-status').textContent.startsWith('No matches')");
+        expect(await browser!.evaluate("document.querySelectorAll('#search-results li').length")).toBe(0);
+        await query("");
+        expect(await browser!.evaluate("document.querySelector('#search-status').textContent")).toBe(
+            "Type to search this build.",
+        );
+        for (const topic of [
+            "create",
+            "init",
+            "build",
+            "validate",
+            "sim",
+            "report",
+            "replay",
+            "Studio",
+            "extraction",
+            "weighted-sequence",
+            "optimizer",
+        ]) {
+            await query(topic);
+            await browser!.until("document.querySelectorAll('#search-results a').length > 0");
+            const paths = await browser!.evaluate<string[]>(
+                "[...document.querySelectorAll('#search-results a')].map(link => link.pathname)",
+            );
+            for (const route of paths) {
+                expect(inventory.pages.some((page: {route: string}) => page.route === route)).toBe(true);
+            }
+        }
+        for (const fault of ["throw new Error('Offline')", "return new Response(JSON.stringify({bad: true}))"]) {
+            const script = await browser!.send<{identifier: string}>("Page.addScriptToEvaluateOnNewDocument", {
+                source: `const nativeFetch = window.fetch; window.fetch = (url, ...args) => { if (url === '/search.json') { ${fault}; } return nativeFetch(url, ...args); };`,
+            });
+            try {
+                await browser!.navigate(`${origin}/docs/`);
+                await query("replay");
+                await browser!.until(
+                    "document.querySelector('#search-status').textContent.startsWith('Search is unavailable')",
+                );
+                expect(
+                    await browser!.evaluate(
+                        "document.querySelector('aside a[href=\"/docs/reproducibility/\"]').getAttribute('href')",
+                    ),
+                ).toBe("/docs/reproducibility/");
+                await browser!.evaluate("window.fetch = nativeFetch");
+                await query("replay");
+                await browser!.until("document.querySelectorAll('#search-results a').length > 0");
+            } finally {
+                await browser!.send("Page.removeScriptToEvaluateOnNewDocument", {identifier: script.identifier});
+            }
+        }
+        const delayed = await browser!.send<{identifier: string}>("Page.addScriptToEvaluateOnNewDocument", {
+            source: "const nativeFetch = window.fetch; window.fetch = async (...args) => { if (args[0] === '/search.json') await new Promise(resolve => window.releaseSearch = resolve); return nativeFetch(...args); };",
+        });
+        try {
+            await browser!.navigate(`${origin}/docs/`);
+            await query("extraction");
+            await query("optimizer");
+            await browser!.evaluate("window.releaseSearch()");
+            await browser!.until("document.querySelectorAll('#search-results a').length > 0");
+            expect(await browser!.evaluate("document.querySelector('#docs-search').value")).toBe("optimizer");
+            expect(await browser!.evaluate("document.querySelector('#search-results a').textContent")).toContain(
+                "Optimizer",
+            );
+            await browser!.evaluate("document.querySelector('#clear-search').click()");
+            expect(await browser!.evaluate("document.querySelectorAll('#search-results a').length")).toBe(0);
+        } finally {
+            await browser!.send("Page.removeScriptToEvaluateOnNewDocument", {identifier: delayed.identifier});
+        }
+    }, 40000);
+
+    it("drains the owned preview on interruption and releases its browser before removing the temporary profile", async () => {
+        const owned = preview!;
+        const exited = new Promise((resolve) => {
+            owned.once("exit", resolve);
+        });
+        owned.kill("SIGINT");
+        await exited;
+        expect(owned.exitCode).toBe(0);
+        await expect(fetch(`${origin}/docs/`)).rejects.toThrow();
+        await browser!.close();
+        fs.rmSync(path.join(scratch, "chromium-profile"), {recursive: true, force: true});
+        expect(fs.existsSync(path.join(scratch, "chromium-profile"))).toBe(false);
+    });
+});

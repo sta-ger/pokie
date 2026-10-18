@@ -1,0 +1,11 @@
+{
+  "targets": [{"metric": "rtp", "unit": "ratio", "value": 0.75, "tolerance": {"kind": "absolute", "value": 0}}],
+  "policy": {
+    "strategy": "exact-finite-v1", "seed": "docs-28",
+    "budget": 3, "maxOutcomes": 100,
+    "mode": "base", "stake": 1, "scope": "logical-round",
+    "tunables": [{"path": "/paytable/A/2", "values": [2, 3, 4]}],
+    "locks": ["/reelSequences", "/availableBets"],
+    "constraints": {"maxWin": {"value": 4, "unit": "betMultiple"}}
+  }
+}

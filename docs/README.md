@@ -1,5 +1,12 @@
 # POKIE Documentation
 
+## Public site
+
+The navigable/searchable [documentation site target](https://pokie.fromstan.com/docs/) is prepared
+in this repository; hosting is separately controlled. Build locally with `npm run site:build`
+and preview with `npm run site:preview`. See [static handoff instructions](../site/README.md).
+The source guides below remain available independently of deployment.
+
 **POKIE** is a server-side video slot game logic framework for JavaScript/TypeScript. This folder is the API
 reference: what every class/interface does, its constructor and methods, and how to configure or replace it.
 
