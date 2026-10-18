@@ -54,10 +54,13 @@ action. Previews are advisory: execution checks again, so an occupied-after-prev
 unchanged. After a conflict, choose another destination and retry; the prior artifact and unsaved source remain.
 
 WASM and generated Node games share `pokie.math.v2` evaluation for ordinary lines, ways and clusters,
-including wilds, authored paytables and effective `availableBets`. ABI 2.0 generates stops and screens and
-calculates payouts in the module from raw host draws. Stops use a bounded i32 array with no total-bit cap;
-the host owns RNG continuation, ledger and IO. Feature mechanics, geometry, weighted sequences and bet modes
-remain unsupported. Blueprint is canonical; PAR and complete declared package models use model-preserving
+including wilds, authored paytables and effective `availableBets`. Current ABI 3.0 generates stops and screens and
+evaluates payouts through the shared WASM kernel from host draws. Stops use a bounded i32 array;
+the host owns RNG continuation, ledger and IO. Feature-aware canonical components support declared launch
+mechanics, weighted whole-sequence reels, geometry and bet modes through the shared session contracts.
+Support remains composition-specific: opaque custom code/services and conflicting feature combinations
+fail preflight; execution capability alone does not grant optimizer tuning authority. Blueprint is canonical;
+PAR and complete declared package models use model-preserving
 extraction, without compiling arbitrary TypeScript behavior. See [execution, identity and resource limits](wasm-compatibility-boundary.md).
 
 ## `pokie run <artifact.wasm>`
