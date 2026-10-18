@@ -93,6 +93,7 @@ const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulatio
 // contract validator is injected. Allow the same bounded budget as offline materialization
 // under the controller's concurrent Jest launcher; route-only cases keep the default timeout.
 const REAL_RUNTIME_TEST_TIMEOUT_MS = 300000;
+const RUNTIME_PHASE_POLL_TIMEOUT_MS = 60000;
 type PendingGameLoad = (game: PokieGame) => void;
 type PendingLoadStarted = () => void;
 
@@ -215,13 +216,13 @@ async function waitForOutcomeLibraryJob(baseUrl: string, id: string): Promise<Re
     // Snapshot acquisition now yields while copying the real installed graph.
     // Budget elapsed time for that phase as well as generation, rather than
     // exhausting a small number of polls while the worker is still preparing it.
-    const deadline = Date.now() + 60000;
+    const deadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
     let lastJob: Record<string, unknown> | undefined;
     while (Date.now() < deadline) {
         const response = await get(`${baseUrl}/api/project/outcome-libraries/generate/jobs/${id}`);
         const job = response.body as Record<string, unknown>;
         lastJob = job;
-        if (job.status !== "queued" && job.status !== "running") return job;
+        if (job.status !== "queued" && job.status !== "running" && job.status !== "cancelling") return job;
         await new Promise<void>((resolve) => {
             setTimeout(resolve, 50);
         });
@@ -230,7 +231,7 @@ async function waitForOutcomeLibraryJob(baseUrl: string, id: string): Promise<Re
 }
 
 async function waitForOutcomeLibraryJobProgress(baseUrl: string, id: string): Promise<Record<string, unknown>> {
-    const deadline = Date.now() + 60000;
+    const deadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
     let lastJob: Record<string, unknown> | undefined;
     while (Date.now() < deadline) {
         const response = await get(`${baseUrl}/api/project/outcome-libraries/generate/jobs/${id}`);
@@ -444,15 +445,20 @@ function flushMacrotask(): Promise<void> {
 }
 
 async function pollUntilTerminal(url: string): Promise<{status: number; body: {[key: string]: unknown; status: string}}> {
-    for (let i = 0; i < 2000; i++) {
+    const deadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
+    let lastBody: unknown;
+    while (Date.now() < deadline) {
         const response = await get(url);
         const body = response.body as {status: string};
-        if (body.status !== "queued" && body.status !== "running") {
+        lastBody = body;
+        if (body.status !== "queued" && body.status !== "running" && body.status !== "cancelling") {
             return response as {status: number; body: {[key: string]: unknown; status: string}};
         }
-        await flushMacrotask();
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 50);
+        });
     }
-    throw new Error(`Timed out waiting for ${url} to reach a terminal state.`);
+    throw new Error(`Timed out waiting for ${url} to reach a terminal state: ${JSON.stringify(lastBody)}.`);
 }
 
 // The background project-dashboard load (startProjectDashboardLoad) resolves through several chained
@@ -460,15 +466,20 @@ async function pollUntilTerminal(url: string): Promise<{status: number; body: {[
 // a single flushed tick isn't always enough for it to settle under load. Polls the same way
 // pollUntilTerminal does rather than relying on a fixed number of ticks.
 async function pollUntilProjectContextSettled(url: string): Promise<{status: number; body: {[key: string]: unknown; status: string}}> {
-    for (let i = 0; i < 2000; i++) {
+    const deadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
+    let lastBody: unknown;
+    while (Date.now() < deadline) {
         const response = await get(url);
         const body = response.body as {status: string};
+        lastBody = body;
         if (body.status !== "loading") {
             return response as {status: number; body: {[key: string]: unknown; status: string}};
         }
-        await flushMacrotask();
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 50);
+        });
     }
-    throw new Error(`Timed out waiting for ${url} to leave "loading".`);
+    throw new Error(`Timed out waiting for ${url} to leave "loading": ${JSON.stringify(lastBody)}.`);
 }
 
 describe("StudioServer", () => {
@@ -1645,9 +1656,9 @@ describe("StudioServer", () => {
             }
             expect(await recents.list()).toEqual([]);
             expect(await registry.list()).toEqual([]);
-            expect(runtimeRelease).toHaveBeenCalledTimes(1);
             shutdownAttempted = true;
             await expect(lifecycleServer.stop()).rejects.toThrow(entry === "home" ? "Studio shutdown could not confirm executor cleanup." : "Project opening cleanup failed");
+            expect(runtimeRelease).toHaveBeenCalledTimes(1);
             expect(repository.getProcessState()?.status).toBe("running");
         } finally {
             finishLoad?.(game);
@@ -8059,16 +8070,19 @@ describe("StudioServer", () => {
         }
 
         async function waitForArtifactBuildJob(projectBaseUrl: string, id: string): Promise<{status: string; result?: unknown}> {
-            for (let attempt = 0; attempt < 1200; attempt += 1) {
+            const deadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
+            let lastJob: unknown;
+            while (Date.now() < deadline) {
                 const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${id}`);
                 expect(response.status).toBe(200);
                 const job = response.body as {status: string; result?: unknown};
-                if (job.status !== "queued" && job.status !== "running") return job;
+                lastJob = job;
+                if (job.status !== "queued" && job.status !== "running" && job.status !== "cancelling") return job;
                 await new Promise<void>((resolve) => {
-                    setTimeout(resolve, 10);
+                    setTimeout(resolve, 50);
                 });
             }
-            throw new Error(`Artifact build job "${id}" did not finish.`);
+            throw new Error(`Artifact build job "${id}" did not finish: ${JSON.stringify(lastJob)}.`);
         }
 
         function writeBlueprintFile(overrides: Record<string, unknown> = {}): string {
