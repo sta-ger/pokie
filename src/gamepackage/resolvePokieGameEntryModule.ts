@@ -58,20 +58,19 @@ async function createRuntimeSnapshot(packageRoot: string, entryPath: string): Pr
     // Never put loader state inside the package being read: project input hashes and atomic
     // conversion plans correctly treat every package-root byte as authored source. An external
     // snapshot directory would otherwise fabricate source drift between preflight and execution.
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-"));
+    const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pokie-runtime-"));
     try {
-        copyRuntimePackage(packageRoot, root);
+        await copyRuntimePackage(packageRoot, root);
         // Copy the resolved graph as well as the entry. Symlinks to the installation reuse
         // Node's realpath-keyed CJS/ESM caches even when disk fingerprints have changed.
         await snapshotPokieGameDependencies(root, packageRoot);
         const snapshotEntry = path.join(root, relativeEntry);
-        let released = false;
+        let releasing: Promise<void> | undefined;
         return {
             root,
             entryPath: snapshotEntry,
             release: () => {
-                if (released) return Promise.resolve();
-                released = true;
+                if (releasing !== undefined) return releasing;
                 // CommonJS keeps its own module objects forever unless their cache entries are
                 // explicitly forgotten.  Removing precisely this snapshot's entries means a
                 // repeated load cannot grow require.cache while leaving unrelated application
@@ -83,23 +82,26 @@ async function createRuntimeSnapshot(packageRoot: string, entryPath: string): Pr
                         Reflect.deleteProperty(cache, cachedPath);
                     }
                 }
-                fs.rmSync(root, {recursive: true, force: true});
-                return Promise.resolve();
+                releasing = fs.promises.rm(root, {recursive: true, force: true});
+                return releasing;
             },
         };
     } catch (error) {
-        fs.rmSync(root, {recursive: true, force: true});
+        await fs.promises.rm(root, {recursive: true, force: true});
         throw error;
     }
 }
 
-function copyRuntimePackage(source: string, destination: string): void {
-    fs.mkdirSync(destination, {recursive: true});
+async function copyRuntimePackage(source: string, destination: string): Promise<void> {
+    // This graph can contain a complete installed runtime. Yield during the actual filesystem
+    // work so a host such as Studio can serve its root, progress and cancellation requests.
+    // A resolved Promise around synchronous copying would still monopolize the event loop.
+    await fs.promises.mkdir(destination, {recursive: true});
     // A host can put TMPDIR below its own node_modules. Copy children after excluding
     // installations rather than asking cp to copy a root into a descendant of itself.
-    for (const name of fs.readdirSync(source)) {
+    for (const name of await fs.promises.readdir(source)) {
         if (["node_modules", ".git", ".pokie-runtime-cache"].includes(name)) continue;
-        fs.cpSync(path.join(source, name), path.join(destination, name), {
+        await fs.promises.cp(path.join(source, name), path.join(destination, name), {
             recursive: true,
             preserveTimestamps: true,
             mode: fs.constants.COPYFILE_FICLONE,
@@ -113,15 +115,15 @@ function copyRuntimePackage(source: string, destination: string): void {
  * only an executing runtime owns these copies and their cache entries.
  */
 async function snapshotPokieGameDependencies(snapshotRoot: string, packageRoot: string): Promise<void> {
-    const copies = new Map<string, string>([[fs.realpathSync(packageRoot), snapshotRoot]]);
+    const copies = new Map<string, string>([[await fs.promises.realpath(packageRoot), snapshotRoot]]);
     const storage = path.join(snapshotRoot, "node_modules", ".pokie-runtime-dependencies");
-    fs.mkdirSync(storage, {recursive: true});
+    await fs.promises.mkdir(storage, {recursive: true});
     const copy = async (source: string): Promise<string> => {
         const existing = copies.get(source);
         if (existing !== undefined) return existing;
         const destination = path.join(storage, String(copies.size));
         copies.set(source, destination);
-        copyRuntimePackage(source, destination);
+        await copyRuntimePackage(source, destination);
         await linkDependencies(destination, await resolvePokieGameDependencyRoots(source, false));
         return destination;
     };
@@ -130,8 +132,8 @@ async function snapshotPokieGameDependencies(snapshotRoot: string, packageRoot: 
             if (source === null) continue;
             const target = await copy(source);
             const link = path.join(owner, "node_modules", name);
-            fs.mkdirSync(path.dirname(link), {recursive: true});
-            fs.symlinkSync(target, link, process.platform === "win32" ? "junction" : "dir");
+            await fs.promises.mkdir(path.dirname(link), {recursive: true});
+            await fs.promises.symlink(target, link, process.platform === "win32" ? "junction" : "dir");
         }
     };
     await linkDependencies(snapshotRoot, await resolvePokieGameDependencyRoots(packageRoot));

@@ -3,7 +3,7 @@ import fs from "fs";
 import http from "http";
 import os from "os";
 import path from "path";
-import {buildGameBuildInfo} from "@fromstan/pokie";
+import {buildGameBuildInfo, loadPokieGame, loadPokieGameRuntime, ProjectTargetResolver, releasePokieGame, resolvePokieGameEntryModule} from "@fromstan/pokie";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioCertificationService} from "../../../cli/studio/certification/StudioCertificationService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
@@ -13,6 +13,33 @@ import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
 import type {ProjectDashboardContext} from "../../../cli/studio/ProjectDashboardContext.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {StudioPlayService} from "../../../cli/studio/runtime/StudioPlayService.js";
+import {loadProjectDashboardContext} from "../../../cli/studio/loadProjectDashboardContext.js";
+
+// A physically installed runtime, including a nested CommonJS scope, a peer cycle,
+// a lazy transitive dependency and an unavailable optional dependency. No host overlay or
+// mocked game loader can hide which bytes the snapshot actually executes.
+function writeInstalledRuntime(projectRoot: string): {runtime: string; leaf: string} {
+    const runtime = path.join(projectRoot, "node_modules", "@fromstan", "pokie");
+    const behavior = path.join(projectRoot, "node_modules", "runtime-behavior");
+    const leaf = path.join(projectRoot, "node_modules", "runtime-leaf");
+    fs.mkdirSync(path.join(runtime, "dist", "cjs"), {recursive: true});
+    fs.mkdirSync(behavior);
+    fs.mkdirSync(leaf);
+    fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "installed-game", pokie: {entry: "game.cjs"}, dependencies: {"@fromstan/pokie": "1"}}));
+    // Resolve this installed fixture explicitly: Jest maps the bare @fromstan/pokie
+    // specifier to the candidate source, including inside external CommonJS modules.
+    fs.writeFileSync(path.join(projectRoot, "game.cjs"), `const runtime = require('./node_modules/@fromstan/pokie/dist/cjs/index.js');
+module.exports = {getManifest: () => ({id: 'installed-game', name: runtime.label(), version: '1.0.0'}),
+ getConfigHash: () => runtime.label(), createSession: () => ({root: __dirname, lazy: () => runtime.label(), paths: () => runtime.paths()})};`);
+    fs.writeFileSync(path.join(runtime, "package.json"), JSON.stringify({name: "@fromstan/pokie", type: "module", main: "dist/cjs/index.js", dependencies: {"runtime-behavior": "1"}}));
+    fs.writeFileSync(path.join(runtime, "dist", "cjs", "package.json"), '{"type":"commonjs"}');
+    fs.writeFileSync(path.join(runtime, "dist", "cjs", "index.js"), "exports.label = () => require('runtime-behavior').label(); exports.paths = () => [__filename, ...require('runtime-behavior').paths()];");
+    fs.writeFileSync(path.join(behavior, "package.json"), JSON.stringify({name: "runtime-behavior", main: "index.cjs", dependencies: {"runtime-leaf": "1"}, peerDependencies: {"@fromstan/pokie": "1"}, optionalDependencies: {"uninstalled-optional": "1"}}));
+    fs.writeFileSync(path.join(behavior, "index.cjs"), "exports.label = () => require('runtime-leaf').label; exports.paths = () => [__filename, require.resolve('runtime-leaf'), require.resolve('./node_modules/@fromstan/pokie/dist/cjs/index.js')];");
+    fs.writeFileSync(path.join(leaf, "package.json"), '{"name":"runtime-leaf","main":"index.cjs"}');
+    fs.writeFileSync(path.join(leaf, "index.cjs"), "exports.label = 'Installed before';");
+    return {runtime, leaf: path.join(leaf, "index.cjs")};
+}
 
 function requestJson(url: string, method: "GET" | "POST", body?: unknown): Promise<{status: number; body: unknown}> {
     // Each request needs its own connection: the executor intentionally holds the first response
@@ -87,6 +114,199 @@ describe("StudioJobService executor bridge routes", () => {
         const address = await server.start();
         return `http://${address.host}:${address.port}`;
     }
+
+    it.each(["complete", "shutdown"])("serves the public root while the installed runtime is being copied, then drains on %s", async transition => {
+        const {runtime} = writeInstalledRuntime(projectRoot);
+        const shell = "<!doctype html><html><body><div id=\"root\">Studio shell</div></body></html>";
+        fs.writeFileSync(path.join(directory, "index.html"), shell);
+        const copy = fs.promises.cp.bind(fs.promises);
+        let resume!: () => void;
+        const held = new Promise<void>(resolve => {
+            resume = resolve;
+        });
+        let heldSnapshot: string | undefined;
+        // Hold one *real* installed-runtime copy at its completion boundary. The public
+        // listener must work while the resolver is still awaiting this filesystem work.
+        const copying = jest.spyOn(fs.promises, "cp").mockImplementation(async (source, destination, options) => {
+            await copy(source, destination, options);
+            if (source === path.join(runtime, "dist") && heldSnapshot === undefined) {
+                heldSnapshot = path.resolve(String(destination), "..", "..", "..", "..");
+                await held;
+            }
+        });
+        try {
+            const baseUrl = await start(new StudioCertificationService("1.3.0"));
+            const root = await new Promise<{status: number; body: string}>((resolve, reject) => {
+                http.get(`${baseUrl}/`, {agent: false}, response => {
+                    const chunks: Buffer[] = [];
+                    response.on("data", (chunk: Buffer) => chunks.push(chunk));
+                    response.on("error", reject);
+                    response.on("end", () => resolve({status: response.statusCode ?? 0, body: Buffer.concat(chunks).toString()}));
+                }).on("error", reject);
+            });
+            expect(root).toEqual({status: 200, body: shell});
+            // Wait for the real copy, never an assumed delay. This bounded loop also detects
+            // a synchronous-copy regression without leaving a held dashboard load in teardown.
+            let context: unknown;
+            for (let attempt = 0; attempt < 100; attempt++) {
+                context = (await get(`${baseUrl}/api/project/context`)).body;
+                if (heldSnapshot !== undefined || (context as {status: string}).status !== "loading") break;
+            }
+            expect(heldSnapshot).toBeDefined();
+            expect(context).toMatchObject({status: "loading", projectRoot});
+            const snapshot = heldSnapshot!;
+            expect(fs.existsSync(path.join(snapshot, "node_modules", ".pokie-runtime-dependencies", "1", "dist", "cjs", "index.js"))).toBe(true);
+            if (transition === "shutdown") {
+                let stopped = false;
+                const stopping = server!.stop().then(() => {
+                    stopped = true;
+                });
+                await new Promise<void>(resolve => {
+                    setImmediate(resolve);
+                });
+                expect(stopped).toBe(false);
+                resume();
+                await stopping;
+            } else {
+                resume();
+                for (let attempt = 0; attempt < 1000; attempt++) {
+                    context = (await get(`${baseUrl}/api/project/context`)).body;
+                    if ((context as {status: string}).status !== "loading") break;
+                }
+                expect(context).toMatchObject({status: "loaded", type: "tsPackage", game: {id: "installed-game", name: "Installed before", version: "1.0.0"}});
+                await server!.stop();
+            }
+            expect(fs.existsSync(snapshot)).toBe(false);
+        } finally {
+            resume();
+            await server?.stop();
+            copying.mockRestore();
+        }
+    });
+
+    it("preserves isolated lazy dependencies across rejection, repair, repeated use and concurrent release", async () => {
+        const {leaf} = writeInstalledRuntime(projectRoot);
+        const resolver = new ProjectTargetResolver();
+        const first = await loadPokieGameRuntime(projectRoot);
+        type SnapshotSession = {root: string; lazy(): string; paths(): string[]};
+        const session = first.game.createSession() as unknown as SnapshotSession;
+        try {
+            expect(session.lazy()).toBe("Installed before");
+            for (const file of session.paths()) expect(file.startsWith(`${session.root}${path.sep}`)).toBe(true);
+            // The exact same malformed installed input reaches the shared contract, the
+            // provenance resolver and the recovering dashboard consumer without coercion.
+            fs.writeFileSync(leaf, "exports.label = '';");
+            await expect(loadPokieGameRuntime(projectRoot)).rejects.toThrow("pokie-game-manifest-invalid-name");
+            expect((await resolver.resolve(projectRoot))?.configurationProvenance).toBeUndefined();
+            await expect(loadProjectDashboardContext(projectRoot)).resolves.toMatchObject({status: "error", error: expect.stringContaining("pokie-game-manifest-invalid-name")});
+            expect(session.lazy()).toBe("Installed before");
+
+            fs.writeFileSync(leaf, "exports.label = 'Installed after';");
+            for (let attempt = 0; attempt < 2; attempt++) {
+                const recovered = await loadPokieGameRuntime(projectRoot);
+                try {
+                    expect(recovered.game.getManifest().name).toBe("Installed after");
+                    expect((await resolver.resolve(projectRoot))?.configurationProvenance).toMatchObject({configurationHash: "Installed after", manifestIdentity: "installed-game@1.0.0"});
+                    await expect(loadProjectDashboardContext(projectRoot)).resolves.toMatchObject({status: "loaded", game: {name: "Installed after"}});
+                } finally {
+                    await recovered.release();
+                }
+            }
+            expect(session.lazy()).toBe("Installed before");
+            // Explicitly restoring the installation is different from retaining a live lease.
+            // Both the already used resolver and a fresh resolver must execute restored bytes.
+            fs.writeFileSync(leaf, "exports.label = 'Installed before';");
+            for (const owner of [resolver, new ProjectTargetResolver()]) {
+                expect((await owner.resolve(projectRoot))?.configurationProvenance).toMatchObject({configurationHash: "Installed before"});
+            }
+            await expect(loadProjectDashboardContext(projectRoot)).resolves.toMatchObject({status: "loaded", game: {name: "Installed before"}});
+            const releasing = first.release();
+            expect(first.release()).toBe(releasing);
+            await releasing;
+            expect(fs.existsSync(session.root)).toBe(false);
+        } finally {
+            await first.release();
+        }
+    });
+
+    it("makes every compatibility release caller await the owned asynchronous deletion", async () => {
+        writeInstalledRuntime(projectRoot);
+        const game = await loadPokieGame(projectRoot);
+        const session = game.createSession() as unknown as {root: string};
+        const remove = fs.promises.rm.bind(fs.promises);
+        let resume!: () => void;
+        const held = new Promise<void>(resolve => {
+            resume = resolve;
+        });
+        const removing = jest.spyOn(fs.promises, "rm").mockImplementation(async (target, options) => {
+            if (target === session.root) await held;
+            await remove(target, options);
+        });
+        let releases: Promise<void>[] = [];
+        try {
+            let settled = 0;
+            releases = [releasePokieGame(game), releasePokieGame(game), game.release!()].map(release => release.then(() => {
+                settled++;
+            }));
+            await new Promise<void>(resolve => {
+                setImmediate(resolve);
+            });
+            expect(settled).toBe(0);
+            expect(fs.existsSync(session.root)).toBe(true);
+            resume();
+            await Promise.all(releases);
+            expect(settled).toBe(3);
+            expect(fs.existsSync(session.root)).toBe(false);
+            await releasePokieGame(game);
+        } finally {
+            resume();
+            await Promise.all(releases);
+            removing.mockRestore();
+            await releasePokieGame(game);
+        }
+    });
+
+    it.each(["explicit", "compatibility"])("cleans a failed dependency copy and retains %s cleanup rejection until the owner handles it", async api => {
+        const {leaf} = writeInstalledRuntime(projectRoot);
+        const copy = fs.promises.cp.bind(fs.promises);
+        let failedRoot: string | undefined;
+        const copying = jest.spyOn(fs.promises, "cp").mockImplementation(async (source, destination, options) => {
+            await copy(source, destination, options);
+            if (source === leaf) {
+                failedRoot = path.resolve(String(destination), "..", "..", "..", "..");
+                throw new Error("Installed dependency copy failed");
+            }
+        });
+        try {
+            await expect(resolvePokieGameEntryModule(projectRoot)).rejects.toThrow("Installed dependency copy failed");
+            expect(failedRoot).toBeDefined();
+            expect(fs.existsSync(failedRoot!)).toBe(false);
+        } finally {
+            copying.mockRestore();
+        }
+        const repaired = api === "explicit" ? await resolvePokieGameEntryModule(projectRoot) : await (async () => {
+            const game = await loadPokieGame(projectRoot);
+            return {candidate: game, release: () => releasePokieGame(game)};
+        })();
+        const session = (repaired.candidate as {createSession(): {root: string}}).createSession();
+        const remove = fs.promises.rm.bind(fs.promises);
+        const removing = jest.spyOn(fs.promises, "rm").mockImplementation(async (target, options) => {
+            if (target === session.root) throw new Error("Owned snapshot cleanup failed");
+            await remove(target, options);
+        });
+        try {
+            const releasing = repaired.release();
+            const repeated = repaired.release();
+            if (api === "explicit") expect(repeated).toBe(releasing);
+            await expect(repeated).rejects.toThrow("Owned snapshot cleanup failed");
+            await expect(releasing).rejects.toThrow("Owned snapshot cleanup failed");
+            await expect(repaired.release()).rejects.toThrow("Owned snapshot cleanup failed");
+            expect(fs.existsSync(session.root)).toBe(true);
+        } finally {
+            removing.mockRestore();
+            await remove(session.root, {recursive: true, force: true});
+        }
+    });
 
     it("reattaches an exact request and returns a typed conflict before another executor allocates domain work", async () => {
         let release: ((value: {status: "ok"; errors: never[]; warnings: never[]}) => void) | undefined;
