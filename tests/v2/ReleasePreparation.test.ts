@@ -15,6 +15,7 @@ import {instantiatePokieWasm, SeededPokieWasmHost} from "../../src/wasm/PokieWas
 import {createLocalRuntimeIdentity} from "../../cli/materialize/materializeRuntimePackage.js";
 import {dispatch} from "../../cli/dispatch.js";
 import {registerCliCommands} from "../../cli/registerCliCommands.js";
+import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioServer} from "../../cli/studio/StudioServer.js";
 import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";
 import {StudioJobService} from "../../cli/studio/jobs/StudioJobService.js";
@@ -121,8 +122,9 @@ describe("V2C-30 release preparation", () => {
         } finally {
             log.mockRestore(); 
         }
+        const homeService = new StudioHomeService(metadata.version);
         const server = new StudioServer({pokieVersion: metadata.version, port: 0, host: "127.0.0.1", studioRoot: directory,
-            homeService: new StudioHomeService(metadata.version), jobService: new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")))});
+            homeService, blueprintService: new StudioBlueprintService(metadata.version, directory, homeService), jobService: new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")))});
         try {
             const address = await server.start();
             const response = await fetch(`http://${address.host}:${address.port}/api/health`);
