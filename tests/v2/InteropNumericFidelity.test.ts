@@ -575,6 +575,117 @@ describe("Stake exact interchange and independent numeric domains", () => {
 });
 
 describe("V2C-26 review conversion boundaries", () => {
+    it.each(["artifact builder", "canonical build", "PAR alias", "Studio draft", "Studio artifact"])("%s rejects retained Mechanics errors without output and supports repaired warning-only reuse", async caller => {
+        const inputs = path.join(directory, "inputs");
+        fs.mkdirSync(inputs);
+        const source = path.join(inputs, "source.xlsx"),
+            descriptor = path.join(inputs, "reconstructed.json");
+        await new api.ParSheetExporter("1").exportToFile(boundedBlueprint(), source);
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(source);
+        const mechanics = workbook.getWorksheet("Mechanics")!,
+            configuration = mechanics.getCell("B2").value;
+        const builder = new api.ParWorkbookArtifactBuilder("1"),
+            build = new BuildCommand("1"),
+            alias = new ParCommand("1");
+        const home = new StudioHomeService("1"),
+            remember = jest.spyOn(home, "rememberRecentProject").mockResolvedValue(undefined);
+        const draftService = new StudioBlueprintService("1", path.join(directory, "studio"), home);
+        const register = jest.fn(() => Promise.resolve());
+        const studio = new StudioArtifactBuildService("1", undefined, undefined, register);
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined),
+            error = jest.spyOn(console, "error").mockImplementation(() => undefined);
+        let imported: api.ParSheetImportResult;
+        const readSource = async () => {
+            imported = await new api.ParSheetImporter().importFromFile(source);
+            // Persist the actual diagnostic history beside the independently valid recovered model.
+            fs.writeFileSync(descriptor, JSON.stringify(imported.blueprint));
+            fs.writeFileSync(`${descriptor}.conversion-evidence.json`, JSON.stringify({...imported.conversionEvidence, issues: imported.issues}));
+            if (caller === "Studio draft") {
+                const draft = await draftService.importParSheet(source);
+                expect(draft).toMatchObject({status: "ok", blueprint: imported.blueprint, errors: errors(imported.issues)});
+            }
+        };
+        const invoke = async (output: string, expected: "ok" | "error" | "conflict") => {
+            const failure = expected === "error" ? /parsheet-mechanics-invalid/ : /occupied|already exists|destination/i;
+            if (caller === "artifact builder") {
+                const resolved = (await new api.ProjectTargetResolver().resolve(descriptor))!;
+                const operation = builder.build(resolved, output);
+                if (expected === "ok") expect(await operation).toMatchObject({outputPath: output});
+                else await expect(operation).rejects.toThrow(failure);
+            } else if (caller === "canonical build") {
+                const operation = build.run([descriptor, "--target", "parWorkbook", "--out", output]);
+                if (expected === "ok") expect(await operation).toBe(0);
+                else await expect(operation).rejects.toThrow(failure);
+            } else if (caller === "PAR alias") {
+                const operation = alias.run(["export", descriptor, "--out", output]);
+                if (expected === "conflict") await expect(operation).rejects.toThrow(failure);
+                else {
+                    expect(await operation).toBe(expected === "ok" ? 0 : 1);
+                    if (expected === "error") expect(error.mock.calls.flat().join("\n")).toContain("parsheet-mechanics-invalid");
+                }
+            } else if (caller === "Studio draft") {
+                const result = await draftService.exportParSheet(imported.blueprint, output, false, source);
+                expect(result).toMatchObject({status: expected === "error" ? "invalid" : expected});
+                if (expected === "error") expect(result).toMatchObject({errors: expect.arrayContaining(errors(imported.issues))});
+            } else {
+                const result = await studio.build(source, "parWorkbook", output);
+                expect(result).toMatchObject({status: expected});
+                if (expected === "error") expect(result).toMatchObject({message: expect.stringMatching(failure)});
+            }
+        };
+
+        await readSource();
+        await invoke(path.join(directory, "initial.xlsx"), "ok");
+        mechanics.getCell("B2").value = "{";
+        await workbook.xlsx.writeFile(source);
+        await readSource();
+        expect(errors(imported!.issues)).toContainEqual(expect.objectContaining({code: "parsheet-mechanics-invalid", path: "Mechanics.2"}));
+        expect(errors(new api.GameBlueprintValidator().validate(imported!.blueprint))).toEqual([]);
+        const retained = api.parSheetConversionReport(imported!.issues, imported!.conversionEvidence);
+        const before = inventory(inputs),
+            registered = register.mock.calls.length;
+        const output = path.join(directory, "rejected.xlsx");
+        log.mockClear();
+        error.mockClear();
+        await invoke(output, "error");
+        expect(fs.existsSync(output)).toBe(false);
+        expect(register).toHaveBeenCalledTimes(registered);
+        expect(remember).not.toHaveBeenCalled();
+        expect(log.mock.calls.flat().join("\n")).not.toMatch(/Build summary:|Exported "/);
+        expect(inventory(inputs)).toEqual(before);
+        expect(api.parSheetConversionReport(imported!.issues, imported!.conversionEvidence)).toEqual(retained);
+
+        if (caller === "canonical build") {
+            await expect(build.run([source, "--target", "parWorkbook", "--out", output])).rejects.toThrow(/parsheet-mechanics-invalid/);
+            expect(fs.existsSync(output)).toBe(false);
+        }
+        const foreign = path.join(directory, "foreign.xlsx");
+        fs.writeFileSync(foreign, "foreign workbook");
+        await invoke(foreign, "conflict");
+        expect(fs.readFileSync(foreign, "utf8")).toBe("foreign workbook");
+        expect(inventory(inputs)).toEqual(before);
+        expect(fs.readdirSync(directory).some(name => name.includes(".tmp-") || name.endsWith(".intermediates"))).toBe(false);
+
+        // Repair the source itself, retain a warning-only loss, then reuse the same public owners.
+        mechanics.getCell("B2").value = configuration;
+        workbook.addWorksheet("Notes").addRow(["Unrepresented note"]);
+        await workbook.xlsx.writeFile(source);
+        await readSource();
+        expect(errors(imported!.issues)).toEqual([]);
+        const repaired = inventory(inputs),
+            facts = api.parSheetConversionReport(imported!.issues, imported!.conversionEvidence).facts;
+        expect(facts).toContainEqual(expect.objectContaining({kind: "ignored", code: "parsheet-unknown-sheet"}));
+        for (const target of [output, path.join(directory, "subsequent.xlsx")]) {
+            await invoke(target, "ok");
+            const reopened = await new api.ParSheetImporter().importFromFile(target);
+            expect(errors(reopened.issues)).toEqual([]);
+            expect(reopened.conversionEvidence?.losslessEligible).toBe(false);
+            expect(reopened.conversionEvidence?.facts).toEqual(expect.arrayContaining(facts));
+            expect(inventory(inputs)).toEqual(repaired);
+        }
+    });
+
     it.each(["unsupported schema", "malformed schema", "missing schema", "invalid eligibility", "invalid history", "legacy eligibility", "pristine"])("keeps %s disposition across direct, CLI, Studio and durable re-export", async kind => {
         const source = path.join(directory, "source.xlsx");
         await new api.ParSheetExporter("1").exportToFile(boundedBlueprint(), source);

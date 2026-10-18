@@ -219,6 +219,9 @@ export class ParSheetExporter implements ParSheetExporting {
         const typedBlueprint = prepared.blueprint;
         const report = await inspectParSheetConversion(blueprint, sourcePath, options, prepared.issues);
         issues.splice(0, issues.length, ...report.issues);
+        // A valid reconstructed model does not erase errors encountered while reading its source.
+        // Reject the complete conversion report before allocating or serializing any output.
+        if (issues.some(issue => issue.severity === "error")) return issues;
         const priorLossless = report.losslessEligible;
 
         const workbook = new ExcelJS.Workbook();
