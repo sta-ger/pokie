@@ -1,5 +1,7 @@
 # Optimizer: review, save and apply
 
+[Run the examples gallery](gallery.md) · [Open the interactive playground](playground.md)
+
 ## Run a bounded exact search
 
 Download the [weighted model](../examples/weighted.blueprint.json) as `weighted.blueprint.json` and the policy below as `policy.json`. Its finite three-candidate domain tunes an existing paytable leaf; all other fields remain protected. At stake 1, A has probability 1/4, so multiplier 3 has exact RTP ratio 0.75.

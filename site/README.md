@@ -25,3 +25,8 @@ npm run test:targeted -- tests/cli/CommanderHelp.contract.test.ts tests/cli/stud
 ```
 
 The site test builds real output and owns a documented preview, Chromium process and temporary profile. Set `CHROMIUM_PATH` to a working Chromium executable if discovery fails. Missing tooling is a test failure, never a passing skip. Browser assertions cover desktop/mobile layout, navigation/history/deep links/404, keyboard access and search success/failure/stale responses. Independent rendered review and controller gates remain required; these tests cannot approve the campaign or authorize deployment.
+
+
+The public gallery at `/gallery/` and playground at `/playground/?example=lines` bundle their own local ES modules and Worker. Vite rejects Node builtins in this graph; generated fixture WASM/sidecars, runtime modules and sources are hashed in the build manifest. Preview serves `.wasm` as `application/wasm` and modules as JavaScript. No Studio server or remote runtime is needed. Reload resets work without local-storage restoration. Dynamic downloads bind to the current validated model and settings. See [the reproduction contract](content/playground.md).
+
+The named `tests/v2/PlaygroundGallery.test.ts` exercises built rendered actions in real local Workers, downloadable byte identities and shared-library reproduction, using a browser proxy that permits only localhost. Controller-owned mandatory verification and professional visual review remain separate authorities.

@@ -5,7 +5,7 @@ import {definitionDiagnostics} from "./internal/definitionDiagnostics.js";
 import {definitionFieldAuthority, definitionFieldUnsupported} from "./internal/definitionFieldAuthority.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {validateMathDefinitionMaxWinPolicy} from "./validateMathDefinitionMaxWinPolicy.js";
-import {detachPackageModelData} from "../generated/PackageBlueprintExtraction.js";
+import {detachPackageModelData} from "../generated/internal/detachPackageModelData.js";
 import type {
     DefinitionJson,
     MathDefinitionChange,

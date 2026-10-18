@@ -50,6 +50,8 @@ export class PokieWasmSimulationObserver {
 }
 
 export type PokieWasmSimulationOptions = {
+    /** Return/hit coverage for ordinary positive-stake samples; feature/event populations are unsupported. */
+    readonly recordReturnObservations?: boolean;
     readonly bet?: number;
     readonly mode?: string;
     readonly signal?: AbortSignal;
@@ -63,6 +65,7 @@ export async function collectPokieWasmSimulation(runtime: import("./PokieWasmRun
     const {SimulationCancelledError} = await import("../simulation/parallel/SimulationCancelledError.js");
     if (!Number.isSafeInteger(rounds) || rounds < 1) throw new Error("WASM simulation requires a positive bounded round count.");
     if (options.signal?.aborted) throw new SimulationCancelledError();
+    if (options.recordReturnObservations && runtime.manifest.serialization.state === "pokie.state.v4") throw new Error("Return observations require ordinary positive-stake samples; feature/event populations are unsupported.");
     let modes: (string | undefined)[] = [options.mode];
     if (options.mode === "all") {
         const probe = runtime.createSession(seed);
@@ -77,8 +80,9 @@ export async function collectPokieWasmSimulation(runtime: import("./PokieWasmRun
     const results: {mode?: string; targetRtp?: number; statistics: import("../simulation/SimulationStatistics.js").SimulationStatistics}[] = [];
     let completed = 0;
     for (const mode of modes) {
-        const session = runtime.createSession(seed, {credits: POKIE_WASM_SIMULATION_CREDITS});
         const accumulator = new SimulationAccumulator();
+        if (options.recordReturnObservations) accumulator.configureObservations({events: [], buckets: []});
+        const session = runtime.createSession(seed, {credits: POKIE_WASM_SIMULATION_CREDITS});
         const observer = new PokieWasmSimulationObserver();
         let previous: PokieWasmRound | undefined;
         let accepted = 0;
@@ -89,6 +93,7 @@ export async function collectPokieWasmSimulation(runtime: import("./PokieWasmRun
                 const command = features ? nextPokieWasmPlayCommand(previous, true, mode) : {...(mode === undefined ? {} : {mode})};
                 const round = await session.play({...command, ...(options.bet === undefined || (features && previous?.logicalRound?.status === "pending") ? {} : {bet: options.bet})});
                 previous = round;
+                if (options.recordReturnObservations && !round.deliveryOnly) accumulator.observeRequestedMetrics(round.stake, round.win ?? round.payout, []);
                 observer.observe(accumulator, round, runtime.manifest.artifact?.configurationHash ?? null);
                 if (!round.deliveryOnly) {
                     accepted++;

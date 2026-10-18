@@ -1,14 +1,12 @@
-import {assertDeclarativeWasmBlueprint, compileCanonicalWasmArtifact, normalizeResolvedWasmBlueprint} from "../wasm/DeclarativeWasmModel.js";
-import {resolveSharedSlotMathModel} from "../generated/resolveSharedSlotMathModel.js";
-import {assertPlayableSharedSlotMathModel, stableSlotMathJson} from "../wasm/math/SharedSlotMath.js";
+import {resolveCanonicalWasmGameModel} from "../wasm/resolveCanonicalWasmGameModel.js";
+import {compileCanonicalWasmArtifact} from "../wasm/DeclarativeWasmModel.js";
+import {stableSlotMathJson} from "../wasm/math/SharedSlotMath.js";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
-import {materializeReelStrips} from "../generated/materializeReelStrips.js";
-import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import {assertArtifactBuildNotCancelled, captureArtifactDestinationState, cleanupIncompleteArtifactOutput, ensureArtifactDestinationParent, reportArtifactBuildProgress, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
@@ -19,27 +17,7 @@ import {POKIE_WASM_ABI_VERSION, POKIE_WASM_ADAPTER, POKIE_WASM_CONTRACT_VERSION,
 import {wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
 import {type CanonicalPokieWasmComponentDescriptor, type PokieWasmGameModel} from "../wasm/PokieWasmCanonicalModule.js";
 
-/** The one Blueprint-to-portable-model boundary used by preview, validation, and publication. */
-export function resolveCanonicalWasmGameModel(blueprint: GameBlueprint): PokieWasmGameModel {
-    const resolution = resolveReelStripGeneration(blueprint);
-    if (!resolution.success) {
-        const failedReels = resolution.reels.filter((reel) => !reel.success).map((reel) => `reel ${reel.reelIndex}: ${reel.diagnostics.flatMap((diagnostic) => diagnostic.violations.map((violation) => violation.message)).join("; ")}`).join(" | ");
-        throw new Error(`Blueprint "${blueprint.manifest.id}" cannot materialize its generated reel strips for the canonical WASM model. ${failedReels || "Fix reelStripGeneration and rebuild."}`);
-    }
-    let materialized: GameBlueprint;
-    try {
-        materialized = normalizeResolvedWasmBlueprint(materializeReelStrips(blueprint, resolution.reelStripGeneration));
-    } catch (error) {
-        throw new Error(`Blueprint "${blueprint.manifest.id}" cannot materialize its reel strips for the canonical WASM model. ${error instanceof Error ? error.message : String(error)} Next: use valid literal/generated strips or repair the authored symbol weights.`);
-    }
-    assertDeclarativeWasmBlueprint(materialized);
-    const strips = materialized.reelSequences?.map(reel => reel.type === "exact" ? reel.symbols : reel.variants[0].symbols) ?? materialized.reelStrips ?? [];
-    if (strips.length !== blueprint.reels || strips.some((strip) => strip === undefined || strip.length === 0)) throw new Error(`Blueprint "${blueprint.manifest.id}" cannot materialize one executable strip per reel for the canonical WASM model.`);
-    const model = resolveSharedSlotMathModel(materialized);
-    assertPlayableSharedSlotMathModel(model);
-    return materialized.screenGeometry || materialized.reelSequences || materialized.betModes?.length || Object.values(materialized.mechanics ?? {}).some(value => value !== undefined)
-        ? {...model, features: {schemaVersion: "pokie.features.v1", blueprint: materialized}} : model;
-}
+export {resolveCanonicalWasmGameModel} from "../wasm/resolveCanonicalWasmGameModel.js";
 
 export type WasmArtifactPublication = {
     writeFile(filePath: string, contents: string | Uint8Array): Promise<void>;

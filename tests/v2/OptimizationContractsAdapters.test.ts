@@ -372,9 +372,16 @@ it("tunes Stake native uint64 lookup weights and retains book/event bytes and mo
     expect(result.diagnostics).toEqual([]);
     expect(result).toMatchObject({status: "success", candidate: {type: "stakeAdapter"}, evidence: {measured: [1]}});
     const candidateProject = await resolve(result.candidate!.path);
-    expect(candidateProject.capabilities).toEqual(["outcomeSource.read"]);
-    expect(describeUnsupportedProjectOperation(candidateProject, "stakeEngine.export")?.recovery).toContain("save the reviewed candidate");
-    await expect(new StakeAdapterArtifactBuilder("1.3.0").validate(candidateProject)).rejects.toThrow("native uint64");
+    expect(candidateProject.capabilities).toEqual(["outcomeSource.read", "stakeAdapter.export"]);
+    expect(describeUnsupportedProjectOperation(candidateProject, "stakeEngine.export")).toBeUndefined();
+    const builder = new StakeAdapterArtifactBuilder("1.3.0");
+    await expect(builder.validate(candidateProject)).resolves.toBeUndefined();
+    const nativeExport = path.join(directory, "native-export");
+    await builder.build(candidateProject, nativeExport);
+    const exportedSource = await new StakeEngineOutcomeSourceReader().readFromDirectory(nativeExport);
+    expect(exportedSource.issues.filter(issue => issue.severity === "error")).toEqual([]);
+    expect(exportedSource.modes[0].outcomes.map(outcome => outcome.weight)).toEqual([BigInt("18446744073709551615"), BigInt("18446744073709551615")]);
+    expect(fs.readFileSync(path.join(nativeExport, index.modes[0].events))).toEqual(book);
     const saved = path.join(directory, "saved-stake");
     await service.publish(result.candidate!, request, saved);
     await service.discard(result.candidate!);
@@ -658,25 +665,28 @@ it("retains project-local dependency identity through evaluation, independent sa
 });
 
 it("rolls back publication when the saved executable cannot load", async () => {
-    const {root} = declaredPackage();
+    const rejectLoad = path.join(directory, "reject-load");
+    const loadAttempt = path.join(directory, "load-attempt");
+    const {root} = declaredPackage("load-failure", `if (require('fs').existsSync(${JSON.stringify(rejectLoad)})) { require('fs').writeFileSync(${JSON.stringify(loadAttempt)}, __filename); throw Error('saved executable cannot load'); }\n`);
     const request = optimizationRequest();
     const result = await service.optimize(await resolve(root), request);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.status).toBe("success");
+    const reviewed = sourceInventory({type: "tsPackage", rootPath: result.candidate!.path});
     const destination = path.join(directory, "unloadable");
-    const open = fs.promises.open.bind(fs.promises);
-    const copy = jest.spyOn(fs.promises, "open").mockImplementation(async (output, flags, mode) => {
-        const file = await open(output, flags, mode);
-        if (String(output) === path.join(destination, "index.cjs") && flags === "wx") {
-            const write = file.writeFile.bind(file);
-            jest.spyOn(file, "writeFile").mockImplementation(async (data, options) => {
-                await write(data, options);
-                fs.writeFileSync(output, "throw Error('saved executable cannot load');");
-            });
-        }
-        return file;
-    });
-    await expect(service.publish(result.candidate!, request, destination)).rejects.toThrow();
-    copy.mockRestore();
+    // Fail at the loader boundary without changing reviewed source bytes. Corrupting
+    // the copied entry only reaches the earlier tuning-contract identity rejection.
+    fs.writeFileSync(rejectLoad, "reject");
+    try {
+        await expect(service.publish(result.candidate!, request, destination)).rejects.toThrow("saved executable cannot load");
+    } finally {
+        fs.rmSync(rejectLoad, {force: true});
+    }
     expect(fs.existsSync(destination)).toBe(false);
+    const attemptedEntry = fs.readFileSync(loadAttempt, "utf8");
+    expect(attemptedEntry).toContain("pokie-runtime-");
+    expect(fs.existsSync(attemptedEntry)).toBe(false);
+    expect(sourceInventory({type: "tsPackage", rootPath: result.candidate!.path})).toEqual(reviewed);
     await expect(service.publish(result.candidate!, request, destination)).resolves.toBe(destination);
 });
 
@@ -697,21 +707,23 @@ it.each(["success", "hash-failure", "manifest-failure", "evaluation-failure", "c
     }
     // Observe exact real allocations without depending on npm's TMPDIR or comparing a
     // shared directory whose other snapshots can disappear during concurrent suites.
-    const allocate = jest.spyOn(fs, "mkdtempSync");
+    const allocate = jest.spyOn(fs.promises, "mkdtemp");
     try {
         const result = await service.optimize(await resolve(root), optimizationRequest());
         expect(result.status).toBe(({success: "success", "hash-failure": "unsupported", "manifest-failure": "failure", "evaluation-failure": "failure", "cleanup-failure": "failure"} as Record<string, string>)[scenario]);
         const acquisitions = scenario === "success" ? 2 : 1;
         expect(fs.readFileSync(marker, "utf8").trim().split("\n")).toHaveLength(acquisitions);
-        const snapshots = allocate.mock.calls.flatMap(([prefix], index) => {
+        const snapshots = await Promise.all(allocate.mock.calls.flatMap(([prefix], index) => {
             if (path.basename(String(prefix)) !== "pokie-runtime-") return [];
             const allocation = allocate.mock.results[index];
             expect(allocation.type).toBe("return");
-            expect(typeof allocation.value).toBe("string");
-            return [allocation.value as string];
-        });
+            return [allocation.value as Promise<string>];
+        }));
         expect(snapshots).toHaveLength(acquisitions);
-        for (const snapshot of snapshots) expect(fs.existsSync(snapshot)).toBe(false);
+        for (const snapshot of snapshots) {
+            expect(typeof snapshot).toBe("string");
+            expect(fs.existsSync(snapshot)).toBe(false);
+        }
         if (scenario === "cleanup-failure") expect(result.diagnostics).toEqual([{path: "cleanup", message: expect.stringContaining("game cleanup failed")}]);
     } finally {
         allocate.mockRestore();

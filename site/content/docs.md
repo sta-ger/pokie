@@ -1,5 +1,7 @@
 # Documentation
 
+[Run the examples gallery](gallery.md) · [Open the interactive playground](playground.md)
+
 Follow the [bounded first journey](getting-started.md#first-journey), or choose the task you need. All guides are readable without JavaScript; local search adds section-level discovery.
 
 | Task | Guide |
