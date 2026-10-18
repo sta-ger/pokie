@@ -470,8 +470,18 @@ describe("locally built public gallery rendered actions", () => {
         expect(evidence.confidenceLevel).toBe(0.95);
         expect(evidence.assessment).toBeDefined();
         expect(evidence.definitionDiff.comparisonKind).toBe("math-definition");
-        await ev("document.querySelector('#pg-apply').click()");
+        const applyPosition = await ev<{x: number; y: number}>(
+            "(() => { const button = document.querySelector('#pg-apply'); button.scrollIntoView({block: 'center'}); const r = button.getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; })()",
+        );
+        await browser!.send("Input.dispatchMouseEvent", {type: "mousePressed", ...applyPosition, button: "left", clickCount: 1});
+        await browser!.send("Input.dispatchMouseEvent", {type: "mouseReleased", ...applyPosition, button: "left", clickCount: 1});
         await browser!.until("document.querySelector('#pg-status').textContent.startsWith('Applied')");
+        expect(await ev("document.activeElement.dataset.action")).toBe("inspect");
+        expect(
+            await ev(
+                "(() => { const r = document.activeElement.getBoundingClientRect(); return r.top >= -1 && r.bottom <= innerHeight + 1; })()",
+            ),
+        ).toBe(true);
         expect(await ev("JSON.parse(document.querySelector('#pg-model').value)")).toEqual(evidence.candidate);
         expect(await ev("document.querySelector('#pg-apply').disabled")).toBe(true);
         await click("inspect");

@@ -113,7 +113,7 @@ function mount(root: HTMLElement): void {
         controller.invalidate();
         clear();
     });
-    const focusAction = (): void => root.querySelector<HTMLButtonElement>("[data-action=inspect]")!.focus({preventScroll: true});
+    const focusAction = (): void => root.querySelector<HTMLButtonElement>("[data-action=inspect]")!.focus();
     for (const id of ["seed", "bet"]) element(id).addEventListener("input", () => {
         try {
             const request = JSON.parse(policy.value);
