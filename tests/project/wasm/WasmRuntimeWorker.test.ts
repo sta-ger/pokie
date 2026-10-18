@@ -15,7 +15,7 @@ const optimizationRequest = {
     targets: [{metric: "rtp", unit: "ratio", value: 0.5, tolerance: {kind: "absolute", value: 0.5}}],
     policy: {
         strategy: "seeded-search-v1", seed: "ownership", budget: 1, maxOutcomes: 64, mode: "base", stake: 0.05, scope: "paid-entry",
-        tunables: [{path: "/paytable/A/2", values: [2]}],
+        tunables: [{path: "/paytable/A/2", values: [2]}], locks: [],
         sampling: {searchSamples: 32, searchBudget: 32, assessmentSamples: 32, minSamples: 30, minEventCount: 5, confidence: 0.95, chunkSize: 16, workers: 1},
     },
 };

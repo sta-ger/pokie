@@ -359,7 +359,10 @@ function mount(root: HTMLElement): void {
             element("download-buttons").append(button);
         }
     }
-    window.addEventListener("pagehide", () => controller.dispose(), {once: true});
+    window.addEventListener("pagehide", () => {
+        controller.dispose();
+        clear();
+    }, {once: true});
 }
 
 function renderScreen(round: PokieWasmRound, blueprint: GameBlueprint, host: HTMLElement): void {

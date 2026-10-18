@@ -219,11 +219,11 @@ it("bounds generated/evaluated preparation before default-line allocation or com
             expect(controller.diagnostics()).toEqual({workers: 0, timers: 0, pending: 0});
         }
         const valid = projection();
-        valid.blueprint.paylines = undefined;
         valid.blueprint.reelStrips = [["A"], ["A"]];
         const run = await controller.run(valid, "play");
         expect(run.result).toMatchObject({payout: 0.2});
         expect(constructions).toBe(1);
+        await expect(controller.prepare({...valid, blueprint: {...valid.blueprint, paylines: undefined}})).resolves.toHaveProperty("artifact");
         expect(controller.diagnostics()).toEqual({workers: 0, timers: 0, pending: 0});
     } finally {
         digest.mockRestore();
@@ -590,6 +590,9 @@ describe("locally built public gallery rendered actions", () => {
         expect(await ev("document.querySelector('#pg-summary').textContent")).toBe(galleryModels.find((m) => m.id === "projection")!.description);
         expect(await ev("document.querySelector('#pg-download-status').textContent")).toBe("");
         await click("play");
+        await download("model.blueprint.json");
+        await ev("window.dispatchEvent(new PageTransitionEvent('pagehide'))");
+        await expectCleared();
     }, 30000);
 
     it("recovers invalid input, cancels real work, resets on reload and renders mobile keyboard controls", async () => {
