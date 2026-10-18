@@ -4,6 +4,8 @@ import crypto from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {escapeHtml as esc, renderMarkdown, parseMarkdown, plain} from './markdown.mjs';
+import {build as bundle} from 'vite';
+import {builtinModules} from 'node:module';
 import {checkSite, siteFiles} from './check.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -78,6 +80,7 @@ try {
             return `[Download complete source](${downloads.get(name)})\n\n\`\`\`${lang}\n${fs.readFileSync(localFile(name), 'utf8').trim()}\n\`\`\``;
         }).replace('{{commands}}', commandMarkdown(contracts.commands));
         const rendered = renderMarkdown(source, url => rewrite(url, page.source));
+        rendered.html = rendered.html.replace('<p>POKIEGALLERY</p>', '<div id="gallery"></div>').replace('<p>POKIEPLAYGROUND</p>', '<div id="playground"></div>');
         if (page.route !== '/404.html') {
             search.push({title: page.title, url: page.route, excerpt: page.description, text: plain(parseMarkdown(source)).toLowerCase()});
             // One entry per actual section, with its following prose as a useful excerpt.
@@ -101,14 +104,26 @@ try {
         const toc = page.headings.filter(heading => heading.depth === 2).map(heading => `<a href="#${heading.id}">${esc(heading.title)}</a>`).join('');
         const index = renderedPages.indexOf(page), previous = renderedPages[index - 1], next = renderedPages[index + 1];
         const adjacent = [previous && previous.route !== '/404.html' ? `<a href="${previous.route}">← ${esc(previous.title)}</a>` : '', next && next.route !== '/404.html' ? `<a href="${next.route}">${esc(next.title)} →</a>` : ''].join('');
-        write(page.route.endsWith('/') ? `${page.route.slice(1)}index.html` : page.route.slice(1), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(page.title)} — FromStan / POKIE</title><meta name="description" content="${esc(page.description)}"><link rel="canonical" href="${inventory.origin}${page.route}"><link rel="stylesheet" href="/assets/site.css"><script type="module" src="/assets/site.js"></script></head><body><a class="skip" href="#main">Skip to main content</a><header><a class="brand" href="/">FromStan <span>/ POKIE</span></a><span class="edition">Open source · Local tools</span></header><div class="layout"><aside><nav aria-label="Documentation">${navigation}</nav></aside><main id="main" tabindex="-1"><div class="search"><label for="docs-search">Search documentation</label><div class="search-controls"><input id="docs-search" type="search" autocomplete="off" placeholder="Try replay, weighted sequences…"><button id="clear-search" type="button">Clear</button></div><p id="search-status" role="status" aria-live="polite">Type to search this build.</p><ul id="search-results"></ul><noscript>Search requires JavaScript. All guides remain available in navigation.</noscript></div><nav class="toc" aria-label="On this page">${toc}</nav><article>${page.html}</article><nav class="adjacent" aria-label="Previous and next guide">${adjacent}</nav><p class="source"><a href="https://github.com/fromstan/pokie/blob/develop/${page.source}">Read this guide's maintained source</a></p></main></div><footer>ISC · Copyright (c) 2018-2026, sta-ger · <a href="/downloads/LICENSE">License</a> · Unpublished candidate · Deployment is separately controlled.</footer></body></html>`);
+        write(page.route.endsWith('/') ? `${page.route.slice(1)}index.html` : page.route.slice(1), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(page.title)} — FromStan / POKIE</title><meta name="description" content="${esc(page.description)}"><link rel="canonical" href="${inventory.origin}${page.route}"><link rel="stylesheet" href="/assets/site.css"><script type="module" src="/assets/site.js"></script></head><body><a class="skip" href="#main">Skip to main content</a><header><a class="brand" href="/">FromStan <span>/ POKIE</span></a><span class="edition">Open source · Local tools</span></header><div class="layout"><aside><nav aria-label="Documentation">${navigation}</nav></aside><main id="main" tabindex="-1"><div class="search"><label for="docs-search">Search documentation</label><div class="search-controls"><input id="docs-search" type="search" autocomplete="off" placeholder="Try replay, weighted sequences…"><button id="clear-search" type="button">Clear</button></div><p id="search-status" role="status" aria-live="polite">Type to search this build.</p><ul id="search-results"></ul><noscript>Search requires JavaScript. All guides remain available in navigation.</noscript></div><nav class="toc" aria-label="On this page">${toc}</nav><article>${page.html}</article>${["/playground/", "/gallery/"].includes(page.route) ? '<script type="module" src="/assets/playground/playground.js"></script>' : ""}<nav class="adjacent" aria-label="Previous and next guide">${adjacent}</nav><p class="source"><a href="https://github.com/fromstan/pokie/blob/develop/${page.source}">Read this guide's maintained source</a></p></main></div><footer>ISC · Copyright (c) 2018-2026, sta-ger · <a href="/downloads/LICENSE">License</a> · Unpublished candidate · Deployment is separately controlled.</footer></body></html>`);
     }
     for (const [source, destination] of downloads) write(destination.slice(1), fs.readFileSync(localFile(source)));
+    for (const model of contracts.gallery) {
+        write(`assets/playground/models/${model.id}.wasm`, new Uint8Array(model.bytes));
+        write(`assets/playground/models/${model.id}.wasm.pokie-wasm.json`, JSON.stringify(model.manifest));
+        write(`assets/playground/models/${model.id}.blueprint.json`, JSON.stringify(model.blueprint));
+    }
     write('search.json', JSON.stringify(search));
     for (const name of ['site.css', 'site.js']) write(`assets/${name}`, fs.readFileSync(path.join(root, 'site', name)));
     write('robots.txt', `User-agent: *\nAllow: /\nSitemap: ${inventory.origin}/sitemap.xml\n`);
     write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${inventory.pages.filter(page => page.route !== '/404.html').map(page => `<url><loc>${inventory.origin}${page.route}</loc></url>`).join('')}</urlset>`);
-    const sourceHashes = Object.fromEntries([...new Set([...inventory.pages.map(page => page.source), ...downloads.keys(), ...references, path.relative(root, inventoryPath), 'site/build.mjs', 'site/markdown.mjs', 'site/check.mjs', 'site/preview.mjs', 'site/source-loader.mjs', 'site/contracts.mjs', 'site/site.js', 'site/site.css', 'package.json', 'package-lock.json'])].filter(name => fs.statSync(localFile(name)).isFile()).sort().map(name => [name, hash(fs.readFileSync(localFile(name)))]));
+    const browserSources = new Set();
+    await bundle({configFile: false, logLevel: 'error', root,
+        plugins: [{name: 'local-browser-boundary', resolveId(id) {
+            if (id.startsWith('node:') || builtinModules.includes(id)) throw new Error(`Node import in public playground: ${id}`);
+        }, moduleParsed(info) { if (info.id.startsWith(root + path.sep)) browserSources.add(path.relative(root, info.id)); }}],
+        build: {outDir: path.join(staging, 'assets/playground'), emptyOutDir: false, minify: false,
+            lib: {entry: {playground: path.join(root, 'site/playground/app.ts'), worker: path.join(root, 'site/playground/worker.ts')}, formats: ['es'], fileName: (_format, entry) => `${entry}.js`}}});
+    const sourceHashes = Object.fromEntries([...new Set([...browserSources, ...inventory.pages.map(page => page.source), ...downloads.keys(), ...references, path.relative(root, inventoryPath), 'site/build.mjs', 'site/markdown.mjs', 'site/check.mjs', 'site/preview.mjs', 'site/source-loader.mjs', 'site/contracts.mjs', 'site/site.js', 'site/site.css', 'package.json', 'package-lock.json'])].filter(name => fs.statSync(localFile(name)).isFile()).sort().map(name => [name, hash(fs.readFileSync(localFile(name)))]));
     const artifactHashes = Object.fromEntries(siteFiles(staging).sort().map(file => [path.relative(staging, file).split(path.sep).join('/'), hash(fs.readFileSync(file))]));
     write('build-manifest.json', JSON.stringify({origin: inventory.origin, candidate: execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8'}).trim(), routes: inventory.pages.map(page => page.route), sourceHashes, artifactHashes, contracts}, null, 2));
     checkSite(staging);

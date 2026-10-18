@@ -2,6 +2,8 @@
   "origin": "https://pokie.fromstan.com",
   "pages": [
     {"route": "/", "title": "FromStan / POKIE", "source": "site/content/home.md", "description": "Open-source game math, headless runtime and local authoring tools."},
+    {"route": "/gallery/", "title": "Examples gallery", "source": "site/content/gallery.md", "description": "Run lines, ways, clusters, features, projection and optimization locally."},
+    {"route": "/playground/", "title": "Interactive playground", "source": "site/content/playground.md", "description": "Inspect, play, validate, simulate, report, replay and tune actual seeded browser math."},
     {"route": "/docs/", "title": "Documentation", "source": "site/content/docs.md", "description": "Choose a task, understand support, and follow a reproducible workflow."},
     {"route": "/docs/getting-started/", "title": "Getting started: create and init", "source": "site/content/getting-started.md", "description": "Install a local candidate, create a Blueprint or initialize a TypeScript package."},
     {"route": "/docs/cli-api/", "title": "CLI, API and build reference", "source": "site/content/cli-api.md", "description": "Public commands, artifact builds and ESM, CommonJS and browser exports."},
@@ -22,6 +24,8 @@
     {"source": "site/examples/session.ts", "kind": "typescript"},
     {"source": "site/examples/browser.ts", "kind": "typescript"},
     {"source": "site/examples/optimize.ts", "kind": "typescript"},
-    {"source": "site/examples/policy.json", "kind": "policy"}
+    {"source": "site/examples/policy.json", "kind": "policy"},
+    {"source": "site/examples/extension.ts", "kind": "typescript"},
+    {"source": "site/examples/reproduce.mjs", "kind": "javascript"}
   ]
 }

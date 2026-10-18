@@ -7,6 +7,6 @@
             "@fromstan/pokie/wasm": ["./src/wasm/browser.ts"]
         }
     },
-    "include": ["src", "tests", "cli"],
+    "include": ["src", "tests", "cli", "site/playground", "site/examples"],
     "exclude": ["cli/studio-client", "tests/cli/studio-client"]
 }

@@ -1,3 +1,5 @@
+import {optimizeBrowserBlueprint} from "../optimization/BrowserBlueprintOptimization.js";
+import {createBlueprintWasmArtifact} from "./createBlueprintWasmArtifact.js";
 import {collectPokieWasmSimulation} from "./PokieWasmCommands.js";
 import {collectPokieWasmReplay, validatePokieWasmReplayInitialCredits, type PokieWasmReplayOptions} from "./PokieWasmReplay.js";
 import {instantiatePokieWasm, SeededPokieWasmHost} from "./PokieWasmRuntime.js";
@@ -7,6 +9,7 @@ import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponen
 
 export type PokieWasmWorkerRequest =
     | {readonly id: string; readonly type: "instantiate"; readonly bytes: Uint8Array; readonly manifest: PokieWasmComponentManifest; readonly draws?: readonly number[]; readonly seed?: string; readonly credits?: number; readonly traceCapacity?: number}
+    | {readonly id: string; readonly type: "optimize"; readonly request: unknown; readonly blueprint: import("../generated/GameBlueprint.js").GameBlueprint}
     | {readonly id: string; readonly type: "view"}
     | {readonly id: string; readonly type: "simulate"; readonly rounds: number; readonly seed: string; readonly mode?: string; readonly bet?: number}
     | {readonly id: string; readonly type: "replay-target"; readonly options: PokieWasmReplayOptions}
@@ -89,12 +92,14 @@ export class PokieWasmWorkerProtocol {
                 const result = await this.runtime.replay(request.state, request.commands, {trace});
                 return {id: request.id, ok: true, result: {...result, ...(trace === undefined ? {} : {trace: {entries: trace.entries, dropped: trace.dropped, status: trace.status}})}};
             }
-            if (request.type === "simulate" || request.type === "replay-target") {
+            if (request.type === "simulate" || request.type === "replay-target" || request.type === "optimize") {
                 const runtime = this.runtime;
                 const generation = this.generation;
-                const capability = request.type === "simulate" ? "runtime.play" : "runtime.replay";
+                const capability = request.type === "replay-target" ? "runtime.replay" : "runtime.play";
                 if (!runtime.manifest.capabilities.includes(capability)) throw new Error(`POKIE WASM artifact does not declare ${capability}. Rebuild with the required operation.`);
                 if (this.operation) throw new Error("A WASM Worker operation is already running.");
+                if (request.type === "optimize" && (await createBlueprintWasmArtifact(request.blueprint)).manifest.artifact?.sha256 !== runtime.manifest.artifact?.sha256) throw new Error("Optimization source differs from instantiated artifact.");
+                if (generation !== this.generation || runtime !== this.runtime) throw new Error("The WASM Worker operation was cancelled or replaced during source binding.");
                 const controller = new AbortController();
                 this.operation = controller;
                 runtimeOperationInvoked = true;
@@ -102,13 +107,19 @@ export class PokieWasmWorkerProtocol {
                     setTimeout(resolve, 0);
                 });
                 try {
-                    const result = request.type === "simulate"
-                        ? await collectPokieWasmSimulation(runtime, request.seed, request.rounds, {mode: request.mode, bet: request.bet, signal: controller.signal, chunkSize: 128, yieldToHost,
+                    let result: unknown;
+                    if (request.type === "optimize") {
+                        result = await optimizeBrowserBlueprint(request.blueprint, request.request, {signal: controller.signal, yieldToHost,
+                            onProgress: (completed, total) => this.onProgress?.(request.id, {completed, total})});
+                    } else if (request.type === "simulate") {
+                        result = await collectPokieWasmSimulation(runtime, request.seed, request.rounds, {mode: request.mode, bet: request.bet, signal: controller.signal, chunkSize: 128, yieldToHost,
                             onProgress: (completed, _mode, modeCount, statistics) => {
                                 if (completed % 128 === 0 || completed === request.rounds * modeCount) this.onProgress?.(request.id, {completed, total: request.rounds * modeCount, statistics});
-                            }})
-                        : await collectPokieWasmReplay(runtime, request.options, {signal: controller.signal, yieldToHost,
+                            }});
+                    } else {
+                        result = await collectPokieWasmReplay(runtime, request.options, {signal: controller.signal, yieldToHost,
                             onProgress: completed => this.onProgress?.(request.id, {completed, total: request.options.round})});
+                    }
                     if (generation !== this.generation || controller.signal.aborted) throw new Error("The WASM Worker operation was cancelled or replaced.");
                     return {id: request.id, ok: true, result};
                 } finally {
@@ -200,6 +211,9 @@ function assertValidWorkerRequest(value: unknown): asserts value is PokieWasmWor
                 (value.options.unit !== undefined && value.options.unit !== "step" && value.options.unit !== "logical-round") || (value.options.modeName !== undefined && typeof value.options.modeName !== "string") ||
                 (value.options.entryCommands !== undefined && (!Array.isArray(value.options.entryCommands) || !value.options.entryCommands.every(isRecord)))) throw new Error("Malformed WASM replay target request.");
             validatePokieWasmReplayInitialCredits(value.options.initialCredits);
+            return;
+        case "optimize":
+            if (!isRecord(value.request) || !isRecord(value.blueprint)) throw new Error("Malformed WASM optimization request.");
             return;
         case "view":
         case "serialize":

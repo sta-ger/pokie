@@ -54,3 +54,30 @@ footer { padding: 1.5rem 4vw; border-top: 1px solid #c7cec9; }
   main { padding: 1.2rem 1rem 3rem; }
   h1 { font-size: 2.6rem; }
 }
+/* Public playground: compact controls, readable evidence and visible keyboard focus. */
+#gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 1rem; margin: 2rem 0; }
+#gallery > a { display: flex; flex-direction: column; border: 1px solid #a9b9af; border-radius: .6rem; padding: 1.3rem; text-decoration: none; background: #f2f5ed; }
+#gallery h2 { font-size: 1.35rem; margin-top: 0; }
+#gallery span { margin-top: auto; font-weight: 700; }
+#playground { margin: 2rem 0; padding: clamp(1rem, 3vw, 2rem); border: 1px solid #a9b9af; border-radius: .8rem; background: #f3f6ef; }
+#playground h2 { margin-top: .6rem; font-size: 2rem; }
+.eyebrow { font: .75rem ui-monospace, monospace; letter-spacing: .08em; color: #365848; }
+.pg-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: .8rem; }
+#playground label { display: grid; gap: .35rem; font-size: .85rem; font-weight: 600; }
+#playground input, #playground select, #playground textarea { min-width: 0; width: 100%; box-sizing: border-box; padding: .65rem; border: 1px solid #869c8b; border-radius: .3rem; background: white; color: #152d22; font: inherit; }
+#playground textarea { font: .8rem/1.6 ui-monospace, monospace; resize: vertical; }
+#playground button { margin: .3rem .35rem .3rem 0; padding: .65rem .8rem; border: 1px solid #51745f; border-radius: .3rem; background: #fff; color: #183f2c; font: 600 .85rem/1.4 system-ui; cursor: pointer; }
+#playground button:hover:enabled { background: #d7e9d9; }
+#playground button:disabled { opacity: .5; cursor: default; }
+#playground :focus, #playground :focus-visible, #gallery a:focus-visible { outline: 3px solid #8b4b14; outline-offset: 3px; }
+#playground details, .pg-result, .pg-downloads { margin: 1.3rem 0; padding-top: 1rem; border-top: 1px solid #bdcbbf; }
+#playground summary { cursor: pointer; font-weight: 700; padding: .4rem 0; }
+#playground pre { max-height: 30rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; background: #e8eee5; color: #142d22; padding: 1rem; }
+#pg-status { padding: .8rem; border-left: 4px solid #3c7755; background: #e3efdf; overflow-wrap: anywhere; }
+#pg-status[data-status="failed"] { border-color: #a33c2d; background: #f9e5dd; }
+#pg-status[data-status="running"] { border-color: #996215; background: #f8edcb; }
+#pg-progress { width: 100%; }
+.pg-grid { display: grid; gap: .35rem; max-width: 24rem; }
+.pg-grid span { display: grid; place-content: center; min-height: 3rem; background: #d9e8d8; border: 1px solid #89a78d; border-radius: .3rem; font-weight: 700; }
+.pg-grid .pg-win { background: #f4d384; border-color: #8b4b14; }
+@media (max-width: 720px) { #playground { margin-inline: -.3rem; } #playground button { min-height: 44px; } }

@@ -1,5 +1,7 @@
 # Mechanics and support
 
+[Run the examples gallery](gallery.md) · [Open the interactive playground](playground.md)
+
 ## Authored math
 
 Blueprint supports declared lines, ways, clusters, mixed evaluation, scatter awards, free games, bet modes, geometry, wild variants, modifiers, jackpots and bounded progression features such as cascade, respins, collection and weighted bonus. Support is composition-specific. Missing paytable entries and explicit zero payouts/grants retain distinct authored meaning; fractional stakes such as 0.05, 7.5 and 1e-7 must not be rounded away.

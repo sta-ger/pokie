@@ -50,6 +50,7 @@ export class PokieWasmSimulationObserver {
 }
 
 export type PokieWasmSimulationOptions = {
+    readonly observations?: import("../simulation/SimulationObservationCounters.js").SimulationObservationRequest;
     readonly bet?: number;
     readonly mode?: string;
     readonly signal?: AbortSignal;
@@ -79,6 +80,7 @@ export async function collectPokieWasmSimulation(runtime: import("./PokieWasmRun
     for (const mode of modes) {
         const session = runtime.createSession(seed, {credits: POKIE_WASM_SIMULATION_CREDITS});
         const accumulator = new SimulationAccumulator();
+        if (options.observations) accumulator.configureObservations(options.observations);
         const observer = new PokieWasmSimulationObserver();
         let previous: PokieWasmRound | undefined;
         let accepted = 0;
@@ -89,6 +91,7 @@ export async function collectPokieWasmSimulation(runtime: import("./PokieWasmRun
                 const command = features ? nextPokieWasmPlayCommand(previous, true, mode) : {...(mode === undefined ? {} : {mode})};
                 const round = await session.play({...command, ...(options.bet === undefined || (features && previous?.logicalRound?.status === "pending") ? {} : {bet: options.bet})});
                 previous = round;
+                if (options.observations && !round.deliveryOnly) accumulator.observeRequestedMetrics(round.stake, round.win ?? round.payout, []);
                 observer.observe(accumulator, round, runtime.manifest.artifact?.configurationHash ?? null);
                 if (!round.deliveryOnly) {
                     accepted++;

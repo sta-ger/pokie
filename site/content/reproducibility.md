@@ -1,5 +1,7 @@
 # Validate, sim, report and replay
 
+[Run the examples gallery](gallery.md) · [Open the interactive playground](playground.md)
+
 ## Bounded seeded journey
 
 Start with the [first journey](getting-started.md#first-journey), a prepared package and new output paths:

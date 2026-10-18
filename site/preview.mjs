@@ -8,7 +8,7 @@ const args = process.argv.slice(2);
 function option(name, fallback) { const index = args.indexOf(name); return index < 0 ? fallback : args[index + 1]; }
 const directory = path.resolve(root, option('--dir', 'site/.output'));
 const port = Number(option('--port', '4174'));
-const mime = {'.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.xml': 'application/xml', '.txt': 'text/plain; charset=utf-8', '.ts': 'text/plain; charset=utf-8'};
+const mime = {'.wasm': 'application/wasm', '.mjs': 'text/javascript; charset=utf-8', '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.xml': 'application/xml', '.txt': 'text/plain; charset=utf-8', '.ts': 'text/plain; charset=utf-8'};
 if (!fs.existsSync(path.join(directory, 'build-manifest.json')) || !fs.existsSync(path.join(directory, '404.html'))) {
     console.error('Site preview requires a successful fresh build. Run npm run site:build, then npm run site:preview.');
     process.exitCode = 1;

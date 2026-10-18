@@ -17,7 +17,7 @@ export class PublicDocsBrowser {
     private stderr = "";
     private session?: string;
 
-    constructor(profile: string) {
+    constructor(profile: string, localOnly = false) {
         const executable = [
             process.env.CHROMIUM_PATH,
             "/usr/bin/chromium",
@@ -34,6 +34,7 @@ export class PublicDocsBrowser {
             executable,
             [
                 "--headless",
+                ...(localOnly ? ["--proxy-server=http://127.0.0.1:9", "--proxy-bypass-list=127.0.0.1;localhost"] : []),
                 "--no-sandbox",
                 "--disable-gpu",
                 "--disable-dev-shm-usage",

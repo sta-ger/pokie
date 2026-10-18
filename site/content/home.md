@@ -1,5 +1,7 @@
 # Game math. Your runtime. Your tools.
 
+[Run the examples gallery](gallery.md) · [Open the interactive playground](playground.md)
+
 **FromStan / POKIE** is ISC-licensed open-source game math, a headless JavaScript/TypeScript runtime, and local tooling for developers and math authors. Studio brings design, testing and artifact review into a local producer workspace.
 
 [Start with a Blueprint](getting-started.md) · [Explore the documentation](docs.md) · [Understand the architecture](architecture.md)
