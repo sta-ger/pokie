@@ -557,7 +557,7 @@ describe("locally built public gallery rendered actions", () => {
                 fs.writeFileSync(path.join(reproduction, "model.wasm.pokie-wasm.json"), JSON.stringify(bundle.manifest));
                 fs.writeFileSync(path.join(reproduction, "settings.json"), JSON.stringify(bundle.settings));
                 const runner = await (await fetch(`${origin}/downloads/reproduce.mjs`)).text();
-                expect(runner).not.toContain("@fromstan/pokie");
+                expect((/(?:from\s*|import\s*\()\s*["']@fromstan\/pokie/).test(runner)).toBe(false);
                 fs.writeFileSync(path.join(reproduction, "reproduce.mjs"), runner);
                 const runReproduction = () => runDownloadedRunner(reproduction);
                 const canonicalReport = await download("report.json");

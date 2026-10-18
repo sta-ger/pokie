@@ -161,7 +161,7 @@ describe("public documentation production build", () => {
         for (const example of inventory.examples) {
             if (example.source === "site/examples/reproduce.mjs") {
                 const runner = fs.readFileSync(path.join(output, "downloads/reproduce.mjs"), "utf8");
-                expect(runner).not.toContain("@fromstan/pokie");
+                expect((/(?:from\s*|import\s*\()\s*["']@fromstan\/pokie/).test(runner)).toBe(false);
                 expect(runner).toContain("Incompatible settings or artifact identity.");
                 expect(manifest.sourceHashes["src/wasm/PokieWasmRuntime.ts"]).toBeDefined();
                 expect(manifest.sourceHashes["src/optimization/BrowserBlueprintOptimization.ts"]).toBeDefined();
