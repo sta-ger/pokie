@@ -1,8 +1,10 @@
+import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationEvidenceBundleTestFixtures.js";
 import fs from "fs";
 import http from "http";
 import os from "os";
 import path from "path";
-import {buildGameBuildInfo} from "@fromstan/pokie";
+import {Worker} from "worker_threads";
+import {buildGameBuildInfo, loadPokieGame, loadPokieGameRuntime, PokieGamePackageValidator, ProjectTargetResolver, releasePokieGame, resolvePokieGameEntryModule} from "@fromstan/pokie";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioCertificationService} from "../../../cli/studio/certification/StudioCertificationService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
@@ -12,6 +14,33 @@ import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
 import type {ProjectDashboardContext} from "../../../cli/studio/ProjectDashboardContext.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {StudioPlayService} from "../../../cli/studio/runtime/StudioPlayService.js";
+import {loadProjectDashboardContext} from "../../../cli/studio/loadProjectDashboardContext.js";
+
+// A physically installed runtime, including a nested CommonJS scope, a peer cycle,
+// a lazy transitive dependency and an unavailable optional dependency. No host overlay or
+// mocked game loader can hide which bytes the snapshot actually executes.
+function writeInstalledRuntime(projectRoot: string): {runtime: string; leaf: string} {
+    const runtime = path.join(projectRoot, "node_modules", "@fromstan", "pokie");
+    const behavior = path.join(projectRoot, "node_modules", "runtime-behavior");
+    const leaf = path.join(projectRoot, "node_modules", "runtime-leaf");
+    fs.mkdirSync(path.join(runtime, "dist", "cjs"), {recursive: true});
+    fs.mkdirSync(behavior);
+    fs.mkdirSync(leaf);
+    fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "installed-game", pokie: {entry: "game.cjs"}, dependencies: {"@fromstan/pokie": "1"}}));
+    // Resolve this installed fixture explicitly: Jest maps the bare @fromstan/pokie
+    // specifier to the candidate source, including inside external CommonJS modules.
+    fs.writeFileSync(path.join(projectRoot, "game.cjs"), `const runtime = require('./node_modules/@fromstan/pokie/dist/cjs/index.js');
+module.exports = {getManifest: () => ({id: 'installed-game', name: runtime.label(), version: '1.0.0'}),
+ getConfigHash: () => runtime.label(), createSession: () => ({root: __dirname, lazy: () => runtime.label(), paths: () => runtime.paths()})};`);
+    fs.writeFileSync(path.join(runtime, "package.json"), JSON.stringify({name: "@fromstan/pokie", type: "module", main: "dist/cjs/index.js", dependencies: {"runtime-behavior": "1"}}));
+    fs.writeFileSync(path.join(runtime, "dist", "cjs", "package.json"), '{"type":"commonjs"}');
+    fs.writeFileSync(path.join(runtime, "dist", "cjs", "index.js"), "exports.label = () => require('runtime-behavior').label(); exports.paths = () => [__filename, ...require('runtime-behavior').paths()];");
+    fs.writeFileSync(path.join(behavior, "package.json"), JSON.stringify({name: "runtime-behavior", main: "index.cjs", dependencies: {"runtime-leaf": "1"}, peerDependencies: {"@fromstan/pokie": "1"}, optionalDependencies: {"uninstalled-optional": "1"}}));
+    fs.writeFileSync(path.join(behavior, "index.cjs"), "exports.label = () => require('runtime-leaf').label; exports.paths = () => [__filename, require.resolve('runtime-leaf'), require.resolve('./node_modules/@fromstan/pokie/dist/cjs/index.js')];");
+    fs.writeFileSync(path.join(leaf, "package.json"), '{"name":"runtime-leaf","main":"index.cjs"}');
+    fs.writeFileSync(path.join(leaf, "index.cjs"), "exports.label = 'Installed before';");
+    return {runtime, leaf: path.join(leaf, "index.cjs")};
+}
 
 function requestJson(url: string, method: "GET" | "POST", body?: unknown): Promise<{status: number; body: unknown}> {
     // Each request needs its own connection: the executor intentionally holds the first response
@@ -87,6 +116,247 @@ describe("StudioJobService executor bridge routes", () => {
         return `http://${address.host}:${address.port}`;
     }
 
+    it.each(["complete", "shutdown"])("serves the public root while the installed runtime is being copied, then drains on %s", async transition => {
+        const {runtime} = writeInstalledRuntime(projectRoot);
+        const shell = "<!doctype html><html><body><div id=\"root\">Studio shell</div></body></html>";
+        fs.writeFileSync(path.join(directory, "index.html"), shell);
+        const emit = Worker.prototype.emit;
+        const postMessage = Worker.prototype.postMessage;
+        let heldEmission: (() => void) | undefined;
+        const resume = (): void => {
+            const emission = heldEmission;
+            heldEmission = undefined;
+            emission?.();
+        };
+        let heldSnapshot: string | undefined;
+        let holdAcknowledgement = true;
+        const runtimeWorkers = new Set<Worker>();
+        let runtimeDestination: string | undefined;
+        const posting = jest.spyOn(Worker.prototype, "postMessage").mockImplementation(function(this: Worker, message: {source?: string; destination?: string}) {
+            if (message.source === runtime) {
+                runtimeWorkers.add(this);
+                runtimeDestination = message.destination;
+            }
+            Reflect.apply(postMessage, this, [message]);
+        });
+        // Hold the acknowledgement from one *real* installed-runtime copy. The worker
+        // must finish and the resolver must drain it before accepting a loaded result.
+        const copying = jest.spyOn(Worker.prototype, "emit").mockImplementation(function(this: Worker, event: string | symbol, ...args: unknown[]) {
+            if (holdAcknowledgement && event === "message" && runtimeWorkers.has(this) && heldSnapshot === undefined) {
+                heldSnapshot = path.resolve(runtimeDestination!, "..", "..", "..");
+                heldEmission = () => {
+                    Reflect.apply(emit, this, [event, ...args]);
+                };
+                return true;
+            }
+            return Reflect.apply(emit, this, [event, ...args]);
+        });
+        try {
+            const baseUrl = await start(new StudioCertificationService("1.3.0"));
+            const root = await new Promise<{status: number; body: string}>((resolve, reject) => {
+                http.get(`${baseUrl}/`, {agent: false}, response => {
+                    const chunks: Buffer[] = [];
+                    response.on("data", (chunk: Buffer) => chunks.push(chunk));
+                    response.on("error", reject);
+                    response.on("end", () => resolve({status: response.statusCode ?? 0, body: Buffer.concat(chunks).toString()}));
+                }).on("error", reject);
+            });
+            expect(root).toEqual({status: 200, body: shell});
+            // HTTP can answer hundreds of times before a worker starts under gate load.
+            // Bound elapsed time rather than the number of successful loading responses.
+            const pollContext = async (observed: () => boolean): Promise<unknown> => {
+                const deadline = Date.now() + 15_000;
+                let context: unknown;
+                do {
+                    context = (await get(`${baseUrl}/api/project/context`)).body;
+                    if (observed() || (context as {status: string}).status !== "loading") return context;
+                    await new Promise<void>(resolve => {
+                        setTimeout(resolve, 50);
+                    });
+                } while (Date.now() < deadline);
+                throw new Error(`Dashboard copy phase did not settle: ${JSON.stringify(context)}`);
+            };
+            let context = await pollContext(() => heldSnapshot !== undefined);
+            expect(heldSnapshot).toBeDefined();
+            expect(context).toMatchObject({status: "loading", projectRoot});
+            const snapshot = heldSnapshot!;
+            expect(fs.existsSync(path.join(snapshot, "node_modules", ".pokie-runtime-dependencies", "1", "dist", "cjs", "index.js"))).toBe(true);
+            if (transition === "shutdown") {
+                let stopped = false;
+                const stopping = server!.stop().then(() => {
+                    stopped = true;
+                });
+                await new Promise<void>(resolve => {
+                    setImmediate(resolve);
+                });
+                expect(stopped).toBe(false);
+                resume();
+                await stopping;
+            } else {
+                resume();
+                context = await pollContext(() => false);
+                expect(context).toMatchObject({status: "loaded", type: "tsPackage", game: {id: "installed-game", name: "Installed before", version: "1.0.0"}});
+                await server!.stop();
+            }
+            expect(fs.existsSync(snapshot)).toBe(false);
+            for (const worker of runtimeWorkers) expect(worker.threadId).toBe(-1);
+        } finally {
+            // A failed observation may precede the worker's acknowledgement. Never hold a
+            // later message after the last resume, or stop() would wait on this fixture.
+            holdAcknowledgement = false;
+            resume();
+            try {
+                await server?.stop();
+            } finally {
+                copying.mockRestore();
+                posting.mockRestore();
+            }
+        }
+    });
+
+    it("preserves isolated lazy dependencies across rejection, repair, repeated use and concurrent release", async () => {
+        const {leaf} = writeInstalledRuntime(projectRoot);
+        const resolver = new ProjectTargetResolver();
+        const validator = new PokieGamePackageValidator();
+        const first = await loadPokieGameRuntime(projectRoot);
+        type SnapshotSession = {root: string; lazy(): string; paths(): string[]};
+        const session = first.game.createSession() as unknown as SnapshotSession;
+        try {
+            expect(session.lazy()).toBe("Installed before");
+            for (const file of session.paths()) expect(file.startsWith(`${session.root}${path.sep}`)).toBe(true);
+            // The exact same malformed installed input reaches the shared contract, the
+            // provenance resolver and the recovering dashboard consumer without coercion.
+            fs.writeFileSync(leaf, "exports.label = '';");
+            await expect(loadPokieGameRuntime(projectRoot)).rejects.toThrow("pokie-game-manifest-invalid-name");
+            await expect(validator.validate(projectRoot)).resolves.toMatchObject({valid: false, errors: [{code: "pokie-game-manifest-invalid-name"}]});
+            expect((await resolver.resolve(projectRoot))?.configurationProvenance).toBeUndefined();
+            await expect(loadProjectDashboardContext(projectRoot)).resolves.toMatchObject({status: "error", error: expect.stringContaining("pokie-game-manifest-invalid-name")});
+            expect(session.lazy()).toBe("Installed before");
+
+            fs.writeFileSync(leaf, "exports.label = 'Installed after';");
+            for (let attempt = 0; attempt < 2; attempt++) {
+                const recovered = await loadPokieGameRuntime(projectRoot);
+                try {
+                    expect(recovered.game.getManifest().name).toBe("Installed after");
+                    await expect(validator.validate(projectRoot)).resolves.toMatchObject({valid: true, game: {name: "Installed after"}});
+                    expect((await resolver.resolve(projectRoot))?.configurationProvenance).toMatchObject({configurationHash: "Installed after", manifestIdentity: "installed-game@1.0.0"});
+                    await expect(loadProjectDashboardContext(projectRoot)).resolves.toMatchObject({status: "loaded", game: {name: "Installed after"}});
+                } finally {
+                    await recovered.release();
+                }
+            }
+            expect(session.lazy()).toBe("Installed before");
+            // Explicitly restoring the installation is different from retaining a live lease.
+            // Both the already used resolver and a fresh resolver must execute restored bytes.
+            fs.writeFileSync(leaf, "exports.label = 'Installed before';");
+            for (const owner of [resolver, new ProjectTargetResolver()]) {
+                expect((await owner.resolve(projectRoot))?.configurationProvenance).toMatchObject({configurationHash: "Installed before"});
+            }
+            await expect(loadProjectDashboardContext(projectRoot)).resolves.toMatchObject({status: "loaded", game: {name: "Installed before"}});
+            const releasing = first.release();
+            expect(first.release()).toBe(releasing);
+            await releasing;
+            expect(fs.existsSync(session.root)).toBe(false);
+        } finally {
+            await first.release();
+        }
+    });
+
+    it("makes every compatibility release caller await the owned asynchronous deletion", async () => {
+        writeInstalledRuntime(projectRoot);
+        const game = await loadPokieGame(projectRoot);
+        const session = game.createSession() as unknown as {root: string};
+        const remove = fs.promises.rm.bind(fs.promises);
+        let resume!: () => void;
+        const held = new Promise<void>(resolve => {
+            resume = resolve;
+        });
+        const removing = jest.spyOn(fs.promises, "rm").mockImplementation(async (target, options) => {
+            if (target === session.root) await held;
+            await remove(target, options);
+        });
+        let releases: Promise<void>[] = [];
+        try {
+            let settled = 0;
+            releases = [releasePokieGame(game), releasePokieGame(game), game.release!()].map(release => release.then(() => {
+                settled++;
+            }));
+            await new Promise<void>(resolve => {
+                setImmediate(resolve);
+            });
+            expect(settled).toBe(0);
+            expect(fs.existsSync(session.root)).toBe(true);
+            resume();
+            await Promise.all(releases);
+            expect(settled).toBe(3);
+            expect(fs.existsSync(session.root)).toBe(false);
+            await releasePokieGame(game);
+        } finally {
+            resume();
+            await Promise.all(releases);
+            removing.mockRestore();
+            await releasePokieGame(game);
+        }
+    });
+
+    it.each(["explicit", "compatibility"])("cleans a failed dependency copy and retains %s cleanup rejection until the owner handles it", async api => {
+        writeInstalledRuntime(projectRoot);
+        const resolver = new ProjectTargetResolver();
+        const validator = new PokieGamePackageValidator();
+        const broken = path.join(projectRoot, "node_modules", "broken-copy");
+        const manifestPath = path.join(projectRoot, "package.json");
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        manifest.dependencies["broken-copy"] = "1";
+        fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+        // An installed dependency that is a file instead of a package directory fails in
+        // the actual copy worker, after it has already copied the project's root files.
+        fs.writeFileSync(broken, "not a package directory");
+        const creating = jest.spyOn(fs.promises, "mkdtemp");
+        try {
+            await expect(resolvePokieGameEntryModule(projectRoot)).rejects.toThrow(/ENOTDIR|not a directory/);
+            await expect(loadPokieGameRuntime(projectRoot)).rejects.toThrow(/ENOTDIR|not a directory/);
+            await expect(validator.validate(projectRoot)).resolves.toMatchObject({valid: false, errors: [{code: "pokie-package-load-failed", message: expect.stringMatching(/ENOTDIR|not a directory/)}]});
+            expect((await resolver.resolve(projectRoot))?.configurationProvenance).toBeUndefined();
+            await expect(loadProjectDashboardContext(projectRoot)).resolves.toMatchObject({status: "error", error: expect.stringMatching(/ENOTDIR|not a directory/)});
+            for (const result of creating.mock.results) {
+                const failedRoot = await result.value as string;
+                expect(fs.existsSync(failedRoot)).toBe(false);
+            }
+        } finally {
+            creating.mockRestore();
+        }
+        fs.unlinkSync(broken);
+        fs.mkdirSync(broken);
+        fs.writeFileSync(path.join(broken, "package.json"), '{"name":"broken-copy"}');
+        for (let attempt = 0; attempt < 2; attempt++) {
+            await expect(validator.validate(projectRoot)).resolves.toMatchObject({valid: true, game: {name: "Installed before"}});
+            expect((await resolver.resolve(projectRoot))?.configurationProvenance).toMatchObject({configurationHash: "Installed before"});
+            await expect(loadProjectDashboardContext(projectRoot)).resolves.toMatchObject({status: "loaded", game: {name: "Installed before"}});
+        }
+        const repaired = api === "explicit" ? await resolvePokieGameEntryModule(projectRoot) : await (async () => {
+            const game = await loadPokieGame(projectRoot);
+            return {candidate: game, release: () => releasePokieGame(game)};
+        })();
+        const session = (repaired.candidate as {createSession(): {root: string}}).createSession();
+        const remove = fs.promises.rm.bind(fs.promises);
+        const removing = jest.spyOn(fs.promises, "rm").mockImplementation(async (target, options) => {
+            if (target === session.root) throw new Error("Owned snapshot cleanup failed");
+            await remove(target, options);
+        });
+        try {
+            const releasing = repaired.release();
+            const repeated = repaired.release();
+            if (api === "explicit") expect(repeated).toBe(releasing);
+            await expect(repeated).rejects.toThrow("Owned snapshot cleanup failed");
+            await expect(releasing).rejects.toThrow("Owned snapshot cleanup failed");
+            await expect(repaired.release()).rejects.toThrow("Owned snapshot cleanup failed");
+            expect(fs.existsSync(session.root)).toBe(true);
+        } finally {
+            removing.mockRestore();
+            await remove(session.root, {recursive: true, force: true});
+        }
+    });
+
     it("reattaches an exact request and returns a typed conflict before another executor allocates domain work", async () => {
         let release: ((value: {status: "ok"; errors: never[]; warnings: never[]}) => void) | undefined;
         let executorStarted: (() => void) | undefined;
@@ -153,7 +423,7 @@ describe("StudioJobService executor bridge routes", () => {
         expect(executorSignal?.aborted).toBe(true);
         await cleanupObserved;
         await expect(first).resolves.toEqual({status: 200, body: {status: "load-error", error: "cleanup completed"}});
-        expect(jobs.get(projectRoot, "bridge-job")).toMatchObject({status: "cancelled", result: {summary: "Certification evidence build cancelled after staging cleanup."}});
+        expect(jobs.get(projectRoot, "bridge-job")).toMatchObject({status: "cancelled", result: {summary: "Certification evidence build cancellation settled; inspect the retained executor result for cleanup diagnostics."}});
         expect(jobs.signal("bridge-job")).toBeUndefined();
 
         const failedValidation = jest.fn(() => Promise.reject(new Error("executor exploded")));
@@ -188,11 +458,148 @@ describe("StudioJobService executor bridge routes", () => {
             status: 409,
             body: {activeJobId: "bridge-job", recovery: {action: "retry"}},
         });
+        for (const changed of [{output: {formats: ["pdf"]}}, {dossier: {modelSource: "other-model"}}, {output: {templateFile: "other-template.json"}}]) {
+            await expect(post(`${baseUrl}/api/project/certification/build`, {...request, ...changed})).resolves.toMatchObject({status: 409, body: {activeJobId: "bridge-job"}});
+        }
         expect(build).toHaveBeenCalledTimes(1);
         expect(jobs.list(projectRoot)).toMatchObject([{conflictKey: `certification-output:${path.join(projectRoot, "shared-certification")}`}]);
 
         release?.({status: "ok", manifest: {generatedBy: "test"}, files: [], warnings: []});
         await expect(first).resolves.toMatchObject({status: 200, body: {status: "ok"}});
+    });
+
+    it("serves real dossier PDF bytes from a retained successful job and rejects stale template exports after restart", async () => {
+        await buildSourceOutcomeLibraryBundle(path.join(projectRoot, "bundle"));
+        const template = path.join(projectRoot, "presentation.json");
+        fs.writeFileSync(template, JSON.stringify({schemaVersion: 1, title: "Retained assessment", introduction: "Preparation only", sections: ["identity", "rules", "statistics", "validation", "reproduction", "support"]}));
+        const service = new StudioCertificationService("1.3.0");
+        const baseUrl = await start(service);
+        const response = await post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "dossier", modes: [{modeName: "base", seed: "s", sampleCount: 2}], output: {formats: ["pdf"], templateFile: "presentation.json"}});
+        expect(response).toMatchObject({status: 200, body: {status: "ok", manifest: {dossier: {support: {coverage: "unavailable"}}}}});
+        const retained = jobs.get(projectRoot, "bridge-job")!;
+        expect(retained.result?.summary).toContain("preparation only");
+        expect(retained.result?.summary).toContain("Model representation: unavailable");
+        expect(retained.request).toMatchObject({inputIdentity: expect.stringMatching(/^sha256:/), output: {formats: ["pdf"], templateFile: "presentation.json"}});
+        const download = retained.result!.outputs!.find(output => output.path === "dossier.pdf")!.downloadPath!;
+        await server!.stop();
+        const restartedJobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
+        const restartedBaseUrl = await start(service, restartedJobs);
+        const bytes = await new Promise<{status: number; type: string; body: Buffer}>((resolve, reject) => {
+            http.get(`${restartedBaseUrl}${download}`, {agent: false}, res => {
+                const chunks: Buffer[] = [];
+                res.on("data", (chunk: Buffer) => chunks.push(chunk));
+                res.on("error", reject);
+                res.on("end", () => resolve({status: res.statusCode ?? 0, type: String(res.headers["content-type"]), body: Buffer.concat(chunks)}));
+            }).on("error", reject);
+        });
+        expect(bytes.status).toBe(200);
+        expect(bytes.type).toBe("application/pdf");
+        expect(bytes.body.toString()).toContain("%PDF-1.4");
+        expect(bytes.body).toEqual(fs.readFileSync(path.join(projectRoot, "dossier", "dossier.pdf")));
+        fs.appendFileSync(template, " ");
+        await expect(get(`${restartedBaseUrl}${download}`)).resolves.toMatchObject({status: 409, body: {error: expect.stringContaining("changed")}});
+    });
+
+    it.each(["missing", "escaping", "symlinked", "over-budget"])("retains actionable %s authority failures inside the certification job", async kind => {
+        await buildSourceOutcomeLibraryBundle(path.join(projectRoot, "bundle"));
+        let modelSource = "missing.json";
+        if (kind === "escaping") modelSource = "../escape.json";
+        if (kind === "symlinked") {
+            fs.writeFileSync(path.join(projectRoot, "target.json"), "{}");
+            fs.symlinkSync(path.join(projectRoot, "target.json"), path.join(projectRoot, "alias.json"));
+            modelSource = "alias.json";
+        }
+        if (kind === "over-budget") {
+            const fd = fs.openSync(path.join(projectRoot, "oversized.json"), "w");
+            try {
+                fs.ftruncateSync(fd, 64 * 1024 * 1024 + 1); 
+            } finally {
+                fs.closeSync(fd); 
+            }
+            modelSource = "oversized.json";
+        }
+        const service = new StudioCertificationService("1.3.0");
+        const build = jest.spyOn(service, "build");
+        const baseUrl = await start(service);
+        expect(await post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "out", modes: [{modeName: "base", seed: "s", sampleCount: 1}], dossier: {modelSource}})).toMatchObject({status: 200, body: {status: "load-error", error: expect.stringContaining("Could not acquire certification authorities")}});
+        expect(jobs.get(projectRoot, "bridge-job")).toMatchObject({status: "failed", error: expect.stringContaining("Select existing physical project-local inputs"), recovery: {action: "rebuild"}});
+        expect(jobs.get(projectRoot, "bridge-job")?.result?.outputs).toBeUndefined();
+        expect(build).not.toHaveBeenCalled();
+        expect(fs.existsSync(path.join(projectRoot, "out"))).toBe(false);
+    });
+
+    it.each(["disconnect", "project-close", "shutdown", "shutdown-cleanup-failure"])("aborts and drains download-owned reproduction on %s", async trigger => {
+        await buildSourceOutcomeLibraryBundle(path.join(projectRoot, "bundle"));
+        const service = new StudioCertificationService("1.3.0");
+        const baseUrl = await start(service);
+        await post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "out", modes: [{modeName: "base", seed: "s", sampleCount: 1}]});
+        const retained = jobs.get(projectRoot, "bridge-job")!;
+        const downloadPath = retained.result!.outputs!.find(output => output.path === "dossier.pdf")!.downloadPath!;
+        let began!: () => void, aborted!: () => void, finishCleanup!: () => void;
+        const started = new Promise<void>(resolve => {
+            began = resolve; 
+        });
+        const cancelled = new Promise<void>(resolve => {
+            aborted = resolve; 
+        });
+        const cleanup = new Promise<void>(resolve => {
+            finishCleanup = resolve; 
+        });
+        let drained = false;
+        jest.spyOn(service, "download").mockImplementation(async (_root, _request, _file, _identity, signal) => {
+            began();
+            await new Promise<void>(resolve => {
+                signal!.addEventListener("abort", () => {
+                    aborted();
+                    resolve();
+                }, {once: true});
+            });
+            await cleanup;
+            drained = true;
+            throw new Error(trigger === "shutdown-cleanup-failure" ? "Dossier runtime cleanup failed: retained worker needs inspection" : "Reproduction cancelled after owned runtime cleanup");
+        });
+        const request = http.get(`${baseUrl}${downloadPath}`, {agent: false}, response => {
+            response.resume(); 
+        });
+        request.on("error", () => undefined);
+        await started;
+        let transitionSettled = false;
+        let transition: Promise<unknown>;
+        if (trigger === "shutdown" || trigger === "shutdown-cleanup-failure") transition = server!.stop();
+        else if (trigger === "project-close") transition = post(`${baseUrl}/api/projects/close`, {confirmActiveJobs: true});
+        else transition = Promise.resolve(request.destroy());
+        const settled = Promise.resolve(transition).then(() => {
+            transitionSettled = true; 
+        });
+        await cancelled;
+        expect(drained).toBe(false);
+        if (trigger !== "disconnect") expect(transitionSettled).toBe(false);
+        finishCleanup();
+        if (trigger === "shutdown-cleanup-failure") {
+            await expect(settled).rejects.toThrow("Dossier runtime cleanup failed: retained worker needs inspection");
+        } else await settled;
+        // A disconnect has no caller awaiting its route; server shutdown must still drain it.
+        if (trigger === "disconnect") await server!.stop();
+        expect(drained).toBe(true);
+    });
+
+    it("records cancellation cleanup failure as failed rather than confirmed-cleaned cancellation", async () => {
+        let release!: (value: unknown) => void, began!: () => void;
+        const started = new Promise<void>(resolve => {
+            began = resolve;
+        });
+        const build = jest.fn(() => new Promise<unknown>(resolve => {
+            release = resolve;
+            began();
+
+        }));
+        const baseUrl = await start({build} as unknown as StudioCertificationService);
+        const response = post(`${baseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "out", modes: [{modeName: "base", seed: "s", sampleCount: 1}]});
+        await started;
+        jobs.cancel(projectRoot, "bridge-job");
+        release({status: "load-error", error: "Certification staging cleanup failed: owned staging retained"});
+        await response;
+        expect(jobs.get(projectRoot, "bridge-job")).toMatchObject({status: "failed", error: expect.stringContaining("cleanup failed")});
     });
 
     it("locks a deployment delivery resource while exact retries reattach without a second delivery", async () => {

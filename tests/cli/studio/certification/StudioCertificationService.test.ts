@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {CertificationEvidenceBundleBuildCancelledError, CertificationEvidenceBundleBuilder, OutcomeLibraryBundleValidating, ValidationIssue} from "@fromstan/pokie";
+import {CertificationEvidenceBundleVerifier, CertificationEvidenceBundleBuildCancelledError, CertificationEvidenceBundleBuilder, OutcomeLibraryBundleValidating, ValidationIssue} from "@fromstan/pokie";
 import {StudioCertificationService} from "../../../../cli/studio/certification/StudioCertificationService.js";
 import {buildSourceOutcomeLibraryBundle, CERTIFICATION_TEST_POKIE_VERSION} from "../../../certification/CertificationEvidenceBundleTestFixtures.js";
 
@@ -26,6 +26,85 @@ describe("StudioCertificationService", () => {
 
     afterEach(() => {
         fs.rmSync(tmpRoot, {recursive: true, force: true});
+    });
+
+    it("retains template/input identities and downloads validated local PDF from a caller-owned empty directory", async () => {
+        await buildSourceOutcomeLibraryBundle(path.join(tmpRoot, "bundle"));
+        const template = path.join(tmpRoot, "template.json");
+        fs.writeFileSync(template, JSON.stringify({schemaVersion: 1, title: "Assessment", introduction: "Local", sections: ["identity", "rules", "statistics", "validation", "reproduction", "support"]}));
+        const request = {bundleDir: "bundle", outDir: "out", modes: [{modeName: "base", seed: "s", sampleCount: 2}], output: {templateFile: "template.json", formats: ["pdf", "html"] as const}};
+        const service = new StudioCertificationService("1.3.0");
+        const identity = service.requestIdentity(tmpRoot, request);
+        fs.mkdirSync(path.join(tmpRoot, "out"));
+        const inode = fs.statSync(path.join(tmpRoot, "out")).ino;
+        const result = await service.build(tmpRoot, request.bundleDir, request.modes, request.outDir, {output: request.output});
+        expect(result.status).toBe("ok");
+        if (result.status !== "ok") throw new Error(JSON.stringify(result));
+        expect(fs.statSync(path.join(tmpRoot, "out")).ino).toBe(inode);
+        expect(result.manifest.dossier.support.notice).toContain("preparation only");
+        const pdf = await service.download(tmpRoot, request, "dossier.pdf", result.manifest.evidenceContentHash);
+        expect(pdf.mime).toBe("application/pdf");
+        expect(pdf.bytes.toString()).toContain("%PDF-1.4");
+        await expect(service.download(tmpRoot, request, "../template.json", result.manifest.evidenceContentHash)).rejects.toThrow(/unknown/);
+        expect(await service.build(tmpRoot, request.bundleDir, request.modes, request.outDir)).toMatchObject({status: "load-error"});
+        fs.writeFileSync(template, fs.readFileSync(template, "utf8") + " ");
+        expect(service.requestIdentity(tmpRoot, request)).not.toBe(identity);
+    });
+
+    it("rejects escaping evidence inputs and preserves cleanup failures after cancellation", async () => {
+        await buildSourceOutcomeLibraryBundle(path.join(tmpRoot, "bundle"));
+        const service = new StudioCertificationService("1.3.0");
+        const modes = [{modeName: "base", seed: "s", sampleCount: 2}];
+        expect(await service.build(tmpRoot, "bundle", modes, "out", {dossier: {modelSource: "../foreign"}})).toMatchObject({status: "load-error", error: expect.stringContaining("outside")});
+        const controller = new AbortController();
+        expect(await service.build(tmpRoot, "bundle", modes, "out", {signal: controller.signal, onProgress: stage => {
+            if (stage === "Rendering pdf") controller.abort();
+        }})).toMatchObject({status: "load-error", error: expect.stringContaining("cancelled")});
+        expect(fs.existsSync(path.join(tmpRoot, "out"))).toBe(false);
+        const broken = new StudioCertificationService("1.3.0", {buildFromBundle: () => Promise.reject(new Error("staging cleanup failed: retained owned path"))});
+        expect(await broken.build(tmpRoot, "bundle", modes, "out", {signal: controller.signal})).toMatchObject({status: "load-error", error: expect.stringContaining("cleanup failed")});
+    });
+
+    it("preserves failed download runtime cleanup even when cancellation is requested", async () => {
+        const controller = new AbortController();
+        const verify = jest.spyOn(CertificationEvidenceBundleVerifier.prototype, "verify").mockImplementation(() => {
+            controller.abort();
+            return Promise.resolve([{code: "certification-evidence-verify-cleanup-failed", severity: "error", message: "Dossier runtime cleanup failed: retained worker needs inspection"}]);
+        });
+        try {
+            const service = new StudioCertificationService("1.3.0");
+            await expect(service.download(tmpRoot, {bundleDir: "bundle", outDir: "out", modes: []}, "dossier.pdf", "identity", controller.signal)).rejects.toThrow("Dossier runtime cleanup failed: retained worker needs inspection");
+        } finally {
+            verify.mockRestore();
+        }
+    });
+
+    it("passes source cancellation to the deep validator and never returns success", async () => {
+        const controller = new AbortController();
+        const validate = jest.fn((_dir: string, options?: {deep?: boolean; signal?: AbortSignal}) => {
+            expect(options).toEqual({deep: true, signal: controller.signal});
+            controller.abort();
+            return Promise.resolve([]);
+        });
+        const service = new StudioCertificationService("1.3.0", undefined, {validate});
+        expect(await service.validateSourceBundle(tmpRoot, "bundle", controller.signal)).toMatchObject({status: "load-error", error: expect.stringContaining("cancelled")});
+    });
+
+    it("accepts explicit disjoint absolute destinations consistently and rejects symlink aliases", async () => {
+        const project = path.join(tmpRoot, "project");
+        fs.mkdirSync(project);
+        await buildSourceOutcomeLibraryBundle(path.join(project, "bundle"));
+        const request = {bundleDir: "bundle", outDir: path.join(tmpRoot, "output"), modes: [{modeName: "base", seed: "s", sampleCount: 1}]};
+        const service = new StudioCertificationService("1.3.0");
+        const identity = service.requestIdentity(project, request);
+        const result = await service.build(project, request.bundleDir, request.modes, request.outDir);
+        expect(result.status).toBe("ok");
+        if (result.status !== "ok") throw new Error(JSON.stringify(result));
+        expect(service.requestIdentity(project, request)).toBe(identity);
+        expect((await service.download(project, request, "dossier.pdf", result.manifest.evidenceContentHash)).mime).toBe("application/pdf");
+        fs.symlinkSync(tmpRoot, path.join(project, "alias"));
+        expect(await service.build(project, "bundle", request.modes, path.join(project, "alias", "new-output"))).toMatchObject({status: "load-error", error: expect.stringContaining("symbolic link")});
+        expect(fs.existsSync(path.join(tmpRoot, "new-output"))).toBe(false);
     });
 
     describe("validateSourceBundle", () => {

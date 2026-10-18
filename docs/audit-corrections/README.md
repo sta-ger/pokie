@@ -1608,3 +1608,8 @@ focus outline on the same common operation card. No unresolved P0, P1, or
 material P2 finding was observed. Runtime profiles, archives, logs, receipts,
 and images remain in the assigned harness and are not committed. Controller
 publication and campaign lifecycle remain outside this verifier's criterion.
+
+
+## Canonical dossier preparation (V2C-27)
+
+V2C-27 implementation extends the existing evidence bundle with mandatory dossier sections and local report templates/PDF. Per-candidate evidence and pending independent approval/controller gates are recorded in [V2C-27](../v2-completion/V2C-27.md). Historical receipts remain unchanged; implementation tests do not replace independent dossier/PDF assessment.

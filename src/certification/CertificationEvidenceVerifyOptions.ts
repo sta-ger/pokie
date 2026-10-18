@@ -1,3 +1,4 @@
+import type {CertificationDossierInputs} from "./CertificationDossier.js";
 // "sourceBundleDir" is where the live source Outcome Library Bundle actually is — it must always be given
 // explicitly by the caller (or, on the CLI, via "--source <bundleDir>"). A certification/evidence bundle's own
 // manifest.sourceBundleDir is recorded for *informational* purposes only (see
@@ -6,5 +7,8 @@
 // this option, CertificationEvidenceBundleVerifying.verify reports a diagnostic and reads nothing outside
 // certDir; there is deliberately no fallback.
 export type CertificationEvidenceVerifyOptions = {
+    readonly templateFile?: string;
+    readonly dossier?: CertificationDossierInputs;
+    readonly signal?: AbortSignal;
     readonly sourceBundleDir: string;
 };

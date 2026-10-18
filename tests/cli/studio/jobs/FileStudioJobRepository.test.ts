@@ -30,6 +30,14 @@ describe("FileStudioJobRepository", () => {
         expect(fs.readdirSync(directory).some((entry) => entry.endsWith(".tmp"))).toBe(false);
     });
 
+    it("retains dossier authorities, template selection, artifact identities and terminal downloads across restart", () => {
+        const record: StudioJobView = {id: "dossier", projectId: "/project-a", operation: "certification-build", conflictKey: "dossier:out", status: "completed", createdAt: 10, completedAt: 20,
+            request: {bundleDir: "source", outDir: "dossier", dossier: {modelSource: "model", reportFiles: ["report.json"], replayFiles: ["replay.json"], candidateRevision: "candidate"}, output: {templateFile: "presentation.json", formats: ["pdf"]}, inputIdentity: "sha256:inputs"},
+            result: {summary: "Preparation only", provenance: {artifactHashes: {"dossier.pdf": "sha256:pdf"}, manifest: {evidenceContentHash: "sha256:dossier"}}, outputs: [{path: "dossier.pdf", label: "Dossier", downloadPath: "/api/project/certification/download?file=dossier.pdf"}]}};
+        new FileStudioJobRepository(directory).save(record);
+        expect(new FileStudioJobRepository(directory).get("dossier")).toEqual(record);
+    });
+
     it("ignores a corrupt record without hiding valid durable records", () => {
         const repository = new FileStudioJobRepository(directory);
         repository.save({

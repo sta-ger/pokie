@@ -8,8 +8,7 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 const GAME = {id: "a", name: "A", version: "1.0.0"};
 
 const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: number; body: unknown}> = {
-    // Certification is available only to a project that directly reads an outcome-library artifact.
-    // A Blueprint reaches this workflow only after Build/Export has produced that artifact.
+    // Keep coverage for libraries opened directly as well as the package-bound workflow below.
     "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME, type: "outcomeLibrary", capabilities: ["outcomeLibrary.read"]}}),
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
@@ -91,6 +90,68 @@ async function fillSelectStep(user: ReturnType<typeof userEvent.setup>, bundleDi
 }
 
 describe("ProjectDashboardPage - Certification workflow", () => {
+    it("keeps the runtime package open while configuring its library, current model and disjoint output", async () => {
+        const user = userEvent.setup();
+        const requests: unknown[] = [];
+        const request = {bundleDir: "outcomelibrary", outDir: "/evidence/a-dossier", modes: [{modeName: "base", seed: "cert-seed-1", sampleCount: 100}], dossier: {modelSource: "."}};
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME, type: "tsPackage", capabilities: ["runtime.execute"]}}),
+            "/api/project/certification/validate-source": () => ({ok: true, status: 200, body: {status: "ok", errors: [], warnings: []}}),
+            "/api/project/certification/build": call => {
+                requests.push(JSON.parse(call.init?.body ?? "{}"));
+                return {ok: true, status: 200, body: requests.length === 1
+                    ? {status: "error", errors: [{code: "certification-dossier-input-invalid", severity: "error", message: "Selected model identity does not match source artifact configHash"}], warnings: []}
+                    : okBuildView({files: ["manifest.json", "dossier.html", "dossier.pdf"]})};
+            },
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/%2Fgames%2Fa/certification"]});
+        await screen.findByLabelText("Source outcome-library bundle directory");
+        expect(screen.getByRole("button", {name: "Certification"})).toBeEnabled();
+        expect(screen.getByText(/keep the runtime package open/)).toBeInTheDocument();
+        await user.type(screen.getByLabelText("Model source path"), ".");
+        await fillSelectStep(user, request.bundleDir);
+        await user.click(screen.getByRole("button", {name: "Validate source bundle"}));
+        await screen.findByText("Clean");
+        await user.click(screen.getByRole("button", {name: "Continue to Build bundle"}));
+        await user.clear(screen.getByLabelText("Output directory"));
+        await user.type(screen.getByLabelText("Output directory"), request.outDir);
+        await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
+        await screen.findByText(/Selected model identity does not match/);
+        expect(screen.getByRole("button", {name: /Inspect Manifest/})).toBeDisabled();
+        expect(screen.queryByRole("button", {name: "Continue to Inspect"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Download dossier.pdf"})).not.toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
+        await screen.findByText("Clean");
+        expect(requests).toEqual([request, request]);
+        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
+        await screen.findByText(/Certification evidence for A/);
+        await user.click(screen.getByRole("button", {name: "Continue to Export"}));
+        expect(screen.getByRole("button", {name: "Download dossier.pdf"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Download dossier.html"})).toBeEnabled();
+        await user.click(screen.getByRole("button", {name: /Select\/configure/}));
+        expect(screen.getByLabelText("Model source path")).toHaveValue(".");
+        await user.type(screen.getByLabelText("Source revision"), "changed-authority");
+        expect(screen.queryByRole("button", {name: "Download dossier.pdf"})).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: /Export Download manifest/})).toBeDisabled();
+    });
+
+    it.each([
+        ["blueprint", "blueprint.build"],
+        ["parWorkbook", "parWorkbook.exchange"],
+        ["stakeAdapter", "stakeAdapter.exchange"],
+        ["wasm", "wasm.runtime.execute"],
+    ])("keeps Certification unavailable for %s without a package or native library capability", async (type, capability) => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME, type, capabilities: [capability]}}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/%2Fgames%2Fa/certification"]});
+        await screen.findByRole("heading", {name: "A"});
+        expect(screen.queryByRole("button", {name: "Certification"})).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Model source path")).not.toBeInTheDocument();
+    });
+
     it("restores a retained certification build from a direct project entry and submits it only after an explicit Build", async () => {
         const user = userEvent.setup();
         const buildCalls: unknown[] = [];
@@ -150,13 +211,56 @@ describe("ProjectDashboardPage - Certification workflow", () => {
         await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
         expect(await screen.findByText(/Certification evidence for A v1\.0\.0/)).toBeInTheDocument();
         expect(screen.getByText("sha256:lib-base")).toBeInTheDocument();
-        expect(screen.getByText("95.00%")).toBeInTheDocument();
+        expect(screen.getByText("95%")).toBeInTheDocument();
         expect(screen.getByText("pokie certification verify certification --source ./bundle")).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Copy verification command"})).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Continue to Export"}));
         expect(await screen.findByRole("button", {name: "Download manifest.json"})).toBeInTheDocument();
         expect(screen.getByText("certification")).toBeInTheDocument();
+    });
+
+    it("submits persisted dossier authorities/template/formats and invalidates inspection/export when they change", async () => {
+        const user = userEvent.setup(),
+            requests: unknown[] = [];
+        const view = okBuildView();
+        if (view.status !== "ok") throw new Error("expected fixture");
+        view.files.push("dossier.pdf", "dossier.html");
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/certification/validate-source": () => ({ok: true, status: 200, body: {status: "ok", errors: [], warnings: []}}),
+            "/api/project/certification/build": call => {
+                requests.push(JSON.parse(call.init?.body ?? "{}"));
+                return {ok: true, status: 200, body: view};
+
+            },
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToCertificationTab(user);
+        await user.type(screen.getByLabelText("Model source path"), "sources/model");
+        await user.type(screen.getByLabelText("Simulation report paths (comma separated)"), "sources/report.json");
+        await user.type(screen.getByLabelText("Audit replay paths (comma separated)"), "sources/audit.json");
+        await user.type(screen.getByLabelText("Presentation template path (optional)"), "sources/template.json");
+        await user.type(screen.getByLabelText("Output formats (comma separated; empty means all)"), "pdf, html");
+        await fillSelectStep(user, "sources/library");
+        await user.click(screen.getByRole("button", {name: "Validate source bundle"}));
+        await screen.findByText("Clean");
+        await user.click(screen.getByRole("button", {name: "Continue to Build bundle"}));
+        await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
+        await screen.findByText("Clean");
+        expect(requests).toEqual([expect.objectContaining({dossier: {modelSource: "sources/model", reportFiles: ["sources/report.json"], replayFiles: ["sources/audit.json"]}, output: {templateFile: "sources/template.json", formats: ["pdf", "html"]}})]);
+        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
+        expect(screen.getAllByText(/preparation only/i).length).toBeGreaterThan(0);
+        await user.click(screen.getByRole("button", {name: "Continue to Export"}));
+        expect(screen.getByRole("button", {name: "Download dossier.pdf"})).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
+        await user.type(screen.getByLabelText("Presentation template path (optional)"), ".changed");
+        expect(screen.getByRole("button", {name: /Manifest & artifacts/i})).toBeDisabled();
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        await user.click(screen.getByRole("button", {name: "Certification"}));
+        expect(await screen.findByLabelText("Model source path")).toHaveValue("sources/model");
+        expect(screen.getByLabelText("Presentation template path (optional)")).toHaveValue("sources/template.json.changed");
+        expect(screen.getByLabelText("Output formats (comma separated; empty means all)")).toHaveValue("pdf, html");
     });
 
     it("shows a clear invalid state for the source bundle and never offers Continue to Build bundle", async () => {
@@ -485,9 +589,27 @@ describe("ProjectDashboardPage - Certification workflow", () => {
         expect(screen.queryByText(/incomplete/)).not.toBeInTheDocument();
     });
 
-    it("marks a completed Build (not Validate) as Outdated when only modes/output directory change, and marks Validate Outdated instead when the bundle directory changes", async () => {
+    const authorityEdits = [
+        {label: "Model source path", value: ".", configuration: {dossier: {modelSource: "."}}},
+        {label: "Simulation report paths (comma separated)", value: "report.json", configuration: {dossier: {reportFiles: ["report.json"]}}},
+        {label: "Audit replay paths (comma separated)", value: "audit.json", configuration: {dossier: {replayFiles: ["audit.json"]}}},
+        {label: "Source revision", value: "source-edit", configuration: {dossier: {sourceRevision: "source-edit"}}},
+        {label: "Candidate revision", value: "da533839dbcb9c2a16fcacc3ae5866f65636d04b-authority-edit", configuration: {dossier: {candidateRevision: "da533839dbcb9c2a16fcacc3ae5866f65636d04b-authority-edit"}}},
+        {label: "Presentation template path (optional)", value: "template.json", configuration: {dossier: {}, output: {templateFile: "template.json"}}},
+        {label: "Output formats (comma separated; empty means all)", value: "html, pdf", configuration: {dossier: {}, output: {formats: ["html", "pdf"]}}},
+    ];
+
+    it.each([
+        {label: "Seed", edits: [{label: "Seed", value: "-changed"}], configuration: {}},
+        {label: "Output directory", edits: [{label: "Output directory", value: "-changed"}], configuration: {}},
+        ...authorityEdits.map(edit => ({label: edit.label, edits: [edit], configuration: edit.configuration})),
+        {label: "all dossier fields together", edits: authorityEdits, configuration: {
+            dossier: {modelSource: ".", reportFiles: ["report.json"], replayFiles: ["audit.json"], sourceRevision: "source-edit", candidateRevision: "da533839dbcb9c2a16fcacc3ae5866f65636d04b-authority-edit"},
+            output: {templateFile: "template.json", formats: ["html", "pdf"]},
+        }},
+    ])("marks Build as Outdated after editing $label and restores Inspect/Export only after rebuilding", async ({label, edits, configuration}) => {
         const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({
+        const {fetchImpl, calls} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/project/certification/validate-source": () => ({ok: true, status: 200, body: {status: "ok", errors: [], warnings: []}}),
             "/api/project/certification/build": () => ({ok: true, status: 200, body: okBuildView()}),
@@ -502,24 +624,49 @@ describe("ProjectDashboardPage - Certification workflow", () => {
         await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
         await screen.findByText("Clean");
 
-        // Editing a mode field (not the bundle directory) invalidates only Build -- Validate's own result
-        // is untouched, so only the Build-specific Outdated message should render.
-        await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
-        await user.type(screen.getByLabelText("Seed"), "-changed");
+        // Modes, output and dossier edits all invalidate Build while retaining source validation.
+        if (label !== "Output directory") await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
+        for (const edit of edits) await user.type(screen.getByLabelText(edit.label), edit.value);
+        if (label === "Output directory") await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
+        expect(screen.getByRole("button", {name: /Inspect Manifest/})).toBeDisabled();
+        expect(screen.getByRole("button", {name: /Export Download manifest/})).toBeDisabled();
 
         expect(
             await screen.findByText(
-                /Outdated -- the modes or output directory changed since the last Build run\. Its result no longer reflects what's configured here; rerun Build certification bundle before Inspect\/Export are offered again\./,
+                /Outdated -- the build configuration changed since the last Build run\. Its result no longer reflects what's configured here; rerun Build certification bundle before Inspect\/Export are offered again\./,
             ),
         ).toBeInTheDocument();
         expect(screen.queryByText(/Outdated -- the bundle directory changed since the last Validate run/)).not.toBeInTheDocument();
 
-        // Re-running Build clears the notice.
+        // A new successful Build submits the edited authorities and restores both downstream steps.
         await user.click(screen.getByRole("button", {name: /Build bundle/i}));
         await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
         await screen.findByText("Clean");
+        const buildRequests = () => calls.filter(call => call.url === "/api/project/certification/build").map(call => JSON.parse(call.init?.body ?? "{}"));
+        expect(buildRequests()).toEqual([
+            {bundleDir: "./bundle", outDir: "certification", modes: [{modeName: "base", seed: "cert-seed-1", sampleCount: 100}]},
+            {bundleDir: "./bundle", outDir: label === "Output directory" ? "certification-changed" : "certification", modes: [{modeName: "base", seed: label === "Seed" ? "cert-seed-1-changed" : "cert-seed-1", sampleCount: 100}], ...configuration},
+        ]);
+        expect(screen.getByRole("button", {name: /Inspect Manifest/})).toBeEnabled();
+        expect(screen.getByRole("button", {name: /Export Download manifest/})).toBeEnabled();
         await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
-        expect(screen.queryByText(/Outdated -- the modes or output directory changed/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Outdated -- the build configuration changed/)).not.toBeInTheDocument();
+
+        // Clearing optional fields cannot revive a previous result; absence is submitted on rebuild.
+        if (edits.some(edit => authorityEdits.some(authority => authority.label === edit.label))) {
+            for (const edit of edits) await user.clear(screen.getByLabelText(edit.label));
+            expect(screen.getByRole("button", {name: /Inspect Manifest/})).toBeDisabled();
+            expect(screen.getByRole("button", {name: /Export Download manifest/})).toBeDisabled();
+            expect(screen.getByText(/Outdated -- the build configuration changed/)).toBeInTheDocument();
+            await user.click(screen.getByRole("button", {name: /Build bundle/i}));
+            await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
+            await screen.findByText("Clean");
+            expect(buildRequests()[2]).toEqual(buildRequests()[0]);
+            expect(screen.getByRole("button", {name: /Inspect Manifest/})).toBeEnabled();
+            expect(screen.getByRole("button", {name: /Export Download manifest/})).toBeEnabled();
+            await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
+            expect(screen.queryByText(/Outdated -- the build configuration changed/)).not.toBeInTheDocument();
+        }
 
         // Editing the bundle directory instead invalidates both Validate and Build -- only the broader
         // Validate-specific Outdated message should render, not a duplicate Build-specific one.
@@ -529,6 +676,6 @@ describe("ProjectDashboardPage - Certification workflow", () => {
                 /Outdated -- the bundle directory changed since the last Validate run\. Its result no longer reflects what's configured here; rerun Validate before Build bundle is offered again\./,
             ),
         ).toBeInTheDocument();
-        expect(screen.queryByText(/Outdated -- the modes or output directory changed since the last Build run/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Outdated -- the build configuration changed since the last Build run/)).not.toBeInTheDocument();
     });
 });

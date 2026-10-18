@@ -118,9 +118,11 @@ const BUILD_EXPORT_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
 ];
 
-// Certification consumes an existing, native outcome-library artifact. A Blueprint must first use
-// Build/Export to create that artifact; merely being buildable is not certification capability.
-const CERTIFICATION_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [OUTCOME_LIBRARY_READ_CAPABILITY];
+// Certification consumes an explicitly selected native library, optionally bound to the opened
+// executable package as its model. Keep the package open so modelSource="." retains that authority;
+// opening the library instead must not turn its directory into a package. Buildability alone does
+// not grant this workflow: Blueprint/PAR projects first build and open a runtime package.
+const CERTIFICATION_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [RUNTIME_EXECUTE_CAPABILITY, OUTCOME_LIBRARY_READ_CAPABILITY];
 
 // Provably Fair is an integration/runtime operation, not a generic project-quality claim. It is
 // deliberately unavailable to Blueprints, which have no live runtime integration until built.

@@ -4057,3 +4057,8 @@ outputs. The ordinary direct Stake library exporter also permits a recognized pr
 export rebuild; canonical artifact operations reject occupied outputs and evidence
 companions. Retired direct Studio Stake routes remain retired in favor of prepared
 artifact preview/build and pollable jobs.
+
+
+## Canonical dossier preparation (V2C-27)
+
+Canonical assessment dossiers use `pokie certification build BUNDLE CONFIG.json --out NEW_OR_EMPTY_DIRECTORY`, with explicit `dossier` authorities and `output` template/formats. Verify with `--source BUNDLE --authorities authorities.json`; render a validated dossier through `pokie report DOSSIER/manifest.json --format json|console|markdown|html|pdf [--template presentation.json] [--out NEW_FILE]`. PDF requires `--out`. Simulation/outcome reporting keeps JSON/Markdown/HTML. See [the dossier contract](certification-evidence-bundle.md). Preparation only; successful verification is not regulatory or RNG certification.

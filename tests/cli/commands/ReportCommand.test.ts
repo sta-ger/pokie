@@ -1,6 +1,8 @@
+import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationEvidenceBundleTestFixtures.js";
 import {aggregate, featureAnalyticsReport} from "../../v2/fixtures/FeatureAnalyticsFixture.js";
 import {withRareStakeDirectory, expectRareMetrics} from "../../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 import {
+    CertificationEvidenceBundleBuilder,
     OutcomeLibraryBundleWriter,
     OutcomeSourceProjectAnalyzing,
     OutcomeSourceProjectReport,
@@ -80,6 +82,36 @@ function writeForeignStakeOutcomeDirectory(dir: string): void {
 }
 
 describe("ReportCommand", () => {
+    it("renders a real canonical dossier to PDF and refuses to replace a user report or publish bad templates", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "report-dossier-"));
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            const source = path.join(root, "source"),
+                out = path.join(root, "dossier"),
+                output = path.join(root, "assessment.pdf");
+            await buildSourceOutcomeLibraryBundle(source);
+            const built = await new CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(source, [{modeName: "base", seed: "s", sampleCount: 2}], out);
+            expect(built.manifest).toBeDefined();
+            const command = new ReportCommand();
+            await command.run([path.join(out, "manifest.json"), "--format", "pdf", "--out", output]);
+            const bytes = fs.readFileSync(output);
+            expect(bytes.toString()).toContain("%PDF-1.4");
+            expect(bytes.toString()).toContain("preparation only");
+            expect(log.mock.calls.flat().join(" ")).toContain("preparation only");
+            await expect(command.run([path.join(out, "manifest.json"), "--format", "pdf", "--out", output])).rejects.toThrow();
+            expect(fs.readFileSync(output)).toEqual(bytes);
+            const template = path.join(root, "broken.json"),
+                missingOutput = path.join(root, "missing.html");
+            fs.writeFileSync(template, JSON.stringify({schemaVersion: 99}));
+            await expect(command.run([path.join(out, "manifest.json"), "--format", "html", "--template", template, "--out", missingOutput])).rejects.toThrow(/template/);
+            expect(fs.existsSync(missingOutput)).toBe(false);
+        } finally {
+            log.mockRestore();
+            fs.rmSync(root, {recursive: true, force: true});
+
+        }
+    });
+
     it("has the expected name and description", () => {
         const command = new ReportCommand();
 
@@ -425,6 +457,24 @@ describe("ReportCommand outcome-source project routing", () => {
         capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
         provenance: "test fixture",
     };
+
+    it.each(["outcomeLibrary", "stakeAdapter"] as const)("rejects dossier templates before %s analysis or output writes", async type => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "report-options-"));
+        try {
+            const output = path.join(root, "existing.html");
+            fs.writeFileSync(output, "caller-owned bytes");
+            const analyze = jest.fn();
+            const project = {...outcomeLibraryProject, type, capabilities: PROJECT_TYPE_CAPABILITIES[type]};
+            const command = new ReportCommand(createStubReadFile({}), undefined, undefined, stubProjectResolver(project), {analyze});
+            for (const template of ["missing.json", "invalid.json"]) {
+                await expect(command.run([project.rootPath, "--template", template, "--format", "html", "--out", output])).rejects.toThrow(/--template.*only.*dossier/);
+            }
+            expect(analyze).not.toHaveBeenCalled();
+            expect(fs.readFileSync(output, "utf8")).toBe("caller-owned bytes");
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true}); 
+        }
+    });
 
     it('renders a canonical-reader-backed exact analysis, with limitations, for a resolved "outcomeLibrary" project', async () => {
         const report: OutcomeSourceProjectReport = {

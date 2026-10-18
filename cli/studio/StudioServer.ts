@@ -324,6 +324,7 @@ export class StudioServer implements StudioServerHandling {
     // just as its signal is observed.
     private validationTransitions = 0;
     private readonly advancedValidations = new Map<AbortController, Promise<unknown>>();
+    private readonly certificationDownloads = new Map<AbortController, Promise<unknown>>();
     private readonly definitionPreviews = new Map<AbortController, Promise<MathDefinitionDiff>>();
     private readonly dashboardLoads = new Set<Promise<void>>();
     private runtimePreparation: {generation: number; controller: AbortController} | undefined;
@@ -537,6 +538,7 @@ export class StudioServer implements StudioServerHandling {
         this.cancelRuntimePreparation();
         for (const controller of this.advancedValidations.keys()) controller.abort();
         for (const controller of this.definitionPreviews.keys()) controller.abort();
+        for (const controller of this.certificationDownloads.keys()) controller.abort();
         // Certification, deployment, Play, Home materialization, and Design
         // operations execute directly through StudioJobService rather than a
         // compatibility service with its own cancelAll(). Request their
@@ -552,6 +554,7 @@ export class StudioServer implements StudioServerHandling {
             listenerClosed,
             Promise.allSettled([...this.advancedValidations.values()]),
             Promise.allSettled([...this.definitionPreviews.values()]),
+            this.drainCertificationDownloads(),
             this.simulationService.cancelAll(),
             this.replayService.cancelAll(),
             this.artifactBuildService.cancelAll(),
@@ -589,7 +592,9 @@ export class StudioServer implements StudioServerHandling {
             for (const controller of this.advancedValidations.keys()) controller.abort();
             await Promise.allSettled([...this.advancedValidations.values()]);
             for (const controller of this.definitionPreviews.keys()) controller.abort();
+            for (const controller of this.certificationDownloads.keys()) controller.abort();
             await Promise.allSettled([...this.definitionPreviews.values()]);
+            await this.drainCertificationDownloads();
             if (this.currentContext.mode === "project") {
                 const projectId = this.canonicalPathIdentity(this.currentContext.projectRoot);
                 await this.wasmBrowserService.drain(projectId);
@@ -903,9 +908,17 @@ export class StudioServer implements StudioServerHandling {
         return preparation;
     }
 
+    private async drainCertificationDownloads(): Promise<void> {
+        const results = await Promise.allSettled([...this.certificationDownloads.values()]);
+        for (const result of results) {
+            if (result.status === "rejected" && result.reason instanceof Error && (/cleanup failed/).test(result.reason.message)) throw result.reason;
+        }
+    }
+
     private cancelRuntimePreparation(): void {
         for (const controller of this.advancedValidations.keys()) controller.abort();
         for (const controller of this.definitionPreviews.keys()) controller.abort();
+        for (const controller of this.certificationDownloads.keys()) controller.abort();
         this.runtimePreparation?.controller.abort();
         this.runtimePreparation = undefined;
         this.nextRuntimePreparationGeneration++;
@@ -1404,6 +1417,45 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "GET" && url.pathname === "/api/project/certification/download") {
+            if (this.currentContext.mode !== "project") {
+                this.sendJson(res, 409, {error: "No active project."});
+                return;
+
+            }
+            if (this.stopping || this.validationTransitions > 0) {
+                this.sendJson(res, 409, {error: "Project is changing; retry the dossier download after it settles."});
+                return;
+            }
+            const context = this.currentContext;
+            const controller = new AbortController();
+            const abort = (): void => controller.abort();
+            req.once("aborted", abort);
+            res.once("close", abort);
+            try {
+                const projectRoot = this.canonicalPathIdentity(context.projectRoot);
+                const identity = url.searchParams.get("identity") ?? "";
+                const outDir = url.searchParams.get("outDir") ?? "";
+                const file = url.searchParams.get("file") ?? "";
+                const job = this.jobService.list(projectRoot).find(item => item.operation === "certification-build" && item.status === "completed" && item.request.outDir === outDir && (item.result?.provenance?.manifest as {evidenceContentHash?: string} | undefined)?.evidenceContentHash === identity);
+                if (!job) throw new Error("No successful retained dossier matches this request.");
+                const request = validateCertificationBuildRequest(job.request);
+                if (typeof job.request.inputIdentity === "string" && this.certificationService.requestIdentity(projectRoot, request) !== job.request.inputIdentity) throw new Error("Dossier input files changed; prepare a fresh dossier.");
+                const operation = this.certificationService.download(projectRoot, request, file, identity, controller.signal);
+                this.certificationDownloads.set(controller, operation);
+                const download = await operation;
+                if (controller.signal.aborted || this.currentContext !== context) throw new Error("Dossier download cancelled; reopen the current project and retry.");
+                res.writeHead(200, {"Content-Type": download.mime, "Content-Disposition": `attachment; filename="${file.replace(/[^a-zA-Z0-9_.-]/g, "_")}"`, "Content-Length": download.bytes.length});
+                res.end(download.bytes);
+            } catch (error) {
+                if (!res.destroyed) this.sendJson(res, 409, {error: error instanceof Error ? error.message : String(error)});
+            } finally {
+                this.certificationDownloads.delete(controller);
+                req.off("aborted", abort);
+                res.off("close", abort);
+            }
+            return;
+        }
         if (method === "POST" && url.pathname === "/api/project/certification/build") {
             await this.handleBuildCertificationEvidenceBundle(req, res);
             return;
@@ -1715,8 +1767,12 @@ export class StudioServer implements StudioServerHandling {
                     const abortPreparation = () => preparation?.controller.abort();
                     signal.addEventListener("abort", abortPreparation, {once: true});
                     try {
-                    // Preserve the established Home executor argument/DTO contract;
-                    // `sourcePath` above is only the durable canonical job identity.
+                        // Honour the confirmed cancellation before loading the next
+                        // runtime. Its asynchronous snapshot may take long enough
+                        // for the old project's generator to publish otherwise.
+                        if (validated.confirmActiveJobs) await this.cancelActiveJobsForOldProject(job.id);
+                        // Preserve the established Home executor argument/DTO contract;
+                        // `sourcePath` above is only the durable canonical job identity.
                         progress({stage: "Materializing runtime", unit: "opening stages", current: 1, total: 3, message: "Loading the project and materializing any required runtime."});
                         const dashboard = await this.homeService.openProject(validated.projectRoot, {
                             signal: preparation.controller.signal,
@@ -3280,26 +3336,34 @@ export class StudioServer implements StudioServerHandling {
 
         const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
         const recovery = {action: "rebuild", reason: "Rebuild the evidence bundle from the captured source and destination."} as const;
+        let inputIdentity: string | undefined;
+        let authorityFailure: string | undefined;
+        try {
+            if (typeof this.certificationService.requestIdentity === "function") inputIdentity = this.certificationService.requestIdentity(projectRoot, validated);
+        } catch (error) {
+            authorityFailure = `Could not acquire certification authorities: ${error instanceof Error ? error.message : String(error)}. Select existing physical project-local inputs within the 64 MiB / 10000 file budget, then rebuild.`;
+        }
         const execution = await this.executeCommonOperation(
             res,
             {
-                projectId: projectRoot, operation: "certification-build", request: {...validated, sourceProjectId: projectRoot} as unknown as Readonly<Record<string, unknown>>,
+                projectId: projectRoot, operation: "certification-build", request: {...validated, sourceProjectId: projectRoot, ...(inputIdentity ? {inputIdentity} : {}), ...(authorityFailure ? {authorityFailure} : {})} as unknown as Readonly<Record<string, unknown>>,
                 conflictKey: `certification-output:${this.canonicalPathIdentity(path.resolve(projectRoot, validated.outDir))}`,
                 recoveryOnRestart: recovery,
                 initialProgress: {stage: "Building evidence", unit: "evidence files", current: "indeterminate", total: "indeterminate", message: "Writing certification evidence to a staging destination."},
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", errors: [], warnings: [], activeJobId: job.id, reattached: true}}),
             },
-            ({signal, progress}) => this.certificationService.build(projectRoot, validated.bundleDir, validated.modes, validated.outDir, {
+            ({signal, progress}) => authorityFailure ? Promise.resolve({status: "load-error" as const, error: authorityFailure}) : this.certificationService.build(projectRoot, validated.bundleDir, validated.modes, validated.outDir, {
                 signal,
+                ...(validated.dossier ? {dossier: validated.dossier} : {}), ...(validated.output ? {output: validated.output} : {}),
                 onProgress: (stage, unit, current, total, message) => progress({stage, unit, current, total, message}),
             }),
             (result, cancelled) => {
-                if (cancelled) return {status: "cancelled", result: {summary: "Certification evidence build cancelled after staging cleanup."}, recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: "Certification evidence build completed.", outputs: result.files.map((file) => ({path: file, label: "Certification evidence"})), provenance: {bundleDir: validated.bundleDir, manifest: result.manifest}, detail: {outDir: validated.outDir}}};
+                if (cancelled) return result.status === "load-error" && (/cleanup failed/).test(result.error) ? {status: "failed", error: result.error, recovery} : {status: "cancelled", result: {summary: "Certification evidence build cancellation settled; inspect the retained executor result for cleanup diagnostics."}, recovery};
+                if (result.status === "ok") return {status: "completed", result: {summary: `${result.manifest.dossier?.support.notice ?? "Certification-ready preparation only."} Model representation: ${result.manifest.dossier?.support.coverage ?? "unavailable"}.`, outputs: result.files.map((file) => ({path: file, label: "Certification evidence", downloadPath: `/api/project/certification/download?${new URLSearchParams({outDir: validated.outDir, identity: result.manifest.evidenceContentHash, file})}`})), provenance: {bundleDir: validated.bundleDir, manifest: result.manifest, artifactHashes: result.artifactHashes ?? {}}, detail: {outDir: validated.outDir, templateHash: result.manifest.presentation?.templateHash}}};
                 return {status: "failed", error: result.status === "load-error" ? result.error : "Certification evidence build failed.", recovery: {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."}};
             },
-            (error, cancelled) => cancelled
-                ? {status: "cancelled", result: {summary: "Certification evidence build cancelled after staging cleanup."}, recovery}
+            (error, cancelled) => cancelled && !(error instanceof Error && (/cleanup failed/).test(error.message))
+                ? {status: "cancelled", result: {summary: "Certification evidence build cancellation settled; inspect the retained executor result for cleanup diagnostics."}, recovery}
                 : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery: {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."}},
         );
         if (execution === undefined) return;

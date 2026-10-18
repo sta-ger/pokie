@@ -81,10 +81,81 @@ describe("CertificationEvidenceBundleBuilder", () => {
         expect(modeEntry.sampleCount).toBe(10);
         expect(modeEntry.samplesFile).toBe("samples_base.jsonl");
 
-        expect([...result.files].sort()).toEqual(["manifest.json", "samples_base.jsonl"].sort());
+        expect([...result.files].sort()).toEqual(["manifest.json", "samples_base.jsonl", "dossier.json", "dossier.txt", "dossier.md", "dossier.html", "dossier.pdf"].sort());
         for (const file of result.files) {
             expect(fs.existsSync(path.join(certDir, file))).toBe(true);
         }
+    });
+
+    it.each(["Rendering pdf", "Publishing dossier"])("cancels at %s without publishing or replacing an empty destination", async stage => {
+        await buildSourceOutcomeLibraryBundle(bundleDir);
+        fs.mkdirSync(certDir);
+        const inode = fs.statSync(certDir).ino;
+        const controller = new AbortController();
+        const build = new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION).buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 2}], certDir, {
+            signal: controller.signal, onStage: current => {
+                if (current !== stage) return;
+                setImmediate(() => controller.abort());
+            },
+        });
+        await expect(build).rejects.toBeInstanceOf(CertificationEvidenceBundleBuildCancelledError);
+        expect(fs.statSync(certDir).ino).toBe(inode);
+        expect(fs.readdirSync(certDir)).toEqual([]);
+        expect(siblingLeftovers(certDir)).toEqual([]);
+    });
+
+    it("rejects source drift queued at the final publication yield", async () => {
+        await buildSourceOutcomeLibraryBundle(bundleDir);
+        const result = await new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION).buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 2}], certDir, {
+            onStage: stage => {
+                if (stage !== "Publishing dossier") return;
+                setImmediate(() => {
+                    const file = path.join(bundleDir, "manifest.json");
+                    const source = JSON.parse(fs.readFileSync(file, "utf8"));
+                    source.generatedAt = "changed-at-commit";
+                    fs.writeFileSync(file, JSON.stringify(source));
+                });
+            },
+        });
+        expect(result.manifest).toBeUndefined();
+        expect(result.issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "certification-evidence-build-source-bundle-drift"})]));
+        expect(fs.existsSync(certDir)).toBe(false);
+    });
+
+    it("reports PDF write and cleanup failures without a successful dossier", async () => {
+        await buildSourceOutcomeLibraryBundle(bundleDir);
+        const builder = new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION, undefined, undefined, undefined, undefined,
+            (file, contents) => {
+                if (file.endsWith(".pdf")) throw new Error("PDF write failed");
+                fs.writeFileSync(file, contents);
+
+            });
+        await expect(builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 2}], certDir)).rejects.toThrow("PDF write failed");
+        expect(fs.existsSync(certDir)).toBe(false);
+        const cleanupFails = new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            directory => {
+                if (directory.includes(".staging-")) throw new Error("cleanup probe");
+                fs.rmSync(directory, {recursive: true, force: true});
+
+            });
+        await expect(cleanupFails.buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 2}], certDir)).rejects.toThrow(/staging cleanup failed.*cleanup probe/);
+        expect(fs.existsSync(certDir)).toBe(false);
+    });
+
+    it("refuses invalid templates, source overlap and forged replacement authorization", async () => {
+        await buildSourceOutcomeLibraryBundle(bundleDir);
+        const templateFile = path.join(tmpRoot, "bad-template.json");
+        fs.writeFileSync(templateFile, JSON.stringify({schemaVersion: 999}));
+        const builder = new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION);
+        const result = await builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 1}], certDir, {output: {templateFile}});
+        expect(result).toMatchObject({manifest: undefined, files: [], issues: [{code: "certification-dossier-input-invalid"}]});
+        expect(fs.existsSync(certDir)).toBe(false);
+        await expect(builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 1}], path.join(bundleDir, "nested"))).rejects.toThrow(/overlap/);
+        fs.mkdirSync(certDir);
+        fs.writeFileSync(path.join(certDir, "manifest.json"), JSON.stringify({generatedBy: "pokie certification build"}));
+        const before = fs.readFileSync(path.join(certDir, "manifest.json"));
+        await expect(builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 1}], certDir)).rejects.toThrow(/new or empty/);
+        expect(fs.readFileSync(path.join(certDir, "manifest.json"))).toEqual(before);
     });
 
     it("writes sample records cross-checkable against the source bundle's own index recordHash/artifact", async () => {
@@ -154,28 +225,66 @@ describe("CertificationEvidenceBundleBuilder", () => {
         expect(siblingLeftovers(certDir)).toEqual([]);
     });
 
-    it("removes its published evidence container when cancellation arrives after commit", async () => {
+    it.each([false, true])("cancels after observing published files (existing empty destination: %s)", async existing => {
         await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
+        if (existing) fs.mkdirSync(certDir);
+        const identity = existing ? fs.statSync(certDir).ino : undefined;
         const controller = new AbortController();
+        let observed = false;
         const builder = new CertificationEvidenceBundleBuilder(
-            CERTIFICATION_TEST_POKIE_VERSION,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            () => controller.abort(),
+            CERTIFICATION_TEST_POKIE_VERSION, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, undefined,
+            () => {
+                expect(JSON.parse(fs.readFileSync(path.join(certDir, "manifest.json"), "utf8"))).toHaveProperty("evidenceContentHash");
+                expect(fs.readFileSync(path.join(certDir, "dossier.pdf")).toString()).toContain("%PDF-1.4");
+                observed = true;
+                controller.abort();
+            },
         );
-
         await expect(builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}], certDir, {signal: controller.signal}))
             .rejects.toThrow(CertificationEvidenceBundleBuildCancelledError);
-
-        expect(fs.existsSync(certDir)).toBe(false);
+        expect(observed).toBe(true);
+        if (existing) {
+            expect(fs.statSync(certDir).ino).toBe(identity);
+            expect(fs.readdirSync(certDir)).toEqual([]);
+        } else expect(fs.existsSync(certDir)).toBe(false);
         expect(siblingLeftovers(certDir)).toEqual([]);
+    });
+
+    it.each([[false, "replacement"], [true, "replacement"], [false, "rewrite"], [true, "rewrite"]] as const)("rejects same-name mutation after installation and preserves the competing file (empty: %s, %s)", async (existing, mutation) => {
+        await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
+        if (existing) fs.mkdirSync(certDir);
+        const identity = existing ? fs.statSync(certDir).ino : undefined;
+        const builder = new CertificationEvidenceBundleBuilder(
+            CERTIFICATION_TEST_POKIE_VERSION, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, undefined,
+            () => {
+                const member = path.join(certDir, "dossier.pdf");
+                if (mutation === "replacement") fs.unlinkSync(member);
+                fs.writeFileSync(member, "competing replacement");
+            },
+        );
+        await expect(builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 1}], certDir)).rejects.toThrow(/claimed|ownership changed/);
+        expect(fs.readdirSync(certDir)).toEqual(["dossier.pdf"]);
+        expect(fs.readFileSync(path.join(certDir, "dossier.pdf"), "utf8")).toBe("competing replacement");
+        if (existing) expect(fs.statSync(certDir).ino).toBe(identity);
+        expect(siblingLeftovers(certDir)).toEqual([]);
+    });
+
+    it("passes cancellation into deep validation and stops before sampling", async () => {
+        await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
+        const controller = new AbortController();
+        const validate = jest.fn((_dir: string, options?: {signal?: AbortSignal; throwIfAborted?: () => void}) => {
+            expect(options?.signal).toBe(controller.signal);
+            controller.abort();
+            options?.throwIfAborted?.();
+            return Promise.resolve([]);
+        });
+        const onSample = jest.fn();
+        const builder = new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION, undefined, {validate});
+        await expect(builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 1}], certDir, {signal: controller.signal, onSample})).rejects.toThrow(CertificationEvidenceBundleBuildCancelledError);
+        expect(onSample).not.toHaveBeenCalled();
+        expect(fs.existsSync(certDir)).toBe(false);
     });
 
     it("yields within a large single mode so cancellation stops sampling and cleans staging", async () => {
@@ -517,23 +626,25 @@ describe("CertificationEvidenceBundleBuilder", () => {
         expect(siblingLeftovers(certDir)).toEqual([]);
     });
 
-    it("rejects empty, external, and symlinked directories before direct evidence staging", async () => {
+    it("accepts caller-owned empty directories and rejects occupied or symlinked directories", async () => {
         await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
         const builder = new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION);
         const modes = [{modeName: "base", seed: "cert-seed-1", sampleCount: 3}];
         fs.mkdirSync(certDir);
-        await expect(builder.buildFromBundle(bundleDir, modes, certDir)).rejects.toThrow(/was not generated by "pokie certification build"/);
-        expect(fs.readdirSync(certDir)).toEqual([]);
+        const identity = fs.statSync(certDir).ino;
+        await expect(builder.buildFromBundle(bundleDir, modes, certDir)).resolves.toMatchObject({issues: [], manifest: {schemaVersion: 2}});
+        expect(fs.statSync(certDir).ino).toBe(identity);
+        for (const file of fs.readdirSync(certDir)) fs.unlinkSync(path.join(certDir, file));
 
         fs.writeFileSync(path.join(certDir, "caller-owned.txt"), "untouched");
-        await expect(builder.buildFromBundle(bundleDir, modes, certDir)).rejects.toThrow(/was not generated by "pokie certification build"/);
+        await expect(builder.buildFromBundle(bundleDir, modes, certDir)).rejects.toThrow(/new or empty/);
         expect(fs.readFileSync(path.join(certDir, "caller-owned.txt"), "utf-8")).toBe("untouched");
 
         const externalDir = path.join(tmpRoot, "external");
         fs.mkdirSync(externalDir);
         fs.rmSync(certDir, {recursive: true, force: true});
         fs.symlinkSync(externalDir, certDir, "dir");
-        await expect(builder.buildFromBundle(bundleDir, modes, certDir)).rejects.toThrow(/symbolic link/i);
+        await expect(builder.buildFromBundle(bundleDir, modes, certDir)).rejects.toThrow(/empty physical directory/i);
         expect(fs.readdirSync(externalDir)).toEqual([]);
     });
 });

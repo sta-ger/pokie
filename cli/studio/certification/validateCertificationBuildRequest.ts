@@ -1,6 +1,9 @@
-export type CertificationBuildRequestInput = {bundleDir?: unknown; outDir?: unknown; modes?: unknown};
+import {validateCertificationDossierInputs, validateCertificationDossierOutput, type CertificationDossierInputs, type CertificationDossierOutput} from "@fromstan/pokie";
+export type CertificationBuildRequestInput = {bundleDir?: unknown; outDir?: unknown; modes?: unknown; dossier?: unknown; output?: unknown};
 export type ValidatedCertificationBuildModeInput = {readonly modeName: string; readonly seed: string; readonly sampleCount: number};
 export type ValidatedCertificationBuildRequest = {
+    readonly dossier?: CertificationDossierInputs;
+    readonly output?: CertificationDossierOutput;
     readonly bundleDir: string;
     readonly outDir: string;
     readonly modes: readonly ValidatedCertificationBuildModeInput[];
@@ -38,5 +41,7 @@ export function validateCertificationBuildRequest(input: CertificationBuildReque
         return {modeName: e.modeName, seed: e.seed, sampleCount: e.sampleCount};
     });
 
-    return {bundleDir: input.bundleDir, outDir: input.outDir, modes};
+    if (input.dossier !== undefined) validateCertificationDossierInputs(input.dossier);
+    if (input.output !== undefined) validateCertificationDossierOutput(input.output);
+    return {bundleDir: input.bundleDir, outDir: input.outDir, modes, ...(input.dossier ? {dossier: input.dossier as CertificationDossierInputs} : {}), ...(input.output ? {output: input.output as CertificationDossierOutput} : {})};
 }

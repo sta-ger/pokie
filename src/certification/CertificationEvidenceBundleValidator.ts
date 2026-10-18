@@ -1,9 +1,15 @@
+import {CertificationEvidenceBundleBuildCancelledError} from "./CertificationEvidenceBundleBuildOptions.js";
+import {certificationDossierFileName} from "./CertificationDossier.js";
+import {parseCertificationJson} from "./internal/parseCertificationJson.js";
+import {CertificationDossierRenderer, validateCertificationDossierTemplate} from "./CertificationDossierRenderer.js";
+import {dossierHash} from "./internal/acquireCertificationDossier.js";
+import {validateCertificationDossier} from "./internal/validateCertificationDossier.js";
 import fs from "fs";
 import path from "path";
 import {computeRoundArtifactHash} from "../artifact/computeRoundArtifactHash.js";
 import type {RoundArtifact} from "../artifact/RoundArtifact.js";
 import {RoundArtifactValidator} from "../artifact/RoundArtifactValidator.js";
-import {resolveSafeStakeEngineFilePath} from "../stakeengine/internal/resolveSafeStakeEngineFilePath.js";
+import {resolveSafeCertificationEvidenceFilePath} from "./internal/resolveSafeCertificationEvidenceFilePath.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import {computeCertificationEvidenceContentHash} from "./computeCertificationEvidenceContentHash.js";
 import {computeCertificationSampleRecordHash} from "./computeCertificationSampleRecordHash.js";
@@ -14,7 +20,7 @@ import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
 // Validates a candidate certification/evidence bundle directory *by itself* — never throws (top-level
 // catch-all "certification-evidence-bundle-malformed"), mirroring OutcomeLibraryBundleValidator's own
-// never-throw contract. Reads manifest.json plus every mode's own samples_<modeName>.jsonl, recomputing:
+// never-throw contract, except explicit cancellation. Reads manifest.json plus every mode's own samples_<modeName>.jsonl, recomputing:
 // - the whole manifest's own evidenceContentHash (covers schemaVersion/pokieVersion/game/configHash/
 //   artifactPokieVersion/sourceBundleManifestHash/every mode's own metrics+samplesHash/deep-validation issues in
 //   one unified check — see computeCertificationEvidenceContentHash);
@@ -30,10 +36,11 @@ import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 // source Outcome Library Bundle it was built from — that needs the source bundle to still be reachable, and is
 // exactly what CertificationEvidenceBundleVerifying adds on top of this validator.
 export class CertificationEvidenceBundleValidator implements CertificationEvidenceBundleValidating {
-    public validate(certDir: string): Promise<ValidationIssue[]> {
+    public async validate(certDir: string, signal?: AbortSignal): Promise<ValidationIssue[]> {
         try {
-            return Promise.resolve(this.validateInternal(certDir));
+            return await this.validateInternal(certDir, signal);
         } catch (error) {
+            if (signal?.aborted || error instanceof CertificationEvidenceBundleBuildCancelledError) throw new CertificationEvidenceBundleBuildCancelledError();
             return Promise.resolve([
                 {
                     code: "certification-evidence-bundle-malformed",
@@ -44,12 +51,14 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
         }
     }
 
-    private validateInternal(certDir: string): ValidationIssue[] {
+    private async validateInternal(certDir: string, signal?: AbortSignal): Promise<ValidationIssue[]> {
+        checkCancellation(signal);
         const manifestPath = path.join(certDir, "manifest.json");
         if (!fs.existsSync(manifestPath)) {
             return [{code: "certification-evidence-bundle-manifest-missing", severity: "error", message: `"${manifestPath}" does not exist.`}];
         }
 
+        if (resolveSafeCertificationEvidenceFilePath(certDir, "manifest.json") === undefined) throw new Error("Unsafe manifest path.");
         let raw: string;
         try {
             raw = fs.readFileSync(manifestPath, "utf-8");
@@ -65,7 +74,7 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
 
         let parsed: unknown;
         try {
-            parsed = JSON.parse(raw);
+            parsed = parseCertificationJson(raw);
         } catch (error) {
             return [
                 {
@@ -98,6 +107,25 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
 
         const manifest = parsed;
         const issues: ValidationIssue[] = [];
+        try {
+            validateCertificationDossier(manifest.dossier, manifest);
+            const presentation = manifest.presentation;
+            if (Object.keys(presentation).sort().join(",") !== "formats,template,templateArtifactHash,templateHash") throw new Error("Unknown dossier presentation fields.");
+            validateCertificationDossierTemplate(presentation.template);
+            if (presentation.templateArtifactHash !== null && !(/^sha256:[a-f0-9]{64}$/).test(presentation.templateArtifactHash)) throw new Error("Invalid template raw artifact identity.");
+            if (dossierHash(presentation.template) !== presentation.templateHash || !Array.isArray(presentation.formats) || !presentation.formats.length || new Set(presentation.formats).size !== presentation.formats.length) throw new Error("Invalid template identity or formats.");
+            for (const format of presentation.formats) {
+                checkCancellation(signal);
+                const file = resolveSafeCertificationEvidenceFilePath(certDir, certificationDossierFileName(format));
+                if (!file) throw new Error("Unsafe dossier output path.");
+                const expected = await new CertificationDossierRenderer().render(manifest, format, presentation.template, signal);
+                checkCancellation(signal);
+                if (!fs.readFileSync(file).equals(Buffer.from(expected))) throw new Error(`Rendered ${format} differs from canonical dossier; regenerate all requested files.`);
+            }
+        } catch (error) {
+            checkCancellation(signal);
+            issues.push({code: "certification-dossier-invalid", severity: "error", message: error instanceof Error ? error.message : String(error)});
+        }
 
         try {
             const recomputedContentHash = computeCertificationEvidenceContentHash(manifest);
@@ -119,6 +147,7 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
         const seenExact = new Set<string>();
         const seenCaseInsensitive = new Map<string, string>();
         for (const modeEntry of manifest.modes) {
+            checkCancellation(signal);
             if (!isModeEntryShape(modeEntry)) {
                 issues.push({
                     code: "certification-evidence-bundle-mode-field-invalid",
@@ -171,7 +200,7 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
                 continue;
             }
 
-            const safeSamplesPath = resolveSafeStakeEngineFilePath(certDir, modeEntry.samplesFile);
+            const safeSamplesPath = fs.existsSync(path.join(certDir, modeEntry.samplesFile)) ? resolveSafeCertificationEvidenceFilePath(certDir, modeEntry.samplesFile) : path.join(certDir, modeEntry.samplesFile);
             if (safeSamplesPath === undefined) {
                 issues.push({
                     code: "certification-evidence-bundle-path-unsafe",
@@ -182,7 +211,7 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
                 continue;
             }
 
-            this.validateSamplesFile(safeSamplesPath, modeEntry, issues);
+            await this.validateSamplesFile(safeSamplesPath, modeEntry, issues, signal);
         }
 
         this.validateFilesInventory(certDir, manifest, issues);
@@ -190,7 +219,7 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
         return issues;
     }
 
-    private validateSamplesFile(samplesPath: string, modeEntry: CertificationEvidenceBundleModeEntry, issues: ValidationIssue[]): void {
+    private async validateSamplesFile(samplesPath: string, modeEntry: CertificationEvidenceBundleModeEntry, issues: ValidationIssue[], signal?: AbortSignal): Promise<void> {
         if (!fs.existsSync(samplesPath)) {
             issues.push({
                 code: "certification-evidence-bundle-samples-file-missing",
@@ -224,10 +253,14 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
             });
         }
 
-        lines.forEach((line, position) => {
+        for (const [position, line] of lines.entries()) {
+            if (position % 32 === 0) await new Promise<void>(resolve => {
+                setImmediate(resolve); 
+            });
+            checkCancellation(signal);
             let parsedLine: unknown;
             try {
-                parsedLine = JSON.parse(line);
+                parsedLine = parseCertificationJson(line);
             } catch (error) {
                 issues.push({
                     code: "certification-evidence-bundle-sample-line-invalid-json",
@@ -235,7 +268,7 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
                     message: `mode "${modeEntry.modeName}": line ${position} of "${modeEntry.samplesFile}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}.`,
                     details: {modeName: modeEntry.modeName, position},
                 });
-                return;
+                continue;
             }
 
             if (!isSampleRecordShape(parsedLine)) {
@@ -245,7 +278,7 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
                     message: `mode "${modeEntry.modeName}": line ${position} of "${modeEntry.samplesFile}" doesn't match the expected sample record shape.`,
                     details: {modeName: modeEntry.modeName, position},
                 });
-                return;
+                continue;
             }
 
             if (parsedLine.sampleIndex !== position) {
@@ -302,7 +335,7 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
                     message: `mode "${modeEntry.modeName}": line ${position}'s own artifact can't be re-canonicalized: ${error instanceof Error ? error.message : String(error)}.`,
                     details: {modeName: modeEntry.modeName, position},
                 });
-                return;
+                continue;
             }
             if (recomputedArtifactHash !== parsedLine.artifactHash) {
                 issues.push({
@@ -322,11 +355,11 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
                     details: {modeName: modeEntry.modeName, position, issues: artifactIssues},
                 });
             }
-        });
+        }
     }
 
-    private validateFilesInventory(certDir: string, manifest: {modes: readonly {samplesFile: string}[]; files: readonly unknown[]}, issues: ValidationIssue[]): void {
-        const expected = new Set<string>(["manifest.json", ...manifest.modes.map((modeEntry) => modeEntry.samplesFile)]);
+    private validateFilesInventory(certDir: string, manifest: import("./CertificationEvidenceBundleManifest.js").CertificationEvidenceBundleManifest, issues: ValidationIssue[]): void {
+        const expected = new Set<string>(["manifest.json", ...manifest.modes.map((modeEntry) => modeEntry.samplesFile), ...(Array.isArray(manifest.presentation.formats) ? manifest.presentation.formats.map(certificationDossierFileName) : [])]);
         const seen = new Set<string>();
 
         for (const file of manifest.files) {
@@ -348,13 +381,12 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
             }
             seen.add(file);
 
-            if (resolveSafeStakeEngineFilePath(certDir, file) === undefined) {
+            if (resolveSafeCertificationEvidenceFilePath(certDir, file) === undefined) {
                 issues.push({
                     code: "certification-evidence-bundle-manifest-files-entry-unsafe",
                     severity: "error",
-                    message: `manifest.json's "files" entry "${file}" is not a safe filename.`,
+                    message: `manifest.json's "files" entry "${file}" is missing or not a safe physical file.`,
                 });
-                continue;
             }
 
             if (!expected.has(file)) {
@@ -366,6 +398,9 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
             }
         }
 
+        for (const file of fs.readdirSync(certDir)) {
+            if (!expected.has(file)) issues.push({code: "certification-evidence-bundle-unexpected-file", severity: "error", message: `Unexpected dossier file: ${file}`});
+        }
         for (const file of expected) {
             if (!seen.has(file)) {
                 issues.push({
@@ -376,4 +411,8 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
             }
         }
     }
+}
+
+function checkCancellation(signal?: AbortSignal): void {
+    if (signal?.aborted) throw new CertificationEvidenceBundleBuildCancelledError();
 }

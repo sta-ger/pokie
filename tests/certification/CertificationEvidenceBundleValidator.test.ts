@@ -3,6 +3,10 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+    CertificationEvidenceBundleBuildCancelledError,
+    certificationDossierFileName,
+    CertificationDossierRenderer,
+    CERTIFICATION_DOSSIER_SECTIONS,
     CertificationEvidenceBundleBuilder,
     CertificationEvidenceBundleManifest,
     CertificationEvidenceBundleValidator,
@@ -43,9 +47,77 @@ describe("CertificationEvidenceBundleValidator", () => {
         fs.rmSync(tmpRoot, {recursive: true, force: true});
     });
 
+    it("stops regenerated rendering on cancellation without converting it to invalid evidence", async () => {
+        const controller = new AbortController();
+        const original = CertificationDossierRenderer.prototype.render;
+        const render = jest.spyOn(CertificationDossierRenderer.prototype, "render").mockImplementation(async function(this: CertificationDossierRenderer, manifest, format, template, signal) {
+            expect(signal).toBe(controller.signal);
+            const output = await Reflect.apply(original, this, [manifest, format, template, signal]);
+            controller.abort();
+            return output;
+        });
+        try {
+            await expect(validator.validate(certDir, controller.signal)).rejects.toThrow(CertificationEvidenceBundleBuildCancelledError);
+            expect(render).toHaveBeenCalledTimes(1);
+        } finally {
+            render.mockRestore(); 
+        }
+    });
+
+    it("cancels inside local PDF regeneration and drains the renderer before rejecting", async () => {
+        const controller = new AbortController();
+        const original = CertificationDossierRenderer.prototype.render;
+        let settled = false;
+        const render = jest.spyOn(CertificationDossierRenderer.prototype, "render").mockImplementation(async function(this: CertificationDossierRenderer, manifest, format, template, signal) {
+            if (format === "pdf") setImmediate(() => controller.abort());
+            try {
+                return await Reflect.apply(original, this, [manifest, format, template, signal]); 
+            } finally {
+                if (format === "pdf") settled = true; 
+            }
+        });
+        try {
+            await expect(validator.validate(certDir, controller.signal)).rejects.toThrow(CertificationEvidenceBundleBuildCancelledError);
+            expect(settled).toBe(true);
+        } finally {
+            render.mockRestore(); 
+        }
+    });
+
     it("reports no issues for a freshly built, untouched bundle", async () => {
         const issues = await validator.validate(certDir);
         expect(issues).toEqual([]);
+    });
+
+    it.each(CERTIFICATION_DOSSIER_SECTIONS)("rejects missing mandatory %s even after rehashing", async section => {
+        const manifest = readManifest(certDir);
+        Reflect.deleteProperty(manifest.dossier, section);
+        const modified = {...manifest, evidenceContentHash: computeCertificationEvidenceContentHash(manifest)};
+        writeManifest(certDir, modified);
+        expect(await validator.validate(certDir)).toEqual(expect.arrayContaining([expect.objectContaining({code: "certification-dossier-invalid", severity: "error"})]));
+    });
+
+    it.each(["dossier", "runtime", "template", "source", "legacy"])("rejects incompatible %s versions", async kind => {
+        const manifest = readManifest(certDir);
+        if (kind === "dossier") Reflect.set(manifest.dossier, "schemaVersion", 2);
+        if (kind === "runtime") Reflect.set(manifest.dossier.identity, "runtimeVersion", "pokie.session-runtime.v99");
+        if (kind === "template") Reflect.set(manifest.presentation.template, "schemaVersion", 2);
+        if (kind === "source") Reflect.set(manifest.dossier.identity.sourceBundleManifest, "schemaVersion", 2);
+        if (kind === "legacy") Reflect.set(manifest, "schemaVersion", 1);
+        writeManifest(certDir, {...manifest, evidenceContentHash: computeCertificationEvidenceContentHash(manifest)});
+        expect((await validator.validate(certDir)).some(issue => issue.severity === "error")).toBe(true);
+    });
+
+    it("rejects duplicated required sections, unsafe rendered files and altered output", async () => {
+        const manifest = readManifest(certDir);
+        const raw = JSON.stringify(manifest).replace('"rules":', '"rules":{},"rules":');
+        fs.writeFileSync(path.join(certDir, "manifest.json"), raw);
+        expect((await validator.validate(certDir)).some(issue => (/Duplicate/).test(issue.message))).toBe(true);
+        writeManifest(certDir, manifest);
+        const file = path.join(certDir, "dossier.pdf");
+        fs.unlinkSync(file);
+        fs.symlinkSync(path.join(bundleDir, "manifest.json"), file);
+        expect((await validator.validate(certDir)).some(issue => issue.code === "certification-dossier-invalid")).toBe(true);
     });
 
     it("reports manifest-missing when manifest.json doesn't exist", async () => {
@@ -208,7 +280,9 @@ describe("CertificationEvidenceBundleValidator", () => {
                 issues: [{code: "blueprint-reels-invalid", severity: "error" as const, message: "reels must be positive", path: "reels"}],
             },
         };
-        writeManifest(certDir, {...draft, evidenceContentHash: computeCertificationEvidenceContentHash(draft)});
+        const updated = {...draft, evidenceContentHash: computeCertificationEvidenceContentHash(draft)};
+        writeManifest(certDir, updated);
+        for (const format of updated.presentation.formats) fs.writeFileSync(path.join(certDir, certificationDossierFileName(format)), await new CertificationDossierRenderer().render(updated, format));
 
         const issues = await validator.validate(certDir);
         expect(issues).toEqual([]);

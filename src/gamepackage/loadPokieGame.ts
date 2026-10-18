@@ -65,8 +65,10 @@ export async function loadPokieGame(packageRoot: string, loadEntryModule?: Pokie
 // release association out of the game object preserves the public game contract and serialisation.
 export async function releasePokieGame(game: PokieGame): Promise<void> {
     const release = loadedGameReleases.get(game);
-    loadedGameReleases.delete(game);
     if (release !== undefined) {
+        // Concurrent compatibility callers must join the same owned filesystem drain.
+        // Retain a failed release too, so a retry cannot attest to cleanup that failed.
         await release();
+        loadedGameReleases.delete(game);
     }
 }

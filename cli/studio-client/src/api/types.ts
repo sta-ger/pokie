@@ -1,3 +1,4 @@
+import type {CertificationDossier, CertificationDossierFormat, CertificationDossierTemplate} from "../../../../src/certification/CertificationDossier.js";
 import type {ParSheetConversionReport} from "../../../../src/parsheet/ParSheetConversionReport.js";
 import type {AdvancedModelValidationReport} from "../../../../src/validation/AdvancedModelValidation.js";
 export type {MathDefinitionDiff} from "../../../../src/diff/MathDefinitionDiff.js";
@@ -1330,6 +1331,8 @@ export type CertificationEvidenceBundleModeEntry = {
 export type CertificationEvidenceDeepValidation = {ranAt: string; issues: ValidationIssue[]};
 
 export type CertificationEvidenceBundleManifest = {
+    dossier?: CertificationDossier;
+    presentation?: {template: CertificationDossierTemplate; templateHash: string; templateArtifactHash: string | null; formats: readonly CertificationDossierFormat[]};
     schemaVersion: number;
     generatedBy: string;
     pokieVersion: string;
@@ -1350,7 +1353,7 @@ export type CertificationEvidenceBundleManifest = {
 // CertificationEvidenceBundleBuilder's own "no partial bundle" contract: `manifest` is present iff
 // `status` is "ok".
 export type StudioCertificationBuildView =
-    | {status: "ok"; manifest: CertificationEvidenceBundleManifest; files: string[]; warnings: ValidationIssue[]}
+    | {status: "ok"; manifest: CertificationEvidenceBundleManifest; files: string[]; artifactHashes?: Record<string, string>; warnings: ValidationIssue[]}
     | {status: "error"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
     | {status: "load-error"; error: string};
 

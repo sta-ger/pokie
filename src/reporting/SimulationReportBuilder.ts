@@ -70,6 +70,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         if (diagnostics.precision === "insufficientPrecision") warnings.push("Maximum budget or session stop reached without the requested empirical precision.");
         if (diagnostics.precision === "insufficientSamples" || diagnostics.precision === "uninformative") warnings.push("Insufficient evidence for precision: too few usable samples, no charged stake or an uninformative losing prefix.");
         return {
+            schemaVersion: 1,
             ...core,
             diagnostics,
             ...(statistics.analytics ? {analytics: statistics.analytics} : {}),

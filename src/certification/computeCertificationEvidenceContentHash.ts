@@ -23,6 +23,8 @@ export type CertificationEvidenceContentHashInput = Omit<CertificationEvidenceBu
 export function computeCertificationEvidenceContentHash(manifest: CertificationEvidenceContentHashInput): string {
     const basis = {
         schemaVersion: manifest.schemaVersion,
+        dossier: manifest.dossier,
+        presentation: manifest.presentation,
         generatedBy: manifest.generatedBy,
         pokieVersion: manifest.pokieVersion,
         game: manifest.game,

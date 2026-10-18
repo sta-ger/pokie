@@ -7,5 +7,6 @@ import type {ValidationIssue} from "../validation/ValidationIssue.js";
 // does manifest.json parse and match its own schema, does every mode's samples file hash to what the manifest
 // recorded, does every embedded RoundArtifact still hash to its own recorded artifactHash.
 export interface CertificationEvidenceBundleValidating {
-    validate(certDir: string): Promise<ValidationIssue[]>;
+    /** Explicit cancellation rejects after owned rendering/validation settles. */
+    validate(certDir: string, signal?: AbortSignal): Promise<ValidationIssue[]>;
 }

@@ -93,6 +93,7 @@ const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulatio
 // contract validator is injected. Allow the same bounded budget as offline materialization
 // under the controller's concurrent Jest launcher; route-only cases keep the default timeout.
 const REAL_RUNTIME_TEST_TIMEOUT_MS = 300000;
+const RUNTIME_PHASE_POLL_TIMEOUT_MS = 60000;
 type PendingGameLoad = (game: PokieGame) => void;
 type PendingLoadStarted = () => void;
 
@@ -212,30 +213,42 @@ async function del(url: string): Promise<{status: number; body: unknown}> {
 }
 
 async function waitForOutcomeLibraryJob(baseUrl: string, id: string): Promise<Record<string, unknown>> {
-    for (let attempt = 0; attempt < 600; attempt++) {
+    // Snapshot acquisition now yields while copying the real installed graph.
+    // Budget elapsed time for that phase as well as generation, rather than
+    // exhausting a small number of polls while the worker is still preparing it.
+    const deadline = Date.now() + REAL_RUNTIME_TEST_TIMEOUT_MS;
+    let lastJob: Record<string, unknown> | undefined;
+    while (Date.now() < deadline) {
         const response = await get(`${baseUrl}/api/project/outcome-libraries/generate/jobs/${id}`);
         const job = response.body as Record<string, unknown>;
-        if (job.status !== "queued" && job.status !== "running") return job;
+        lastJob = job;
+        if (job.status !== "queued" && job.status !== "running" && job.status !== "cancelling") return job;
         await new Promise<void>((resolve) => {
-            setTimeout(resolve, 10);
+            setTimeout(resolve, 50);
         });
     }
-    throw new Error(`Outcome Library job ${id} did not finish.`);
+    throw new Error(`Outcome Library job ${id} did not finish: ${JSON.stringify(lastJob)}.`);
 }
 
 async function waitForOutcomeLibraryJobProgress(baseUrl: string, id: string): Promise<Record<string, unknown>> {
-    for (let attempt = 0; attempt < 100; attempt++) {
+    // The service announces generation before the conversion planner revalidates
+    // its real package source. Numeric progress follows that independent load;
+    // use the existing real-runtime budget for the complete preparation path.
+    const deadline = Date.now() + REAL_RUNTIME_TEST_TIMEOUT_MS;
+    let lastJob: Record<string, unknown> | undefined;
+    while (Date.now() < deadline) {
         const response = await get(`${baseUrl}/api/project/outcome-libraries/generate/jobs/${id}`);
         const job = response.body as Record<string, unknown>;
+        lastJob = job;
         if (job.progress !== undefined) return job;
         if (job.status !== "queued" && job.status !== "running") {
             throw new Error(`Outcome Library job ${id} completed before reporting observable progress.`);
         }
         await new Promise<void>((resolve) => {
-            setTimeout(resolve, 10);
+            setTimeout(resolve, 50);
         });
     }
-    throw new Error(`Outcome Library job ${id} did not report observable progress.`);
+    throw new Error(`Outcome Library job ${id} did not report observable progress: ${JSON.stringify(lastJob)}.`);
 }
 
 function expectNoOutcomeLibraryPublication(projectRoot: string, outDir: string): void {
@@ -435,15 +448,20 @@ function flushMacrotask(): Promise<void> {
 }
 
 async function pollUntilTerminal(url: string): Promise<{status: number; body: {[key: string]: unknown; status: string}}> {
-    for (let i = 0; i < 2000; i++) {
+    const deadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
+    let lastBody: unknown;
+    while (Date.now() < deadline) {
         const response = await get(url);
         const body = response.body as {status: string};
-        if (body.status !== "queued" && body.status !== "running") {
+        lastBody = body;
+        if (body.status !== "queued" && body.status !== "running" && body.status !== "cancelling") {
             return response as {status: number; body: {[key: string]: unknown; status: string}};
         }
-        await flushMacrotask();
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 50);
+        });
     }
-    throw new Error(`Timed out waiting for ${url} to reach a terminal state.`);
+    throw new Error(`Timed out waiting for ${url} to reach a terminal state: ${JSON.stringify(lastBody)}.`);
 }
 
 // The background project-dashboard load (startProjectDashboardLoad) resolves through several chained
@@ -451,15 +469,20 @@ async function pollUntilTerminal(url: string): Promise<{status: number; body: {[
 // a single flushed tick isn't always enough for it to settle under load. Polls the same way
 // pollUntilTerminal does rather than relying on a fixed number of ticks.
 async function pollUntilProjectContextSettled(url: string): Promise<{status: number; body: {[key: string]: unknown; status: string}}> {
-    for (let i = 0; i < 2000; i++) {
+    const deadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
+    let lastBody: unknown;
+    while (Date.now() < deadline) {
         const response = await get(url);
         const body = response.body as {status: string};
+        lastBody = body;
         if (body.status !== "loading") {
             return response as {status: number; body: {[key: string]: unknown; status: string}};
         }
-        await flushMacrotask();
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 50);
+        });
     }
-    throw new Error(`Timed out waiting for ${url} to leave "loading".`);
+    throw new Error(`Timed out waiting for ${url} to leave "loading": ${JSON.stringify(lastBody)}.`);
 }
 
 describe("StudioServer", () => {
@@ -1571,11 +1594,11 @@ describe("StudioServer", () => {
             notifyRelease = resolve;
         });
         let snapshotRoot: string | undefined;
-        const remove = fs.rmSync;
-        const removeSpy = jest.spyOn(fs, "rmSync").mockImplementation((target, options) => {
+        const remove = fs.promises.rm;
+        const removeSpy = jest.spyOn(fs.promises, "rm").mockImplementation((target, options) => {
             if (resource === "game" && target === snapshotRoot) {
                 notifyRelease();
-                throw new Error(failureMessage);
+                return Promise.reject(new Error(failureMessage));
             }
             return remove(target, options);
         });
@@ -1636,15 +1659,15 @@ describe("StudioServer", () => {
             }
             expect(await recents.list()).toEqual([]);
             expect(await registry.list()).toEqual([]);
-            expect(runtimeRelease).toHaveBeenCalledTimes(1);
             shutdownAttempted = true;
             await expect(lifecycleServer.stop()).rejects.toThrow(entry === "home" ? "Studio shutdown could not confirm executor cleanup." : "Project opening cleanup failed");
+            expect(runtimeRelease).toHaveBeenCalledTimes(1);
             expect(repository.getProcessState()?.status).toBe("running");
         } finally {
             finishLoad?.(game);
             removeSpy.mockRestore();
             if (!shutdownAttempted) await lifecycleServer.stop().catch(() => undefined);
-            if (snapshotRoot !== undefined) remove(snapshotRoot, {recursive: true, force: true});
+            if (snapshotRoot !== undefined) await remove(snapshotRoot, {recursive: true, force: true});
         }
     });
 
@@ -5354,6 +5377,84 @@ describe("StudioServer", () => {
             };
         }
 
+        it.each([false, true])("cancels confirmed old-project work before destination loading settles (load fails=%s)", async fails => {
+            const oldRoot = path.join(projectStudioRoot, "old-project");
+            const destination = path.join(projectStudioRoot, "next-project");
+            const game = createFakeGame({id: "switch-slot", name: "Switch Slot", version: "1.0.0"});
+            const jobs = createIsolatedJobService(projectStudioRoot);
+            let oldSignal: AbortSignal | undefined;
+            let notifyOldStarted!: () => void;
+            const oldStarted = new Promise<void>(resolve => {
+                notifyOldStarted = resolve;
+            });
+            const oldExecution = jobs.launch({
+                projectId: oldRoot, operation: "certification-build", request: {}, conflictKey: `certification:${oldRoot}`,
+            }, async ({signal}) => {
+                oldSignal = signal;
+                await new Promise<void>(resolve => {
+                    signal.addEventListener("abort", () => resolve(), {once: true});
+                    notifyOldStarted();
+                });
+            }, () => ({status: "cancelled"}));
+            if (oldExecution.started.status !== "created") throw new Error("Expected a newly owned executor.");
+            const oldId = oldExecution.started.job.id;
+            await oldStarted;
+
+            let releaseDestination!: () => void;
+            const destinationGate = new Promise<void>(resolve => {
+                releaseDestination = resolve;
+            });
+            let notifyDestinationStarted!: () => void;
+            const destinationStarted = new Promise<void>(resolve => {
+                notifyDestinationStarted = resolve;
+            });
+            const loader = jest.fn(async (root: string) => {
+                if (root === destination) {
+                    notifyDestinationStarted();
+                    await destinationGate;
+                    if (fails) throw new Error("Destination runtime failed to load.");
+                }
+                return game;
+            });
+            const resolver = (runtimePath: string) => Promise.resolve({runtimePath, release: () => Promise.resolve()});
+            const home = new StudioHomeService("1.0.0", undefined, loader, undefined, resolver);
+            projectServer = new StudioServer({
+                pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot: projectStudioRoot,
+                homeService: home, loadGame: loader, resolveRuntimePackageRoot: resolver, jobService: jobs,
+                blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, home),
+                initialContext: {mode: "project", projectRoot: oldRoot},
+            });
+            let opening: ReturnType<typeof post> | undefined;
+            try {
+                const address = await projectServer.start();
+                const url = `http://${address.host}:${address.port}`;
+                expect(await post(`${url}/api/home/projects/open`, {projectRoot: destination})).toMatchObject({
+                    status: 409, body: {code: "active-jobs-require-confirmation", operations: ["certification-build"]},
+                });
+                expect(loader).not.toHaveBeenCalledWith(destination);
+                expect(oldSignal?.aborted).toBe(false);
+
+                opening = post(`${url}/api/home/projects/open`, {projectRoot: destination, confirmActiveJobs: true});
+                await destinationStarted;
+                // The destination is still held, so cancellation cannot be an
+                // accidental consequence of its eventual dashboard publication.
+                expect(oldSignal?.aborted).toBe(true);
+                await oldExecution.completion;
+                expect(jobs.get(oldRoot, oldId)).toMatchObject({status: "cancelled"});
+                expect((await get(`${url}/api/context`)).body).toEqual({mode: "project", projectRoot: oldRoot});
+
+                releaseDestination();
+                expect(await opening).toMatchObject(fails ? {status: 400, body: {error: "Destination runtime failed to load."}} : {status: 200});
+                expect((await get(`${url}/api/context`)).body).toEqual({mode: "project", projectRoot: fails ? oldRoot : destination});
+                expect(jobs.get(oldRoot, oldId)).toMatchObject({status: "cancelled"});
+            } finally {
+                jobs.cancel(oldRoot, oldId);
+                releaseDestination();
+                await opening;
+                await oldExecution.completion;
+            }
+        });
+
         it("POST /api/projects/close cancels the old project's active simulation and replay", async () => {
             const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
             const simGate = createControlledYield();
@@ -7371,6 +7472,16 @@ describe("StudioServer", () => {
                 error: 'Unknown deployment target "does-not-exist".',
                 plan: {status: "unavailable", diagnostic: {code: "unrecognized-source"}},
             });
+            const jobs = new FileStudioJobRepository(path.join(deploymentStudioRoot, ".test-studio-jobs")).list();
+            expect(jobs).toHaveLength(1);
+            expect(jobs[0]).toMatchObject({
+                operation: "deployment",
+                status: "failed",
+                request: {targetId: "does-not-exist", sourceProjectId: fs.realpathSync(deploymentProjectRoot)},
+                error: 'Unknown deployment target "does-not-exist".',
+            });
+            // Deployment has selectors, not Certification's bundleDir/dossier inputs.
+            expect(jobs[0].request).not.toHaveProperty("inputIdentity");
         });
 
         it("returns 400, in domain language, when a mode isn't part of the active project's own current build — even for a request that never went through the Configure UI", async () => {
@@ -7613,6 +7724,16 @@ describe("StudioServer", () => {
             expect(view.status).toBe("ok");
             expect(view.manifest?.modes.map((mode) => mode.modeName)).toEqual(["base"]);
             expect(fs.existsSync(path.join(certProjectRoot, "certification", "manifest.json"))).toBe(true);
+            const jobs = new FileStudioJobRepository(path.join(certStudioRoot, ".test-studio-jobs")).list()
+                .filter(job => job.operation === "certification-build");
+            expect(jobs).toHaveLength(1);
+            expect(jobs[0].status).toBe("completed");
+            expect(jobs[0].request.inputIdentity).toMatch(/^sha256:[a-f0-9]{64}$/);
+            expect(jobs[0].request.inputIdentity).toBe(new StudioCertificationService("1.3.0").requestIdentity(certProjectRoot, {
+                bundleDir: "bundle",
+                outDir: "certification",
+                modes: [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}],
+            }));
         });
 
         it("returns an error view (no manifest) when a requested mode isn't in the source bundle", async () => {
@@ -8030,16 +8151,19 @@ describe("StudioServer", () => {
         }
 
         async function waitForArtifactBuildJob(projectBaseUrl: string, id: string): Promise<{status: string; result?: unknown}> {
-            for (let attempt = 0; attempt < 1200; attempt += 1) {
+            const deadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
+            let lastJob: unknown;
+            while (Date.now() < deadline) {
                 const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${id}`);
                 expect(response.status).toBe(200);
                 const job = response.body as {status: string; result?: unknown};
-                if (job.status !== "queued" && job.status !== "running") return job;
+                lastJob = job;
+                if (job.status !== "queued" && job.status !== "running" && job.status !== "cancelling") return job;
                 await new Promise<void>((resolve) => {
-                    setTimeout(resolve, 10);
+                    setTimeout(resolve, 50);
                 });
             }
-            throw new Error(`Artifact build job "${id}" did not finish.`);
+            throw new Error(`Artifact build job "${id}" did not finish: ${JSON.stringify(lastJob)}.`);
         }
 
         function writeBlueprintFile(overrides: Record<string, unknown> = {}): string {

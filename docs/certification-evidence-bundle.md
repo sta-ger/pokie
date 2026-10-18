@@ -1,302 +1,187 @@
 [← Back to docs index](README.md)
 
-# Certification/Evidence Bundle
+# Certification evidence dossier
 
-Certification dossier coverage is **partial**. The bundle builder, validator, verifier, CLI, and Studio
-workflow are implemented engineering evidence primitives; they do not constitute a complete certification
-dossier. This status is tracked in the [reviewed register](audit-corrections/README.md).
+**Certification-ready preparation only.** Integrity verification establishes evidence consistency and
+reproduction, not regulatory approval, independent RNG certification, compliance sign-off, authenticity
+or guaranteed executable correctness. Independent assessment and controller approval remain separate.
 
-`certification/` builds a canonical, portable **engineering evidence/certification bundle** *on top of* an
-already-built [Outcome Library Bundle](outcome-library-bundle.md): a deterministic manifest carrying
-game/library provenance and exact weighted metrics, the source bundle's own deep-validation diagnostics, and one
-JSONL file per mode of deterministically sampled, individually verifiable `RoundArtifact` records.
+The existing `CertificationEvidenceBundleBuilder`, validator and verifier own this workflow. They reuse
+the model reader/extraction, advanced validation, canonical simulation reports, weighted outcome readers
+and `AuditRoundReplay`; there is no separate calculation, fairness or replay engine.
 
-This is engineering provenance for reproducibility and review, **not** a regulatory approval, an independent RNG
-certification, or compliance sign-off. A certification lab or an internal audit trail can retain the bundle
-independently of the (potentially much larger) source bundle, but those parties must apply their own procedures
-and make any certification decision themselves.
+## Prepare and reproduce
 
-Like every other exporter/bundle format in this codebase (`StakeEngineExporter`, `OutcomeLibraryBundleWriter`),
-it never introduces a second calculation path: every hash and metric it writes is read verbatim off the source
-bundle's own `manifest.json`, and every sampled round is selected/read via the exact same algorithms
-`OutcomeLibraryBundleReader.drawOutcome` uses internally (`selectIndexEntryByCumulativeWeight` /
-`readAndVerifyOutcomeAtByteRange`), invoked directly against one pinned, in-memory snapshot of each mode's own
-index (see "Pinned-snapshot sampling" below) — seeded with `SeededWeightedOutcomeRandomSource` so the same
-`(bundleDir, seed, sampleCount)` input always reproduces the exact same, byte-identical output.
+Keep authored inputs in separate source directories. Create the outcome library through the supported
+`pokie build SOURCE --target outcomeLibrary --out NEW_SOURCE` conversion. Build configurations select
+modes and explicit evidence authorities; paths below are relative to the configuration file:
 
-## Bundle directory layout
-
-```
-<certDir>/
-  manifest.json              # CertificationEvidenceBundleManifest
-  samples_<modeName>.jsonl   # one CertificationEvidenceSampleRecord<T> per line, one per requested mode
-```
-
-`manifest.json` carries the same "who/what version/when" provenance stamp every generated-artifact manifest in
-this codebase uses (`schemaVersion`/`generatedBy`/`pokieVersion`/`generatedAt`/`artifactPokieVersion`, matching
-[`OutcomeLibraryBundleManifest`](outcome-library-bundle.md)'s own convention), plus a `sourceBundleManifestHash`
-(a sha256 of the source bundle's own `manifest.json`, canonicalized the same way
-`computeWeightedOutcomeLibraryHash` hashes a library) and one entry per mode:
-
-```ts
-type CertificationEvidenceBundleModeEntry = {
-    modeName: string;
-    betMode: string;
-    stake: number;
-    libraryId: string;
-    libraryHash: string;                       // read verbatim off the source bundle's own manifest entry
-    outcomeCount: number;
-    totalWeight: number;
-    analysis: WeightedOutcomeLibraryAnalysis;   // WeightedOutcomeLibraryAnalyzer output, embedded verbatim
-    sampleSeed: string;
-    sampleCount: number;
-    samplesFile: string;                        // "samples_<modeName>.jsonl"
-    samplesHash: string;                         // sha256 of the exact bytes of samplesFile
-};
-
-type CertificationEvidenceBundleManifest = {
-    schemaVersion: number;
-    generatedBy: string;
-    pokieVersion: string;
-    generatedAt: string;
-    game: PokieGameManifest;
-    configHash?: string;
-    artifactPokieVersion: string;
-    sourceBundleDir: string;
-    sourceBundleManifestHash: string;
-    modes: readonly CertificationEvidenceBundleModeEntry[];
-    deepValidation: {ranAt: string; issues: readonly ValidationIssue[]};
-    files: readonly string[];
-    evidenceContentHash: string;
-};
-```
-
-`deepValidation` is `OutcomeLibraryBundleValidating.validate(bundleDir, {deep: true})`'s own output against the
-source bundle, run once at build time and embedded verbatim — never a second, differently-derived notion of
-"valid". Building refuses to write anything at all if this reports an `error`-severity issue: evidence built on
-top of a library that doesn't even validate against its own rules can't be trusted either, the same "no partial
-artifact" discipline `OutcomeLibraryBundleWriter`/`StakeEngineExporter` already follow.
-
-`evidenceContentHash` is `computeCertificationEvidenceContentHash(manifest)` — a sha256 over every field above
-**except** `generatedAt`, `sourceBundleDir`, and `deepValidation.ranAt` (all three vary purely with *when*/*where*
-this bundle was (re)built, never with *what* it says). Two certifications built from the exact same source-bundle
-snapshot with the exact same modes/seeds/sampleCounts always produce the exact same `evidenceContentHash`,
-however far apart in time or wherever on disk they were built. `CertificationEvidenceBundleValidator` recomputes
-and compares it as a single, unified self-consistency check that covers `game`/`configHash`/`artifactPokieVersion`/
-`sourceBundleManifestHash`/every mode's own metrics and `samplesHash`/the deep-validation issues all at once — a
-tamper to any one of those fields (even one nothing else in this validator's own per-file checks touches, like a
-mode's `analysis`) is caught by this one comparison.
-
-Each `samples_<modeName>.jsonl` line is a `CertificationEvidenceSampleRecord<T>`:
-
-```ts
-type CertificationEvidenceSampleRecord<T = string> = {
-    modeName: string;
-    sampleIndex: number;   // 0-based position in the deterministic draw sequence for "seed"
-    seed: string;
-    outcomeId: string;
-    weight: number;
-    recordHash: string;    // the source bundle's own OutcomeLibraryBundleIndexEntry.recordHash, reused as-is
-    artifactHash: string;  // computeRoundArtifactHash(artifact), reused as-is
-    artifact: RoundArtifact<T>;
-};
-```
-
-`recordHash` can always be independently recomputed from a record's own `{outcomeId, weight, artifact}` via
-`computeCertificationSampleRecordHash` — the exact same hash `streamModeOutcomesToTempFile` computes for an
-Outcome Library Bundle's own index entry, mirrored exactly rather than re-derived. `CertificationEvidenceBundleValidator`
-uses this to check a sample's own internal consistency (does its own `recordHash` still match its own
-`{outcomeId, weight, artifact}`) without needing the source bundle at all; `CertificationEvidenceBundleVerifier`
-additionally compares a sample's own `recordHash` directly against a **live** `OutcomeLibraryBundleIndexEntry` for
-the same id — see Verification below.
-
-The full `RoundArtifact` is embedded verbatim (not just a reference), so an evidence bundle stays self-contained
-and independently auditable without needing the — potentially much larger — source bundle at hand for a first
-read. Samples are drawn **with replacement** (a genuine simulated sequence of `sampleCount` rounds against the
-mode's own weights), not an enumeration of distinct outcomes — the library's own manifest entry already carries
-the exact enumeration/metrics; the samples exist to let an auditor spot-check individual rounds' own math.
-
-## Building
-
-```ts
-interface CertificationEvidenceBundleBuilding {
-    buildFromBundle(
-        bundleDir: string,
-        modes: readonly CertificationEvidenceBundleModeSampleInput[],
-        outDir: string,
-    ): Promise<CertificationEvidenceBundleBuildResult>;
+```json
+{
+  "modes": [{"modeName": "base", "seed": "assessment-base", "sampleCount": 100}],
+  "dossier": {
+    "modelSource": "sources/game-package",
+    "reportFiles": ["sources/simulation.json"],
+    "replayFiles": ["sources/audit-round.json"],
+    "sourceRevision": "reviewed-source-revision",
+    "candidateRevision": "reviewed-candidate-revision"
+  },
+  "output": {
+    "formats": ["json", "console", "markdown", "html", "pdf"],
+    "templateFile": "sources/presentation.json"
+  }
 }
-
-type CertificationEvidenceBundleModeSampleInput = {modeName: string; seed: string; sampleCount: number};
 ```
 
-`CertificationEvidenceBundleBuilder` deep-validates the source bundle first; on any `error`-severity issue, or if
-a requested mode isn't present in the source bundle's own manifest, nothing is written and `result.manifest` is
-`undefined` — the same "no partial bundle" contract `OutcomeLibraryBundleWriteResult`/`StakeEngineExportResult`
-already carry. The whole output directory is then published atomically via the same `publishDirectoryAtomically`
-helper every other bundle/export format in this codebase shares.
+`dossier`, its individual inputs, and `output` are optional. Every mandatory section still exists;
+unavailable model, report, replay, SDK or fairness evidence is explicit. An outcome-only dossier is not
+a complete model dossier. Revision labels are retained metadata, never authority in place of byte/model
+identities. The selected runtime's config hash must match both the acquired descriptor revision and the
+source artifacts. A matching game name/version or an asserted report hash is insufficient.
 
-### Pinned-snapshot sampling
+```sh
+pokie certification build sources/outcome-library dossier-config.json --out assessment
+pokie certification verify assessment --source relocated/outcome-library --authorities authorities.json --template sources/presentation.json
+pokie report assessment/manifest.json --format pdf --out assessment-copy.pdf
+pokie report assessment/manifest.json --format html --template presentation.json --out assessment-copy.html
+```
 
-Each requested mode's own index (`index_<modeName>.json`) is read exactly **once**, before any sampling begins,
-and held in memory for the rest of the build. Every one of that mode's `sampleCount` draws:
+`authorities.json` contains the **dossier object**, with explicit relocated model/report/replay paths and
+the same revision labels. Its paths are relative to that file. Verification never follows
+`manifest.sourceBundleDir`, any retained model location, or attachment locations. Supply every attached
+report and replay, in order. Copies can move to a fresh runtime: no cached session, optimization receipt
+or original workspace is required. The fresh runtime must provide the same POKIE runtime/dependencies
+and unchanged authored source bytes. Changing package bytes (even a comment), evidence, revision or
+template invalidates the corresponding identity; regenerate into a new destination.
 
-1. selects a winning index entry via `selectIndexEntryByCumulativeWeight` against that same captured index's own
-   `entries` — the exact cumulative-weight walk `OutcomeLibraryBundleReader.drawOutcome` itself uses internally,
-   invoked directly against the pinned snapshot;
-2. reads and verifies that exact entry's own byte range via `readAndVerifyOutcomeAtByteRange` — the same
-   byte-range read + `recordHash` check `readOutcomeById`/`drawOutcome` themselves rely on.
-
-Neither step ever calls `drawOutcome`/`readOutcomeById` themselves, since both would re-read a fresh copy of the
-index on every single call — which could observe a *different* index mid-mode if the source bundle changed
-between two draws. Reading the index once and sampling against that one in-memory object for the mode's entire
-`sampleCount` is what makes "this evidence reflects one exact bundle state" true by construction, not just by a
-before/after check.
-
-### Snapshot consistency
-
-A bundle directory is plain files on disk, not a transaction — nothing stops another process from rebuilding or
-otherwise mutating the source bundle while sampling is in progress. The builder hashes the source bundle's own
-manifest and each requested mode's own index — the *whole object*, not just one field like `libraryHash` (a
-single string field that a hand-tampered index could leave stale while its `entries` were rewritten underneath
-it) — once, before any sampling begins, and re-reads and re-hashes both again, once more, immediately **before**
-publishing. If anything differs — either exact hash, or even the source bundle becoming unreadable in between —
-the build aborts with `certification-evidence-build-source-bundle-drift` and **nothing is written**, the same
-"no partial artifact" discipline a deep-validation error already triggers. Evidence sampled partly against one
-snapshot and partly against another (or against a snapshot that no longer exists by the time publishing would
-happen) is not trustworthy evidence of either state. A transient change that reverts back to the exact original
-bytes before this final check — and before pinned-snapshot sampling ever had reason to re-read anything — leaves
-the build entirely unaffected, byte-for-byte identical to one run against an undisturbed bundle.
-
-### Publish-time self-check
-
-Immediately before publishing, the fully-assembled staging directory is itself validated via
-`CertificationEvidenceBundleValidating` — the exact same self-consistency check any other consumer would run
-against a published bundle. An internal inconsistency there (a bug in this class producing a manifest that
-doesn't hash to its own `evidenceContentHash`, say) aborts the publish exactly like any other error; a broken
-bundle is never made visible at `outDir`.
+Library use exposes the same contracts:
 
 ```ts
-import {CertificationEvidenceBundleBuilder} from "@fromstan/pokie";
-
-const builder = new CertificationEvidenceBundleBuilder(pokieVersion);
-const result = await builder.buildFromBundle(
-    "./bundle",
-    [{modeName: "base", seed: "cert-2026-07-15-base", sampleCount: 200}],
-    "./certification",
+const result = await new CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(
+    sourceBundleDir, modes, newOrEmptyDirectory,
+    {dossier: {modelSource, reportFiles, replayFiles}, output: {formats: ["html", "pdf"]}, signal},
 );
+const issues = await new CertificationEvidenceBundleVerifier().verify(result.outDir, {
+    sourceBundleDir: relocatedSource, dossier: relocatedAuthorities, templateFile, signal,
+});
+const bytes = await new CertificationDossierRenderer().render(result.manifest!, "pdf", undefined, signal);
 ```
 
-## Validation
+## Canonical contract and integrity
 
-`CertificationEvidenceBundleValidating.validate(certDir)` checks a certification bundle **by itself** — never
-needs the source Outcome Library Bundle it was built from. Never throws (top-level catch-all
-`certification-evidence-bundle-malformed`).
+Bundle manifest schema **2** contains dossier schema **1**, presentation template schema **1**, the
+original per-mode sample/analysis entries and deep-validation issues. Required closed sections are:
 
-| Code | Meaning |
-|---|---|
-| `certification-evidence-bundle-manifest-missing` / `-unreadable` / `-invalid-json` / `-malformed` / `-schema-version-unsupported` | `manifest.json` doesn't exist / couldn't be read / doesn't parse / doesn't match the expected shape / has an unsupported `schemaVersion` |
-| `certification-evidence-bundle-content-hash-mismatch` | the manifest no longer hashes to its own recorded `evidenceContentHash` — some field (`game`/`configHash`/`artifactPokieVersion`/`sourceBundleManifestHash`/a mode's own metrics or `samplesHash`/the deep-validation issues) was changed |
-| `certification-evidence-bundle-content-hash-not-computable` | the manifest can't be re-canonicalized to even attempt the check above |
-| `certification-evidence-bundle-mode-field-invalid` | a manifest mode entry doesn't match the expected shape (every numeric field is checked precisely: `outcomeCount`/`totalWeight`/a sample's own `weight` must be a positive safe integer, `stake` a positive finite number, `sampleIndex` a non-negative safe integer, `analysis`/`game`/`deepValidation` each checked field-by-field) — every shape guard is *closed*: an object carrying any field beyond the ones its own schema defines (`details` on a `ValidationIssue` is the one deliberate exception) is rejected exactly like one missing a required field |
-| `certification-evidence-bundle-mode-name-invalid` / `-duplicate-mode-name` / `-mode-name-case-collision` | a mode name doesn't match `[A-Za-z0-9_-]+`, is used more than once, or two mode names differ only in case |
-| `certification-evidence-bundle-mode-filename-mismatch` | a mode's `samplesFile` isn't exactly `samples_<modeName>.jsonl` |
-| `certification-evidence-bundle-path-unsafe` | a mode's `samplesFile` is absolute, contains `..`, or otherwise resolves outside `certDir` |
-| `certification-evidence-bundle-manifest-files-invalid` / `-duplicate` / `-entry-unsafe` / `-missing-entry` / `-unexpected-entry` | `manifest.json`'s `files` isn't a non-empty array of unique, safe filenames that exactly match `"manifest.json"` plus every current mode's own `samplesFile` |
-| `certification-evidence-bundle-samples-file-missing` | a mode's samples file is absent |
-| `certification-evidence-bundle-samples-hash-mismatch` | a mode's samples file content doesn't hash to its own recorded `samplesHash` |
-| `certification-evidence-bundle-sample-count-mismatch` | a mode's samples file has a different number of lines than its own recorded `sampleCount` |
-| `certification-evidence-bundle-sample-line-invalid-json` / `-line-malformed` | a sample line isn't valid JSON at all, vs. parses but isn't a `CertificationEvidenceSampleRecord` |
-| `certification-evidence-bundle-sample-index-mismatch` / `-mode-name-mismatch` / `-seed-mismatch` | a sample record's own `sampleIndex`/`modeName`/`seed` disagrees with its position or its mode's own recorded values |
-| `certification-evidence-bundle-sample-record-not-json-safe` | a sample's own `{outcomeId, weight, artifact}` can't be re-canonicalized (used to recompute its `recordHash`) |
-| `certification-evidence-bundle-sample-record-hash-mismatch` | a sample's own `{outcomeId, weight, artifact}` doesn't hash to its own recorded `recordHash` (see `computeCertificationSampleRecordHash`) |
-| `certification-evidence-bundle-sample-artifact-not-json-safe` | a sample's embedded artifact can't be re-canonicalized (used to recompute its hash) |
-| `certification-evidence-bundle-sample-artifact-hash-mismatch` | a sample's embedded artifact doesn't hash to its own recorded `artifactHash` |
-| `certification-evidence-bundle-sample-artifact-invalid` | a sample's embedded artifact fails `RoundArtifactValidator` — never a second definition of "valid" |
+| Section | Contents and boundaries |
+| --- | --- |
+| identity | Actual model/config hash, raw source-tree identity, source manifest and hash, runtime version, revision labels |
+| rules | Authoritative authored/effective symbols, paytable, ordered/weighted reels, bets, modes, win model, mechanics, geometry, field authority, diagnostics and advanced validation |
+| statistics | Exact retained-library distributions, generator strategy/coverage, canonical sampled reports, CI/convergence/features, seeds, workers/strategy, populations, stop reasons and explicit unavailable evidence |
+| validation | Deep source results at build, declared-model assumptions and executable fidelity; verification is shallow plus independently checked samples |
+| reproduction | Native weighted sample selection and separately identified executable audit captures/commands, with partial-capture boundaries |
+| support | Invariant preparation-only notice, complete/partial/unavailable **model representation**, limitations and absent scoped SDK/fairness evidence |
 
-## Verification
+Attachments retain raw JSON and its raw-byte SHA-256 alongside the validated parsed value. Model hashes,
+library hashes, raw artifact hashes, revision labels and evidence content hashes have different meanings.
+The source tree acquisition rejects symlinks and is bounded to 64 MiB / 10,000 files, excluding `.git`
+and installed `node_modules`; deployed dependencies/runtime must be supplied separately. Model JSON
+acquisition uses the model reader's own budgets. Runtime reports must have canonical schema 1, the matching
+runtime/config identity, deterministic seed and worker strategy. Supplied reports are executed again
+through `ParallelSimulationRunner` and compared on mathematical/statistical fields. The runtime package
+is required for runtime-report/runtime-replay evidence. Native sampled outcome reports instead bind `libraryHash` and mode, reproduce through the existing outcome sampler, and do not invent a config hash; a Blueprint/PAR/WASM definition alone does not grant
+arbitrary execution. Unsupported codecs or missing captures remain unavailable/partial.
 
-`CertificationEvidenceBundleVerifying.verify(certDir, options)` composes the validator above (a structurally
-broken evidence bundle can't be meaningfully cross-checked against anything, so verification short-circuits on
-those codes) with a cross-check against the **live** source Outcome Library Bundle.
+Compatibility is explicit: launch dossier 1 supports POKIE **1.3.x** producer/artifact runtimes, descriptor
+and Blueprint schema 1, canonical simulation report 1, `pokie.audit-round.v1` and
+`pokie.session-runtime.v1`. Legacy sample-only manifests, legacy reports and incompatible versions must
+be regenerated. Missing/duplicate/unknown sections, malformed metric extensions, missing/extra inventory
+entries, symlinked attachments, stale hashes and rehashed model/report/replay substitutions reject.
+Hash integrity does not prove authorship or authenticity.
 
-**`options.sourceBundleDir` is required to cross-check against a live bundle at all.** A certification bundle's
-own `manifest.sourceBundleDir` is purely informational — a hand-crafted or tampered manifest could point it
-anywhere — and is **never** read or trusted here; there is deliberately no fallback to it. Without an explicit
-`sourceBundleDir`, `verify()` runs only the structural self-consistency check above, returns a
-`certification-evidence-verify-source-bundle-dir-required` diagnostic, and reads nothing beyond `certDir` itself.
+`evidenceContentHash` hashes every semantic manifest field, including dossier attachments and template semantic/raw-byte identities,
+except `generatedAt`, `sourceBundleDir` and `deepValidation.ranAt`. Those location/time fields can differ
+on rebuild. Supplied raw reports remain exact artifacts: a newly timed simulation file has a different
+raw identity even when its mathematics match. Reproduction ignores timing/command location when
+comparing simulation mathematics. Rendered files are bound by exact deterministic regeneration from
+the canonical manifest, avoiding circular output-file hashes. `result.artifactHashes` reports each
+published file's exact-byte SHA-256 separately.
 
-Never throws and never reads outside `certDir`/`sourceBundleDir`: every step (re-reading `manifest.json`, reading
-a mode's own samples file, parsing a sample line, reading the live bundle) is individually guarded, a filename
-read off manifest data is always re-checked through the same path-safety guard the validator itself uses, and a
-structurally invalid mode entry or sample line is skipped — with a diagnostic — rather than aborting the whole
-verification.
+## Metric and template semantics
 
-| Code | Meaning |
-|---|---|
-| `certification-evidence-verify-source-bundle-dir-required` | no `sourceBundleDir` was given — the manifest's own recorded one is never used as a fallback; nothing outside `certDir` was read |
-| `certification-evidence-verify-manifest-unreadable` | `manifest.json` could no longer be re-read/re-parsed to the expected shape (a defensive re-check; the validator pass above normally catches this first) |
-| `certification-evidence-verify-source-bundle-unreadable` | the source bundle's own `manifest.json` couldn't be read at `sourceBundleDir` |
-| `outcome-library-bundle-*` | any issue the *source* bundle's own (shallow) `OutcomeLibraryBundleValidating` reports against its current on-disk files, forwarded as-is |
-| `certification-evidence-verify-source-bundle-manifest-changed` | the source bundle's own `manifest.json` no longer hashes to what this evidence bundle recorded at build time |
-| `certification-evidence-verify-manifest-provenance-mismatch` | this evidence bundle's own `game`/`configHash`/`artifactPokieVersion` no longer matches the source bundle's own manifest |
-| `certification-evidence-verify-source-mode-missing` | a certified mode is no longer present in the source bundle's own manifest |
-| `certification-evidence-verify-manifest-mode-mismatch` | a mode's `libraryId`/`betMode`/`stake`/`libraryHash` no longer matches the source bundle's own manifest entry |
-| `certification-evidence-verify-metrics-mismatch` | a mode's `outcomeCount`/`totalWeight`/`analysis` no longer matches the source bundle's own manifest entry |
-| `certification-evidence-verify-path-unsafe` | a mode's `samplesFile` is not a safe filename — its sample cross-check is skipped entirely |
-| `certification-evidence-verify-samples-file-unreadable` / `certification-evidence-bundle-sample-line-invalid-json` / `certification-evidence-bundle-sample-line-malformed` | a mode's samples file (or one specific line of it) couldn't be read/parsed/matched to the expected shape during the live cross-check — that file/line is skipped, the rest of the mode is still checked |
-| `certification-evidence-bundle-mode-field-invalid` | the freshly re-read manifest has a mode entry that no longer matches the expected shape — that mode's cross-check is skipped entirely |
-| `certification-evidence-verify-source-mode-index-unreadable` | a mode's own index couldn't be read from the live bundle |
-| `certification-evidence-verify-sample-outcome-missing` | a sampled outcome id is no longer present in the live bundle's own index |
-| `certification-evidence-verify-sample-record-hash-mismatch` | a sampled outcome's own `recordHash` no longer matches the **live** bundle's own index entry for that id — a cheap, index-only check (see `computeCertificationSampleRecordHash`), independent of any byte-range read |
-| `certification-evidence-verify-source-bundle-outcome-invariant` | redrawing a position against the live bundle itself failed (the live bundle's own index/outcomes file have drifted out of sync at that specific draw — see `OutcomeLibraryBundleInvariantError`) |
-| `certification-evidence-verify-sample-sequence-mismatch` | a mode's own recorded seed, redrawn from scratch against the live bundle via `OutcomeLibraryBundleReading.drawOutcome`, selects a **different** outcome id at some position than this evidence bundle recorded there |
+Formats are `json`, `console`, `markdown`, `html` and an actual locally generated `pdf`. YAML remains
+**unimplemented, optional and non-mandatory**. No hosted renderer, browser process, global font or
+private service is required. JSON retains canonical evidence; human formats share the same table
+projection. Report tables retain separate modes and denominators. Exact distributions describe supplied
+library weights; bounded or missing generator provenance does not prove complete model coverage.
+RTP/payout multipliers are ratios, probabilities fractions, deviations ratio × 100 percentage points,
+monetary amounts currency units, variance squared ratio units and exact maximum win currency units.
+Logical-round and accepted-subround populations are distinct. Missing CI/convergence is unavailable,
+never zero. Formatting preserves fractional stakes and tiny nonzero probabilities with round-trip
+number/scientific notation. There is no invented blended all-mode RTP.
 
-### Two independent sample checks, not one
+The public [template asset](../templates/certification-dossier.v1.json) documents the complete template
+language: a JSON object with exactly `schemaVersion`, nonempty `title`, `introduction` and a permutation
+of **all six** mandatory `sections`. Customization changes title (up to 200 characters), introduction (up to 4000 characters) and section order only;
+it cannot remove identities, semantics, tables or support disclosures. Unknown fields, missing sections,
+duplicate keys, incompatible versions and invalid JSON fail. There is no executable interpolation,
+external stylesheet, image include, resource path or network fetch. Resource/include requests are
+rejected as unknown fields. HTML and Markdown escape authored text.
 
-A per-id existence/hash check alone can never catch a sample record *substituted* with a different, individually
-valid, still-existing outcome id — the substituted id is perfectly genuine and untampered, just not the one that
-position's own seed would actually have drawn. Verification therefore checks each mode's samples two ways:
+PDF 1.4 uses selectable standard Courier text, wrapped two-column evidence tables, page numbers,
+repeated section/column context and explicit pagination. Non-ASCII characters use **lossless
+`[U+XXXX]` notation** because the self-contained standard font has no universal Unicode glyph coverage;
+JSON/HTML retain Unicode text. PDF is intended for printable assessment evidence, not branded artwork.
+Independent visual/PDF-reader review is controller-owned and remains separate from source tests.
 
-- **recordHash cross-check** (cheap, index-only): the mode's own live index is read once, and each sample's own
-  `recordHash` is compared directly against the matching live index entry's own `recordHash` — no byte-range read
-  needed, since an index entry's own `recordHash` already reflects its current on-disk content.
-- **Sequence reproduction**: one `SeededWeightedOutcomeRandomSource`, seeded with the mode's own recorded
-  `sampleSeed`, redraws `sampleCount` outcomes from scratch against the **live** bundle via the same
-  `OutcomeLibraryBundleReading.drawOutcome` the original sample was drawn with, and the outcome id selected at
-  each position is compared against what this evidence bundle actually recorded there.
+## Publication, cancellation and Studio
 
-A tampered record's *content* (weight/artifact) is caught by the first; a record's *identity at that position*
-being wrong — even if the substituted content is completely real and unmodified elsewhere in the same
-library — is caught only by the second.
+Destinations must be new or physically empty. Existing evidence is never replaceable merely because
+`generatedBy` says POKIE. Source/output overlap and symlink aliases reject. All files render and validate
+in owned staging first. New directories publish by no-clobber namespace installation; a caller-owned
+empty directory keeps its inode and receives owned no-clobber file links with `manifest.json` last as
+the commit marker. Readers must require that manifest. A competing entry causes rollback of only this
+operation's unchanged files, preserving the foreign entry and caller-owned directory. Authored models,
+packages, workbooks, source bundles, reports, replays and templates are not rewritten.
 
-## CLI usage
+Cancellation propagates through model acquisition, sampling, simulation, rendering and commit. Runtime
+leases and owned staging are drained before terminal status. Cleanup errors name the retained owned
+path and are actionable failures, not confirmed-cleanup messages. Source drift is rechecked after
+rendering, before commit. CLI build handles SIGINT; Studio exposes progress/cancellation through its
+existing durable jobs, with captured authorities/template/output request identity and artifact hashes.
+Exact active retries reattach; conflicting requests for the same output reject. Restart requires an
+honest rebuild. Published results remain preparation-only.
 
-```
-pokie certification build <bundleDir> <config.json> [--out <dir>]
-pokie certification verify <certDir> --source <bundleDir>
-```
+Studio's Certification tab configures model/report/replay/revision/template paths, persists them,
+invalidates stale inspection/export on edits, shows model support, and downloads all dossier formats.
+The bounded download route validates the retained completed job, source/evidence/template identities,
+selected authorities and safe file inventory before returning text or PDF bytes. Changed inputs or
+failed builds produce no downloadable successful dossier. Simulation report downloads keep their
+existing JSON/Markdown/HTML contracts.
 
-`--source <bundleDir>` is required for `verify` — the CLI, like the programmatic API, never falls back to the
-manifest's own recorded `sourceBundleDir`.
+SDK/fairness evidence is currently explicitly **unavailable** in this dossier. No profile is inferred
+from a bundle or game name. Existing [SDK diagnostics](external-adapter-sdk.md) establish local target
+compatibility, never provider acceptance; existing [HMAC fairness proofs](provably-fair.md) establish
+only their versioned deterministic outcome-selection checks, never precommit timing or general game
+fairness. These separate contracts must not be presented as certification authority.
 
-See [CLI](cli.md#pokie-certification-build-bundledir-configjson) for full option details.
+### Studio destinations and cancellation
 
-## Programmatic usage
+Open the runtime package in Studio and choose **Certification**. Keep that package open:
+select its generated outcome-library directory (for example `outcomelibrary`) as the source,
+select `modelSource: "."`, and choose an explicit absolute, new or empty output directory
+outside that package, for example `/work/evidence/game-dossier`. Certification remains available
+when a native outcome library is opened directly, but that directory is not an executable model:
+omit the model for visibly unavailable model evidence, or reopen its original package for model-bound
+rules. Studio never infers a parent package or substitutes one for the selected model.
+Relative outputs remain project-contained. Absolute output selections reject symbolic links in
+existing ancestors; all destinations still pass the builder's physical source/output overlap and
+ownership checks. Build, retained request identity, retry/recovery and download revalidation resolve
+the same destination. Inputs remain project-local and are never copied to enable this workflow.
 
-```ts
-import {CertificationEvidenceBundleBuilder, CertificationEvidenceBundleValidator, CertificationEvidenceBundleVerifier} from "@fromstan/pokie";
-
-const builder = new CertificationEvidenceBundleBuilder(pokieVersion);
-const result = await builder.buildFromBundle(
-    "./bundle",
-    [{modeName: "base", seed: "cert-2026-07-15-base", sampleCount: 200}],
-    "./certification",
-);
-console.log(result.manifest?.evidenceContentHash); // stable across a rebuild at a different time/path
-
-const selfConsistent = await new CertificationEvidenceBundleValidator().validate("./certification");
-// sourceBundleDir must always be given explicitly — manifest.sourceBundleDir is informational only and is
-// never used as a fallback.
-const stillMatchesSourceBundle = await new CertificationEvidenceBundleVerifier().verify("./certification", {sourceBundleDir: "./bundle"});
-```
+Deep validation, regenerated dossier validation and native sample verification accept cancellation.
+Verification returns an error diagnostic after cancellation and starts no later phase. Studio aborts
+and drains download reproduction on disconnect, project close/change and shutdown. Invalid authority
+fingerprints are retained as failed certification jobs with correction/rebuild guidance and no downloads.
+The shared human-readable rules projection retains every authored/effective field, including paylines,
+wild/scatter roles, dimensions and reel-generation inputs. `report --template` is dossier-only, including
+when the input resolves to an outcome library or Stake adapter.

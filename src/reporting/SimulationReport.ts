@@ -18,10 +18,14 @@ export type SimulationReportReproducibility = {
     // for backward compatibility with older SimulationReport JSON that predates --workers.
     workerSeedStrategy?: string;
     configHash?: string;
+    /** Outcome-library identity; never a runtime model/config hash. */
+    libraryHash?: string;
     pokieVersion?: string;
 };
 
 export type SimulationReport = {
+    /** Version of the canonical report contract; absent only on legacy files. */
+    schemaVersion?: 1;
     diagnostics?: import("./describeSimulationDiagnostics.js").SimulationDiagnostics;
     analytics?: import("../simulation/FeatureAnalytics.js").FeatureAnalytics;
     logicalRounds?: import("../simulation/LogicalRoundStatistics.js").LogicalRoundStatistics;
