@@ -57,11 +57,12 @@ describe("CertificationEvidenceBundleValidator", () => {
         expect(await validator.validate(certDir)).toEqual(expect.arrayContaining([expect.objectContaining({code: "certification-dossier-invalid", severity: "error"})]));
     });
 
-    it.each(["dossier", "runtime", "template", "legacy"])("rejects incompatible %s versions", async kind => {
+    it.each(["dossier", "runtime", "template", "source", "legacy"])("rejects incompatible %s versions", async kind => {
         const manifest = readManifest(certDir);
         if (kind === "dossier") Reflect.set(manifest.dossier, "schemaVersion", 2);
         if (kind === "runtime") Reflect.set(manifest.dossier.identity, "runtimeVersion", "pokie.session-runtime.v99");
         if (kind === "template") Reflect.set(manifest.presentation.template, "schemaVersion", 2);
+        if (kind === "source") Reflect.set(manifest.dossier.identity.sourceBundleManifest, "schemaVersion", 2);
         if (kind === "legacy") Reflect.set(manifest, "schemaVersion", 1);
         writeManifest(certDir, {...manifest, evidenceContentHash: computeCertificationEvidenceContentHash(manifest)});
         expect((await validator.validate(certDir)).some(issue => issue.severity === "error")).toBe(true);

@@ -27,6 +27,7 @@ export function validateCertificationDossier(value: unknown, manifest: Certifica
     const d = value as unknown as CertificationDossier;
     if (![manifest.pokieVersion, manifest.artifactPokieVersion].every(version => (/^1\.3\.\d+(?:[-+][A-Za-z0-9.-]+)?$/).test(version))) throw new Error("Unsupported dossier producer/artifact runtime; launch dossier v1 supports POKIE 1.3.x only.");
     const source = d.identity.sourceBundleManifest;
+    if (source.schemaVersion !== 1) throw new Error("Unsupported retained source-bundle manifest version; expected 1.");
     if (source.configHash !== manifest.configHash || source.artifactPokieVersion !== manifest.artifactPokieVersion || dossierHash(source.game) !== dossierHash(manifest.game)) throw new Error("Contradictory retained source provenance.");
     for (const mode of manifest.modes) {
         const original = source.modes.find(entry => entry.modeName === mode.modeName);

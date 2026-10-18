@@ -78,7 +78,7 @@ export class StudioCertificationService {
         if (manifest.evidenceContentHash !== identity || !manifest.files.includes(file)) throw new Error("Dossier identity/file is stale or unknown.");
         const safe = resolveSafeCertificationEvidenceFilePath(out.resolvedPath, file);
         if (!safe) throw new Error("Unsafe dossier download path.");
-        const mime = ({".pdf": "application/pdf", ".html": "text/html; charset=utf-8", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8"} as Record<string, string>)[path.extname(file)] ?? "application/json; charset=utf-8";
+        const mime = ({".jsonl": "application/x-ndjson; charset=utf-8", ".pdf": "application/pdf", ".html": "text/html; charset=utf-8", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8"} as Record<string, string>)[path.extname(file)] ?? "application/json; charset=utf-8";
         return {bytes: fs.readFileSync(safe), mime};
     }
 
