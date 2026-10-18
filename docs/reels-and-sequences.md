@@ -295,7 +295,7 @@ practice:
 
 ## Generated, visible and evaluated coordinates
 
-Explicit generated matrices, visible viewports and evaluation windows: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).
+Explicit generated matrices, visible viewports and evaluation windows: see [the coordinate contract and adapter support matrix](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-03.md).
 
 ## Weighted whole-sequence reels
 

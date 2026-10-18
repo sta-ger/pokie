@@ -10,7 +10,7 @@ npm install /absolute/path/to/fromstan-pokie.tgz
 ./node_modules/.bin/pokie --help
 ```
 
-The package name is `@fromstan/pokie`, while the installed executable is `pokie`. The examples below assume that executable is on PATH (for example inside an npm script); otherwise use `./node_modules/.bin/pokie`. Once a public release exists, `npm install @fromstan/pokie` is the scoped installation form. The current 1.3.0 field is candidate metadata.
+The package name is `@fromstan/pokie`, while the installed executable is `pokie`. The examples below assume that executable is on PATH (for example inside an npm script); otherwise use `./node_modules/.bin/pokie`. Once a public release exists, `npm install @fromstan/pokie` is the scoped installation form. The current 2.0.0 field is candidate metadata.
 
 ## First journey
 

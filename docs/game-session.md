@@ -477,7 +477,7 @@ The controllable independent provider for controller verification is
 pre/post-action disconnects, missing acknowledgement, inspection overrides and debit/payout
 counters exercise the lifecycle without substituting the local reference ledger. Candidate
 implementation checks and pending independent evidence are recorded in
-[V2C-05](v2-completion/V2C-05.md).
+[V2C-05](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-05.md).
 
 ### Logical entry and continuation
 

@@ -15,7 +15,7 @@ Feature analytics remain partial: aggregate/report statistics, mode/feature brea
 analysis exist, but do not constitute complete feature analytics. Reports support JSON, Markdown, and HTML;
 PAR workbook exchange is a separate model format. YAML authoring and PDF report output are absent from the
 reviewed capabilities. Report and Outcome Library/Stake comparisons are partial coverage for math-definition
-diff, not arbitrary mathematical model comparison. See the [status register](audit-corrections/README.md).
+diff, not arbitrary mathematical model comparison. See the [status register](https://github.com/fromstan/pokie/blob/develop/docs/audit-corrections/README.md).
 
 `Simulation` drives any `GameSessionHandling` (e.g. `VideoSlotSession`) through repeated rounds and aggregates
 statistics — the tool for RTP/volatility/hit-frequency work. See
@@ -619,7 +619,7 @@ Reports without sequence fields remain comparable. Cancelled/failed simulation j
 keep their existing partial-result/completion contract; editor previews are not
 observed simulation results.
 
-Authored Hold&Win/jackpot/mode compositions use the existing aggregate/parallel runners and report renderers. Actual charged stake remains the denominator; zero-stake continuation payouts retain feature attribution. Jackpot statistics are run-local deltas, including reused/restored sessions. Each simulation worker owns independent session-local accumulating pools; reports do not represent one shared progressive. Fixed pools count contributions without growing their balance. A fixed mode selector intentionally repeats purchases when available, unlike Play's fresh-action purchase controls. Incomplete feature tails remain incomplete observations. See [the catalogue](v2-completion/V2C-12.md).
+Authored Hold&Win/jackpot/mode compositions use the existing aggregate/parallel runners and report renderers. Actual charged stake remains the denominator; zero-stake continuation payouts retain feature attribution. Jackpot statistics are run-local deltas, including reused/restored sessions. Each simulation worker owns independent session-local accumulating pools; reports do not represent one shared progressive. Fixed pools count contributions without growing their balance. A fixed mode selector intentionally repeats purchases when available, unlike Play's fresh-action purchase controls. Incomplete feature tails remain incomplete observations. See [the catalogue](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-12.md).
 
 Authored modifier reports expose `modifiers.steps`, `ruleApplications`,
 `stickySteps` (including the expiry application) and `multipliedComponents`.

@@ -1,3 +1,4 @@
+import {POKIE_VERSION} from "../PokieVersion.js";
 import {validateRepositoryCommand} from "../runtime/RepositoryCommand.js";
 import crypto from "crypto";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
@@ -70,7 +71,7 @@ export function captureAuditDelivery(game: PokieGame, session: GameSessionHandli
     let artifact: AuditDelivery["artifact"];
     if (!result.deliveryOnly && typeof slot.getWinEvaluationResult === "function" && typeof slot.getSymbolsCombination === "function") {
         const built = buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {roundId: result.logicalRound?.id ?? command.roundId ?? disposition.requestId ?? disposition.sessionId,
-            stake: result.stake, betMode: result.mode, provenance: {game: game.getManifest(), pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}});
+            stake: result.stake, betMode: result.mode, provenance: {game: game.getManifest(), pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}});
         artifact = new PokieJsonRoundArtifactProjector().project(result.logicalRound ? buildLogicalRoundArtifact(result.logicalRound, built) : built);
     }
     return dto({execution, command, before, after: captureAuditBoundary(session), result, ...(artifact ? {artifact} : {}), disposition});

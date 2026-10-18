@@ -1733,12 +1733,12 @@ The JSON report shape:
 }
 ```
 
-`reproducibility`, `warnings`, and `recommendations` were added in v1.3 as purely additive, **optional** fields —
+`reproducibility`, `warnings`, and `recommendations` are **optional** fields —
 a `sim.json` produced by an older `pokie` (or handwritten JSON without them) still validates and renders fine with
 [`pokie report`](#pokie-report-simulationreportjson), it just won't have these sections. `pokie sim` itself always
 populates all three on every report it produces.
 
-`breakdown` is a later v1.3 addition, also purely additive and optional: a feature-level RTP breakdown split by
+`breakdown` is optional: a feature-level RTP breakdown split by
 category. `components` is a plain `Record<string, ...>` — there's no fixed category list, and its key order is
 stable (`"base"` first when present, then alphabetically) regardless of which round was categorized first during
 simulation. Each round is categorized by a 3-step fallback chain, in this order:
@@ -1781,7 +1781,7 @@ false positives are worse than missing a real signal here:
   `SimulationReportBuilder.MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING` (20) rounds of its own — an all-zero streak
   shorter than that is common even for an intentional, working feature.
 
-### New metrics on every report (v1.3): `averageBet`/`averagePayout`/`volatility`/`payoutHistogram`/`maxWinFrequency`
+### Metrics on every report: `averageBet`/`averagePayout`/`volatility`/`payoutHistogram`/`maxWinFrequency`
 
 Also purely additive/optional, populated on every report `pokie sim` produces (not just bet-mode-locked ones) —
 surfaced straight from the same `SimulationStatistics` the run already computed, never recomputed:
@@ -1941,7 +1941,7 @@ requested/actual rounds, and a ready-to-run `pokie sim` command. When `warnings`
 matching **Warnings**/**Recommendations** sections list them. When the report has a `breakdown` block, a
 **Breakdown** section lists rounds/total bet/total win/RTP/contribution/hit frequency/max win per category (e.g.
 `base`, `freeGames`) as a table. All sections are omitted when the report doesn't have the corresponding field
-(e.g. an older `sim.json` from before v1.3, or a game whose session doesn't support round categorization) or the
+(e.g. an older `sim.json` without these fields, or a game whose session doesn't support round categorization) or the
 array is empty — a report can always be rendered, whether it has these fields or not.
 
 The reusable rendering API behind the command lives in `src/reporting`:
@@ -2569,7 +2569,7 @@ lightweight restore step:
 
 **POKIE is not an RGS.** There is no compliance-grade audit trail, no operator/regulator reporting, and no wallet
 custody guarantee anywhere in this framework — see the top of this section. What `pokie serve` *does* provide,
-starting in v1.3, is an explicit split between what a response sends by default (public, client-safe data) and what
+is an explicit split between what a response sends by default (public, client-safe data) and what
 it can optionally include for local development/debugging (internal data — never sent unless a request asks for
 it).
 
@@ -2950,7 +2950,7 @@ Independent repositories/wallets remain on the compensation path, even when stor
 same database. The explicit external outbox composition provides reconciliation, not external-wallet ACID.
 
 **`SpinReconciliationServicing`** (`reconcileOne(sessionId, requestId)`/`reconcileAll()`) is the shipped,
-v1.3-compatible palliative for exactly the "process crash" gap above — not a substitute for real cross-store
+bounded recovery mechanism for exactly the "process crash" gap above — not a substitute for real cross-store
 atomicity, but real recovery logic, not a no-op. `reconcileOne` is called inline by
 `SpinCommandHandler.handleSerialized()` whenever a retried `requestId`'s own idempotency result is missing but
 its operation record isn't terminal; `reconcileAll()` sweeps every currently-incomplete operation record (e.g. at
@@ -3760,7 +3760,7 @@ bespoke route on `StudioServer`, not through that seam — kept only as a docume
 a gap in coverage.
 
 Property-based and golden-output testing are implemented, as recorded in the
-[historical v1.3 closeout](v1.3-closeout-report.md#below-priority-infrastructure-gaps--resolved), alongside
+[storage and recovery contracts](game-session.md#durable-external-wallet-reconciliation), alongside
 [performance benchmarks](testing.md#benchmarks). The closeout explicitly defers the docs site/playground and
 true cross-store atomicity to v2. The optional local transactional reference adapter is now documented
 below; independent external stores remain outside its guarantee. Compensation and reconciliation
@@ -3768,7 +3768,7 @@ do not provide a cross-store transaction.
 A named expanding/sticky-wilds decorator and organization/npm migration remain future directions; this
 summary assigns no new release commitment. [Math optimization](optimization.md) supports exact finite and
 bounded seeded same-type tuning, with explicit source authority, held-out assessment and candidate-only saves
-on nonattainment; arbitrary mechanics and release scope remain unconfirmed. See the [reviewed status register](audit-corrections/README.md) for partial and
+on nonattainment; arbitrary mechanics and release scope remain unconfirmed. See the [reviewed status register](https://github.com/fromstan/pokie/blob/develop/docs/audit-corrections/README.md) for partial and
 not-found directions, including authoring, analytics, certification, diff, reachability, overscan, and formats.
 
 ## Headless runtime contract
@@ -3996,7 +3996,7 @@ existing report or input. Write failures leave no partial report.
 
 Definition `diff` includes advanced validation changes. Its existing opt-in
 `--ci` policy treats unresolved advanced analysis as exit 2, rather than accepting
-an unchanged unknown source. [V2C-19](v2-completion/V2C-19.md) lists assumptions,
+an unchanged unknown source. [V2C-19](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-19.md) lists assumptions,
 adapter support and the separate structural save/build gates.
 
 See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.

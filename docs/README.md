@@ -4,7 +4,7 @@
 
 The navigable/searchable [documentation site target](https://pokie.fromstan.com/docs/) is prepared
 in this repository; hosting is separately controlled. Build locally with `npm run site:build`
-and preview with `npm run site:preview`. See [static handoff instructions](../site/README.md).
+and preview with `npm run site:preview`. See [static handoff instructions](https://github.com/fromstan/pokie/blob/develop/site/README.md).
 The source guides below remain available independently of deployment.
 
 **POKIE** is a server-side video slot game logic framework for JavaScript/TypeScript. This folder is the API
@@ -141,9 +141,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     Projects panel on Home; and, once a project is open, Build/Export — outcome libraries, Stake Engine export,
     and remote deployment via the External Adapter SDK, all as one surface — plus PAR Sheet, Certification,
     Provably Fair, Play, Replay, Simulation) — see
-    [`studio-frontend.md`](studio-frontend.md) for its own React + Mantine frontend stack and dev workflow, and
-    [`studio-phase2-inventory.md`](studio-phase2-inventory.md) for the versioned, executable-fixture-backed
-    route/UI/contract baseline frozen ahead of Phase 2 redesign work.
+    [`studio-frontend.md`](studio-frontend.md) for its own React + Mantine frontend stack and dev workflow.
 19. **[Reel Strip Generation](reel-strip-generation.md)** — `ReelStripGenerator`, generating a reel strip's fixed
     symbol sequence under constraints (exact counts, minimum/maximum circular distance, max run length, forbidden/
     required adjacency and exact-sequence patterns — directed/reversed matching, wrap-around — locked positions)
@@ -218,16 +216,12 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     simulate, and replay; legacy sidecar-only components remain inspection-only. POKIE has no arbitrary
     package-to-WASM compiler or generic WASM server backend.
 
-WASM's current portable execution is hybrid: packed reel stops come from the module using host randomness;
-a separate JavaScript evaluator calculates line wins, wild substitution, scatter payouts, and `availableBets`
-selection. Ways, clusters, free games, and nonempty bet modes are rejected; ABI 1.0 has a 30-bit **total** reel-stop
-budget. Blueprint is canonical and PAR preserves that model; arbitrary TypeScript/Node package conversion and
-full-mechanics parity are not provided. See [the maintained boundary](wasm-compatibility-boundary.md).
-
-The [P9 finding/status register](audit-corrections/README.md) separates implemented primitives, partial
-coverage, not-found directions, historical v2 deferrals, and unconfirmed release scope. In particular,
-Math targeting now has [finite exact and bounded seeded same-type workflows](optimization.md),
-with explicit adapter/population limits and held-out assessment; no public release commitment is inferred.
+The WASM target uses the shared `pokie.math.v2` evaluator with ABI 3.0.0 and compact state v3/v4.
+Lines, ways, clusters and supported bounded feature compositions retain fractional stakes and authored paytables.
+See the [maintained execution boundary](wasm-compatibility-boundary.md) and
+[support register](v2-completion/launch-mechanics-support.md) for target/composition limits.
+Math targeting has [finite exact and bounded seeded workflows](optimization.md), with explicit
+adapter/population limits and held-out assessment. Independent acceptance does not imply public release.
 
 ## Core concepts at a glance
 
@@ -279,49 +273,20 @@ Every class implements one or more of `*Describing`/`*Determining` (read), `*Set
 
 ## Contributing to POKIE itself
 
-The rest of this folder is the API reference for using the published `pokie` package. If you're working on POKIE's
-own source instead, see [`testing.md`](testing.md) for how the test suite is organized (fast/integration/packaging/
-release lanes) and how to run it, [`v1.3-closeout-report.md`](v1.3-closeout-report.md) for the resolved v1.3
-gap-audit priority list and what's explicitly deferred to v2, and [`pokie-phase3-inventory.md`](pokie-phase3-inventory.md)
-for the versioned, executable-fixture-backed baseline of CLI targets, the generated-package seam, Studio's
-home/project routes, and the External Adapter SDK/Stake Engine adapter boundary, frozen ahead of Phase 3
-migration work, [`pokie-phase3-final-verification-report.md`](pokie-phase3-final-verification-report.md)
-for that migration sequence's own closing acceptance check, and
-[`pokie-phase4-inventory.md`](pokie-phase4-inventory.md) for the CLI-robustness (paths with spaces, non-TTY
-invocation), materialization, Replay, player/browser-acceptance, and `pokie-examples` reusable-vs-example-specific
-baseline frozen ahead of Phase 4 work, including an explicit account of exactly which Phase 3 decisions are
-retained rather than reopened, and [`pokie-phase5-inventory.md`](pokie-phase5-inventory.md) for the synced-SHA,
-fresh-build, real-CLI/Studio-HTTP baseline frozen ahead of Phase 5 work — including a stale public-API barrel, a
-`pokie build random` smoke-simulation regression, and a Blueprint Design build-destination default, all found by
-actually running the current tree rather than trusting its own tests/comments, plus
-[`phase5-evidence/p5-polish-19/README.md`](phase5-evidence/p5-polish-19/README.md) for later, end-to-end
-real-user-journey evidence (Blueprint create/edit/play/find/replay/sim/build, a programmer's init/npm start/npm
-build/sim/build, Outcome Library and Stake Engine imports, direct Blueprint Overview, and player-rendering parity
-across examples/package/Studio), and [`phase5-audit/README.md`](phase5-audit/README.md) for an independent,
-new-user audit across five personas (slot mathematician/designer, backend developer, game programmer,
-QA/debugger, integration engineer) that found and fixed real gaps in `pokie build <config.json> --target parWorkbook`/
-`pokie import <input.xlsx>`'s own error messaging and `pokie build <config.json> --target stakeAdapter`'s file-load error
-handling, on top of verifying and completing three
-real fixes (a `pokie reel generate --materialize` PAR-export path, a corrupt-PAR-file error message, and a
-weighted-outcome-library heap-usage safety net) already in progress when this round began, and
-[`phase5-post-audit/README.md`](phase5-post-audit/README.md) for the first step of a distinct, later campaign
-that begins only once Phase 5 is already published — a frozen baseline plus a source-backed audit matrix
-re-verifying five named Phase 5 concerns against current `develop` (two now fixed, one still open as a P2, one
-already closed with real browser evidence, one an intentional documented v2 limitation) and a bounded
-architectural marker sweep, without reopening or changing any Phase 5 product behavior.
+These maintained guides describe the unpublished `@fromstan/pokie` 2.0 candidate.
+See [2.0 release notes](../CHANGELOG.md), [release preparation](v2-completion/release-preparation.md),
+[workflow support](v2-completion/launch-mechanics-support.md) and [testing](testing.md).
+Historical engineering receipts remain in source control and are excluded from the npm documentation inventory.
 
 The shared [headless command workflow](game-session.md#headless-commands-and-repository-ownership) and [repository recovery support matrix](serialization.md#executable-repository-records) describe domain execution, identity and extension ports.
 
 Durable public round support: [reference SQLite and independent external-wallet
-reconciliation](game-session.md#durable-external-wallet-reconciliation), with candidate
-implementation evidence and pending independent verification in [V2C-05](v2-completion/V2C-05.md).
+reconciliation](game-session.md#durable-external-wallet-reconciliation), with independent candidate acceptance remaining controller-owned.
 
 Recorded executable package audit replay is documented in
 [Round artifacts](round-artifacts.md#recorded-executable-audit-replay),
 [Serialization](serialization.md#executable-audit-state-and-public-display) and
-[CLI](cli.md#replay-recorded-package-evidence). The
-[V2C-07 candidate receipt](v2-completion/V2C-07.md) records implementer checks and
-identifies controller-owned independent verification still pending.
+[CLI](cli.md#replay-recorded-package-evidence). Independent verification remains controller-owned.
 
 See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.
 

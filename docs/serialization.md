@@ -392,7 +392,7 @@ undeclared-codec recovery before construction or recovery writes.
 
 ## Generated, visible and evaluated coordinates
 
-Viewport presentation and required internal coordinate evidence: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).
+Viewport presentation and required internal coordinate evidence: see [the coordinate contract and adapter support matrix](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-03.md).
 
 Durable external settlement saves the full calculated continuation and detached public/debug
 result before remote debit/payout. Invalid or nonserializable capture blocks dispatch;
@@ -467,7 +467,7 @@ available at capacity. Exported recordings remain usable after the session is go
 `releaseAuditSession(session)` drops recorder references and releases/retires the direct
 runtime's retained results; drain work and export evidence before release.
 
-Built-in executable schemas include nested `hold-and-win` and `jackpot` nodes. Hold&Win snapshots retain entry denomination, unique configured locks/effects, respins, payout and the settled outcome. Jackpot snapshots retain configured accumulating balances, per-pool statistics and the settled award. Validation checks nested RNG state before restoration mutates any feature/pool. Certification excludes custom collaborators and shared mutable pools. Public round payloads/artifacts and retained results remain the output authority across restart; restoring state never credits a prior award again. File-session restart still requires compatible wallet/result/recovery ports; the transactional store persists those boundaries atomically. See [V2C-12](v2-completion/V2C-12.md) for evidence scope.
+Built-in executable schemas include nested `hold-and-win` and `jackpot` nodes. Hold&Win snapshots retain entry denomination, unique configured locks/effects, respins, payout and the settled outcome. Jackpot snapshots retain configured accumulating balances, per-pool statistics and the settled award. Validation checks nested RNG state before restoration mutates any feature/pool. Certification excludes custom collaborators and shared mutable pools. Public round payloads/artifacts and retained results remain the output authority across restart; restoring state never credits a prior award again. File-session restart still requires compatible wallet/result/recovery ports; the transactional store persists those boundaries atomically. See [V2C-12](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-12.md) for evidence scope.
 
 ### Modifier state
 

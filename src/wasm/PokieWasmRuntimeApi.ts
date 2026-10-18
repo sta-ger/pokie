@@ -1,7 +1,8 @@
+import {POKIE_VERSION} from "../PokieVersion.js";
 import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
 
 /** Version implemented by every direct portable POKIE WASM runtime entry point. */
-export const POKIE_WASM_RUNTIME_VERSION = "1.3.0";
+export const POKIE_WASM_RUNTIME_VERSION = POKIE_VERSION;
 /** The same initial session ledger used by an ordinary POKIE game session. */
 export const POKIE_WASM_DEFAULT_CREDITS = 1000;
 

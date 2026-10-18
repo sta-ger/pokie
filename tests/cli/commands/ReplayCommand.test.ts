@@ -207,7 +207,7 @@ describe("ReplayCommand generated package mode policy", () => {
     function fixture(withModes = true, weighted = false) {
         const blueprint = replayModesBlueprint(weighted);
         if (!withModes) Reflect.deleteProperty(blueprint, "betModes");
-        const built = new GamePackageGenerator("1.3.0").generate(blueprint, directory);
+        const built = new GamePackageGenerator("2.0.0").generate(blueprint, directory);
         let session: ReturnType<typeof mechanicsSession>;
         let play: jest.SpyInstance;
         const stakes: number[] = [];
@@ -266,7 +266,7 @@ describe("ReplayCommand generated package mode policy", () => {
             expect(descriptor.totalBet).toBeCloseTo(round < 5 ? 1.25 : 2.5, 12);
             expect(descriptor.totalWin).toBe(0);
             expect(descriptor.commands).toHaveLength(round);
-            expect(descriptor.artifact).toMatchObject({stake: (round - 1) % 4 === 0 ? 1.25 : 0, betMode: "buy-more"});
+            expect(descriptor.artifact).toMatchObject({stake: (round - 1) % 4 === 0 ? 1.25 : 0, betMode: "buy-more", provenance: {pokieVersion: "2.0.0"}});
             expect(descriptor.artifact?.featureEvents).toContainEqual(expect.objectContaining({type: "chargedBetMode", data: {id: "buy-more"}}));
             expect(Boolean(descriptor.artifact?.sequenceSelections?.length)).toBe(weighted);
         }
@@ -523,7 +523,7 @@ describe("ReplayCommand runtime package materialization boundary", () => {
         await workbook.xlsx.writeFile(incomplete);
         const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
         const writeFile = jest.fn();
-        const command = new ReplayCommand(loadGame, writeFile, undefined, createMaterializingRuntimePackageResolver("1.3.0", REPLAY_OPERATION));
+        const command = new ReplayCommand(loadGame, writeFile, undefined, createMaterializingRuntimePackageResolver("2.0.0", REPLAY_OPERATION));
 
         try {
             for (const workbookPath of [corrupt, incomplete]) {
@@ -710,7 +710,7 @@ describe("ReplayCommand outcome-source routing (integration, real outcome-librar
     beforeEach(async () => {
         bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-outcomesource-test-"));
         fs.rmdirSync(bundleDir);
-        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+        await new OutcomeLibraryBundleWriter("2.0.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
     });
 
     afterEach(() => {

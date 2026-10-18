@@ -9,7 +9,7 @@ mechanics or exact numerical attainment from noisy observations; release scope r
 visible rows, and resizable grids do not supply an explicit overscan model. Blueprint schema/editor mechanics
 authoring covers win models, free games, and bet modes, but remains partial relative to composable runtime
 mechanics. Blueprint symbol/reel/paytable reachability checks are limited checks, not generic mechanics/state
-reachability. See the [status register](audit-corrections/README.md).
+reachability. See the [status register](https://github.com/fromstan/pokie/blob/develop/docs/audit-corrections/README.md).
 
 A worked walkthrough of using POKIE to balance RTP, hit frequency, and volatility for a video slot's math model.
 
@@ -219,7 +219,7 @@ preserves these supported modifier contracts. Persistent sticky rules block inde
 outcome enumeration and its downstream conversions; stateless rules use the same
 session payout path during enumeration. Custom callbacks retain their custom
 capability/extraction boundary. See [serialization](serialization.md) and
-[the implementation evidence record](v2-completion/V2C-13.md).
+[the implementation evidence record](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-13.md).
 
 ## Bounded authored mechanics (V2C-14)
 
@@ -421,6 +421,6 @@ lifetime cap; cascade bound failures are explicit. Collection currency state is
 closed over reachable entry values; persistent jackpot/modifier state and
 lifetime wallet/counter overflow retain limitations. Max-win declarations are
 checked in their declared units/scope and never install an enforcement cap.
-See [the full source/mechanic boundary](v2-completion/V2C-19.md).
+See [the full source/mechanic boundary](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-19.md).
 
 See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.

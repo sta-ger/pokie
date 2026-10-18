@@ -494,7 +494,7 @@ describe("F12 seeded step artifact attribution", () => {
                 expect(descriptor.totalBet).toBeCloseTo(stakes.slice(0, round).reduce((sum, stake) => sum + stake, 0), 12);
                 expect(descriptor.totalWin).toBe(0);
                 expect(descriptor.commands).toEqual(stakes.slice(0, round).map(stake => ({kind: "spin", ...(stake > 0 ? {mode} : {})})));
-                expect(descriptor.artifact).toMatchObject({betMode: mode, stake: stakes[round - 1]});
+                expect(descriptor.artifact).toMatchObject({betMode: mode, stake: stakes[round - 1], provenance: {pokieVersion: "2.0.0"}});
                 expect(descriptor.artifact?.featureEvents).toContainEqual(expect.objectContaining({type: "chargedBetMode", data: {id: mode}}));
                 expect(Boolean(descriptor.artifact?.sequenceSelections?.length)).toBe(weighted);
             }

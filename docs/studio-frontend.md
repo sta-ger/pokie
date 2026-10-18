@@ -348,7 +348,7 @@ Play propagates repository command failure codes through the service and API. Co
 
 ## Generated, visible and evaluated coordinates
 
-Overscan in Play, replay inspectors, Game Model previews and JSON authoring: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).
+Overscan in Play, replay inspectors, Game Model previews and JSON authoring: see [the coordinate contract and adapter support matrix](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-03.md).
 
 Studio Play uses the legacy independent-port, ephemeral compensation composition. It does
 not acquire durable round identity or external-wallet guarantees from shared handler types.
@@ -394,7 +394,7 @@ fresh preview. Destination/project changes invalidate old client responses. Poll
 separate editable authoring project. Its evidence companion remains historical extraction provenance
 after ordinary edits. The original package stays unchanged.
 
-Home Design's Bets section includes free games, executable bet modes, Hold&Win and jackpot configuration. Project Game Model uses the same mechanic fieldsets under Mechanics. Edits remain drafts until the existing explicit Apply JSON / Save / Create action; validation locations, dirty drafts and stale-response protection remain shared. Symbol rename/deletion safeguards include collector effects and jackpot triggers. Play resets consumed purchase selection from each accepted server response, even when the safe default mode's value did not change. A new purchase needs another explicit action. [V2C-12](v2-completion/V2C-12.md) records the authored workflow boundaries.
+Home Design's Bets section includes free games, executable bet modes, Hold&Win and jackpot configuration. Project Game Model uses the same mechanic fieldsets under Mechanics. Edits remain drafts until the existing explicit Apply JSON / Save / Create action; validation locations, dirty drafts and stale-response protection remain shared. Symbol rename/deletion safeguards include collector effects and jackpot triggers. Play resets consumed purchase selection from each accepted server response, even when the safe default mode's value did not change. A new purchase needs another explicit action. [V2C-12](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-12.md) records the authored workflow boundaries.
 
 ### Wild and modifier authoring
 
@@ -455,7 +455,7 @@ and distinct from structural save/build gates. Source/revision/project changes,
 request cancellation and unmount invalidate old responses; retry checks the
 current source. Server shutdown aborts and drains owned analysis requests.
 Definition comparison also retains advanced validation changes and limitations.
-See [V2C-19](v2-completion/V2C-19.md).
+See [V2C-19](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-19.md).
 
 See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.
 
