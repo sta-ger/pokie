@@ -5,7 +5,7 @@ import ts from "typescript";
 import * as api from "@fromstan/pokie";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import {DiffCommand} from "../../cli/commands/DiffCommand.js";
-import {PACKAGE_EXTRACTION_TEST_TIMEOUT, writeDescriptorPackage} from "./fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, writeDescriptorPackage} from "./fixtures/PackageExtractionFixture.js";
 
 // Exact model from the retained installed-consumer-recovery-rerun/consumer/valid.json.
 // Source regressions only: native installation and production compilation remain controller-owned.
@@ -97,6 +97,7 @@ it("retains explicit policy precedence and custom/legacy unknown defaults across
 });
 
 it("shares generated defaults, explicit unknowns and malformed-policy rejection through package reads, validation and CLI diff with repaired reuse", async () => {
+    const restoreEnvironment = createPackageExtractionTestEnvironment();
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "generated-policy-"));
     const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
     const reader = new api.MathDefinitionSourceReader();
@@ -107,8 +108,20 @@ it("shares generated defaults, explicit unknowns and malformed-policy rejection 
     const blueprint = path.join(root, "valid.json");
     fs.writeFileSync(blueprint, JSON.stringify(model));
     try {
+        // These declaration-only packages never import the runtime or create sessions. Give the
+        // real loader an explicit dependency instead of its omitted-dependency fallback, which
+        // copies the entire host checkout/dependency graph on each of the twenty extractions.
+        // Executing this sentinel would fail rather than substitute a mock runtime API. The real
+        // generated renderers and current source API remain covered by the cases above.
+        const runtime = path.join(source, "node_modules", "@fromstan", "pokie");
+        fs.mkdirSync(runtime, {recursive: true});
+        fs.writeFileSync(path.join(runtime, "package.json"), JSON.stringify({name: "@fromstan/pokie", version: "0.0.0-declaration-only", main: "index.js"}));
+        fs.writeFileSync(path.join(runtime, "index.js"), 'throw new Error("Declaration analysis must not execute the package runtime");');
         for (const policy of [undefined, unknown, malformed, undefined, undefined]) {
             writeDescriptorPackage(root, {model, descriptorBody: `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model${policy === undefined ? "" : `, maxWinPolicy: ${JSON.stringify(policy)}`}};`});
+            const manifestPath = path.join(source, "package.json");
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+            fs.writeFileSync(manifestPath, JSON.stringify({...manifest, dependencies: {"@fromstan/pokie": "0.0.0-declaration-only"}}));
             const bytes = fs.readFileSync(path.join(source, "index.js"));
             const snapshot = await reader.read(source);
             const report = await sourceValidator.validate(source);
@@ -139,6 +152,6 @@ it("shares generated defaults, explicit unknowns and malformed-policy rejection 
         }
     } finally {
         log.mockRestore();
-        fs.rmSync(root, {recursive: true, force: true});
+        restoreEnvironment();
     }
 }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
