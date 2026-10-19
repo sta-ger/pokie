@@ -457,9 +457,9 @@ describe("PackageBlueprintExtraction", () => {
         const fixture = writePausedDescriptorPackage(directory);
         const controller = new AbortController();
         const snapshots = runtimeSnapshotNames(fixture.source);
-        const rmSync = fs.rmSync.bind(fs);
-        const cleanup = jest.spyOn(fs, "rmSync").mockImplementation((target, options) => {
-            rmSync(target, options);
+        const rm = fs.promises.rm.bind(fs.promises);
+        const cleanup = jest.spyOn(fs.promises, "rm").mockImplementation(async (target, options) => {
+            await rm(target, options);
             if (path.basename(String(target)).startsWith("pokie-runtime-")) throw new Error("snapshot cleanup failed");
         });
         fixture.arm();
@@ -470,6 +470,7 @@ describe("PackageBlueprintExtraction", () => {
             controller.abort();
             fixture.settle();
             await checked;
+            expect(cleanup).toHaveBeenCalledWith(expect.stringContaining("pokie-runtime-"), {recursive: true, force: true});
             expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
             expect(fs.readdirSync(directory).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
         } finally {

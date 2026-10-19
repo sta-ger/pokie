@@ -59,6 +59,9 @@ const tooling = new Set([
     "tests/cli/studio/replay/StudioReplayExecutionService.test.ts",
     "tests/packaging/helpers/selectPackedArchive.ts",
     "tests/v2/StableConsumerContracts.test.ts",
+    "tests/v2/PackageBlueprintExtraction.test.ts",
+    "tests/v2/WasmSharedMath.test.ts",
+    "tests/fixtures/wasm/verifyDeliveredSharedMath.cjs",
     "tests/v2/fixtures/normal-pack.stdout.txt",
     "scripts/p8-05-release-handoff.mjs",
 ]);

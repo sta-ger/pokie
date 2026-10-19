@@ -75,11 +75,12 @@ describe("StudioArtifactBuildService", () => {
     });
 
     async function terminal(packageService: StudioArtifactBuildService, source: string, id: string) {
-        for (let read = 0; read < 1000; read++) {
+        const deadline = performance.now() + PACKAGE_EXTRACTION_TEST_TIMEOUT;
+        while (performance.now() < deadline) {
             const view = packageService.getStatusForProject(source, id)!;
             if (["completed", "failed", "cancelled"].includes(view.status)) return view;
             await new Promise<void>(resolve => {
-                setImmediate(resolve);
+                setTimeout(resolve, 10);
             });
         }
         throw new Error("Extraction job did not settle");
@@ -491,24 +492,22 @@ describe("StudioArtifactBuildService", () => {
         expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(input);
     });
 
-    it("rolls back package extraction files and registrations when registration fails or cancels", async () => {
+    it.each([false, true])("rolls back package extraction files and registrations (cancelled: %s)", async cancelled => {
         const source = writeDescriptorPackage(workDir);
-        for (const cancelled of [false, true]) {
-            const destination = path.join(workDir, `${cancelled}.json`);
-            const controller = new AbortController();
-            const unregister = jest.fn(() => Promise.resolve());
-            const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, () => {
-                if (!cancelled) throw new Error("registration failed");
-                controller.abort();
-                return Promise.resolve();
-            }, undefined, undefined, unregister);
-            const result = await packageService.build(source, "blueprint", destination, {signal: controller.signal});
-            expect(result.status).toBe(cancelled ? "cancelled" : "error");
-            expect(unregister).toHaveBeenCalledWith(destination);
-            expect(fs.existsSync(destination)).toBe(false);
-            expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(false);
-        }
-    });
+        const destination = path.join(workDir, `${cancelled}.json`);
+        const controller = new AbortController();
+        const unregister = jest.fn(() => Promise.resolve());
+        const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, () => {
+            if (!cancelled) throw new Error("registration failed");
+            controller.abort();
+            return Promise.resolve();
+        }, undefined, undefined, unregister);
+        const result = await packageService.build(source, "blueprint", destination, {signal: controller.signal});
+        expect(result.status).toBe(cancelled ? "cancelled" : "error");
+        expect(unregister).toHaveBeenCalledWith(destination);
+        expect(fs.existsSync(destination)).toBe(false);
+        expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(false);
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it.each([false, true])("keeps registration cleanup failure observable after owned files roll back (cancelled: %s)", async cancelled => {
         const source = writeDescriptorPackage(workDir);
@@ -538,7 +537,7 @@ describe("StudioArtifactBuildService", () => {
             await lease.release();
         }
         expect(runtimeSnapshotNames(sibling)).toEqual([]);
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     describe("reviewed package extraction", () => {
         it("consumes a single project/destination authority and rejects missing, mismatched and reused handles", async () => {
@@ -559,7 +558,7 @@ describe("StudioArtifactBuildService", () => {
             expect(completed.result?.plan.packageExtraction).toEqual(preview.plan.packageExtraction);
             const evidence = JSON.parse(fs.readFileSync(`${destination}.conversion-evidence.json`, "utf8"));
             expect(evidence.extraction).toEqual(preview.plan.packageExtraction);
-        });
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
         it.each(["bytes", "descriptor", "companion", "registration"])("preserves sources and destinations after %s changes between preview and save", async change => {
             const control = path.join(workDir, "descriptor-kind.txt");
             fs.writeFileSync(control, "custom");
@@ -591,7 +590,7 @@ describe("StudioArtifactBuildService", () => {
             expect(registered.size).toBe(0);
             expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-kind.txt", "descriptor-package", ...(change === "companion" ? ["reviewed.json.conversion-evidence.json"] : [])].sort());
             if (change === "companion") expect(fs.readFileSync(`${destination}.conversion-evidence.json`, "utf8")).toBe("competing evidence");
-        });
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
         it("keeps cancellation nonterminal until the asynchronous descriptor settles and retains its durable result", async () => {
             const fixture = writePausedDescriptorPackage(workDir);
             const destination = path.join(workDir, "reviewed.json");
