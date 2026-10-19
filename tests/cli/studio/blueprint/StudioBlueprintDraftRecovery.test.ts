@@ -86,7 +86,7 @@ describe("profile-backed Design recovery authority", () => {
 
     it.each(malformed)("rejects $diagnostic at shared validator, store and HTTP, then reuses the same store", async ({value, diagnostic}) => {
         expect(() => validateStudioBlueprintDraftSnapshot(value)).toThrow(diagnostic);
-        expect(() => store.replace(value as StudioBlueprintDraftSnapshot)).toThrow(diagnostic);
+        expect(() => store.replace(value as unknown as StudioBlueprintDraftSnapshot)).toThrow(diagnostic);
         expect(await post(value)).toEqual({status: 400, body: {error: diagnostic}});
         expect(store.read()).toEqual({version: null});
         const saved = store.replace({version: null, draft})!;

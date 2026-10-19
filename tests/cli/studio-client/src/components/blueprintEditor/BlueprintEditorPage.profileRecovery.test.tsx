@@ -161,6 +161,23 @@ describe("Design recovery from the Studio profile", () => {
         expect(screen.queryByText(/Draft recovery is unavailable/)).not.toBeInTheDocument();
     });
 
+    it("shows the shared field diagnostic for a malformed recovery response and repairs through the same mounted editor", async () => {
+        const base = api();
+        let malformed = true;
+        const fetchImpl: FetchLike = (url, init) => url === endpoint && malformed
+            ? Promise.resolve(response({version: null, draft: {blueprint: []}}))
+            : base.fetchImpl(url, init);
+        renderWithProviders(<BlueprintEditorPage guided />, {fetchImpl});
+        expect(await screen.findByText(/Draft recovery is unavailable/)).toHaveTextContent('"draft.blueprint" must be a JSON object.');
+        expect(screen.queryByRole("button", {name: "Restore", exact: true})).not.toBeInTheDocument();
+        expect(screen.getByLabelText("Game name")).toHaveValue("Starter Slot");
+        expect(fs.existsSync(file)).toBe(false);
+        malformed = false;
+        fireEvent.change(screen.getByLabelText("Game name"), {target: {value: "Repaired input"}});
+        await waitFor(() => expect(store.read().draft?.blueprint.manifest).toMatchObject({name: "Repaired input"}));
+        expect(screen.queryByText(/Draft recovery is unavailable/)).not.toBeInTheDocument();
+    });
+
     it("serializes captured edits -> clear -> later edits and does not resurrect the cleared document", async () => {
         const waiting = deferred<Awaited<ReturnType<FetchLike>>>();
         const base = api();
