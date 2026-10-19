@@ -201,9 +201,9 @@ it.each([false, true])("releases owned snapshots on cancellation (cleanup fails:
     const fixture = writePausedDescriptorPackage(root);
     const controller = new AbortController();
     const before = runtimeSnapshotNames(fixture.source);
-    const remove = fs.rmSync.bind(fs);
-    const cleanup = failure ? jest.spyOn(fs, "rmSync").mockImplementation((target, options) => {
-        remove(target, options);
+    const remove = fs.promises.rm.bind(fs.promises);
+    const cleanup = failure ? jest.spyOn(fs.promises, "rm").mockImplementation(async (target, options) => {
+        await remove(target, options);
         if (path.basename(String(target)).startsWith("pokie-runtime-")) throw new Error("cleanup failed");
     }) : undefined;
     fixture.arm();

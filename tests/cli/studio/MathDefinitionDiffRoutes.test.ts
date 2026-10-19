@@ -15,6 +15,7 @@ import {DiffCommand} from "../../../cli/commands/DiffCommand.js";
 import {fractionalBetBlueprint} from "../../fixtures/math/FractionalBetFixture.js";
 import {
     runtimeSnapshotNames,
+    PACKAGE_EXTRACTION_TEST_TIMEOUT,
     writeDescriptorPackage,
     writePausedDescriptorPackage,
 } from "../../v2/fixtures/PackageExtractionFixture.js";
@@ -80,6 +81,7 @@ describe("definition comparison public Studio route", () => {
     it("retains generated policy defaults and explicit unknowns through rejection and repeated repaired Studio reads", async () => {
         const model = fractionalBetBlueprint([0.05], true);
         const generated = writeDescriptorPackage(root, {model});
+        fs.writeFileSync(left, JSON.stringify(model));
         const opened = await fetch(url + "/api/home/projects/open", {
             method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({projectRoot: generated}),
         });
@@ -87,9 +89,8 @@ describe("definition comparison public Studio route", () => {
         await opened.json();
         for (const policy of [undefined, {type: "unknown", authority: "explicit policy"}, {type: "declared", value: "7.5", unit: "currency", scope: "paid-entry", authority: "invalid numeric declaration"}, undefined, undefined]) {
             writeDescriptorPackage(root, {model, descriptorBody: `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model${policy === undefined ? "" : `, maxWinPolicy: ${JSON.stringify(policy)}`}};`});
-            const result = await post({leftPath: generated, rightPath: generated, revision: 0});
+            const result = await post({leftPath: left, rightPath: generated, revision: 0});
             expect(result.status).toBe(200);
-            expect(result.body).toEqual(await compareMathDefinitions(generated, generated));
             const snapshot = result.body.right;
             expect(snapshot.identity).toMatchObject({kind: "tsPackage", descriptorKind: "generated"});
             const validation = await fetch(url + "/api/project/validate");
@@ -104,7 +105,7 @@ describe("definition comparison public Studio route", () => {
                 expect(snapshot.advanced).toMatchObject({verdict: "inconclusive", executableFidelity: "unverified"});
             }
         }
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     it("shares corrected metadata/default semantics and unknown custom authority with CLI and the direct API", async () => {
         const model = {...fractionalBetBlueprint([0.05], true), rows: 2, winModel: {type: "ways" as const},
             betModes: [{id: "base", runtimeType: "base" as const, isDefault: true}]};

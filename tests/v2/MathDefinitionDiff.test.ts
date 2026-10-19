@@ -503,9 +503,9 @@ describe("definition acquisition and cleanup boundaries", () => {
     it("keeps cleanup failure authoritative over equality and cancellation", async () => {
         const sourcePath = writeDescriptorPackage(root);
         const controller = new AbortController();
-        const rm = fs.rmSync.bind(fs);
-        jest.spyOn(fs, "rmSync").mockImplementation((target, options) => {
-            rm(target, options);
+        const rm = fs.promises.rm.bind(fs.promises);
+        jest.spyOn(fs.promises, "rm").mockImplementation(async (target, options) => {
+            await rm(target, options);
             if (path.basename(String(target)).startsWith("pokie-runtime-")) {
                 controller.abort();
                 throw new Error("owned snapshot cleanup failed");

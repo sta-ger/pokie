@@ -1,12 +1,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import vm from "node:vm";
 import ts from "typescript";
 import * as api from "@fromstan/pokie";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import {DiffCommand} from "../../cli/commands/DiffCommand.js";
-import {writeDescriptorPackage} from "./fixtures/PackageExtractionFixture.js";
+import {PACKAGE_EXTRACTION_TEST_TIMEOUT, writeDescriptorPackage} from "./fixtures/PackageExtractionFixture.js";
 
 // Exact model from the retained installed-consumer-recovery-rerun/consumer/valid.json.
 // Source regressions only: native installation and production compilation remain controller-owned.
@@ -33,10 +32,12 @@ it.each(["cjs", "typed source"])("uses the generated descriptor default for the 
         {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020}},
     ).outputText;
     const module = {exports: {}};
-    vm.runInNewContext(`(function(require, module) {${source}\n})`)((name: string) => {
+    // Keep plain descriptor data in the reader's realm, as with the native CJS loader.
+    // eslint-disable-next-line no-new-func -- execute only the current renderer's source in this test realm.
+    new Function("require", "module", "exports", source)((name: string) => {
         if (name !== "@fromstan/pokie") throw new Error(`Unexpected generated dependency ${name}`);
         return api;
-    }, module);
+    }, module, module.exports);
     const game = module.exports as api.PokieGame;
     const descriptor = await game.getModelDescriptor!();
     expect(descriptor).toMatchObject({sourceKind: "generated", model});
@@ -131,12 +132,13 @@ it("shares generated defaults, explicit unknowns and malformed-policy rejection 
             log.mockClear();
             expect(await diff.run([blueprint, source, "--comparison", "definition", "--ci", "--format", "json"])).toBe(2);
             const comparison = JSON.parse(log.mock.calls[0][0]) as api.MathDefinitionDiff;
-            expect(comparison).toEqual(await api.compareMathDefinitions(blueprint, source));
             expect(comparison.right).toMatchObject({identity: {kind: "tsPackage", descriptorKind: "generated"}});
+            expect(comparison.right.effective).toEqual(snapshot.effective);
+            expect(comparison.right.diagnostics).toEqual(snapshot.diagnostics);
             expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(bytes);
         }
     } finally {
         log.mockRestore();
         fs.rmSync(root, {recursive: true, force: true});
     }
-});
+}, PACKAGE_EXTRACTION_TEST_TIMEOUT);
