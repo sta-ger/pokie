@@ -65,7 +65,8 @@ describe("V2C-32 public math prerequisites", () => {
     });
 
     it.each([0.05, 7.5, 1e-7])("keeps missing/zero scatter money independent of an authored free-game grant at stake %s", bet => {
-        for (const paytable of [{}, {S: {}}, {S: {2: 0}}]) {
+        const paytables: api.GameBlueprint["paytable"][] = [{}, {S: {}}, {S: {2: 0}}];
+        for (const paytable of paytables) {
             const blueprint: api.GameBlueprint = {...example(), availableBets: [bet], paytable,
                 scatters: ["S"], reelSequences: [{type: "exact", symbols: ["S", "S"]}, {type: "exact", symbols: ["S", "S"]}],
                 mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {2: 2}}}};
@@ -75,7 +76,8 @@ describe("V2C-32 public math prerequisites", () => {
             expect(session.getWinAmount()).toBe(0);
             expect(session.getFreeGamesSum()).toBe(2);
         }
-        for (const awardsByCount of [{1: 1}, {2: 0}]) {
+        const grants: Record<string, number>[] = [{1: 1}, {2: 0}];
+        for (const awardsByCount of grants) {
             const blueprint: api.GameBlueprint = {...example(), availableBets: [bet], paytable: {S: {2: 4}},
                 scatters: ["S"], reelSequences: [{type: "exact", symbols: ["S", "S"]}, {type: "exact", symbols: ["S", "S"]}],
                 mechanics: {freeGames: {scatterSymbol: "S", awardsByCount}}};
@@ -91,10 +93,10 @@ describe("V2C-32 public math prerequisites", () => {
         const blueprint = example();
         const reel = blueprint.reelSequences![0];
         if (reel.type !== "weighted") throw new Error("Expected public weighted reel");
-        if (kind === "duplicate ID") reel.variants[1].id = reel.variants[0].id;
-        if (kind === "negative weight") reel.variants[0].weight = -1;
-        if (kind === "unequal length") reel.variants[0].symbols.pop();
-        if (kind === "unknown symbol") reel.variants[0].symbols[0] = "unknown";
+        if (kind === "duplicate ID") reel.variants[1] = {...reel.variants[1], id: reel.variants[0].id};
+        if (kind === "negative weight") reel.variants[0] = {...reel.variants[0], weight: -1};
+        if (kind === "unequal length") reel.variants[0] = {...reel.variants[0], symbols: reel.variants[0].symbols.slice(1)};
+        if (kind === "unknown symbol") reel.variants[0] = {...reel.variants[0], symbols: ["unknown", ...reel.variants[0].symbols.slice(1)]};
         expect(errors(new api.GameBlueprintValidator().validate(blueprint))).toEqual(expect.arrayContaining([
             expect.objectContaining({code: "blueprint-reel-sequences-invalid", message: expect.stringContaining("reelSequences[0]")}),
         ]));
