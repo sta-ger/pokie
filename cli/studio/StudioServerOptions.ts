@@ -3,7 +3,6 @@ import type {IncomingMessage} from "http";
 import type {RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {StudioArtifactBuildService} from "./artifacts/StudioArtifactBuildService.js";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
-import type {StudioBlueprintDraftStoring} from "./blueprint/StudioBlueprintDraftStoring.js";
 import {StudioCertificationService} from "./certification/StudioCertificationService.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
 import {StudioFairnessService} from "./fairness/StudioFairnessService.js";
@@ -42,7 +41,6 @@ export type StudioServerOptions = {
     initialContext?: StudioContext;
     /** Server-owned durable lifecycle store; tests may inject an isolated store. */
     jobService?: StudioJobService;
-    blueprintDraftStore?: StudioBlueprintDraftStoring;
     // Drives every Home nav flow (POST/GET /api/home/*: recent projects, create, init, build
     // preview/build, open) — see StudioHomeService. Required rather than defaulted: a default
     // instance would need a `pokie` version to embed into scaffolded/generated package.json files

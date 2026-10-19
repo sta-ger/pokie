@@ -38,12 +38,12 @@ tabs never loses in-progress work):
   the current validated draft without saving its source; subsequent edits mark that build stale.
   Saving, runtime preparation, project validation, and building an artifact are distinct results.
 
-  Applied Design edits are retained in the local Studio application profile for explicit **Restore**
-  or **Discard** after a browser/server restart, with an immediate per-tab recovery cache as well.
-  Recovery never saves a user project, runs a build, or marks a draft clean. An explicit source/job
-  opening takes precedence. The profile holds one recoverable Design draft; another editor changing
-  that slot prevents an older editor from overwriting or clearing it. A recovery-storage failure
-  leaves the current draft editable and shows an error; use **Save** to keep a project. Unapplied
+  Applied Design edits stay in this browser tab's `sessionStorage` for explicit **Restore** or
+  **Discard** after a same-tab refresh. Recovery never saves a user project, runs a build, or marks
+  a draft clean. An explicit source/job opening takes precedence; no-op mounts and visibility
+  changes preserve the pending recovery data. Fresh browser sessions do not recover a profile-wide
+  draft. Restore, Discard and successful Save affect only this tab's slot. If browser storage is
+  unavailable, the in-memory editor remains usable; use **Save** to keep a project. Unapplied
   JSON/whole-sequence text remains local to the mounted editor until its explicit Apply action.
 
   The design fields are grouped into 6 named sections — Game basics, Layout, Symbols,

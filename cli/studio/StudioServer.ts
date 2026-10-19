@@ -60,9 +60,6 @@ import {StudioArtifactBuildService} from "./artifacts/StudioArtifactBuildService
 import {validateArtifactBuildRequest, ArtifactBuildRequestInput} from "./artifacts/validateArtifactBuildRequest.js";
 import {buildProjectGameModel} from "./blueprint/buildProjectGameModel.js";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
-import {FileStudioBlueprintDraftStore} from "./blueprint/FileStudioBlueprintDraftStore.js";
-import {validateStudioBlueprintDraftSnapshot} from "./blueprint/StudioBlueprintDraft.js";
-import type {StudioBlueprintDraftStoring} from "./blueprint/StudioBlueprintDraftStoring.js";
 import {validateBlueprintBuildRequest, BlueprintBuildRequestInput} from "./blueprint/validateBlueprintBuildRequest.js";
 import {validateBlueprintValidationRequest, BlueprintValidationRequestInput} from "./blueprint/validateBlueprintValidationRequest.js";
 import {validateLoadBlueprintRequest, LoadBlueprintRequestInput} from "./blueprint/validateLoadBlueprintRequest.js";
@@ -266,7 +263,6 @@ export class StudioServer implements StudioServerHandling {
     // spawned.
     private readonly openFolder: (folderPath: string) => void;
     private readonly blueprintService: StudioBlueprintService;
-    private readonly blueprintDraftStore: StudioBlueprintDraftStoring;
     // A Create game retry must be idempotent. The browser may lose a response after the local server
     // has already persisted and registered the project; retaining the completed response by its client
     // operation ID lets the retry continue to Workspace without creating a second managed project.
@@ -352,10 +348,6 @@ export class StudioServer implements StudioServerHandling {
         this.isLoopbackRequest = options.isLoopbackRequest ?? isLoopbackRequest;
         this.openFolder = options.openFolder ?? openInFileManager;
         this.blueprintService = options.blueprintService;
-        const appData = new PokiePathResolver().resolveAppDataDirectory();
-        this.blueprintDraftStore = options.blueprintDraftStore ?? new FileStudioBlueprintDraftStore(
-            path.join(appData ?? path.dirname(jobDirectory), "studio-design-draft-v1.json"),
-        );
         this.loadGame = options.loadGame ?? loadPokieGame;
         this.resolveRuntimePackageRoot = options.resolveRuntimePackageRoot ?? createMaterializingRuntimePackageResolver(this.pokieVersion, STUDIO_OPERATION);
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
@@ -1079,24 +1071,6 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/home/fs/reveal-path") {
             await this.handleHomeFsRevealPath(req, res);
-            return;
-        }
-
-        if (url.pathname === "/api/home/blueprints/draft" && (method === "GET" || method === "POST")) {
-            if (method === "GET") {
-                this.sendJson(res, 200, this.blueprintDraftStore.read());
-            } else {
-                const body = await this.readJsonBody(req);
-                let snapshot;
-                try {
-                    snapshot = validateStudioBlueprintDraftSnapshot(body);
-                } catch (error) {
-                    this.sendJson(res, 400, {error: (error as Error).message});
-                    return;
-                }
-                const updated = this.blueprintDraftStore.replace(snapshot);
-                this.sendJson(res, updated === undefined ? 409 : 200, updated ?? {error: "The retained Design draft changed in another editor. Save your current draft as a project before starting another Studio session."});
-            }
             return;
         }
 
