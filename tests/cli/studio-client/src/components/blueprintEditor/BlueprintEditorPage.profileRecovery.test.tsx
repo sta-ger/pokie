@@ -71,7 +71,7 @@ describe("Design recovery in the same browser tab", () => {
         const first = api();
         const mounted = renderWithProviders(<BlueprintEditorPage guided initialParSheetPath="/games/import.xlsx" />, {fetchImpl: first.fetchImpl});
         await screen.findByText("Imported successfully");
-        await user.click(screen.getByRole("button", {name: /Apply \/ Export.*Commit or write out/}));
+        await user.click(screen.getByRole("button", {name: /Apply.*Update the draft/}));
         await user.click(screen.getByRole("button", {name: "Apply", exact: true}));
         await user.click(await screen.findByRole("button", {name: "Confirm", exact: true}));
         expect(screen.getByLabelText("Game name")).toHaveValue("Tab Draft");
