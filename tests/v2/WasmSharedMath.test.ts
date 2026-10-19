@@ -5,6 +5,12 @@ import {pathToFileURL} from "node:url";
 import {execFileSync, spawnSync} from "node:child_process";
 import {emitPublicRuntime} from "./helpers/publicRuntime.js";
 
+const gateCorrectionPaths = [
+    "scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs", "tests/testUtils/createP911CandidateFixture.mjs",
+    "tests/cli/studio/StudioArtifactBuildService.test.ts", "tests/v2/PackageBlueprintExtraction.test.ts",
+    "tests/v2/WasmSharedMath.test.ts", "tests/fixtures/wasm/verifyDeliveredSharedMath.cjs",
+];
+
 it("compares delivered generated Node entries and independently instantiated modules outside Jest source resolution", () => {
     const candidate = emitPublicRuntime();
     try {
@@ -49,9 +55,7 @@ it("preserves authenticated candidate selectors through the complete V2C-31 gate
             const options = {repository: fixture.repository};
             const gitOptions = {cwd: fixture.repository};
             const original = await readP911Candidate(fixture.reference, options);
-            for (const file of ["scripts/p9-11-candidate.mjs", "tests/testUtils/createP911CandidateFixture.mjs",
-                "tests/cli/studio/StudioArtifactBuildService.test.ts", "tests/v2/PackageBlueprintExtraction.test.ts",
-                "tests/v2/WasmSharedMath.test.ts", "tests/fixtures/wasm/verifyDeliveredSharedMath.cjs"])
+            for (const file of ${JSON.stringify(gateCorrectionPaths)})
                 assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
             const reviewedId = await commitP911ToolingDescendant(fixture);
             const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
@@ -87,6 +91,47 @@ it("preserves authenticated candidate selectors through the complete V2C-31 gate
                 execFileSync("git", ["reset", "--hard", reviewedId], {...gitOptions, stdio: "ignore"});
             }
             assert.deepEqual(await readP911SmokeCandidateFromEnvironment(release, options), selected);
+        `], {timeout: 30_000, stdio: ["ignore", "pipe", "pipe"]});
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
+it("keeps legacy release authentication scoped to the complete gate correction", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-v2c31-release-"));
+    try {
+        execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from "node:assert/strict";
+            import {mkdir, symlink, unlink, writeFile} from "node:fs/promises";
+            import {execFileSync} from "node:child_process";
+            import path from "node:path";
+            import {candidateFixture} from ${JSON.stringify(pathToFileURL(path.resolve("tests/testUtils/createP911CandidateFixture.mjs")).href)};
+            import {authenticateP805ProductTree} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p8-05-release-handoff.mjs")).href)};
+            const fixture = await candidateFixture(${JSON.stringify(directory)});
+            const git = args => execFileSync("git", args, {cwd: fixture.repository, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"]}).trim();
+            const commit = () => {
+                git(["add", "."]);
+                git(["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "gate correction fixture"]);
+                return git(["rev-parse", "HEAD"]);
+            };
+            const paths = ${JSON.stringify(gateCorrectionPaths)};
+            for (const file of paths) await writeFile(path.join(fixture.repository, file), "changed gate tooling");
+            const reviewedId = commit();
+            const authenticate = id => authenticateP805ProductTree(fixture.handoff.candidateId, id, fixture.repository);
+            assert.deepEqual(authenticate(reviewedId).changedToolingAndEvidencePaths, [...paths].sort());
+            for (const file of ["tests/v2/WasmSharedMath.extra.test.ts", "src/index.ts", "cli/pokie.ts", "package.json", "tsconfig.prod.json"]) {
+                const target = path.join(fixture.repository, file);
+                await mkdir(path.dirname(target), {recursive: true});
+                await writeFile(target, "changed protected input");
+                assert.throws(() => authenticate(commit()), /changes product or build inputs/);
+                git(["reset", "--hard", reviewedId]);
+            }
+            const admitted = path.join(fixture.repository, "tests/fixtures/wasm/verifyDeliveredSharedMath.cjs");
+            await unlink(admitted);
+            await symlink("nonregular-tooling-target", admitted);
+            assert.throws(() => authenticate(commit()), /nonregular Git entries/);
+            git(["reset", "--hard", reviewedId]);
+            assert.deepEqual(authenticate(reviewedId).changedToolingAndEvidencePaths, [...paths].sort());
         `], {timeout: 30_000, stdio: ["ignore", "pipe", "pipe"]});
     } finally {
         fs.rmSync(directory, {recursive: true, force: true});
