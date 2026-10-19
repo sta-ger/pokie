@@ -1,4 +1,4 @@
-import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage, writeRunnableCodeFirstPackage} from "./fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage, writeRunnableCodeFirstPackage} from "./fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -47,6 +47,14 @@ function packageProject(rootPath: string): PokieProject {
 }
 
 describe("PackageBlueprintExtraction", () => {
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     let directory: string;
     const extractor = new PackageBlueprintExtraction();
     beforeEach(() => {
@@ -96,7 +104,7 @@ describe("PackageBlueprintExtraction", () => {
         }})).rejects.toThrow(/Package model changed after preview/);
         expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(input);
         expect(fs.readdirSync(directory).sort()).toEqual(["descriptor-package", "kind.txt"]);
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     async function roundTrip(blueprint: GameBlueprint, seed: string | number): Promise<void> {
         const first = new GamePackageGenerator("1.3.0").generate(blueprint, directory, path.join(directory, "first"));
@@ -457,9 +465,9 @@ describe("PackageBlueprintExtraction", () => {
         const fixture = writePausedDescriptorPackage(directory);
         const controller = new AbortController();
         const snapshots = runtimeSnapshotNames(fixture.source);
-        const rmSync = fs.rmSync.bind(fs);
-        const cleanup = jest.spyOn(fs, "rmSync").mockImplementation((target, options) => {
-            rmSync(target, options);
+        const rm = fs.promises.rm.bind(fs.promises);
+        const cleanup = jest.spyOn(fs.promises, "rm").mockImplementation(async (target, options) => {
+            await rm(target, options);
             if (path.basename(String(target)).startsWith("pokie-runtime-")) throw new Error("snapshot cleanup failed");
         });
         fixture.arm();
@@ -470,6 +478,7 @@ describe("PackageBlueprintExtraction", () => {
             controller.abort();
             fixture.settle();
             await checked;
+            expect(cleanup).toHaveBeenCalledWith(expect.stringContaining("pokie-runtime-"), {recursive: true, force: true});
             expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
             expect(fs.readdirSync(directory).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
         } finally {

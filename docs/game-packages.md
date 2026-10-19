@@ -87,6 +87,25 @@ If a package's `dist` output is missing or stale (built from since-removed depen
 Resolving the entry module stays a pure read: neither function ever runs an install or a build on the caller's
 behalf.
 
+### Native imports and moving a generated package
+
+`pokie create` writes an editable Blueprint; `pokie init` prepares a code-first TypeScript package.
+`pokie build SOURCE --target tsPackage` writes both `src/index.ts` and immediately executable
+`dist/index.js`. Both use the bare scoped dependency `@fromstan/pokie`. After installing dependencies,
+the package's own `npm run build` recompiles that source without source aliases, `tsconfig` path
+overrides or rewritten runtime imports. Root ESM imports and CommonJS `require` have corresponding
+shipped declarations. The `/browser`, `/wasm` and `/client/player` exports are ESM-only; package
+metadata and private deep imports are not public exports. See the [WASM boundary](wasm-compatibility-boundary.md)
+for portable execution and independent format versions.
+
+Preparation can temporarily resolve an unpublished POKIE dependency against the running installation.
+Its persisted manifest and lockfile retain portable authored dependency settings after completion or
+failure. A generated package can also contain a convenience runtime link to that installation; this
+is local preparation, not a replacement for dependency installation on another machine. When copying
+without `node_modules`, install the declared dependency again before building or executing. Candidate
+verification selects the same local archive with `npm install --no-save --package-lock=false /path/to/candidate.tgz`;
+it must not bind the consumer to repository source or rewrite the generated imports.
+
 ### Retrying a failed preparation
 
 A failed `dependencies`/`build`/`verify` phase leaves the scaffold on disk instead of cleaning it up. Calling

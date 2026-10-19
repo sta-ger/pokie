@@ -1,6 +1,6 @@
 import {MathDefinitionDiffPreview} from "../common/MathDefinitionDiffPreview";
 import {Button} from "@mantine/core";
-import {useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {previewGameModel} from "../../api/apiClient";
 import type {GameModelProjection} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -24,16 +24,38 @@ type PreviewState = {status: "idle"} | {status: "loading"} | {status: "error"; m
 export function GameModelPreviewPanel({blueprint, sourcePath, revision}: {blueprint: unknown; sourcePath?: string; revision?: number}) {
     const fetchImpl = useStudioApi();
     const [state, setState] = useState<PreviewState>({status: "idle"});
+    const lifecycle = useRef({generation: 0, active: undefined as AbortController | undefined});
+    // Both completed and pending previews belong to one applied draft/source. Keep the
+    // request guard as well as abort: a transport may still deliver an obsolete response.
+    useEffect(() => {
+        const requests = lifecycle.current;
+        requests.generation++;
+        requests.active?.abort();
+        setState({status: "idle"});
+        return () => {
+            requests.generation++;
+            requests.active?.abort();
+        };
+    }, [blueprint, sourcePath, revision, fetchImpl]);
     // Undefined keeps the Reels section's own default, reproducible "symbolWeights"/"default" sample --
     // see GameModelTab's own `sharedWeightsSampleSeed` doc comment for why this is only ever set by the
     // "New sample" action below.
     const [sharedWeightsSampleSeed, setSharedWeightsSampleSeed] = useState<number>();
 
     function handlePreview(seed?: number): void {
+        lifecycle.current.active?.abort();
+        const controller = new AbortController();
+        lifecycle.current.active = controller;
+        const generation = ++lifecycle.current.generation;
+        const isCurrent = (): boolean => lifecycle.current.generation === generation && !controller.signal.aborted;
         setState({status: "loading"});
-        previewGameModel(fetchImpl, blueprint, seed ?? sharedWeightsSampleSeed)
-            .then((projection) => setState({status: "loaded", projection}))
-            .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}));
+        previewGameModel(fetchImpl, blueprint, seed ?? sharedWeightsSampleSeed, controller.signal)
+            .then((projection) => {
+                if (isCurrent()) setState({status: "loaded", projection});
+            })
+            .catch((error: unknown) => {
+                if (isCurrent()) setState({status: "error", message: errorMessage(error)});
+            });
     }
 
     function handleNewSample(): void {

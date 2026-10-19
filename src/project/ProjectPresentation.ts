@@ -30,7 +30,7 @@ const PROJECT_PRESENTATIONS: Readonly<Record<ProjectType, ProjectPresentation>> 
             {label: "Export a PAR workbook", command: "pokie par export <path>"},
         ],
         prerequisites: [
-            "To validate, simulate, replay, or serve the game, first build a POKIE game package.",
+            "Validation reads the Blueprint directly. Simulation, replay, and serving automatically prepare a disposable game package; building a standalone package is optional.",
         ],
     },
     tsPackage: {
@@ -43,7 +43,7 @@ const PROJECT_PRESENTATIONS: Readonly<Record<ProjectType, ProjectPresentation>> 
             {label: "Run a local game server", command: "pokie serve <path>"},
             {label: "Build an Outcome Library", command: "pokie build <path> --target outcomeLibrary"},
         ],
-        prerequisites: [],
+        prerequisites: ["Conversions to Blueprint, package, PAR, or WASM require a complete representable public model descriptor. Custom executable behavior remains in the original package."],
     },
     outcomeLibrary: {
         kind: "Outcome Library",
@@ -82,7 +82,7 @@ const PROJECT_PRESENTATIONS: Readonly<Record<ProjectType, ProjectPresentation>> 
         purpose: "A PAR spreadsheet workbook that can be imported into a Game Blueprint.",
         nextActions: [{label: "Import a Game Blueprint", command: "pokie par import <path>"}],
         prerequisites: [
-            "To build, validate, simulate, or run a game, first import the workbook into a Game Blueprint and build a POKIE game package.",
+            "Build automatically imports a Blueprint intermediate and retains conversion evidence. Runtime operations prepare supported intermediates automatically; inspect import diagnostics for inferred or unsupported model data.",
         ],
     },
 };

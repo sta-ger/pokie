@@ -190,7 +190,9 @@ async function main() {
         }
         configurationChecks.push(type);
     }
-    for (const {name, model} of fixtures) {
+    // Each invocation owns a bounded group of independent native consumers.
+    const selected = fixtures.slice(Number(process.argv[3] ?? 0), Number(process.argv[4] ?? fixtures.length));
+    for (const {name, model} of selected) {
         const folder = path.join(directory, name); fs.mkdirSync(folder);
         const source = path.join(folder, 'game.blueprint.json'), artifact = path.join(folder, 'game.wasm');
         fs.writeFileSync(source, JSON.stringify(model));
@@ -348,6 +350,6 @@ async function main() {
         receipts.push({name, longSession, artifact: manifest.artifact.sha256, model: manifest.artifact.configurationHash, bytes: bytes.length, rounds: observed.length, draws: rawDraws, multi});
         runtime.dispose(); fresh.dispose(); await loaded.release();
     }
-    console.log(JSON.stringify({native: true, runtime: process.version, configurationChecks, negatives, receipts}));
+    console.log(JSON.stringify({native: true, runtime: process.version, fixtureCount: fixtures.length, configurationChecks, negatives, receipts}));
 }
 main().catch(error => {console.error(error); process.exitCode = 1;});

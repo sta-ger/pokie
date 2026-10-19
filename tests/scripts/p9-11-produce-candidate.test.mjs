@@ -6,7 +6,7 @@ import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {test} from "@jest/globals";
 import {produceP911Candidate, runP911Producer} from "../../scripts/p9-11-produce-candidate.mjs";
-import {P911_CAMPAIGN, readPinnedJson, readP911CandidateFromEnvironment} from "../../scripts/p9-11-candidate.mjs";
+import {P911_CAMPAIGN, readPinnedJson, readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment, sha256} from "../../scripts/p9-11-candidate.mjs";
 import {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} from "../testUtils/createP911CandidateFixture.mjs";
 
 // These fake npm outcomes test the real producer/reader boundary without
@@ -17,6 +17,16 @@ const exists = async (file) => access(file).then(() => true, () => false);
 const nativeRead = (reference, options) => JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
     import {readP911Candidate} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
     const {archive, ...candidate} = await readP911Candidate(${JSON.stringify(reference)}, ${JSON.stringify(options)});
+    process.stdout.write(JSON.stringify(candidate));
+`], {encoding:"utf8", timeout:10_000, stdio:["ignore", "pipe", "pipe"]}));
+// The real smoke setup calls this selector and then this same validator on its
+// staged archive before npm install. No packaging suite or fallback npm runs.
+const nativeSmokeRead = (environment, repository, archivePath) => JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+    import {readFileSync} from 'node:fs';
+    import {readP911SmokeCandidateFromEnvironment, validateP911SmokeCandidateIdentity} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
+    const environment = ${JSON.stringify(environment)}, repository = ${JSON.stringify(repository)};
+    const {archive, ...candidate} = await readP911SmokeCandidateFromEnvironment(environment, {repository});
+    validateP911SmokeCandidateIdentity(candidate, environment, {repository, archive:readFileSync(${JSON.stringify(archivePath)})});
     process.stdout.write(JSON.stringify(candidate));
 `], {encoding:"utf8", timeout:10_000, stdio:["ignore", "pipe", "pipe"]}));
 
@@ -57,7 +67,7 @@ async function fixture(options = {}) {
 }
 
 test.each(["@fromstan/pokie", "pokie"])("producer delivers one normal %s candidate pin consumed by the native installation reader", async (packageName) => {
-    const f = await fixture({packageName});
+    const f = await fixture({packageName, includeGitHead:packageName === "@fromstan/pokie"});
     const inherited = {npm_lifecycle_event:"test:targeted", npm_package_json:"/caller/package.json", INIT_CWD:"/caller", NODE_OPTIONS:"--experimental-vm-modules"};
     const previous = Object.fromEntries(Object.keys(inherited).map(name => [name, process.env[name]]));
     Object.assign(process.env, inherited);
@@ -81,14 +91,26 @@ test.each(["@fromstan/pokie", "pokie"])("producer delivers one normal %s candida
         assert.deepEqual(delivery.environment, {POKIE_P911_CANDIDATE_HANDOFF:delivery.handoff.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256:delivery.handoff.sha256});
         // Exercise the shared selector in Node's native module realm, exactly
         // as both CommonJS ts-jest packaging callers load it.
-        const selected = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
-            import {readP911CandidateFromEnvironment} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
-            const {archive, ...record} = await readP911CandidateFromEnvironment(${JSON.stringify({...delivery.environment, POKIE_P805_RELEASE_HANDOFF:""})}, {repository:${JSON.stringify(f.candidate.repository)}});
-            process.stdout.write(JSON.stringify(record));
-        `], {encoding:"utf8", timeout:10_000, stdio:["ignore", "pipe", "pipe"]}));
+        const stagedArchive = path.join(f.directory, "smoke-staged.tgz");
+        await cp(candidate.archivePath, stagedArchive);
+        const selected = nativeSmokeRead(delivery.environment, f.candidate.repository, stagedArchive);
         assert.equal(selected.archiveSha256, delivery.archiveSha256);
         assert.equal(selected.bin, candidate.bin);
         assert.equal(selected.installationRoot, candidate.installationRoot);
+        assert.deepEqual(selected, candidate);
+        assert.equal(selected.projection.packageJson.gitHead, packageName === "@fromstan/pokie" ? candidate.candidateId : undefined);
+        await assert.rejects(produceP911Candidate(f.config, {run:f.run}), /EEXIST/);
+        assert.equal(f.calls.length, 3);
+        const reviewedId = await commitP911ToolingDescendant(f.candidate);
+        const descendant = nativeSmokeRead(delivery.environment, f.candidate.repository, stagedArchive);
+        assert.deepEqual({...descendant, equivalence:candidate.equivalence}, candidate);
+        assert.equal(descendant.equivalence.reviewedId, reviewedId);
+        const releaseEnvironment = {...delivery.environment, POKIE_P805_RELEASE_HANDOFF:"", POKIE_PACK_SMOKE_CANDIDATE_ID:reviewedId,
+            POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256:candidate.archiveSha256,
+            POKIE_PACK_SMOKE_RECEIPT:path.join(f.directory, "smoke.json"), POKIE_PACK_SMOKE_ARCHIVE_PATH:path.join(f.directory, "accepted.tgz")};
+        assert.deepEqual(nativeSmokeRead(releaseEnvironment, f.candidate.repository, stagedArchive), descendant);
+        assert.throws(() => nativeSmokeRead({...releaseEnvironment, POKIE_PACK_SMOKE_CANDIDATE_ID:candidate.candidateId}, f.candidate.repository, stagedArchive), /smoke reviewed candidate identity mismatch/);
+        assert.equal(f.calls.length, 3); // Admission never rebuilds or reinstalls.
         assert.deepEqual(delivery.closeout.args.slice(1), ["--handoff", delivery.handoff.path, "--sha256", delivery.handoff.sha256]);
         assert.equal(delivery.campaignAcceptance, "pending-controller-independent-evidence-and-release-lifecycle");
         for (const reference of [candidate.buildReceipt, candidate.installReceipt]) {
@@ -99,7 +121,7 @@ test.each(["@fromstan/pokie", "pokie"])("producer delivers one normal %s candida
             assert.ok(receipt.commands.every((command) => command.result.stdioClosed));
             assert.ok(receipt.commands.every((command) => Array.isArray(command.args) && command.cwd));
         }
-        await assert.rejects(produceP911Candidate(f.config, {run:f.run}), /EEXIST/);
+        await assert.rejects(produceP911Candidate(f.config, {run:f.run}), /exact committed candidate HEAD/);
         assert.equal(f.calls.length, 3); // No repeat build or installation.
         assert.equal((await readPinnedJson(delivery.handoff)).archiveSha256, candidate.archiveSha256);
     } finally {
@@ -110,12 +132,112 @@ test.each(["@fromstan/pokie", "pokie"])("producer delivers one normal %s candida
     }
 });
 
+test.each([false, true])("smoke install identity rejects conflicting context and pins without fallback (descendant=%s)", async (descendant) => {
+    const f = await fixture();
+    try {
+        const {handoff, repository, reference} = f.candidate;
+        const original = nativeRead(reference, {repository});
+        const reviewedId = descendant ? await commitP911ToolingDescendant(f.candidate) : handoff.candidateId;
+        const environment = {POKIE_P911_CANDIDATE_HANDOFF:reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256:reference.sha256};
+        const stagedArchive = path.join(f.directory, "smoke-staged.tgz");
+        await cp(handoff.archivePath, stagedArchive);
+        const select = (context = {}) => nativeSmokeRead({...environment, ...context}, repository, stagedArchive);
+        const accepted = select();
+        assert.equal(accepted.candidateId, handoff.candidateId);
+        assert.equal(accepted.equivalence.reviewedId, reviewedId);
+        assert.deepEqual({...accepted, equivalence:original.equivalence}, original);
+        for (const context of [
+            {POKIE_PACK_SMOKE_CANDIDATE_ID:reviewedId},
+            {POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256:handoff.archiveSha256},
+            {POKIE_PACK_SMOKE_CANDIDATE_ID:reviewedId, POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256:handoff.archiveSha256},
+        ]) assert.deepEqual(select(context), accepted);
+        for (const [context, diagnostic] of [
+            [{POKIE_PACK_SMOKE_CANDIDATE_ID:"b".repeat(40)}, /smoke reviewed candidate identity mismatch/],
+            [{POKIE_PACK_SMOKE_CANDIDATE_ID:""}, /smoke reviewed candidate identity mismatch/],
+            [{POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256:"b".repeat(64)}, /smoke archive digest mismatch/],
+            [{POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256:""}, /smoke archive digest mismatch/],
+            [{POKIE_PACK_SMOKE_CANDIDATE_ID:"b".repeat(40), POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256:"b".repeat(64)}, /smoke reviewed candidate identity mismatch/],
+            [{POKIE_PACK_SMOKE_RECEIPT:path.join(f.directory, "receipt.json")}, /smoke release outputs require/],
+            [{POKIE_PACK_SMOKE_ARCHIVE_PATH:path.join(f.directory, "archive.tgz")}, /smoke release outputs require/],
+            [{POKIE_P911_CANDIDATE_HANDOFF_SHA256:"b".repeat(64)}, /receipt digest mismatch/],
+            [{POKIE_P805_RELEASE_HANDOFF:"{}"}, /cannot be combined/],
+        ]) {
+            assert.throws(() => select(context), diagnostic);
+            assert.deepEqual(select(), accepted);
+        }
+        for (const [file, diagnostic] of [
+            [stagedArchive, /smoke selected archive digest mismatch/],
+            [handoff.archivePath, /archive digest mismatch/],
+            [handoff.buildReceipt.path, /receipt digest mismatch/],
+            [handoff.installReceipt.path, /receipt digest mismatch/],
+            [handoff.browserDriver.path, /authenticated controller browser driver required/],
+        ]) {
+            const bytes = await readFile(file);
+            await writeFile(file, "changed externally pinned bytes\n");
+            assert.throws(() => select(), diagnostic);
+            await writeFile(file, bytes);
+            assert.deepEqual(select(), accepted);
+            assert.deepEqual(select(), accepted);
+        }
+        // Editing every dependent identity and nested pin cannot replace the
+        // controller's original external handoff pin.
+        const files = [reference.path, handoff.buildReceipt.path, handoff.installReceipt.path];
+        const bytes = await Promise.all(files.map(file => readFile(file)));
+        const changed = JSON.parse(bytes[0]);
+        changed.candidateId = "b".repeat(40);
+        for (const [index, key] of [[1, "buildReceipt"], [2, "installReceipt"]]) {
+            const receipt = {...JSON.parse(bytes[index]), candidateId:changed.candidateId};
+            await writeFile(files[index], JSON.stringify(receipt));
+            changed[key].sha256 = sha256(await readFile(files[index]));
+        }
+        await writeFile(reference.path, JSON.stringify(changed));
+        assert.throws(() => select(), /receipt digest mismatch/);
+        for (let index = 0; index < files.length; index++) await writeFile(files[index], bytes[index]);
+        assert.deepEqual(select(), accepted);
+        assert.equal(f.calls.length, 0);
+        assert.equal(await exists(f.config.outputDirectory), false);
+        assert.equal(await exists(path.join(repository, "dist")), false);
+        assert.equal(await exists(path.join(repository, "node_modules")), false);
+    } finally { await rm(f.directory, {recursive:true, force:true}); }
+});
+
+test("smoke continuation rejects a changed reviewed checkout then accepts freshly authenticated reuse", async () => {
+    const f = await fixture();
+    try {
+        execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import {writeFileSync} from 'node:fs';
+            import {execFileSync} from 'node:child_process';
+            import {readP911Candidate, validateP911SmokeCandidateIdentity} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
+            const repository = ${JSON.stringify(f.candidate.repository)}, reference = ${JSON.stringify(f.candidate.reference)};
+            const candidate = await readP911Candidate(reference, {repository});
+            validateP911SmokeCandidateIdentity(candidate, {}, {repository});
+            writeFileSync(repository + '/docs/v2-completion/V2C-31.md', 'new reviewed evidence');
+            execFileSync('git', ['add', '.'], {cwd:repository});
+            execFileSync('git', ['-c', 'user.name=sta-ger', '-c', 'user.email=pascaldelger@gmail.com', 'commit', '--quiet', '-m', 'fixture continuation'], {cwd:repository});
+            assert.throws(() => validateP911SmokeCandidateIdentity(candidate, {}, {repository}), /smoke reviewed checkout changed after authentication/);
+            const refreshed = await readP911Candidate(reference, {repository});
+            validateP911SmokeCandidateIdentity(refreshed, {}, {repository});
+            validateP911SmokeCandidateIdentity(refreshed, {}, {repository});
+            assert.equal(refreshed.candidateId, candidate.candidateId);
+            assert.equal(refreshed.archiveSha256, candidate.archiveSha256);
+        `], {encoding:"utf8", timeout:10_000, stdio:["ignore", "pipe", "pipe"]});
+        assert.equal(f.calls.length, 0);
+        assert.equal(await exists(f.config.outputDirectory), false);
+    } finally { await rm(f.directory, {recursive:true, force:true}); }
+});
+
 test("shared selector preserves standalone callers and fails closed on partial/conflicting delivery", async () => {
     assert.equal(await readP911CandidateFromEnvironment({}), undefined);
     assert.equal(await readP911CandidateFromEnvironment({POKIE_P805_RELEASE_HANDOFF:"legacy"}), undefined);
     await assert.rejects(readP911CandidateFromEnvironment({POKIE_P911_CANDIDATE_HANDOFF_SHA256:"a".repeat(64)}), /absolute receipt path/);
     await assert.rejects(readP911CandidateFromEnvironment({POKIE_P911_CANDIDATE_HANDOFF:"/missing.json"}), /externally pinned digest/);
     assert.throws(() => readP911CandidateFromEnvironment({POKIE_P911_CANDIDATE_HANDOFF:"/p9.json", POKIE_P805_RELEASE_HANDOFF:"legacy"}), /cannot be combined/);
+    assert.equal(await readP911SmokeCandidateFromEnvironment({}), undefined);
+    assert.equal(await readP911SmokeCandidateFromEnvironment({POKIE_P805_RELEASE_HANDOFF:"legacy"}), undefined);
+    await assert.rejects(readP911SmokeCandidateFromEnvironment({POKIE_P911_CANDIDATE_HANDOFF_SHA256:"a".repeat(64)}), /absolute receipt path/);
+    await assert.rejects(readP911SmokeCandidateFromEnvironment({POKIE_P911_CANDIDATE_HANDOFF:"/missing.json"}), /externally pinned digest/);
+    await assert.rejects(readP911SmokeCandidateFromEnvironment({POKIE_P911_CANDIDATE_HANDOFF:"/p9.json", POKIE_P805_RELEASE_HANDOFF:"legacy"}), /cannot be combined/);
 });
 
 test("driver pin is mandatory before any producer command or output", async () => {

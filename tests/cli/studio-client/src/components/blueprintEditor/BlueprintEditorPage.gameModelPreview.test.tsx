@@ -1,4 +1,5 @@
-import {fireEvent, screen, waitFor, within} from "@testing-library/react";
+import {MantineProvider} from "@mantine/core";
+import {act, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {GameModelProjection} from "../../../../../../cli/studio-client/src/api/types";
@@ -7,11 +8,20 @@ import {StudioBlueprintService} from "../../../../../../cli/studio/blueprint/Stu
 import {StudioHomeService} from "../../../../../../cli/studio/home/StudioHomeService";
 import {InMemoryRecentProjectsRepository} from "../../../../../../cli/studio/InMemoryRecentProjectsRepository";
 import boundedExample from "../../../../../../examples/blueprints/bounded-cascade-respins-collection.blueprint.json";
+import {GameModelPreviewPanel} from "../../../../../../cli/studio-client/src/components/blueprintEditor/GameModelPreviewPanel";
+import {StudioApiProvider} from "../../../../../../cli/studio-client/src/context/StudioApiProvider";
 
 // Design Game's own live "Preview Game Model" action (GameModelPreviewPanel.tsx) -- an on-demand POST
 // against the editor's current in-memory draft, rendered through the exact same GameModelSections
 // component the Project Workspace's Game Model tab uses (see that panel's own doc comment for why this
 // is the third of the three surfaces acceptance criterion 3 asks to share one projection).
+
+async function deliver(action: () => void): Promise<void> {
+    await act(async () => {
+        action();
+        await Promise.resolve();
+    });
+}
 
 function respond(body: unknown) {
     return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
@@ -31,7 +41,162 @@ function unavailableProjection(): GameModelProjection {
     };
 }
 
+// Delay only delivery, not projection semantics. These responses come from the real
+// service and deliberately ignore abort, as a completed server request can do.
+function deferredPreviews() {
+    const service = new StudioBlueprintService("2.0.0", process.cwd(), new StudioHomeService("2.0.0", new InMemoryRecentProjectsRepository()));
+    const requests: {blueprint: unknown; seed?: number; signal?: AbortSignal; complete: () => void; fail: () => void}[] = [];
+    const writes: string[] = [];
+    const fetchImpl: FetchLike = (url, init) => {
+        if (url === "/api/project/symbol-artwork") return respond({artwork: {}});
+        if (init?.method !== "POST") return respond([]);
+        writes.push(url);
+        const {blueprint, sharedWeightsSampleSeed: seed} = JSON.parse(init.body!);
+        if (url === "/api/home/blueprints/validate") return respond(service.validate(blueprint));
+        if (url === "/api/home/blueprints/game-model-preview") {
+            const projection = JSON.parse(JSON.stringify(service.previewGameModel(blueprint, seed)));
+            return new Promise((resolve, reject) => {
+                requests.push({
+                    blueprint, seed, signal: init.signal,
+                    complete: () => resolve({ok: true, status: 200, json: () => Promise.resolve(projection)}),
+                    fail: () => reject(new Error("preview delivery failed")),
+                });
+            });
+        }
+        throw new Error(`Unexpected write: ${url}`);
+    };
+    return {fetchImpl, requests, writes};
+}
+
 describe("Guided Design Game: Game Model preview", () => {
+    it("retires a completed preview after the reported Description edit and previews the current validated draft only on request", async () => {
+        const {fetchImpl, requests, writes} = deferredPreviews();
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"], strictMode: true});
+        const description = screen.getByLabelText("Description (optional)");
+        fireEvent.change(description, {target: {value: "stale preview baseline"}});
+        fireEvent.blur(description);
+        await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
+        fireEvent.click(screen.getByRole("button", {name: "Preview Game Model"}));
+        await deliver(() => requests[0].complete());
+        expect(screen.getByText("Description: stale preview baseline")).toBeVisible();
+
+        fireEvent.change(description, {target: {value: "stale preview replacement"}});
+        fireEvent.blur(description);
+        expect(screen.queryByText("Description: stale preview baseline")).toBeNull();
+        await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
+        expect(requests).toHaveLength(1);
+        expect(screen.queryByText("Description: stale preview baseline")).toBeNull();
+        fireEvent.click(screen.getByRole("button", {name: "Preview Game Model"}));
+        await deliver(() => requests[1].complete());
+        expect(screen.getByText("Description: stale preview replacement")).toBeVisible();
+        expect(requests[1].blueprint).toMatchObject({manifest: {description: "stale preview replacement"}});
+        expect(writes.every(url => ["/api/home/blueprints/validate", "/api/home/blueprints/game-model-preview"].includes(url))).toBe(true);
+    });
+
+    it.each([
+        {change: "blueprint", outcome: "success"},
+        {change: "blueprint", outcome: "failure"},
+        {change: "revision", outcome: "success"},
+        {change: "revision", outcome: "failure"},
+        {change: "source", outcome: "success"},
+        {change: "source", outcome: "failure"},
+        {change: "all inputs", outcome: "success"},
+        {change: "all inputs", outcome: "failure"},
+    ])("retires loaded and pending state on $change change and ignores obsolete $outcome delivery", async ({change, outcome}) => {
+        const {fetchImpl, requests} = deferredPreviews();
+        const original = {...boundedExample, manifest: {...boundedExample.manifest, description: "original preview"}};
+        const replacement = {...original, manifest: {...original.manifest, description: "replacement preview"}};
+        const first = {blueprint: original, revision: 1, sourcePath: "/first.json"};
+        const second = {
+            blueprint: change === "blueprint" || change === "all inputs" ? replacement : original,
+            revision: change === "revision" || change === "all inputs" ? 2 : 1,
+            sourcePath: change === "source" || change === "all inputs" ? "/second.json" : "/first.json",
+        };
+        const view = render(<GameModelPreviewPanel {...first} />, {wrapper: ({children}) => (
+            <MantineProvider><StudioApiProvider fetchImpl={fetchImpl}>{children}</StudioApiProvider></MantineProvider>
+        )});
+        const preview = screen.getByRole("button", {name: "Preview Game Model"});
+        fireEvent.click(preview);
+        await deliver(() => requests[0].complete());
+        expect(screen.getByText("Description: original preview")).toBeVisible();
+        view.rerender(<GameModelPreviewPanel {...first} />);
+        expect(screen.getByText("Description: original preview")).toBeVisible();
+        expect(requests).toHaveLength(1);
+        view.rerender(<GameModelPreviewPanel {...second} />);
+        expect(screen.queryByText("Description: original preview")).toBeNull();
+
+        fireEvent.click(preview);
+        expect(preview).toBeDisabled();
+        view.rerender(<GameModelPreviewPanel {...first} />);
+        expect(requests[1].signal?.aborted).toBe(true);
+        expect(preview).toBeEnabled();
+        expect(screen.queryByText("Building preview…")).toBeNull();
+        // Returning to identical earlier input must not revive its previous generation.
+        fireEvent.click(preview);
+        await deliver(() => requests[2].complete());
+        expect(screen.getByText("Description: original preview")).toBeVisible();
+        await deliver(() => outcome === "success" ? requests[1].complete() : requests[1].fail());
+        expect(screen.getByText("Description: original preview")).toBeVisible();
+        expect(screen.queryByText("Description: replacement preview")).toBeNull();
+        expect(screen.queryByRole("alert")).toBeNull();
+        expect(preview).toBeEnabled();
+        fireEvent.click(preview);
+        view.unmount();
+        expect(requests[3].signal?.aborted).toBe(true);
+        await deliver(() => requests[3].complete());
+    });
+
+    it("recovers from a current failure and retires its error on edit before repeated successful previews", async () => {
+        const {fetchImpl, requests} = deferredPreviews();
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        const preview = screen.getByRole("button", {name: "Preview Game Model"});
+        fireEvent.click(preview);
+        await deliver(() => requests[0].complete());
+        expect(screen.getByText("Id: starter-slot")).toBeVisible();
+        fireEvent.click(preview);
+        await deliver(() => requests[1].fail());
+        expect(screen.getByRole("alert")).toHaveTextContent("We couldn't build this game model preview.");
+        const description = screen.getByLabelText("Description (optional)");
+        fireEvent.change(description, {target: {value: "repaired current draft"}});
+        fireEvent.blur(description);
+        expect(screen.queryByRole("alert")).toBeNull();
+        for (const index of [2, 3]) {
+            fireEvent.click(preview);
+            await deliver(() => requests[index].complete());
+            expect(screen.getByText("Description: repaired current draft")).toBeVisible();
+        }
+        await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
+    });
+
+    it("uses the same guarded lifecycle for New sample and preserves its seed across ordinary draft edits", async () => {
+        const {fetchImpl, requests} = deferredPreviews();
+        const blueprint = {
+            manifest: {id: "sample", name: "Sample", version: "1.0.0"},
+            reels: 2, rows: 1, symbols: ["A", "B"], paytable: {}, availableBets: [1],
+            symbolWeights: {A: 2, B: 1},
+        };
+        const view = render(<GameModelPreviewPanel blueprint={blueprint} revision={1} />, {wrapper: ({children}) => (
+            <MantineProvider><StudioApiProvider fetchImpl={fetchImpl}>{children}</StudioApiProvider></MantineProvider>
+        )});
+        const preview = screen.getByRole("button", {name: "Preview Game Model"});
+        fireEvent.click(preview);
+        await deliver(() => requests[0].complete());
+        expect(requests[0].seed).toBeUndefined();
+        fireEvent.click(screen.getByRole("button", {name: "New sample"}));
+        expect(requests[1].seed).toEqual(expect.any(Number));
+        view.rerender(<GameModelPreviewPanel blueprint={{...blueprint, manifest: {...blueprint.manifest, description: "edited sample"}}} revision={2} />);
+        expect(requests[1].signal?.aborted).toBe(true);
+        fireEvent.click(preview);
+        expect(requests[2].seed).toBe(requests[1].seed);
+        await deliver(() => requests[2].complete());
+        expect(screen.getByText("Description: edited sample")).toBeVisible();
+        const sampleText = screen.getByText(/This mode has no single fixed strip/).textContent;
+        expect(sampleText).toContain(`seed ${requests[2].seed}`);
+        await deliver(() => requests[1].complete());
+        expect(screen.getByText("Description: edited sample")).toBeVisible();
+        expect(screen.getByText(/This mode has no single fixed strip/)).toHaveTextContent(sampleText!);
+    });
+
     it.each([
         {mechanics: {respins: {grant: 2}}, path: "mechanics.respins.trigger"},
         {mechanics: {cascade: {maxCascades: {invalid: true}}}, path: "mechanics.cascade.maxCascades"},

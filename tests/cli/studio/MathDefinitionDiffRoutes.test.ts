@@ -14,12 +14,41 @@ import {dispatch} from "../../../cli/dispatch.js";
 import {DiffCommand} from "../../../cli/commands/DiffCommand.js";
 import {fractionalBetBlueprint} from "../../fixtures/math/FractionalBetFixture.js";
 import {
+    createPackageExtractionTestEnvironment,
     runtimeSnapshotNames,
-    writeDescriptorPackage,
+    PACKAGE_EXTRACTION_TEST_TIMEOUT,
+    writeDescriptorPackage as writeDescriptorFixture,
     writePausedDescriptorPackage,
 } from "../../v2/fixtures/PackageExtractionFixture.js";
 
+// These fixtures return declarations without importing POKIE or creating sessions. Bind an explicit
+// dependency so the real loader snapshots it rather than the entire host checkout and runtime graph.
+function declareDescriptorRuntime(packageRoot: string): void {
+    const runtime = path.join(packageRoot, "node_modules", "@fromstan", "pokie");
+    const version = "0.0.0-declaration-only";
+    fs.mkdirSync(runtime, {recursive: true});
+    fs.writeFileSync(path.join(runtime, "package.json"), JSON.stringify({name: "@fromstan/pokie", version, main: "index.js"}));
+    fs.writeFileSync(path.join(runtime, "index.js"), 'throw new Error("Declaration analysis must not execute the package runtime");');
+    const manifestPath = path.join(packageRoot, "package.json");
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    fs.writeFileSync(manifestPath, JSON.stringify({...manifest, dependencies: {...manifest.dependencies, "@fromstan/pokie": version}}));
+}
+
+function writeDescriptorPackage(...args: Parameters<typeof writeDescriptorFixture>): string {
+    const packageRoot = writeDescriptorFixture(...args);
+    declareDescriptorRuntime(packageRoot);
+    return packageRoot;
+}
+
 describe("definition comparison public Studio route", () => {
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     let root: string, left: string, right: string, server: StudioServer, url: string;
     const post = async (body: unknown) => {
         const response = await fetch(url + "/api/math-definition-diff/preview", {
@@ -77,6 +106,38 @@ describe("definition comparison public Studio route", () => {
             }
         }
     });
+    it("retains generated policy defaults and explicit unknowns through rejection and repeated repaired Studio reads", async () => {
+        const model = fractionalBetBlueprint([0.05], true);
+        const generated = writeDescriptorPackage(root, {model});
+        const writePolicy = (policy?: unknown): void => {
+            writeDescriptorPackage(root, {model, descriptorBody: `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model${policy === undefined ? "" : `, maxWinPolicy: ${JSON.stringify(policy)}`}};`});
+        };
+        writePolicy();
+        fs.writeFileSync(left, JSON.stringify(model));
+        const opened = await fetch(url + "/api/home/projects/open", {
+            method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({projectRoot: generated}),
+        });
+        expect(opened.status).toBe(200);
+        await opened.json();
+        for (const policy of [undefined, {type: "unknown", authority: "explicit policy"}, {type: "declared", value: "7.5", unit: "currency", scope: "paid-entry", authority: "invalid numeric declaration"}, undefined, undefined]) {
+            writePolicy(policy);
+            const result = await post({leftPath: left, rightPath: generated, revision: 0});
+            expect(result.status).toBe(200);
+            const snapshot = result.body.right;
+            expect(snapshot.identity).toMatchObject({kind: "tsPackage", descriptorKind: "generated"});
+            const validation = await fetch(url + "/api/project/validate");
+            expect(validation.status).toBe(200);
+            expect(await validation.json()).toMatchObject({advanced: snapshot.advanced});
+            if (policy?.type === "declared") {
+                expect(snapshot.support).toBe("failed");
+                expect(snapshot.diagnostics).toContainEqual(expect.objectContaining({code: "package-model-read-failed", message: expect.stringContaining("maxWinPolicy")}));
+            } else {
+                expect(snapshot.effective).toHaveProperty("maxWinPolicy.type", policy ? "unknown" : "none");
+                expect(snapshot.advanced!.issues.some(issue => issue.code === "max-win-policy-unknown")).toBe(policy !== undefined);
+                expect(snapshot.advanced).toMatchObject({verdict: "inconclusive", executableFidelity: "unverified"});
+            }
+        }
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     it("shares corrected metadata/default semantics and unknown custom authority with CLI and the direct API", async () => {
         const model = {...fractionalBetBlueprint([0.05], true), rows: 2, winModel: {type: "ways" as const},
             betModes: [{id: "base", runtimeType: "base" as const, isDefault: true}]};
@@ -253,6 +314,7 @@ describe("definition comparison public Studio route", () => {
     });
     it("drains package extraction on disconnect and shutdown and removes only owned snapshots", async () => {
         const fixture = writePausedDescriptorPackage(root, undefined, {pauseAtRead: 1});
+        declareDescriptorRuntime(fixture.source);
         const baseline = runtimeSnapshotNames(fixture.source);
         const controller = new AbortController();
         const pending = fetch(url + "/api/math-definition-diff/preview", {
@@ -262,7 +324,7 @@ describe("definition comparison public Studio route", () => {
             signal: controller.signal,
         }).catch((error) => error);
         try {
-            await fixture.readStarted;
+            await fixture.waitForRead(pending);
             controller.abort();
             const stopping = server.stop();
             fixture.settle();

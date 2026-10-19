@@ -1,3 +1,5 @@
+import {BLUEPRINT_SECTIONS, type BlueprintSectionId} from "./interpret/BlueprintSections";
+
 const DESIGN_DRAFT_STORAGE_KEY = "pokie-studio:design-draft:v1";
 
 // `importedFromParSheetPath`, when set, is the .xlsx workbook this draft was Applied from (see
@@ -5,49 +7,104 @@ const DESIGN_DRAFT_STORAGE_KEY = "pokie-studio:design-draft:v1";
 // recovered draft's eventual first Save still records the same workbook provenance an uninterrupted
 // session would have (see saveManagedBlueprint's own doc comment), rather than silently becoming an
 // ordinary, unattributed managed Blueprint just because the tab happened to refresh first.
-export type PersistedBlueprintDraft = {blueprint: unknown; importedFromParSheetPath?: string; conversionEvidence?: unknown};
+export type PersistedBlueprintDraft = {
+    blueprint: Record<string, unknown>;
+    importedFromParSheetPath?: string;
+    conversionEvidence?: unknown;
+};
 
-// The guided Design Game editor's own draft-recovery slot -- one browser tab, one in-progress draft at a
-// time (Home only ever mounts a single BlueprintEditorPage instance -- see BlueprintEditorPage's own
-// `guided` doc comment), so a single fixed key is enough, the same "one storage key per feature" choice
-// CertificationTab's own sessionStorage persistence already makes. sessionStorage (not localStorage):
-// survives an accidental refresh/crash within the same tab -- the case this exists for -- without also
-// resurrecting a stale draft in a brand-new tab days later. Read defensively (see
-// loadPersistedBlueprintDraft): storage is outside POKIE's own control (private browsing, a hand-edited
-// value, a future format change), so any shape mismatch is treated as "nothing saved yet" rather than
-// thrown.
+export type PersistedProjectBlueprintDraft = {
+    blueprint: Record<string, unknown>;
+    section: BlueprintSectionId | "mechanics";
+    sourceHash: string;
+};
+
+export function validatePersistedProjectBlueprintDraft(value: unknown): PersistedProjectBlueprintDraft {
+    const {blueprint} = validatePersistedBlueprintDraft(value);
+    const envelope = value as Record<string, unknown>;
+    if (envelope.section !== "mechanics" && !BLUEPRINT_SECTIONS.some(section => section.id === envelope.section)) {
+        throw new Error('"draft.section" must be an editable Game Model section.');
+    }
+    if (typeof envelope.sourceHash !== "string") throw new Error('"draft.sourceHash" must be a string.');
+    return {blueprint, section: envelope.section as PersistedProjectBlueprintDraft["section"], sourceHash: envelope.sourceHash};
+}
+
+function projectDraftKey(projectRoot: string): string {
+    return `pokie-studio:project-draft:v1:${projectRoot}`;
+}
+
+export function loadPersistedProjectBlueprintDraft(projectRoot: string): PersistedProjectBlueprintDraft | undefined {
+    return readDraft(projectDraftKey(projectRoot), validatePersistedProjectBlueprintDraft);
+}
+
+export function savePersistedProjectBlueprintDraft(projectRoot: string, draft: PersistedProjectBlueprintDraft): void {
+    writeDraft(projectDraftKey(projectRoot), draft, validatePersistedProjectBlueprintDraft);
+}
+
+export function clearPersistedProjectBlueprintDraft(projectRoot: string): void {
+    clearDraft(projectDraftKey(projectRoot));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+// Recovery validates the envelope, not model semantics: incomplete documents must survive so their
+// author can repair them. Executable validity and durable provenance belong to validation/save/build.
+export function validatePersistedBlueprintDraft(value: unknown): PersistedBlueprintDraft {
+    if (!isRecord(value)) throw new Error('"draft" must be an object.');
+    if (!isRecord(value.blueprint)) throw new Error('"draft.blueprint" must be a JSON object.');
+    if ("importedFromParSheetPath" in value && typeof value.importedFromParSheetPath !== "string") {
+        throw new Error('"draft.importedFromParSheetPath" must be a string when given.');
+    }
+    return {
+        blueprint: value.blueprint,
+        ...("importedFromParSheetPath" in value ? {importedFromParSheetPath: value.importedFromParSheetPath as string} : {}),
+        ...("conversionEvidence" in value ? {conversionEvidence: value.conversionEvidence} : {}),
+    };
+}
+
+// One guided Design draft per browser tab. sessionStorage survives a same-tab refresh without
+// exposing a shared application-profile slot to other tabs or fresh browser sessions. Mount only
+// offers explicit Restore/Discard. Storage may be unavailable or hand-edited, so reads fail closed.
 export function loadPersistedBlueprintDraft(): PersistedBlueprintDraft | undefined {
+    return readDraft(DESIGN_DRAFT_STORAGE_KEY, validatePersistedBlueprintDraft);
+}
+
+function readDraft<T>(key: string, validate: (value: unknown) => T): T | undefined {
     try {
-        const raw = window.sessionStorage.getItem(DESIGN_DRAFT_STORAGE_KEY);
+        const raw = window.sessionStorage.getItem(key);
         if (raw === null) {
             return undefined;
         }
-        const parsed = JSON.parse(raw) as Partial<PersistedBlueprintDraft>;
-        if (parsed.blueprint === undefined) {
-            return undefined;
-        }
-        return {
-            blueprint: parsed.blueprint,
-            importedFromParSheetPath: typeof parsed.importedFromParSheetPath === "string" ? parsed.importedFromParSheetPath : undefined,
-            conversionEvidence: parsed.conversionEvidence,
-        };
+        return validate(JSON.parse(raw));
     } catch {
         return undefined;
     }
 }
 
 export function savePersistedBlueprintDraft(blueprint: unknown, importedFromParSheetPath?: string, conversionEvidence?: unknown): void {
+    writeDraft(DESIGN_DRAFT_STORAGE_KEY, {blueprint, importedFromParSheetPath, conversionEvidence}, validatePersistedBlueprintDraft);
+}
+
+function writeDraft(key: string, draft: unknown, validate: (value: unknown) => unknown): void {
     try {
-        window.sessionStorage.setItem(DESIGN_DRAFT_STORAGE_KEY, JSON.stringify({blueprint, importedFromParSheetPath, conversionEvidence}));
+        const raw = JSON.stringify(draft);
+        validate(JSON.parse(raw));
+        window.sessionStorage.setItem(key, raw);
     } catch {
-        // sessionStorage unavailable (private browsing, storage disabled) -- the in-memory draft still
-        // works for the rest of this tab's lifetime, it just won't survive a refresh.
+        // Storage unavailable or invalid envelope: preserve any previous recovery data. The in-memory
+        // editor remains usable; explicit Save still keeps the project without relying on this slot.
     }
 }
 
 export function clearPersistedBlueprintDraft(): void {
+    clearDraft(DESIGN_DRAFT_STORAGE_KEY);
+}
+
+function clearDraft(key: string): void {
     try {
-        window.sessionStorage.removeItem(DESIGN_DRAFT_STORAGE_KEY);
+        window.sessionStorage.removeItem(key);
     } catch {
         // See savePersistedBlueprintDraft -- nothing to clean up if storage was never usable.
     }

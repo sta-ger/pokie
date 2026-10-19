@@ -18,12 +18,13 @@ const exists = async (file) => access(file).then(() => true, () => false);
 // All packaging and productionStudioCandidate callers use this selector. Keep
 // its installed resolution in native Node, outside Jest's source aliases.
 const selectRetained = async (fixture) => JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
-    import {readP911CandidateFromEnvironment, sha256} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
+    import {readP911CandidateFromEnvironment, validateP911SmokeCandidateIdentity, sha256} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
     const {archive, ...candidate} = await readP911CandidateFromEnvironment(${JSON.stringify({
         POKIE_P911_CANDIDATE_HANDOFF:fixture.reference.path,
         POKIE_P911_CANDIDATE_HANDOFF_SHA256:fixture.reference.sha256,
         POKIE_P805_RELEASE_HANDOFF:"",
     })}, {repository:${JSON.stringify(fixture.repository)}});
+    validateP911SmokeCandidateIdentity(candidate, {}, {repository:${JSON.stringify(fixture.repository)}, archive:Buffer.from(archive)});
     process.stdout.write(JSON.stringify({...candidate, consumedArchiveSha256:sha256(archive)}));
 `], {encoding:"utf8", timeout:10_000, stdio:["ignore", "pipe", "pipe"]}));
 const commitFixture = (repository) => {

@@ -375,7 +375,7 @@ export class MathDefinitionSourceReader implements MathDefinitionSourceReading {
         const policy = validateMathDefinitionMaxWinPolicy(
             declared ??
                 extraction.maxWinPolicy ??
-                (identity.kind === "blueprint"
+                (extraction.source.kind === "generated"
                     ? {type: "none", scope: "logical-round", authority: "POKIE generated runtime: no payout cap"}
                     : {type: "unknown", authority: "Custom executable cap policy is undeclared"}),
         );

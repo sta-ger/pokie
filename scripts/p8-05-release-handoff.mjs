@@ -21,6 +21,21 @@ const tooling = new Set([
     "tests/scripts/p8-05-release-completion.test.mjs", "tests/scripts/p8-05-release-handoff.test.mjs",
     "tests/scripts/pc-20-release-completion.test.mjs", "tests/scripts/pc-20-authorized-release-runner.test.mjs",
     "tests/packaging/npmPackSmoke.test.ts",
+    // Complete V2C-31 test/evidence repair; production and build inputs stay protected.
+    "docs/v2-completion/V2C-31.md",
+    "tests/cli/BuildProductMatrix.crossSurface.contract.test.ts",
+    "tests/cli/studio/replay/StudioReplayExecutionService.test.ts",
+    "tests/packaging/helpers/selectPackedArchive.ts",
+    "tests/v2/StableConsumerContracts.test.ts",
+    "tests/cli/studio/StudioArtifactBuildService.test.ts",
+    "tests/v2/PackageBlueprintExtraction.test.ts",
+    "tests/v2/WasmSharedMath.test.ts",
+    "tests/fixtures/wasm/verifyDeliveredSharedMath.cjs",
+    "tests/v2/fixtures/normal-pack.stdout.txt",
+    "scripts/p9-11-candidate.mjs",
+    "tests/testUtils/createP911CandidateFixture.mjs",
+    "tests/scripts/p9-11-produce-candidate.test.mjs",
+    "tests/scripts/p9-11-corrective-closeout.test.mjs",
 ]);
 const evidence = (file) => file.startsWith("docs/evidence/p8-05-product-readiness/");
 const excluded = (file) => tooling.has(file) || evidence(file);

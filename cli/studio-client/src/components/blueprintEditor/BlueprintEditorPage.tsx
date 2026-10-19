@@ -163,14 +163,10 @@ export function BlueprintEditorPage({
     const workspaceOpenRequestIdRef = useRef(0);
     const [showManagedConflictComparison, setShowManagedConflictComparison] = useState(false);
     const [validationView, setValidationView] = useState<BlueprintValidationView>({status: "idle"});
-    // Read once, at mount, whatever a previous Design Game session left in this browser tab's own draft-
-    // recovery slot (see blueprintDraftStorage.ts) -- undefined when there's nothing to recover, storage
-    // is unusable, or this page mounted with an explicit `initialPath` (a deliberate navigation that
-    // already knows exactly which blueprint it wants -- see the initialPath effect below, which would
-    // otherwise race this same draft for "what the editor opens showing"). A
-    // once-only useState (its setter is never called) rather than a ref, since a ref's `.current` can't
-    // be read during render -- same pattern CertificationTab's own persistedFields uses.
-    const [persistedDraft] = useState(() => (guided && !initialPath ? loadPersistedBlueprintDraft() : undefined));
+    // Read this tab's recovery slot once on mount. An explicit source route owns its initial
+    // document. Restore remains an explicit replacement through the same dirty guards as Load;
+    // mounting or validating the starter must not overwrite the pending recovery choice.
+    const [persistedDraft] = useState(() => guided && recoveryRequest === undefined ? loadPersistedBlueprintDraft() : undefined);
     const [draftRecoveryDismissed, setDraftRecoveryDismissed] = useState(false);
     // The persistent "last successful build" record BlueprintBuildPanel renders -- kept here, not inside
     // that panel's own local state, so it survives that panel's own key={`build-${formGeneration}`}
@@ -465,6 +461,9 @@ export function BlueprintEditorPage({
     // comments) purely to avoid a one-frame stale-validation flash between their own replace and this
     // effect running; every other bump still relies on this alone.
     const hasRunRevisionEffectRef = useRef(false);
+    // Visibility changes and StrictMode's repeated mount effects are not document edits. In
+    // particular, neither may replace the retained draft with this mount's starter document.
+    const lastPersistedRevisionRef = useRef(editor.state.revision);
     // Kept separately from the validation debounce: this one only yields a primary action until React
     // has drained the input's preceding blur batch (see handleGuidedSave below).
     const guidedSaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -495,8 +494,12 @@ export function BlueprintEditorPage({
         if (isInitialMount && initialPath) {
             return undefined;
         }
-        if (!isInitialMount) {
-            savePersistedBlueprintDraft(editor.state.blueprint, importedFromParSheetPath, parConversionEvidence);
+        if (!isInitialMount && editor.state.revision !== lastPersistedRevisionRef.current) {
+            lastPersistedRevisionRef.current = editor.state.revision;
+            // Source loads and no-op mounts cannot overwrite an unanswered recovery choice.
+            if (!persistedDraft || draftRecoveryDismissed || editor.state.revision !== cleanRevisionRef.current) {
+                savePersistedBlueprintDraft(editor.state.blueprint, importedFromParSheetPath, parConversionEvidence);
+            }
         }
         autoValidateTimer.schedule(handleValidate, AUTO_VALIDATE_DEBOUNCE_MS);
         return autoValidateTimer.cancel;
@@ -803,13 +806,12 @@ export function BlueprintEditorPage({
         else runLoad(path);
     };
 
-    // Draft recovery -- "Restore" replaces the current (still-blank, since `persistedDraft` only reads
-    // non-undefined when nothing else has loaded first -- see its own doc comment) draft with whatever
+    // Draft recovery -- "Restore" replaces the current starter or loaded source draft with whatever
     // this tab's own recovery slot held. A wholesale replace like Load, except deliberately NOT marked
     // clean the way a real Load is: a recovered draft was never confirmed saved anywhere, valid or not
     // (see this step's own "invalid drafts recover/autosave but cannot run required-valid operations"
     // contract -- Save/Build below already gate on validity, not on this). "Discard" clears the slot and
-    // leaves the current (still-blank) draft alone.
+    // leaves the current draft alone.
     const handleRestoreDraft = (): void => {
         if (!persistedDraft) {
             return;

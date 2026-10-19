@@ -1,14 +1,78 @@
-import {ChildProcessWithoutNullStreams, execFileSync, spawnSync} from "child_process";
+import {ChildProcessWithoutNullStreams, execFileSync, spawnSync, type SpawnSyncReturns} from "child_process";
 import {createHash} from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {pathToFileURL} from "url";
+import {createServer} from "node:http";
 import {constants, runInThisContext} from "node:vm";
-import {BUILT_PACKAGE_FILES} from "@fromstan/pokie";
-import {localPokieDependencyRunner} from "../testUtils/offlinePokieDependencyOverride.js";
+import {BUILT_PACKAGE_FILES, type AdvancedModelValidationReport} from "@fromstan/pokie";
+import {registerCliCommands} from "../../cli/registerCliCommands.js";
+import {fractionalBetBlueprint, FRACTIONAL_MIXED_CONTINUATION} from "../fixtures/math/FractionalBetFixture.js";
+import {authoritativePaytableBlueprint} from "../fixtures/math/AuthoritativePaytableFixture.js";
+import {weightedBonusBlueprint} from "../v2/fixtures/WeightedBonusGame.js";
+import {writeRareStakeDirectory, markRecognizedStakeProject} from "../stakeengine/standalone/StakeProbabilityTestFixtures.js";
+
+import {selectPackedArchive} from "./helpers/selectPackedArchive.js";
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
+
+type InstalledValidationContract = {
+    kind: string;
+    exitCode: 0 | 2;
+    advanced: Pick<AdvancedModelValidationReport, "adapter" | "structuralValid" | "status" | "verdict" | "executableFidelity">;
+};
+
+const declarationOnly = {status: "unsupported", verdict: "inconclusive", executableFidelity: "unverified"} as const;
+const installedValidationContracts = {
+    blueprint: {kind: "blueprint", exitCode: 0, advanced: {adapter: "blueprint-runtime-v1", structuralValid: true, status: "complete", verdict: "proved-within-assumptions", executableFidelity: "declarative-runtime-contract"}},
+    generatedPackage: {kind: "package", exitCode: 2, advanced: {...declarationOnly, adapter: "tsPackage-declaration-v1", structuralValid: true}},
+    legacyPackage: {kind: "package", exitCode: 2, advanced: {...declarationOnly, adapter: "tsPackage-declaration-v1", structuralValid: null}},
+    outcomeLibrary: {kind: "outcome-library", exitCode: 2, advanced: {...declarationOnly, adapter: "outcomeLibrary-declaration-v1", structuralValid: null}},
+    stakeAdapter: {kind: "stake-engine", exitCode: 2, advanced: {...declarationOnly, adapter: "stakeAdapter-declaration-v1", structuralValid: null}},
+    parWorkbook: {kind: "package", exitCode: 2, advanced: {...declarationOnly, adapter: "parWorkbook-declaration-v1", structuralValid: true}},
+    wasm: {kind: "wasm", exitCode: 2, advanced: {...declarationOnly, adapter: "wasm-declaration-v1", structuralValid: true}},
+    randomBlueprint: {kind: "blueprint", exitCode: 2, advanced: {adapter: "blueprint-runtime-v1", structuralValid: true, status: "budget-exhausted", verdict: "inconclusive", executableFidelity: "declarative-runtime-contract"}},
+} satisfies Record<string, InstalledValidationContract>;
+
+function expectInstalledValidation(result: SpawnSyncReturns<string | Buffer>, contract: InstalledValidationContract): {advanced: AdvancedModelValidationReport; deep: boolean} {
+    expect(result.error).toBeUndefined();
+    expect(result.signal).toBeNull();
+    expect(result.status).toBe(contract.exitCode);
+    const report = JSON.parse(result.stdout.toString()) as {advanced: AdvancedModelValidationReport; deep: boolean};
+    // Structural validity, declared-model analysis and process success are distinct contracts.
+    expect(report).toMatchObject({schemaVersion: 1, project: {kind: contract.kind}, valid: true, errors: []});
+    expect(report.advanced).toMatchObject({schemaVersion: 1, scope: "declared-model", ...contract.advanced});
+    if (contract.advanced.executableFidelity === "unverified") {
+        expect(report.advanced.checks).toContainEqual(expect.objectContaining({id: "source.executable-fidelity", status: "unknown"}));
+    }
+    return report;
+}
+
+function expectGeneratedPackageValidation(result: SpawnSyncReturns<string | Buffer>): void {
+    const {advanced} = expectInstalledValidation(result, installedValidationContracts.generatedPackage);
+    expect(advanced.issues.some(issue => issue.code === "max-win-policy-unknown")).toBe(false);
+    expect(advanced.checks).toContainEqual(expect.objectContaining({id: "invariants.runtime", status: "pass"}));
+}
+
+function expectLegacyPackageValidation(result: SpawnSyncReturns<string | Buffer>): void {
+    const {advanced} = expectInstalledValidation(result, installedValidationContracts.legacyPackage);
+    for (const code of ["legacy-model-unavailable", "max-win-policy-unknown"]) {
+        expect(advanced.issues).toContainEqual(expect.objectContaining({code}));
+    }
+}
+
+function createExternalSmokeDirectory(prefix: string): string {
+    const checkout = fs.realpathSync(REPO_ROOT);
+    // Jest may deliberately put TMPDIR under node_modules. Resolve aliases before
+    // choosing a parent so the native consumer never inherits checkout resolution.
+    const temporaryRoot = [os.tmpdir(), "/tmp", "/var/tmp"]
+        .filter((directory) => fs.existsSync(directory))
+        .map((directory) => fs.realpathSync(directory))
+        .find((directory) => directory !== checkout && !directory.startsWith(checkout + path.sep));
+    if (temporaryRoot === undefined) throw new Error("No temporary directory outside the checkout is available for the native smoke consumer.");
+    return fs.mkdtempSync(path.join(temporaryRoot, prefix));
+}
 
 function importSmokeScript(filename: string): Promise<unknown> {
     const url = pathToFileURL(path.join(REPO_ROOT, "scripts", filename)).href;
@@ -19,11 +83,30 @@ function importSmokeScript(filename: string): Promise<unknown> {
     }) as Promise<unknown>;
 }
 
-async function readSharedSmokeCandidate(environment: NodeJS.ProcessEnv, options?: {repository: string}): Promise<{archive: Buffer; candidateId: string; archiveSha256: string; installationRoot: string} | undefined> {
-    const {readP911CandidateFromEnvironment} = await importSmokeScript("p9-11-candidate.mjs") as {
-        readP911CandidateFromEnvironment: (environment: NodeJS.ProcessEnv, options?: {repository: string}) => Promise<{archive: Buffer; candidateId: string; archiveSha256: string; installationRoot: string} | undefined>;
+interface SharedSmokeCandidate {
+    archive: Buffer;
+    candidateId: string;
+    candidateTreeId: string;
+    archiveSha256: string;
+    installationRoot: string;
+    buildReceipt: {path: string; sha256: string};
+    installReceipt: {path: string; sha256: string};
+    equivalence: {reviewedId: string; candidateId: string; candidateTreeId: string; changedEvidenceAndTooling: string[]};
+    projection: {packageJson: {gitHead?: string}};
+}
+
+async function readSharedSmokeCandidate(environment: NodeJS.ProcessEnv, options?: {repository: string}): Promise<SharedSmokeCandidate | undefined> {
+    const {readP911SmokeCandidateFromEnvironment} = await importSmokeScript("p9-11-candidate.mjs") as {
+        readP911SmokeCandidateFromEnvironment: (environment: NodeJS.ProcessEnv, options?: {repository: string}) => Promise<SharedSmokeCandidate | undefined>;
     };
-    return readP911CandidateFromEnvironment(environment, options);
+    return readP911SmokeCandidateFromEnvironment(environment, options);
+}
+
+async function validateSharedSmokeIdentity(candidate: SharedSmokeCandidate, archive: Buffer): Promise<void> {
+    const {validateP911SmokeCandidateIdentity} = await importSmokeScript("p9-11-candidate.mjs") as {
+        validateP911SmokeCandidateIdentity: (candidate: SharedSmokeCandidate, environment: NodeJS.ProcessEnv, options: {archive: Buffer}) => void;
+    };
+    validateP911SmokeCandidateIdentity(candidate, process.env, {archive});
 }
 
 function stageSharedSmokeArchive(archive: Buffer, directory: string): string {
@@ -69,70 +152,12 @@ it("selects the pinned P9 smoke archive/installation through native ESM without 
     }
 });
 
-async function buildPackageForSmoke(): Promise<void> {
-    const run = (command: string, args: string[]): void => {
-        execFileSync(command, args, {cwd: REPO_ROOT, stdio: "inherit", timeout: 60000});
-    };
-    const {spawnP911Child, waitP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
-        spawnP911Child: (command: string, args: string[], options: {cwd: string; timeoutMs: number; signal: AbortSignal}) => ChildProcessWithoutNullStreams;
-        waitP911Child: (child: ChildProcessWithoutNullStreams) => Promise<{stdout: string; stderr: string}>;
-    };
-    const {settleP911Commands} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
-        settleP911Commands: (commands: Array<(signal: AbortSignal) => Promise<void>>) => Promise<unknown>;
-    };
-    const runInParallel = (command: string, args: string[]) => async (signal: AbortSignal): Promise<void> => {
-        try {
-            const result = await waitP911Child(spawnP911Child(command, args, {cwd: REPO_ROOT, timeoutMs: 180000, signal}));
-            process.stdout.write(result.stdout);
-            process.stderr.write(result.stderr);
-        } catch (error) {
-            const result = (error as {pc20Result?: unknown}).pc20Result;
-            if (result !== undefined) process.stderr.write(`${JSON.stringify(result)}\n`);
-            throw error;
-        }
-    };
-    const node = process.execPath;
-    const tsc = path.join(REPO_ROOT, "node_modules", "typescript", "bin", "tsc");
-    const shx = path.join(REPO_ROOT, "node_modules", "shx", "lib", "cli.js");
-    const vite = path.join(REPO_ROOT, "node_modules", "vite", "bin", "vite.js");
-
-    // Keep this real packaging boundary self-contained. The package script is a composition of
-    // these same commands, but invoking the compiler tools directly lets this named regression
-    // build the candidate without turning the test into an invocation of the release build gate.
-    run(node, [path.join(REPO_ROOT, "generate-barrels.js")]);
-    fs.rmSync(path.join(REPO_ROOT, "dist"), {recursive: true, force: true});
-    // ESM and CJS have separate output directories and no generated-file dependency between
-    // them. Building them concurrently keeps the smoke boundary identical while leaving enough
-    // time for this intentionally real packaging test to complete inside the changed-tests gate.
-    await settleP911Commands([
-        runInParallel(node, [tsc, "--project", "tsconfig.prod.json"]),
-        runInParallel(node, [tsc, "--project", "tsconfig.prod.json", "--module", "CommonJS", "--outDir", "dist/cjs"]),
-    ]);
-    run(node, [shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
-    run(node, [path.join(REPO_ROOT, "write-cjs-package-json.js")]);
-    run(node, [shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
-
-    // The remaining build commands own separate output trees. Running the type checks and Vite
-    // bundle together preserves the full production-package boundary while keeping this real smoke
-    // suite below the changed-tests gate's timeout.
-    await settleP911Commands([
-        runInParallel(node, [tsc, "--project", "tsconfig.cli.json"]),
-        runInParallel(node, [tsc, "--project", "tsconfig.client.json"]),
-        runInParallel(node, [tsc, "--project", "cli/studio-client/tsconfig.json", "--noEmit"]),
-        runInParallel(node, [vite, "build", "--config", "cli/studio-client/vite.config.ts"]),
-    ]);
-    run(node, [path.join(REPO_ROOT, "tests/testUtils/stageRuntimeLocation.mjs"), "esm", "cjs", "src"]);
-    run(node, [shx, "cp", "cli/client/index.html", "cli/client/style.css", "dist/cli/client/"]);
-    run(node, [shx, "test", "-f", "dist/cli/studio-client/index.html"]);
-    run(node, [shx, "chmod", "+x", "dist/cli/pokie.js"]);
-}
-
 // The installed-binary sweep must keep a workflow row for every public parser surface.  These ids
 // deliberately mirror the public command tree rather than the private implementation commands.
 const PACKAGED_PUBLIC_WORKFLOW_SCENARIOS = [
     "build", "certification", "certification build", "certification verify", "client", "create", "dev", "diff", "edit",
     "fairness", "fairness seed-commit", "fairness commit", "fairness reveal", "fairness verify", "generate", "import", "init",
-    "inspect", "par", "par export", "par import", "reel", "reel generate", "run", "replay", "report", "sample", "serve", "sim", "validate",
+    "inspect", "optimize", "par", "par export", "par import", "reel", "reel generate", "run", "replay", "report", "sample", "serve", "sim", "validate",
 ] as const;
 
 // One of two places in the suite where a CLI command is legitimately spawned as a real subprocess (see
@@ -182,11 +207,13 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
 
     let packDir: string | undefined;
     let releaseHandoffBinding: {auditedCandidateId: string; releaseHandoffSha256: string} | undefined;
+    let sharedSmokeCandidate: SharedSmokeCandidate | undefined;
     let tarballPath: string | undefined;
     let installDir: string | undefined;
     let pokieBinPath: string;
     const smokeResults = {cli: false, studioApi: false, studioAssets: false, libraryWorker: false, wasm: false, processesDrained: false};
     const completedSmokeTests = new Set<string>();
+    let registeredSmokeTests = 0;
     const spawnedSmokeChildren = new Set<ChildProcessWithoutNullStreams>();
     const spawnSmokeChild = async (args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env): Promise<ChildProcessWithoutNullStreams> => {
         const {spawnP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
@@ -197,6 +224,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         return child;
     };
     const smokeIt = (name: string, implementation: () => unknown | Promise<unknown>): void => {
+        registeredSmokeTests++;
         it(name, async () => {
             await implementation();
             completedSmokeTests.add(name);
@@ -232,6 +260,14 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const ownPackage = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {name: string; version: string};
         fs.writeFileSync(receiptPath!, `${JSON.stringify({
             ...releaseHandoffBinding,
+            ...(sharedSmokeCandidate === undefined ? {} : {p911CandidateIdentity: {
+                candidateId: sharedSmokeCandidate.candidateId,
+                candidateTreeId: sharedSmokeCandidate.candidateTreeId,
+                archiveSha256: sharedSmokeCandidate.archiveSha256,
+                buildReceipt: sharedSmokeCandidate.buildReceipt,
+                installReceipt: sharedSmokeCandidate.installReceipt,
+                equivalence: sharedSmokeCandidate.equivalence,
+            }}),
             schemaVersion: 1,
             kind: "npm-pack-install-smoke",
             candidateId: process.env.POKIE_PACK_SMOKE_CANDIDATE_ID,
@@ -249,19 +285,17 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     }
 
     beforeAll(async () => {
-        // Build explicitly, then keep the real tarball and npm's output outside the candidate tree.
+        // Keep the real tarball and npm's output outside the candidate tree.
         // `npm pack --json` includes one record per shipped file; once the package exceeded 8,000
         // files that output crossed execFileSync's default 1 MiB buffer and failed with ENOBUFS.
-        // Silent non-JSON mode emits only the tarball filename and remains bounded as the package grows.
+        // Non-JSON mode avoids the per-file inventory, but prepack can still emit
+        // Vite logs. Select the archive from the fresh directory, not stdout.
         const handoffConfig = process.env.POKIE_P805_RELEASE_HANDOFF;
-        const p911Candidate = await readSharedSmokeCandidate(process.env);
-        let sharedInstallation: string | undefined;
+        sharedSmokeCandidate = await readSharedSmokeCandidate(process.env);
+        const p911Candidate = sharedSmokeCandidate;
         if (p911Candidate) {
             const candidate = p911Candidate;
-            expect(candidate.candidateId).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_ID);
-            expect(candidate.archiveSha256).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
-            sharedInstallation = candidate.installationRoot;
-            packDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-output-"));
+            packDir = createExternalSmokeDirectory("pokie-npm-pack-output-");
             tarballPath = stageSharedSmokeArchive(candidate.archive, packDir);
         } else if (handoffConfig) {
             // Re-authenticate the exact archived product at the real install
@@ -276,23 +310,44 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             expect(execFileSync("git", ["rev-parse", "HEAD"], {cwd: REPO_ROOT, encoding: "utf8"}).trim()).toBe(config.candidateId);
             const result = await readP805ReleaseArchive(config);
             releaseHandoffBinding = {auditedCandidateId: result.binding.auditedCandidateId, releaseHandoffSha256: result.sha256};
-            packDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-output-"));
+            packDir = createExternalSmokeDirectory("pokie-npm-pack-output-");
             tarballPath = path.join(packDir, "audited-package.tgz");
             fs.writeFileSync(tarballPath, result.archive, {flag: "wx"});
         } else {
-            await buildPackageForSmoke();
-            packDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-output-"));
-            const filename = execFileSync(
-                "npm",
-                ["pack", "--ignore-scripts", "--silent", "--pack-destination", packDir],
-                {cwd: REPO_ROOT, encoding: "utf-8"},
-            ).trim();
-            expect(filename).toBe(path.basename(filename));
-            tarballPath = path.join(packDir, filename);
+            packDir = createExternalSmokeDirectory("pokie-npm-pack-output-");
+            const {spawnP911Child, waitP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+                spawnP911Child: (command: string, args: string[], options: {cwd: string; timeoutMs: number}) => ChildProcessWithoutNullStreams;
+                waitP911Child: (child: ChildProcessWithoutNullStreams) => Promise<{stdout: string}>;
+            };
+            // Preserve normal prepack, with launch-time ownership of its build
+            // descendants and awaited cleanup even when it fails or times out.
+            const packChild = spawnP911Child("npm", ["pack", "--silent", "--pack-destination", packDir], {cwd: REPO_ROOT, timeoutMs: 180000});
+            spawnedSmokeChildren.add(packChild);
+            let stdout: string;
+            try {
+                stdout = (await waitP911Child(packChild)).stdout;
+            } finally {
+                await stopChild(packChild);
+            }
+            tarballPath = selectPackedArchive(packDir, stdout);
         }
         expect(fs.existsSync(tarballPath)).toBe(true);
 
-        installDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-smoke-"));
+        // Validate the selected bytes and reviewed checkout before installation.
+        // A P9 product keeps its original SHA; optional release context was
+        // checked against the authenticated reviewed descendant by the selector.
+        const candidateSha = execFileSync("git", ["rev-parse", "HEAD"], {cwd: REPO_ROOT, encoding: "utf8"}).trim();
+        const selectedArchive = fs.readFileSync(tarballPath);
+        const digest = createHash("sha256").update(selectedArchive).digest("hex");
+        if (p911Candidate) {
+            await validateSharedSmokeIdentity(p911Candidate, selectedArchive);
+        } else {
+            const expectedSha = process.env.POKIE_PACK_SMOKE_CANDIDATE_ID;
+            if (expectedSha) expect(candidateSha).toBe(expectedSha);
+            if (process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256) expect(digest).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
+        }
+
+        installDir = createExternalSmokeDirectory("pokie native installed consumer ");
         fs.writeFileSync(
             path.join(installDir, "package.json"),
             JSON.stringify({name: "pokie-smoke-test", version: "0.0.0", private: true}),
@@ -300,13 +355,21 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // The tarball and its dependency metadata are already local. Prefer npm's cache for matching
         // dependencies while retaining a real `npm install` boundary (and its normal network fallback
         // for a cold cache), so this smoke suite cannot time out merely on registry metadata latency.
-        if (sharedInstallation !== undefined) {
-            // A scratch consumer borrows the authenticated real npm installation;
-            // removing this scratch directory never removes the controller's install.
-            borrowSmokeInstallation(installDir, sharedInstallation);
-        } else {
-            execFileSync("npm", ["install", tarballPath, "--no-audit", "--no-fund", "--prefer-offline"], {cwd: installDir, encoding: "utf-8", timeout: 120000});
-        }
+        // Always install the authenticated archive natively. A borrowed node_modules symlink
+        // cannot establish clean installed-consumer acceptance, even for a shared candidate.
+        execFileSync("npm", ["install", tarballPath, "--no-audit", "--no-fund", "--prefer-offline"], {cwd: installDir, encoding: "utf-8", timeout: 120000});
+        const installedRoot = path.join(installDir, "node_modules", "@fromstan", "pokie");
+        expect(fs.lstatSync(path.join(installDir, "node_modules")).isSymbolicLink()).toBe(false);
+        expect(fs.lstatSync(installedRoot).isSymbolicLink()).toBe(false);
+        expect(fs.realpathSync(installedRoot).startsWith(fs.realpathSync(REPO_ROOT) + path.sep)).toBe(false);
+        expect(execFileSync("git", ["rev-parse", "HEAD"], {cwd: REPO_ROOT, encoding: "utf8"}).trim()).toBe(candidateSha);
+        expect(createHash("sha256").update(fs.readFileSync(tarballPath)).digest("hex")).toBe(digest);
+        if (p911Candidate) await validateSharedSmokeIdentity(p911Candidate, selectedArchive);
+        const installedMetadata = JSON.parse(fs.readFileSync(path.join(installedRoot, "package.json"), "utf8"));
+        const ownMetadata = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
+        expect(installedMetadata).toMatchObject({name: "@fromstan/pokie", version: "2.0.0", exports: ownMetadata.exports, bin: ownMetadata.bin});
+        if (p911Candidate) expect(installedMetadata.gitHead).toBe(p911Candidate.projection.packageJson.gitHead);
+        console.log(JSON.stringify({candidateSha, ...(p911Candidate === undefined ? {} : {productCandidateSha: p911Candidate.candidateId, equivalence: p911Candidate.equivalence}), archiveSha256: digest, installedRoot, packageName: installedMetadata.name, version: installedMetadata.version}));
 
         pokieBinPath = path.join(installDir, "node_modules", ".bin", "pokie");
         expect(fs.existsSync(pokieBinPath)).toBe(true);
@@ -326,7 +389,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // Every test in this describe is registered through smokeIt.  Keep the
         // expected count explicit so adding an unwrapped test cannot silently
         // make a release receipt describe only a subset of this suite.
-        const suitePassed = completedSmokeTests.size === 25;
+        const suitePassed = completedSmokeTests.size === registeredSmokeTests;
         // Drain even when an assertion/startup fails before its per-test finally.
         // allSettled prevents the first failed stop from abandoning siblings.
         const stops = await Promise.allSettled([...spawnedSmokeChildren].map((child) => stopChild(child)));
@@ -363,6 +426,468 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(Object.values(cleanup).every(Boolean)).toBe(true);
         if (suitePassed && archive !== undefined && smokeResults.cli && smokeResults.studioApi && smokeResults.studioAssets && smokeResults.libraryWorker && smokeResults.wasm) stageReleaseSmokeArchive(archive);
         retainP911PackagingReceipt(spawnedSmokeChildren, () => retainReleaseSmokeReceipt(suitePassed, cleanup));
+    });
+
+    function installedProbe(name: string, script: string): string {
+        const file = path.join(installDir!, `${name}.mjs`);
+        fs.writeFileSync(file, script);
+        const result = spawnSync(process.execPath, [file], {cwd: installDir, encoding: "utf8", timeout: 120000});
+        expect({status: result.status, error: result.error?.message, stderr: result.stderr}).toEqual({status: 0, error: undefined, stderr: ""});
+        return result.stdout;
+    }
+
+    smokeIt("resolves native ESM/CJS and strict declarations inside the installation and enforces portable export boundaries", () => {
+        const root = path.join(installDir!, "node_modules/@fromstan/pokie");
+        for (const file of [
+            "dist/cjs/package.json", "dist/esm/index.d.ts", "dist/cjs/index.d.ts",
+            "dist/cli/pokie.js", "dist/cli/client/index.html", "dist/cli/studio-client/index.html",
+            "dist/cli/client/player/index.js", "dist/cli/client/player/index.d.ts",
+            ...["esm", "cjs", "src"].flatMap(tree => [
+                `dist/${tree}/gamepackage/internal/runtimeLocation.mjs`,
+                `dist/${tree}/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs`,
+                `dist/${tree}/simulation/parallel/internal/simulationWorkerEntry.js`,
+            ]),
+        ]) expect(fs.statSync(path.join(root, file)).size).toBeGreaterThan(0);
+        expect(installedProbe("native-exports", `
+            import assert from 'node:assert/strict';
+            import fs from 'node:fs';
+            import {createRequire} from 'node:module';
+            import {fileURLToPath} from 'node:url';
+            import * as esm from '@fromstan/pokie';
+            import * as browser from '@fromstan/pokie/browser';
+            import * as wasm from '@fromstan/pokie/wasm';
+            import * as player from '@fromstan/pokie/client/player';
+            const require = createRequire(import.meta.url);
+            const root = ${JSON.stringify(root)};
+            const cjs = require('@fromstan/pokie');
+            for (const [specifier, suffix] of [['@fromstan/pokie','dist/esm/index.js'], ['@fromstan/pokie/browser','dist/esm/browser.js'], ['@fromstan/pokie/wasm','dist/esm/wasm/browser.js'], ['@fromstan/pokie/client/player','dist/cli/client/player/index.js']]) {
+                assert.equal(fs.realpathSync(fileURLToPath(import.meta.resolve(specifier))), root + '/' + suffix);
+            }
+            assert.equal(fs.realpathSync(require.resolve('@fromstan/pokie')), root + '/dist/cjs/index.js');
+            assert.equal(esm.POKIE_VERSION, '2.0.0');
+            assert.equal(cjs.POKIE_VERSION, esm.POKIE_VERSION);
+            assert.equal(browser.POKIE_WASM_RUNTIME_API_VERSION, '2.1.0');
+            assert.equal(wasm.POKIE_WASM_RUNTIME_API_VERSION, '2.1.0');
+            assert.equal(typeof player.renderPlayerRound, 'function');
+            for (const specifier of ['@fromstan/pokie/browser', '@fromstan/pokie/wasm', '@fromstan/pokie/client/player', '@fromstan/pokie/package.json', '@fromstan/pokie/dist/esm/index.js']) {
+                assert.throws(() => require(specifier), {code: 'ERR_PACKAGE_PATH_NOT_EXPORTED'});
+            }
+            await assert.rejects(import('pokie'), {code: 'ERR_MODULE_NOT_FOUND'});
+            console.log('NATIVE_EXPORTS_OK');
+        `)).toContain("NATIVE_EXPORTS_OK");
+        execFileSync("npm", ["install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund", "typescript@^5.8.3", "@types/node@^22"], {cwd: installDir, encoding: "utf8", timeout: 120000});
+        fs.writeFileSync(path.join(installDir!, "consumer.mts"), `
+            import {POKIE_VERSION, type PokieGame} from '@fromstan/pokie';
+            import {VideoSlotConfig} from '@fromstan/pokie/browser';
+            import {instantiatePokieWasm} from '@fromstan/pokie/wasm';
+            import {renderPlayerRound} from '@fromstan/pokie/client/player';
+            const identity: string = POKIE_VERSION;
+            const game: PokieGame | undefined = undefined;
+            void [identity, game, new VideoSlotConfig(), instantiatePokieWasm, renderPlayerRound];
+        `);
+        fs.writeFileSync(path.join(installDir!, "consumer.cts"), `import api = require('@fromstan/pokie'); const identity: string = api.POKIE_VERSION; void identity;`);
+        execFileSync(process.execPath, [path.join(installDir!, "node_modules/typescript/bin/tsc"), "--strict", "--noEmit", "--target", "ES2022", "--module", "NodeNext", "--moduleResolution", "NodeNext", "consumer.mts", "consumer.cts"], {cwd: installDir, encoding: "utf8", timeout: 120000});
+        expect(installedProbe("declaration-resolution", `
+            import assert from 'node:assert/strict';
+            import ts from 'typescript';
+            const root = ${JSON.stringify(root)};
+            const options = {module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext};
+            for (const [entry, mode, expected] of [['consumer.mts', ts.ModuleKind.ESNext, '/dist/esm/index.d.ts'], ['consumer.cts', ts.ModuleKind.CommonJS, '/dist/cjs/index.d.ts']]) {
+                const result = ts.resolveModuleName('@fromstan/pokie', process.cwd() + '/' + entry, options, ts.sys, undefined, undefined, mode);
+                assert.equal(result.resolvedModule.resolvedFileName, root + expected);
+            }
+            console.log('NATIVE_DECLARATIONS_OK');
+        `)).toContain("NATIVE_DECLARATIONS_OK");
+    });
+
+    smokeIt("walks installed recursive help including optimize and advertised help verbs from unrelated spaced cwd without side effects", () => {
+        const cwd = path.join(installDir!, "unrelated working directory");
+        fs.mkdirSync(cwd);
+        const root = path.join(installDir!, "node_modules/@fromstan/pokie");
+        const tree = JSON.parse(installedProbe("installed-help-tree", `
+            import {registerCliCommands} from ${JSON.stringify(pathToFileURL(path.join(root, "dist/cli/registerCliCommands.js")).href)};
+            const handlers = registerCliCommands({version: '2.0.0', pokiePackageRoot: ${JSON.stringify(root)}, clientRoot: ${JSON.stringify(path.join(root, "dist/cli/client"))}, studioRoot: ${JSON.stringify(path.join(root, "dist/cli/studio-client"))}});
+            const walk = (command, args) => [{args, help: command.helpInformation(), children: command.commands.map(child => child.name())}, ...command.commands.flatMap(child => walk(child, [...args, child.name()]))];
+            console.log(JSON.stringify(handlers.filter(handler => !handler.getName().startsWith('__')).flatMap(handler => walk(handler.getCommanderCommand(), [handler.getName()]))));
+        `)) as Array<{args: string[]; help: string; children: string[]}>;
+        const sourceTree = registerCliCommands({version: "2.0.0", pokiePackageRoot: root, clientRoot: path.join(root, "dist/cli/client"), studioRoot: path.join(root, "dist/cli/studio-client")});
+        expect(tree.filter(node => node.args.length === 1).map(node => node.args[0])).toEqual(sourceTree.map(handler => handler.getName()).filter(name => !name.startsWith("__")));
+        expect(tree.some(node => node.args[0] === "optimize")).toBe(true);
+        for (const node of tree) {
+            const requests = [[...node.args, "--help"], [...node.args, "-h"]];
+            if ((/^\s+help \[command\]/m).test(node.help)) requests.push(...[
+                [...node.args, "help"], [...node.args, "help", "--help"], [...node.args, "help", "-h"],
+                ...node.children.flatMap(child => [[...node.args, "help", child], [...node.args, "help", child, "--help"]]),
+            ]);
+            for (const args of requests) {
+                const result = spawnSync(pokieBinPath, args, {cwd, encoding: "utf8", timeout: 30000});
+                expect({args, status: result.status, error: result.error?.message, stderr: result.stderr}).toEqual({args, status: 0, error: undefined, stderr: ""});
+                const childHelp = args[args.indexOf("help") + 1];
+                const expected = node.children.includes(childHelp) ? tree.find(candidate => candidate.args.join(" ") === [...node.args, childHelp].join(" "))!.help : node.help;
+                expect(result.stdout).toContain(expected);
+            }
+        }
+        for (const args of [["--version"], ["-V"], ["--help"], ["-h"]]) {
+            const result = spawnSync(pokieBinPath, args, {cwd, encoding: "utf8", timeout: 30000});
+            expect(result.status).toBe(0);
+            expect(result.stderr).toBe("");
+            if (args[0] === "--version" || args[0] === "-V") expect(result.stdout.trim()).toBe("2.0.0");
+        }
+        for (const args of [["build", "--version"], ["sim", "-V"], ["unknown-command"]]) {
+            const result = spawnSync(pokieBinPath, args, {cwd, encoding: "utf8", timeout: 30000});
+            expect(result.status).not.toBe(0);
+            expect(result.stderr).not.toBe("");
+            expect(result.stdout).not.toContain("listening on");
+        }
+        expect(fs.readdirSync(cwd)).toEqual([]);
+    });
+
+    smokeIt("executes unchanged generated CJS and genuinely recompiled TS against the installed candidate, including numeric and compact-state regressions", () => {
+        const model = fractionalBetBlueprint([0.05, 7.5, 1e-7], true);
+        const root = path.join(installDir!, "native generated package");
+        const blueprint = path.join(installDir!, "native-source.json");
+        fs.writeFileSync(blueprint, JSON.stringify(model));
+        const build = spawnSync(pokieBinPath, ["build", blueprint, "--target", "tsPackage", "--out", root], {cwd: installDir, encoding: "utf8", timeout: 60000});
+        expect({status: build.status, stderr: build.stderr}).toEqual({status: 0, stderr: ""});
+        const source = fs.readFileSync(path.join(root, "src/index.ts"));
+        const direct = fs.readFileSync(path.join(root, "dist/index.js"));
+        expect(source.toString()).toContain('from "@fromstan/pokie"');
+        expect(direct.toString()).toContain('require("@fromstan/pokie")');
+        for (const bytes of [source, direct]) {
+            expect(bytes.toString()).not.toContain(REPO_ROOT);
+            expect(bytes.toString()).not.toMatch(/(?:require\(|from\s+)["'](?:pokie|.*\/src\/index)["']/);
+        }
+        // Remove the production convenience link, then perform a real native candidate install.
+        fs.rmSync(path.join(root, "node_modules"), {recursive: true, force: true});
+        execFileSync("npm", ["install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund", tarballPath!], {cwd: root, encoding: "utf8", timeout: 120000});
+        expect(fs.lstatSync(path.join(root, "node_modules/@fromstan/pokie")).isSymbolicLink()).toBe(false);
+        const runGeneratedWorkflow = (phase: string) => {
+            const sim = path.join(installDir!, `${phase}-generated-sim.json`);
+            const markdown = path.join(installDir!, `${phase}-generated-report.md`);
+            const replay = path.join(installDir!, `${phase}-generated-replay.json`);
+            const validation = spawnSync(pokieBinPath, ["validate", root, "--format", "json"], {cwd: installDir, encoding: "utf8", timeout: 60000});
+            expectGeneratedPackageValidation(validation);
+            for (const args of [
+                ["inspect", root],
+                ["sim", root, "--rounds", "3", "--seed", "0", "--out", sim],
+                ["report", sim, "--format", "markdown", "--out", markdown],
+                ["replay", root, "--round", "3", "--seed", "0", "--out", replay],
+            ]) {
+                const result = spawnSync(pokieBinPath, args, {cwd: installDir, encoding: "utf8", timeout: 60000});
+                expect({phase, args, status: result.status, error: result.error?.message, stderr: result.stderr})
+                    .toEqual({phase, args, status: 0, error: undefined, stderr: ""});
+            }
+            const statistics = JSON.parse(fs.readFileSync(sim, "utf8"));
+            const recorded = JSON.parse(fs.readFileSync(replay, "utf8"));
+            expect(statistics).toMatchObject({rounds: 3, seed: "0", totalBet: expect.closeTo(0.15, 12), totalWin: 0.1, rtp: expect.closeTo(2 / 3, 12)});
+            expect(recorded).toMatchObject({seed: "0", round: 3, totalBet: statistics.totalBet, totalWin: statistics.totalWin, screen: FRACTIONAL_MIXED_CONTINUATION[2].screen});
+            expect(fs.readFileSync(markdown, "utf8")).toContain("RTP");
+            return {statistics, recorded};
+        };
+        const originalWorkflow = runGeneratedWorkflow("original-cjs");
+        fs.writeFileSync(path.join(root, "dist/direct.cjs"), direct);
+        execFileSync("npm", ["run", "build"], {cwd: root, encoding: "utf8", timeout: 120000});
+        expect(fs.readFileSync(path.join(root, "src/index.ts"))).toEqual(source);
+        const recompiledWorkflow = runGeneratedWorkflow("recompiled-ts");
+        for (const field of ["rounds", "seed", "totalBet", "totalWin", "rtp", "hitFrequency"]) {
+            expect(recompiledWorkflow.statistics[field]).toEqual(originalWorkflow.statistics[field]);
+        }
+        for (const field of ["game", "seed", "round", "screen", "totalBet", "totalWin"]) {
+            expect(recompiledWorkflow.recorded[field]).toEqual(originalWorkflow.recorded[field]);
+        }
+        const rare = path.join(installDir!, "rare-native-stake");
+        writeRareStakeDirectory(rare);
+        markRecognizedStakeProject(rare);
+        expect(installedProbe("native-regressions", `
+            import assert from 'node:assert/strict';
+            import fs from 'node:fs';
+            import {createRequire} from 'node:module';
+            import * as api from '@fromstan/pokie';
+            import * as portable from '@fromstan/pokie/wasm';
+            const require = createRequire(import.meta.url);
+            const packageRoot = ${JSON.stringify(root)};
+            const consumer = createRequire(packageRoot + '/package.json');
+            assert.equal(fs.realpathSync(consumer.resolve('@fromstan/pokie')), packageRoot + '/node_modules/@fromstan/pokie/dist/cjs/index.js');
+            const original = consumer('./dist/direct.cjs');
+            const recompiled = consumer('./dist/index.js');
+            const loaded = await api.loadPokieGameRuntime(packageRoot);
+            const model = ${JSON.stringify(model)};
+            const golden = ${JSON.stringify(FRACTIONAL_MIXED_CONTINUATION)};
+            try {
+                for (const seed of [0, '0', 37, '37']) {
+                    const games = [original, recompiled, loaded.game];
+                    const sessions = games.map(game => game.createSession({seed}));
+                    const oracle = new api.SeededRandomNumberGenerator(seed);
+                    for (let reel = 0; reel < 3; reel++) oracle.getRandomInt(0, 2);
+                    for (const session of sessions) {
+                        assert.equal(session.toSessionState().rngState, oracle.toSessionState());
+                        session.setCreditsAmount(1000);
+                    }
+                    const artifact = typeof seed === 'string' ? await portable.createBlueprintWasmArtifact(model) : undefined;
+                    const runtime = artifact && await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost(seed));
+                    const wasm = runtime?.createSession(seed);
+                    const initialWasm = wasm?.serialize();
+                    const portableRounds = [];
+                    try {
+                        for (let round = 0; round < 12; round++) {
+                            const bet = model.availableBets[round % 3];
+                            const before = sessions[0].getCreditsAmount();
+                            for (const session of sessions) { session.setBet(bet); session.play(); }
+                            const screen = sessions[0].getSymbolsCombination().toMatrix();
+                            const expected = screen.every(reel => reel[0] === 'A') ? bet * 5 : screen.every(reel => reel[0] === 'B') ? bet * 2 : 0;
+                            if (seed === '0' && round < golden.length) {
+                                assert.deepEqual(screen, golden[round].screen);
+                                assert.equal(sessions[0].toSessionState().rngState, golden[round].rngState);
+                            }
+                            for (let index = 0; index < sessions.length; index++) {
+                                const session = sessions[index];
+                                assert.deepEqual(session.getSymbolsCombination().toMatrix(), screen);
+                                assert.equal(session.getWinAmount(), expected);
+                                assert.equal(session.getCreditsAmount(), before - bet + expected);
+                                assert.deepEqual(session.toSessionState(), sessions[0].toSessionState());
+                                const restored = games[index].createSession({seed: 'unrelated'});
+                                restored.fromSessionState(JSON.parse(JSON.stringify(session.toSessionState())));
+                                restored.setBet(bet); restored.setCreditsAmount(session.getCreditsAmount());
+                                const continuation = games[index].createSession({seed});
+                                continuation.fromSessionState(session.toSessionState());
+                                continuation.setBet(bet); continuation.setCreditsAmount(session.getCreditsAmount());
+                                restored.play(); continuation.play();
+                                assert.deepEqual(restored.toSessionState(), continuation.toSessionState());
+                                assert.equal(restored.getWinAmount(), continuation.getWinAmount());
+                            }
+                            if (wasm) {
+                                const result = await wasm.play({bet});
+                                assert.deepEqual(result.screen, screen);
+                                assert.equal(result.stake, bet); assert.equal(result.payout, expected);
+                                assert.equal(result.credits, sessions[0].getCreditsAmount());
+                                portableRounds.push(result);
+                            }
+                        }
+                        if (wasm) {
+                            const replayed = await runtime.replay(initialWasm, portableRounds.map(round => ({bet: round.stake})));
+                            assert.deepEqual(replayed.rounds, portableRounds);
+                            assert.deepEqual(replayed.stateAfter, wasm.serialize());
+                        }
+                    } finally { runtime?.dispose(); }
+                }
+                for (const bet of model.availableBets) {
+                    for (const game of [original, recompiled, loaded.game]) {
+                        const session = game.createSession({seed: '0'});
+                        session.setCreditsAmount(1000); session.setBet(bet);
+                        const statistics = new api.AggregateSimulationRunner(session, 3).run().getStatistics();
+                        const report = new api.SimulationReportBuilder().build({manifest: game.getManifest(), statistics, requestedRounds: 3, seed: '0', durationMs: 1});
+                        assert.equal(report.rounds, 3);
+                        assert.ok(Math.abs(report.totalBet / (3 * bet) - 1) < 1e-12);
+                        assert.ok(Math.abs(report.totalWin / (2 * bet) - 1) < 1e-12);
+                        assert.ok(Math.abs(report.rtp - 2 / 3) < 1e-12);
+                        const replay = new api.ReplayRecorder().record({game, seed: '0', round: 3, entryCommands: Array.from({length: 3}, () => ({kind: 'spin', bet}))});
+                        assert.deepEqual(replay.screen, golden[2].screen);
+                        assert.equal(replay.totalBet, report.totalBet);
+                        assert.equal(replay.totalWin, report.totalWin);
+                    }
+                }
+                const initial0 = new api.SeededRandomNumberGenerator(0).toSessionState();
+                assert.notEqual(initial0, new api.SeededRandomNumberGenerator('0').toSessionState());
+                for (const model of ${JSON.stringify(["missing-symbol", "missing-count", "zero"].map(kind => authoritativePaytableBlueprint(kind as "zero", 0.05)))}) {
+                    const output = new api.GamePackageGenerator('2.0.0').generate(model, process.cwd(), process.cwd() + '/omission-' + model.manifest.id);
+                    const game = require(output.projectRoot + '/dist/index.js');
+                    const session = game.createSession({seed: '0'}); session.setBet(0.05); session.play();
+                    assert.equal(session.getWinAmount(), 0);
+                    assert.deepEqual(game.getModelDescriptor().model.paytable, model.paytable);
+                }
+                for (const awards of [{}, {3: 0}]) {
+                    const freeModel = {...model, symbols: ['A','S'], scatters: ['S'], reelStrips: [['S'],['S'],['S']], paytable: {A: {3: 5}, S: {3: 2}}, mechanics: {freeGames: {scatterSymbol: 'S', awardsByCount: awards}}};
+                    const output = new api.GamePackageGenerator('2.0.0').generate(freeModel, process.cwd(), process.cwd() + '/free-' + Object.keys(awards).length);
+                    const session = require(output.projectRoot + '/dist/index.js').createSession({seed: '0'});
+                    session.setBet(0.05); session.play();
+                    assert.equal(session.getWinAmount(), 0.1);
+                    assert.equal(session.getFreeGamesNum(), 0);
+                }
+                for (const feature of [false, true]) {
+                    const artifact = await portable.createBlueprintWasmArtifact(feature ? ${JSON.stringify(weightedBonusBlueprint())} : model);
+                    const runtime = await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost('0'));
+                    const fresh = await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost('fresh'));
+                    try {
+                        const session = runtime.createSession('0', {credits: 10000});
+                        for (let i = 0; i < 48; i++) {
+                            const state = JSON.parse(JSON.stringify(session.serialize()));
+                            assert.equal(state.schemaVersion, feature ? 'pokie.state.v4' : 'pokie.state.v3');
+                            assert.ok(JSON.stringify(state).length < (feature ? 16384 : 512));
+                            assert.ok(!('commands' in state) && !('draws' in state));
+                            const restored = fresh.restoreSession(state);
+                            const command = feature ? portable.nextPokieWasmCommand(state) : {bet: 0.05};
+                            assert.deepEqual(await restored.play(command), await session.play(command));
+                            assert.deepEqual(restored.serialize(), session.serialize()); restored.dispose();
+                            const before = session.serialize();
+                            assert.throws(() => runtime.restoreSession({...state, artifactIdentity: 'wrong'}));
+                            assert.throws(() => runtime.restoreSession({...state, rngState: -1}));
+                            assert.deepEqual(session.serialize(), before);
+                        }
+                    } finally { runtime.dispose(); fresh.dispose(); }
+                }
+                const project = await new api.ProjectTargetResolver().resolve(${JSON.stringify(rare)});
+                const report = await new api.OutcomeSourceProjectAnalyzer().analyze(project);
+                assert.equal(report.issues.filter(issue => issue.severity === 'error').length, 0);
+                const analysis = report.modes[0].analysis;
+                for (const [field, expected] of [['hitFrequency', 2 ** -64], ['maxWinProbability', 2 ** -64], ['rtp', 2 ** -63], ['variance', 2 ** -62]]) {
+                    assert.ok(analysis[field] > 0 && Math.abs(analysis[field] / expected - 1) <= 1e-12, field);
+                }
+                console.log('INSTALLED_NUMERIC_AND_COMPACT_CONTRACTS_OK');
+            } finally { await loaded.release(); }
+        `)).toContain("INSTALLED_NUMERIC_AND_COMPACT_CONTRACTS_OK");
+    });
+
+    smokeIt("executes delivered portable exports and executable WASM through a real browser and module Worker", async () => {
+        const root = path.join(installDir!, "node_modules/@fromstan/pokie");
+        const metadata = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+        const imports = Object.fromEntries(["browser", "wasm", "client/player"].map(name => [
+            `@fromstan/pokie/${name}`, `/installed/${metadata.exports[`./${name}`].import.default.slice(2)}`,
+        ]));
+        const profile = path.join(installDir!, "browser profile");
+        let finish!: (value: unknown) => void;
+        const completed = new Promise<unknown>(resolve => {
+            finish = resolve;
+        });
+        const script = `
+            import * as browser from '@fromstan/pokie/browser';
+            import * as wasm from '@fromstan/pokie/wasm';
+            import * as player from '@fromstan/pokie/client/player';
+            const check = (condition, message) => {if (!condition) throw new Error(message)};
+            let worker;
+            let runtime;
+            try {
+                check(typeof player.renderPlayerRound === 'function', 'player export');
+                check(new browser.VideoSlotConfig().getAvailableBets().length > 0, 'browser runtime');
+                const artifact = await wasm.createBlueprintWasmArtifact(${JSON.stringify(fractionalBetBlueprint([0.05, 7.5, 1e-7], true))});
+                check(WebAssembly.validate(artifact.bytes), 'executable WASM bytes');
+                runtime = await wasm.instantiatePokieWasm(artifact.bytes, artifact.manifest, new wasm.SeededPokieWasmHost('0'));
+                const session = runtime.createSession('0');
+                const initial = session.serialize();
+                const round = await session.play({bet: 0.05});
+                check(JSON.stringify(round.screen) === ${JSON.stringify(JSON.stringify(FRACTIONAL_MIXED_CONTINUATION[0].screen))}, 'independent RNG oracle');
+                check(round.stake === 0.05 && round.payout === 0.1, 'fractional payout');
+                check((await runtime.replay(initial, [{bet: 0.05}])).rounds[0].payout === 0.1, 'portable replay');
+                worker = new wasm.PokieWasmWorkerClient(() => new Worker('/worker.mjs', {type: 'module'}), {project: 'installed', generation: '1', artifact: artifact.manifest.artifact.sha256, job: 'native'});
+                await worker.request({type: 'instantiate', bytes: artifact.bytes, manifest: artifact.manifest, seed: '0'});
+                const workerRound = await worker.request({type: 'play', command: {bet: 0.05}});
+                check(JSON.stringify(workerRound) === JSON.stringify(round), 'real Worker parity');
+                await worker.request({type: 'dispose'});
+                worker.dispose();
+                check(worker.getDiagnostics().disposed && worker.getDiagnostics().pending === 0, 'Worker drained');
+                await fetch('/result', {method: 'POST', body: JSON.stringify({ok: true, abi: artifact.manifest.artifact.abiVersion, api: wasm.POKIE_WASM_RUNTIME_API_VERSION, worker: true})});
+            } catch (error) {
+                await fetch('/result', {method: 'POST', body: JSON.stringify({ok: false, error: String(error), stack: error.stack})});
+            } finally {worker?.dispose(); runtime?.dispose();}
+        `;
+        const server = createServer((request, response) => {
+            const url = new URL(request.url!, "http://localhost");
+            if (url.pathname === "/result" && request.method === "POST") {
+                let body = "";
+                request.on("data", chunk => {
+                    body += chunk.toString();
+                });
+                request.on("end", () => {
+                    finish(JSON.parse(body));
+                    response.end("ok");
+                });
+                return;
+            }
+            response.setHeader("Content-Type", "text/javascript");
+            if (url.pathname === "/probe.mjs") {
+                response.end(script);
+                return;
+            }
+            if (url.pathname === "/worker.mjs") {
+                response.end("import {installPokieWasmWorker} from '/installed/dist/esm/wasm/PokieWasmWorkerClient.js'; installPokieWasmWorker(self);");
+                return;
+            }
+            if (url.pathname === "/") {
+                response.setHeader("Content-Type", "text/html");
+                response.end(`<script type="importmap">${JSON.stringify({imports})}</script><script type="module" src="/probe.mjs"></script>`);
+                return;
+            }
+            const file = path.resolve(root, url.pathname.replace(/^\/installed\//, ""));
+            if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+                response.writeHead(404).end();
+                return;
+            }
+            response.end(fs.readFileSync(file));
+        });
+        await new Promise<void>(resolve => {
+            server.listen(0, "127.0.0.1", resolve);
+        });
+        let child: ChildProcessWithoutNullStreams | undefined;
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        try {
+            const {spawnP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+                spawnP911Child: (command: string, args: string[], options: {cwd: string}) => ChildProcessWithoutNullStreams;
+            };
+            child = spawnP911Child(process.env.P8_04_CHROMIUM_BINARY ?? "chromium-browser", ["--headless=new", "--no-sandbox", "--disable-gpu", "--remote-debugging-port=0", `--user-data-dir=${profile}`, `http://127.0.0.1:${(server.address() as {port: number}).port}/`], {cwd: installDir!});
+            spawnedSmokeChildren.add(child);
+            const failure = new Promise<never>((_resolve, reject) => {
+                child!.once("error", reject);
+                child!.once("exit", code => {
+                    reject(new Error(`Browser exited before acceptance (${code})`));
+                });
+                timeout = setTimeout(() => {
+                    reject(new Error("Installed browser consumer did not finish within 60 seconds"));
+                }, 60000);
+            });
+            expect(await Promise.race([completed, failure])).toEqual({ok: true, abi: "3.0.0", api: "2.1.0", worker: true});
+        } finally {
+            clearTimeout(timeout);
+            try {
+                if (child) await stopChild(child);
+            } finally {
+                server.closeAllConnections();
+                await new Promise<void>((resolve, reject) => {
+                    server.close(error => error ? reject(error) : resolve());
+                });
+            }
+        }
+    });
+
+    smokeIt("preserves an independently authored installed package and its custom behavior during inspection, simulation and rejected model extraction", () => {
+        const root = path.join(installDir!, "custom executable package");
+        fs.mkdirSync(path.join(root, "dist"), {recursive: true});
+        fs.mkdirSync(path.join(root, "src"));
+        const executable = fs.readFileSync(path.join(installDir!, "playable-game/index.js"));
+        const files: Record<string, Buffer> = {
+            "src/index.js": executable,
+            "dist/index.js": executable,
+            "package.json": Buffer.from(JSON.stringify({name: "independent-custom", version: "1.0.0", pokie: {entry: "dist/index.js"}})),
+            "package-lock.json": Buffer.from('{"lockfileVersion":3,"packages":{}}\n'),
+        };
+        for (const [file, bytes] of Object.entries(files)) fs.writeFileSync(path.join(root, file), bytes);
+        const probe = `
+            import assert from 'node:assert/strict';
+            import {loadPokieGameRuntime, PackageBlueprintExtraction} from '@fromstan/pokie';
+            const runtime = await loadPokieGameRuntime(${JSON.stringify(root)});
+            try {
+                assert.equal(runtime.game.getModelDescriptor, undefined);
+                const session = runtime.game.createSession({seed: 'custom-seed'});
+                session.setCreditsAmount(1000); session.play();
+                const extraction = await new PackageBlueprintExtraction().extract(runtime.game);
+                assert.notEqual(extraction.status, 'complete'); assert.equal(extraction.blueprint, undefined);
+                console.log(JSON.stringify({manifest: runtime.game.getManifest(), screen: session.getSymbolsCombination().toMatrix(), win: session.getWinAmount(), state: session.toSessionState()}));
+            } finally {await runtime.release();}
+        `;
+        const before = JSON.parse(installedProbe("custom-before", probe));
+        const inspection = spawnSync(pokieBinPath, ["inspect", root], {cwd: installDir, encoding: "utf8", timeout: 60000});
+        expect(inspection.status).toBe(0);
+        const validation = spawnSync(pokieBinPath, ["validate", root, "--format", "json"], {cwd: installDir, encoding: "utf8", timeout: 60000});
+        expectLegacyPackageValidation(validation);
+        const simulation = spawnSync(pokieBinPath, ["sim", root, "--rounds", "4", "--seed", "custom-seed", "--out", path.join(installDir!, "custom-sim.json")], {cwd: installDir, encoding: "utf8", timeout: 60000});
+        expect(simulation.status).toBe(0);
+        for (const target of ["blueprint", "tsPackage", "parWorkbook", "wasm"]) {
+            const output = path.join(installDir!, `custom-rejected-${target}`);
+            const result = spawnSync(pokieBinPath, ["build", root, "--target", target, "--out", output], {cwd: installDir, encoding: "utf8", timeout: 60000});
+            expect(result.status).toBe(1);
+            expect(result.stderr).toMatch(/descriptor|model|extract|represent/i);
+            expect(fs.existsSync(output)).toBe(false);
+        }
+        expect(JSON.parse(installedProbe("custom-after", probe))).toEqual(before);
+        for (const [file, bytes] of Object.entries(files)) expect(fs.readFileSync(path.join(root, file))).toEqual(bytes);
     });
 
     smokeIt("runs `pokie --no-open` (Home mode): serves the app shell/assets and a healthy API", async () => {
@@ -497,7 +1022,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         try {
             execFileSync(pokieBinPath, ["build", blueprintPath, "--target", "wasm", "--out", wasmPath], {cwd: workflowDir, encoding: "utf-8"});
             expect(execFileSync(pokieBinPath, ["inspect", wasmPath], {cwd: workflowDir, encoding: "utf-8"})).toContain("canonical ABI operations: play, replay");
-            expect(execFileSync(pokieBinPath, ["validate", wasmPath, "--format", "json"], {cwd: workflowDir, encoding: "utf-8"})).toContain('"valid": true');
+            const validation = spawnSync(pokieBinPath, ["validate", wasmPath, "--format", "json"], {cwd: workflowDir, encoding: "utf-8", timeout: 60000});
+            expectInstalledValidation(validation, installedValidationContracts.wasm);
             expect(execFileSync(pokieBinPath, ["run", wasmPath, "--seed", "installed"], {cwd: workflowDir, encoding: "utf-8"})).toContain("POKIE WASM round 1");
 
             const workerScript = path.join(workflowDir, "wasm-worker-protocol.mjs");
@@ -587,6 +1113,43 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         smokeIt("option-only Studio startup retains current-project discovery", async () => {
             expect(await contextOf(headlessFlags, projectRoot)).toEqual({mode: "project", projectRoot});
         });
+
+        smokeIt("opens relative/absolute WASM paths from a nested spaced cwd and reports malformed WASM without starting a package runtime", async () => {
+            const cwd = path.join(installDir!, "unrelated working directory", "nested directory");
+            fs.mkdirSync(cwd, {recursive: true});
+            const wasmPath = path.join(installDir!, "startup game.wasm");
+            expect(installedProbe("startup-wasm", `
+                import fs from 'node:fs';
+                import {createBlueprintWasmArtifact} from '@fromstan/pokie/wasm';
+                const artifact = await createBlueprintWasmArtifact(${JSON.stringify(fractionalBetBlueprint([0.05]))});
+                fs.writeFileSync(${JSON.stringify(wasmPath)}, artifact.bytes);
+                fs.writeFileSync(${JSON.stringify(`${wasmPath}.pokie-wasm.json`)}, JSON.stringify(artifact.manifest));
+                console.log('STARTUP_WASM_READY');
+            `)).toContain("STARTUP_WASM_READY");
+            const malformed = path.join(cwd, "malformed.wasm");
+            fs.writeFileSync(malformed, "invalid executable");
+            for (const target of [wasmPath, path.relative(cwd, wasmPath), "./malformed.wasm"]) {
+                const child = await spawnSmokeChild([target, ...headlessFlags], cwd);
+                try {
+                    const port = await waitForListeningPort(child);
+                    const base = `http://127.0.0.1:${port}`;
+                    expect(await (await fetch(`${base}/api/context`)).json()).toEqual({mode: "project", projectRoot: path.resolve(cwd, target)});
+                    expect(await (await fetch(`${base}/api/health`)).json()).toEqual({status: "ok"});
+                    let dashboard: {status: string; type?: string} = {status: "loading"};
+                    for (let attempt = 0; attempt < 100 && dashboard.status === "loading"; attempt++) {
+                        dashboard = await (await fetch(`${base}/api/project/context`)).json() as typeof dashboard;
+                        if (dashboard.status === "loading") await new Promise(resolve => {
+                            setTimeout(resolve, 50);
+                        });
+                    }
+                    expect(dashboard.status).toBe(target === "./malformed.wasm" ? "error" : "loaded");
+                    if (dashboard.status !== "error") expect(dashboard.type).toBe("wasm");
+                    expect((await fetch(`${base}/`)).status).toBe(200);
+                } finally {
+                    await stopChild(child);
+                }
+            }
+        });
     });
 
     for (const [flag] of [["--help"], ["-h"]]) smokeIt(`prints the general usage and the full command list for \`pokie ${flag}\`, exiting 0`, () => {
@@ -595,11 +1158,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(result.status).toBe(0);
         expect(result.stdout).toContain("Usage: pokie <command>");
         expect(result.stdout).toContain("Commands:");
-        // Assert the whole public inventory from one installed-binary invocation. The later
-        // artifact-producing workflow runs every command and nested verb with real inputs; spawning
-        // another process for every individual help page only duplicates that coverage and makes this
-        // release-boundary smoke test exceed the changed-tests gate's bounded runtime.
-        for (const commandName of ["build", "certification", "client", "create", "dev", "diff", "edit", "fairness", "generate", "import", "init", "inspect", "par", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate"]) {
+        // This top-level inventory complements the native recursive help sweep above.
+        for (const commandName of ["build", "certification", "client", "create", "dev", "diff", "edit", "fairness", "generate", "import", "init", "inspect", "optimize", "par", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate"]) {
             expect(result.stdout).toMatch(new RegExp(`^ {2}${commandName} `, "m"));
         }
         // Storage-format namespaces stay private implementation details: their public lifecycle
@@ -621,7 +1181,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }
     });
 
-    smokeIt("publishes canonical Outcome, Stake and PAR targets and reads them through installed commands", () => {
+    smokeIt("publishes and reads all six installed project types, follows automatic intermediates and rejects unsupported reconstruction", () => {
         const directory = fs.mkdtempSync(path.join(installDir!, "canonical-artifacts-"));
         const blueprintPath = path.join(directory, "source.blueprint.json");
         fs.writeFileSync(blueprintPath, JSON.stringify({
@@ -629,8 +1189,13 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             reels: 2, rows: 1, symbols: ["A", "B"], paytable: {A: {2: 1}}, reelStrips: [["A", "B"], ["B", "A"]],
         }));
         try {
-            for (const target of ["outcomeLibrary", "stakeAdapter", "parWorkbook"]) {
-                const destination = path.join(directory, target === "parWorkbook" ? "parWorkbook.xlsx" : target);
+            const sources: Record<string, string> = {blueprint: blueprintPath};
+            expectInstalledValidation(spawnSync(pokieBinPath, ["validate", blueprintPath, "--format", "json"], {cwd: directory, encoding: "utf-8", timeout: 60000}), installedValidationContracts.blueprint);
+            const names = {tsPackage: "package", outcomeLibrary: "outcome", stakeAdapter: "stake", parWorkbook: "model.xlsx", wasm: "game.wasm"};
+            for (const target of Object.keys(names) as Array<keyof typeof names>) {
+                const name = names[target];
+                const destination = path.join(directory, name);
+                sources[target] = destination;
                 const preview = spawnSync(pokieBinPath, ["build", blueprintPath, "--target", target, "--out", destination, "--dry-run"], {cwd: directory, encoding: "utf-8"});
                 expect(preview.status).toBe(0);
                 expect(preview.stderr).toBe("");
@@ -638,12 +1203,68 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 const built = spawnSync(pokieBinPath, ["build", blueprintPath, "--target", target, "--out", destination], {cwd: directory, encoding: "utf-8"});
                 expect(built.status).toBe(0);
                 expect(built.stderr).toBe("");
-                for (const command of ["inspect", "validate"]) {
-                    const readback = spawnSync(pokieBinPath, [command, destination, ...(command === "validate" ? ["--format", "json"] : [])], {cwd: directory, encoding: "utf-8"});
-                    expect(readback.status).toBe(0);
-                    expect(readback.stderr).toBe("");
-                }
+                const inspection = spawnSync(pokieBinPath, ["inspect", destination], {cwd: directory, encoding: "utf-8"});
+                expect(inspection.status).toBe(0);
+                expect(inspection.stderr).toBe("");
+                const validation = spawnSync(pokieBinPath, ["validate", destination, "--format", "json"], {cwd: directory, encoding: "utf-8", timeout: 60000});
+                expect(validation.stderr).toBe("");
+                if (target === "tsPackage") expectGeneratedPackageValidation(validation);
+                else expectInstalledValidation(validation, installedValidationContracts[target]);
             }
+            for (const type of ["outcomeLibrary", "stakeAdapter", "wasm"]) {
+                const output = path.join(directory, `unsupported-${type}.json`);
+                const rejected = spawnSync(pokieBinPath, ["build", sources[type], "--target", "blueprint", "--out", output], {cwd: directory, encoding: "utf8", timeout: 60000});
+                expect(rejected.status).toBe(1);
+                expect(rejected.stderr).toMatch(/cannot|unavailable|does not preserve|unsupported|no conversion/i);
+                expect(fs.existsSync(output)).toBe(false);
+            }
+            for (const [source, target, name] of [["parWorkbook", "wasm", "from-par.wasm"], ["tsPackage", "blueprint", "extracted.json"], ["outcomeLibrary", "outcomeLibrary", "republished-outcome"], ["stakeAdapter", "stakeAdapter", "republished-stake"]]) {
+                const output = path.join(directory, name);
+                const result = spawnSync(pokieBinPath, ["build", sources[source], "--target", target, "--out", output], {cwd: directory, encoding: "utf8", timeout: 60000});
+                expect({source, status: result.status, stderr: result.stderr}).toEqual({source, status: 0, stderr: ""});
+                expect(spawnSync(pokieBinPath, ["inspect", output], {cwd: directory, encoding: "utf8", timeout: 60000}).status).toBe(0);
+            }
+            const parEvidence = JSON.parse(fs.readFileSync(path.join(directory, "from-par.wasm.pokie/par-import/conversion-evidence.json"), "utf8"));
+            expect(parEvidence).toMatchObject({schemaVersion: 1, sourceWorkbook: sources.parWorkbook, losslessEligible: true, provenanceHashMatches: true});
+            const extractionEvidence = JSON.parse(fs.readFileSync(path.join(directory, "extracted.json.conversion-evidence.json"), "utf8"));
+            expect(extractionEvidence).toMatchObject({schemaVersion: 1, kind: "package-extraction", extraction: {status: "complete"}});
+            expect(installedProbe("six-native-projects", `
+                import assert from 'node:assert/strict';
+                import * as api from '@fromstan/pokie';
+                const sources = ${JSON.stringify(sources)};
+                for (const [type, source] of Object.entries(sources)) {
+                    const project = await new api.ProjectTargetResolver().resolve(source);
+                    assert.equal(project.type, type);
+                    assert.ok(project.capabilities.length);
+                    if (['outcomeLibrary', 'stakeAdapter'].includes(type)) {
+                        const report = await new api.OutcomeSourceProjectAnalyzer().analyze(project);
+                        assert.equal(report.issues.filter(issue => issue.severity === 'error').length, 0);
+                        assert.equal(report.modes[0].analysis.rtp, 0.25);
+                        assert.equal(report.modes[0].analysis.hitFrequency, 0.25);
+                    }
+                }
+                const converted = ${JSON.stringify(path.join(directory, "from-par.wasm"))};
+                const runtime = await api.loadPokieWasmFileRuntime(converted, new api.SeededPokieWasmHost('0'));
+                try {
+                    assert.deepEqual(runtime.manifest.component, {id: 'canonical-smoke', version: '1.0.0'});
+                    const session = runtime.createSession('0');
+                    const initial = session.serialize();
+                    const round = await session.play({bet: 1});
+                    assert.equal(round.stake, 1);
+                    assert.deepEqual((await runtime.replay(initial, [{bet: 1}])).rounds, [round]);
+                } finally { runtime.dispose(); }
+                const extracted = api.loadGameBlueprint(${JSON.stringify(path.join(directory, "extracted.json"))});
+                assert.equal(extracted.manifest.id, 'canonical-smoke');
+                assert.deepEqual(extracted.reelStrips, [['A','B'],['B','A']]);
+                for (const name of ['republished-outcome', 'republished-stake']) {
+                    const project = await new api.ProjectTargetResolver().resolve(${JSON.stringify(directory)} + '/' + name);
+                    assert.equal(project.type, name === 'republished-outcome' ? 'outcomeLibrary' : 'stakeAdapter');
+                    const report = await new api.OutcomeSourceProjectAnalyzer().analyze(project);
+                    assert.equal(report.issues.filter(issue => issue.severity === 'error').length, 0);
+                    assert.equal(report.modes[0].analysis.rtp, 0.25);
+                }
+                console.log('SIX_NATIVE_TYPES_OK');
+            `)).toContain("SIX_NATIVE_TYPES_OK");
         } finally {
             fs.rmSync(directory, {recursive: true, force: true});
         }
@@ -708,6 +1329,33 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
         expect(fs.existsSync(path.join(projectRoot, "src", "index.ts"))).toBe(true);
         expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
+        for (const file of ["README.md", "tsconfig.json", "src/index.ts"]) {
+            expect(fs.statSync(path.join(projectRoot, file)).size).toBeGreaterThan(0);
+        }
+        expect(fs.readFileSync(path.join(projectRoot, "src/index.ts"), "utf8")).toContain('from "@fromstan/pokie"');
+        expect(installedProbe("init-package-identity", `
+            import assert from 'node:assert/strict';
+            import fs from 'node:fs';
+            import {createRequire} from 'node:module';
+            import {loadPokieGameRuntime} from '@fromstan/pokie';
+            const root = ${JSON.stringify(projectRoot)};
+            const consumer = createRequire(root + '/package.json');
+            const identity = consumer(consumer.resolve('@fromstan/pokie')).POKIE_VERSION;
+            assert.equal(identity, '2.0.0');
+            assert.ok(fs.realpathSync(consumer.resolve('@fromstan/pokie')).startsWith(${JSON.stringify(installDir!)} + '/'));
+            const direct = consumer('./dist/index.js');
+            const runtime = await loadPokieGameRuntime(root);
+            try {
+                assert.deepEqual(direct.getManifest(), {id: 'sample-slot', name: 'Sample Slot', version: '0.1.0'});
+                assert.deepEqual(runtime.game.getManifest(), direct.getManifest());
+                for (const game of [direct, runtime.game]) {
+                    const session = game.createSession({seed: 'demo'});
+                    session.setCreditsAmount(1000); session.play();
+                    assert.ok(Number.isFinite(session.getWinAmount()));
+                }
+                console.log('INIT_NATIVE_IDENTITY_OK');
+            } finally { await runtime.release(); }
+        `)).toContain("INIT_NATIVE_IDENTITY_OK");
 
         // The transient local resolution already ran and settled by the time "pokie init" exits (this is
         // a real spawned binary, not an injected runCommand -- there's no in-process hook to observe the
@@ -722,8 +1370,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(scaffoldedPkg.dependencies?.["@fromstan/pokie"]).toBe(`^${ownVersion}`);
         expect(fs.existsSync(path.join(projectRoot, "node_modules", "@fromstan", "pokie", "package.json"))).toBe(true);
 
-        const validate = spawnSync(pokieBinPath, ["validate", projectRoot], {cwd: installDir, encoding: "utf-8", timeout: 60000});
-        expect(validate.status).toBe(0);
+        const validate = spawnSync(pokieBinPath, ["validate", projectRoot, "--format", "json"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        expectLegacyPackageValidation(validate);
 
         const simFile = path.join(installDir!, "init-sim.json");
         const sim = spawnSync(pokieBinPath, ["sim", projectRoot, "--rounds", "200", "--seed", "demo", "--out", simFile], {
@@ -733,8 +1381,32 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         });
         expect(sim.status).toBe(0);
 
-        const report = JSON.parse(fs.readFileSync(simFile, "utf-8")) as {rounds: number};
+        const report = JSON.parse(fs.readFileSync(simFile, "utf-8")) as {rounds: number; seed: string; totalBet: number; totalWin: number; rtp: number; hitFrequency: number};
         expect(report.rounds).toBe(200);
+        expect(report.seed).toBe("demo");
+        expect(report.totalBet).toBe(200);
+        expect(Number.isFinite(report.totalWin)).toBe(true);
+        expect(report.rtp).toBe(report.totalWin / report.totalBet);
+        expect(report.hitFrequency).toBeGreaterThanOrEqual(0);
+        expect(report.hitFrequency).toBeLessThanOrEqual(1);
+        const markdown = path.join(installDir!, "init-report.md");
+        const rendered = spawnSync(pokieBinPath, ["report", simFile, "--format", "markdown", "--out", markdown], {cwd: installDir, encoding: "utf8", timeout: 60000});
+        expect(rendered.status).toBe(0);
+        expect(fs.readFileSync(markdown, "utf8")).toContain("RTP");
+        const replay = path.join(installDir!, "init-replay.json");
+        expect(spawnSync(pokieBinPath, ["replay", projectRoot, "--round", "2", "--seed", "demo", "--out", replay], {cwd: installDir, encoding: "utf8", timeout: 60000}).status).toBe(0);
+        expect(installedProbe("init-replay-agreement", `
+            import assert from 'node:assert/strict';
+            import fs from 'node:fs';
+            import {loadPokieGameRuntime, ReplayRecorder} from '@fromstan/pokie';
+            const recorded = JSON.parse(fs.readFileSync(${JSON.stringify(replay)}, 'utf8'));
+            const runtime = await loadPokieGameRuntime(${JSON.stringify(projectRoot)});
+            try {
+                const rebuilt = new ReplayRecorder().record({game: runtime.game, seed: 'demo', round: 2});
+                for (const field of ['game', 'seed', 'round', 'screen', 'totalBet', 'totalWin']) assert.deepEqual(recorded[field], rebuilt[field]);
+                console.log('INIT_NATIVE_REPLAY_OK');
+            } finally { await runtime.release(); }
+        `)).toContain("INIT_NATIVE_REPLAY_OK");
     });
 
     function readPackageLockPackages(packageRoot: string): Record<string, unknown> {
@@ -744,19 +1416,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         return lock.packages ?? {};
     }
 
-    // The rename-based move test below proves a package moved with its already-resolved node_modules
-    // never needs npm again. This proves the stronger claim P5PA-06 actually requires: the *persisted*
-    // package.json/package-lock.json pair -- copied without node_modules, i.e. with none of the
-    // resolution "pokie init" itself already did -- is on its own enough for a genuinely independent,
-    // later "npm install" to resolve "pokie" again. Real npm calls can't reach the public registry for
-    // this repo's own never-published "pokie" (or reliably for "typescript" in a network-restricted
-    // sandbox), so this reinstall is routed offline through localPokieDependencyRunner -- the same real,
-    // uninjected `npm install` GamePackagePreparer.integration.test.ts and
-    // BlueprintProjectMaterializer.integration.test.ts already rely on (see
-    // tests/testUtils/offlinePokieDependencyOverride.ts's own doc comment) -- rather than skipped
-    // outright, so this still exercises a real spawned npm wherever that offline substitution is itself
-    // runnable. Runs before the rename-based move test below, which consumes "sample-slot" in place.
-    smokeIt("copies the initialized package -- without node_modules, without any of 'npm install's own resolution -- to a new location, and a real, independent 'npm install' there resolves \"pokie\" fresh from only the portable persisted package.json/package-lock.json", async () => {
+    // Reinstall portable authored metadata against the exact same unpublished archive.
+    smokeIt("reinstalls the initialized package at a new location against the same candidate archive without checkout overrides or persisted metadata rewrites", () => {
         const sourceRoot = path.join(installDir!, "sample-slot");
         const reinstalledRoot = path.join(installDir!, "sample-slot-reinstalled");
         for (const relativeFile of [
@@ -778,7 +1439,12 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             expect(key).not.toContain(installDir!);
         }
 
-        await localPokieDependencyRunner()("npm", ["install"], reinstalledRoot);
+        const portableFiles = ["package.json", "package-lock.json"].map(file => fs.readFileSync(path.join(reinstalledRoot, file)));
+        // An unpublished candidate is selected explicitly for this install. --no-save and
+        // --package-lock=false retain the portable authored metadata without a checkout override.
+        execFileSync("npm", ["install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund", tarballPath!], {cwd: reinstalledRoot, encoding: "utf8", timeout: 120000});
+        for (const [index, file] of ["package.json", "package-lock.json"].entries()) expect(fs.readFileSync(path.join(reinstalledRoot, file))).toEqual(portableFiles[index]);
+        expect(fs.lstatSync(path.join(reinstalledRoot, "node_modules/@fromstan/pokie")).isSymbolicLink()).toBe(false);
 
         expect(fs.existsSync(path.join(reinstalledRoot, "node_modules", "@fromstan", "pokie", "package.json"))).toBe(true);
 
@@ -798,8 +1464,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const game = require(path.join(reinstalledRoot, "dist", "index.js")) as {getManifest(): {id: string}};
         expect(game.getManifest().id).toBeDefined();
 
-        const validate = spawnSync(pokieBinPath, ["validate", reinstalledRoot], {cwd: installDir, encoding: "utf-8", timeout: 60000});
-        expect(validate.status).toBe(0);
+        const validate = spawnSync(pokieBinPath, ["validate", reinstalledRoot, "--format", "json"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        expectLegacyPackageValidation(validate);
     });
 
     // Real "npm install" resolves a `file:` spec as a symlink, recording it in package-lock.json as its
@@ -828,8 +1494,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const game = require(path.join(movedRoot, "dist", "index.js")) as {getManifest(): {id: string}};
         expect(game.getManifest().id).toBeDefined();
 
-        const validate = spawnSync(pokieBinPath, ["validate", movedRoot], {cwd: installDir, encoding: "utf-8", timeout: 60000});
-        expect(validate.status).toBe(0);
+        const validate = spawnSync(pokieBinPath, ["validate", movedRoot, "--format", "json"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        expectLegacyPackageValidation(validate);
     });
 
     smokeIt("runs the public outcome-library lifecycle against a package built by the installed binary itself", () => {
@@ -879,12 +1545,14 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         });
         expect(bundleBuild.status).toBe(0);
 
-        const bundleValidate = spawnSync(pokieBinPath, ["validate", bundleDir, "--deep"], {
+        const bundleValidate = spawnSync(pokieBinPath, ["validate", bundleDir, "--deep", "--format", "json"], {
             cwd: installDir,
             encoding: "utf-8",
             timeout: 60000,
         });
-        expect(bundleValidate.status).toBe(0);
+        const bundleValidation = expectInstalledValidation(bundleValidate, installedValidationContracts.outcomeLibrary);
+        expect(bundleValidation.deep).toBe(true);
+        expect(bundleValidation.advanced.issues).toContainEqual(expect.objectContaining({code: "outcome-only-definition-unavailable"}));
 
         const inspect = spawnSync(pokieBinPath, ["inspect", bundleDir], {
             cwd: installDir,
@@ -957,7 +1625,12 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             const createdBlueprintPath = path.join(workflowRoot, "created.blueprint.json");
             run("create", ["create", "Packed Workflow", "--random", "--seed", "71", "--out", createdBlueprintPath]);
             expectFile(createdBlueprintPath);
-            run("validate", ["validate", createdBlueprintPath, "--format", "json"]);
+            // The default random strips have at least 15^3 stop tuples: structural
+            // validity does not remove the default advanced-analysis limit of 1000 outcomes.
+            const validation = run("validate", ["validate", createdBlueprintPath, "--format", "json"], 2);
+            const randomValidation = expectInstalledValidation(validation, installedValidationContracts.randomBlueprint);
+            expect(randomValidation.advanced.work.outcomes).toBe(randomValidation.advanced.limits.outcomes);
+            expect(randomValidation.advanced.limitations).toContain("Analysis outcomes limit exhausted.");
 
             run("build", ["build", blueprintPath, "--target", "tsPackage", "--out", packageRoot]);
             expectDirectory(packageRoot);
@@ -1049,6 +1722,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             expectFile(path.join(initializedRoot, "package.json"));
             const edit = run("edit-noninteractive-recovery", ["edit", blueprintPath, "--out", path.join(workflowRoot, "edited.blueprint.json")], 1);
             expect(`${edit.stdout}\n${edit.stderr}`).toMatch(/terminal|interactive|JSON/i);
+            const invalidPolicy = path.join(workflowRoot, "invalid-policy.json");
+            fs.writeFileSync(invalidPolicy, "{}");
+            const optimize = run("optimize-invalid-policy", ["optimize", blueprintPath, "--policy", invalidPolicy], 3);
+            expect(JSON.parse(String(optimize.stdout))).toMatchObject({status: "invalid"});
             for (const parent of ["certification", "fairness", "par", "reel"]) {
                 const missingVerb = run(`${parent}-missing-verb-recovery`, [parent], 1);
                 expect(`${missingVerb.stdout}\n${missingVerb.stderr}`).toContain("Usage:");
@@ -1067,7 +1744,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             expect(workflowIds).toEqual([
                 "create", "validate", "build", "generate", "build-outcome-library", "inspect", "sample", "sim", "sim-comparison", "report", "diff", "replay", "build-wasm", "run",
                 "par export", "par import", "build-par-workbook", "import", "reel generate", "fairness seed-commit", "fairness commit", "fairness reveal", "fairness verify",
-                "certification build", "certification verify", "init", "edit-noninteractive-recovery", "certification-missing-verb-recovery", "fairness-missing-verb-recovery",
+                "certification build", "certification verify", "init", "edit-noninteractive-recovery", "optimize-invalid-policy", "certification-missing-verb-recovery", "fairness-missing-verb-recovery",
                 "par-missing-verb-recovery", "reel-missing-verb-recovery", "client", "serve", "dev",
             ]);
             expect([...exercisedPublicWorkflows].sort()).toEqual([...PACKAGED_PUBLIC_WORKFLOW_SCENARIOS].sort());

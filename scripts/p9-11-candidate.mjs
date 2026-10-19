@@ -53,6 +53,17 @@ const tooling = new Set([
     "docs/v2-completion/V2C-26.md",
     "tests/testUtils/createP911CandidateFixture.mjs",
     "tests/scripts/p9-11-corrective-closeout.test.mjs", "tests/packaging/npmPackSmoke.test.ts", "tests/packaging/P805ValeraProgrammer.test.ts",
+    // Complete V2C-31 test/evidence repair; production and build inputs stay protected.
+    "docs/v2-completion/V2C-31.md",
+    "tests/cli/BuildProductMatrix.crossSurface.contract.test.ts",
+    "tests/cli/studio/replay/StudioReplayExecutionService.test.ts",
+    "tests/packaging/helpers/selectPackedArchive.ts",
+    "tests/v2/StableConsumerContracts.test.ts",
+    "tests/v2/PackageBlueprintExtraction.test.ts",
+    "tests/v2/WasmSharedMath.test.ts",
+    "tests/fixtures/wasm/verifyDeliveredSharedMath.cjs",
+    "tests/v2/fixtures/normal-pack.stdout.txt",
+    "scripts/p8-05-release-handoff.mjs",
 ]);
 const git = (repository, args) => execFileSync("git", args, {cwd:repository, encoding:"utf8", timeout:10_000, maxBuffer:16 * 1024 * 1024}).trimEnd();
 
@@ -90,6 +101,33 @@ export function readP911CandidateFromEnvironment(environment, options) {
     if (!file && !pin) return Promise.resolve(undefined);
     if (environment.POKIE_P805_RELEASE_HANDOFF) fail("P9 and P8 candidate handoffs cannot be combined");
     return readP911Candidate({path:file, sha256:pin}, options);
+}
+
+/** Smoke release context names the reviewed checkout, while the authenticated
+ * archive/build/install continue to name the original product. The producer's
+ * handoff-only environment needs no release receipt context. Keep this boundary
+ * read-only: a rejected handoff/context must never select normal packing. */
+export async function readP911SmokeCandidateFromEnvironment(environment, options) {
+    const candidate = await readP911CandidateFromEnvironment(environment, options);
+    if (candidate === undefined) return undefined;
+    validateP911SmokeCandidateIdentity(candidate, environment, options);
+    return candidate;
+}
+
+/** Consumes a readP911Candidate result, never an unvalidated handoff. Recheck
+ * the actual checkout and selected archive at the smoke install boundary. */
+export function validateP911SmokeCandidateIdentity(candidate, environment, {repository = root, archive = candidate.archive} = {}) {
+    const equivalence = authenticateP911Tree(candidate.candidateId, candidate.candidateTreeId, repository);
+    if (equivalence.reviewedId !== candidate.equivalence.reviewedId) fail("smoke reviewed checkout changed after authentication");
+    if (sha256(archive) !== candidate.archiveSha256) fail("smoke selected archive digest mismatch");
+    const reviewedId = environment.POKIE_PACK_SMOKE_CANDIDATE_ID;
+    const archiveSha256 = environment.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256;
+    if (reviewedId !== undefined && reviewedId !== candidate.equivalence.reviewedId) fail("smoke reviewed candidate identity mismatch");
+    if (archiveSha256 !== undefined && archiveSha256 !== candidate.archiveSha256) fail("smoke archive digest mismatch");
+    if (environment.POKIE_PACK_SMOKE_RECEIPT !== undefined || environment.POKIE_PACK_SMOKE_ARCHIVE_PATH !== undefined) {
+        if (!environment.POKIE_PACK_SMOKE_RECEIPT || !environment.POKIE_PACK_SMOKE_ARCHIVE_PATH
+            || reviewedId === undefined || archiveSha256 === undefined) fail("smoke release outputs require receipt/archive paths and reviewed candidate/digest context");
+    }
 }
 
 export async function readP911Candidate(reference, {repository = root} = {}) {

@@ -33,9 +33,26 @@ tabs never loses in-progress work):
   generated idea, or existing Blueprint. `BlueprintEditorPage` in `guided` mode checks the current
   revision automatically; **Create game** saves/registers the design once and opens that saved workspace.
   JSON, file load/save, and PAR import live behind **Show advanced options**. PAR Apply updates the draft.
-  Package and PAR artifact publication live in the saved workspace’s **Build/Export**, with destination
-  preflight and explicit terminal results. Home does not also publish an unsaved draft through Build Package.
+  Package and PAR artifact publication are available in the saved workspace’s **Build/Export**, with
+  destination preflight and explicit terminal results. Design's advanced **Build Package** also builds
+  the current validated draft without saving its source; subsequent edits mark that build stale.
   Saving, runtime preparation, project validation, and building an artifact are distinct results.
+
+  Applied Design edits stay in this browser tab's `sessionStorage` for explicit **Restore** or
+  **Discard** after a same-tab refresh. Recovery never saves a user project, runs a build, or marks
+  a draft clean. Opening a source displays its saved document while preserving the explicit recovery
+  choice; a retained job opens its own captured draft. No-op mounts and visibility changes preserve
+  pending recovery data. Fresh browser sessions do not recover a profile-wide
+  draft. Restore, Discard and successful Save affect only this tab's slot. If browser storage is
+  unavailable, the in-memory editor remains usable; use **Save** to keep a project. Unapplied
+  JSON/whole-sequence text remains local to the mounted editor until its explicit Apply action.
+
+  Project **Game Model** edits use separate tab-local slots for each project. After a same-tab
+  refresh, **Restore** reopens the edited section as unsaved; **Discard** keeps the saved model.
+  Recovery preserves the original source version, so **Save** reports a conflict if the file changed
+  meanwhile. Recovery never writes the project or builds an artifact. Explicit section Cancel and
+  successful Save clear that project's applied draft; pending recovery choices remain explicit.
+  Fresh browser launches and unapplied whole-sequence text are outside this refresh contract.
 
   The design fields are grouped into 6 named sections — Game basics, Layout, Symbols,
   Reels, Paytable, Bets — via `components/blueprintEditor/SectionedFormEditor.tsx`, a Mantine `Tabs`

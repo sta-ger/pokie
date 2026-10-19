@@ -42,6 +42,18 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "scripts/p9-11-candidate.mjs", "tests/testUtils/createP911CandidateFixture.mjs",
     "tests/scripts/p9-11-corrective-closeout.test.mjs", "tests/scripts/p9-11-produce-candidate.test.mjs",
     "docs/audit-corrections/README.md", "docs/audit-corrections/p9-11-closeout.md",
+    // Complete V2C-31 test/evidence repair; production and build inputs stay protected.
+    "docs/v2-completion/V2C-31.md",
+    "tests/cli/BuildProductMatrix.crossSurface.contract.test.ts",
+    "tests/cli/studio/replay/StudioReplayExecutionService.test.ts",
+    "tests/packaging/helpers/selectPackedArchive.ts",
+    "tests/packaging/npmPackSmoke.test.ts",
+    "tests/v2/StableConsumerContracts.test.ts",
+    "tests/v2/PackageBlueprintExtraction.test.ts",
+    "tests/v2/WasmSharedMath.test.ts",
+    "tests/fixtures/wasm/verifyDeliveredSharedMath.cjs",
+    "tests/v2/fixtures/normal-pack.stdout.txt",
+    "scripts/p8-05-release-handoff.mjs",
 ];
 const commit = (repository, message) => {
     execFileSync("git", ["add", "."], {cwd:repository});
@@ -56,7 +68,7 @@ export async function commitP911ToolingDescendant(fixture) {
     return commit(fixture.repository, "fixture complete tooling repair descendant");
 }
 
-export async function candidateFixture(directory, {packageName = "@fromstan/pokie"} = {}) {
+export async function candidateFixture(directory, {packageName = "@fromstan/pokie", includeGitHead = false} = {}) {
     const repository = path.join(directory, "repository"), pack = path.join(directory, "pack"), installationRoot = path.join(directory, "installation");
     await mkdir(repository); await mkdir(path.join(pack, "package"), {recursive:true});
     const declaration = {name:packageName, private:true, version:"1.3.0", type:"module", exports:{".":{import:"./dist/esm/index.js", require:"./dist/cjs/index.cjs"}, ...Object.fromEntries([["browser", "dist/esm/browser.js"], ["wasm", "dist/esm/wasm.js"], ["client/player", "dist/cli/player.js"]].map(([subpath, file]) => [`./${subpath}`, packageName === "pokie" ? `./${file}` : {import:`./${file}`}]))}, bin:{pokie:"./dist/cli/pokie.js"}};
@@ -72,7 +84,7 @@ export async function candidateFixture(directory, {packageName = "@fromstan/poki
     execFileSync("git", ["init", "--quiet"], {cwd:repository});
     const candidateId = commit(repository, "test fixture");
     const candidateTreeId = execFileSync("git", ["rev-parse", "HEAD^{tree}"], {cwd:repository, encoding:"utf8"}).trim();
-    await json(path.join(pack, "package/package.json"), declaration);
+    await json(path.join(pack, "package/package.json"), {...declaration, ...(includeGitHead ? {gitHead:candidateId} : {})});
     for (const file of ["dist/cjs/index.cjs", "dist/esm/index.js", "dist/esm/browser.js", "dist/esm/wasm.js", "dist/cli/player.js", "dist/cli/pokie.js", "dist/cli/studio-client/index.html"]) {
         await mkdir(path.dirname(path.join(pack, "package", file)), {recursive:true});
         await writeFile(path.join(pack, "package", file), `fixture:${file}`);

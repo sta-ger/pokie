@@ -149,7 +149,11 @@ it("never certifies complete custom declarations or lying generated labels, and 
         expect(report.checks).toContainEqual(expect.objectContaining({id: "source.executable-fidelity", status: "unknown"}));
         expect(createSession).not.toHaveBeenCalled();
         const missingPolicy = {...game, getModelDescriptor: () => ({descriptorVersion: 1 as const, blueprintSchemaVersion: 1 as const, sourceKind, model})};
-        expect((await new AdvancedModelSourceValidator().validate(missingPolicy)).checks).toContainEqual(expect.objectContaining({id: "invariants.max-win", status: "unknown"}));
+        const missingPolicyReport = await new AdvancedModelSourceValidator().validate(missingPolicy);
+        expect(missingPolicyReport).toMatchObject({executableFidelity: "unverified", verdict: "inconclusive", status: "unsupported"});
+        expect(missingPolicyReport.issues.some(issue => issue.code === "max-win-policy-unknown")).toBe(sourceKind === "custom");
+        if (sourceKind === "custom") expect(missingPolicyReport.checks).toContainEqual(expect.objectContaining({id: "invariants.max-win", status: "unknown"}));
+        else expect(missingPolicyReport.checks).toContainEqual(expect.objectContaining({id: "invariants.runtime", status: "pass"}));
     }
 });
 
@@ -197,9 +201,9 @@ it.each([false, true])("releases owned snapshots on cancellation (cleanup fails:
     const fixture = writePausedDescriptorPackage(root);
     const controller = new AbortController();
     const before = runtimeSnapshotNames(fixture.source);
-    const remove = fs.rmSync.bind(fs);
-    const cleanup = failure ? jest.spyOn(fs, "rmSync").mockImplementation((target, options) => {
-        remove(target, options);
+    const remove = fs.promises.rm.bind(fs.promises);
+    const cleanup = failure ? jest.spyOn(fs.promises, "rm").mockImplementation(async (target, options) => {
+        await remove(target, options);
         if (path.basename(String(target)).startsWith("pokie-runtime-")) throw new Error("cleanup failed");
     }) : undefined;
     fixture.arm();
