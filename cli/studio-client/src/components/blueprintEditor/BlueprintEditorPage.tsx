@@ -461,6 +461,9 @@ export function BlueprintEditorPage({
     // comments) purely to avoid a one-frame stale-validation flash between their own replace and this
     // effect running; every other bump still relies on this alone.
     const hasRunRevisionEffectRef = useRef(false);
+    // Visibility changes and StrictMode's repeated mount effects are not document edits. In
+    // particular, neither may replace the retained draft with this mount's starter document.
+    const lastPersistedRevisionRef = useRef(editor.state.revision);
     // Kept separately from the validation debounce: this one only yields a primary action until React
     // has drained the input's preceding blur batch (see handleGuidedSave below).
     const guidedSaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -491,7 +494,8 @@ export function BlueprintEditorPage({
         if (isInitialMount && initialPath) {
             return undefined;
         }
-        if (!isInitialMount) {
+        if (!isInitialMount && editor.state.revision !== lastPersistedRevisionRef.current) {
+            lastPersistedRevisionRef.current = editor.state.revision;
             saveDraft(editor.state.blueprint, importedFromParSheetPath, parConversionEvidence);
         }
         autoValidateTimer.schedule(handleValidate, AUTO_VALIDATE_DEBOUNCE_MS);

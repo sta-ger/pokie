@@ -12,6 +12,7 @@ import {StudioProjectRegistrationService} from "../../../../cli/studio/StudioPro
 import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js";
 import {FileStudioJobRepository} from "../../../../cli/studio/jobs/FileStudioJobRepository.js";
 import {createRecommendedBlueprint} from "../../../../cli/studio-client/src/domain/blueprintEditorState.js";
+import {PokiePathResolver} from "../../../../cli/paths/PokiePathResolver.js";
 
 const draft = {blueprint: {...createRecommendedBlueprint(), manifest: {id: "verifier-draft-recovery-updated", name: "Verifier Draft Recovery Updated", version: "0.1.0"}}};
 const malformed = [
@@ -24,12 +25,12 @@ const malformed = [
 
 describe("profile-backed Design recovery authority", () => {
     let root: string, file: string, store: FileStudioBlueprintDraftStore, server: StudioServer, url: string;
-    async function start(draftFile: string) {
+    async function start(draftFile?: string) {
         const homeService = new StudioHomeService("2.0.0", new InMemoryRecentProjectsRepository());
         server = new StudioServer({
             host: "127.0.0.1", port: 0, pokieVersion: "2.0.0", studioRoot: root, homeService,
             blueprintService: new StudioBlueprintService("2.0.0", root, homeService),
-            blueprintDraftStore: new FileStudioBlueprintDraftStore(draftFile),
+            ...(draftFile === undefined ? {} : {blueprintDraftStore: new FileStudioBlueprintDraftStore(draftFile)}),
             jobService: new StudioJobService(new FileStudioJobRepository(path.join(root, "jobs"))),
             projectRegistrationService: new StudioProjectRegistrationService(new InMemoryStudioProjectRegistry()),
         });
@@ -70,6 +71,19 @@ describe("profile-backed Design recovery authority", () => {
         expect(store.read()).toEqual(saved.body); // The copied profile and producer are independent.
     });
 
+    it("uses platform application data through the default production server composition", async () => {
+        const appData = path.join(root, "default-profile", "config", "pokie");
+        jest.spyOn(PokiePathResolver.prototype, "resolveAppDataDirectory").mockReturnValue(appData);
+        await server.stop();
+        await start();
+        const saved = await post({version: null, draft});
+        expect(saved.status).toBe(200);
+        expect(new FileStudioBlueprintDraftStore(path.join(appData, "studio-design-draft-v1.json")).read()).toEqual(saved.body);
+        await server.stop();
+        await start();
+        expect(await (await fetch(url)).json()).toEqual(saved.body);
+    });
+
     it.each(malformed)("rejects $diagnostic at shared validator, store and HTTP, then reuses the same store", async ({value, diagnostic}) => {
         expect(() => validateStudioBlueprintDraftSnapshot(value)).toThrow(diagnostic);
         expect(() => store.replace(value as StudioBlueprintDraftSnapshot)).toThrow(diagnostic);
@@ -105,13 +119,13 @@ describe("profile-backed Design recovery authority", () => {
         expect(store.read().draft).toEqual(authored);
         const validationUrl = url.replace(/draft$/, "validate");
         const validate = async (blueprint: unknown) => {
-            const response = await fetch(validationUrl, {method: "POST", body: JSON.stringify({blueprint})});
+            const response = await fetch(validationUrl, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({blueprint})});
             return response.json();
         };
         expect(await validate(authored.blueprint)).toMatchObject({status: "invalid"});
         expect(await validate(draft.blueprint)).toMatchObject({status: "ok"});
         const forged = await fetch(url.replace(/draft$/, "save-managed"), {
-            method: "POST", body: JSON.stringify({blueprint: draft.blueprint, sourceWorkbookPath: authored.importedFromParSheetPath, conversionEvidence: authored.conversionEvidence}),
+            method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({blueprint: draft.blueprint, sourceWorkbookPath: authored.importedFromParSheetPath, conversionEvidence: authored.conversionEvidence}),
         });
         expect(await forged.json()).toMatchObject({status: "error", error: expect.stringContaining("PAR import preparation is unavailable")});
         expect(store.read()).toEqual(saved.body);
@@ -148,5 +162,12 @@ describe("profile-backed Design recovery authority", () => {
         rename.mockRestore();
         const next = store.replace(original)!;
         expect(store.replace(next)!.draft).toEqual(draft);
+    });
+
+    it("bounds the retained slot without replacing the previous document on an oversized edit", () => {
+        const original = store.replace({version: null, draft})!;
+        expect(() => store.replace({version: original.version, draft: {blueprint: {note: "x".repeat(1_048_576)}}})).toThrow("recovery size limit");
+        expect(store.read()).toEqual(original);
+        expect(fs.readdirSync(path.dirname(file))).toEqual([path.basename(file)]);
     });
 });

@@ -1,7 +1,11 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {act, fireEvent, screen, waitFor} from "@testing-library/react";
+import {act, fireEvent, render, screen, waitFor} from "@testing-library/react";
+import {StrictMode} from "react";
+import {MantineProvider} from "@mantine/core";
+import {ModalsProvider} from "@mantine/modals";
+import {MemoryRouter} from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import {BlueprintEditorPage} from "../../../../../../cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage";
 import {BlueprintDraftPersistence} from "../../../../../../cli/studio-client/src/domain/BlueprintDraftPersistence";
@@ -10,6 +14,7 @@ import {createRecommendedBlueprint} from "../../../../../../cli/studio-client/sr
 import {FileStudioBlueprintDraftStore} from "../../../../../../cli/studio/blueprint/FileStudioBlueprintDraftStore";
 import {validateStudioBlueprintDraftSnapshot, type StudioBlueprintDraftSnapshot} from "../../../../../../cli/studio/blueprint/StudioBlueprintDraft";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
+import {StudioApiProvider} from "../../../../../../cli/studio-client/src/context/StudioApiProvider";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
 
@@ -75,6 +80,21 @@ describe("Design recovery from the Studio profile", () => {
         expect(loadPersistedBlueprintDraft()?.blueprint).toEqual(store.read().draft?.blueprint);
         expect(fresh.calls.some(call => (/\/(save|save-managed|build)$/).test(call.url))).toBe(false);
         expect(screen.queryByText("Recovered an unsaved draft from your last Studio session.")).not.toBeInTheDocument();
+    });
+
+    it("does not overwrite recovery on StrictMode mount or no-op visibility changes; later edits still persist", async () => {
+        const saved = store.replace({version: null, draft: {blueprint: retained}})!;
+        const {fetchImpl, calls} = api();
+        const tree = (visible: boolean) => <StrictMode><MantineProvider><MemoryRouter><StudioApiProvider fetchImpl={fetchImpl}><ModalsProvider><BlueprintEditorPage guided isVisible={visible} /></ModalsProvider></StudioApiProvider></MemoryRouter></MantineProvider></StrictMode>;
+        const mounted = render(tree(true));
+        await screen.findByRole("button", {name: "Restore", exact: true});
+        expect(calls.filter(call => call.url === endpoint && call.init?.method !== "POST").length).toBeGreaterThanOrEqual(2);
+        mounted.rerender(tree(false));
+        mounted.rerender(tree(true));
+        expect(store.read()).toEqual(saved);
+        expect(calls.some(call => call.url === endpoint && call.init?.method === "POST")).toBe(false);
+        fireEvent.change(screen.getByLabelText("Game name"), {target: {value: "An actual edit"}});
+        await waitFor(() => expect(store.read().draft?.blueprint.manifest).toMatchObject({name: "An actual edit"}));
     });
 
     it("preserves newer edits when Restore is cancelled; explicit Discard clears durable and tab recovery", async () => {
