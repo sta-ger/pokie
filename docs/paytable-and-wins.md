@@ -24,6 +24,14 @@ If `availableSymbols`/`reelsNumber` are passed to the constructor, a default pay
 own) gets counts `3..reelsNumber` filled in as `(count - 2) × bet` — i.e. 3-of-a-kind pays `1×bet`, 4-of-a-kind
 `2×bet`, 5-of-a-kind `3×bet`. Counts 1 and 2 are never populated by default.
 
+Authored Blueprint paytables use a different input contract: `paytable[symbol][count]` is a
+**stake multiplier**. Generated runtimes install only those authored entries; they do not fill
+missing symbols or counts from the constructor defaults above. An omitted payout returns zero;
+an explicit zero stays authored as zero. A multiplier of 4 pays `4 × bet`, including bets
+`0.05`, `7.5` and `1e-7`. Free-game grants are authored separately in
+`mechanics.freeGames.awardsByCount`: a missing or zero monetary scatter payout does not suppress
+an independently authored grant, and a payout does not invent a missing grant.
+
 ```ts
 setPayoutForSymbol(symbolId, times, betMultiplier, bet?)
 ```
