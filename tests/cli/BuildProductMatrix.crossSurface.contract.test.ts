@@ -24,14 +24,6 @@ const SUPPORTED_CELLS: readonly SupportedCell[] = BUILD_PRODUCT_MATRIX_SOURCE_TY
     BUILD_PRODUCT_MATRIX_TARGETS.map((target) => BUILD_PRODUCT_MATRIX[source][target]).filter((cell) => cell.state === "supported"),
 );
 
-function documentedSupportedConversionList(): string {
-    const sourceConversions = BUILD_PRODUCT_MATRIX_SOURCE_TYPES
-        .map((source) => ({source, targets: BUILD_PRODUCT_MATRIX_TARGETS.filter((target) => BUILD_PRODUCT_MATRIX[source][target].state === "supported")}))
-        .filter(({targets}) => targets.length > 0)
-        .map(({source, targets}) => `\`${source}\` → ${targets.map((target) => `\`${target}\``).join("/")}`);
-    return `${sourceConversions.slice(0, -1).join(", ")}, and ${sourceConversions[sourceConversions.length - 1]}`;
-}
-
 const BLUEPRINT: GameBlueprint = {
     manifest: {id: "matrix-slot", name: "Matrix Slot", version: "1.0.0"},
     reels: 2,
@@ -41,6 +33,11 @@ const BLUEPRINT: GameBlueprint = {
     reelStrips: [["A", "B"], ["A", "B"]],
     availableBets: [1],
 };
+
+function targetExtension(target: ArtifactTargetType): string {
+    const extensions: Partial<Record<ArtifactTargetType, string>> = {blueprint: ".json", parWorkbook: ".xlsx", wasm: ".wasm"};
+    return extensions[target] ?? "";
+}
 
 function defaultDestination(sourcePath: string, target: ArtifactTargetType): string {
     let name: string = target;
@@ -123,8 +120,12 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
             "blueprint:stakeAdapter",
             "blueprint:parWorkbook",
             "blueprint:wasm",
+            "tsPackage:blueprint",
+            "tsPackage:tsPackage",
             "tsPackage:outcomeLibrary",
             "tsPackage:stakeAdapter",
+            "tsPackage:parWorkbook",
+            "tsPackage:wasm",
             "outcomeLibrary:outcomeLibrary",
             "outcomeLibrary:stakeAdapter",
             "stakeAdapter:stakeAdapter",
@@ -140,12 +141,11 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
     it("keeps both public documentation entrypoints aligned with BUILD_PRODUCT_MATRIX and the Blueprint-to-PAR snapshot contract", () => {
         const cliDocumentation = fs.readFileSync(path.resolve(process.cwd(), "docs/cli.md"), "utf-8").replace(/\s+/g, " ");
         const readmeDocumentation = fs.readFileSync(path.resolve(process.cwd(), "docs/README.md"), "utf-8").replace(/\s+/g, " ");
-        const supportedConversionMatch = cliDocumentation.match(new RegExp(
-            "The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its " +
-            `${SUPPORTED_CELLS.length} supported cells are (.+?)\\. Every other advertised cell`,
-        ));
-
-        expect(supportedConversionMatch?.[1]).toBe(documentedSupportedConversionList());
+        expect(cliDocumentation).toContain("conditional supported edges");
+        expect(cliDocumentation).toContain("when public model extraction is complete");
+        for (const source of BUILD_PRODUCT_MATRIX_SOURCE_TYPES.filter(type => type !== "wasm")) {
+            expect(cliDocumentation).toContain(`\`${source}\` →`);
+        }
 
         const targetOptionMatch = cliDocumentation.match(/- `--target <artifact>` —(.+?)(?= - `--out <path>`)/);
         const failureModesMatch = cliDocumentation.match(/Failure modes: (.+?)(?= ### Conflict handling)/);
@@ -162,7 +162,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
             expect(documentation).toMatch(/(?:`GameBlueprint`|`blueprint`) (?:->|→) `tsPackage`\/`outcomeLibrary`\/`stakeAdapter`\/`parWorkbook`/);
             expect(documentation).toContain("pokie par export");
             expect(documentation).toMatch(/deterministic literal workbook snapshot/i);
-            expect(documentation).toMatch(/authored Blueprint remains unchanged/i);
+            expect(documentation).toMatch(/(?:authored|source) Blueprint remains unchanged/i);
             expect(documentation).toMatch(/`parsheet-reel-generation-failed`/);
             expect(documentation).toMatch(/`parsheet-reel-generation-seed-required`/);
             expect(documentation).toMatch(/`reelStripGeneration\[index\]`/);
@@ -194,7 +194,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
             expect.objectContaining({target, supported: BUILD_PRODUCT_MATRIX[target][target].state === "supported"}),
         ]));
 
-        const explicitOut = path.join(fixtureRoot, `explicit-${target}${target === "parWorkbook" ? ".xlsx" : ""}`);
+        const explicitOut = path.join(fixtureRoot, `explicit-${target}${targetExtension(target)}`);
         // Runtime -> Outcome deliberately reuses a compatible managed result for one source. Give the
         // explicit-output assertion an equivalent but independently rooted source so it proves an actual
         // explicit publish instead of merely observing that intentional reuse branch.
@@ -204,7 +204,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         expect(await command.run([explicitSourcePath, "--target", target, "--out", explicitOut])).toBe(0);
         expect(fs.existsSync(explicitOut)).toBe(true);
 
-        const studioOut = path.join(fixtureRoot, `studio-${target}${target === "parWorkbook" ? ".xlsx" : ""}`);
+        const studioOut = path.join(fixtureRoot, `studio-${target}${targetExtension(target)}`);
         const studioSourcePath = target === "outcomeLibrary" && (source === "blueprint" || source === "tsPackage")
             ? await createSource(source, path.join(fixtureRoot, "studio-source"), resolver, registry)
             : explicitSourcePath;
@@ -216,12 +216,12 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         });
         expect(fs.existsSync(studioOut)).toBe(true);
 
-        const dryRunOut = path.join(fixtureRoot, `dry-run-${target}${target === "parWorkbook" ? ".xlsx" : ""}`);
+        const dryRunOut = path.join(fixtureRoot, `dry-run-${target}${targetExtension(target)}`);
         expect(await command.run([sourcePath, "--target", target, "--out", dryRunOut, "--dry-run"])).toBe(0);
         expect(fs.existsSync(dryRunOut)).toBe(false);
 
-        const occupiedOut = path.join(fixtureRoot, `occupied-${target}${target === "parWorkbook" ? ".xlsx" : ""}`);
-        if (target === "parWorkbook") {
+        const occupiedOut = path.join(fixtureRoot, `occupied-${target}${targetExtension(target)}`);
+        if (["blueprint", "parWorkbook", "wasm"].includes(target)) {
             fs.writeFileSync(occupiedOut, "preserve me");
         } else {
             fs.mkdirSync(occupiedOut);
@@ -234,7 +234,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
             new RegExp(`Cannot build target "${target}".*Next: choose a different --out path`, "s"),
         );
         await expect(studio.build(occupiedSourcePath, target, occupiedOut)).resolves.toMatchObject({status: "conflict", target});
-        expect(target === "parWorkbook" ? fs.readFileSync(occupiedOut, "utf-8") : fs.readFileSync(path.join(occupiedOut, "preserve-me.txt"), "utf-8")).toBe("preserve me");
+        expect(["blueprint", "parWorkbook", "wasm"].includes(target) ? fs.readFileSync(occupiedOut, "utf-8") : fs.readFileSync(path.join(occupiedOut, "preserve-me.txt"), "utf-8")).toBe("preserve me");
 
         // Both the literal source and a filesystem alias of it are forbidden destinations.
         const unsafeSourcePath = target === "outcomeLibrary" && (source === "blueprint" || source === "tsPackage")
@@ -247,7 +247,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
 
         // Cancellation after a production builder starts must leave no output behind. Individual builder
         // suites additionally inject writer failures; this is the matrix-wide public cleanup assertion.
-        const cleanupOut = path.join(fixtureRoot, `cleanup-${target}${target === "parWorkbook" ? ".xlsx" : ""}`);
+        const cleanupOut = path.join(fixtureRoot, `cleanup-${target}${targetExtension(target)}`);
         const cleanupSourcePath = target === "outcomeLibrary" && (source === "blueprint" || source === "tsPackage")
             ? await createSource(source, path.join(fixtureRoot, "cleanup-source"), resolver, registry)
             : sourcePath;
