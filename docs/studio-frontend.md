@@ -40,11 +40,19 @@ tabs never loses in-progress work):
 
   Applied Design edits stay in this browser tab's `sessionStorage` for explicit **Restore** or
   **Discard** after a same-tab refresh. Recovery never saves a user project, runs a build, or marks
-  a draft clean. An explicit source/job opening takes precedence; no-op mounts and visibility
-  changes preserve the pending recovery data. Fresh browser sessions do not recover a profile-wide
+  a draft clean. Opening a source displays its saved document while preserving the explicit recovery
+  choice; a retained job opens its own captured draft. No-op mounts and visibility changes preserve
+  pending recovery data. Fresh browser sessions do not recover a profile-wide
   draft. Restore, Discard and successful Save affect only this tab's slot. If browser storage is
   unavailable, the in-memory editor remains usable; use **Save** to keep a project. Unapplied
   JSON/whole-sequence text remains local to the mounted editor until its explicit Apply action.
+
+  Project **Game Model** edits use separate tab-local slots for each project. After a same-tab
+  refresh, **Restore** reopens the edited section as unsaved; **Discard** keeps the saved model.
+  Recovery preserves the original source version, so **Save** reports a conflict if the file changed
+  meanwhile. Recovery never writes the project or builds an artifact. Explicit section Cancel and
+  successful Save clear that project's applied draft; pending recovery choices remain explicit.
+  Fresh browser launches and unapplied whole-sequence text are outside this refresh contract.
 
   The design fields are grouped into 6 named sections — Game basics, Layout, Symbols,
   Reels, Paytable, Bets — via `components/blueprintEditor/SectionedFormEditor.tsx`, a Mantine `Tabs`
