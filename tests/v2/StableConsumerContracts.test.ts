@@ -204,6 +204,19 @@ it.each([0.05, 7.5, 1e-7])("preserves fractional stake %s, authored omissions an
         expect(noWin.getWinAmount()).toBe(0);
         expect((await generated(authored).getModelDescriptor!()).model.paytable).toEqual(authored.paytable);
     }
+    const sampled = game.createSession({seed: "0"}) as api.VideoSlotSession;
+    sampled.setBet(bet);
+    sampled.setCreditsAmount(1000);
+    const statistics = new api.AggregateSimulationRunner(sampled, 3).run().getStatistics();
+    const report = new api.SimulationReportBuilder().build({manifest: game.getManifest(), requestedRounds: 3, statistics, durationMs: 1, seed: "0"});
+    expect(report.rounds).toBe(3);
+    expect(Math.abs(report.totalBet / (bet * 3) - 1)).toBeLessThan(1e-12);
+    expect(Math.abs(report.totalWin / (bet * 2) - 1)).toBeLessThan(1e-12);
+    expect(report.rtp).toBeCloseTo(2 / 3, 12);
+    const replay = new api.ReplayRecorder().record({game, seed: "0", round: 3, entryCommands: Array.from({length: 3}, () => ({kind: "spin", bet}))});
+    expect(replay.screen).toEqual(FRACTIONAL_MIXED_CONTINUATION[2].screen);
+    expect(replay.totalBet).toBe(report.totalBet);
+    expect(replay.totalWin).toBe(report.totalWin);
     expectRareMetrics(new api.StakeEngineStandaloneAnalyzer().analyze(rareStakeSource()).modes[0]);
 });
 

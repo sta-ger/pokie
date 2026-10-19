@@ -486,6 +486,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                     const artifact = typeof seed === 'string' ? await portable.createBlueprintWasmArtifact(model) : undefined;
                     const runtime = artifact && await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost(seed));
                     const wasm = runtime?.createSession(seed);
+                    const initialWasm = wasm?.serialize();
+                    const portableRounds = [];
                     try {
                         for (let round = 0; round < 12; round++) {
                             const bet = model.availableBets[round % 3];
@@ -518,9 +520,31 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                                 assert.deepEqual(result.screen, screen);
                                 assert.equal(result.stake, bet); assert.equal(result.payout, expected);
                                 assert.equal(result.credits, sessions[0].getCreditsAmount());
+                                portableRounds.push(result);
                             }
                         }
+                        if (wasm) {
+                            const replayed = await runtime.replay(initialWasm, portableRounds.map(round => ({bet: round.stake})));
+                            assert.deepEqual(replayed.rounds, portableRounds);
+                            assert.deepEqual(replayed.stateAfter, wasm.serialize());
+                        }
                     } finally { runtime?.dispose(); }
+                }
+                for (const bet of model.availableBets) {
+                    for (const game of [original, recompiled, loaded.game]) {
+                        const session = game.createSession({seed: '0'});
+                        session.setCreditsAmount(1000); session.setBet(bet);
+                        const statistics = new api.AggregateSimulationRunner(session, 3).run().getStatistics();
+                        const report = new api.SimulationReportBuilder().build({manifest: game.getManifest(), statistics, requestedRounds: 3, seed: '0', durationMs: 1});
+                        assert.equal(report.rounds, 3);
+                        assert.ok(Math.abs(report.totalBet / (3 * bet) - 1) < 1e-12);
+                        assert.ok(Math.abs(report.totalWin / (2 * bet) - 1) < 1e-12);
+                        assert.ok(Math.abs(report.rtp - 2 / 3) < 1e-12);
+                        const replay = new api.ReplayRecorder().record({game, seed: '0', round: 3, entryCommands: Array.from({length: 3}, () => ({kind: 'spin', bet}))});
+                        assert.deepEqual(replay.screen, golden[2].screen);
+                        assert.equal(replay.totalBet, report.totalBet);
+                        assert.equal(replay.totalWin, report.totalWin);
+                    }
                 }
                 const initial0 = new api.SeededRandomNumberGenerator(0).toSessionState();
                 assert.notEqual(initial0, new api.SeededRandomNumberGenerator('0').toSessionState());
