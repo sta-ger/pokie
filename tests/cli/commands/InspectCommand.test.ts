@@ -116,11 +116,21 @@ describe("InspectCommand", () => {
     });
 
     it.each([
-        [blueprintProject, "Game Blueprint", "Build a POKIE game package", "first build a POKIE game package"],
-        [outcomeProject, "Outcome Library", "Simulate outcome draws", "original game logic"],
-        [stakeProject, "Stake Engine export", "Render exact outcome statistics", "use the compatible Outcome Library"],
-        [parWorkbookProject, "PAR workbook", "Import a Game Blueprint", "first import the workbook"],
-    ])("explains the public kind, compatible actions, and prerequisites for %s", async (project, kind, action, prerequisite) => {
+        [blueprintProject, "Game Blueprint", "Build a POKIE game package", [
+            "Validation reads the Blueprint directly.",
+            "Simulation, replay, and serving automatically prepare a disposable game package; building a standalone package is optional.",
+        ]],
+        [validProject, "POKIE game package", "Simulate game rounds", [
+            "Conversions to Blueprint, package, PAR, or WASM require a complete representable public model descriptor.",
+            "Custom executable behavior remains in the original package.",
+        ]],
+        [outcomeProject, "Outcome Library", "Simulate outcome draws", ["original game logic"]],
+        [stakeProject, "Stake Engine export", "Render exact outcome statistics", ["use the compatible Outcome Library"]],
+        [parWorkbookProject, "PAR workbook", "Import a Game Blueprint", [
+            "Build automatically imports a Blueprint intermediate and retains conversion evidence.",
+            "Runtime operations prepare supported intermediates automatically; inspect import diagnostics for inferred or unsupported model data.",
+        ]],
+    ])("explains the public kind, compatible actions, and prerequisites for %s", async (project, kind, action, prerequisites) => {
         const command = new InspectCommand(createStubResolver(project));
 
         expect(await command.run([project.rootPath])).toBe(0);
@@ -128,7 +138,7 @@ describe("InspectCommand", () => {
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain(kind);
         expect(printed).toContain(action);
-        expect(printed).toContain(prerequisite);
+        for (const prerequisite of prerequisites) expect(printed).toContain(prerequisite);
         expect(printed).not.toContain("capability");
     });
 

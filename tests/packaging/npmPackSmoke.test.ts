@@ -15,6 +15,18 @@ import {writeRareStakeDirectory, markRecognizedStakeProject} from "../stakeengin
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
 
+function createExternalSmokeDirectory(prefix: string): string {
+    const checkout = fs.realpathSync(REPO_ROOT);
+    // Jest may deliberately put TMPDIR under node_modules. Resolve aliases before
+    // choosing a parent so the native consumer never inherits checkout resolution.
+    const temporaryRoot = [os.tmpdir(), "/tmp", "/var/tmp"]
+        .filter((directory) => fs.existsSync(directory))
+        .map((directory) => fs.realpathSync(directory))
+        .find((directory) => directory !== checkout && !directory.startsWith(checkout + path.sep));
+    if (temporaryRoot === undefined) throw new Error("No temporary directory outside the checkout is available for the native smoke consumer.");
+    return fs.mkdtempSync(path.join(temporaryRoot, prefix));
+}
+
 function importSmokeScript(filename: string): Promise<unknown> {
     const url = pathToFileURL(path.join(REPO_ROOT, "scripts", filename)).href;
     // This lane is transpiled to CommonJS. Keep the real ESM scripts and their
@@ -198,7 +210,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     }
 
     beforeAll(async () => {
-        // Build explicitly, then keep the real tarball and npm's output outside the candidate tree.
+        // Keep the real tarball and npm's output outside the candidate tree.
         // `npm pack --json` includes one record per shipped file; once the package exceeded 8,000
         // files that output crossed execFileSync's default 1 MiB buffer and failed with ENOBUFS.
         // Silent non-JSON mode emits only the tarball filename and remains bounded as the package grows.
@@ -208,7 +220,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             const candidate = p911Candidate;
             expect(candidate.candidateId).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_ID);
             expect(candidate.archiveSha256).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
-            packDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-output-"));
+            packDir = createExternalSmokeDirectory("pokie-npm-pack-output-");
             tarballPath = stageSharedSmokeArchive(candidate.archive, packDir);
         } else if (handoffConfig) {
             // Re-authenticate the exact archived product at the real install
@@ -223,22 +235,31 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             expect(execFileSync("git", ["rev-parse", "HEAD"], {cwd: REPO_ROOT, encoding: "utf8"}).trim()).toBe(config.candidateId);
             const result = await readP805ReleaseArchive(config);
             releaseHandoffBinding = {auditedCandidateId: result.binding.auditedCandidateId, releaseHandoffSha256: result.sha256};
-            packDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-output-"));
+            packDir = createExternalSmokeDirectory("pokie-npm-pack-output-");
             tarballPath = path.join(packDir, "audited-package.tgz");
             fs.writeFileSync(tarballPath, result.archive, {flag: "wx"});
         } else {
-            packDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-output-"));
-            const filename = execFileSync(
-                "npm",
-                ["pack", "--silent", "--pack-destination", packDir],
-                {cwd: REPO_ROOT, encoding: "utf-8"},
-            ).trim();
+            packDir = createExternalSmokeDirectory("pokie-npm-pack-output-");
+            const {spawnP911Child, waitP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+                spawnP911Child: (command: string, args: string[], options: {cwd: string; timeoutMs: number}) => ChildProcessWithoutNullStreams;
+                waitP911Child: (child: ChildProcessWithoutNullStreams) => Promise<{stdout: string}>;
+            };
+            // Preserve normal prepack, with launch-time ownership of its build
+            // descendants and awaited cleanup even when it fails or times out.
+            const packChild = spawnP911Child("npm", ["pack", "--silent", "--pack-destination", packDir], {cwd: REPO_ROOT, timeoutMs: 180000});
+            spawnedSmokeChildren.add(packChild);
+            let filename: string;
+            try {
+                filename = (await waitP911Child(packChild)).stdout.trim();
+            } finally {
+                await stopChild(packChild);
+            }
             expect(filename).toBe(path.basename(filename));
             tarballPath = path.join(packDir, filename);
         }
         expect(fs.existsSync(tarballPath)).toBe(true);
 
-        installDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie native installed consumer "));
+        installDir = createExternalSmokeDirectory("pokie native installed consumer ");
         fs.writeFileSync(
             path.join(installDir, "package.json"),
             JSON.stringify({name: "pokie-smoke-test", version: "0.0.0", private: true}),
