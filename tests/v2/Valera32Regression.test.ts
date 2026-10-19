@@ -75,7 +75,7 @@ describe("V2C-32 public math prerequisites", () => {
             expect(session.getWinAmount()).toBe(0);
             expect(session.getFreeGamesSum()).toBe(2);
         }
-        for (const awardsByCount of [{}, {2: 0}]) {
+        for (const awardsByCount of [{1: 1}, {2: 0}]) {
             const blueprint: api.GameBlueprint = {...example(), availableBets: [bet], paytable: {S: {2: 4}},
                 scatters: ["S"], reelSequences: [{type: "exact", symbols: ["S", "S"]}, {type: "exact", symbols: ["S", "S"]}],
                 mechanics: {freeGames: {scatterSymbol: "S", awardsByCount}}};
