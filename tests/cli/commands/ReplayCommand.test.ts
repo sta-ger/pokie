@@ -258,9 +258,13 @@ describe("ReplayCommand generated package mode policy", () => {
         expect(f.getSession().toSessionState()).toMatchObject({chargedBetModeId: mode});
     });
 
-    it.each([false, true])("F12 downloads paid and completed continuation artifacts across repeated purchases (weighted: %s)", async weighted => {
-        const f = fixture(true, weighted);
-        for (const round of [1, 2, 3, 4, 5, 8]) {
+    // Each address starts a fresh replay and runtime lease. Keep a separate
+    // timeout per address under concurrent gates while retaining both purchases
+    // and every paid/continuation/weighted artifact assertion.
+    it.each([false, true].flatMap(weighted => [1, 2, 3, 4, 5, 8].map(round => ({weighted, round}))))(
+        "F12 downloads paid and completed continuation artifacts across repeated purchases (weighted: $weighted, round: $round)",
+        async ({weighted, round}) => {
+            const f = fixture(true, weighted);
             await new ReplayCommand(f.load).run([f.root, "--seed", "review-fixed", "--round", String(round), "--mode", "buy-more", "--out", f.output]);
             const descriptor = JSON.parse(fs.readFileSync(f.output, "utf8")) as ReplayDescriptor;
             expect(descriptor.totalBet).toBeCloseTo(round < 5 ? 1.25 : 2.5, 12);
@@ -269,8 +273,8 @@ describe("ReplayCommand generated package mode policy", () => {
             expect(descriptor.artifact).toMatchObject({stake: (round - 1) % 4 === 0 ? 1.25 : 0, betMode: "buy-more", provenance: {pokieVersion: "2.0.0"}});
             expect(descriptor.artifact?.featureEvents).toContainEqual(expect.objectContaining({type: "chargedBetMode", data: {id: "buy-more"}}));
             expect(Boolean(descriptor.artifact?.sequenceSelections?.length)).toBe(weighted);
-        }
-    });
+        },
+    );
 
     it("F11 rejects unknown selections before a spin or output publication", async () => {
         const f = fixture();

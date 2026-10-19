@@ -1159,20 +1159,29 @@ it.each([["cjs", false], ["cjs", true], ["esm", false], ["esm", true]] as const)
         const before = sourceInventory(project);
         const request = stochasticOptimizationRequest();
         request.policy.tunables[0].values = [3];
+        // The gate can build checkout dist concurrently. Bind this native host to
+        // immutable fixture-owned source bytes so real dependency fingerprints do
+        // not mistake another suite's compiler output for executable drift.
+        const runtimeRoot = path.join(directory, "host-runtime");
+        fs.mkdirSync(runtimeRoot);
+        fs.copyFileSync(path.resolve("package.json"), path.join(runtimeRoot, "package.json"));
+        fs.cpSync(path.resolve("src"), path.join(runtimeRoot, "src"), {recursive: true});
+        const temporaryRoot = path.join(directory, "native-tmp");
+        fs.mkdirSync(temporaryRoot);
         const script = path.join(directory, "native-optimization.cjs");
         // Execute the public service in an ordinary long-lived Node host, then compare
         // its rerun to a separate fresh process. ts-jest cannot require native ESM.
         fs.writeFileSync(script, `const fs = require('fs'); const Module = require('module'); const ts = require(${JSON.stringify(require.resolve("typescript"))});
 const original = Module._resolveFilename;
-Module._resolveFilename = function(request, ...rest) { if (request === '@fromstan/pokie') return ${JSON.stringify(path.resolve("src/index.ts"))}; try { return original.call(this, request, ...rest); } catch (error) { if (request.endsWith('.js')) return original.call(this, request.slice(0, -3) + '.ts', ...rest); throw error; } };
+Module._resolveFilename = function(request, ...rest) { if (request === '@fromstan/pokie') return ${JSON.stringify(path.join(runtimeRoot, "src/index.ts"))}; try { return original.call(this, request, ...rest); } catch (error) { if (request.endsWith('.js')) return original.call(this, request.slice(0, -3) + '.ts', ...rest); throw error; } };
 Module._extensions['.ts'] = (module, file) => module._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true}}).outputText, file);
 const assert = require('node:assert/strict');
 const root = ${JSON.stringify(root)}, leaf = ${JSON.stringify(leafFile)}, request = ${JSON.stringify(request)};
 const select = result => ({status: result.status, diagnostics: result.diagnostics, evidence: result.evidence});
 const write = multiplier => fs.writeFileSync(leaf, ${JSON.stringify(format === "cjs" ? "module.exports = " : "export default ")} + multiplier + ';');
 (async () => {
- const {ProjectOptimizationService} = require(${JSON.stringify(path.resolve("src/optimization/ProjectOptimizationService.ts"))});
- const {ProjectTargetResolver} = require(${JSON.stringify(path.resolve("src/project/ProjectTargetResolver.ts"))});
+ const {ProjectOptimizationService} = require(${JSON.stringify(path.join(runtimeRoot, "src/optimization/ProjectOptimizationService.ts"))});
+ const {ProjectTargetResolver} = require(${JSON.stringify(path.join(runtimeRoot, "src/project/ProjectTargetResolver.ts"))});
  const service = new ProjectOptimizationService(${JSON.stringify(path.join(directory, "native-scratch"))} + (process.argv[2] === 'fresh' ? '-fresh' : ''));
  const project = await new ProjectTargetResolver().resolve(root, {readConfigurationProvenance: false});
  if (process.argv[2] === 'fresh') {
@@ -1191,7 +1200,7 @@ const write = multiplier => fs.writeFileSync(leaf, ${JSON.stringify(format === "
  const freshOutput = await require('util').promisify(require('child_process').execFile)(process.execPath, [__filename, 'fresh'], {encoding: 'utf8', timeout: 120000});
  const fresh = JSON.parse(freshOutput.stdout);
  assert.deepEqual(select(changed), fresh);
- const {ParallelSimulationRunner} = require(${JSON.stringify(path.resolve("src/simulation/parallel/ParallelSimulationRunner.ts"))});
+ const {ParallelSimulationRunner} = require(${JSON.stringify(path.join(runtimeRoot, "src/simulation/parallel/ParallelSimulationRunner.ts"))});
  const run = ParallelSimulationRunner.prototype.run; let samples = 0;
  ParallelSimulationRunner.prototype.run = function(...args) { samples++; return Reflect.apply(run, this, args); };
  await service.publish(changed.candidate, request, ${JSON.stringify(path.join(directory, "current-output"))});
@@ -1215,7 +1224,9 @@ const write = multiplier => fs.writeFileSync(leaf, ${JSON.stringify(format === "
         // rejection and two recoveries. Await its exit with a whole-scenario budget;
         // execFileSync spawn errors contain error.error === error and cannot cross
         // Jest's worker transport when a constrained gate reaches that deadline.
-        const {stdout} = await execFileAsync(process.execPath, [script], {encoding: "utf8", timeout: 300000});
+        const {stdout} = await execFileAsync(process.execPath, [script], {
+            encoding: "utf8", timeout: 300000, env: {...process.env, TMPDIR: temporaryRoot},
+        });
         const outcomes = JSON.parse(stdout);
         expect(outcomes).toEqual({before: "attained", changed: "inconclusive", fresh: "inconclusive", rejected: "failure", restored: "attained", samplesDuringSave: 0, cachePreserved: true});
         expect(sourceInventory(project)).toEqual(before);
