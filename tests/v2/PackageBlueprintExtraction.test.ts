@@ -1,4 +1,4 @@
-import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage, writeRunnableCodeFirstPackage} from "./fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage, writeRunnableCodeFirstPackage} from "./fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -47,6 +47,14 @@ function packageProject(rootPath: string): PokieProject {
 }
 
 describe("PackageBlueprintExtraction", () => {
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     let directory: string;
     const extractor = new PackageBlueprintExtraction();
     beforeEach(() => {
@@ -96,7 +104,7 @@ describe("PackageBlueprintExtraction", () => {
         }})).rejects.toThrow(/Package model changed after preview/);
         expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(input);
         expect(fs.readdirSync(directory).sort()).toEqual(["descriptor-package", "kind.txt"]);
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     async function roundTrip(blueprint: GameBlueprint, seed: string | number): Promise<void> {
         const first = new GamePackageGenerator("1.3.0").generate(blueprint, directory, path.join(directory, "first"));

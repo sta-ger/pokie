@@ -178,7 +178,7 @@ describe("StudioArtifactBuildService", () => {
         try {
             const started = packageService.start(fixture.source, target, path.join(workDir, "output"));
             if (started.status !== "created") throw new Error("expected artifact job");
-            await fixture.readStarted;
+            await fixture.waitForRead(terminal(packageService, fixture.source, started.job.id));
             expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
             expect(packageService.getStatusForProject(fixture.source, started.job.id)).toMatchObject({status: "running"});
             expect(packageService.cancelForProject(fixture.source, started.job.id)).toMatchObject({status: "cancelling", cancellationRequested: true});
@@ -203,7 +203,7 @@ describe("StudioArtifactBuildService", () => {
             fixture.restore();
             await packageService.cancelAll();
         }
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("previews package diagnostics and publishes/registers a separate Blueprint with extraction provenance", async () => {
         const source = writeDescriptorPackage(workDir);
@@ -603,7 +603,7 @@ describe("StudioArtifactBuildService", () => {
                 fixture.arm();
                 const started = service.startPreparedExtraction(fixture.source, preview.preparedOperationId!, destination);
                 if (started.status !== "created") throw new Error(started.status);
-                await fixture.readStarted;
+                await fixture.waitForRead(terminal(service, fixture.source, started.job.id));
                 expect(service.cancelForProject(fixture.source, started.job.id)).toMatchObject({status: "cancelling"});
                 expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
                 fixture.settle();
@@ -619,7 +619,7 @@ describe("StudioArtifactBuildService", () => {
                 fixture.restore();
                 await service.cancelAll();
             }
-        });
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     });
 
     function writeBlueprintFile(blueprint: unknown = buildBlueprint()): string {
