@@ -1,0 +1,14 @@
+vite v8.1.5 building client environment for production...
+[2Ktransforming...✓ 7395 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/cli/studio-client/assets/SimulationCancelledError-Bm66NSAp.js           0.17 kB
+dist/cli/studio-client/index.html                                            0.37 kB │ gzip:   0.27 kB
+dist/cli/studio-client/assets/SimulationAccumulator-IWrmiIX0.js             17.91 kB
+dist/cli/studio-client/assets/pokie.worker-BdL_xM86.js                     416.23 kB
+dist/cli/studio-client/assets/index-Cs1QOFKh.css                           232.99 kB │ gzip:  34.62 kB
+dist/cli/studio-client/assets/createProductionWasmStudioApi-D8ohutwB.js     83.33 kB │ gzip:  21.17 kB
+dist/cli/studio-client/assets/index-k3NpZ3N2.js                          1,213.24 kB │ gzip: 351.74 kB
+
+✓ built in 1.01s
+fromstan-pokie-2.0.0.tgz

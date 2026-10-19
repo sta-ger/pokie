@@ -9,6 +9,17 @@ import {buildSingleOutcomeStakeEngineLibrary} from "../stakeengine/StakeEngineTe
 import {expectRareMetrics, rareStakeSource} from "../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 import {weightedBonusBlueprint} from "./fixtures/WeightedBonusGame.js";
 
+import {selectPackedArchive} from "../packaging/helpers/selectPackedArchive.js";
+import {CreateCommand} from "../../cli/commands/CreateCommand.js";
+import {BuildCommand} from "../../cli/commands/BuildCommand.js";
+import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
+import {SimCommand} from "../../cli/commands/SimCommand.js";
+import {ReportCommand} from "../../cli/commands/ReportCommand.js";
+import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
+import {createMaterializingRuntimePackageResolver} from "../../cli/materialize/materializeRuntimePackage.js";
+import {FileStudioJobRepository} from "../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../cli/studio/jobs/StudioJobService.js";
+
 // Source contracts only. Native installation, declarations and browser execution belong to npmPackSmoke.
 function generated(model: api.GameBlueprint): api.PokieGame {
     const module = {exports: {}};
@@ -26,7 +37,133 @@ beforeEach(() => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stable-consumer-"));
 });
 afterEach(() => {
+    jest.restoreAllMocks();
     fs.rmSync(directory, {recursive: true, force: true});
+});
+
+it("creates an editable Blueprint through the public command and builds a usable PAR-to-WASM conversion", async () => {
+    jest.spyOn(console, "log").mockImplementation(() => undefined);
+    const file = path.join(directory, "editable.blueprint.json");
+    expect(await new CreateCommand(api.POKIE_VERSION).run(["Consumer", "--random", "--seed", "71", "--out", file])).toBe(0);
+    expect((await new api.ProjectTargetResolver().resolve(file))?.type).toBe("blueprint");
+    // An authored edit is the input to every later conversion, not an implicit save from a preview.
+    const model = fractionalBetBlueprint([0.05], true);
+    model.manifest.name = "Authored Consumer";
+    fs.writeFileSync(file, JSON.stringify(model));
+    expect(await new ValidateCommand().run([file, "--format", "json"])).toBe(0);
+    const workbook = path.join(directory, "authored.xlsx");
+    const wasm = path.join(directory, "converted.wasm");
+    const build = new BuildCommand(api.POKIE_VERSION);
+    await build.run([file, "--target", "parWorkbook", "--out", workbook]);
+    await build.run([workbook, "--target", "wasm", "--out", wasm]);
+    const evidence = JSON.parse(fs.readFileSync(`${wasm}.pokie/par-import/conversion-evidence.json`, "utf8"));
+    expect(evidence).toMatchObject({schemaVersion: 1, sourceWorkbook: workbook, losslessEligible: true, provenanceHashMatches: true});
+    const runtime = await api.loadPokieWasmFileRuntime(wasm, new api.SeededPokieWasmHost("0"));
+    try {
+        expect(runtime.manifest.component).toEqual({id: model.manifest.id, version: model.manifest.version});
+        const round = await runtime.createSession("0").play({bet: 0.05});
+        expect(round).toMatchObject({stake: 0.05, payout: 0.1, screen: FRACTIONAL_MIXED_CONTINUATION[0].screen});
+    } finally {
+        runtime.dispose();
+    }
+    expect(fs.readFileSync(file, "utf8")).toBe(JSON.stringify(model));
+    const before = fs.readFileSync(wasm);
+    await expect(build.run([workbook, "--target", "wasm", "--out", wasm])).rejects.toThrow();
+    expect(fs.readFileSync(wasm)).toEqual(before);
+});
+
+it.each(["blueprint", "parWorkbook"] as const)("converges %s simulation, report and replay at the shared runtime boundary and releases failed loads", async type => {
+    jest.spyOn(console, "log").mockImplementation(() => undefined);
+    const model = fractionalBetBlueprint([0.05], true);
+    const source = path.join(directory, type === "blueprint" ? "game.json" : "game.xlsx");
+    if (type === "blueprint") fs.writeFileSync(source, JSON.stringify(model));
+    else await new api.ParSheetExporter(api.POKIE_VERSION).exportToFile(model, source);
+    const original = fs.readFileSync(source);
+    const games = new Map<string, api.PokieGame>();
+    const stages: string[] = [];
+    let releases = 0;
+    // The executable is evaluated against source exports only. npm/native installation is
+    // deliberately absent here; npmPackSmoke owns that separate acceptance boundary.
+    const materializer: api.ProjectMaterializing = {materialize: project => {
+        expect(project.type).toBe("blueprint");
+        stages.push(project.rootPath);
+        const runtimePath = path.join(directory, `runtime-${stages.length}`);
+        games.set(runtimePath, generated(api.loadGameBlueprint(project.rootPath)));
+        return Promise.resolve({runtimePath, ownsRuntimePath: true, release: () => {
+            releases++;
+            games.delete(runtimePath);
+            return Promise.resolve();
+        }});
+    }};
+    const resolver = (operation: api.PokieOperation) => createMaterializingRuntimePackageResolver(api.POKIE_VERSION, operation, undefined, {materializer});
+    const load = jest.fn((runtimePath: string) => {
+        const game = games.get(runtimePath);
+        if (!game) throw new Error("Runtime lease was not held while loading");
+        return Promise.resolve(game);
+    });
+    const sim = path.join(directory, "simulation.json");
+    const replay = path.join(directory, "replay.json");
+    const report = path.join(directory, "report.md");
+    await new SimCommand(load, undefined, undefined, undefined, undefined, resolver(api.SIM_OPERATION))
+        .run([source, "--rounds", "3", "--seed", "0", "--out", sim]);
+    await new ReplayCommand(load, undefined, undefined, resolver(api.REPLAY_OPERATION))
+        .run([source, "--round", "3", "--seed", "0", "--out", replay]);
+    await new ReportCommand().run([sim, "--format", "markdown", "--out", report]);
+    const statistics = JSON.parse(fs.readFileSync(sim, "utf8"));
+    const recorded = JSON.parse(fs.readFileSync(replay, "utf8"));
+    expect(statistics).toMatchObject({rounds: 3, seed: "0", totalWin: 0.1, rtp: expect.closeTo(2 / 3, 12)});
+    expect(recorded).toMatchObject({seed: "0", round: 3, totalBet: statistics.totalBet, totalWin: statistics.totalWin, screen: FRACTIONAL_MIXED_CONTINUATION[2].screen});
+    expect(fs.readFileSync(report, "utf8")).toContain("RTP");
+    expect(releases).toBe(2);
+    expect(games.size).toBe(0);
+    // Sim resolves the manifest/mode and creates its execution session from the same leased runtime.
+    expect(load.mock.calls.map(([runtimePath]) => runtimePath)).toEqual([path.join(directory, "runtime-1"), path.join(directory, "runtime-1"), path.join(directory, "runtime-2")]);
+    const failedOutput = path.join(directory, "failed.json");
+    const failure = new Error("entry module could not load");
+    const failLoad = () => Promise.reject(failure);
+    await expect(new SimCommand(failLoad, undefined, undefined, undefined, undefined, resolver(api.SIM_OPERATION))
+        .run([source, "--rounds", "3", "--seed", "0", "--out", failedOutput])).rejects.toBe(failure);
+    await expect(new ReplayCommand(failLoad, undefined, undefined, resolver(api.REPLAY_OPERATION))
+        .run([source, "--round", "3", "--seed", "0", "--out", failedOutput])).rejects.toBe(failure);
+    expect(releases).toBe(4);
+    expect(games.size).toBe(0);
+    expect(fs.existsSync(failedOutput)).toBe(false);
+    if (type === "parWorkbook") for (const stage of stages) expect(fs.existsSync(path.dirname(stage))).toBe(false);
+    expect(fs.readFileSync(source)).toEqual(original);
+});
+
+it("retains project and source revision through durable recovery and drains captured executors on shutdown", async () => {
+    const jobsDirectory = path.join(directory, "jobs");
+    const jobs = new StudioJobService(new FileStudioJobRepository(jobsDirectory));
+    const request = {projectId: "project-a", operation: "simulation", conflictKey: "simulation:project-a", request: {sourceRevision: "revision-1", seed: "0", rounds: 3}};
+    const started = jobs.start(request);
+    if (started.status !== "created") throw new Error("Expected created job");
+    expect(jobs.start(request)).toMatchObject({status: "reattached", job: {id: started.job.id}});
+    expect(jobs.start({...request, request: {...request.request, sourceRevision: "revision-2"}})).toMatchObject({status: "conflict"});
+    const recovered = new StudioJobService(new FileStudioJobRepository(jobsDirectory));
+    expect(recovered.get("project-a", started.job.id)).toMatchObject({status: "recovery-required", request: {sourceRevision: "revision-1"}, recovery: {action: "retry"}});
+    expect(recovered.get("project-b", started.job.id)).toBeUndefined();
+    expect(recovered.list("project-b")).toEqual([]);
+    let release!: () => void;
+    const cleanup = new Promise<void>(resolve => {
+        release = resolve;
+    });
+    const pending = recovered.execute({...request, request: {...request.request, sourceRevision: "revision-2"}}, async context => {
+        await cleanup;
+        expect(context.signal.aborted).toBe(true);
+        return undefined;
+    }, () => ({status: "cancelled"}));
+    recovered.beginShutdown();
+    expect(recovered.list("project-a").some(job => job.status === "cancelling")).toBe(true);
+    expect(() => recovered.start({...request, projectId: "project-b", conflictKey: "simulation:project-b"})).toThrow(/shutting down/);
+    release();
+    await pending;
+    await recovered.completeGracefulShutdown();
+    expect(new FileStudioJobRepository(jobsDirectory).getProcessState()?.status).toBe("gracefully-stopped");
+    const reopened = new StudioJobService(new FileStudioJobRepository(jobsDirectory));
+    expect(reopened.list("project-a").map(job => job.status).sort()).toEqual(["cancelled", "recovery-required"]);
+    expect(reopened.list().every(job => job.result?.outputs === undefined)).toBe(true);
+    await reopened.completeGracefulShutdown();
 });
 
 it("keeps package identity independent from emitted format identities and generated dependency metadata", () => {
@@ -245,5 +382,46 @@ it.each([false, true])("keeps ordinary/feature portable snapshots bounded (featu
     } finally {
         runtime.dispose();
         fresh.dispose();
+    }
+});
+
+it("selects only the owned archive and preserves pack diagnostics across rejection and reuse", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pack-selection-"));
+    const packRoot = path.join(directory, "pack output with spaces");
+    fs.mkdirSync(packRoot);
+    const filename = "fromstan-pokie-2.0.0.tgz";
+    const archive = path.join(packRoot, filename);
+    const stdout = fs.readFileSync(path.join(__dirname, "fixtures/normal-pack.stdout.txt"), "utf8");
+    expect(stdout).toContain("vite v8.1.5");
+    expect(stdout).toContain("\u001b[2K\rtransforming...");
+    expect(stdout.trimEnd().split("\n").pop()).toBe(filename);
+    try {
+        expect(() => selectPackedArchive(packRoot, stdout)).toThrow("found 0");
+        expect(() => selectPackedArchive(packRoot, stdout)).toThrow(stdout);
+        fs.writeFileSync(archive, "archive fixture");
+        expect(selectPackedArchive(packRoot, stdout)).toBe(archive);
+        expect(selectPackedArchive(packRoot, `${directory}/outside.tgz\n`)).toBe(archive);
+        const second = path.join(packRoot, "second.tgz");
+        fs.writeFileSync(second, "ambiguous archive");
+        expect(() => selectPackedArchive(packRoot, stdout)).toThrow("found 2");
+        fs.rmSync(second);
+        expect(selectPackedArchive(packRoot, stdout)).toBe(archive);
+        fs.rmSync(archive);
+        fs.writeFileSync(path.join(directory, "outside.tgz"), "unowned archive");
+        fs.symlinkSync("../outside.tgz", archive);
+        expect(() => selectPackedArchive(packRoot, stdout)).toThrow("regular file inside");
+        fs.rmSync(archive);
+        fs.symlinkSync("../missing.tgz", archive);
+        expect(() => selectPackedArchive(packRoot, stdout)).toThrow("regular file inside");
+        fs.rmSync(archive);
+        fs.mkdirSync(archive);
+        expect(() => selectPackedArchive(packRoot, stdout)).toThrow("regular file inside");
+        fs.rmdirSync(archive);
+        fs.writeFileSync(archive, "archive fixture");
+        expect(selectPackedArchive(packRoot, filename)).toBe(archive);
+        expect(selectPackedArchive(packRoot, stdout)).toBe(archive);
+        expect(fs.readFileSync(path.join(directory, "outside.tgz"), "utf8")).toBe("unowned archive");
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
     }
 });

@@ -10,6 +10,7 @@ import {
     GameSessionSerializing,
     loadPokieGame,
     OutcomeLibraryBundleWriter,
+    POKIE_VERSION,
     PokieGame,
     PokieGamePackageValidating,
     PokieGamePackageValidationReport,
@@ -324,12 +325,17 @@ function runtimeSnapshotsForPackage(packageName: string): string[] {
 }
 
 async function waitForTerminal(service: StudioReplayExecutionService, projectRoot: string, id: string): Promise<StudioReplayJobView> {
-    for (let i = 0; i < 2000; i++) {
+    // Package snapshots and PAR imports perform real filesystem/worker I/O.
+    // Event-loop iteration counts can expire while that work is still owned.
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
         const job = service.getStatus(projectRoot, id);
-        if (job && job.status !== "queued" && job.status !== "running") {
+        if (job && job.status !== "queued" && job.status !== "running" && job.status !== "cancelling") {
             return job;
         }
-        await flushMacrotask();
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 5);
+        });
     }
     throw new Error("Timed out waiting for the replay to reach a terminal state.");
 }
@@ -2096,7 +2102,7 @@ describe.each([false, true])("F12 Studio replay attribution (weighted: %s)", wei
         {mode: "buy-more", stakes: [1.25, 0, 0, 0, 1.25, 0, 0, 0]},
     ])("publishes and downloads authoritative $mode steps, including completed continuations", async ({mode, stakes}) => {
         const game = generatedMechanicsGame(replayModesBlueprint(weighted));
-        const service = new StudioReplayExecutionService(undefined, () => Promise.resolve(game), 1, undefined, undefined, undefined, "1.3.0");
+        const service = new StudioReplayExecutionService(undefined, () => Promise.resolve(game), 1, undefined, undefined, undefined, POKIE_VERSION);
         try {
             for (let round = 1; round <= stakes.length; round++) {
                 const started = service.start("/f12", {round, seed: "review-fixed", modeName: mode});

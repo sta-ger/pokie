@@ -13,61 +13,9 @@ import {authoritativePaytableBlueprint} from "../fixtures/math/AuthoritativePayt
 import {weightedBonusBlueprint} from "../v2/fixtures/WeightedBonusGame.js";
 import {writeRareStakeDirectory, markRecognizedStakeProject} from "../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 
+import {selectPackedArchive} from "./helpers/selectPackedArchive.js";
+
 const REPO_ROOT = path.join(__dirname, "..", "..");
-
-function selectPackedArchive(directory: string, stdout: string): string {
-    const packRoot = fs.realpathSync(directory);
-    const archives = fs.readdirSync(packRoot).filter(filename => filename.endsWith(".tgz"));
-    const diagnostic = `npm pack stdout:\n${stdout}`;
-    if (archives.length !== 1) {
-        throw new Error(`Expected exactly one npm pack archive in ${packRoot}; found ${archives.length}: ${JSON.stringify(archives)}.\n${diagnostic}`);
-    }
-    const archive = path.join(packRoot, archives[0]);
-    // A directory entry is never parsed from lifecycle logs. Reject aliases as
-    // well, so npm install can only consume a regular file owned by this pack.
-    if (!fs.lstatSync(archive).isFile() || path.dirname(fs.realpathSync(archive)) !== packRoot) {
-        throw new Error(`npm pack archive must be a regular file inside ${packRoot}: ${archive}.\n${diagnostic}`);
-    }
-    return archive;
-}
-
-it("selects only the owned archive and preserves pack diagnostics across rejection and reuse", () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pack-selection-"));
-    const packRoot = path.join(directory, "pack output with spaces");
-    fs.mkdirSync(packRoot);
-    const filename = "fromstan-pokie-2.0.0.tgz";
-    const archive = path.join(packRoot, filename);
-    const stdout = `prepack diagnostic\n${filename}\n`;
-    try {
-        expect(() => selectPackedArchive(packRoot, stdout)).toThrow("found 0");
-        expect(() => selectPackedArchive(packRoot, stdout)).toThrow(stdout);
-        fs.writeFileSync(archive, "archive fixture");
-        expect(selectPackedArchive(packRoot, stdout)).toBe(archive);
-        expect(selectPackedArchive(packRoot, `${directory}/outside.tgz\n`)).toBe(archive);
-        const second = path.join(packRoot, "second.tgz");
-        fs.writeFileSync(second, "ambiguous archive");
-        expect(() => selectPackedArchive(packRoot, stdout)).toThrow("found 2");
-        fs.rmSync(second);
-        expect(selectPackedArchive(packRoot, stdout)).toBe(archive);
-        fs.rmSync(archive);
-        fs.writeFileSync(path.join(directory, "outside.tgz"), "unowned archive");
-        fs.symlinkSync("../outside.tgz", archive);
-        expect(() => selectPackedArchive(packRoot, stdout)).toThrow("regular file inside");
-        fs.rmSync(archive);
-        fs.symlinkSync("../missing.tgz", archive);
-        expect(() => selectPackedArchive(packRoot, stdout)).toThrow("regular file inside");
-        fs.rmSync(archive);
-        fs.mkdirSync(archive);
-        expect(() => selectPackedArchive(packRoot, stdout)).toThrow("regular file inside");
-        fs.rmdirSync(archive);
-        fs.writeFileSync(archive, "archive fixture");
-        expect(selectPackedArchive(packRoot, filename)).toBe(archive);
-        expect(selectPackedArchive(packRoot, stdout)).toBe(archive);
-        expect(fs.readFileSync(path.join(directory, "outside.tgz"), "utf8")).toBe("unowned archive");
-    } finally {
-        fs.rmSync(directory, {recursive: true, force: true});
-    }
-});
 
 function createExternalSmokeDirectory(prefix: string): string {
     const checkout = fs.realpathSync(REPO_ROOT);
@@ -527,9 +475,38 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         fs.rmSync(path.join(root, "node_modules"), {recursive: true, force: true});
         execFileSync("npm", ["install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund", tarballPath!], {cwd: root, encoding: "utf8", timeout: 120000});
         expect(fs.lstatSync(path.join(root, "node_modules/@fromstan/pokie")).isSymbolicLink()).toBe(false);
+        const runGeneratedWorkflow = (phase: string) => {
+            const sim = path.join(installDir!, `${phase}-generated-sim.json`);
+            const markdown = path.join(installDir!, `${phase}-generated-report.md`);
+            const replay = path.join(installDir!, `${phase}-generated-replay.json`);
+            for (const args of [
+                ["inspect", root], ["validate", root],
+                ["sim", root, "--rounds", "3", "--seed", "0", "--out", sim],
+                ["report", sim, "--format", "markdown", "--out", markdown],
+                ["replay", root, "--round", "3", "--seed", "0", "--out", replay],
+            ]) {
+                const result = spawnSync(pokieBinPath, args, {cwd: installDir, encoding: "utf8", timeout: 60000});
+                expect({phase, args, status: result.status, error: result.error?.message, stderr: result.stderr})
+                    .toEqual({phase, args, status: 0, error: undefined, stderr: ""});
+            }
+            const statistics = JSON.parse(fs.readFileSync(sim, "utf8"));
+            const recorded = JSON.parse(fs.readFileSync(replay, "utf8"));
+            expect(statistics).toMatchObject({rounds: 3, seed: "0", totalBet: expect.closeTo(0.15, 12), totalWin: 0.1, rtp: expect.closeTo(2 / 3, 12)});
+            expect(recorded).toMatchObject({seed: "0", round: 3, totalBet: statistics.totalBet, totalWin: statistics.totalWin, screen: FRACTIONAL_MIXED_CONTINUATION[2].screen});
+            expect(fs.readFileSync(markdown, "utf8")).toContain("RTP");
+            return {statistics, recorded};
+        };
+        const originalWorkflow = runGeneratedWorkflow("original-cjs");
         fs.writeFileSync(path.join(root, "dist/direct.cjs"), direct);
         execFileSync("npm", ["run", "build"], {cwd: root, encoding: "utf8", timeout: 120000});
         expect(fs.readFileSync(path.join(root, "src/index.ts"))).toEqual(source);
+        const recompiledWorkflow = runGeneratedWorkflow("recompiled-ts");
+        for (const field of ["rounds", "seed", "totalBet", "totalWin", "rtp", "hitFrequency"]) {
+            expect(recompiledWorkflow.statistics[field]).toEqual(originalWorkflow.statistics[field]);
+        }
+        for (const field of ["game", "seed", "round", "screen", "totalBet", "totalWin"]) {
+            expect(recompiledWorkflow.recorded[field]).toEqual(originalWorkflow.recorded[field]);
+        }
         const rare = path.join(installDir!, "rare-native-stake");
         writeRareStakeDirectory(rare);
         markRecognizedStakeProject(rare);
@@ -1154,8 +1131,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 expect({source, status: result.status, stderr: result.stderr}).toEqual({source, status: 0, stderr: ""});
                 expect(spawnSync(pokieBinPath, ["inspect", output], {cwd: directory, encoding: "utf8", timeout: 60000}).status).toBe(0);
             }
-            expect(fs.statSync(path.join(directory, "from-par.wasm.pokie/par-import/conversion-evidence.json")).size).toBeGreaterThan(0);
-            expect(fs.statSync(path.join(directory, "extracted.json.conversion-evidence.json")).size).toBeGreaterThan(0);
+            const parEvidence = JSON.parse(fs.readFileSync(path.join(directory, "from-par.wasm.pokie/par-import/conversion-evidence.json"), "utf8"));
+            expect(parEvidence).toMatchObject({schemaVersion: 1, sourceWorkbook: sources.parWorkbook, losslessEligible: true, provenanceHashMatches: true});
+            const extractionEvidence = JSON.parse(fs.readFileSync(path.join(directory, "extracted.json.conversion-evidence.json"), "utf8"));
+            expect(extractionEvidence).toMatchObject({schemaVersion: 1, kind: "package-extraction", extraction: {status: "complete"}});
             expect(installedProbe("six-native-projects", `
                 import assert from 'node:assert/strict';
                 import * as api from '@fromstan/pokie';
@@ -1170,6 +1149,26 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                         assert.equal(report.modes[0].analysis.rtp, 0.25);
                         assert.equal(report.modes[0].analysis.hitFrequency, 0.25);
                     }
+                }
+                const converted = ${JSON.stringify(path.join(directory, "from-par.wasm"))};
+                const runtime = await api.loadPokieWasmFileRuntime(converted, new api.SeededPokieWasmHost('0'));
+                try {
+                    assert.deepEqual(runtime.manifest.component, {id: 'canonical-smoke', version: '1.0.0'});
+                    const session = runtime.createSession('0');
+                    const initial = session.serialize();
+                    const round = await session.play({bet: 1});
+                    assert.equal(round.stake, 1);
+                    assert.deepEqual((await runtime.replay(initial, [{bet: 1}])).rounds, [round]);
+                } finally { runtime.dispose(); }
+                const extracted = api.loadGameBlueprint(${JSON.stringify(path.join(directory, "extracted.json"))});
+                assert.equal(extracted.manifest.id, 'canonical-smoke');
+                assert.deepEqual(extracted.reelStrips, [['A','B'],['B','A']]);
+                for (const name of ['republished-outcome', 'republished-stake']) {
+                    const project = await new api.ProjectTargetResolver().resolve(${JSON.stringify(directory)} + '/' + name);
+                    assert.equal(project.type, name === 'republished-outcome' ? 'outcomeLibrary' : 'stakeAdapter');
+                    const report = await new api.OutcomeSourceProjectAnalyzer().analyze(project);
+                    assert.equal(report.issues.filter(issue => issue.severity === 'error').length, 0);
+                    assert.equal(report.modes[0].analysis.rtp, 0.25);
                 }
                 console.log('SIX_NATIVE_TYPES_OK');
             `)).toContain("SIX_NATIVE_TYPES_OK");
@@ -1237,6 +1236,33 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
         expect(fs.existsSync(path.join(projectRoot, "src", "index.ts"))).toBe(true);
         expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
+        for (const file of ["README.md", "tsconfig.json", "src/index.ts"]) {
+            expect(fs.statSync(path.join(projectRoot, file)).size).toBeGreaterThan(0);
+        }
+        expect(fs.readFileSync(path.join(projectRoot, "src/index.ts"), "utf8")).toContain('from "@fromstan/pokie"');
+        expect(installedProbe("init-package-identity", `
+            import assert from 'node:assert/strict';
+            import fs from 'node:fs';
+            import {createRequire} from 'node:module';
+            import {loadPokieGameRuntime} from '@fromstan/pokie';
+            const root = ${JSON.stringify(projectRoot)};
+            const consumer = createRequire(root + '/package.json');
+            const identity = consumer(consumer.resolve('@fromstan/pokie')).POKIE_VERSION;
+            assert.equal(identity, '2.0.0');
+            assert.ok(fs.realpathSync(consumer.resolve('@fromstan/pokie')).startsWith(${JSON.stringify(installDir!)} + '/'));
+            const direct = consumer('./dist/index.js');
+            const runtime = await loadPokieGameRuntime(root);
+            try {
+                assert.deepEqual(direct.getManifest(), {id: 'sample-slot', name: 'Sample Slot', version: '0.1.0'});
+                assert.deepEqual(runtime.game.getManifest(), direct.getManifest());
+                for (const game of [direct, runtime.game]) {
+                    const session = game.createSession({seed: 'demo'});
+                    session.setCreditsAmount(1000); session.play();
+                    assert.ok(Number.isFinite(session.getWinAmount()));
+                }
+                console.log('INIT_NATIVE_IDENTITY_OK');
+            } finally { await runtime.release(); }
+        `)).toContain("INIT_NATIVE_IDENTITY_OK");
 
         // The transient local resolution already ran and settled by the time "pokie init" exits (this is
         // a real spawned binary, not an injected runCommand -- there's no in-process hook to observe the
