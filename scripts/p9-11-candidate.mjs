@@ -53,6 +53,14 @@ const tooling = new Set([
     "docs/v2-completion/V2C-26.md",
     "tests/testUtils/createP911CandidateFixture.mjs",
     "tests/scripts/p9-11-corrective-closeout.test.mjs", "tests/packaging/npmPackSmoke.test.ts", "tests/packaging/P805ValeraProgrammer.test.ts",
+    // Complete V2C-31 test/evidence repair; production and build inputs stay protected.
+    "docs/v2-completion/V2C-31.md",
+    "tests/cli/BuildProductMatrix.crossSurface.contract.test.ts",
+    "tests/cli/studio/replay/StudioReplayExecutionService.test.ts",
+    "tests/packaging/helpers/selectPackedArchive.ts",
+    "tests/v2/StableConsumerContracts.test.ts",
+    "tests/v2/fixtures/normal-pack.stdout.txt",
+    "scripts/p8-05-release-handoff.mjs",
 ]);
 const git = (repository, args) => execFileSync("git", args, {cwd:repository, encoding:"utf8", timeout:10_000, maxBuffer:16 * 1024 * 1024}).trimEnd();
 

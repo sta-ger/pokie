@@ -1,3 +1,7 @@
+import {execFileSync} from "node:child_process";
+import {constants, runInThisContext} from "node:vm";
+import {pathToFileURL} from "node:url";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -94,6 +98,14 @@ async function createSource(
 }
 
 describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     let workDir: string;
     let resolver: ProjectTargetResolver;
     let registry: ArtifactBuilderRegistry;
@@ -111,6 +123,88 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
     afterEach(() => {
         logSpy.mockRestore();
         fs.rmSync(workDir, {recursive: true, force: true});
+    });
+
+    it("admits the complete V2C-31 repair in both candidate readers while protecting product inputs and pins", async () => {
+        const load = (file: string): Promise<unknown> => runInThisContext(
+            `import(${JSON.stringify(pathToFileURL(path.resolve(__dirname, "../..", file)).href)})`,
+            {importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER},
+        ) as Promise<unknown>;
+        const p9 = await load("scripts/p9-11-candidate.mjs") as {
+            authenticateP911Tree: (candidate: string, tree: string, repository: string) => {changedEvidenceAndTooling: string[]};
+            authenticateP911Driver: (reference: {path: string; sha256: string}) => Promise<void>;
+            readPinnedJson: (reference: {path: string; sha256: string}) => Promise<unknown>;
+            sha256: (bytes: Buffer) => string;
+        };
+        const p8 = await load("scripts/p8-05-release-handoff.mjs") as {
+            authenticateP805ProductTree: (candidate: string, reviewed: string, repository: string) => {changedToolingAndEvidencePaths: string[]};
+        };
+        const fixture = await load("tests/testUtils/createP911CandidateFixture.mjs") as {P911_TOOLING_DESCENDANT_PATHS: string[]};
+        // Independent of either reader's admission list: this is the complete delta since the
+        // authenticated installed candidate, including these readers and their regression fixture.
+        const repairPaths = [
+            "docs/v2-completion/V2C-31.md",
+            "tests/cli/BuildProductMatrix.crossSurface.contract.test.ts",
+            "tests/cli/studio/replay/StudioReplayExecutionService.test.ts",
+            "tests/packaging/helpers/selectPackedArchive.ts",
+            "tests/packaging/npmPackSmoke.test.ts",
+            "tests/v2/StableConsumerContracts.test.ts",
+            "tests/v2/fixtures/normal-pack.stdout.txt",
+            "scripts/p8-05-release-handoff.mjs",
+            "scripts/p9-11-candidate.mjs",
+            "tests/testUtils/createP911CandidateFixture.mjs",
+        ];
+        expect(fixture.P911_TOOLING_DESCENDANT_PATHS).toEqual(expect.arrayContaining(repairPaths));
+        const repository = path.join(workDir, "candidate-repository");
+        fs.mkdirSync(repository);
+        const git = (...args: string[]): string => execFileSync("git", args, {cwd: repository, encoding: "utf8"}).trim();
+        const write = (file: string, value: string): void => {
+            fs.mkdirSync(path.dirname(path.join(repository, file)), {recursive: true});
+            fs.writeFileSync(path.join(repository, file), value);
+        };
+        const commit = (): string => {
+            git("add", ".");
+            git("-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "fixture transition");
+            return git("rev-parse", "HEAD");
+        };
+        git("init", "--quiet");
+        write("package.json", '{"name":"@fromstan/pokie","version":"2.0.0"}\n');
+        const candidate = commit();
+        const tree = git("rev-parse", "HEAD^{tree}");
+        for (const file of repairPaths) write(file, "reviewed tooling/evidence fixture\n");
+        const reviewed = commit();
+        const authenticate = (): void => {
+            expect(p9.authenticateP911Tree(candidate, tree, repository).changedEvidenceAndTooling).toEqual([...repairPaths].sort());
+            expect(p8.authenticateP805ProductTree(candidate, git("rev-parse", "HEAD"), repository).changedToolingAndEvidencePaths).toEqual([...repairPaths].sort());
+        };
+        authenticate();
+        for (const file of ["src/runtime.ts", "cli/pokie.ts", "package.json", "package-lock.json", "tsconfig.prod.json", "generate-barrels.js", "tests/v2/unrelated.test.ts", "docs/v2-completion/V2C-30.md"]) {
+            write(file, "changed protected input\n");
+            commit();
+            expect(() => p9.authenticateP911Tree(candidate, tree, repository)).toThrow("product/build inputs changed");
+            expect(() => p8.authenticateP805ProductTree(candidate, git("rev-parse", "HEAD"), repository)).toThrow("product or build inputs");
+            git("reset", "--hard", reviewed);
+            authenticate();
+        }
+        const alias = repairPaths[0];
+        fs.rmSync(path.join(repository, alias));
+        fs.symlinkSync("../../package.json", path.join(repository, alias));
+        commit();
+        expect(() => p9.authenticateP911Tree(candidate, tree, repository)).toThrow("nonregular");
+        expect(() => p8.authenticateP805ProductTree(candidate, git("rev-parse", "HEAD"), repository)).toThrow("nonregular");
+        git("reset", "--hard", reviewed);
+        authenticate();
+        const pinned = path.join(workDir, "pinned.json");
+        fs.writeFileSync(pinned, '{"controller":"fixture"}\n');
+        const reference = {path: pinned, sha256: p9.sha256(fs.readFileSync(pinned))};
+        await expect(p9.readPinnedJson(reference)).resolves.toEqual({controller: "fixture"});
+        await expect(p9.authenticateP911Driver(reference)).resolves.toBeUndefined();
+        fs.writeFileSync(pinned, '{"controller":"changed"}\n');
+        await expect(p9.readPinnedJson(reference)).rejects.toThrow("digest mismatch");
+        await expect(p9.authenticateP911Driver(reference)).rejects.toThrow("authenticated controller browser driver required");
+        fs.writeFileSync(pinned, '{"controller":"fixture"}\n');
+        await expect(p9.readPinnedJson(reference)).resolves.toEqual({controller: "fixture"});
+        await expect(p9.authenticateP911Driver(reference)).resolves.toBeUndefined();
     });
 
     it("derives exactly the supported cells from BUILD_PRODUCT_MATRIX before exercising public surfaces", () => {
@@ -258,5 +352,5 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         });
         expect(cleanup).toMatchObject({status: "cancelled"});
         expect(fs.existsSync(cleanupOut)).toBe(false);
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 });

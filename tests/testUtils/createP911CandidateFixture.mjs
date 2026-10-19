@@ -42,6 +42,15 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "scripts/p9-11-candidate.mjs", "tests/testUtils/createP911CandidateFixture.mjs",
     "tests/scripts/p9-11-corrective-closeout.test.mjs", "tests/scripts/p9-11-produce-candidate.test.mjs",
     "docs/audit-corrections/README.md", "docs/audit-corrections/p9-11-closeout.md",
+    // Complete V2C-31 test/evidence repair; production and build inputs stay protected.
+    "docs/v2-completion/V2C-31.md",
+    "tests/cli/BuildProductMatrix.crossSurface.contract.test.ts",
+    "tests/cli/studio/replay/StudioReplayExecutionService.test.ts",
+    "tests/packaging/helpers/selectPackedArchive.ts",
+    "tests/packaging/npmPackSmoke.test.ts",
+    "tests/v2/StableConsumerContracts.test.ts",
+    "tests/v2/fixtures/normal-pack.stdout.txt",
+    "scripts/p8-05-release-handoff.mjs",
 ];
 const commit = (repository, message) => {
     execFileSync("git", ["add", "."], {cwd:repository});
