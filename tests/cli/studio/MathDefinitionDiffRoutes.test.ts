@@ -77,6 +77,34 @@ describe("definition comparison public Studio route", () => {
             }
         }
     });
+    it("retains generated policy defaults and explicit unknowns through rejection and repeated repaired Studio reads", async () => {
+        const model = fractionalBetBlueprint([0.05], true);
+        const generated = writeDescriptorPackage(root, {model});
+        const opened = await fetch(url + "/api/home/projects/open", {
+            method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({projectRoot: generated}),
+        });
+        expect(opened.status).toBe(200);
+        await opened.json();
+        for (const policy of [undefined, {type: "unknown", authority: "explicit policy"}, {type: "declared", value: "7.5", unit: "currency", scope: "paid-entry", authority: "invalid numeric declaration"}, undefined, undefined]) {
+            writeDescriptorPackage(root, {model, descriptorBody: `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model${policy === undefined ? "" : `, maxWinPolicy: ${JSON.stringify(policy)}`}};`});
+            const result = await post({leftPath: generated, rightPath: generated, revision: 0});
+            expect(result.status).toBe(200);
+            expect(result.body).toEqual(await compareMathDefinitions(generated, generated));
+            const snapshot = result.body.right;
+            expect(snapshot.identity).toMatchObject({kind: "tsPackage", descriptorKind: "generated"});
+            const validation = await fetch(url + "/api/project/validate");
+            expect(validation.status).toBe(200);
+            expect(await validation.json()).toMatchObject({advanced: snapshot.advanced});
+            if (policy?.type === "declared") {
+                expect(snapshot.support).toBe("failed");
+                expect(snapshot.diagnostics).toContainEqual(expect.objectContaining({code: "package-model-read-failed", message: expect.stringContaining("maxWinPolicy")}));
+            } else {
+                expect(snapshot.effective).toHaveProperty("maxWinPolicy.type", policy ? "unknown" : "none");
+                expect(snapshot.advanced!.issues.some(issue => issue.code === "max-win-policy-unknown")).toBe(policy !== undefined);
+                expect(snapshot.advanced).toMatchObject({verdict: "inconclusive", executableFidelity: "unverified"});
+            }
+        }
+    });
     it("shares corrected metadata/default semantics and unknown custom authority with CLI and the direct API", async () => {
         const model = {...fractionalBetBlueprint([0.05], true), rows: 2, winModel: {type: "ways" as const},
             betModes: [{id: "base", runtimeType: "base" as const, isDefault: true}]};

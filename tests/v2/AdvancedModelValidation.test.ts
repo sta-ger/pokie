@@ -149,7 +149,11 @@ it("never certifies complete custom declarations or lying generated labels, and 
         expect(report.checks).toContainEqual(expect.objectContaining({id: "source.executable-fidelity", status: "unknown"}));
         expect(createSession).not.toHaveBeenCalled();
         const missingPolicy = {...game, getModelDescriptor: () => ({descriptorVersion: 1 as const, blueprintSchemaVersion: 1 as const, sourceKind, model})};
-        expect((await new AdvancedModelSourceValidator().validate(missingPolicy)).checks).toContainEqual(expect.objectContaining({id: "invariants.max-win", status: "unknown"}));
+        const missingPolicyReport = await new AdvancedModelSourceValidator().validate(missingPolicy);
+        expect(missingPolicyReport).toMatchObject({executableFidelity: "unverified", verdict: "inconclusive", status: "unsupported"});
+        expect(missingPolicyReport.issues.some(issue => issue.code === "max-win-policy-unknown")).toBe(sourceKind === "custom");
+        if (sourceKind === "custom") expect(missingPolicyReport.checks).toContainEqual(expect.objectContaining({id: "invariants.max-win", status: "unknown"}));
+        else expect(missingPolicyReport.checks).toContainEqual(expect.objectContaining({id: "invariants.runtime", status: "pass"}));
     }
 });
 
