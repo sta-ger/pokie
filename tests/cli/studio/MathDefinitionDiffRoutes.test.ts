@@ -17,9 +17,28 @@ import {
     createPackageExtractionTestEnvironment,
     runtimeSnapshotNames,
     PACKAGE_EXTRACTION_TEST_TIMEOUT,
-    writeDescriptorPackage,
+    writeDescriptorPackage as writeDescriptorFixture,
     writePausedDescriptorPackage,
 } from "../../v2/fixtures/PackageExtractionFixture.js";
+
+// These fixtures return declarations without importing POKIE or creating sessions. Bind an explicit
+// dependency so the real loader snapshots it rather than the entire host checkout and runtime graph.
+function declareDescriptorRuntime(packageRoot: string): void {
+    const runtime = path.join(packageRoot, "node_modules", "@fromstan", "pokie");
+    const version = "0.0.0-declaration-only";
+    fs.mkdirSync(runtime, {recursive: true});
+    fs.writeFileSync(path.join(runtime, "package.json"), JSON.stringify({name: "@fromstan/pokie", version, main: "index.js"}));
+    fs.writeFileSync(path.join(runtime, "index.js"), 'throw new Error("Declaration analysis must not execute the package runtime");');
+    const manifestPath = path.join(packageRoot, "package.json");
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    fs.writeFileSync(manifestPath, JSON.stringify({...manifest, dependencies: {...manifest.dependencies, "@fromstan/pokie": version}}));
+}
+
+function writeDescriptorPackage(...args: Parameters<typeof writeDescriptorFixture>): string {
+    const packageRoot = writeDescriptorFixture(...args);
+    declareDescriptorRuntime(packageRoot);
+    return packageRoot;
+}
 
 describe("definition comparison public Studio route", () => {
     let restoreTemporaryDirectory: () => void;
@@ -90,18 +109,8 @@ describe("definition comparison public Studio route", () => {
     it("retains generated policy defaults and explicit unknowns through rejection and repeated repaired Studio reads", async () => {
         const model = fractionalBetBlueprint([0.05], true);
         const generated = writeDescriptorPackage(root, {model});
-        // This fixture only returns declarations; it never imports the runtime or creates sessions.
-        // Declare a local dependency so each real extraction snapshots that dependency instead of
-        // copying the host checkout and its entire runtime graph through the compatibility fallback.
-        const runtime = path.join(generated, "node_modules", "@fromstan", "pokie");
-        fs.mkdirSync(runtime, {recursive: true});
-        fs.writeFileSync(path.join(runtime, "package.json"), JSON.stringify({name: "@fromstan/pokie", version: "0.0.0-declaration-only", main: "index.js"}));
-        fs.writeFileSync(path.join(runtime, "index.js"), 'throw new Error("Declaration analysis must not execute the package runtime");');
         const writePolicy = (policy?: unknown): void => {
             writeDescriptorPackage(root, {model, descriptorBody: `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model${policy === undefined ? "" : `, maxWinPolicy: ${JSON.stringify(policy)}`}};`});
-            const manifestPath = path.join(generated, "package.json");
-            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-            fs.writeFileSync(manifestPath, JSON.stringify({...manifest, dependencies: {"@fromstan/pokie": "0.0.0-declaration-only"}}));
         };
         writePolicy();
         fs.writeFileSync(left, JSON.stringify(model));
@@ -305,6 +314,7 @@ describe("definition comparison public Studio route", () => {
     });
     it("drains package extraction on disconnect and shutdown and removes only owned snapshots", async () => {
         const fixture = writePausedDescriptorPackage(root, undefined, {pauseAtRead: 1});
+        declareDescriptorRuntime(fixture.source);
         const baseline = runtimeSnapshotNames(fixture.source);
         const controller = new AbortController();
         const pending = fetch(url + "/api/math-definition-diff/preview", {
@@ -314,7 +324,7 @@ describe("definition comparison public Studio route", () => {
             signal: controller.signal,
         }).catch((error) => error);
         try {
-            await fixture.readStarted;
+            await fixture.waitForRead(pending);
             controller.abort();
             const stopping = server.stop();
             fixture.settle();

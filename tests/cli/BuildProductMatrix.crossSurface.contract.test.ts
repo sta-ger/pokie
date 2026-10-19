@@ -29,6 +29,10 @@ const SUPPORTED_CELLS: readonly SupportedCell[] = BUILD_PRODUCT_MATRIX_SOURCE_TY
     BUILD_PRODUCT_MATRIX_TARGETS.map((target) => BUILD_PRODUCT_MATRIX[source][target]).filter((cell) => cell.state === "supported"),
 );
 
+// A row repeats real package snapshots across registry, CLI, Studio, readback and negative paths.
+// Budget the complete lifecycle separately from a single extraction case, including parallel gates.
+const MATRIX_LIFECYCLE_TEST_TIMEOUT = 2 * PACKAGE_EXTRACTION_TEST_TIMEOUT;
+
 const BLUEPRINT: GameBlueprint = {
     manifest: {id: "matrix-slot", name: "Matrix Slot", version: "1.0.0"},
     reels: 2,
@@ -391,5 +395,5 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         });
         expect(cleanup).toMatchObject({status: "cancelled"});
         expect(fs.existsSync(cleanupOut)).toBe(false);
-    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    }, MATRIX_LIFECYCLE_TEST_TIMEOUT);
 });
