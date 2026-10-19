@@ -14,6 +14,7 @@ import {dispatch} from "../../../cli/dispatch.js";
 import {DiffCommand} from "../../../cli/commands/DiffCommand.js";
 import {fractionalBetBlueprint} from "../../fixtures/math/FractionalBetFixture.js";
 import {
+    createPackageExtractionTestEnvironment,
     runtimeSnapshotNames,
     PACKAGE_EXTRACTION_TEST_TIMEOUT,
     writeDescriptorPackage,
@@ -21,6 +22,14 @@ import {
 } from "../../v2/fixtures/PackageExtractionFixture.js";
 
 describe("definition comparison public Studio route", () => {
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     let root: string, left: string, right: string, server: StudioServer, url: string;
     const post = async (body: unknown) => {
         const response = await fetch(url + "/api/math-definition-diff/preview", {
@@ -81,6 +90,20 @@ describe("definition comparison public Studio route", () => {
     it("retains generated policy defaults and explicit unknowns through rejection and repeated repaired Studio reads", async () => {
         const model = fractionalBetBlueprint([0.05], true);
         const generated = writeDescriptorPackage(root, {model});
+        // This fixture only returns declarations; it never imports the runtime or creates sessions.
+        // Declare a local dependency so each real extraction snapshots that dependency instead of
+        // copying the host checkout and its entire runtime graph through the compatibility fallback.
+        const runtime = path.join(generated, "node_modules", "@fromstan", "pokie");
+        fs.mkdirSync(runtime, {recursive: true});
+        fs.writeFileSync(path.join(runtime, "package.json"), JSON.stringify({name: "@fromstan/pokie", version: "0.0.0-declaration-only", main: "index.js"}));
+        fs.writeFileSync(path.join(runtime, "index.js"), 'throw new Error("Declaration analysis must not execute the package runtime");');
+        const writePolicy = (policy?: unknown): void => {
+            writeDescriptorPackage(root, {model, descriptorBody: `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model${policy === undefined ? "" : `, maxWinPolicy: ${JSON.stringify(policy)}`}};`});
+            const manifestPath = path.join(generated, "package.json");
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+            fs.writeFileSync(manifestPath, JSON.stringify({...manifest, dependencies: {"@fromstan/pokie": "0.0.0-declaration-only"}}));
+        };
+        writePolicy();
         fs.writeFileSync(left, JSON.stringify(model));
         const opened = await fetch(url + "/api/home/projects/open", {
             method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({projectRoot: generated}),
@@ -88,7 +111,7 @@ describe("definition comparison public Studio route", () => {
         expect(opened.status).toBe(200);
         await opened.json();
         for (const policy of [undefined, {type: "unknown", authority: "explicit policy"}, {type: "declared", value: "7.5", unit: "currency", scope: "paid-entry", authority: "invalid numeric declaration"}, undefined, undefined]) {
-            writeDescriptorPackage(root, {model, descriptorBody: `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "generated", model${policy === undefined ? "" : `, maxWinPolicy: ${JSON.stringify(policy)}`}};`});
+            writePolicy(policy);
             const result = await post({leftPath: left, rightPath: generated, revision: 0});
             expect(result.status).toBe(200);
             const snapshot = result.body.right;
