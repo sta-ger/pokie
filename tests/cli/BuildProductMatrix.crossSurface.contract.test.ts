@@ -190,6 +190,8 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
             "scripts/p8-05-release-handoff.mjs",
             "scripts/p9-11-candidate.mjs",
             "tests/testUtils/createP911CandidateFixture.mjs",
+            "tests/scripts/p9-11-produce-candidate.test.mjs",
+            "tests/scripts/p9-11-corrective-closeout.test.mjs",
         ];
         expect(fixture.P911_TOOLING_DESCENDANT_PATHS).toEqual(expect.arrayContaining(repairPaths));
         const repository = path.join(workDir, "candidate-repository");

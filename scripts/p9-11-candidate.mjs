@@ -100,6 +100,33 @@ export function readP911CandidateFromEnvironment(environment, options) {
     return readP911Candidate({path:file, sha256:pin}, options);
 }
 
+/** Smoke release context names the reviewed checkout, while the authenticated
+ * archive/build/install continue to name the original product. The producer's
+ * handoff-only environment needs no release receipt context. Keep this boundary
+ * read-only: a rejected handoff/context must never select normal packing. */
+export async function readP911SmokeCandidateFromEnvironment(environment, options) {
+    const candidate = await readP911CandidateFromEnvironment(environment, options);
+    if (candidate === undefined) return undefined;
+    validateP911SmokeCandidateIdentity(candidate, environment, options);
+    return candidate;
+}
+
+/** Consumes a readP911Candidate result, never an unvalidated handoff. Recheck
+ * the actual checkout and selected archive at the smoke install boundary. */
+export function validateP911SmokeCandidateIdentity(candidate, environment, {repository = root, archive = candidate.archive} = {}) {
+    const equivalence = authenticateP911Tree(candidate.candidateId, candidate.candidateTreeId, repository);
+    if (equivalence.reviewedId !== candidate.equivalence.reviewedId) fail("smoke reviewed checkout changed after authentication");
+    if (sha256(archive) !== candidate.archiveSha256) fail("smoke selected archive digest mismatch");
+    const reviewedId = environment.POKIE_PACK_SMOKE_CANDIDATE_ID;
+    const archiveSha256 = environment.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256;
+    if (reviewedId !== undefined && reviewedId !== candidate.equivalence.reviewedId) fail("smoke reviewed candidate identity mismatch");
+    if (archiveSha256 !== undefined && archiveSha256 !== candidate.archiveSha256) fail("smoke archive digest mismatch");
+    if (environment.POKIE_PACK_SMOKE_RECEIPT !== undefined || environment.POKIE_PACK_SMOKE_ARCHIVE_PATH !== undefined) {
+        if (!environment.POKIE_PACK_SMOKE_RECEIPT || !environment.POKIE_PACK_SMOKE_ARCHIVE_PATH
+            || reviewedId === undefined || archiveSha256 === undefined) fail("smoke release outputs require receipt/archive paths and reviewed candidate/digest context");
+    }
+}
+
 export async function readP911Candidate(reference, {repository = root} = {}) {
     const handoff = await readPinnedJson(reference);
     if (handoff.schemaVersion !== 1 || handoff.kind !== "p9-11-candidate-handoff" || handoff.campaignId !== P911_CAMPAIGN

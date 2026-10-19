@@ -30,6 +30,8 @@ const tooling = new Set([
     "tests/v2/fixtures/normal-pack.stdout.txt",
     "scripts/p9-11-candidate.mjs",
     "tests/testUtils/createP911CandidateFixture.mjs",
+    "tests/scripts/p9-11-produce-candidate.test.mjs",
+    "tests/scripts/p9-11-corrective-closeout.test.mjs",
 ]);
 const evidence = (file) => file.startsWith("docs/evidence/p8-05-product-readiness/");
 const excluded = (file) => tooling.has(file) || evidence(file);

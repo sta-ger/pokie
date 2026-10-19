@@ -38,11 +38,30 @@ function importSmokeScript(filename: string): Promise<unknown> {
     }) as Promise<unknown>;
 }
 
-async function readSharedSmokeCandidate(environment: NodeJS.ProcessEnv, options?: {repository: string}): Promise<{archive: Buffer; candidateId: string; archiveSha256: string; installationRoot: string} | undefined> {
-    const {readP911CandidateFromEnvironment} = await importSmokeScript("p9-11-candidate.mjs") as {
-        readP911CandidateFromEnvironment: (environment: NodeJS.ProcessEnv, options?: {repository: string}) => Promise<{archive: Buffer; candidateId: string; archiveSha256: string; installationRoot: string} | undefined>;
+interface SharedSmokeCandidate {
+    archive: Buffer;
+    candidateId: string;
+    candidateTreeId: string;
+    archiveSha256: string;
+    installationRoot: string;
+    buildReceipt: {path: string; sha256: string};
+    installReceipt: {path: string; sha256: string};
+    equivalence: {reviewedId: string; candidateId: string; candidateTreeId: string; changedEvidenceAndTooling: string[]};
+    projection: {packageJson: {gitHead?: string}};
+}
+
+async function readSharedSmokeCandidate(environment: NodeJS.ProcessEnv, options?: {repository: string}): Promise<SharedSmokeCandidate | undefined> {
+    const {readP911SmokeCandidateFromEnvironment} = await importSmokeScript("p9-11-candidate.mjs") as {
+        readP911SmokeCandidateFromEnvironment: (environment: NodeJS.ProcessEnv, options?: {repository: string}) => Promise<SharedSmokeCandidate | undefined>;
     };
-    return readP911CandidateFromEnvironment(environment, options);
+    return readP911SmokeCandidateFromEnvironment(environment, options);
+}
+
+async function validateSharedSmokeIdentity(candidate: SharedSmokeCandidate, archive: Buffer): Promise<void> {
+    const {validateP911SmokeCandidateIdentity} = await importSmokeScript("p9-11-candidate.mjs") as {
+        validateP911SmokeCandidateIdentity: (candidate: SharedSmokeCandidate, environment: NodeJS.ProcessEnv, options: {archive: Buffer}) => void;
+    };
+    validateP911SmokeCandidateIdentity(candidate, process.env, {archive});
 }
 
 function stageSharedSmokeArchive(archive: Buffer, directory: string): string {
@@ -143,6 +162,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
 
     let packDir: string | undefined;
     let releaseHandoffBinding: {auditedCandidateId: string; releaseHandoffSha256: string} | undefined;
+    let sharedSmokeCandidate: SharedSmokeCandidate | undefined;
     let tarballPath: string | undefined;
     let installDir: string | undefined;
     let pokieBinPath: string;
@@ -195,6 +215,14 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const ownPackage = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {name: string; version: string};
         fs.writeFileSync(receiptPath!, `${JSON.stringify({
             ...releaseHandoffBinding,
+            ...(sharedSmokeCandidate === undefined ? {} : {p911CandidateIdentity: {
+                candidateId: sharedSmokeCandidate.candidateId,
+                candidateTreeId: sharedSmokeCandidate.candidateTreeId,
+                archiveSha256: sharedSmokeCandidate.archiveSha256,
+                buildReceipt: sharedSmokeCandidate.buildReceipt,
+                installReceipt: sharedSmokeCandidate.installReceipt,
+                equivalence: sharedSmokeCandidate.equivalence,
+            }}),
             schemaVersion: 1,
             kind: "npm-pack-install-smoke",
             candidateId: process.env.POKIE_PACK_SMOKE_CANDIDATE_ID,
@@ -218,11 +246,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // Non-JSON mode avoids the per-file inventory, but prepack can still emit
         // Vite logs. Select the archive from the fresh directory, not stdout.
         const handoffConfig = process.env.POKIE_P805_RELEASE_HANDOFF;
-        const p911Candidate = await readSharedSmokeCandidate(process.env);
+        sharedSmokeCandidate = await readSharedSmokeCandidate(process.env);
+        const p911Candidate = sharedSmokeCandidate;
         if (p911Candidate) {
             const candidate = p911Candidate;
-            expect(candidate.candidateId).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_ID);
-            expect(candidate.archiveSha256).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
             packDir = createExternalSmokeDirectory("pokie-npm-pack-output-");
             tarballPath = stageSharedSmokeArchive(candidate.archive, packDir);
         } else if (handoffConfig) {
@@ -261,6 +288,20 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }
         expect(fs.existsSync(tarballPath)).toBe(true);
 
+        // Validate the selected bytes and reviewed checkout before installation.
+        // A P9 product keeps its original SHA; optional release context was
+        // checked against the authenticated reviewed descendant by the selector.
+        const candidateSha = execFileSync("git", ["rev-parse", "HEAD"], {cwd: REPO_ROOT, encoding: "utf8"}).trim();
+        const selectedArchive = fs.readFileSync(tarballPath);
+        const digest = createHash("sha256").update(selectedArchive).digest("hex");
+        if (p911Candidate) {
+            await validateSharedSmokeIdentity(p911Candidate, selectedArchive);
+        } else {
+            const expectedSha = process.env.POKIE_PACK_SMOKE_CANDIDATE_ID;
+            if (expectedSha) expect(candidateSha).toBe(expectedSha);
+            if (process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256) expect(digest).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
+        }
+
         installDir = createExternalSmokeDirectory("pokie native installed consumer ");
         fs.writeFileSync(
             path.join(installDir, "package.json"),
@@ -276,14 +317,14 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(fs.lstatSync(path.join(installDir, "node_modules")).isSymbolicLink()).toBe(false);
         expect(fs.lstatSync(installedRoot).isSymbolicLink()).toBe(false);
         expect(fs.realpathSync(installedRoot).startsWith(fs.realpathSync(REPO_ROOT) + path.sep)).toBe(false);
-        const expectedSha = process.env.POKIE_PACK_SMOKE_CANDIDATE_ID;
-        if (expectedSha) expect(execFileSync("git", ["rev-parse", "HEAD"], {cwd: REPO_ROOT, encoding: "utf8"}).trim()).toBe(expectedSha);
-        const digest = createHash("sha256").update(fs.readFileSync(tarballPath)).digest("hex");
-        if (process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256) expect(digest).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
+        expect(execFileSync("git", ["rev-parse", "HEAD"], {cwd: REPO_ROOT, encoding: "utf8"}).trim()).toBe(candidateSha);
+        expect(createHash("sha256").update(fs.readFileSync(tarballPath)).digest("hex")).toBe(digest);
+        if (p911Candidate) await validateSharedSmokeIdentity(p911Candidate, selectedArchive);
         const installedMetadata = JSON.parse(fs.readFileSync(path.join(installedRoot, "package.json"), "utf8"));
         const ownMetadata = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
         expect(installedMetadata).toMatchObject({name: "@fromstan/pokie", version: "2.0.0", exports: ownMetadata.exports, bin: ownMetadata.bin});
-        console.log(JSON.stringify({candidateSha: execFileSync("git", ["rev-parse", "HEAD"], {cwd: REPO_ROOT, encoding: "utf8"}).trim(), archiveSha256: digest, installedRoot, packageName: installedMetadata.name, version: installedMetadata.version}));
+        if (p911Candidate) expect(installedMetadata.gitHead).toBe(p911Candidate.projection.packageJson.gitHead);
+        console.log(JSON.stringify({candidateSha, ...(p911Candidate === undefined ? {} : {productCandidateSha: p911Candidate.candidateId, equivalence: p911Candidate.equivalence}), archiveSha256: digest, installedRoot, packageName: installedMetadata.name, version: installedMetadata.version}));
 
         pokieBinPath = path.join(installDir, "node_modules", ".bin", "pokie");
         expect(fs.existsSync(pokieBinPath)).toBe(true);
