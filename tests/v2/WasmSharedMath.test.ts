@@ -19,6 +19,7 @@ it("compares delivered generated Node entries and independently instantiated mod
             expect({status: result.status, error: result.error?.message, stderr: result.stderr}).toEqual({status: 0, error: undefined, stderr: ""});
             const report = JSON.parse(result.stdout.trim());
             expect(report.native).toBe(true);
+            expect(report.fixtureCount).toBe(34);
             expect(report.configurationChecks).toEqual(["lines", "ways", "clusters"]);
             expect(report.negatives).toEqual(["cluster-grid-too-small", "cluster-grid-too-small-explicit", "ways-no-payable-symbols",
                 ...(first === 0 ? ["changed-bytes", "swapped-component", "old-abi", "rehashed-code", "rehashed-model-code"] : [])]);
@@ -63,16 +64,16 @@ it("preserves authenticated candidate selectors through the complete V2C-31 gate
             validateP911SmokeCandidateIdentity(selected, release, options);
             const selectors = [readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment];
             for (const selector of selectors) {
-                await assert.rejects(selector({...release, POKIE_P911_CANDIDATE_HANDOFF_SHA256: "0".repeat(64)}, options), /receipt digest mismatch/);
-                await assert.rejects(selector({...release, POKIE_P805_RELEASE_HANDOFF: "conflicting"}, options), /cannot be combined/);
+                await assert.rejects(async () => selector({...release, POKIE_P911_CANDIDATE_HANDOFF_SHA256: "0".repeat(64)}, options), /receipt digest mismatch/);
+                await assert.rejects(async () => selector({...release, POKIE_P805_RELEASE_HANDOFF: "conflicting"}, options), /cannot be combined/);
             }
-            await assert.rejects(readP911SmokeCandidateFromEnvironment({...release, POKIE_PACK_SMOKE_CANDIDATE_ID: original.candidateId}, options), /reviewed candidate identity mismatch/);
-            await assert.rejects(readP911SmokeCandidateFromEnvironment({...release, POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256: "0".repeat(64)}, options), /smoke archive digest mismatch/);
+            await assert.rejects(async () => readP911SmokeCandidateFromEnvironment({...release, POKIE_PACK_SMOKE_CANDIDATE_ID: original.candidateId}, options), /reviewed candidate identity mismatch/);
+            await assert.rejects(async () => readP911SmokeCandidateFromEnvironment({...release, POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256: "0".repeat(64)}, options), /smoke archive digest mismatch/);
             for (const reference of [fixture.handoff.browserDriver, fixture.handoff.buildReceipt, fixture.handoff.installReceipt,
                 {path: fixture.handoff.archivePath}, {path: path.join(selected.packageRoot, "dist/cli/pokie.js")}]) {
                 const bytes = await readFile(reference.path);
                 await writeFile(reference.path, "changed pinned input");
-                for (const selector of selectors) await assert.rejects(selector(release, options),
+                for (const selector of selectors) await assert.rejects(async () => selector(release, options),
                     /authenticated controller browser driver required|receipt digest mismatch|archive digest mismatch|stale installed asset/);
                 await writeFile(reference.path, bytes);
             }
@@ -82,7 +83,7 @@ it("preserves authenticated candidate selectors through the complete V2C-31 gate
                 await writeFile(target, "changed protected input");
                 execFileSync("git", ["add", "."], gitOptions);
                 execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "protected input rejection fixture"], gitOptions);
-                for (const selector of selectors) await assert.rejects(selector(release, options), /product\\/build inputs changed/);
+                for (const selector of selectors) await assert.rejects(async () => selector(release, options), /product\\/build inputs changed/);
                 execFileSync("git", ["reset", "--hard", reviewedId], {...gitOptions, stdio: "ignore"});
             }
             assert.deepEqual(await readP911SmokeCandidateFromEnvironment(release, options), selected);

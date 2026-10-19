@@ -350,6 +350,6 @@ async function main() {
         receipts.push({name, longSession, artifact: manifest.artifact.sha256, model: manifest.artifact.configurationHash, bytes: bytes.length, rounds: observed.length, draws: rawDraws, multi});
         runtime.dispose(); fresh.dispose(); await loaded.release();
     }
-    console.log(JSON.stringify({native: true, runtime: process.version, configurationChecks, negatives, receipts}));
+    console.log(JSON.stringify({native: true, runtime: process.version, fixtureCount: fixtures.length, configurationChecks, negatives, receipts}));
 }
 main().catch(error => {console.error(error); process.exitCode = 1;});
