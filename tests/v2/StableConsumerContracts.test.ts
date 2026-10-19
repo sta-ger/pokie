@@ -254,14 +254,24 @@ it("recognizes all six real artifact types and converges positive and negative p
 
 it("keeps custom package source, manifest, lock and executable bytes intact when extraction fails closed", async () => {
     const root = path.join(directory, "custom");
-    fs.mkdirSync(path.join(root, "dist"), {recursive: true});
+    // This independently authored executable is self-contained. Declare an owned dependency so
+    // each real loader/extraction snapshot avoids the omitted-runtime fallback's host checkout
+    // and dependency graph. The sentinel cannot supply runtime behavior if accidentally imported.
     const contents = {
-        "package.json": JSON.stringify({name: "custom", version: "1.0.0", pokie: {entry: "dist/index.js"}}),
+        "package.json": JSON.stringify({name: "custom", version: "1.0.0", pokie: {entry: "dist/index.js"}, dependencies: {"@fromstan/pokie": "0.0.0-unused"}}),
         "package-lock.json": '{"lockfileVersion":3,"packages":{}}\n',
         "source.ts": "// Independently authored custom logic: no Blueprint or descriptor.\n",
         "dist/index.js": 'module.exports = {getManifest() {return {id:"custom",name:"Custom",version:"1"}},createSession() {return {play() {},getWinAmount() {return 17}}}};\n',
+        "node_modules/@fromstan/pokie/package.json": JSON.stringify({name: "@fromstan/pokie", version: "0.0.0-unused", main: "index.js"}),
+        "node_modules/@fromstan/pokie/index.js": 'throw new Error("Self-contained custom package must not import the host runtime");\n',
     };
-    for (const [file, contentsOfFile] of Object.entries(contents)) fs.writeFileSync(path.join(root, file), contentsOfFile);
+    for (const [file, contentsOfFile] of Object.entries(contents)) {
+        fs.mkdirSync(path.dirname(path.join(root, file)), {recursive: true});
+        fs.writeFileSync(path.join(root, file), contentsOfFile);
+    }
+    const expectUnchanged = () => {
+        for (const [file, expected] of Object.entries(contents)) expect(fs.readFileSync(path.join(root, file), "utf8")).toBe(expected);
+    };
     const runtime = await api.loadPokieGameRuntime(root);
     try {
         const session = runtime.game.createSession();
@@ -270,17 +280,20 @@ it("keeps custom package source, manifest, lock and executable bytes intact when
     } finally {
         await runtime.release();
     }
+    expectUnchanged();
     const extraction = await new api.PackageBlueprintExtraction().extract(root);
     expect(extraction).toMatchObject({status: "partial", source: {kind: "legacy"}});
     expect(extraction.blueprint).toBeUndefined();
     expect(extraction.diagnostics.length).toBeGreaterThan(0);
+    expect(extraction.diagnostics).toContainEqual(expect.objectContaining({code: "legacy-model-unavailable"}));
+    expectUnchanged();
     const project = (await new api.ProjectTargetResolver().resolve(root))!;
     for (const target of ["blueprint", "tsPackage", "parWorkbook", "wasm"] as const) {
         const plan = await new api.ArtifactBuilderRegistry(api.POKIE_VERSION).preparePlan(project, target);
         expect(plan.status).toBe("unavailable");
         expect(plan.packageExtraction?.status).toBe("partial");
+        expectUnchanged();
     }
-    for (const [file, expected] of Object.entries(contents)) expect(fs.readFileSync(path.join(root, file), "utf8")).toBe(expected);
 });
 
 it("enforces destinations, late claimants and cancellation at direct publication boundaries with bounded retry", async () => {
