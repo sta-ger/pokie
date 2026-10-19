@@ -144,7 +144,7 @@ it.each([0.05, 7.5, 1e-7])("preserves fractional stake %p", async (stake) => {
 
 it("tunes and reopens the canonical PAR workbook retaining locked declarations", async () => {
     const file = path.join(directory, "source.xlsx");
-    await new ParSheetExporter("1.3.0").exportToFile(model(), file);
+    await new ParSheetExporter("2.0.0").exportToFile(model(), file);
     const result = await service.optimize(await resolve(file), optimizationRequest());
     expect(result.diagnostics).toEqual([]);
     expect(result).toMatchObject({status: "success", candidate: {type: "parWorkbook"}, evidence: {measured: [0.75]}});
@@ -157,10 +157,10 @@ it.each(["blueprint", "parWorkbook", "wasm", "tsPackage"] as const)("samples val
     let file = source;
     if (type === "parWorkbook") {
         file = path.join(directory, "sample.xlsx");
-        await new ParSheetExporter("1.3.0").exportToFile(model(), file);
+        await new ParSheetExporter("2.0.0").exportToFile(model(), file);
     } else if (type === "wasm") {
         file = path.join(directory, "sample.wasm");
-        await new WasmArtifactBuilder("1.3.0").build(await resolve(source), file);
+        await new WasmArtifactBuilder("2.0.0").build(await resolve(source), file);
         await bindCanonicalWasmTuningSource(file, model(), ["/paytable/A/2"]);
     } else if (type === "tsPackage") {
         file = declaredPackage("sample").root;
@@ -187,7 +187,7 @@ it("samples Stake uint64 weights without rounding and normalizes payout buckets 
     const original = await nativeSource();
     const library = buildWeightedOutcomeLibrary({libraryId: "stake", outcomes: original.outcomes.map((outcome, index) => ({...outcome, id: String(index + 1)}))});
     const root = path.join(directory, "sample-stake");
-    await new StakeEngineExporter("1.3.0").exportToDirectory([{modeName: "base", cost: 2, library}], root);
+    await new StakeEngineExporter("2.0.0").exportToDirectory([{modeName: "base", cost: 2, library}], root);
     const native = await new StakeEngineOutcomeSourceReader().readFromDirectory(root);
     const win = native.modes[0].outcomes.find(outcome => outcome.payoutMultiplier > 0)!;
     const zero = native.modes[0].outcomes.find(outcome => outcome.payoutMultiplier === 0)!;
@@ -216,7 +216,7 @@ it("samples Stake uint64 weights without rounding and normalizes payout buckets 
 
 it("rebuilds a source-bound canonical WASM and checks its executable population", async () => {
     const file = path.join(directory, "source.wasm");
-    await new WasmArtifactBuilder("1.3.0").build(await resolve(source), file);
+    await new WasmArtifactBuilder("2.0.0").build(await resolve(source), file);
     expect((await service.optimize(await resolve(file), optimizationRequest())).status).toBe("unsupported");
     await bindCanonicalWasmTuningSource(file, model(), ["/paytable/A/2"]);
     const result = await service.optimize(await resolve(file), optimizationRequest());
@@ -265,7 +265,7 @@ async function nativeSource() {
         await generateExactWeightedOutcomeLibrary({
             game: createTunableBlueprintGame(model()),
             libraryId: "native",
-            pokieVersion: "1.3.0",
+            pokieVersion: "2.0.0",
             stake: 1,
             exact: true,
             now: () => new Date(0),
@@ -275,7 +275,7 @@ async function nativeSource() {
 it("tunes native bundle weights, rebuilds indexes/analysis and retains identities/artifacts/untouched modes", async () => {
     const library = await nativeSource();
     const root = path.join(directory, "library");
-    await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(
+    await new OutcomeLibraryBundleWriter("2.0.0").writeToDirectory(
         [
             {modeName: "base", libraryId: "native", outcomes: library.outcomes},
             {modeName: "other", libraryId: "other", outcomes: library.outcomes},
@@ -304,6 +304,7 @@ it("tunes native bundle weights, rebuilds indexes/analysis and retains identitie
         candidate: {type: "outcomeLibrary"},
         evidence: {measured: [1], rejected: 1},
     });
+    expect(JSON.parse(fs.readFileSync(path.join(result.candidate!.path, "manifest.json"), "utf8")).pokieVersion).toBe("2.0.0");
     expect(fs.readFileSync(path.join(result.candidate!.path, "notes.bin"))).toEqual(Buffer.from([0, 255, 7]));
     const cappedRequest = {...request, policy: {...request.policy, maxOutcomes: 1}};
     expect((await service.optimize(await resolve(root), cappedRequest)).status).toBe("exhausted");
@@ -321,7 +322,7 @@ it("tunes Stake native uint64 lookup weights and retains book/event bytes and mo
         outcomes: original.outcomes.map((outcome, index) => ({...outcome, id: String(index + 1)})),
     });
     const root = path.join(directory, "stake");
-    const exported = await new StakeEngineExporter("1.3.0").exportToDirectory(
+    const exported = await new StakeEngineExporter("2.0.0").exportToDirectory(
         [{modeName: "base", cost: 1, library}],
         root,
     );
@@ -374,7 +375,7 @@ it("tunes Stake native uint64 lookup weights and retains book/event bytes and mo
     const candidateProject = await resolve(result.candidate!.path);
     expect(candidateProject.capabilities).toEqual(["outcomeSource.read", "stakeAdapter.export"]);
     expect(describeUnsupportedProjectOperation(candidateProject, "stakeEngine.export")).toBeUndefined();
-    const builder = new StakeAdapterArtifactBuilder("1.3.0");
+    const builder = new StakeAdapterArtifactBuilder("2.0.0");
     await expect(builder.validate(candidateProject)).resolves.toBeUndefined();
     const nativeExport = path.join(directory, "native-export");
     await builder.build(candidateProject, nativeExport);
@@ -485,7 +486,7 @@ it("rejects serialized locked-field drift, stale source and aliased destinations
 
 it("rolls back owned partial WASM publications when the second companion fails", async () => {
     const wasm = path.join(directory, "source.wasm");
-    await new WasmArtifactBuilder("1.3.0").build(await resolve(source), wasm);
+    await new WasmArtifactBuilder("2.0.0").build(await resolve(source), wasm);
     await bindCanonicalWasmTuningSource(wasm, model(), ["/paytable/A/2"]);
     const request = optimizationRequest();
     const result = await service.optimize(await resolve(wasm), request);
@@ -1017,8 +1018,8 @@ it.each(["outcomeLibrary", "stakeAdapter"] as const)("rejects zero and wrong-rep
     const root = path.join(directory, type);
     const original = await nativeSource();
     const library = buildWeightedOutcomeLibrary({libraryId: "native", outcomes: original.outcomes.map((outcome, index) => ({...outcome, id: String(index + 1)}))});
-    if (type === "outcomeLibrary") await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{modeName: "base", libraryId: "native", outcomes: library.outcomes}], root);
-    else await new StakeEngineExporter("1.3.0").exportToDirectory([{modeName: "base", cost: 1, library}], root);
+    if (type === "outcomeLibrary") await new OutcomeLibraryBundleWriter("2.0.0").writeToDirectory([{modeName: "base", libraryId: "native", outcomes: library.outcomes}], root);
+    else await new StakeEngineExporter("2.0.0").exportToDirectory([{modeName: "base", cost: 1, library}], root);
     const project = await resolve(root);
     const before = sourceInventory(project);
     const request = optimizationRequest();
@@ -1036,7 +1037,7 @@ it.each(["outcomeLibrary", "stakeAdapter"] as const)("rejects zero and wrong-rep
 it("measures a supported population above the JavaScript argument limit without spreading it", async () => {
     const library = await nativeSource();
     const root = path.join(directory, "large-library");
-    await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{modeName: "base", libraryId: "native", outcomes: library.outcomes}], root);
+    await new OutcomeLibraryBundleWriter("2.0.0").writeToDirectory([{modeName: "base", libraryId: "native", outcomes: library.outcomes}], root);
     const request = optimizationRequest();
     request.policy.scope = "native-outcomes";
     request.policy.maxOutcomes = 150000;
@@ -1052,7 +1053,7 @@ it("measures a supported population above the JavaScript argument limit without 
 it.each(["exact-finite-v1", "seeded-search-v1"] as const)("rejects native stake mismatch in support and %s before preparing candidates", async strategy => {
     const {outcomes} = await nativeSource();
     const root = path.join(directory, "stake-mismatch");
-    await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{modeName: "base", libraryId: "native", outcomes}], root);
+    await new OutcomeLibraryBundleWriter("2.0.0").writeToDirectory([{modeName: "base", libraryId: "native", outcomes}], root);
     const project = await resolve(root);
     const before = sourceInventory(project);
     const request = stochasticOptimizationRequest();
@@ -1158,20 +1159,29 @@ it.each([["cjs", false], ["cjs", true], ["esm", false], ["esm", true]] as const)
         const before = sourceInventory(project);
         const request = stochasticOptimizationRequest();
         request.policy.tunables[0].values = [3];
+        // The gate can build checkout dist concurrently. Bind this native host to
+        // immutable fixture-owned source bytes so real dependency fingerprints do
+        // not mistake another suite's compiler output for executable drift.
+        const runtimeRoot = path.join(directory, "host-runtime");
+        fs.mkdirSync(runtimeRoot);
+        fs.copyFileSync(path.resolve("package.json"), path.join(runtimeRoot, "package.json"));
+        fs.cpSync(path.resolve("src"), path.join(runtimeRoot, "src"), {recursive: true});
+        const temporaryRoot = path.join(directory, "native-tmp");
+        fs.mkdirSync(temporaryRoot);
         const script = path.join(directory, "native-optimization.cjs");
         // Execute the public service in an ordinary long-lived Node host, then compare
         // its rerun to a separate fresh process. ts-jest cannot require native ESM.
         fs.writeFileSync(script, `const fs = require('fs'); const Module = require('module'); const ts = require(${JSON.stringify(require.resolve("typescript"))});
 const original = Module._resolveFilename;
-Module._resolveFilename = function(request, ...rest) { if (request === '@fromstan/pokie') return ${JSON.stringify(path.resolve("src/index.ts"))}; try { return original.call(this, request, ...rest); } catch (error) { if (request.endsWith('.js')) return original.call(this, request.slice(0, -3) + '.ts', ...rest); throw error; } };
+Module._resolveFilename = function(request, ...rest) { if (request === '@fromstan/pokie') return ${JSON.stringify(path.join(runtimeRoot, "src/index.ts"))}; try { return original.call(this, request, ...rest); } catch (error) { if (request.endsWith('.js')) return original.call(this, request.slice(0, -3) + '.ts', ...rest); throw error; } };
 Module._extensions['.ts'] = (module, file) => module._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true}}).outputText, file);
 const assert = require('node:assert/strict');
 const root = ${JSON.stringify(root)}, leaf = ${JSON.stringify(leafFile)}, request = ${JSON.stringify(request)};
 const select = result => ({status: result.status, diagnostics: result.diagnostics, evidence: result.evidence});
 const write = multiplier => fs.writeFileSync(leaf, ${JSON.stringify(format === "cjs" ? "module.exports = " : "export default ")} + multiplier + ';');
 (async () => {
- const {ProjectOptimizationService} = require(${JSON.stringify(path.resolve("src/optimization/ProjectOptimizationService.ts"))});
- const {ProjectTargetResolver} = require(${JSON.stringify(path.resolve("src/project/ProjectTargetResolver.ts"))});
+ const {ProjectOptimizationService} = require(${JSON.stringify(path.join(runtimeRoot, "src/optimization/ProjectOptimizationService.ts"))});
+ const {ProjectTargetResolver} = require(${JSON.stringify(path.join(runtimeRoot, "src/project/ProjectTargetResolver.ts"))});
  const service = new ProjectOptimizationService(${JSON.stringify(path.join(directory, "native-scratch"))} + (process.argv[2] === 'fresh' ? '-fresh' : ''));
  const project = await new ProjectTargetResolver().resolve(root, {readConfigurationProvenance: false});
  if (process.argv[2] === 'fresh') {
@@ -1190,7 +1200,7 @@ const write = multiplier => fs.writeFileSync(leaf, ${JSON.stringify(format === "
  const freshOutput = await require('util').promisify(require('child_process').execFile)(process.execPath, [__filename, 'fresh'], {encoding: 'utf8', timeout: 120000});
  const fresh = JSON.parse(freshOutput.stdout);
  assert.deepEqual(select(changed), fresh);
- const {ParallelSimulationRunner} = require(${JSON.stringify(path.resolve("src/simulation/parallel/ParallelSimulationRunner.ts"))});
+ const {ParallelSimulationRunner} = require(${JSON.stringify(path.join(runtimeRoot, "src/simulation/parallel/ParallelSimulationRunner.ts"))});
  const run = ParallelSimulationRunner.prototype.run; let samples = 0;
  ParallelSimulationRunner.prototype.run = function(...args) { samples++; return Reflect.apply(run, this, args); };
  await service.publish(changed.candidate, request, ${JSON.stringify(path.join(directory, "current-output"))});
@@ -1214,7 +1224,9 @@ const write = multiplier => fs.writeFileSync(leaf, ${JSON.stringify(format === "
         // rejection and two recoveries. Await its exit with a whole-scenario budget;
         // execFileSync spawn errors contain error.error === error and cannot cross
         // Jest's worker transport when a constrained gate reaches that deadline.
-        const {stdout} = await execFileAsync(process.execPath, [script], {encoding: "utf8", timeout: 300000});
+        const {stdout} = await execFileAsync(process.execPath, [script], {
+            encoding: "utf8", timeout: 300000, env: {...process.env, TMPDIR: temporaryRoot},
+        });
         const outcomes = JSON.parse(stdout);
         expect(outcomes).toEqual({before: "attained", changed: "inconclusive", fresh: "inconclusive", rejected: "failure", restored: "attained", samplesDuringSave: 0, cachePreserved: true});
         expect(sourceInventory(project)).toEqual(before);

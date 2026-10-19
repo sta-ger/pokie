@@ -82,4 +82,4 @@ new LeftToRightLinesPatterns(5).toArray();
 
 ## Generated, visible and evaluated coordinates
 
-Evaluation-local paylines and visible drawing coordinates: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).
+Evaluation-local paylines and visible drawing coordinates: see [the coordinate contract and adapter support matrix](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-03.md).

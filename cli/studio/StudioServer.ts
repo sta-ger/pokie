@@ -984,6 +984,7 @@ export class StudioServer implements StudioServerHandling {
         this.assertTrustedApiRequest(req, method, url);
 
         if (method === "GET" && url.pathname === "/api/health") {
+            res.setHeader("X-Pokie-Version", this.pokieVersion);
             this.sendJson(res, 200, {status: "ok"});
             return;
         }

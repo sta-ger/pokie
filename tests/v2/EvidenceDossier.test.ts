@@ -1,3 +1,4 @@
+import {validateCertificationDossier} from "../../src/certification/internal/validateCertificationDossier.js";
 import ts from "typescript";
 import {pathToFileURL} from "node:url";
 import fs from "node:fs";
@@ -40,9 +41,14 @@ describe("canonical evidence dossier", () => {
         const source = path.join(directory, "source"),
             out = path.join(directory, "out");
         await buildSourceOutcomeLibraryBundle(source, ["base", "buy"]);
-        const result = await new CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(source, [...modes, {...modes[0], modeName: "buy"}], out);
+        const result = await new CertificationEvidenceBundleBuilder("2.0.0").buildFromBundle(source, [...modes, {...modes[0], modeName: "buy"}], out);
         expect(result.issues).toEqual([]);
         const manifest = result.manifest!;
+        expect(manifest.pokieVersion).toBe("2.0.0");
+        for (const version of ["1.4.0", "2.1.0", "3.0.0", "2.0", "2.0.01", "2.0.0-01", "2.0.0+", "2.0.0\n"]) {
+            expect(() => validateCertificationDossier(manifest.dossier, {...manifest, pokieVersion: version})).toThrow(/Unsupported dossier producer/);
+            expect(() => validateCertificationDossier(manifest.dossier, {...manifest, artifactPokieVersion: version})).toThrow(/Unsupported dossier producer/);
+        }
         expect(CERTIFICATION_DOSSIER_SECTIONS.every(section => section in manifest.dossier)).toBe(true);
         expect(manifest.dossier.support).toMatchObject({coverage: "unavailable", notice: CERTIFICATION_PREPARATION_NOTICE, sdk: "unavailable", fairness: "unavailable"});
         expect(await new CertificationEvidenceBundleValidator().validate(out)).toEqual([]);
@@ -77,12 +83,13 @@ describe("canonical evidence dossier", () => {
         expect(definition.support).toBe("complete");
         const model = path.join(directory, "model.json");
         fs.writeFileSync(model, JSON.stringify(blueprint));
-        const artifact = buildRoundArtifact({roundId: "rules-fixture", provenance: {game: blueprint.manifest, configHash: definition.identity.revision!, pokieVersion: "1.3.0"}, betMode: "base", stake: 0.01,
+        const artifact = buildRoundArtifact({roundId: "rules-fixture", provenance: {game: blueprint.manifest, configHash: definition.identity.revision!, pokieVersion: "2.0.0"}, betMode: "base", stake: 0.01,
             steps: [{screen: [["A", "B", "B"], ["B", "A", "B"], ["B", "B", "A"]], winEvaluationResult: new WinEvaluationResult({valueWins: [new ValueWinComponent(new WinningValue("B", [[0, 2], [1, 0], [2, 1]], 0.02))]})}]});
-        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{modeName: "base", libraryId: "rules-fixture", outcomes: [{id: "0", weight: 1, artifact}]}], source);
-        const built = await new CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(source, modes, path.join(directory, "out"), {dossier: {modelSource: model}});
+        await new OutcomeLibraryBundleWriter("2.0.0").writeToDirectory([{modeName: "base", libraryId: "rules-fixture", outcomes: [{id: "0", weight: 1, artifact}]}], source);
+        const built = await new CertificationEvidenceBundleBuilder("2.0.0").buildFromBundle(source, modes, path.join(directory, "out"), {dossier: {modelSource: model}});
         expect(built.issues).toEqual([]);
         const manifest = built.manifest!;
+        expect(manifest).toMatchObject({pokieVersion: "2.0.0", artifactPokieVersion: "2.0.0"});
         const tables = certificationDossierTables(manifest);
         expect(tables.find(table => table.title === "Model paylines")?.rows).toEqual(expect.arrayContaining([["authored.0.0", "2"], ["effective.0.1", "0"], ["effective.0.2", "1"]]));
         for (const dimension of ["rows", "reels"]) expect(tables.find(table => table.title === `Model ${dimension}`)?.rows).toEqual([["authored", "3"], ["effective", "3"]]);
@@ -96,10 +103,10 @@ describe("canonical evidence dossier", () => {
 
     it("preserves tiny nonzero probabilities and fractional stakes, escaping authored template text", async () => {
         const source = path.join(directory, "source");
-        const artifact = (roundId: string, amount: number) => buildRoundArtifact({roundId, provenance: {game: {id: "precision", name: "Precision", version: "1"}, pokieVersion: "1.3.0"}, betMode: "base", stake: 1e-7,
+        const artifact = (roundId: string, amount: number) => buildRoundArtifact({roundId, provenance: {game: {id: "precision", name: "Precision", version: "1"}, pokieVersion: "2.0.0"}, betMode: "base", stake: 1e-7,
             steps: [{screen: [["A"]], winEvaluationResult: amount ? new WinEvaluationResult({valueWins: [new ValueWinComponent(new WinningValue("A", [[0, 0]], amount))]}) : new WinEvaluationResult<string>()}]});
-        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{modeName: "base", libraryId: "precision", outcomes: [{id: "0", weight: 999999999999999, artifact: artifact("lose", 0)}, {id: "1", weight: 1, artifact: artifact("win", 5e-7)}]}], source);
-        const result = await new CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(source, modes, path.join(directory, "out"));
+        await new OutcomeLibraryBundleWriter("2.0.0").writeToDirectory([{modeName: "base", libraryId: "precision", outcomes: [{id: "0", weight: 999999999999999, artifact: artifact("lose", 0)}, {id: "1", weight: 1, artifact: artifact("win", 5e-7)}]}], source);
+        const result = await new CertificationEvidenceBundleBuilder("2.0.0").buildFromBundle(source, modes, path.join(directory, "out"));
         const fixture = result.manifest!;
         expect(fixture.modes[0].analysis.maxWinProbability).toBe(1e-15);
         const template = {...DEFAULT_CERTIFICATION_DOSSIER_TEMPLATE, title: "<script>alert('unsafe')</script>", introduction: "Fractional stakes: 0.05, 7.5, 1e-7; identity Зорка"};
@@ -130,7 +137,7 @@ describe("canonical evidence dossier", () => {
         expect(report.reproducibility?.configHash).toBeUndefined();
         expect(report.reproducibility?.libraryHash).toBe(simulated.report.libraryHash);
         fs.writeFileSync(reportFile, JSON.stringify(report));
-        const built = await new CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(source, modes, out, {dossier: {reportFiles: [reportFile]}});
+        const built = await new CertificationEvidenceBundleBuilder("2.0.0").buildFromBundle(source, modes, out, {dossier: {reportFiles: [reportFile]}});
         expect(built.issues).toEqual([]);
         expect(built.manifest?.dossier.support.coverage).toBe("unavailable");
         expect(await new CertificationEvidenceBundleVerifier().verify(out, {sourceBundleDir: source, dossier: {reportFiles: [reportFile]}})).toEqual([]);
@@ -162,11 +169,11 @@ if (initialize) {
     fs.mkdirSync(modelSource, {recursive: true});
     const blueprint = ${JSON.stringify(fractionalBetBlueprint([0.05, 7.5, 1e-7], true))};
     fs.writeFileSync(path.join(modelSource, "package.json"), JSON.stringify({name: "dossier-model", version: "1", pokie: {entry: "index.cjs"}}));
-    fs.writeFileSync(path.join(modelSource, "index.cjs"), api.renderBuiltGameModule(blueprint, "1.3.0") + '\\nconst descriptor = module.exports.getModelDescriptor; module.exports.getModelDescriptor = () => ({...descriptor(), sourceKind: "custom"});');
+    fs.writeFileSync(path.join(modelSource, "index.cjs"), api.renderBuiltGameModule(blueprint, "2.0.0") + '\\nconst descriptor = module.exports.getModelDescriptor; module.exports.getModelDescriptor = () => ({...descriptor(), sourceKind: "custom"});');
     const loaded = await api.loadPokieGameRuntime(modelSource);
     try {
-        const generated = await api.generateExactWeightedOutcomeLibrary({libraryId: "actual-model", game: loaded.game, pokieVersion: "1.3.0"});
-        const written = await new api.OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{modeName: "base", libraryId: generated.library.libraryId, outcomes: generated.library.outcomes, generator: generated.diagnostics}], path.join(root, "source"));
+        const generated = await api.generateExactWeightedOutcomeLibrary({libraryId: "actual-model", game: loaded.game, pokieVersion: "2.0.0"});
+        const written = await new api.OutcomeLibraryBundleWriter("2.0.0").writeToDirectory([{modeName: "base", libraryId: generated.library.libraryId, outcomes: generated.library.outcomes, generator: generated.diagnostics}], path.join(root, "source"));
         if (!written.manifest) throw new Error(JSON.stringify(written.issues));
         const context = {seed: "audit-seed"};
         const session = loaded.game.createSession(context); session.setCreditsAmount(100);
@@ -174,12 +181,12 @@ if (initialize) {
         fs.writeFileSync(replayFiles[0], JSON.stringify(audit));
     } finally {await loaded.release();}
     const simulation = await new api.ParallelSimulationRunner(modelSource, 16, {seed: "statistics", workers: 1}).run();
-    const report = new api.SimulationReportBuilder().build({...simulation, requestedRounds: 16, seed: "statistics", durationMs: 12, pokieVersion: "1.3.0"});
+    const report = new api.SimulationReportBuilder().build({...simulation, requestedRounds: 16, seed: "statistics", durationMs: 12, pokieVersion: "2.0.0"});
     fs.writeFileSync(reportFiles[0], JSON.stringify(report));
 }
 const dossier = {modelSource, reportFiles, replayFiles, sourceRevision: "source-revision", candidateRevision: "candidate-revision"};
 const out = path.join(root, initialize ? "dossier" : "reproduced");
-const built = await new api.CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(path.join(root, "source"), ${JSON.stringify(modes)}, out, {dossier});
+const built = await new api.CertificationEvidenceBundleBuilder("2.0.0").buildFromBundle(path.join(root, "source"), ${JSON.stringify(modes)}, out, {dossier});
 if (!built.manifest) throw new Error(JSON.stringify(built.issues));
 const issues = await new api.CertificationEvidenceBundleVerifier().verify(path.join(root, "dossier"), {sourceBundleDir: path.join(root, "source"), dossier});
 console.log(JSON.stringify({pid: process.pid, issues, manifest: built.manifest, artifactHashes: built.artifactHashes}));
@@ -254,19 +261,19 @@ const wrongModel = path.join(root, "wrong-model"); fs.cpSync(modelSource, wrongM
 fs.appendFileSync(path.join(wrongModel, "index.cjs"), "\\n// different executable artifact with identical public game identity\\n");
 await rejects({...authorities, modelSource: wrongModel});
 const simulation = await new api.ParallelSimulationRunner(modelSource, 16, {seed: "other-statistics", workers: 1}).run();
-const otherReport = new api.SimulationReportBuilder().build({...simulation, requestedRounds: 16, seed: "other-statistics", durationMs: 12, pokieVersion: "1.3.0"});
+const otherReport = new api.SimulationReportBuilder().build({...simulation, requestedRounds: 16, seed: "other-statistics", durationMs: 12, pokieVersion: "2.0.0"});
 candidate = structuredClone(original);
 const rawReport = JSON.stringify(otherReport);
 candidate.dossier.statistics.estimates[0] = {raw: rawReport, hash: hash(rawReport), value: JSON.parse(rawReport)};
 await publish(candidate); await rejects(authorities); await publish(original);
 const badReport = structuredClone(otherReport); badReport.totalWin += 1; badReport.rtp = badReport.totalWin / badReport.totalBet;
 const badFile = path.join(root, "bad-report.json"); fs.writeFileSync(badFile, JSON.stringify(badReport));
-const refused = await new api.CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(source, ${JSON.stringify(modes)}, path.join(root, "refused"), {dossier: {...authorities, reportFiles: [badFile]}});
+const refused = await new api.CertificationEvidenceBundleBuilder("2.0.0").buildFromBundle(source, ${JSON.stringify(modes)}, path.join(root, "refused"), {dossier: {...authorities, reportFiles: [badFile]}});
 assert(!refused.manifest && refused.issues.some(issue => /deterministic execution/.test(issue.message)), JSON.stringify(refused.issues));
 assert(!fs.existsSync(path.join(root, "refused")));
 const badTarget = {...otherReport, targetRtp: 0.42, rtpDeviation: otherReport.rtp - 0.42};
 const targetFile = path.join(root, "bad-target.json"); fs.writeFileSync(targetFile, JSON.stringify(badTarget));
-const targetResult = await new api.CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(source, ${JSON.stringify(modes)}, path.join(root, "refused-target"), {dossier: {...authorities, reportFiles: [targetFile]}});
+const targetResult = await new api.CertificationEvidenceBundleBuilder("2.0.0").buildFromBundle(source, ${JSON.stringify(modes)}, path.join(root, "refused-target"), {dossier: {...authorities, reportFiles: [targetFile]}});
 assert(!targetResult.manifest && targetResult.issues.some(issue => /declared RTP target/.test(issue.message)), JSON.stringify(targetResult.issues));
 assert(!fs.existsSync(path.join(root, "refused-target")));
 candidate = structuredClone(original);
@@ -317,14 +324,14 @@ const root = process.argv[2], project = path.join(root, "model"), output = path.
 const library = path.join(project, "outcomelibrary");
 fs.cpSync(path.join(root, "source"), library, {recursive: true});
 const request = {bundleDir: "outcomelibrary", outDir: output, modes: ${JSON.stringify(modes)}, dossier: {modelSource: "."}};
-const service = new StudioCertificationService("1.3.0");
+const service = new StudioCertificationService("2.0.0");
 // The independently observed input remains invalid at the shared acquisition owner
 // and its builder/Studio callers: a readable library is not a package model.
 assert.equal(fs.existsSync(path.join(library, "package.json")), false);
 const sourceManifest = JSON.parse(fs.readFileSync(path.join(library, "manifest.json"), "utf8"));
 await assert.rejects(acquireCertificationDossier(sourceManifest, "unused", {modelSource: library}), /package.json/);
 const api = await import("@fromstan/pokie");
-const rejected = await new api.CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(library, request.modes, output, {dossier: {modelSource: library}});
+const rejected = await new api.CertificationEvidenceBundleBuilder("2.0.0").buildFromBundle(library, request.modes, output, {dossier: {modelSource: library}});
 assert(rejected.issues.some(issue => issue.code === "certification-dossier-input-invalid" && /package.json/.test(issue.message)), JSON.stringify(rejected));
 const wrongContext = await service.build(library, ".", request.modes, output, {dossier: request.dossier});
 assert.equal(wrongContext.status, "error", JSON.stringify(wrongContext));
@@ -352,7 +359,7 @@ await assert.rejects(service.download(project, request, "dossier.pdf", built.man
 fs.writeFileSync(modelFile, originalModel);
 assert.equal(service.requestIdentity(project, request), identity);
 const restored = await service.download(project, request, "dossier.pdf", built.manifest.evidenceContentHash);
-const fresh = await new StudioCertificationService("1.3.0").download(project, request, "dossier.pdf", built.manifest.evidenceContentHash);
+const fresh = await new StudioCertificationService("2.0.0").download(project, request, "dossier.pdf", built.manifest.evidenceContentHash);
 assert(restored.bytes.equals(pdf.bytes) && fresh.bytes.equals(pdf.bytes));
 console.log("library rejection/opened-package build/download/retry/stale-authority/restoration passed");
 `);

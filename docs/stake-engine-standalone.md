@@ -120,7 +120,7 @@ Numeric RTP, frequencies and centered moments are binary64 approximations. Ratio
 rather than a fixed number of fractional digits, preserving positive representable probabilities below 1e-18.
 Common weight scaling preserves the same ratios; it does not prove universally lossless floating-point analytics.
 Use the exact bucket weights and total for arbitrary-precision fraction reconstruction. `Number(probability)`
-provides an approximation to the bounded display string. See [the rare probability correction](audit-corrections/stake-probabilities.md).
+provides an approximation to the bounded display string. See [the rare probability correction](https://github.com/fromstan/pokie/blob/develop/docs/audit-corrections/stake-probabilities.md).
 
 Standalone weights accept positive UInt64 integers, and aggregate totals may exceed UInt64. IDs and raw
 `payoutMultiplier` values remain **nonnegative safe-integer numbers**, up to `Number.MAX_SAFE_INTEGER` (**9007199254740991**), in both

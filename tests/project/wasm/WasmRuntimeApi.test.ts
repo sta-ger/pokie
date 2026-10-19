@@ -1,3 +1,4 @@
+import {createBlueprintWasmArtifact} from "../../../src/wasm/createBlueprintWasmArtifact.js";
 import {evaluatorValidationCases, binarySections, sha256, createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {sharedSlotCustomSection, stableSlotMathJson, lowerSharedSlotMath, readSharedSlotMathResult} from "../../../src/wasm/math/SharedSlotMath.js";
 import {SeededPokieWasmHost, instantiatePokieWasm} from "../../../src/wasm/PokieWasmRuntime.js";
@@ -1205,5 +1206,22 @@ it.each(["plain", "stepwise", "composite"] as const)("retains model-feasible %s 
             runtime.dispose();
             receiver.dispose();
         }
+    }
+});
+
+
+it("executes the 2.0 producer descriptor through the direct runtime boundary", async () => {
+    const artifact = await createBlueprintWasmArtifact({manifest: {id: "release", name: "Release", version: "1"}, reels: 2, rows: 1, symbols: ["A"], reelStrips: [["A"], ["A"]], paylines: [[0, 0]], paytable: {A: {2: 2}}, availableBets: [0.05]});
+    expect(new TextDecoder().decode(artifact.bytes)).toContain("2.0.0");
+    expect(artifact.manifest.minPokieVersion).toBe("2.0.0");
+    const runtime = await instantiatePokieWasm(artifact.bytes, artifact.manifest, new SeededPokieWasmHost("release"));
+    try {
+        const session = runtime.createSession("release");
+        const before = session.serialize();
+        await expect(session.play({bet: 1})).rejects.toThrow(/bet 1 is unavailable/);
+        expect(session.serialize()).toEqual(before);
+        expect(await session.play({bet: 0.05})).toMatchObject({sequence: 1, stake: 0.05, payout: 0.1, winMultiplier: 2});
+    } finally {
+        runtime.dispose(); 
     }
 });

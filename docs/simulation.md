@@ -11,11 +11,27 @@ uses supported population adapters, a separately seeded fixed held-out assessmen
 confidence intervals. Simulation precision convergence is not optimization target attainment; neither a
 short zero-variance sample nor an empirical maximum supplies a mathematical support bound.
 
-Feature analytics remain partial: aggregate/report statistics, mode/feature breakdowns, and outcome-event
-analysis exist, but do not constitute complete feature analytics. Reports support JSON, Markdown, and HTML;
-PAR workbook exchange is a separate model format. YAML authoring and PDF report output are absent from the
-reviewed capabilities. Report and Outcome Library/Stake comparisons are partial coverage for math-definition
-diff, not arbitrary mathematical model comparison. See the [status register](audit-corrections/README.md).
+[Feature analytics](#feature-analytics-aggregates-v2c-16) record canonical entries, retriggers,
+completions, duration/bonus-win distributions, component hits, weighted selections and payout attribution
+for supported authored mechanics. Reports label actual paid/logical/subround populations and denominators;
+overlapping lifecycle summaries are separate from the additive base/feature/jackpot/unavailable monetary
+partition. Canonical feature WASM supplies lifecycle/component evidence; ordinary amount-only WASM,
+flattened outcome events and custom sessions cannot establish missing lifecycle attribution. Missing
+capabilities remain unavailable rather than observed zero. See the
+[launch support register](v2-completion/launch-mechanics-support.md) for composition and target limits.
+
+Ordinary simulation reports support JSON, Markdown and HTML. Canonical certification dossiers separately
+support JSON, console text, Markdown, HTML and local selectable-text PDF through
+[`pokie report`](cli.md#pokie-report-simulationreportjson); this does not add PDF output to ordinary simulation
+or outcome-analysis reports. See [dossier preparation](certification-evidence-bundle.md). Dossier preparation
+does not establish regulatory certification. PAR workbook exchange is a separate model format.
+YAML authoring and dossier YAML output remain unimplemented.
+
+[Canonical definition comparison](math-modeling.md#canonical-definition-comparison-v2c-18) reads authoritative
+Blueprint, package descriptor, PAR and canonical WASM models through the shared CLI/Studio differ. Statistical
+report and Outcome Library/Stake aggregate comparisons remain separate workflows. Partial models retain
+limits; matching observed totals cannot prove definition equality or arbitrary custom-code behavior.
+Historical assessments are retained as engineering history, not current support guidance.
 
 `Simulation` drives any `GameSessionHandling` (e.g. `VideoSlotSession`) through repeated rounds and aggregates
 statistics — the tool for RTP/volatility/hit-frequency work. See
@@ -619,7 +635,7 @@ Reports without sequence fields remain comparable. Cancelled/failed simulation j
 keep their existing partial-result/completion contract; editor previews are not
 observed simulation results.
 
-Authored Hold&Win/jackpot/mode compositions use the existing aggregate/parallel runners and report renderers. Actual charged stake remains the denominator; zero-stake continuation payouts retain feature attribution. Jackpot statistics are run-local deltas, including reused/restored sessions. Each simulation worker owns independent session-local accumulating pools; reports do not represent one shared progressive. Fixed pools count contributions without growing their balance. A fixed mode selector intentionally repeats purchases when available, unlike Play's fresh-action purchase controls. Incomplete feature tails remain incomplete observations. See [the catalogue](v2-completion/V2C-12.md).
+Authored Hold&Win/jackpot/mode compositions use the existing aggregate/parallel runners and report renderers. Actual charged stake remains the denominator; zero-stake continuation payouts retain feature attribution. Jackpot statistics are run-local deltas, including reused/restored sessions. Each simulation worker owns independent session-local accumulating pools; reports do not represent one shared progressive. Fixed pools count contributions without growing their balance. A fixed mode selector intentionally repeats purchases when available, unlike Play's fresh-action purchase controls. Incomplete feature tails remain incomplete observations. See [the catalogue](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-12.md).
 
 Authored modifier reports expose `modifiers.steps`, `ruleApplications`,
 `stickySteps` (including the expiry application) and `multipliedComponents`.

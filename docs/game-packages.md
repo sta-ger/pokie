@@ -57,7 +57,7 @@ field:
     "name": "sample-slot",
     "version": "1.0.0",
     "dependencies": {
-        "@fromstan/pokie": "^1.3.0"
+        "@fromstan/pokie": "^2.0.0"
     },
     "pokie": {
         "entry": "./dist/index.js"
@@ -205,7 +205,7 @@ own strict validation requirements, including the game validator for custom payl
 
 ## Generated, visible and evaluated coordinates
 
-Blueprint screenGeometry, generated packages and conversion support: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).
+Blueprint screenGeometry, generated packages and conversion support: see [the coordinate contract and adapter support matrix](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-03.md).
 
 ### Exact audit capability
 
@@ -363,7 +363,7 @@ Blueprint `mechanics` accepts `freeGames`, `holdAndWin`, `jackpot`, `modifiers`,
 
 All symbol references must be declared. A fixed pool uses `{"id":"mini","type":"fixed","amount":10}`. The percentage is a fraction in [0,1] of the actual charged stake, including ante/purchase multiplication. Zero-stake continuations contribute nothing. Fixed pools record contributions in statistics but their balance never grows. Accumulating pools are constructed fresh per session; each award pays the pre-reset value and resets to the configured seed.
 
-Assembly order is base (optionally free games), Hold&Win if present, executable bet modes if present, then jackpot. Jackpot remains outside suppression and mode multiplication. Free games and Hold&Win cannot coexist: their competing continuation/banking rules are rejected. Existing geometry restrictions remain. The [authored catalogue](v2-completion/V2C-12.md) records each supported variant/composition separately from the random-strategy compatibility catalogue.
+Assembly order is base (optionally free games), Hold&Win if present, executable bet modes if present, then jackpot. Jackpot remains outside suppression and mode multiplication. Free games and Hold&Win cannot coexist: their competing continuation/banking rules are rejected. Existing geometry restrictions remain. The [authored catalogue](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-12.md) records each supported variant/composition separately from the random-strategy compatibility catalogue.
 
 Executable modes require every mode's `runtimeType`, exactly one safe default, and compatible free games for purchases. `costMultiplier`/labels/`isDefault` without runtime semantics remain metadata; `forcedFreeGames` without runtime opt-in is invalid. Base/ante selections persist. Buy-feature selection is consumed once at entry and resets to the default; another purchase requires a fresh action after feature completion. Original charged mode attribution remains available separately from current selection.
 
@@ -431,6 +431,6 @@ instantiate custom sessions to infer a theorem. A complete descriptor, a
 cannot establish arbitrary TypeScript executable fidelity. Undeclared max-win
 policy and unsupported nested collaborators remain unknown. Source-path
 acquisition owns and releases its snapshot; a direct supplied game remains
-caller-owned. See [V2C-19](v2-completion/V2C-19.md) for supported checks and limits.
+caller-owned. See [V2C-19](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-19.md) for supported checks and limits.
 
 See [finite same-type math optimization](optimization.md) for MathTarget units, policy validation, supported tuning contracts, locks, evidence and explicit candidate publication.

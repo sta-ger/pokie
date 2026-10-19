@@ -1,3 +1,4 @@
+import {POKIE_VERSION} from "../PokieVersion.js";
 import {FixedBetModeForNextSimulationRoundSetting} from "../simulation/FixedBetModeForNextSimulationRoundSetting.js";
 import {AuditRoundReplay, buildAuditRoundRecording, captureAuditBoundary, captureAuditDelivery, validateAuditRoundRecording} from "./AuditRoundReplay.js";
 import type {AuditDelivery, AuditDisposition, AuditRoundRecording} from "./AuditRoundRecording.js";
@@ -248,11 +249,11 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         // The live session now describes the next play; only the accepted result owns this step's charge.
         let artifact = finalResult && slot.getSymbolsCombination && slot.getWinEvaluationResult
             ? new PokieJsonRoundArtifactProjector().project(buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {
-                roundId: logicalRound?.id ?? `replay:${seed ?? "no-seed"}:${round}`, stake: finalResult.stake, betMode: finalResult.mode, provenance: {game: manifest, pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})},
+                roundId: logicalRound?.id ?? `replay:${seed ?? "no-seed"}:${round}`, stake: finalResult.stake, betMode: finalResult.mode, provenance: {game: manifest, pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})},
             })) : undefined;
 
         if (logicalRound && slot.getWinEvaluationResult) artifact = new PokieJsonRoundArtifactProjector().project(buildLogicalRoundArtifact(logicalRound,
-            buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}})));
+            buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: POKIE_VERSION, ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}})));
         const unit = selector ? "step" : options.unit;
         const commands = selector ? executedCommands : options.entryCommands;
         return {

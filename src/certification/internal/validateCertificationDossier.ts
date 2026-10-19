@@ -25,7 +25,7 @@ export function validateCertificationDossier(value: unknown, manifest: Certifica
     closed(value.reproduction, ["selection", "runtime", "recordings", "commands", "variableMetadata"]);
     closed(value.support, ["notice", "coverage", "limitations", "sdk", "fairness", "yaml"]);
     const d = value as unknown as CertificationDossier;
-    if (![manifest.pokieVersion, manifest.artifactPokieVersion].every(version => (/^1\.3\.\d+(?:[-+][A-Za-z0-9.-]+)?$/).test(version))) throw new Error("Unsupported dossier producer/artifact runtime; launch dossier v1 supports POKIE 1.3.x only.");
+    if (![manifest.pokieVersion, manifest.artifactPokieVersion].every(version => typeof version === "string" && version === version.trim() && (/^(?:1\.3|2\.0)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/).test(version))) throw new Error("Unsupported dossier producer/artifact runtime; dossier v1 supports POKIE 2.0.x (and retained 1.3.x evidence) only. Rebuild with a compatible runtime; do not relabel artifact provenance.");
     const source = d.identity.sourceBundleManifest;
     if (source.schemaVersion !== 1) throw new Error("Unsupported retained source-bundle manifest version; expected 1.");
     if (source.configHash !== manifest.configHash || source.artifactPokieVersion !== manifest.artifactPokieVersion || dossierHash(source.game) !== dossierHash(manifest.game)) throw new Error("Contradictory retained source provenance.");

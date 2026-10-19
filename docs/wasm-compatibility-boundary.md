@@ -245,7 +245,7 @@ Restore replaces the session and ends its collector. Cancel/dispose also
 invalidate pending initialization before it can publish a replacement.
 
 CLI and direct server simulation use collector-free sessions and aggregate results with `workers=1`. The Studio browser executes fixed-budget simulation in a production module Worker, reusing `collectPokieWasmSimulation`, shared command sequencing and `SimulationAccumulator`. Replay reuses `collectPokieWasmReplay` and the existing replay runtime, keeping only the final requested observation. CLI retains its requested command/result batch. Neither path keeps cumulative continuation history.
-See [P9-02 measurements](audit-corrections/compact-wasm-state.md) for bounds,
+See [P9-02 measurements](https://github.com/fromstan/pokie/blob/develop/docs/audit-corrections/compact-wasm-state.md) for bounds,
 accounting and focused regression commands.
 
 ## Generated, visible and evaluated coordinates
@@ -270,7 +270,7 @@ Portable replay remains distinct from package audit recordings. CLI and Studio
 forward modes and logical-round intent for supported artifacts; Play is
 process-only, and simulation excludes delivery-only frames from mathematical
 sampling while preserving money, lifecycle and weighted counters. See the
-[V2C-21 receipt](v2-completion/V2C-21.md) for executed candidate evidence and
+[V2C-21 receipt](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-21.md) for executed candidate evidence and
 pending controller review.
 
 ## Bounded authored mechanics (V2C-14)

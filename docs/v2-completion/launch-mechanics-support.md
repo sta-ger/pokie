@@ -1,4 +1,4 @@
-# Launch mechanics workflow register — V2C-15 candidate
+# Launch mechanics workflow register — POKIE 2.0 candidate
 
 This register covers mandatory authored workflows. It does not replace
 `GameMechanicCompatibilityCatalog`, which describes random strategies. The
@@ -10,11 +10,12 @@ owner. Additional cases name variant-specific edge, rejection and expiry tests. 
 expectations in `WeightedBonusAuthoring.test.ts` prevent deleting a family/row
 from making completeness pass.
 
-Candidate execution and independent acceptance are distinct. Every row below
-has an implemented path and fixtures; current candidate execution is recorded
-in [V2C-15](V2C-15.md). Independent approval and controller gates remain **open**
-for every cell until those authorities record acceptance. Historical
-[V2C-12](V2C-12.md), [V2C-13](V2C-13.md), and [V2C-14](V2C-14.md) receipts are
+Implementation coverage, historical execution and independent acceptance are distinct. Every row below
+has an implemented path and fixtures; historical workflow execution is recorded
+in [V2C-15](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-15.md). Those observations do not establish execution or acceptance of the current 2.0 candidate.
+Current focused checks are recorded in [V2C-30](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-30.md).
+Independent approval and controller gates remain **open** for the current candidate until those authorities record acceptance. Historical
+[V2C-12](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-12.md), [V2C-13](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-13.md), and [V2C-14](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-14.md) receipts are
 preserved, and are not current-candidate execution evidence.
 
 ## Cell assertions and fixture owners
@@ -158,7 +159,7 @@ surfaces, and resolves full test declarations with the TypeScript parser. This
 checks reference integrity; executed behavioral assertions provide coverage.
 Neither parsed references nor historical receipts establish acceptance.
 Current repair execution and independent/controller decisions remain in
-[V2C-15](V2C-15.md); all acceptance cells are still open.
+[V2C-15](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-15.md); all acceptance cells are still open.
 
 V2C-16 adds shared bounded analytics to the existing supported simulation rows,
 without expanding mechanic compositions or target support. Duration counts executed
@@ -179,7 +180,7 @@ listed in [math-modeling.md](../math-modeling.md#canonical-definition-comparison
 
 ## Advanced declared-model analysis (V2C-19)
 
-The [V2C-19 boundary](V2C-19.md) records each source/mechanic adapter, initial-state
+The [V2C-19 boundary](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-19.md) records each source/mechanic adapter, initial-state
 and numeric assumptions, supported checks, all-path termination semantics and
 unsupported persistent state. Blueprint runtime handlers are reused; custom
 executable fidelity is never inferred from descriptor completeness. Exhausted
@@ -187,11 +188,11 @@ analysis budgets remain unknown, distinct from runtime respin caps and cascade
 limit rejection. CLI/Studio/definition diff retain the same report and witnesses.
 
 V2C-20 shares the ordinary lines/ways/clusters math kernel between generated Node and canonical WASM.
-ABI 2.0 uses one i32 stop per reel, supports models above the former 30-bit total and binds exact executable
+ABI 3.0 uses one i32 stop per reel, supports models above the former 30-bit total and binds exact executable
 bytes to the effective model and component descriptor. Fractional components multiply before addition;
 ways/clusters retain selected-group aggregation. Portable consumers still expose amount-only analytics,
 without invented feature events. See [WASM limits and continuation](../wasm-compatibility-boundary.md).
-Independent controller review and workflow verification are recorded separately in [the V2C-20 receipt](V2C-20.md).
+Independent controller review and workflow verification are recorded separately in [the V2C-20 receipt](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-20.md).
 
 ## Portable feature execution (V2C-21)
 
@@ -216,7 +217,7 @@ retain current progress and one delivery, with no completed-round history.
 This adds supported portable cells; it does not widen incompatible compositions,
 custom code/services, PAR geometry, or paid-grid outcome-library/Stake targets.
 See [the current WASM boundary](../wasm-compatibility-boundary.md) and
-[the candidate receipt](V2C-21.md). Independent approval and controller gates are
+[the candidate receipt](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-21.md). Independent approval and controller gates are
 separate from implementation test evidence.
 
 V2C-26 PAR fidelity coverage reopens actual ExcelJS workbooks for every existing
@@ -237,4 +238,4 @@ restore a lossless claim. Import and re-export do not implicitly save the draft.
 
 ## Canonical dossier preparation (V2C-27)
 
-V2C-27 adds versioned canonical dossier sections through the existing builder/verifier, authoritative model rules/field coverage, canonical statistics and executable audit replay when explicitly supplied. Formats are JSON, console text, Markdown, HTML and local selectable-text PDF. Partial/custom/unknown model authority remains visible. Outcome-only dossiers cannot establish originating rules; SDK/fairness evidence is explicitly unavailable. YAML is optional and unimplemented. This is assessment preparation, not certification; independent review and controller gates remain separate. See [the dossier contract](../certification-evidence-bundle.md) and [implementation receipt](V2C-27.md).
+V2C-27 adds versioned canonical dossier sections through the existing builder/verifier, authoritative model rules/field coverage, canonical statistics and executable audit replay when explicitly supplied. Formats are JSON, console text, Markdown, HTML and local selectable-text PDF. Partial/custom/unknown model authority remains visible. Outcome-only dossiers cannot establish originating rules; SDK/fairness evidence is explicitly unavailable. YAML is optional and unimplemented. This is assessment preparation, not certification; independent review and controller gates remain separate. See [the dossier contract](../certification-evidence-bundle.md) and [implementation receipt](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-27.md).

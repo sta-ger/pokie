@@ -16,7 +16,7 @@ npm package — see [`docs/README.md`](README.md) for the library's own API refe
 | `npm run test:coverage` | `pokie` + `studio-client-components` + `pokie-integration` + `studio-client-workflows`, with `--coverage` | on | Checking coverage without also paying for the packaging smoke test |
 | `npm run test:packaging` | Just `tests/packaging/npmPackSmoke.test.ts` (real `npm pack` → install → spawn) | n/a | Verifying the published package boundary in isolation |
 | `npm run test:report -- --lane <fast\|full\|release>` | Runs that lane through `jest --json` and prints the slowest suites + lane wall time | n/a | Diagnosing a performance regression |
-| `npm run bench` | The `pokie-benchmarks` lane (`benchmarks/**/*.bench.ts`) — prints throughput/memory/timing baselines | n/a | Comparing before/after a perf-sensitive change (see [`benchmarks/README.md`](../benchmarks/README.md)) |
+| `npm run bench` | The `pokie-benchmarks` lane (`benchmarks/**/*.bench.ts`) — prints throughput/memory/timing baselines | n/a | Comparing before/after a perf-sensitive change (see [`benchmarks/README.md`](https://github.com/fromstan/pokie/blob/develop/benchmarks/README.md)) |
 
 `npm test` no longer collects coverage or runs the packaging smoke test by default — both still
 exist, just behind their own commands (`test:coverage`, `test:packaging`, both folded into
@@ -113,7 +113,7 @@ throughput/memory (`AggregateSimulationRunner`), `workers=1` vs `workers=4` real
 comparison (`ParallelSimulationRunner`), Stake Engine standalone analysis/diff timing, random game
 blueprint generation timing, and simulation report build/render timing. Each prints a `[bench] ...`
 line with its numbers; none of them assert a hard wall-clock or memory threshold — see
-[`benchmarks/README.md`](../benchmarks/README.md) for why a fixed threshold here would be a flaky
+[`benchmarks/README.md`](https://github.com/fromstan/pokie/blob/develop/benchmarks/README.md) for why a fixed threshold here would be a flaky
 gate rather than a useful one, and why this lane deliberately sits outside every other lane above.
 
 ## TypeScript in tests: transpile-only, checked once

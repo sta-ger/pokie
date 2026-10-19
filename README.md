@@ -1,30 +1,22 @@
 # FromStan/POKIE
 
-[![npm version](https://img.shields.io/npm/v/@fromstan/pokie.svg)](https://www.npmjs.com/package/@fromstan/pokie)
-[![license](https://img.shields.io/npm/l/@fromstan/pokie.svg)](LICENSE)
+ISC-licensed **game math**, a headless JavaScript/TypeScript runtime, CLI and local Studio for authoring and reproducible experiments.
 
-_In Australia, they call slot machines "pokies"._
+**Unpublished 2.0.0 candidate.** Registry availability, repository transfer and site deployment have not been established by this preparation.
+Install a controller-produced archive using its actual filename (`npm install /absolute/path/to/archive.tgz`),
+or a built checkout (`npm install /absolute/path/to/pokie`). Run the installed `pokie` for global Studio Home,
+or `pokie <project>` for a Project. `pokie create` authors a Blueprint; `pokie init` prepares a code-first package;
+`pokie build SOURCE --target TARGET` owns artifact conversions. Future registry-based commands below are conditional on publication.
 
-Introducing **POKIE**, a server-side video slot game logic framework for JavaScript and TypeScript.
-For developers and game-math authors, with **Studio** for producers to design and test games locally.
-Start with `npx --package @fromstan/pokie pokie`: edit a starter, **Create game** to save and open its workspace, check **Overview**,
-then **Play** a round. Use the workspace’s **Build/Export** for a playable package or another local artifact.
-Structural validation and simulation do not establish certification; operator integration remains developer work.
-
-`npm install @fromstan/pokie`
-
-This is the planned scoped identity, not a claim of registry availability or scope ownership.
-For an unpublished candidate, install a controller-produced local archive (`npm install /path/to/fromstan-pokie.tgz`)
-or use a built local checkout (`npm install /path/to/pokie`). Then run the installed `pokie` binary.
 Repository/site targets are [fromstan/pokie](https://github.com/fromstan/pokie) and
-[pokie.fromstan.com](https://pokie.fromstan.com); account access and hosting are external prerequisites.
-The existing 1.3.0 version is candidate planning metadata; this campaign does not release it.
+[pokie.fromstan.com](https://pokie.fromstan.com); account access, hosting and publication require separate authorization.
+See [2.0 candidate notes](CHANGELOG.md) and [release preparation](docs/v2-completion/release-preparation.md).
 
 The public-site target provides [Getting started](https://pokie.fromstan.com/docs/getting-started/),
 [CLI/API and build](https://pokie.fromstan.com/docs/cli-api/) and [the docs index](https://pokie.fromstan.com/docs/).
 Deployment is separately controlled; [repository guides](docs/README.md) remain available before hosting.
 Build and preview the actual static site with `npm run site:build` and `npm run site:preview`;
-see [static handoff instructions](site/README.md). Output is isolated in `site/.output/`.
+see [static handoff instructions](https://github.com/fromstan/pokie/blob/develop/site/README.md). Output is isolated in `site/.output/`.
 
 > **⚠️ RNG:** default `PseudorandomNumberGenerator` uses `Math.random()` — not cryptographically secure.
 > `SecureRandomNumberGenerator` gives a stronger, production-like, security-sensitive RNG primitive built on
@@ -269,18 +261,18 @@ resolution is protected by a max-step guard for deterministic runtime safety.
 - **Math** — configure a session and run Monte Carlo simulations to balance RTP, hit frequency, and volatility
   before a game ships.
 
-POKIE's WASM target and generated Node games share the `pokie.math.v2` WebAssembly evaluator for ordinary
-lines, ways and clusters, including fractional stakes, wilds and authored paytables. ABI 2.0 uses an i32 stop
-array with no total-bit cap; the host owns randomness, continuation, ledger and IO. Blueprint, PAR and complete
-declared package models use model-preserving conversion; arbitrary TypeScript behavior is not compiled.
-Feature mechanics remain outside this WASM slice. See the [execution and resource boundaries](docs/wasm-compatibility-boundary.md).
+POKIE's WASM target and generated Node games share the `pokie.math.v2` evaluator.
+Component contract 1.0.0, ABI 3.0.0, runtime API 2.1.0 and compact state v3/v4 are independent of package 2.0.0.
+Supported models include bounded feature composition; arbitrary TypeScript behavior is not compiled.
+See the [WASM execution/resource boundary](docs/wasm-compatibility-boundary.md) and
+[authored workflow and target support](docs/v2-completion/launch-mechanics-support.md).
 
-Math targeting supports [finite exact and bounded seeded same-type optimization](docs/optimization.md),
-with independent sampled assessment and explicit candidate publication, not arbitrary mechanics or certification.
-Its public release scope remains unconfirmed. Authored YAML and
-PDF reports are absent from the reviewed formats. Overscan, partial analytics/certification/authoring/diff/
-reachability, existing v2 deferrals, and Cloud/private RGS hypotheses are distinguished in the
-[reviewed status register](docs/audit-corrections/README.md). Documenting a gap does not complete it.
+Math targeting supports [finite exact and bounded seeded same-type optimization](docs/optimization.md)
+with explicit candidate save/apply. Dossier/PDF preparation, simulations, fairness proofs and technical SDK
+compatibility do not establish regulatory certification. Accounts, KYC, production RGS integration and
+regulatory compliance belong to operators. Local transactional storage and external-wallet outbox/reconciliation
+contracts do not provide distributed ACID. Studio Play is process-only, with no production settlement guarantee.
+ISC attribution and AS-IS terms apply; no managed hosting, commercial support or service-level commitment is supplied.
 
 ## Examples
 

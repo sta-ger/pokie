@@ -1,3 +1,4 @@
+import {POKIE_VERSION} from "../../PokieVersion.js";
 import {stabilizeWorkbookContainer} from "./stabilizeWorkbookContainer.js";
 import {resolveSharedSlotMathModel} from "../../generated/resolveSharedSlotMathModel.js";
 import {integerRelativeWeights} from "../../session/videoslot/combinations/WeightedSymbolsSequence.js";
@@ -186,7 +187,7 @@ async function measureGame(
         const result = await generateExactWeightedOutcomeLibrary({
             libraryId: "optimization",
             game: selectedGame,
-            pokieVersion: "1.3.0",
+            pokieVersion: POKIE_VERSION,
             exact: true,
             stake: policy.stake,
             maxOutcomeSpaceSize: BigInt(policy.maxOutcomes),
@@ -249,7 +250,7 @@ export async function acquireOptimizationAdapter(
                 const data = value as NativeModel;
                 const output = path.join(directory, "candidate");
                 if (project.type === "outcomeLibrary") {
-                    const written = await new OutcomeLibraryBundleWriter("1.3.0", undefined, () => new Date(0)).writeToDirectory(
+                    const written = await new OutcomeLibraryBundleWriter(POKIE_VERSION, undefined, () => new Date(0)).writeToDirectory(
                         Object.entries(data.modes).map(([modeName, mode]) => ({
                             modeName,
                             libraryId: mode.libraryId!,
@@ -592,7 +593,7 @@ async function verifyWasmExecutable(
         library = await generateExactWeightedOutcomeLibrary({
             game: selectStake(sourceGame, policy.stake),
             libraryId: "wasm-proof",
-            pokieVersion: "1.3.0",
+            pokieVersion: POKIE_VERSION,
             stake: policy.stake,
             exact: true,
             maxOutcomeSpaceSize: BigInt(policy.maxOutcomes),

@@ -16,7 +16,7 @@ Create an editable model, build a supported artifact, validate its structure, si
 
 ## Candidate access
 
-The target identity is `@fromstan/pokie`; the executable remains `pokie`. This checkout is an **unpublished candidate**, not a claim of registry availability or a released 1.3.0. Use a controller-produced local archive or a built checkout as described in [Getting started](getting-started.md#install-the-candidate).
+The target identity is `@fromstan/pokie`; the executable remains `pokie`. This checkout is an **unpublished candidate**, not a claim of registry availability or a released 2.0.0. Use a controller-produced local archive or a built checkout as described in [Getting started](getting-started.md#install-the-candidate).
 
 This static site targets **pokie.fromstan.com**. Preparing its files does not deploy it. Hosting and account access are separate steps.
 

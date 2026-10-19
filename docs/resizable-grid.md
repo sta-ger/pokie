@@ -77,4 +77,4 @@ own on top of grid resizing.
 
 ## Generated, visible and evaluated coordinates
 
-Coordinate support boundary: ragged grids retain their full shape; nonidentity overscan is rejected: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).
+Coordinate support boundary: ragged grids retain their full shape; nonidentity overscan is rejected: see [the coordinate contract and adapter support matrix](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-03.md).

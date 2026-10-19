@@ -57,7 +57,7 @@ template invalidates the corresponding identity; regenerate into a new destinati
 Library use exposes the same contracts:
 
 ```ts
-const result = await new CertificationEvidenceBundleBuilder("1.3.0").buildFromBundle(
+const result = await new CertificationEvidenceBundleBuilder("2.0.0").buildFromBundle(
     sourceBundleDir, modes, newOrEmptyDirectory,
     {dossier: {modelSource, reportFiles, replayFiles}, output: {formats: ["html", "pdf"]}, signal},
 );
@@ -91,7 +91,9 @@ through `ParallelSimulationRunner` and compared on mathematical/statistical fiel
 is required for runtime-report/runtime-replay evidence. Native sampled outcome reports instead bind `libraryHash` and mode, reproduce through the existing outcome sampler, and do not invent a config hash; a Blueprint/PAR/WASM definition alone does not grant
 arbitrary execution. Unsupported codecs or missing captures remain unavailable/partial.
 
-Compatibility is explicit: launch dossier 1 supports POKIE **1.3.x** producer/artifact runtimes, descriptor
+Compatibility is explicit: dossier 1 supports POKIE **2.0.x** producer/artifact runtimes (including prerelease/build labels),
+with retained **1.3.x** reading compatibility for internal engineering evidence. Other runtime lanes and malformed
+versions reject with a rebuild diagnostic; provenance must never be relabelled. The independent contracts remain, descriptor
 and Blueprint schema 1, canonical simulation report 1, `pokie.audit-round.v1` and
 `pokie.session-runtime.v1`. Legacy sample-only manifests, legacy reports and incompatible versions must
 be regenerated. Missing/duplicate/unknown sections, malformed metric extensions, missing/extra inventory

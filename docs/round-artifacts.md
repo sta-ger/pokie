@@ -127,7 +127,7 @@ import {buildRoundArtifactFromSession} from "@fromstan/pokie";
 session.play();
 const artifact = buildRoundArtifactFromSession(session, {
     roundId: "round-42",
-    provenance: {game: game.getManifest(), pokieVersion: "1.3.0"},
+    provenance: {game: game.getManifest(), pokieVersion: "2.0.0"},
 });
 ```
 
@@ -145,7 +145,7 @@ import {buildRoundArtifact} from "@fromstan/pokie";
 
 const artifact = buildRoundArtifact({
     roundId: "round-42",
-    provenance: {game: game.getManifest(), pokieVersion: "1.3.0"},
+    provenance: {game: game.getManifest(), pokieVersion: "2.0.0"},
     betMode: "base",
     stake: 5,
     steps: cascadeResult.getCascadeSteps().map((step) => ({
@@ -251,7 +251,7 @@ if (issues.some((issue) => issue.severity === "error")) {
 
 ## Generated, visible and evaluated coordinates
 
-Canonical generated evidence and the separate PublicRoundArtifactProjector: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).
+Canonical generated evidence and the separate PublicRoundArtifactProjector: see [the coordinate contract and adapter support matrix](https://github.com/fromstan/pokie/blob/develop/docs/v2-completion/V2C-03.md).
 
 ### Retained logical rounds
 

@@ -397,7 +397,7 @@ that, treat any future "just make Stake Engine a target" request as reopening a 
 answered here.
 
 Cloud and private RGS remain product hypotheses. Local `serve`/`dev` and this SDK are implemented primitives;
-they do not establish either product. See the [reviewed status register](audit-corrections/README.md).
+they do not establish either product. See the [reviewed status register](https://github.com/fromstan/pokie/blob/develop/docs/audit-corrections/README.md).
 
 
 ## Canonical dossier preparation (V2C-27)
