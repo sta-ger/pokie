@@ -1,4 +1,4 @@
-import {ChildProcessWithoutNullStreams, execFileSync, spawnSync} from "child_process";
+import {ChildProcessWithoutNullStreams, execFileSync, spawnSync, type SpawnSyncReturns} from "child_process";
 import {createHash} from "crypto";
 import fs from "fs";
 import os from "os";
@@ -6,7 +6,7 @@ import path from "path";
 import {pathToFileURL} from "url";
 import {createServer} from "node:http";
 import {constants, runInThisContext} from "node:vm";
-import {BUILT_PACKAGE_FILES} from "@fromstan/pokie";
+import {BUILT_PACKAGE_FILES, type AdvancedModelValidationReport} from "@fromstan/pokie";
 import {registerCliCommands} from "../../cli/registerCliCommands.js";
 import {fractionalBetBlueprint, FRACTIONAL_MIXED_CONTINUATION} from "../fixtures/math/FractionalBetFixture.js";
 import {authoritativePaytableBlueprint} from "../fixtures/math/AuthoritativePaytableFixture.js";
@@ -16,6 +16,51 @@ import {writeRareStakeDirectory, markRecognizedStakeProject} from "../stakeengin
 import {selectPackedArchive} from "./helpers/selectPackedArchive.js";
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
+
+type InstalledValidationContract = {
+    kind: string;
+    exitCode: 0 | 2;
+    advanced: Pick<AdvancedModelValidationReport, "adapter" | "structuralValid" | "status" | "verdict" | "executableFidelity">;
+};
+
+const declarationOnly = {status: "unsupported", verdict: "inconclusive", executableFidelity: "unverified"} as const;
+const installedValidationContracts = {
+    blueprint: {kind: "blueprint", exitCode: 0, advanced: {adapter: "blueprint-runtime-v1", structuralValid: true, status: "complete", verdict: "proved-within-assumptions", executableFidelity: "declarative-runtime-contract"}},
+    generatedPackage: {kind: "package", exitCode: 2, advanced: {...declarationOnly, adapter: "tsPackage-declaration-v1", structuralValid: true}},
+    legacyPackage: {kind: "package", exitCode: 2, advanced: {...declarationOnly, adapter: "tsPackage-declaration-v1", structuralValid: null}},
+    outcomeLibrary: {kind: "outcome-library", exitCode: 2, advanced: {...declarationOnly, adapter: "outcomeLibrary-declaration-v1", structuralValid: null}},
+    stakeAdapter: {kind: "stake-engine", exitCode: 2, advanced: {...declarationOnly, adapter: "stakeAdapter-declaration-v1", structuralValid: null}},
+    parWorkbook: {kind: "package", exitCode: 2, advanced: {...declarationOnly, adapter: "parWorkbook-declaration-v1", structuralValid: true}},
+    wasm: {kind: "wasm", exitCode: 2, advanced: {...declarationOnly, adapter: "wasm-declaration-v1", structuralValid: true}},
+    randomBlueprint: {kind: "blueprint", exitCode: 2, advanced: {adapter: "blueprint-runtime-v1", structuralValid: true, status: "budget-exhausted", verdict: "inconclusive", executableFidelity: "declarative-runtime-contract"}},
+} satisfies Record<string, InstalledValidationContract>;
+
+function expectInstalledValidation(result: SpawnSyncReturns<string | Buffer>, contract: InstalledValidationContract): {advanced: AdvancedModelValidationReport; deep: boolean} {
+    expect(result.error).toBeUndefined();
+    expect(result.signal).toBeNull();
+    expect(result.status).toBe(contract.exitCode);
+    const report = JSON.parse(result.stdout.toString()) as {advanced: AdvancedModelValidationReport; deep: boolean};
+    // Structural validity, declared-model analysis and process success are distinct contracts.
+    expect(report).toMatchObject({schemaVersion: 1, project: {kind: contract.kind}, valid: true, errors: []});
+    expect(report.advanced).toMatchObject({schemaVersion: 1, scope: "declared-model", ...contract.advanced});
+    if (contract.advanced.executableFidelity === "unverified") {
+        expect(report.advanced.checks).toContainEqual(expect.objectContaining({id: "source.executable-fidelity", status: "unknown"}));
+    }
+    return report;
+}
+
+function expectGeneratedPackageValidation(result: SpawnSyncReturns<string | Buffer>): void {
+    const {advanced} = expectInstalledValidation(result, installedValidationContracts.generatedPackage);
+    expect(advanced.issues.some(issue => issue.code === "max-win-policy-unknown")).toBe(false);
+    expect(advanced.checks).toContainEqual(expect.objectContaining({id: "invariants.runtime", status: "pass"}));
+}
+
+function expectLegacyPackageValidation(result: SpawnSyncReturns<string | Buffer>): void {
+    const {advanced} = expectInstalledValidation(result, installedValidationContracts.legacyPackage);
+    for (const code of ["legacy-model-unavailable", "max-win-policy-unknown"]) {
+        expect(advanced.issues).toContainEqual(expect.objectContaining({code}));
+    }
+}
 
 function createExternalSmokeDirectory(prefix: string): string {
     const checkout = fs.realpathSync(REPO_ROOT);
@@ -520,8 +565,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             const sim = path.join(installDir!, `${phase}-generated-sim.json`);
             const markdown = path.join(installDir!, `${phase}-generated-report.md`);
             const replay = path.join(installDir!, `${phase}-generated-replay.json`);
+            const validation = spawnSync(pokieBinPath, ["validate", root, "--format", "json"], {cwd: installDir, encoding: "utf8", timeout: 60000});
+            expectGeneratedPackageValidation(validation);
             for (const args of [
-                ["inspect", root], ["validate", root],
+                ["inspect", root],
                 ["sim", root, "--rounds", "3", "--seed", "0", "--out", sim],
                 ["report", sim, "--format", "markdown", "--out", markdown],
                 ["replay", root, "--round", "3", "--seed", "0", "--out", replay],
@@ -826,10 +873,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             } finally {await runtime.release();}
         `;
         const before = JSON.parse(installedProbe("custom-before", probe));
-        for (const command of ["inspect", "validate"]) {
-            const result = spawnSync(pokieBinPath, [command, root], {cwd: installDir, encoding: "utf8", timeout: 60000});
-            expect(result.status).toBe(0);
-        }
+        const inspection = spawnSync(pokieBinPath, ["inspect", root], {cwd: installDir, encoding: "utf8", timeout: 60000});
+        expect(inspection.status).toBe(0);
+        const validation = spawnSync(pokieBinPath, ["validate", root, "--format", "json"], {cwd: installDir, encoding: "utf8", timeout: 60000});
+        expectLegacyPackageValidation(validation);
         const simulation = spawnSync(pokieBinPath, ["sim", root, "--rounds", "4", "--seed", "custom-seed", "--out", path.join(installDir!, "custom-sim.json")], {cwd: installDir, encoding: "utf8", timeout: 60000});
         expect(simulation.status).toBe(0);
         for (const target of ["blueprint", "tsPackage", "parWorkbook", "wasm"]) {
@@ -975,7 +1022,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         try {
             execFileSync(pokieBinPath, ["build", blueprintPath, "--target", "wasm", "--out", wasmPath], {cwd: workflowDir, encoding: "utf-8"});
             expect(execFileSync(pokieBinPath, ["inspect", wasmPath], {cwd: workflowDir, encoding: "utf-8"})).toContain("canonical ABI operations: play, replay");
-            expect(execFileSync(pokieBinPath, ["validate", wasmPath, "--format", "json"], {cwd: workflowDir, encoding: "utf-8"})).toContain('"valid": true');
+            const validation = spawnSync(pokieBinPath, ["validate", wasmPath, "--format", "json"], {cwd: workflowDir, encoding: "utf-8", timeout: 60000});
+            expectInstalledValidation(validation, installedValidationContracts.wasm);
             expect(execFileSync(pokieBinPath, ["run", wasmPath, "--seed", "installed"], {cwd: workflowDir, encoding: "utf-8"})).toContain("POKIE WASM round 1");
 
             const workerScript = path.join(workflowDir, "wasm-worker-protocol.mjs");
@@ -1142,8 +1190,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }));
         try {
             const sources: Record<string, string> = {blueprint: blueprintPath};
+            expectInstalledValidation(spawnSync(pokieBinPath, ["validate", blueprintPath, "--format", "json"], {cwd: directory, encoding: "utf-8", timeout: 60000}), installedValidationContracts.blueprint);
             const names = {tsPackage: "package", outcomeLibrary: "outcome", stakeAdapter: "stake", parWorkbook: "model.xlsx", wasm: "game.wasm"};
-            for (const [target, name] of Object.entries(names)) {
+            for (const target of Object.keys(names) as Array<keyof typeof names>) {
+                const name = names[target];
                 const destination = path.join(directory, name);
                 sources[target] = destination;
                 const preview = spawnSync(pokieBinPath, ["build", blueprintPath, "--target", target, "--out", destination, "--dry-run"], {cwd: directory, encoding: "utf-8"});
@@ -1153,11 +1203,13 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 const built = spawnSync(pokieBinPath, ["build", blueprintPath, "--target", target, "--out", destination], {cwd: directory, encoding: "utf-8"});
                 expect(built.status).toBe(0);
                 expect(built.stderr).toBe("");
-                for (const command of ["inspect", "validate"]) {
-                    const readback = spawnSync(pokieBinPath, [command, destination, ...(command === "validate" ? ["--format", "json"] : [])], {cwd: directory, encoding: "utf-8"});
-                    expect(readback.status).toBe(0);
-                    expect(readback.stderr).toBe("");
-                }
+                const inspection = spawnSync(pokieBinPath, ["inspect", destination], {cwd: directory, encoding: "utf-8"});
+                expect(inspection.status).toBe(0);
+                expect(inspection.stderr).toBe("");
+                const validation = spawnSync(pokieBinPath, ["validate", destination, "--format", "json"], {cwd: directory, encoding: "utf-8", timeout: 60000});
+                expect(validation.stderr).toBe("");
+                if (target === "tsPackage") expectGeneratedPackageValidation(validation);
+                else expectInstalledValidation(validation, installedValidationContracts[target]);
             }
             for (const type of ["outcomeLibrary", "stakeAdapter", "wasm"]) {
                 const output = path.join(directory, `unsupported-${type}.json`);
@@ -1318,8 +1370,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(scaffoldedPkg.dependencies?.["@fromstan/pokie"]).toBe(`^${ownVersion}`);
         expect(fs.existsSync(path.join(projectRoot, "node_modules", "@fromstan", "pokie", "package.json"))).toBe(true);
 
-        const validate = spawnSync(pokieBinPath, ["validate", projectRoot], {cwd: installDir, encoding: "utf-8", timeout: 60000});
-        expect(validate.status).toBe(0);
+        const validate = spawnSync(pokieBinPath, ["validate", projectRoot, "--format", "json"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        expectLegacyPackageValidation(validate);
 
         const simFile = path.join(installDir!, "init-sim.json");
         const sim = spawnSync(pokieBinPath, ["sim", projectRoot, "--rounds", "200", "--seed", "demo", "--out", simFile], {
@@ -1412,8 +1464,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const game = require(path.join(reinstalledRoot, "dist", "index.js")) as {getManifest(): {id: string}};
         expect(game.getManifest().id).toBeDefined();
 
-        const validate = spawnSync(pokieBinPath, ["validate", reinstalledRoot], {cwd: installDir, encoding: "utf-8", timeout: 60000});
-        expect(validate.status).toBe(0);
+        const validate = spawnSync(pokieBinPath, ["validate", reinstalledRoot, "--format", "json"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        expectLegacyPackageValidation(validate);
     });
 
     // Real "npm install" resolves a `file:` spec as a symlink, recording it in package-lock.json as its
@@ -1442,8 +1494,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const game = require(path.join(movedRoot, "dist", "index.js")) as {getManifest(): {id: string}};
         expect(game.getManifest().id).toBeDefined();
 
-        const validate = spawnSync(pokieBinPath, ["validate", movedRoot], {cwd: installDir, encoding: "utf-8", timeout: 60000});
-        expect(validate.status).toBe(0);
+        const validate = spawnSync(pokieBinPath, ["validate", movedRoot, "--format", "json"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        expectLegacyPackageValidation(validate);
     });
 
     smokeIt("runs the public outcome-library lifecycle against a package built by the installed binary itself", () => {
@@ -1493,12 +1545,14 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         });
         expect(bundleBuild.status).toBe(0);
 
-        const bundleValidate = spawnSync(pokieBinPath, ["validate", bundleDir, "--deep"], {
+        const bundleValidate = spawnSync(pokieBinPath, ["validate", bundleDir, "--deep", "--format", "json"], {
             cwd: installDir,
             encoding: "utf-8",
             timeout: 60000,
         });
-        expect(bundleValidate.status).toBe(0);
+        const bundleValidation = expectInstalledValidation(bundleValidate, installedValidationContracts.outcomeLibrary);
+        expect(bundleValidation.deep).toBe(true);
+        expect(bundleValidation.advanced.issues).toContainEqual(expect.objectContaining({code: "outcome-only-definition-unavailable"}));
 
         const inspect = spawnSync(pokieBinPath, ["inspect", bundleDir], {
             cwd: installDir,
@@ -1571,7 +1625,12 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             const createdBlueprintPath = path.join(workflowRoot, "created.blueprint.json");
             run("create", ["create", "Packed Workflow", "--random", "--seed", "71", "--out", createdBlueprintPath]);
             expectFile(createdBlueprintPath);
-            run("validate", ["validate", createdBlueprintPath, "--format", "json"]);
+            // The default random strips have at least 15^3 stop tuples: structural
+            // validity does not remove the default advanced-analysis limit of 1000 outcomes.
+            const validation = run("validate", ["validate", createdBlueprintPath, "--format", "json"], 2);
+            const randomValidation = expectInstalledValidation(validation, installedValidationContracts.randomBlueprint);
+            expect(randomValidation.advanced.work.outcomes).toBe(randomValidation.advanced.limits.outcomes);
+            expect(randomValidation.advanced.limitations).toContain("Analysis outcomes limit exhausted.");
 
             run("build", ["build", blueprintPath, "--target", "tsPackage", "--out", packageRoot]);
             expectDirectory(packageRoot);
