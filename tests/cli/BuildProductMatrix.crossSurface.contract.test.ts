@@ -5,6 +5,7 @@ import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT}
 import fs from "fs";
 import os from "os";
 import path from "path";
+import ts from "typescript";
 import {
     ArtifactBuilderRegistry,
     ArtifactTargetType,
@@ -57,6 +58,39 @@ async function resolveRequired(resolver: ProjectTargetResolver, projectRoot: str
     return project;
 }
 
+// Source-contract fixture, never a delivered-package substitute. Snapshotting the whole checkout
+// repeatedly copies its docs, test evidence and every compiled output tree. Give native generated
+// modules the current source runtime alone, keeping the real loader and dependency graph intact.
+function createMatrixRuntimeFixture(directory: string): void {
+    const metadata = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
+    fs.mkdirSync(directory);
+    fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({
+        name: metadata.name,
+        version: metadata.version,
+        type: "commonjs",
+        main: "./index.js",
+        exports: {".": "./index.js"},
+        dependencies: metadata.dependencies,
+    }));
+    const compile = (sourceDirectory: string, outputDirectory: string): void => {
+        fs.mkdirSync(outputDirectory, {recursive: true});
+        for (const entry of fs.readdirSync(sourceDirectory, {withFileTypes: true})) {
+            const source = path.join(sourceDirectory, entry.name);
+            const output = path.join(outputDirectory, entry.name);
+            if (entry.isDirectory()) compile(source, output);
+            else if (entry.name.endsWith(".mjs")) fs.copyFileSync(source, output);
+            else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) {
+                fs.writeFileSync(output.replace(/\.ts$/, ".js"), ts.transpileModule(fs.readFileSync(source, "utf8"), {
+                    fileName: source,
+                    compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true},
+                }).outputText);
+            }
+        }
+    };
+    compile(path.join(process.cwd(), "src"), directory);
+    fs.symlinkSync(path.join(process.cwd(), "node_modules"), path.join(directory, "node_modules"), "dir");
+}
+
 // Produces real, resolver-recognizable sources. An in-memory registry/resolver double could only prove its
 // own imitation of the artifacts that the public registry, CLI, and Studio must consume.
 async function createSource(
@@ -99,8 +133,11 @@ async function createSource(
 
 describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
     let restoreTemporaryDirectory: () => void;
+    let runtimeFixture: string;
     beforeAll(() => {
         restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        runtimeFixture = path.join(os.tmpdir(), "matrix-source-runtime");
+        createMatrixRuntimeFixture(runtimeFixture);
     });
     afterAll(() => {
         restoreTemporaryDirectory();
@@ -115,7 +152,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
     beforeEach(() => {
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-product-matrix-test-"));
         resolver = new ProjectTargetResolver();
-        registry = new ArtifactBuilderRegistry("1.3.0").withRuntimePackageRoot(process.cwd());
+        registry = new ArtifactBuilderRegistry("1.3.0").withRuntimePackageRoot(runtimeFixture);
         studio = new StudioArtifactBuildService("1.3.0", registry, resolver);
         logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
     });
