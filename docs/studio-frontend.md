@@ -33,9 +33,18 @@ tabs never loses in-progress work):
   generated idea, or existing Blueprint. `BlueprintEditorPage` in `guided` mode checks the current
   revision automatically; **Create game** saves/registers the design once and opens that saved workspace.
   JSON, file load/save, and PAR import live behind **Show advanced options**. PAR Apply updates the draft.
-  Package and PAR artifact publication live in the saved workspace’s **Build/Export**, with destination
-  preflight and explicit terminal results. Home does not also publish an unsaved draft through Build Package.
+  Package and PAR artifact publication are available in the saved workspace’s **Build/Export**, with
+  destination preflight and explicit terminal results. Design's advanced **Build Package** also builds
+  the current validated draft without saving its source; subsequent edits mark that build stale.
   Saving, runtime preparation, project validation, and building an artifact are distinct results.
+
+  Applied Design edits are retained in the local Studio application profile for explicit **Restore**
+  or **Discard** after a browser/server restart, with an immediate per-tab recovery cache as well.
+  Recovery never saves a user project, runs a build, or marks a draft clean. An explicit source/job
+  opening takes precedence. The profile holds one recoverable Design draft; another editor changing
+  that slot prevents an older editor from overwriting or clearing it. A recovery-storage failure
+  leaves the current draft editable and shows an error; use **Save** to keep a project. Unapplied
+  JSON/whole-sequence text remains local to the mounted editor until its explicit Apply action.
 
   The design fields are grouped into 6 named sections — Game basics, Layout, Symbols,
   Reels, Paytable, Bets — via `components/blueprintEditor/SectionedFormEditor.tsx`, a Mantine `Tabs`

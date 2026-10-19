@@ -6,7 +6,6 @@ import {checkBlueprintSource, loadBlueprint, saveBlueprint, saveManagedBlueprint
 import type {ParSheetConversionEvidence, StudioProjectRegistryView} from "../../api/types";
 import {useAllowNextDesignNavigation} from "../../context/DesignNavigationGuardContext";
 import {useStudioApi} from "../../context/StudioApiProvider";
-import {clearPersistedBlueprintDraft, loadPersistedBlueprintDraft, savePersistedBlueprintDraft} from "../../domain/blueprintDraftStorage";
 import {createRecommendedBlueprint} from "../../domain/blueprintEditorState";
 import {errorMessage} from "../../domain/errorMessage";
 import {describePathActionError} from "../../domain/pathActionError";
@@ -21,6 +20,7 @@ import {
 } from "../../domain/interpret/BlueprintEditor";
 import type {BuiltBlueprintSnapshot} from "../../domain/interpret/Home";
 import {useBlueprintEditor, type BlueprintMutate} from "../../hooks/useBlueprintEditor";
+import {useBlueprintDraftRecovery} from "../../hooks/useBlueprintDraftRecovery";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useDesignFocusVisibility} from "../../hooks/useDesignFocusVisibility";
@@ -163,14 +163,10 @@ export function BlueprintEditorPage({
     const workspaceOpenRequestIdRef = useRef(0);
     const [showManagedConflictComparison, setShowManagedConflictComparison] = useState(false);
     const [validationView, setValidationView] = useState<BlueprintValidationView>({status: "idle"});
-    // Read once, at mount, whatever a previous Design Game session left in this browser tab's own draft-
-    // recovery slot (see blueprintDraftStorage.ts) -- undefined when there's nothing to recover, storage
-    // is unusable, or this page mounted with an explicit `initialPath` (a deliberate navigation that
-    // already knows exactly which blueprint it wants -- see the initialPath effect below, which would
-    // otherwise race this same draft for "what the editor opens showing"). A
-    // once-only useState (its setter is never called) rather than a ref, since a ref's `.current` can't
-    // be read during render -- same pattern CertificationTab's own persistedFields uses.
-    const [persistedDraft] = useState(() => (guided && !initialPath ? loadPersistedBlueprintDraft() : undefined));
+    // Offer this tab's cached draft immediately, or read the local Studio profile on mount. An
+    // explicit source/job route owns its initial document. A late profile read cannot replace edits;
+    // Restore remains an explicit replacement through the same identity/dirty guards as Load.
+    const {persistedDraft, recoveryError, saveDraft, clearDraft} = useBlueprintDraftRecovery(fetchImpl, guided, guided && !initialPath && recoveryRequest === undefined);
     const [draftRecoveryDismissed, setDraftRecoveryDismissed] = useState(false);
     // The persistent "last successful build" record BlueprintBuildPanel renders -- kept here, not inside
     // that panel's own local state, so it survives that panel's own key={`build-${formGeneration}`}
@@ -496,7 +492,7 @@ export function BlueprintEditorPage({
             return undefined;
         }
         if (!isInitialMount) {
-            savePersistedBlueprintDraft(editor.state.blueprint, importedFromParSheetPath, parConversionEvidence);
+            saveDraft(editor.state.blueprint, importedFromParSheetPath, parConversionEvidence);
         }
         autoValidateTimer.schedule(handleValidate, AUTO_VALIDATE_DEBOUNCE_MS);
         return autoValidateTimer.cancel;
@@ -805,7 +801,7 @@ export function BlueprintEditorPage({
 
     // Draft recovery -- "Restore" replaces the current (still-blank, since `persistedDraft` only reads
     // non-undefined when nothing else has loaded first -- see its own doc comment) draft with whatever
-    // this tab's own recovery slot held. A wholesale replace like Load, except deliberately NOT marked
+    // tab/profile recovery slot held. A wholesale replace like Load, except deliberately NOT marked
     // clean the way a real Load is: a recovered draft was never confirmed saved anywhere, valid or not
     // (see this step's own "invalid drafts recover/autosave but cannot run required-valid operations"
     // contract -- Save/Build below already gate on validity, not on this). "Discard" clears the slot and
@@ -832,7 +828,7 @@ export function BlueprintEditorPage({
     };
 
     const handleDiscardDraft = (): void => {
-        clearPersistedBlueprintDraft();
+        clearDraft();
         setDraftRecoveryDismissed(true);
     };
 
@@ -1071,7 +1067,7 @@ export function BlueprintEditorPage({
                                 setManagedSaveView({status: "idle"});
                                 return;
                             }
-                            clearPersistedBlueprintDraft();
+                            clearDraft();
                             // The saved project is now visibly represented by its Workspace, not by
                             // the hidden creator. Clear the creator result before navigating so a
                             // late render cannot pair a successful Workspace with stale save error
@@ -1204,13 +1200,15 @@ export function BlueprintEditorPage({
 
             {persistedDraft && !draftRecoveryDismissed && (
                 <RecoveryNotice
-                    message="Recovered an unsaved draft from your last session in this tab."
+                    message="Recovered an unsaved draft from your last Studio session."
                     actionLabel="Restore"
                     onAction={handleRestoreDraft}
                     secondaryActionLabel="Discard"
                     onSecondaryAction={handleDiscardDraft}
                 />
             )}
+
+            {guided && recoveryError && <Text role="status" c="orange" mb="sm">Draft recovery is unavailable: {recoveryError} Your current draft remains in this tab; use Save to keep a project.</Text>}
 
             {guided && recoveredDestination !== undefined && (
                 <Text size="sm" mb="sm" style={{overflowWrap: "anywhere"}}>

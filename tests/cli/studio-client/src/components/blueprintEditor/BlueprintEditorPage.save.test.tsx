@@ -67,7 +67,7 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         renderWithProviders(<BlueprintEditorPage guided />, {fetchImpl});
 
         await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/blueprints/validate")).toHaveLength(1), {timeout: 1500});
-        const body = JSON.parse(calls[0].init?.body ?? "{}");
+        const body = JSON.parse(calls.find(call => call.url === "/api/home/blueprints/validate")!.init?.body ?? "{}");
         expect(body.blueprint.manifest).toMatchObject({id: "starter-slot", name: "Starter Slot"});
     });
 
