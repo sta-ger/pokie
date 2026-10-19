@@ -15,6 +15,60 @@ import {writeRareStakeDirectory, markRecognizedStakeProject} from "../stakeengin
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
 
+function selectPackedArchive(directory: string, stdout: string): string {
+    const packRoot = fs.realpathSync(directory);
+    const archives = fs.readdirSync(packRoot).filter(filename => filename.endsWith(".tgz"));
+    const diagnostic = `npm pack stdout:\n${stdout}`;
+    if (archives.length !== 1) {
+        throw new Error(`Expected exactly one npm pack archive in ${packRoot}; found ${archives.length}: ${JSON.stringify(archives)}.\n${diagnostic}`);
+    }
+    const archive = path.join(packRoot, archives[0]);
+    // A directory entry is never parsed from lifecycle logs. Reject aliases as
+    // well, so npm install can only consume a regular file owned by this pack.
+    if (!fs.lstatSync(archive).isFile() || path.dirname(fs.realpathSync(archive)) !== packRoot) {
+        throw new Error(`npm pack archive must be a regular file inside ${packRoot}: ${archive}.\n${diagnostic}`);
+    }
+    return archive;
+}
+
+it("selects only the owned archive and preserves pack diagnostics across rejection and reuse", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pack-selection-"));
+    const packRoot = path.join(directory, "pack output with spaces");
+    fs.mkdirSync(packRoot);
+    const filename = "fromstan-pokie-2.0.0.tgz";
+    const archive = path.join(packRoot, filename);
+    const stdout = `prepack diagnostic\n${filename}\n`;
+    try {
+        expect(() => selectPackedArchive(packRoot, stdout)).toThrow("found 0");
+        expect(() => selectPackedArchive(packRoot, stdout)).toThrow(stdout);
+        fs.writeFileSync(archive, "archive fixture");
+        expect(selectPackedArchive(packRoot, stdout)).toBe(archive);
+        expect(selectPackedArchive(packRoot, `${directory}/outside.tgz\n`)).toBe(archive);
+        const second = path.join(packRoot, "second.tgz");
+        fs.writeFileSync(second, "ambiguous archive");
+        expect(() => selectPackedArchive(packRoot, stdout)).toThrow("found 2");
+        fs.rmSync(second);
+        expect(selectPackedArchive(packRoot, stdout)).toBe(archive);
+        fs.rmSync(archive);
+        fs.writeFileSync(path.join(directory, "outside.tgz"), "unowned archive");
+        fs.symlinkSync("../outside.tgz", archive);
+        expect(() => selectPackedArchive(packRoot, stdout)).toThrow("regular file inside");
+        fs.rmSync(archive);
+        fs.symlinkSync("../missing.tgz", archive);
+        expect(() => selectPackedArchive(packRoot, stdout)).toThrow("regular file inside");
+        fs.rmSync(archive);
+        fs.mkdirSync(archive);
+        expect(() => selectPackedArchive(packRoot, stdout)).toThrow("regular file inside");
+        fs.rmdirSync(archive);
+        fs.writeFileSync(archive, "archive fixture");
+        expect(selectPackedArchive(packRoot, filename)).toBe(archive);
+        expect(selectPackedArchive(packRoot, stdout)).toBe(archive);
+        expect(fs.readFileSync(path.join(directory, "outside.tgz"), "utf8")).toBe("unowned archive");
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
 function createExternalSmokeDirectory(prefix: string): string {
     const checkout = fs.realpathSync(REPO_ROOT);
     // Jest may deliberately put TMPDIR under node_modules. Resolve aliases before
@@ -213,7 +267,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // Keep the real tarball and npm's output outside the candidate tree.
         // `npm pack --json` includes one record per shipped file; once the package exceeded 8,000
         // files that output crossed execFileSync's default 1 MiB buffer and failed with ENOBUFS.
-        // Silent non-JSON mode emits only the tarball filename and remains bounded as the package grows.
+        // Non-JSON mode avoids the per-file inventory, but prepack can still emit
+        // Vite logs. Select the archive from the fresh directory, not stdout.
         const handoffConfig = process.env.POKIE_P805_RELEASE_HANDOFF;
         const p911Candidate = await readSharedSmokeCandidate(process.env);
         if (p911Candidate) {
@@ -248,14 +303,13 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             // descendants and awaited cleanup even when it fails or times out.
             const packChild = spawnP911Child("npm", ["pack", "--silent", "--pack-destination", packDir], {cwd: REPO_ROOT, timeoutMs: 180000});
             spawnedSmokeChildren.add(packChild);
-            let filename: string;
+            let stdout: string;
             try {
-                filename = (await waitP911Child(packChild)).stdout.trim();
+                stdout = (await waitP911Child(packChild)).stdout;
             } finally {
                 await stopChild(packChild);
             }
-            expect(filename).toBe(path.basename(filename));
-            tarballPath = path.join(packDir, filename);
+            tarballPath = selectPackedArchive(packDir, stdout);
         }
         expect(fs.existsSync(tarballPath)).toBe(true);
 
