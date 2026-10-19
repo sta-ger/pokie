@@ -188,6 +188,55 @@ describe("V2C-30 release preparation", () => {
         expect(read("docs/v2-completion/V2C-29.md")).toContain("1.3.0");
     });
 
+    it.each([
+        {
+            file: "docs/cli.md", start: "## What's next", end: "## Headless runtime contract",
+            supported: ["local static documentation site, gallery and playground are implemented", "local preparation",
+                "local Worker", "seeded Play, Simulation, Replay, optimization preview", "reproducible downloads",
+                "free games, Hold&Win, jackpots, bet modes, wild/screen modifiers", "bounded cascades/respins/collections and weighted bonuses",
+                "screenGeometry", "generated, visible and evaluated coordinates", "canonical definition comparison",
+                "reachability, all-path termination and invariant analysis", "canonical lifecycle/component analytics",
+                "Ordinary simulation reports support JSON, Markdown and HTML", "canonical dossiers separately support console text and local selectable-text PDF"],
+            limits: ["does not execute arbitrary visitor-supplied JavaScript", "does not establish hosted availability or candidate acceptance",
+                "supported compositions and artifact targets", "custom-only", "lossy extraction is blocked", "per-reel offsets and nonidentity ragged geometry are unsupported",
+                "exhausted budgets remain unknown", "amount-only or custom sources cannot supply missing attribution",
+                "YAML remains unimplemented", "do not provide a cross-store transaction", "require separate authorization"],
+        },
+        {
+            file: "docs/math-modeling.md", start: "# Modeling Slot Math with POKIE", end: "A worked walkthrough",
+            supported: ["screenGeometry", "generated, visible and evaluated coordinates", "Rectangular overscan and fractional visible windows are supported",
+                "free games, Hold&Win, jackpots, bet modes", "expanding/sticky/restricted/multiplier wilds", "transforms/reel replacements",
+                "bounded cascades/respins/collections and weighted bonuses", "runtime/restore, simulation/report, extraction, PAR and replay workflows",
+                "Canonical definition comparison", "authoritative Blueprint, package descriptor, PAR and canonical WASM data",
+                "Advanced declared-model validation", "bounded reachability, all-path termination and invariant analysis"],
+            limits: ["per-reel offsets, fractional evaluation cells and nonidentity ragged geometry are unsupported",
+                "Supported compositions and artifact targets remain explicit", "custom-only", "lossy extraction is blocked", "PAR does not represent nonidentity geometry",
+                "partial/unsupported status", "separate from statistical report and Outcome Library/Stake comparisons",
+                "Exhausted budgets remain unknown", "completeness does not prove arbitrary custom-code behavior", "persistent-state limitations"],
+        },
+        {
+            file: "docs/simulation.md", start: "# Simulation", end: "`Simulation` drives",
+            supported: ["canonical entries, retriggers, completions, duration/bonus-win distributions, component hits, weighted selections and payout attribution",
+                "actual paid/logical/subround populations and denominators", "additive base/feature/jackpot/unavailable monetary partition",
+                "Canonical feature WASM supplies lifecycle/component evidence", "Ordinary simulation reports support JSON, Markdown and HTML",
+                "Canonical certification dossiers separately support JSON, console text, Markdown, HTML and local selectable-text PDF",
+                "Canonical definition comparison", "shared CLI/Studio differ"],
+            limits: ["ordinary amount-only WASM, flattened outcome events and custom sessions cannot establish missing lifecycle attribution",
+                "Missing capabilities remain unavailable rather than observed zero", "composition and target limits",
+                "does not add PDF output to ordinary simulation or outcome-analysis reports", "does not establish regulatory certification",
+                "PAR workbook exchange is a separate model format", "YAML authoring and dossier YAML output remain unimplemented",
+                "aggregate comparisons remain separate workflows", "cannot prove definition equality or arbitrary custom-code behavior"],
+        },
+    ])("keeps the maintained $file capability summary current and bounded", ({file, start, end, supported, limits}) => {
+        const text = read(file);
+        expect(text).toContain(start);
+        const summary = text.split(start)[1].split(end)[0].replace(/\s+/g, " ");
+        for (const phrase of [...supported, ...limits]) expect(summary).toContain(phrase);
+        expect(summary).toContain("v2-completion/launch-mechanics-support.md");
+        expect(summary).toContain("Historical assessments are retained as engineering history, not current support guidance");
+        expect(summary).not.toMatch(/audit-corrections|defer(?:s|red)? the docs site|remains partial relative|do not supply an explicit overscan|Feature analytics remain partial|PDF report output (?:are|is) absent/);
+    });
+
     it("inventories all outputs, state boundaries and existing local script commands without asserting missing artifacts", () => {
         assertPlan(plan);
         for (const script of ["build", "site:build", "site:preview"]) {

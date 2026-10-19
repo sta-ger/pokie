@@ -3761,15 +3761,32 @@ a gap in coverage.
 
 Property-based and golden-output testing are implemented, as recorded in the
 [storage and recovery contracts](game-session.md#durable-external-wallet-reconciliation), alongside
-[performance benchmarks](testing.md#benchmarks). The closeout explicitly defers the docs site/playground and
-true cross-store atomicity to v2. The optional local transactional reference adapter is now documented
-below; independent external stores remain outside its guarantee. Compensation and reconciliation
-do not provide a cross-store transaction.
-A named expanding/sticky-wilds decorator and organization/npm migration remain future directions; this
-summary assigns no new release commitment. [Math optimization](optimization.md) supports exact finite and
-bounded seeded same-type tuning, with explicit source authority, held-out assessment and candidate-only saves
-on nonattainment; arbitrary mechanics and release scope remain unconfirmed. See the [reviewed status register](https://github.com/fromstan/pokie/blob/develop/docs/audit-corrections/README.md) for partial and
-not-found directions, including authoring, analytics, certification, diff, reachability, overscan, and formats.
+[performance benchmarks](testing.md#benchmarks). The local static documentation site, gallery and playground
+are implemented; see [local preparation](v2-completion/release-preparation.md) for build/preview commands.
+The playground runs bounded supported Blueprint/WASM models in a local Worker, with seeded Play, Simulation,
+Replay, optimization preview and reproducible downloads. It does not execute arbitrary visitor-supplied
+JavaScript. A local build does not establish hosted availability or candidate acceptance.
+
+Current authored support includes free games, Hold&Win, jackpots, bet modes, wild/screen modifiers,
+bounded cascades/respins/collections and weighted bonuses through the supported editor, build, extraction,
+PAR, simulation and replay paths. The [launch support register](v2-completion/launch-mechanics-support.md)
+names the supported compositions and artifact targets; arbitrary callbacks and dynamic targets remain
+custom-only, and lossy extraction is blocked. Blueprint `screenGeometry` distinguishes generated, visible
+and evaluated coordinates, including fractional visible windows with discrete evaluation cells;
+per-reel offsets and nonidentity ragged geometry are unsupported. See [modeling contracts](math-modeling.md)
+for those coordinate limits, read-only canonical definition comparison and bounded declared-model
+reachability, all-path termination and invariant analysis. These analyses do not prove arbitrary custom-code
+behavior; exhausted budgets remain unknown. Simulation reports include canonical lifecycle/component
+analytics when supplied by the runtime; amount-only or custom sources cannot supply missing attribution.
+Ordinary simulation reports support JSON, Markdown and HTML; canonical dossiers separately support console
+text and local selectable-text PDF as well. YAML remains unimplemented. Historical assessments are retained
+as engineering history, not current support guidance.
+
+The optional local transactional reference adapter is documented below; independent external stores remain
+outside its guarantee. Compensation and reconciliation do not provide a cross-store transaction.
+[Math optimization](optimization.md) supports exact finite and bounded seeded same-type tuning, with explicit
+source authority, held-out assessment and candidate-only saves on nonattainment. Organization/npm migration
+and every public release action require separate authorization under the preparation plan.
 
 ## Headless runtime contract
 

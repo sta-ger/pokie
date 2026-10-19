@@ -4,12 +4,27 @@
 
 This walkthrough covers manual modeling, measurement, and iteration. The separate
 [optimization workflow](optimization.md) supports declared same-type tunables with finite exact or bounded
-seeded search, held-out confidence assessment, locks and explicit saves. It does not promise arbitrary
-mechanics or exact numerical attainment from noisy observations; release scope remains unconfirmed. Reel strips,
-visible rows, and resizable grids do not supply an explicit overscan model. Blueprint schema/editor mechanics
-authoring covers win models, free games, and bet modes, but remains partial relative to composable runtime
-mechanics. Blueprint symbol/reel/paytable reachability checks are limited checks, not generic mechanics/state
-reachability. See the [status register](https://github.com/fromstan/pokie/blob/develop/docs/audit-corrections/README.md).
+seeded search, held-out confidence assessment, locks and explicit saves. Noisy observations do not guarantee
+exact target attainment.
+
+Blueprint `screenGeometry` declares generated, visible and evaluated coordinates. Rectangular overscan and
+fractional visible windows are supported, while evaluation cells and paylines remain discrete. Windows span
+all reels; per-reel offsets, fractional evaluation cells and nonidentity ragged geometry are unsupported.
+Authored mechanics include free games, Hold&Win, jackpots, bet modes, expanding/sticky/restricted/multiplier
+wilds, transforms/reel replacements, bounded cascades/respins/collections and weighted bonuses. Their
+editor, build, runtime/restore, simulation/report, extraction, PAR and replay workflows are mapped in the
+[launch support register](v2-completion/launch-mechanics-support.md). Supported compositions and artifact
+targets remain explicit; arbitrary callbacks and dynamic targets remain custom-only, and lossy extraction
+is blocked. PAR does not represent nonidentity geometry.
+
+[Canonical definition comparison](#canonical-definition-comparison-v2c-18) reads authoritative Blueprint,
+package descriptor, PAR and canonical WASM data, preserving partial/unsupported status when authority is
+incomplete. It is separate from statistical report and Outcome Library/Stake comparisons.
+[Advanced declared-model validation](#advanced-declared-model-validation) adds bounded reachability,
+all-path termination and invariant analysis using supported runtime handlers or finite declared transitions.
+Exhausted budgets remain unknown; descriptor or transition completeness does not prove arbitrary custom-code
+behavior, and persistent-state limitations remain explicit. Historical assessments are retained as
+engineering history, not current support guidance.
 
 A worked walkthrough of using POKIE to balance RTP, hit frequency, and volatility for a video slot's math model.
 
