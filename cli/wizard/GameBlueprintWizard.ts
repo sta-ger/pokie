@@ -1,4 +1,5 @@
 import {
+    ScreenProjection,
     SlotGameNameGenerator,
     type GameBlueprint,
     type GameBlueprintManifest,
@@ -91,8 +92,21 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
             const wilds = await this.askWilds(prompt, symbols, editing);
             const scatters = await this.askScatters(prompt, symbols, wilds ?? [], editing);
             const availableBets = await this.askAvailableBets(prompt);
-            const paylines = await this.askPaylines(prompt, reels, rows, editing);
-            const paytable = await this.askPaytable(prompt, symbols, reels, wilds ?? [], editing);
+            const screenGeometry = editing ? this.defaults.screenGeometry : undefined;
+            const winModel = editing ? this.defaults.winModel : undefined;
+            let evaluatedRows = rows;
+            if (screenGeometry !== undefined) {
+                try {
+                    const projection = new ScreenProjection(screenGeometry);
+                    if (projection.getGeometry().generated.reels === reels && projection.getRows("visible") === rows) {
+                        evaluatedRows = projection.getRows("evaluated");
+                    }
+                } catch {
+                    // Retain invalid geometry for the canonical validator to diagnose before Save.
+                }
+            }
+            const paylines = await this.askPaylines(prompt, reels, evaluatedRows, editing);
+            const paytable = await this.askPaytable(prompt, symbols, reels, evaluatedRows, wilds ?? [], scatters ?? [], winModel?.type === "clusters", editing);
             // A "generated" reelStripGeneration has no representation in this wizard's own reel-weighting
             // question (symbolWeights or literal reelStrips only) -- "pokie reel generate" is the
             // dedicated editor for that shape (see its own doc comment), so an edit run carries it through
@@ -123,6 +137,8 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
                 rows,
                 symbols,
                 paytable,
+                ...(screenGeometry !== undefined ? {screenGeometry} : {}),
+                ...(winModel !== undefined ? {winModel} : {}),
                 ...(wilds !== undefined ? {wilds} : {}),
                 ...(scatters !== undefined ? {scatters} : {}),
                 ...(paylines !== undefined ? {paylines} : {}),
@@ -352,7 +368,10 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
         prompt: PromptAdapting,
         symbols: string[],
         reels: number,
+        evaluatedRows: number,
         wilds: string[],
+        scatters: string[],
+        clusters: boolean,
         editing: boolean,
     ): Promise<Record<string, Record<string, number>>> {
         console.log(
@@ -361,36 +380,39 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
         );
 
         const wildSet = new Set(wilds);
+        const scatterSet = new Set(scatters);
         const paytable: Record<string, Record<string, number>> = {};
         for (const [index, symbol] of symbols.entries()) {
-            // A wild's paytable entry is dead data (an all-wild line resolves to no winning symbol id —
-            // see GameBlueprintValidator's own "blueprint-paytable-wild-symbol" warning), so this
-            // question is never even asked for one — it always gets no payout, not a default guess.
-            if (wildSet.has(symbol)) {
+            // Creation omits dead wild payouts. Editing retains even authored warning-level data.
+            if (wildSet.has(symbol) && (!editing || this.defaults.paytable[symbol] === undefined)) {
                 continue;
             }
-            const defaultPayouts = editing && this.defaults.paytable[symbol] === undefined
-                ? {}
-                : this.defaultPayoutsFor(symbol, index, symbols.length, reels);
-            const payouts = await this.askUntilValid(prompt, `  "${symbol}" [${this.formatPayouts(defaultPayouts)}]: `, (raw) => {
+            const minimum = scatterSet.has(symbol) ? 1 : 2;
+            const maximum = scatterSet.has(symbol) || clusters ? reels * evaluatedRows : reels;
+            // Edited mathematics never goes through the creation ladder, even after layout changes.
+            // The final validator reports incompatible authored counts before either command saves.
+            const defaultPayouts = editing
+                ? this.defaults.paytable[symbol]
+                : this.defaultPayoutsFor(symbol, index, symbols.length, reels, minimum, maximum);
+            const payouts = await this.askUntilValid<Record<string, number> | undefined>(prompt, `  "${symbol}" [${this.formatPayouts(defaultPayouts ?? {})}]: `, (raw) => {
                 if (raw.length === 0) {
-                    return {...defaultPayouts};
+                    return defaultPayouts === undefined ? undefined : {...defaultPayouts};
                 }
                 if (raw === SKIP_ANSWER) {
-                    return {};
+                    return undefined;
                 }
 
                 const entries: Record<string, number> = {};
-                for (const pair of this.splitList(raw)) {
+                for (const pair of raw.split(",").map(part => part.trim())) {
                     const parts = pair.split(":").map((part) => part.trim());
                     const [timesRaw, multiplierRaw] = parts;
                     const times = Number(timesRaw);
                     const multiplier = Number(multiplierRaw);
-                    const timesValid = Number.isInteger(times) && times >= 2 && times <= reels;
-                    if (parts.length !== 2 || multiplierRaw.length === 0 || !timesValid || !Number.isFinite(multiplier) || multiplier < 0) {
+                    const timesValid = Number.isInteger(times) && times >= minimum && times <= maximum;
+                    if (parts.length !== 2 || timesRaw.length === 0 || multiplierRaw.length === 0 || !timesValid || !Number.isFinite(multiplier) || multiplier < 0) {
                         return new WizardParseError(
-                            `Invalid pair "${pair}" — expected matchCount:multiplier, matchCount between 2 and ${reels} ` +
-                                `(the number of reels), and a finite nonnegative multiplier, e.g. "2:0" or "3:5".`,
+                            `Invalid pair "${pair}" — expected matchCount:multiplier, matchCount between ${minimum} and ${maximum} ` +
+                                `(${scatterSet.has(symbol) || clusters ? "evaluation cells" : "the number of reels"}), and a finite nonnegative multiplier, e.g. "${minimum}:0".`,
                         );
                     }
                     entries[String(times)] = multiplier;
@@ -398,7 +420,7 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
                 return entries;
             });
 
-            if (Object.keys(payouts).length > 0) {
+            if (payouts !== undefined) {
                 paytable[symbol] = payouts;
             }
         }
@@ -521,21 +543,21 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
         return {symbolWeights: defaultWeights};
     }
 
-    // The default payouts offered for one symbol. The canonical preset's own entry is used verbatim
-    // whenever it fits the chosen reel count; a wizard run that typed its own symbol ids (or picked a
-    // reel count the preset's match-count keys overflow) still gets a valid ladder instead of nothing,
+    // Creation-only default payouts offered for one symbol. The canonical preset's own entry is used verbatim
+    // whenever it fits the symbol's model bounds; a wizard run that typed its own symbol ids (or picked
+    // bounds the preset's match-count keys overflow) still gets a valid ladder instead of nothing,
     // built so that matching more symbols never pays less — the shape GameBlueprintValidator expects.
-    private defaultPayoutsFor(symbol: string, index: number, symbolCount: number, reels: number): Record<string, number> {
+    private defaultPayoutsFor(symbol: string, index: number, symbolCount: number, reels: number, minimum: number, maximum: number): Record<string, number> | undefined {
         const preset = this.defaults.paytable[symbol];
-        if (preset !== undefined && Object.keys(preset).every((times) => Number(times) <= reels)) {
+        if (preset !== undefined && Object.keys(preset).every((times) => Number(times) >= minimum && Number(times) <= maximum)) {
             return {...preset};
         }
 
         const minMatchCount = Math.min(FALLBACK_MIN_MATCH_COUNT, reels);
-        // A paytable needs a match count of at least 2 to mean anything; a 1-reel game can't have one
-        // at all, so offer nothing rather than an entry the validator would reject.
+        // The creation ladder starts at 2 or more; a tiny layout gets no invented tier.
+        // Scatter count 1 can still be authored explicitly or supplied by the preset.
         if (minMatchCount < 2) {
-            return {};
+            return undefined;
         }
 
         const payouts: Record<string, number> = {};
@@ -616,17 +638,19 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
             if (raw.length === 0 && defaultAwards !== undefined) {
                 return {...defaultAwards};
             }
-            const pairs = this.splitList(raw);
-            if (pairs.length === 0) {
+            const pairs = raw.split(",").map(pair => pair.trim());
+            if (raw.length === 0) {
                 return new WizardParseError("Enter at least one matchCount:games pair.");
             }
             const awards: Record<string, number> = {};
             for (const pair of pairs) {
-                const [timesRaw, gamesRaw] = pair.split(":").map((part) => part.trim());
+                const parts = pair.split(":").map((part) => part.trim());
+                const [timesRaw, gamesRaw] = parts;
                 const times = Number(timesRaw);
                 const games = Number(gamesRaw);
-                if (!Number.isInteger(times) || times < 2 || !Number.isInteger(games) || games <= 0) {
-                    return new WizardParseError(`Invalid pair "${pair}" — expected matchCount:games, matchCount >= 2, e.g. "3:8".`);
+                if (parts.length !== 2 || timesRaw.length === 0 || gamesRaw.length === 0 ||
+                    !Number.isInteger(times) || times < 1 || !Number.isInteger(games) || games < 0) {
+                    return new WizardParseError(`Invalid pair "${pair}" — expected matchCount:games, an integer matchCount >= 1 and a nonnegative integer games grant, e.g. "1:1" or "2:0".`);
                 }
                 awards[String(times)] = games;
             }
