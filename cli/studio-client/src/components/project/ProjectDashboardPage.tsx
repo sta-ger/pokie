@@ -1182,7 +1182,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const [jobProjectOpeningError, setJobProjectOpeningError] = useState<string>();
     const [jobOutputActionsUnavailableReason, setJobOutputActionsUnavailableReason] = useState<string>();
     const openAndNavigate = useOpenProject();
-    const projectActionGuardRef = useRef<GuardedAction>();
+    const projectActionGuardRef = useRef<GuardedAction | undefined>(undefined);
     const closeGuard = useDoubleSubmitGuard();
     const closeProjectAndReturnToProjects = (confirmActiveJobs = false): void => {
         if (!closeGuard.begin()) {
