@@ -260,7 +260,7 @@ describe("V2C-33 Programmer / CLI prerequisites", () => {
         const init = new InitCommand(api.POKIE_VERSION, undefined, runner, {validate: packageRoot => {
             verified = true;
             expect(groupAlive).toBe(false);
-            return Promise.resolve({packageRoot, valid: true, errors: [], warnings: [], suggestions: []});
+            return Promise.resolve({packageRoot, game: null, valid: true, errors: [], warnings: [], suggestions: []});
         }});
         const invoke = () => dispatch([init], ["node", "pokie", "init", project], api.POKIE_VERSION);
 
