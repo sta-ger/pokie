@@ -280,9 +280,9 @@ describe("V2C-34 retained project opening", () => {
         jobs.complete("retained-open", {summary: "Project opening and runtime materialization completed.",
             outputs: [{path: source, label: "Opened project"}], provenance: {sourcePath: source}, detail: {sourcePath: source, projectRoot: source}});
         jobs.start({projectId: source, operation: "artifact-build", request: {}, conflictKey: "artifact"});
-        jobs.complete("artifact", {outputs: [{path: path.join(directory, "missing-artifact"), label: "Artifact"}, {label: "No path"}]});
+        jobs.complete("artifact", {summary: "Artifact build completed.", outputs: [{path: path.join(directory, "missing-artifact"), label: "Artifact"}, {label: "No path"}]});
         jobs.start({projectId: relocated, operation: "project-open-materialization", request: {sourcePath: relocated}, conflictKey: "foreign"});
-        jobs.complete("foreign-open", {outputs: [{path: relocated, label: "Other project"}]});
+        jobs.complete("foreign-open", {summary: "Other project opened.", outputs: [{path: relocated, label: "Other project"}]});
         jobs.beginShutdown();
         await jobs.completeGracefulShutdown();
         const record = path.join(jobsDirectory, "retained-open.json");
