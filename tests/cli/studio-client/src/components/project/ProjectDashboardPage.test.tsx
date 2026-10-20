@@ -840,6 +840,10 @@ describe("V2C-34 saved-design simulation freshness", () => {
                 return respond(service.getStatusForProject(root, route.split("/").at(-1)!));
             }
             if (route === "/api/project/reports") return respond(service.listReports(root));
+            if (route.startsWith("/api/project/reports/")) {
+                const result = service.getReport(root, route.split("/").at(-1)!);
+                return result.status === "ok" ? respond({report: result.report, statistics: result.statistics}) : respond({error: "Report not ready"}, 404);
+            }
             return test.fetchImpl(url, init);
         };
         let view: ReturnType<typeof renderRoutedApp> | undefined;
@@ -880,6 +884,15 @@ describe("V2C-34 saved-design simulation freshness", () => {
             expect(submitted).toBe(1);
             expect(jobs.list(root).map(job => job.id)).toEqual([originalId]);
             expect(service.getStatus(originalId)?.status).toBe("running");
+            // Historical-result guidance belongs to an actual result, rather
+            // than a still-running job. Complete the same old execution and
+            // verify that navigation recovery did not grant it new authority.
+            await act(async () => {
+                release();
+                await jest.advanceTimersByTimeAsync(1000);
+            });
+            expect(service.getStatus(originalId)?.status).toBe("completed");
+            expect(service.getReport(root, originalId)).toMatchObject({status: "ok", report: {rtp: 10}});
             expect(within(workflow).getByText(/Historical simulation result/)).toBeVisible();
         } finally {
             view?.unmount();
