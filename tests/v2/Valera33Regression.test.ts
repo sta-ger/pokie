@@ -57,9 +57,9 @@ describe("V2C-33 Programmer / CLI prerequisites", () => {
 
     it("keeps bare Home distinct from an explicitly selected spaced Blueprint path", async () => {
         const source = path.join(directory, "editable game.blueprint.json");
-        expect(await run("create", "CLI Game", "--blank", "--out", source)).toBe(0);
+        expect(await run("create", "cli-game", "--blank", "--out", source)).toBe(0);
         const authored = api.loadGameBlueprint(source);
-        expect(authored.manifest).toMatchObject({id: "cli-game", name: "CLI Game"});
+        expect(authored.manifest).toMatchObject({id: "cli-game", name: "Cli Game"});
         expect(new api.GameBlueprintValidator().validate(authored).filter(issue => issue.severity === "error")).toEqual([]);
         const names = commands.map(command => command.getName());
         expect(resolveCliInvocation(["node", "pokie"], names)).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: []});
@@ -77,7 +77,7 @@ describe("V2C-33 Programmer / CLI prerequisites", () => {
     it("previews and publishes a generated package into an empty spaced destination while preserving source and occupied output", async () => {
         const source = path.join(directory, "source game.json");
         const destination = path.join(directory, "generated game");
-        expect(await run("create", "CLI Game", "--blank", "--out", source)).toBe(0);
+        expect(await run("create", "cli-game", "--blank", "--out", source)).toBe(0);
         const before = fs.readFileSync(source);
         const args = ["build", source, "--target", "tsPackage", "--out", destination];
         expect(await run(...args, "--dry-run")).toBe(0);
@@ -122,7 +122,7 @@ describe("V2C-33 Programmer / CLI prerequisites", () => {
         expect(diagnostic()).toContain('Unknown --target "unknown"');
         expect(await run("inspect", source)).toBe(1);
         expect(diagnostic()).toContain("not a supported POKIE project");
-        expect(await run("create", "Retry", "--blank", "--out", source)).toBe(0);
+        expect(await run("create", "retry-game", "--blank", "--out", source)).toBe(0);
         const validBytes = fs.readFileSync(source);
         const invalid = JSON.parse(validBytes.toString());
         invalid.rows = 0;
@@ -143,7 +143,7 @@ describe("V2C-33 Programmer / CLI prerequisites", () => {
     it("cancels the real build before publication, drains its listener and permits retry", async () => {
         const source = path.join(directory, "cancel game.json");
         const destination = path.join(directory, "cancelled package");
-        expect(await run("create", "Cancel", "--blank", "--out", source)).toBe(0);
+        expect(await run("create", "cancel-game", "--blank", "--out", source)).toBe(0);
         const before = fs.readFileSync(source);
         const listeners = process.rawListeners("SIGINT");
         let cancelled = false;
