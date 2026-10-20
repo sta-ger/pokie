@@ -784,6 +784,18 @@ export class StudioServer implements StudioServerHandling {
         return job.projectId.startsWith("design:") || job.operation === "project-open-materialization";
     }
 
+    private homeJobView(job: StudioJobView): StudioJobView {
+        if (job.operation !== "project-open-materialization" || job.result?.outputs === undefined) return job;
+        // Completion is historical; it does not promise that a moved/deleted source still exists.
+        // Never guess a replacement from a basename or rewrite the durable request/provenance.
+        return {...job, result: {...job.result, outputs: job.result.outputs.map((output) => ({
+            ...output,
+            unavailableReason: output.path !== undefined && !fs.existsSync(output.path)
+                ? `The retained project at "${output.path}" is missing. Use Projects to Relocate it to its current location, or add the game again.`
+                : undefined,
+        }))}};
+    }
+
     private handleHomeListJobs(res: ServerResponse, sourcePath: string | null): void {
         const jobs = sourcePath === null || sourcePath.trim() === ""
             // A reload at Home has no selected blueprint path in React state.  Listing the retained
@@ -794,7 +806,7 @@ export class StudioServer implements StudioServerHandling {
                 return [...this.jobService.list(canonicalSource), ...this.jobService.list(`design:${canonicalSource}`)];
             })();
         jobs.sort((left, right) => right.createdAt - left.createdAt);
-        this.sendJson(res, 200, {jobs});
+        this.sendJson(res, 200, {jobs: jobs.map((job) => this.homeJobView(job))});
     }
 
     private handleHomeCommonJob(method: string, res: ServerResponse, id: string, action: "cancel" | "recover" | undefined, sourcePath: string | null): void {
@@ -809,7 +821,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (action === undefined && method === "GET") {
-            this.sendJson(res, 200, job);
+            this.sendJson(res, 200, this.homeJobView(job));
             return;
         }
         if (action === "cancel" && method === "POST") {

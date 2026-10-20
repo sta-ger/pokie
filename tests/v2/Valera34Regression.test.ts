@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import http from "node:http";
 import * as api from "@fromstan/pokie";
 import {CreateCommand} from "../../cli/commands/CreateCommand.js";
 import {OptimizeCommand} from "../../cli/commands/OptimizeCommand.js";
@@ -7,6 +8,13 @@ import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {dispatch} from "../../cli/dispatch.js";
 import {StudioArtifactBuildService} from "../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {optimizationBlueprint, optimizationRequest} from "./fixtures/OptimizationFixture.js";
+import {FileStudioJobRepository} from "../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../cli/studio/jobs/StudioJobService.js";
+import type {StudioJobView} from "../../cli/studio/jobs/StudioJobView.js";
+import {StudioProjectRegistrationService} from "../../cli/studio/StudioProjectRegistrationService.js";
+import {StudioServer} from "../../cli/studio/StudioServer.js";
+import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";
+import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprintService.js";
 
 // Source-aware Producer prerequisites, not installed-candidate, browser or blind
 // first-contact evidence. No independent finding is closed by these tests.
@@ -246,5 +254,94 @@ describe("V2C-34 Producer contracts", () => {
         expect(await new api.CertificationEvidenceBundleVerifier().verify(evidence, {sourceBundleDir: library, dossier: inputs}))
             .toEqual(expect.arrayContaining([expect.objectContaining({code: "certification-dossier-authority-mismatch", severity: "error"})]));
         expect(fs.readFileSync(source)).toEqual(original);
+    });
+});
+
+describe("V2C-34 retained project opening", () => {
+    it("projects current availability after restart, preserves completion history and repairs a moved Blueprint through explicit registry relocation", async () => {
+        const directory = fs.mkdtempSync(path.resolve("node_modules/.cache/pokie-tmp/valera34-reopen-"));
+        const observation = JSON.parse(fs.readFileSync(path.resolve("tests/v2/fixtures/Valera34RetainedOpeningObservation.json"), "utf8")) as {sourcePath: string; diagnostic: string; action: string};
+        expect(observation.action).toBe("Open Opened project");
+        expect(observation.diagnostic).toBe(`"${observation.sourcePath}" does not exist or is not a directory.`);
+        // Preserve the observed path's spelling/spaces/file-kind, but isolate all fixture writes.
+        const relativeSource = observation.sourcePath.slice(observation.sourcePath.indexOf("Documents/"));
+        const source = path.join(directory, "prior-profile", relativeSource);
+        const relocated = path.join(directory, "continuation-profile", relativeSource);
+        fs.mkdirSync(path.dirname(source), {recursive: true});
+        fs.mkdirSync(path.dirname(relocated), {recursive: true});
+        fs.writeFileSync(source, JSON.stringify(optimizationBlueprint()));
+        const sourceBytes = fs.readFileSync(source);
+        const registry = new StudioProjectRegistrationService();
+        expect(await registry.registerManaged(source, "Starter Slot")).toMatchObject({status: "ok"});
+        const jobsDirectory = path.join(directory, "jobs");
+        const jobs = new StudioJobService(new FileStudioJobRepository(jobsDirectory), () => 1, () => "retained-open");
+        jobs.start({projectId: source, operation: "project-open-materialization", request: {sourcePath: source}, conflictKey: `project-open:${source}`});
+        jobs.complete("retained-open", {summary: "Project opening and runtime materialization completed.",
+            outputs: [{path: source, label: "Opened project"}], provenance: {sourcePath: source}, detail: {sourcePath: source, projectRoot: source}});
+        jobs.beginShutdown();
+        await jobs.completeGracefulShutdown();
+        const record = path.join(jobsDirectory, "retained-open.json");
+        const completedBytes = fs.readFileSync(record);
+        const openFolder = jest.fn();
+        const homeService = new StudioHomeService(api.POKIE_VERSION);
+        const server = new StudioServer({pokieVersion: api.POKIE_VERSION, host: "127.0.0.1", port: 0,
+            studioRoot: directory, initialContext: {mode: "home"}, projectRegistrationService: registry,
+            homeService, blueprintService: new StudioBlueprintService(api.POKIE_VERSION, directory, homeService),
+            jobService: new StudioJobService(new FileStudioJobRepository(jobsDirectory)), openFolder,
+            isLoopbackRequest: () => true});
+        try {
+            const address = await server.start();
+            const request = (route: string, body?: unknown): Promise<{status: number; body: unknown}> => new Promise((resolve, reject) => {
+                const req = http.request(`http://${address.host}:${address.port}${route}`, {
+                    method: body === undefined ? "GET" : "POST", agent: false, headers: {"Content-Type": "application/json"},
+                }, (res) => {
+                    const chunks: Buffer[] = [];
+                    res.on("data", (chunk: Buffer) => chunks.push(chunk));
+                    res.on("error", reject);
+                    res.on("end", () => resolve({status: res.statusCode ?? 0, body: JSON.parse(Buffer.concat(chunks).toString())}));
+                });
+                req.on("error", reject);
+                req.setTimeout(10_000, () => req.destroy(new Error(`Request timed out: ${route}`)));
+                req.end(body === undefined ? undefined : JSON.stringify(body));
+            });
+            const output = async (route = "/api/home/jobs/retained-open") => {
+                const response = await request(route);
+                expect(response.status).toBe(200);
+                return route.includes("retained-open") ? response.body as StudioJobView : (response.body as {jobs: StudioJobView[]}).jobs[0];
+            };
+            // The saved diagnostic also happens for an EXISTING Blueprint: native Open requires a directory.
+            expect(await request("/api/home/fs/open-folder", {path: source})).toEqual({status: 200, body: {
+                status: "error", message: `"${source}" does not exist or is not a directory.`,
+            }});
+            expect(openFolder).not.toHaveBeenCalled();
+            expect((await output()).result?.outputs?.[0].unavailableReason).toBeUndefined();
+            expect(await request("/api/home/fs/reveal-path", {path: source})).toEqual({status: 200, body: {status: "ok"}});
+            expect(openFolder).toHaveBeenCalledWith(path.dirname(source));
+
+            fs.renameSync(source, relocated);
+            for (const route of ["/api/home/jobs", `/api/home/jobs?sourcePath=${encodeURIComponent(source)}`, "/api/home/jobs/retained-open"]) {
+                const job = await output(route);
+                expect(job).toMatchObject({status: "completed", request: {sourcePath: source}, result: {
+                    outputs: [{path: source, unavailableReason: expect.stringContaining("Use Projects to Relocate")}],
+                    provenance: {sourcePath: source},
+                }});
+            }
+            expect(await request("/api/home/projects/registry")).toMatchObject({status: 200, body: [{location: source, status: "missing"}]});
+            expect(await request("/api/home/projects/registry/relocate", {location: source, newLocation: directory}))
+                .toMatchObject({status: 200, body: {status: "unrecognized"}});
+            expect(await request("/api/home/projects/registry/relocate", {location: source, newLocation: relocated}))
+                .toMatchObject({status: 200, body: {status: "ok", entry: {location: relocated, status: "ok", origin: "managed", name: "Starter Slot"}}});
+            expect(await request("/api/home/projects/registry")).toMatchObject({status: 200, body: [{location: relocated, status: "ok"}]});
+            expect(fs.readFileSync(relocated)).toEqual(sourceBytes);
+            expect(fs.existsSync(source)).toBe(false);
+            expect(fs.readFileSync(record)).toEqual(completedBytes);
+            // Reappearance is observed afresh, rather than persisting a permanent missing verdict.
+            fs.copyFileSync(relocated, source);
+            expect((await output()).result?.outputs?.[0].unavailableReason).toBeUndefined();
+            expect(fs.readFileSync(record)).toEqual(completedBytes);
+        } finally {
+            await server.stop();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
     });
 });

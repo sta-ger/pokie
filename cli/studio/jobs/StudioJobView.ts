@@ -22,6 +22,8 @@ export type StudioJobOutputView = {
     readonly path?: string;
     readonly downloadPath?: string;
     readonly label: string;
+    /** Current availability, projected at the HTTP boundary without rewriting job history. */
+    readonly unavailableReason?: string;
 };
 
 export type StudioJobResultView = {

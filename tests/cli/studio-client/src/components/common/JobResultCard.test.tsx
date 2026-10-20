@@ -3,6 +3,26 @@ import {fireEvent, render, screen} from "@testing-library/react";
 import {JobResultCard} from "../../../../../../cli/studio-client/src/components/common/JobResultCard";
 
 describe("JobResultCard", () => {
+    it("keeps historical completion and provenance visible without offering missing project output actions", () => {
+        const open = jest.fn();
+        const reveal = jest.fn();
+        render(<MantineProvider><JobResultCard onOpenOutput={open} onRevealOutput={reveal} job={{
+            id: "retained-open", projectId: "/old/blueprint.json", operation: "project-open-materialization",
+            request: {sourcePath: "/old/blueprint.json"}, conflictKey: "open", status: "completed", createdAt: 1,
+            result: {summary: "Project opening and runtime materialization completed.",
+                outputs: [{label: "Opened project", path: "/old/blueprint.json", unavailableReason: "The retained project is missing. Use Projects to Relocate it."}],
+                provenance: {sourcePath: "/old/blueprint.json"}},
+        }} /></MantineProvider>);
+        expect(screen.getByRole("status")).toHaveTextContent("project-open-materialization · Completed");
+        expect(screen.getByText(/Use Projects to Relocate/)).toBeVisible();
+        expect(screen.queryByRole("button", {name: "Open Opened project"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Reveal Opened project"})).not.toBeInTheDocument();
+        fireEvent.click(screen.getByText("Inspect provenance"));
+        expect(screen.getAllByText(/\/old\/blueprint.json/).length).toBeGreaterThan(0);
+        expect(open).not.toHaveBeenCalled();
+        expect(reveal).not.toHaveBeenCalled();
+    });
+
     it.each([
         ["completed", "Completed", "status", "This operation completed."],
         ["cancelled", "Cancelled", "status", "This operation was cancelled safely."],
