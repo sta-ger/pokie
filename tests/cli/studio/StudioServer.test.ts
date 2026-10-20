@@ -1,3 +1,4 @@
+import {generatedMechanicsGame} from "../../v2/fixtures/ExistingMechanicsGame.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {StudioRoundRecorder} from "../../../cli/studio/runtime/StudioRoundRecorder.js";
@@ -3543,6 +3544,170 @@ describe("StudioServer", () => {
 
             expect(status).toBe(200);
             expect(body).toEqual({status: "empty"});
+        });
+    });
+
+    describe("V2C-34 authored dashboard context", () => {
+        async function fixture() {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-authored-context-"));
+            const studioRoot = path.join(directory, "studio");
+            fs.mkdirSync(studioRoot);
+            writeStudioAssets(studioRoot);
+            const root = path.join(directory, "blueprint.json");
+            const blueprint = {
+                manifest: {id: "sample-slot", name: "Sample Slot", version: "1.0.0", description: "Original description"},
+                reels: 3, rows: 1, symbols: ["A"], paylines: [[0, 0, 0]],
+                reelStrips: [["A"], ["A"], ["A"]], availableBets: [1], paytable: {A: {3: 10}},
+            };
+            fs.writeFileSync(root, JSON.stringify(blueprint));
+            let release!: () => void;
+            const gate = new Promise<void>(resolve => {
+                release = resolve;
+            });
+            const runtimeResolver = jest.fn(() => Promise.resolve({runtimePath: root, release: () => Promise.resolve()}));
+            const loader = jest.fn(() => Promise.resolve(generatedMechanicsGame(JSON.parse(fs.readFileSync(root, "utf8")))));
+            const simulation = new StudioSimulationService(undefined, loader, undefined, 50, undefined, () => gate,
+                undefined, undefined, undefined, undefined, runtimeResolver);
+            const jobs = createIsolatedJobService(studioRoot);
+            const home = new StudioHomeService("2.0.0", undefined, loader, undefined, runtimeResolver);
+            const service = new StudioBlueprintService("2.0.0", studioRoot, home);
+            const registration = new StudioProjectRegistrationService();
+            const server = new StudioServer({pokieVersion: "2.0.0", port: 0, host: "127.0.0.1", studioRoot,
+                homeService: home, blueprintService: service, jobService: jobs, simulationService: simulation,
+                loadGame: loader, resolveRuntimePackageRoot: runtimeResolver, projectRegistrationService: registration,
+                initialContext: {mode: "project", projectRoot: root}});
+            const address = await server.start();
+            const url = `http://${address.host}:${address.port}`;
+            await pollUntilProjectContextSettled(`${url}/api/project/context`);
+            return {directory, root, blueprint, service, simulation, jobs, runtimeResolver, loader, registration, url, release,
+                cleanup: async () => {
+                    release();
+                    await server.stop();
+                    fs.rmSync(directory, {recursive: true, force: true});
+                }};
+        }
+
+        it("V2C-34-SERVER-SAVE-CONTEXT publishes saved metadata without another runtime preparation while the original execution remains active", async () => {
+            const test = await fixture();
+            try {
+                const started = await post(`${test.url}/api/project/simulations`, {rounds: 100, workers: 1});
+                const id = (started.body as {id: string}).id;
+                await flushMacrotask();
+                expect(test.simulation.getStatus(id)).toMatchObject({status: "running", roundsCompleted: 50});
+                const request = test.jobs.get(test.root, id)!.request;
+                const preparations = test.runtimeResolver.mock.calls.length;
+                const edited = {...test.blueprint, manifest: {id: "edited-slot", name: "Edited Slot", version: "2.0.0"}, paytable: {A: {3: 11}}};
+                expect(await post(`${test.url}/api/home/blueprints/save`, {path: test.root, blueprint: edited,
+                    expectedHash: computeGameBlueprintHash(test.blueprint)})).toMatchObject({status: 201});
+                for (let retry = 0; retry < 2; retry++) {
+                    expect(await get(`${test.url}/api/project/context`)).toMatchObject({status: 200, body: {
+                        status: "loaded", projectRoot: test.root, game: edited.manifest, type: "blueprint",
+                        capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                    }});
+                }
+                expect((await get(`${test.url}/api/project/context`)).body).not.toHaveProperty("game.description");
+                expect(test.runtimeResolver).toHaveBeenCalledTimes(preparations);
+                expect(test.simulation.getStatus(id)?.status).toBe("running");
+                expect(test.jobs.get(test.root, id)!.request).toEqual(request);
+                const attached = await post(`${test.url}/api/project/simulations`, {rounds: 100, workers: 1});
+                expect(attached).toMatchObject({status: 200, body: {id}});
+                expect(test.jobs.list(test.root).map(job => job.id)).toEqual([id]);
+                expect((await get(`${test.url}/api/project/gameModel`)).body).toMatchObject({paytable: {data: [{symbolId: "A", matchCount: 3, payout: 11}]}});
+                test.release();
+                await pollUntilTerminal(`${test.url}/api/project/simulations/${id}`);
+                expect(test.simulation.getReport(test.root, id)).toMatchObject({status: "ok", report: {rtp: 10}});
+                const next = await post(`${test.url}/api/project/simulations`, {rounds: 100, workers: 1});
+                const nextId = (next.body as {id: string}).id;
+                expect(nextId).not.toBe(id);
+                await pollUntilTerminal(`${test.url}/api/project/simulations/${nextId}`);
+                expect(test.simulation.getReport(test.root, nextId)).toMatchObject({status: "ok", report: {rtp: 11}});
+                expect(test.simulation.getReport(test.root, id)).toMatchObject({status: "ok", report: {rtp: 10}});
+            } finally {
+                await test.cleanup(); 
+            }
+        });
+
+        it("V2C-34-SERVER-CONTEXT-REUSE rejects malformed persisted models through the shared validator then supports repeated corrected Save", async () => {
+            const test = await fixture();
+            try {
+                const malformed = {...test.blueprint, rows: 0};
+                const validation = test.service.validate(malformed);
+                expect(validation.status).toBe("invalid");
+                expect(await post(`${test.url}/api/home/blueprints/validate`, {blueprint: malformed})).toMatchObject({status: 200, body: {status: "invalid"}});
+                // Save deliberately permits invalid authored content. It must never turn it into
+                // loaded metadata just because the request and persisted copy agree.
+                expect(await post(`${test.url}/api/home/blueprints/save`, {path: test.root, blueprint: malformed, overwrite: true})).toMatchObject({status: 201});
+                const rejected = await pollUntilProjectContextSettled(`${test.url}/api/project/context`);
+                expect(rejected.body.status).toBe("error");
+                if (validation.status === "invalid") for (const issue of validation.errors) {
+                    expect(rejected.body.error).toContain(issue.code);
+                    expect(rejected.body.error).toContain(issue.message);
+                }
+                for (let attempt = 0; attempt < 2; attempt++) {
+                    expect(await post(`${test.url}/api/home/blueprints/save`, {path: test.root, blueprint: test.blueprint, overwrite: true})).toMatchObject({status: 201});
+                    expect((await pollUntilProjectContextSettled(`${test.url}/api/project/context`)).body).toMatchObject({status: "loaded", game: test.blueprint.manifest});
+                }
+                const before = (await get(`${test.url}/api/project/context`)).body;
+                expect(await post(`${test.url}/api/home/blueprints/save`, {path: test.root, blueprint: malformed, expectedHash: "stale"})).toMatchObject({status: 409});
+                expect((await get(`${test.url}/api/project/context`)).body).toEqual(before);
+                expect(await post(`${test.url}/api/home/blueprints/save`, {path: path.join(test.directory, "separate.json"), blueprint: malformed})).toMatchObject({status: 201});
+                expect((await get(`${test.url}/api/project/context`)).body).toEqual(before);
+                expect(test.runtimeResolver).toHaveBeenCalledTimes(1);
+            } finally {
+                await test.cleanup(); 
+            }
+        });
+
+        it("V2C-34-SERVER-APPLY-CONTEXT refreshes the persisted optimized Blueprint without eagerly preparing another runtime", async () => {
+            const test = await fixture();
+            try {
+                const request = {
+                    targets: [{metric: "rtp", unit: "ratio", value: 11}],
+                    policy: {strategy: "exact-finite-v1", seed: "context", budget: 2, maxOutcomes: 100,
+                        stake: 1, mode: "base", scope: "logical-round",
+                        tunables: [{path: "/paytable/A/3", values: [10, 11]}],
+                        locks: ["/paylines", "/reelStrips", "/availableBets"]},
+                };
+                const reviewed = await post(`${test.url}/api/project/optimization/support`, {expectedProjectRoot: test.root, request});
+                expect(reviewed.status).toBe(200);
+                const started = await post(`${test.url}/api/project/optimization/start`, {expectedProjectRoot: test.root,
+                    request, sourceRevision: (reviewed.body as {sourceRevision: string}).sourceRevision});
+                expect(started.status).toBe(202);
+                const jobId = (started.body as {job: {id: string}}).job.id;
+                expect((await pollUntilTerminal(`${test.url}/api/project/jobs/${jobId}`)).body.status).toBe("completed");
+                const applied = await post(`${test.url}/api/project/optimization/apply`, {expectedProjectRoot: test.root, request, jobId});
+                expect(applied).toMatchObject({status: 200, body: {outputPath: test.root}});
+                expect(applied.body).not.toHaveProperty("warning");
+                expect(JSON.parse(fs.readFileSync(test.root, "utf8")).paytable.A[3]).toBe(11);
+                expect((await get(`${test.url}/api/project/context`)).body).toMatchObject({status: "loaded", game: test.blueprint.manifest});
+                expect(test.runtimeResolver).toHaveBeenCalledTimes(1);
+            } finally {
+                await test.cleanup(); 
+            }
+        });
+
+        it("V2C-34-SERVER-CONTEXT-SUPERSEDE cannot republish an authored refresh after Project close", async () => {
+            const test = await fixture();
+            let finish!: () => void;
+            const gate = new Promise<void>(resolve => {
+                finish = resolve;
+            });
+            const describe = test.registration.describeLocation.bind(test.registration);
+            jest.spyOn(test.registration, "describeLocation").mockImplementation(async root => {
+                await gate;
+                return describe(root);
+            });
+            try {
+                expect(await post(`${test.url}/api/home/blueprints/save`, {path: test.root, blueprint: test.blueprint, overwrite: true})).toMatchObject({status: 201});
+                expect((await get(`${test.url}/api/project/context`)).body).toMatchObject({status: "loading"});
+                const closing = post(`${test.url}/api/projects/close`);
+                finish();
+                expect((await closing).status).toBe(200);
+                expect((await get(`${test.url}/api/project/context`)).body).toEqual({status: "empty"});
+            } finally {
+                finish();
+                await test.cleanup();
+            }
         });
     });
 

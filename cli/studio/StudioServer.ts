@@ -6,6 +6,7 @@ import {compareMathDefinitions} from "../../src/diff/MathDefinitionSourceReader.
 import type {MathDefinitionDiff} from "../../src/diff/MathDefinitionDiff.js";
 import {
     ArtifactConversionPlan,
+    GameBlueprint,
     GamePackageInspecting,
     GamePackageInspectionReport,
     GamePackageInspector,
@@ -888,13 +889,34 @@ export class StudioServer implements StudioServerHandling {
         };
     }
 
-    private startProjectDashboardLoad(projectRoot: string): void {
+    private startProjectDashboardLoad(projectRoot: string, authoredRefresh = false): void {
         const preparation = this.beginRuntimePreparation();
         this.projectDashboard = {status: "loading", projectRoot};
-        const loading = loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeProjectLocation, undefined, undefined, {
+        const options = {
             signal: preparation.controller.signal,
             isCurrent: () => this.isCurrentRuntimePreparation(preparation),
-        })
+        };
+        const loadDashboard = async (): Promise<ProjectDashboardContext> => {
+            if (authoredRefresh) {
+                const identity = await this.describeProjectLocation(projectRoot);
+                if (!options.isCurrent()) throw new StudioProjectOpeningCancelledError();
+                if (identity?.type === "blueprint") {
+                    // Refresh descriptive source metadata after Save/Apply without installing a
+                    // second runtime just to navigate. Every execution still prepares its own
+                    // current-source runtime; this receipt grants no authority to an old job.
+                    const loaded = this.blueprintService.load(projectRoot);
+                    if (loaded.status !== "ok") throw new Error(loaded.error);
+                    const validation = this.blueprintService.validate(loaded.blueprint);
+                    if (validation.status !== "ok") throw new Error(validation.errors.map(issue => `${issue.code}: ${issue.message}`).join("\n"));
+                    return {
+                        status: "loaded", projectRoot, game: (loaded.blueprint as GameBlueprint).manifest,
+                        type: identity.type, capabilities: identity.capabilities, origin: identity.origin,
+                    };
+                }
+            }
+            return loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeProjectLocation, undefined, undefined, options);
+        };
+        const loading = loadDashboard()
             .then((dashboard) => {
                 if (this.isCurrentRuntimePreparation(preparation) && this.currentContext.mode === "project" && this.currentContext.projectRoot === projectRoot) {
                     this.projectDashboard = dashboard;
@@ -1242,7 +1264,7 @@ export class StudioServer implements StudioServerHandling {
                         await Promise.all([...this.playPreparations]);
                         if (!this.stopping && this.currentContext === context && this.validationTransitions === 0) {
                             this.currentContext = {...context};
-                            this.startProjectDashboardLoad(context.projectRoot);
+                            this.startProjectDashboardLoad(context.projectRoot, true);
                             await Promise.all([...this.dashboardLoads]);
                         }
                     } finally {
@@ -2060,7 +2082,7 @@ export class StudioServer implements StudioServerHandling {
             // The Dashboard retains a loaded Project snapshot for its Overview. Refresh that snapshot
             // after an in-place Blueprint save so every Project-facing surface observes the newly
             // authoritative source, not the pre-save dashboard model.
-            this.startProjectDashboardLoad(result.path);
+            this.startProjectDashboardLoad(result.path, true);
         }
         this.sendJson(res, this.statusForBlueprintSave(result.status), result);
     }

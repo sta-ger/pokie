@@ -3,10 +3,11 @@ import type {StudioProjectOrigin} from "./StudioProjectRegistryEntry.js";
 
 // The Project Dashboard's own read model — richer than StudioContext (which only ever carries
 // `projectRoot`, for routing). "empty" is the state when Studio is in Home mode (no active project
-// to show a dashboard for at all); "loading" only ever happens right after Studio starts directly
-// into Project mode (`pokie .`/`pokie <path>`/`pokie studio <path>`) and hasn't finished loading the
-// entry module yet — Create/Open both already have the manifest in hand by the time they switch
-// StudioServer into project mode, so they go straight to "loaded" (see StudioServer).
+// to show a dashboard for at all); "loading" covers direct-entry runtime preparation and authored
+// source metadata refresh. Create/Open already have the manifest when they switch into Project mode.
+// Save/Apply refresh a Blueprint's manifest through its persisted model and shared validator without
+// eagerly preparing another runtime. A loaded dashboard describes the source; execution services
+// still prepare and validate their current-source runtime, and retained jobs keep their own authority.
 //
 // `type`/`capabilities`/`origin` describe the *original* project `projectRoot` resolved from (see
 // StudioProjectRegistrationService.describeLocation) — not the materialized runtime `game` was
