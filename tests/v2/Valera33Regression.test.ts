@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import {runInNewContext} from "node:vm";
+import {EventEmitter} from "node:events";
+import {PassThrough} from "node:stream";
+import type {ChildProcess} from "node:child_process";
 import * as api from "@fromstan/pokie";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {CreateCommand} from "../../cli/commands/CreateCommand.js";
@@ -10,6 +13,7 @@ import {INTERNAL_STUDIO_COMMAND_NAME} from "../../cli/commands/InternalStudioCom
 import {dispatch} from "../../cli/dispatch.js";
 import {registerCliCommands} from "../../cli/registerCliCommands.js";
 import {resolveCliInvocation} from "../../cli/resolveCliInvocation.js";
+import {PackageCommandSpawning, runPackageCommand, withLocalPokieInstall} from "../../cli/prepare/PackageCommandRunner.js";
 
 // Source-aware public-command prerequisites. These are neither installed-consumer
 // checks nor an independent first-contact observation or material-finding closure.
@@ -190,5 +194,98 @@ describe("V2C-33 Programmer / CLI prerequisites", () => {
         expect(fs.existsSync(path.join(project, "dist"))).toBe(false);
         expect(fs.existsSync(path.join(project, "node_modules"))).toBe(false);
         expect(await new api.ProjectTargetResolver().resolve(project)).toMatchObject({type: "tsPackage"});
+    });
+
+    // Source regression for the supplementary P1. The real dispatcher, merger, install wrapper and
+    // runner execute; only OS spawn/kill are simulated. No installed/PTY recheck is claimed here.
+    (process.platform === "win32" ? it.skip : it).each(["install", "build"])("drains init's cancelled %s before restoring metadata and allows immediate retry", async phase => {
+        const project = path.join(directory, "preparation cancellation controlled");
+        expect(await run("init", project, "--no-prepare")).toBe(0);
+        const sourcePath = path.join(project, "src/index.ts");
+        fs.appendFileSync(sourcePath, "\n// Authored extension must survive cancellation and retry.\n");
+        const source = fs.readFileSync(sourcePath);
+        const packagePath = path.join(project, "package.json");
+        const manifest = fs.readFileSync(packagePath);
+        const lockPath = path.join(project, "package-lock.json");
+        const lock = '{ "lockfileVersion": 3, "packages": {} }\n\n';
+        fs.writeFileSync(lockPath, lock);
+        const listeners = process.rawListeners("SIGINT");
+        const termListeners = process.rawListeners("SIGTERM");
+        const pid = 2147000033;
+        let groupAlive = true;
+        let cancelNext = true;
+        let cancellationReached = false;
+        let verified = false;
+        const calls: string[] = [];
+        const kill = jest.spyOn(process, "kill").mockImplementation((target, signal) => {
+            expect(target).toBe(-pid);
+            if (signal === "SIGTERM") {
+                expect(groupAlive).toBe(true);
+                // Cancellation must reach this exact owned group before portable restoration.
+                if (phase === "install") {
+                    expect(fs.readFileSync(packagePath, "utf8")).toContain("file:");
+                    expect(fs.readFileSync(lockPath, "utf8")).toBe('{"packages":');
+                }
+                groupAlive = false;
+                return true;
+            }
+            expect(signal).toBe(0);
+            if (!groupAlive) throw Object.assign(new Error("No such process"), {code: "ESRCH"});
+            return true;
+        });
+        const spawn: PackageCommandSpawning = (command, args, options) => {
+            expect(command).toBe("npm");
+            expect(options).toMatchObject({cwd: project, detached: true});
+            const currentPhase = args[0] === "install" ? "install" : "build";
+            calls.push(currentPhase);
+            const child = Object.assign(new EventEmitter(), {pid, stdout: new PassThrough(), stderr: new PassThrough()});
+            queueMicrotask(() => {
+                if (cancelNext && currentPhase === phase) {
+                    cancelNext = false;
+                    cancellationReached = true;
+                    if (phase === "install") fs.writeFileSync(lockPath, '{"packages":');
+                    process.emit("SIGINT");
+                    process.emit("SIGINT");
+                    expect(process.rawListeners("SIGINT")).toHaveLength(listeners.length + 1);
+                    expect(verified).toBe(false);
+                    child.emit("close", null, "SIGTERM");
+                } else {
+                    child.emit("close", 0, null);
+                }
+            });
+            return child as unknown as ChildProcess & {stdout: PassThrough; stderr: PassThrough};
+        };
+        const runner = withLocalPokieInstall(directory, (command, args, cwd, options) =>
+            runPackageCommand(command, args, cwd, {...options, spawn}));
+        const init = new InitCommand(api.POKIE_VERSION, undefined, runner, {validate: packageRoot => {
+            verified = true;
+            expect(groupAlive).toBe(false);
+            return Promise.resolve({packageRoot, valid: true, errors: [], warnings: [], suggestions: []});
+        }});
+        const invoke = () => dispatch([init], ["node", "pokie", "init", project], api.POKIE_VERSION);
+
+        log.mockClear();
+        expect(await invoke()).toBe(1);
+        expect(cancellationReached).toBe(true);
+        expect(groupAlive).toBe(false);
+        expect(verified).toBe(false);
+        expect(kill).toHaveBeenCalledWith(-pid, "SIGTERM");
+        expect(diagnostic()).toContain("Package command was cancelled");
+        expect(diagnostic()).toContain(`pokie init ${project}`);
+        expect(output()).not.toContain("prepared and verified");
+        expect(fs.readFileSync(packagePath)).toEqual(manifest);
+        expect(fs.readFileSync(lockPath, "utf8")).toBe(lock);
+        expect(fs.readFileSync(sourcePath)).toEqual(source);
+        expect(process.rawListeners("SIGINT")).toEqual(listeners);
+        expect(process.rawListeners("SIGTERM")).toEqual(termListeners);
+        expect(await invoke()).toBe(0);
+        expect(verified).toBe(true);
+        expect(calls).toEqual(phase === "install" ? ["install", "install", "build"] : ["install", "build", "install", "build"]);
+        expect(output()).toContain("prepared and verified");
+        expect(fs.readFileSync(packagePath)).toEqual(manifest);
+        expect(fs.readFileSync(lockPath, "utf8")).toBe(lock);
+        expect(fs.readFileSync(sourcePath)).toEqual(source);
+        expect(process.rawListeners("SIGINT")).toEqual(listeners);
+        expect(process.rawListeners("SIGTERM")).toEqual(termListeners);
     });
 });
