@@ -64,6 +64,9 @@ const tooling = new Set([
     "tests/fixtures/wasm/verifyDeliveredSharedMath.cjs",
     "tests/v2/fixtures/normal-pack.stdout.txt",
     "scripts/p8-05-release-handoff.mjs",
+    // V2C-32 bounded docs-test teardown repair; site/product inputs stay protected.
+    "tests/v2/PublicDocsSite.test.ts",
+    "tests/v2/helpers/PublicDocsBrowser.ts",
 ]);
 const git = (repository, args) => execFileSync("git", args, {cwd:repository, encoding:"utf8", timeout:10_000, maxBuffer:16 * 1024 * 1024}).trimEnd();
 

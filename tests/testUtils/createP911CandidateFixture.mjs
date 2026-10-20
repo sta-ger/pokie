@@ -54,6 +54,9 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "tests/fixtures/wasm/verifyDeliveredSharedMath.cjs",
     "tests/v2/fixtures/normal-pack.stdout.txt",
     "scripts/p8-05-release-handoff.mjs",
+    // V2C-32 teardown correction, independently named from both candidate readers.
+    "tests/v2/PublicDocsSite.test.ts",
+    "tests/v2/helpers/PublicDocsBrowser.ts",
 ];
 const commit = (repository, message) => {
     execFileSync("git", ["add", "."], {cwd:repository});

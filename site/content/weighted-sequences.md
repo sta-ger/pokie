@@ -6,9 +6,9 @@ A whole-sequence reel chooses among complete **ordered** strip alternatives. Thi
 
 Each variant has a stable unique nonempty ID, a complete ordered symbol list and a finite nonnegative weight. Total weight must be positive. Alternatives **within one reel** have equal lengths; different reels need not share that length. Zero-weight alternatives are retained, never selected, and do not consume selection probability. Symbols must belong to the model.
 
-Selection belongs to the **logical round**: selected variants persist across its feature steps/continuations. Selection identity and RNG continuation must survive supported state restoration; initialization draws and preview are not fresh paid-round selections. See [sequence contracts](../../src/session/videoslot/combinations/WeightedSequenceVariant.ts).
+Selection belongs to the **logical round**: selected variants persist across its feature steps/continuations. Selection identity and RNG continuation survive supported state restoration; initialization draws and preview are not fresh paid-round selections. For one reel, a variant's selection probability is its weight divided by the sum of weights. Given that variant, each circular stop has probability `1 / strip length`. The probability of a particular variant/stop pair is therefore `weight / sum(weights) / strip length`; independent reels multiply these probabilities. Alternative IDs and symbol order are part of the authored model and retained replay identity.
 
-The example is derived from the checked-in [weighted runtime fixture](../../tests/v2/fixtures/WeightedWholeSequenceGame.ts). Save the download as `weighted.blueprint.json`:
+Save this complete example as `weighted.blueprint.json`:
 
 {{example:site/examples/weighted.blueprint.json}}
 

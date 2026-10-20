@@ -171,10 +171,10 @@ with `-` leaves weighting to the engine (no `symbolWeights`/`reelStrips` in the 
 The wizard covers the same fields Studio's own guided **Design Game** editor does (game basics, layout, symbols and
 their wild/scatter roles, reels, paytable, bets), plus the one mechanic Studio's guided editor doesn't offer yet:
 scatter-triggered free games (see `mechanics.freeGames`) — asked only when at least one scatter symbol was
-declared, since a free games award needs a scatter symbol to trigger off of. A symbol marked wild never gets its
-own paytable question — an all-wild line resolves to no winning symbol id, so a payout for one would be dead data —
-it always ends up with no payout in the written blueprint. Selectable bet modes (`betModes`) aren't offered yet;
-add those by hand-editing the generated blueprint.
+declared, since a free games award needs a scatter symbol to trigger off of. During creation a symbol marked wild
+gets no paytable question or payout: an all-wild line resolves to no winning symbol id, so such an entry would be
+dead data. Editing preserves an existing authored wild entry, which still receives the canonical warning.
+Selectable bet modes (`betModes`) aren't offered yet; add those by hand-editing the generated blueprint.
 
 The game id question offers a ready-made suggestion rather than requiring one to be typed: the wizard mints a
 single [`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) result once at the start of
@@ -192,8 +192,8 @@ The wizard assembles a plain `GameBlueprint` object — the same shape a `<confi
 format, validation rules) applies identically; the wizard has no *generation* logic of its own. It does do light,
 per-prompt input-shape checks (a number is a number, a symbol id isn't blank, ...), and a handful of these
 deliberately mirror `GameBlueprintValidator`'s own error-level rules — specifically the ones cheap to check
-immediately against fields already collected earlier in the same run (a paytable `matchCount` between 2 and the
-chosen reel count; a reel-weighting/reel-strip symbol that's actually one of the symbols entered earlier) — so a
+immediately against fields already collected earlier in the same run (a paytable `matchCount` within the
+symbol's evaluation bounds; a reel-weighting/reel-strip symbol that's actually one of the symbols entered earlier) — so a
 typo is caught and re-asked on the spot instead of only surfacing as a validator error after answering every
 remaining question. This is a convenience, not a second source of truth: the final answer is always whatever
 `GameBlueprintValidator` decides once the wizard hands off its result, same as for `<config.json>`.
@@ -201,7 +201,7 @@ remaining question. This is a convenience, not a second source of truth: the fin
 Per-question input handling:
 
 - An answer that doesn't parse (e.g. non-numeric reels, a duplicate symbol id, a malformed `matchCount:multiplier`
-  pair, a paytable `matchCount` outside `2..reels`, a reel-weighting symbol not among the symbols entered earlier)
+  pair, a paytable `matchCount` outside its model bounds, a reel-weighting symbol not among the symbols entered earlier)
   prints a one-line reason and re-asks the same question — it never silently drops or guesses at bad input.
 - Pressing **Ctrl+C** at any prompt cancels the wizard gracefully: it prints `Create cancelled.` and exits with a
   non-zero status without writing anything, rather than a stack trace. So does closing/exhausting the input stream
@@ -213,15 +213,26 @@ Per-question input handling:
   symbol weights typed by hand (one combined `symbol:count` line), `s` for explicit reel strips (one line per
   reel), or `-` for the engine's built-in default weighting — mirroring the blueprint's own
   `reelStrips`/`symbolWeights` mutual exclusivity.
-- A blank paytable answer applies that symbol's default payouts rather than leaving it unpaid: the preset's own
-  entry when it fits the chosen reel count, otherwise a generated ladder that respects it (match counts never
-  exceed `reels`, and matching more never pays less). Answer `-` to leave a symbol without a payout.
+- When creating, a blank paytable answer applies the starter preset's entry when it fits the symbol's bounds,
+  otherwise a generated ladder up to the chosen reel count. When editing, Enter preserves the authored entries,
+  including counts above `reels`, explicit zeros, empty entries and omitted payouts. A layout change never
+  substitutes a creation ladder; incompatible authored counts receive validation before Save.
+  Line/ways counts are integers in `2..reels`; cluster counts are in `2..evaluationCells`; scatter counts are
+  in `1..evaluationCells`, where `evaluationCells = reels * evaluatedRows` (normally `reels * rows`).
+  Answer `-` to leave a symbol without a payout. A finite nonnegative multiplier is accepted: `2:0` authors an
+  explicit zero award, and `2:0.5` pays half the stake. Each comma-separated pair must contain exactly two
+  nonempty fields; empty, negative and non-finite multipliers and extra fields are rejected with retry available.
 - Symbol ids can't contain `:` — the wizard's own prompts reuse it as a pair separator later on (paytable, symbol
   weights), so a symbol id containing one would be unparseable there.
 - Wild/scatter symbols must each be one of the symbols already entered, and a symbol can't be both at once. Leaving
   either question blank omits `wilds`/`scatters` from the blueprint entirely, rather than writing out an empty list.
 - Free games, when asked at all, offers the first declared scatter as the trigger symbol's own default (or `-` to
   skip the mechanic entirely), then asks for its `matchCount:games` award pairs (e.g. `3:8,4:15,5:20`).
+  Counts must be integers >= 1 and grants must be nonnegative integers: `1:1` and `2:0` are valid.
+  Grant counts have no upper bound in the canonical model; an unreachable count does not trigger an award.
+  Empty fields, negative or fractional values, non-finite values and extra colon-separated fields are rejected
+  with retry available. Enter preserves an existing grant map when editing; without a default, at least one
+  authored pair is required.
 
 Answers can also be piped/scripted (e.g. `printf '...\n...\n' | pokie create`, or piping a saved answers file) —
 each question is answered from the piped input in the same order it would be asked interactively, one line per
@@ -749,9 +760,12 @@ Every field above is checked before anything is generated: `manifest.id`/`name`/
 strings; `reels`/`rows` must be positive integers; `symbols` must be a non-empty array of unique non-empty
 strings; `wilds`/`scatters` must be arrays of unique symbol ids with no overlap between the two; `wilds`/`scatters`/
 `paytable` keys/`reelStrips` symbols/`reelStripGeneration` symbols/`symbolWeights` keys must all reference symbols
-actually listed in `symbols`; `paytable` match-counts must be integers between 2 and `reels`, with positive
-multipliers; `paylines` entries must have exactly `reels` row indexes, each within `[0, rows)`; `reelStrips` must
-have exactly one strip per reel; `reelStripGeneration` must have exactly one entry per reel, each entry either a
+actually listed in `symbols`; `paytable` match-counts must be integers in `2..reels` for line/ways symbols,
+`2..evaluationCells` for cluster symbols, or `1..evaluationCells` for scatter symbols, with finite nonnegative
+multipliers. `evaluationCells` is `reels * evaluatedRows`: `evaluatedRows` is `rows` unless `screenGeometry`
+defines a separate evaluated window. Free-game grant counts are integers >= 1 and grants are nonnegative
+integers; omitted grants pay no free games. `paylines` entries must have exactly `reels` row indexes, each within
+`[0, evaluatedRows)`; `reelStrips` must have exactly one strip per reel; `reelStripGeneration` must have exactly one entry per reel, each entry either a
 well-formed `{type: "literal", strip}` (a non-empty array of known symbol ids) or `{type: "generated", ...}` with
 a positive `length`, an integer `seed`, exactly one of `symbolCounts`/`symbolWeights`, well-shaped
 `lockedPositions`, a positive `maxAttempts`, and valid `roundingPolicy`/`remainderTieBreakPolicy` enum values where
