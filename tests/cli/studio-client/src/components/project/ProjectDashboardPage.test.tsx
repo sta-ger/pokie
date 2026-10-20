@@ -1,3 +1,11 @@
+/** @jest-environment-options {"customExportConditions":["node","node-addons"]} */
+import fs from "node:fs";
+import path from "node:path";
+import {generatedMechanicsGame} from "../../../../../v2/fixtures/ExistingMechanicsGame";
+import {StudioSimulationService} from "../../../../../../cli/studio/simulation/StudioSimulationService";
+import {StudioJobService} from "../../../../../../cli/studio/jobs/StudioJobService";
+import {FileStudioJobRepository} from "../../../../../../cli/studio/jobs/FileStudioJobRepository";
+import {validateSimulationRequest} from "../../../../../../cli/studio/simulation/validateSimulationRequest";
 import {ReplayRecorder} from "../../../../../../src/replay/ReplayRecorder";
 import {GameSession} from "../../../../../../src/session/GameSession";
 import {act, screen, waitFor, within} from "@testing-library/react";
@@ -671,6 +679,7 @@ describe("V2C-34 saved-design simulation freshness", () => {
                 saveRejected = value;
             },
             payout: () => blueprint.paytable.A[3],
+            blueprint: () => blueprint,
             applyPayout: () => {
                 blueprint = {...blueprint, paytable: {A: {3: 11}}};
             },
@@ -698,6 +707,97 @@ describe("V2C-34 saved-design simulation freshness", () => {
         await user.type(input, value);
         return paytable;
     }
+
+    it("V2C-34-SIMULATION-REATTACH keeps real pre-save durable work historical on first discovery, then accepts new execution", async () => {
+        const user = userEvent.setup();
+        const test = fixture();
+        const directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c34-reattach-"));
+        const root = "/games/sample-slot";
+        const jobs = new StudioJobService(new FileStudioJobRepository(directory));
+        let release: () => void = () => undefined;
+        const gate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        const service = new StudioSimulationService(undefined, () => Promise.resolve(generatedMechanicsGame(test.blueprint())), undefined, 50, undefined, () => gate);
+        service.attachJobService(jobs);
+        const original = service.start(root, {rounds: 100, workers: 1});
+        if (original.status !== "created") throw new Error("Expected pre-save execution");
+        let observed = false;
+        const receipts: string[] = [];
+        const respond = (body: unknown, status = 200) => Promise.resolve({ok: status < 400, status, json: () => Promise.resolve(body)});
+        const fetchImpl: FetchLike = (url, init) => {
+            const [route] = url.split("?");
+            if (route === "/api/project/jobs") return respond({jobs: observed ? jobs.list(root) : []});
+            if (route.startsWith("/api/project/jobs/")) return respond(jobs.get(root, route.split("/").at(-1)!));
+            if (route === "/api/project/simulations") {
+                observed = true;
+                const result = service.start(root, validateSimulationRequest(JSON.parse(init!.body!)));
+                receipts.push(result.status);
+                if (result.status === "unsupported") return respond({error: result.message}, 409);
+                if (result.status === "conflict") return respond({activeJobId: result.activeJobId}, 409);
+                // Same public projection as StudioServer, covered separately through real HTTP.
+                return respond(result.job, result.status === "reattached" ? 200 : 202);
+            }
+            if (route.startsWith("/api/project/simulations/")) return respond(service.getStatusForProject(root, route.split("/").at(-1)!));
+            if (route === "/api/project/reports") return respond(service.listReports(root));
+            if (route.startsWith("/api/project/reports/")) {
+                const result = service.getReport(root, route.split("/").at(-1)!);
+                return result.status === "ok" ? respond({report: result.report, statistics: result.statistics}) : respond({error: "Report not ready"}, 404);
+            }
+            return test.fetchImpl(url, init);
+        };
+        let view: ReturnType<typeof renderRoutedApp> | undefined;
+        try {
+            await waitFor(() => expect(service.getStatus(original.job.id)?.roundsCompleted).toBe(50));
+            view = renderRoutedApp({fetchImpl, initialEntries: ["/project/gameModel"]});
+            await screen.findByRole("heading", {name: "Sample Slot"});
+            const paytable = await editPayout(user, "11");
+            await user.click(within(paytable).getByRole("button", {name: "Save"}));
+            await within(paytable).findByRole("button", {name: "Edit"});
+            expect(test.payout()).toBe(11);
+            expect(observed).toBe(false);
+            await user.click(screen.getByRole("button", {name: "Simulation"}));
+            const rounds = await screen.findByLabelText(/^Rounds/);
+            await user.clear(rounds);
+            await user.type(rounds, "100");
+            await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+            await waitFor(() => expect(receipts).toEqual(["reattached"]));
+            expect(jobs.list(root)).toHaveLength(1);
+            expect(service.getStatus(original.job.id)?.status).toBe("running");
+            expect(await screen.findByRole("button", {name: "Cancel"})).toBeEnabled();
+            await act(async () => {
+                release();
+                await Promise.resolve();
+            });
+            await waitFor(() => expect(service.getStatus(original.job.id)?.status).toBe("completed"));
+            const originalReport = JSON.stringify(service.getReport(root, original.job.id));
+            const workflow = await screen.findByRole("region", {name: "Simulation workflow"});
+            await within(workflow).findByText(/Historical simulation result/);
+            // Terminal observation can show the original report, but never as current design.
+            expect(service.getReport(root, original.job.id)).toMatchObject({status: "ok", report: {rtp: 10}});
+            await within(workflow).findByRole("button", {name: "Open full report"});
+            expect(within(workflow).getByText(/Historical simulation result/)).toBeVisible();
+            await user.click(within(workflow).getByRole("button", {name: /Export.*Download report/}));
+            expect(within(workflow).getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", `/api/project/reports/${original.job.id}/download?format=json`);
+            await user.click(within(workflow).getByRole("button", {name: /Configure.*Set rounds/}));
+            await user.click(within(workflow).getByRole("button", {name: "Run Simulation"}));
+            await waitFor(() => expect(receipts).toEqual(["reattached", "created"]));
+            await within(workflow).findByRole("button", {name: "Open full report"});
+            expect(within(workflow).queryByText(/Historical simulation result/)).not.toBeInTheDocument();
+            expect(jobs.list(root)).toHaveLength(2);
+            const nextId = jobs.list(root).find(job => job.id !== original.job.id)!.id;
+            expect(service.getReport(root, nextId)).toMatchObject({status: "ok", report: {rtp: 11}});
+            expect(JSON.stringify(service.getReport(root, original.job.id))).toBe(originalReport);
+            const reconstructed = new StudioSimulationService();
+            reconstructed.attachJobService(new StudioJobService(new FileStudioJobRepository(directory)));
+            expect(JSON.stringify(reconstructed.getReport(root, original.job.id))).toBe(originalReport);
+        } finally {
+            view?.unmount();
+            release();
+            await service.cancelAll();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
 
     it("V2C-34-SIMULATION-SAVE invalidates the current report on accepted Save and preserves explicit historical inspection", async () => {
         const user = userEvent.setup();

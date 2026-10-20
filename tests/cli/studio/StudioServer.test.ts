@@ -5208,6 +5208,10 @@ describe("StudioServer", () => {
 
             const first = await post(`${baseUrl}/api/project/simulations`, {rounds: 1000});
             const firstBody = first.body as {id: string};
+            const attached = await post(`${baseUrl}/api/project/simulations`, {rounds: 1000});
+            expect(attached).toMatchObject({status: 200, body: {id: firstBody.id}});
+            // Status is the execution receipt; the job body retains its lifecycle status.
+            expect(first.status).toBe(202);
             const second = await post(`${baseUrl}/api/project/simulations`, {rounds: 500});
 
             expect(second.status).toBe(409);

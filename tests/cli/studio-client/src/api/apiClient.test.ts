@@ -985,6 +985,12 @@ describe("studio-client apiClient", () => {
             expect(result).toEqual({status: "created", job});
         });
 
+        it.each([200, 201, 202])("uses HTTP %s as the execution receipt independently of matching job metadata", async status => {
+            const job = {id: "pre-save", status: "running", rounds: 1000, seed: "same", workers: 1};
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status, body: job}));
+            expect(await startSimulation(fetchImpl, 1000, "same", 1)).toEqual({status: status === 200 ? "reattached" : "created", job});
+        });
+
         it("omits seed from the body when not given", async () => {
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 202, body: {id: "job-1", status: "queued"}}));
 

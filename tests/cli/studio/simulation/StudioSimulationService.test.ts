@@ -1619,7 +1619,7 @@ it("retains adaptive request identity, phase and completed report through reatta
         while (!gate.pendingCount()) await flushMacrotask();
         expect(service.getStatusForProject(directory, started.job.id)).toMatchObject({status: "running", roundsCompleted: 5, progress: {stage: "simulation", current: 5, total: 100}});
         const attached = service.start(directory, request);
-        expect(attached).toMatchObject({status: "created", job: {id: started.job.id}});
+        expect(attached).toMatchObject({status: "reattached", job: {id: started.job.id}});
         expect(service.start(directory, {...request, convergence: {...request.convergence!, rtpTolerance: 1}})).toEqual({status: "conflict", activeJobId: started.job.id});
         expect(jobs.get(directory, started.job.id)?.request.convergence).toEqual(request.convergence);
         gate.release();

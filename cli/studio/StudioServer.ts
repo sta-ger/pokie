@@ -3661,7 +3661,8 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: result.message});
             return;
         }
-        this.sendJson(res, 202, result.job);
+        // Attachment observes existing work; only 202 accepts a new execution.
+        this.sendJson(res, result.status === "reattached" ? 200 : 202, result.job);
     }
 
     private handleGetSimulation(res: ServerResponse, id: string): void {

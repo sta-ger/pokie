@@ -670,7 +670,7 @@ export async function previewGameModel(fetchImpl: FetchLike, blueprint: unknown,
 }
 
 export type StartSimulationResult =
-    | {status: "created"; job: StudioSimulationJobView}
+    | {status: "created" | "reattached"; job: StudioSimulationJobView}
     | {status: "conflict"; activeJobId: string};
 
 // Distinguishes the two different 409 cases the endpoint can return: "another simulation is already
@@ -708,7 +708,9 @@ export async function startSimulation(
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to start simulation"));
     }
-    return {status: "created", job: (await response.json()) as StudioSimulationJobView};
+    // The server preserves the job body on attachment (200). Only explicit
+    // execution acceptance (202, or 201 creation) can grant new-run authority.
+    return {status: response.status === 202 || response.status === 201 ? "created" : "reattached", job: (await response.json()) as StudioSimulationJobView};
 }
 
 export async function getSimulation(fetchImpl: FetchLike, id: string, signal?: AbortSignal): Promise<StudioSimulationJobView> {

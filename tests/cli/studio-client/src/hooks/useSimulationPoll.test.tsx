@@ -685,6 +685,32 @@ describe("V2C-34 simulation freshness authority", () => {
         expect(result.current.terminalReceipt).toMatchObject({capturedJobId: "job-1", status: "cancelled"});
     });
 
+    it.each(["before", "during"])("keeps a first-observed attachment historical when invalidation occurs %s acceptance", async phase => {
+        let finish: (() => void) | undefined;
+        let terminal = false;
+        const fetchImpl: FetchLike = (_url, init) => {
+            if (init?.method === "POST") return new Promise(resolve => {
+                finish = () => resolve({ok: true, status: 200, json: () => Promise.resolve(job("running", 5))});
+            });
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job(terminal ? "completed" : "running", terminal ? 10 : 5))});
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+        if (phase === "before") act(() => result.current.invalidateResult());
+        act(() => result.current.run(10, undefined, 1));
+        await waitFor(() => expect(finish).toBeDefined());
+        if (phase === "during") act(() => result.current.invalidateResult());
+        await act(async () => {
+            finish!();
+            await Promise.resolve();
+        });
+        await waitFor(() => expect(result.current.job?.status).toBe("running"));
+        expect(result.current.resultCurrent).toBe(false);
+        terminal = true;
+        await waitFor(() => expect(result.current.job?.status).toBe("completed"));
+        expect(result.current.resultCurrent).toBe(false);
+        expect(result.current.terminalReceipt).toMatchObject({capturedJobId: "job-1", requestId: "job-1", status: "completed"});
+    });
+
     it("treats restored history conservatively in fresh and previously used instances", async () => {
         const retained = job("completed", 10);
         const fetchImpl: FetchLike = (_url, init) => Promise.resolve({ok: true, status: init?.method === "POST" ? 201 : 200, json: () => Promise.resolve(retained)});

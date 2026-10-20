@@ -52,7 +52,7 @@ export function useSimulationPoll() {
     // a replaced Retry control cannot be mistaken for a status-only result.
     const [terminalReceipt, setTerminalReceipt] = useState<SimulationTerminalReceipt>();
     // Freshness belongs to an accepted creation after the last authored save,
-    // never to a conflict attachment, restored history, or matching game metadata.
+    // never to an attachment, restored history, or matching game metadata.
     const sourceRevisionRef = useRef(0);
     const [resultCurrent, setResultCurrent] = useState(false);
     const operationRef = useRef<SimulationOperation>("simulation");
@@ -194,7 +194,7 @@ export function useSimulationPoll() {
                 const id = result.status === "conflict" ? result.activeJobId : result.job.id;
                 currentJobId.current = id;
                 setResultCurrent(result.status === "created" && sourceRevision === sourceRevisionRef.current);
-                if (result.status === "created") {
+                if (result.status !== "conflict") {
                     setJob(result.job);
                     setProgress(describeSimulationProgress(result.job));
                 }

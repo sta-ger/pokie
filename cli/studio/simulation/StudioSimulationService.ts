@@ -48,7 +48,7 @@ import type {StudioJobView} from "../jobs/StudioJobView.js";
 const DEFAULT_CHUNK_SIZE = 1000;
 
 export type StudioSimulationStartResult =
-    | {status: "created"; job: StudioSimulationJobView}
+    | {status: "created" | "reattached"; job: StudioSimulationJobView}
     | {status: "conflict"; activeJobId: string}
     | {status: "unsupported"; message: string};
 
@@ -182,7 +182,7 @@ export class StudioSimulationService {
         if (common?.status === "conflict") return {status: "conflict", activeJobId: common.activeJobId};
         if (common?.status === "reattached") {
             const existing = this.repository.get(common.job.id);
-            return {status: "created", job: existing === undefined ? this.projectDurableJob(common.job) : this.toJobView(existing)};
+            return {status: "reattached", job: existing === undefined ? this.projectDurableJob(common.job) : this.toJobView(existing)};
         }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
