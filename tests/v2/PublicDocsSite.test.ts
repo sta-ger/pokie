@@ -6,6 +6,7 @@ import {JSDOM} from "jsdom";
 import {GameBlueprintValidator} from "../../src/generated/GameBlueprintValidator.js";
 import {renderBuiltGameModule} from "../../src/generated/renderBuiltGameModule.js";
 import {runInNewContext} from "node:vm";
+import {pathToFileURL} from "node:url";
 import * as api from "../../src/index.js";
 import {seededRound} from "../../site/examples/session.js";
 import {browserRound} from "../../site/examples/browser.js";
@@ -100,7 +101,9 @@ async function cleanup(): Promise<void> {
         try {
             await stopPreview();
         } finally {
-            fs.rmSync(scratch, {recursive: true, force: true});
+            // Chromium's profile writers can finish just after its parent exits.
+            // Retry transient ENOTEMPTY/EBUSY errors, but still fail if cleanup cannot finish.
+            fs.rmSync(scratch, {recursive: true, force: true, maxRetries: 5, retryDelay: 100});
         }
     }
 }
@@ -122,6 +125,82 @@ afterAll(async () => {
 });
 
 describe("public documentation production build", () => {
+    it("preserves authenticated candidate selectors through the complete V2C-32 cleanup correction", () => {
+        const directory = fs.mkdtempSync(path.join(scratch, "retained-candidate-"));
+        try {
+            execFileSync(process.execPath, ["--input-type=module", "-e", `
+                import assert from "node:assert/strict";
+                import {mkdir, readFile, symlink, unlink, writeFile} from "node:fs/promises";
+                import {execFileSync} from "node:child_process";
+                import path from "node:path";
+                import {candidateFixture, P911_TOOLING_DESCENDANT_PATHS} from ${JSON.stringify(pathToFileURL(path.join(root, "tests/testUtils/createP911CandidateFixture.mjs")).href)};
+                import {readP911Candidate, readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment, validateP911SmokeCandidateIdentity} from ${JSON.stringify(pathToFileURL(path.join(root, "scripts/p9-11-candidate.mjs")).href)};
+                import {authenticateP805ProductTree} from ${JSON.stringify(pathToFileURL(path.join(root, "scripts/p8-05-release-handoff.mjs")).href)};
+                const fixture = await candidateFixture(${JSON.stringify(directory)});
+                const options = {repository: fixture.repository};
+                const original = await readP911Candidate(fixture.reference, options);
+                const git = args => execFileSync("git", args, {cwd: fixture.repository, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"]}).trim();
+                const commit = () => {
+                    git(["add", "."]);
+                    git(["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "cleanup correction fixture"]);
+                    return git(["rev-parse", "HEAD"]);
+                };
+                // Independent of the admission lists: every file in this correction.
+                const paths = ["tests/v2/PublicDocsSite.test.ts", "scripts/p9-11-candidate.mjs",
+                    "scripts/p8-05-release-handoff.mjs", "tests/testUtils/createP911CandidateFixture.mjs"];
+                for (const file of paths) {
+                    assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
+                    await writeFile(path.join(fixture.repository, file), "changed cleanup tooling");
+                }
+                const reviewedId = commit();
+                const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256,
+                    POKIE_PACK_SMOKE_CANDIDATE_ID: reviewedId, POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256: original.archiveSha256};
+                const selectors = [readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment];
+                for (const selector of selectors) {
+                    const selected = await selector(environment, options);
+                    assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, [...paths].sort());
+                    assert.equal(selected.equivalence.reviewedId, reviewedId);
+                    assert.deepEqual({...selected, equivalence: original.equivalence}, original);
+                    validateP911SmokeCandidateIdentity(selected, environment, options);
+                    await assert.rejects(async () => selector({...environment, POKIE_P911_CANDIDATE_HANDOFF_SHA256: "0".repeat(64)}, options), /receipt digest mismatch/);
+                    await assert.rejects(async () => selector({...environment, POKIE_P805_RELEASE_HANDOFF: "conflicting"}, options), /cannot be combined/);
+                }
+                const legacy = () => authenticateP805ProductTree(original.candidateId, git(["rev-parse", "HEAD"]), fixture.repository);
+                assert.deepEqual(legacy().changedToolingAndEvidencePaths, [...paths].sort());
+                await assert.rejects(readP911SmokeCandidateFromEnvironment({...environment, POKIE_PACK_SMOKE_CANDIDATE_ID: original.candidateId}, options), /reviewed candidate identity mismatch/);
+                await assert.rejects(readP911SmokeCandidateFromEnvironment({...environment, POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256: "0".repeat(64)}, options), /smoke archive digest mismatch/);
+                for (const reference of [fixture.handoff.browserDriver, fixture.handoff.buildReceipt, fixture.handoff.installReceipt,
+                    {path: fixture.handoff.archivePath}, {path: path.join(original.packageRoot, "dist/cli/pokie.js")}]) {
+                    const bytes = await readFile(reference.path);
+                    await writeFile(reference.path, "changed pinned input");
+                    for (const selector of selectors) await assert.rejects(async () => selector(environment, options),
+                        /authenticated controller browser driver required|receipt digest mismatch|archive digest mismatch|stale installed asset/);
+                    await writeFile(reference.path, bytes);
+                }
+                for (const file of ["tests/v2/PublicDocsSite.extra.test.ts", "tests/v2/helpers/PublicDocsBrowser.ts", "src/index.ts", "cli/pokie.ts",
+                    "site/build.mjs", "site/content.json", "package.json", "package-lock.json", "tsconfig.prod.json", "generate-barrels.js", "docs/v2-completion/V2C-32.md"]) {
+                    const target = path.join(fixture.repository, file);
+                    await mkdir(path.dirname(target), {recursive: true});
+                    await writeFile(target, "changed protected input");
+                    commit();
+                    for (const selector of selectors) await assert.rejects(async () => selector(environment, options), /product\\/build inputs changed/);
+                    assert.throws(legacy, /changes product or build inputs/);
+                    git(["reset", "--hard", reviewedId]);
+                }
+                const admitted = path.join(fixture.repository, paths[0]);
+                await unlink(admitted);
+                await symlink("../../package.json", admitted);
+                commit();
+                for (const selector of selectors) await assert.rejects(async () => selector(environment, options), /nonregular/);
+                assert.throws(legacy, /nonregular/);
+                git(["reset", "--hard", reviewedId]);
+                for (const selector of selectors) assert.deepEqual({...await selector(environment, options), equivalence: original.equivalence}, original);
+            `], {timeout: 30000, stdio: ["ignore", "pipe", "pipe"]});
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    }, 30000);
+
     it("builds actual maintained pages, validated examples, command contracts and a crawlable section search", () => {
         expect(build()).toContain("Site built:");
         const manifest = JSON.parse(fs.readFileSync(path.join(output, "build-manifest.json"), "utf8"));
