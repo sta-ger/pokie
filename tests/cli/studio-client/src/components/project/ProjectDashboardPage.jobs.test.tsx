@@ -126,11 +126,13 @@ describe("ProjectDashboardPage durable jobs", () => {
         expect(opens()).toHaveLength(0);
         await user.click(screen.getByRole("button", {name: "Stay"}));
         expect(screen.getByLabelText("Game name")).toHaveValue("Unsaved producer edit");
+        await waitFor(() => expect(screen.queryByText(confirmation)).not.toBeInTheDocument());
         await user.click(screen.getByRole("button", {name: "Open Opened project"}));
         await screen.findByText(confirmation);
         expect(opens()).toHaveLength(0);
         await user.click(screen.getByRole("button", {name: "Leave"}));
         await screen.findByText(/Source temporarily unavailable/);
+        await waitFor(() => expect(screen.queryByText(confirmation)).not.toBeInTheDocument());
         expect(opens()).toHaveLength(1);
         expect(router.state.location.pathname).toMatch(/\/gameModel$/);
         expect(screen.getByLabelText("Game name")).toHaveValue("Unsaved producer edit");
@@ -138,6 +140,8 @@ describe("ProjectDashboardPage durable jobs", () => {
         await user.click(screen.getByRole("button", {name: "Overview"}));
         await screen.findByText(confirmation);
         await user.click(screen.getByRole("button", {name: "Stay"}));
+        await waitFor(() => expect(screen.queryByText(confirmation)).not.toBeInTheDocument());
+        expect(router.state.location.pathname).toMatch(/\/gameModel$/);
         rejectOpen = false;
         await user.click(screen.getByRole("button", {name: "Open Opened project"}));
         await screen.findByText(confirmation);
