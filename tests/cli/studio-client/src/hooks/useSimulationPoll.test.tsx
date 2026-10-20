@@ -591,3 +591,115 @@ it("retains per-mode budgets and adaptive settings when retrying an all-mode job
     await waitFor(() => expect(result.current.progress?.status).toBe("failed"));
     unmount();
 });
+
+describe("V2C-34 simulation freshness authority", () => {
+    it("retains job ownership across invalidation, rejection and conflict, then accepts first and subsequent fresh reuse", async () => {
+        let starts = 0;
+        let outcome: "created" | "rejected" | "conflict" = "created";
+        let acceptedId = "created-1";
+        const response = (body: unknown, status = 200) => Promise.resolve({ok: status < 400, status, json: () => Promise.resolve(body)});
+        const fetchImpl: FetchLike = (url, init) => {
+            if (init?.method === "POST") {
+                starts++;
+                if (outcome === "rejected") return response({error: "Invalid current source; correct it before retrying."}, 400);
+                if (outcome === "conflict") return response({activeJobId: acceptedId}, 409);
+                acceptedId = `created-${starts}`;
+                return response({...job("queued", 0), id: acceptedId}, 201);
+            }
+            return response({...job("completed", 10), id: url.split("/").at(-1)});
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+        act(() => result.current.run(10, "seed", 1));
+        await waitFor(() => expect(result.current.progress?.status).toBe("completed"));
+        expect(result.current.resultCurrent).toBe(true);
+        const retained = {job: result.current.job, receipt: result.current.terminalReceipt};
+        act(() => result.current.invalidateResult());
+        expect(result.current.resultCurrent).toBe(false);
+        expect(result.current.job).toBe(retained.job);
+        expect(result.current.terminalReceipt).toBe(retained.receipt);
+        act(() => result.current.run(0, undefined, 1));
+        expect(starts).toBe(1);
+        expect(result.current.resultCurrent).toBe(false);
+        // Restore is a no-op on an already owned workflow; it cannot mint freshness.
+        act(() => result.current.restore("other-job"));
+        expect(result.current.currentJobId).toBe(retained.job?.id);
+        outcome = "rejected";
+        act(() => result.current.retry());
+        await waitFor(() => expect(result.current.error).toContain("Invalid current source"));
+        expect(result.current.resultCurrent).toBe(false);
+        outcome = "created";
+        act(() => result.current.retry());
+        await waitFor(() => expect(result.current.currentJobId).toBe("created-3"));
+        await waitFor(() => expect(result.current.progress?.status).toBe("completed"));
+        expect(result.current.resultCurrent).toBe(true);
+        act(() => result.current.invalidateResult());
+        outcome = "conflict";
+        act(() => result.current.run(10, "new-seed", 1));
+        await waitFor(() => expect(result.current.currentJobId).toBe("created-3"));
+        await waitFor(() => expect(result.current.progress?.status).toBe("completed"));
+        expect(result.current.resultCurrent).toBe(false);
+        outcome = "created";
+        for (const id of ["created-5", "created-6"]) {
+            act(() => result.current.retry());
+            await waitFor(() => expect(result.current.currentJobId).toBe(id));
+            await waitFor(() => expect(result.current.progress?.status).toBe("completed"));
+            expect(result.current.resultCurrent).toBe(true);
+        }
+    });
+
+    it.each(["acceptance", "poll"])("cannot regain freshness when a pre-save %s settles, and keeps cancellation usable", async pending => {
+        let finish: (() => void) | undefined;
+        let cancelled = false;
+        let delay = true;
+        const response = (body: unknown, status = 200) => ({ok: status < 400, status, json: () => Promise.resolve(body)});
+        const fetchImpl: FetchLike = (url, init) => {
+            if (init?.method === "DELETE") {
+                cancelled = true;
+                return Promise.resolve(response(job("cancelled", 5)));
+            }
+            const isStart = init?.method === "POST";
+            const value = response(job(isStart ? "queued" : "running", isStart ? 0 : 5), isStart ? 201 : 200);
+            if (delay && (isStart === (pending === "acceptance"))) {
+                delay = false;
+                return new Promise(resolve => {
+                    finish = () => resolve(value);
+                });
+            }
+            return Promise.resolve(value);
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+        act(() => result.current.run(10, undefined, 1));
+        await waitFor(() => expect(finish).toBeDefined());
+        act(() => result.current.invalidateResult());
+        await act(async () => {
+            finish!();
+            await Promise.resolve();
+        });
+        await waitFor(() => expect(result.current.progress?.status).toBe("running"));
+        expect(result.current.resultCurrent).toBe(false);
+        expect(result.current.currentJobId).toBe("job-1");
+        act(() => result.current.cancel());
+        await waitFor(() => expect(result.current.progress?.status).toBe("cancelled"));
+        expect(cancelled).toBe(true);
+        expect(result.current.resultCurrent).toBe(false);
+        expect(result.current.terminalReceipt).toMatchObject({capturedJobId: "job-1", status: "cancelled"});
+    });
+
+    it("treats restored history conservatively in fresh and previously used instances", async () => {
+        const retained = job("completed", 10);
+        const fetchImpl: FetchLike = (_url, init) => Promise.resolve({ok: true, status: init?.method === "POST" ? 201 : 200, json: () => Promise.resolve(retained)});
+        const first = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+        act(() => first.result.current.run(10, undefined, 1));
+        await waitFor(() => expect(first.result.current.progress?.status).toBe("completed"));
+        expect(first.result.current.resultCurrent).toBe(true);
+        act(() => first.result.current.resetForProjectSwitch());
+        act(() => first.result.current.restore("job-1"));
+        await waitFor(() => expect(first.result.current.progress?.status).toBe("completed"));
+        expect(first.result.current.resultCurrent).toBe(false);
+        const second = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+        act(() => second.result.current.restore("job-1"));
+        await waitFor(() => expect(second.result.current.progress?.status).toBe("completed"));
+        expect(second.result.current.resultCurrent).toBe(false);
+        expect(second.result.current.job).toEqual(first.result.current.job);
+    });
+});

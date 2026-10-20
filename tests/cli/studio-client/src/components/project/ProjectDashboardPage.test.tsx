@@ -1,9 +1,11 @@
 import {ReplayRecorder} from "../../../../../../src/replay/ReplayRecorder";
 import {GameSession} from "../../../../../../src/session/GameSession";
-import {screen, waitFor, within} from "@testing-library/react";
+import {act, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createFakeFetch, createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
+import {optimizationRequest} from "../../../../../v2/fixtures/OptimizationFixture";
 
 function baseFetchRoutes() {
     return {
@@ -604,4 +606,266 @@ it.each(["blueprint", "parWorkbook", "tsPackage", "outcomeLibrary", "stakeAdapte
     await screen.findByText(`${type} declared tuning only`);
     expect(screen.getByText("Writable fields: /declared/weight")).toBeInTheDocument();
     expect(screen.getByRole("button", {name: "Run optimization"})).toBeEnabled();
+});
+
+// Source-aware regression for the retained 100-round, 94% report followed by
+// the rendered Paytable Save (A x3: 10 -> 11). This is not cold collection.
+describe("V2C-34 saved-design simulation freshness", () => {
+    function fixture() {
+        let blueprint = {
+            manifest: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"},
+            reels: 3, rows: 1, symbols: ["A"], paylines: [[0, 0, 0]],
+            reelStrips: [["A"], ["A"], ["A"]], availableBets: [1], paytable: {A: {3: 10}},
+        };
+        let run = 0;
+        let saveRejected = false;
+        const report = (id: string) => ({
+            game: blueprint.manifest, requestedRounds: 100, rounds: 100, totalBet: 100,
+            totalWin: id === "run-1" ? 94 : 98, rtp: id === "run-1" ? 0.94 : 0.98,
+            hitFrequency: 0.14, maxWin: 12, durationMs: 2825, spinsPerSecond: 35,
+            workers: 1, warnings: [], recommendations: [],
+        });
+        const simulationJob = (id: string) => ({
+            id, status: "completed", requestedRounds: 100, rounds: 100, roundsCompleted: 100,
+            workers: 1, startedAt: "2026-10-20T15:44:50Z", durationMs: 2825,
+        });
+        const commonJobs = () => Array.from({length: run}, (_, index) => ({
+            id: `run-${index + 1}`, projectId: "/games/sample-slot", operation: "simulation",
+            conflictKey: "simulation:/games/sample-slot", status: "completed", createdAt: index + 1,
+            request: {rounds: 100, workers: 1}, result: {
+                summary: "Simulation completed.",
+                outputs: [{label: "Simulation report", downloadPath: `/api/project/reports/run-${index + 1}/download?format=json`}],
+            },
+        }));
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...baseFetchRoutes(),
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: {
+                basics: {status: "available", data: blueprint.manifest},
+                paytable: {status: "available", data: [{symbolId: "A", matchCount: 3, payout: blueprint.paytable.A[3]}]},
+                betsAndModes: {status: "available", data: {availableBets: [1], betModes: []}},
+                ...Object.fromEntries(["layout", "symbols", "reels", "mechanics", "limits"].map(key => [key, {status: "unavailable", reason: "Not needed for this paytable observation"}])),
+            }}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/sample-slot", blueprint, blueprintHash: `payout-${blueprint.paytable.A[3]}`}}),
+            "/api/home/blueprints/validate": ({init}) => ({ok: true, status: 200, body: JSON.parse(init!.body!).blueprint.paytable.A[3] > 0
+                ? {status: "ok", warnings: []}
+                : {status: "invalid", errors: [{code: "blueprint-paytable-invalid-multiplier", severity: "error", message: '"paytable.A.3" must be a positive number.'}], warnings: []}}),
+            "/api/home/blueprints/save": ({init}) => {
+                if (saveRejected) return {ok: false, status: 409, body: {status: "conflict", reason: "stale", error: "Source changed; reload before saving."}};
+                blueprint = JSON.parse(init!.body!).blueprint;
+                return {ok: true, status: 200, body: {status: "ok", path: "/games/sample-slot", blueprintHash: `payout-${blueprint.paytable.A[3]}`}};
+            },
+            "/api/project/simulations": () => ({ok: true, status: 201, body: simulationJob(`run-${++run}`)}),
+            "/api/project/simulations/run-1": () => ({ok: true, status: 200, body: simulationJob("run-1")}),
+            "/api/project/simulations/run-2": () => ({ok: true, status: 200, body: simulationJob("run-2")}),
+            "/api/project/reports/run-1": () => ({ok: true, status: 200, body: {report: report("run-1")}}),
+            "/api/project/reports/run-2": () => ({ok: true, status: 200, body: {report: report("run-2")}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: Array.from({length: run}, (_, index) => ({
+                ...report(`run-${index + 1}`), id: `run-${index + 1}`, actualRounds: 100,
+                startedAt: "2026-10-20T15:44:50Z", hasWarnings: false,
+            }))}),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: commonJobs()}}),
+        });
+        return {
+            fetchImpl, calls,
+            setSaveRejected: (value: boolean) => {
+                saveRejected = value;
+            },
+            payout: () => blueprint.paytable.A[3],
+            applyPayout: () => {
+                blueprint = {...blueprint, paytable: {A: {3: 11}}};
+            },
+        };
+    }
+
+    async function runInitial(user: ReturnType<typeof userEvent.setup>) {
+        const runButton = await screen.findByRole("button", {name: "Run Simulation"});
+        const rounds = screen.getByLabelText(/^Rounds/);
+        await user.clear(rounds);
+        await user.type(rounds, "100");
+        await user.click(runButton);
+        expect(await screen.findByRole("button", {name: "Open full report"})).toBeVisible();
+        const workflow = screen.getByRole("region", {name: "Simulation workflow"});
+        expect(within(workflow).getAllByText("94.00%").length).toBeGreaterThan(0);
+        expect(within(workflow).queryByText(/Historical simulation result/)).not.toBeInTheDocument();
+    }
+
+    async function editPayout(user: ReturnType<typeof userEvent.setup>, value: string) {
+        await user.click(screen.getByRole("button", {name: "Game Model"}));
+        const paytable = (await screen.findByText("Paytable", {selector: "span"})).closest("fieldset")!;
+        await user.click(within(paytable).getByRole("button", {name: "Edit"}));
+        const input = await within(paytable).findByLabelText("A x3 payout");
+        await user.clear(input);
+        await user.type(input, value);
+        return paytable;
+    }
+
+    it("V2C-34-SIMULATION-SAVE invalidates the current report on accepted Save and preserves explicit historical inspection", async () => {
+        const user = userEvent.setup();
+        const test = fixture();
+        const view = renderRoutedApp({fetchImpl: test.fetchImpl, initialEntries: ["/project/simulation"]});
+        await runInitial(user);
+        const paytable = await editPayout(user, "11");
+        await user.click(within(paytable).getByRole("button", {name: "Save"}));
+        await within(paytable).findByRole("button", {name: "Edit"});
+        expect(test.payout()).toBe(11);
+        expect(within(paytable).getByText("11")).toBeVisible();
+        expect(JSON.parse(test.calls.find(call => call.url === "/api/home/blueprints/save")!.init!.body!)).toMatchObject({
+            blueprint: {paytable: {A: {3: 11}}}, expectedHash: "payout-10", overwrite: true,
+        });
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        const workflow = await screen.findByRole("region", {name: "Simulation workflow"});
+        expect(within(workflow).getByText(/Historical simulation result/)).toBeVisible();
+        expect(within(workflow).queryByRole("button", {name: "Open full report"})).not.toBeInTheDocument();
+        expect(within(workflow).queryByRole("button", {name: "Open completed simulation report"})).not.toBeInTheDocument();
+        expect(within(workflow).queryByRole("link", {name: "Download JSON"})).not.toBeInTheDocument();
+        const commonJob = await screen.findByRole("region", {name: "simulation job run-1"});
+        expect(within(commonJob).getByText(/Historical simulation result/)).toBeVisible();
+        expect(within(commonJob).getByRole("link", {name: "Download Simulation report"})).toHaveAttribute("href", "/api/project/reports/run-1/download?format=json");
+
+        // Opening history is deliberate and labelled; bytes/provenance remain usable.
+        await user.click(within(workflow).getByRole("button", {name: "Open latest report"}));
+        await within(workflow).findByRole("button", {name: "Open full report"});
+        expect(within(workflow).getByText(/Historical simulation result/)).toBeVisible();
+        await user.click(within(workflow).getByRole("button", {name: /Export.*Download report/}));
+        expect(within(workflow).getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/reports/run-1/download?format=json");
+        await user.click(within(workflow).getByRole("button", {name: /Configure.*Set rounds/}));
+        await user.click(within(workflow).getByRole("button", {name: "Run Simulation"}));
+        await within(workflow).findByRole("button", {name: "Open full report"});
+        expect(within(workflow).queryByText(/Historical simulation result/)).not.toBeInTheDocument();
+        expect(within(workflow).getAllByText("98.00%").length).toBeGreaterThan(0);
+
+        // A new page cannot authenticate current source from durable metadata alone.
+        view.unmount();
+        renderRoutedApp({fetchImpl: test.fetchImpl, initialEntries: ["/project/simulation"]});
+        const restored = await screen.findByRole("region", {name: "Simulation workflow"});
+        await within(restored).findByRole("button", {name: "Open full report"});
+        expect(within(restored).getByText(/Historical simulation result/)).toBeVisible();
+    });
+
+    it.each(["invalid", "conflict", "cancel"])("V2C-34-SIMULATION-REJECT preserves current results through %s and allows a later accepted Save", async rejection => {
+        const user = userEvent.setup();
+        const test = fixture();
+        renderRoutedApp({fetchImpl: test.fetchImpl, initialEntries: ["/project/simulation"]});
+        await runInitial(user);
+        const paytable = await editPayout(user, rejection === "invalid" ? "0" : "11");
+        if (rejection === "cancel") {
+            await user.click(within(paytable).getByRole("button", {name: "Cancel"}));
+            await user.click(await screen.findByRole("button", {name: "Confirm"}));
+            await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+        } else {
+            test.setSaveRejected(rejection === "conflict");
+            await user.click(within(paytable).getByRole("button", {name: "Save"}));
+            await screen.findByText(rejection === "invalid" ? /Save blocked — correct these errors/ : /Source changed; reload before saving\./);
+            expect(await within(paytable).findByLabelText("A x3 payout")).toHaveValue(rejection === "invalid" ? "0" : "11");
+            if (rejection === "invalid") expect(test.calls.filter(call => call.url === "/api/home/blueprints/save")).toHaveLength(0);
+            await user.click(within(paytable).getByRole("button", {name: "Cancel"}));
+            await user.click(await screen.findByRole("button", {name: "Confirm"}));
+            await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+        }
+        expect(test.payout()).toBe(10);
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        const workflow = await screen.findByRole("region", {name: "Simulation workflow"});
+        expect(await within(workflow).findByRole("button", {name: "Open full report"})).toBeVisible();
+        expect(within(workflow).queryByText(/Historical simulation result/)).not.toBeInTheDocument();
+        test.setSaveRejected(false);
+        const corrected = await editPayout(user, "11");
+        await user.click(within(corrected).getByRole("button", {name: "Save"}));
+        await within(corrected).findByRole("button", {name: "Edit"});
+        expect(test.payout()).toBe(11);
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        expect(await screen.findByText(/The saved design changed/)).toBeVisible();
+    });
+
+    it.each(["report", "comparison"])("V2C-34-SIMULATION-LATE retires a pending %s on Save", async pending => {
+        const user = userEvent.setup();
+        const test = fixture();
+        let delay = false;
+        let finish: (() => Promise<void>) | undefined;
+        const fetchImpl: FetchLike = (url, init) => test.fetchImpl(url, init).then(response => {
+            if (delay && url === "/api/project/reports/run-1") return {...response, json: () => new Promise(resolve => {
+                finish = () => response.json().then(resolve);
+            })};
+            return response;
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
+        await runInitial(user);
+        if (pending === "comparison") {
+            await user.click(screen.getByRole("button", {name: /Configure.*Set rounds/}));
+            await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+            await screen.findByRole("button", {name: "Open full report"});
+            expect(screen.getAllByText("98.00%").length).toBeGreaterThan(0);
+        }
+        delay = true;
+        if (pending === "report") await user.click(screen.getByRole("button", {name: "Open latest report"}));
+        else {
+            await user.click(screen.getByRole("button", {name: "Compare with another run"}));
+            await user.click(await screen.findByRole("button", {name: /sample-slot v1\.0\.0/}));
+        }
+        await waitFor(() => expect(finish).toBeDefined());
+        const paytable = await editPayout(user, "11");
+        await user.click(within(paytable).getByRole("button", {name: "Save"}));
+        await within(paytable).findByRole("button", {name: "Edit"});
+        await act(async () => {
+            await finish!();
+        });
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        const workflow = await screen.findByRole("region", {name: "Simulation workflow"});
+        expect(within(workflow).queryByRole("button", {name: "Open full report"})).not.toBeInTheDocument();
+        expect(within(workflow).queryByText("Comparison")).not.toBeInTheDocument();
+        expect(within(workflow).getByText(/Historical simulation result/)).toBeVisible();
+        delay = false;
+        await user.click(within(workflow).getByRole("button", {name: "Open latest report"}));
+        await within(workflow).findByRole("button", {name: "Open full report"});
+        expect(within(workflow).getByText(/Historical simulation result/)).toBeVisible();
+    });
+
+    it("V2C-34-SIMULATION-APPLY invalidates through the sibling authored Apply but preserves Save-as", async () => {
+        const user = userEvent.setup();
+        const test = fixture();
+        let exposeOptimization = false;
+        const optimizationJob = {
+            id: "opt-1", projectId: "/games/sample-slot", operation: "optimization", status: "completed",
+            createdAt: 1, conflictKey: "opt", request: {request: optimizationRequest()}, result: {
+                summary: "Reviewed tuning", detail: {status: "attained", diagnostics: [],
+                    candidate: {path: "/scratch/reviewed.json", type: "blueprint"}},
+            },
+        };
+        const actions: string[] = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url.endsWith("/optimization/save") || url.endsWith("/optimization/apply")) {
+                actions.push(url);
+                if (url.endsWith("apply")) test.applyPayout();
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({outputPath: "/reviewed.json"})});
+            }
+            return test.fetchImpl(url, init).then(response => {
+                if (exposeOptimization && url.split("?")[0] === "/api/project/jobs") return {...response, json: async () => {
+                    const body = await response.json() as {jobs: unknown[]};
+                    return {jobs: [...body.jobs, optimizationJob]};
+                }};
+                return response;
+            });
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
+        await runInitial(user);
+        exposeOptimization = true;
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        const destination = await screen.findByLabelText("Candidate destination");
+        await user.type(destination, "/reviewed.json");
+        await user.click(screen.getByRole("button", {name: "Save reviewed candidate"}));
+        await screen.findByText("Candidate saved: /reviewed.json");
+        expect(test.payout()).toBe(10);
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        const workflow = await screen.findByRole("region", {name: "Simulation workflow"});
+        expect(await within(workflow).findByRole("button", {name: "Open full report"})).toBeVisible();
+        expect(within(workflow).queryByText(/Historical simulation result/)).not.toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        await user.click(await screen.findByRole("button", {name: "Apply reviewed changes to source"}));
+        await screen.findByText(/Authored changes applied/);
+        expect(test.payout()).toBe(11);
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        const changed = await screen.findByRole("region", {name: "Simulation workflow"});
+        expect(within(changed).getByText(/Historical simulation result/)).toBeVisible();
+        expect(within(changed).queryByRole("button", {name: "Open full report"})).not.toBeInTheDocument();
+        expect(actions).toEqual(["/api/project/optimization/save", "/api/project/optimization/apply"]);
+    });
 });

@@ -1105,6 +1105,21 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // letting a Close silently discard an unsaved Game Model edit.
     const [gameModelDirty, setGameModelDirty] = useState(false);
 
+    // Both in-place authoring surfaces change the source used by simulation.
+    // Retire pending reads as well as the visible report, while leaving owned
+    // jobs attached so saving during a run never removes its Cancel control.
+    const handleBlueprintSaved = (): void => {
+        simulation.invalidateResult();
+        reportRequestIdRef.current++;
+        compareRequestIdRef.current++;
+        setReportDetail({status: "empty"});
+        setSelectedReportId(undefined);
+        setCompareDetail({status: "empty"});
+        setRunAgainNotice("The saved design changed. Run a new simulation for the current design. Retained reports remain available as historical results.");
+        const next = ++contextRefreshGenerationRef.current;
+        setContextRefreshGeneration(next);
+    };
+
     useEffect(() => {
         if (projectKey === undefined) {
             return;
@@ -1409,10 +1424,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     ? <WasmManifestInspection projectRoot={header.projectRoot} summary={header.wasmPresentation.inspectionSummary} />
                                     : <Text>This {describeProjectType(header.type).toLowerCase()} can be republished from Build/Export.</Text>
                             )}
-                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} onApplied={() => {
-                                const next = ++contextRefreshGenerationRef.current;
-                                setContextRefreshGeneration(next);
-                            }} />}
+                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} onApplied={handleBlueprintSaved} />}
                             {activeTab === "gameModel" && (
                                 // GameModelTab owns all of its own fetch state locally (no page-level hook),
                                 // so a genuine project switch needs a full remount, not just a re-render of a
@@ -1426,6 +1438,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     editable={headerCapabilities.includes(BLUEPRINT_BUILD_CAPABILITY)}
                                     projectRoot={projectKey}
                                     onDirtyChange={setGameModelDirty}
+                                    onBlueprintSaved={handleBlueprintSaved}
                                     projectActionGuardRef={projectActionGuardRef}
                                 />
                             )}
@@ -1452,6 +1465,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     cancellationRequested={simulation.cancellationRequested}
                                     operation={simulation.operation}
                                     terminalReceipt={simulation.terminalReceipt}
+                                    historicalResult={
+                                        (reportDetail.status !== "empty" && (!simulation.resultCurrent || selectedReportId !== simulation.job?.id)) ||
+                                        (simulation.job?.status === "completed" && !simulation.resultCurrent)
+                                    }
                                     onRun={startRun}
                                     recoveryRequest={recoveryJob?.operation.includes("simulation") ? recoveryJob.request : undefined}
                                     onCancel={() => {
@@ -1557,7 +1574,15 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         <Stack gap="xs" mb="md" aria-labelledby="studio-operations-heading">
                             <Title id="studio-operations-heading" order={3}>Studio operations</Title>
                             <Text size="sm" c="dimmed">Current and retained work stays available here while you continue through this project.</Text>
-                            {visibleCommonJobs.map((job) => <JobCard job={job} cancellationPending={commonJobs.pendingIds.includes(job.id) || (job.id === simulation.currentJobId && simulation.cancellationRequested)} onCancel={(id) => id === simulation.currentJobId ? simulation.cancel() : commonJobs.cancel(id)} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={job.operation === "project-open-materialization" ? reopenJobProject : openJobOutput} onRevealOutput={job.operation === "project-open-materialization" && jobOutputActionsUnavailableReason !== undefined ? undefined : revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason} key={job.id} />)}
+                            {visibleCommonJobs.map((job) => {
+                                // This is display-only guidance; retain the durable job, request,
+                                // provenance and original report bytes unchanged.
+                                const displayedJob = job.operation === "simulation" && job.result !== undefined &&
+                                    (!simulation.resultCurrent || job.id !== simulation.job?.id)
+                                    ? {...job, result: {...job.result, warnings: [...(job.result.warnings ?? []), "Historical simulation result — not validated against the current saved design. Run a new simulation for current results."]}}
+                                    : job;
+                                return <JobCard job={displayedJob} cancellationPending={commonJobs.pendingIds.includes(job.id) || (job.id === simulation.currentJobId && simulation.cancellationRequested)} onCancel={(id) => id === simulation.currentJobId ? simulation.cancel() : commonJobs.cancel(id)} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={job.operation === "project-open-materialization" ? reopenJobProject : openJobOutput} onRevealOutput={job.operation === "project-open-materialization" && jobOutputActionsUnavailableReason !== undefined ? undefined : revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason} key={job.id} />;
+                            })}
                         </Stack>
                     )}
                     {jobProjectOpeningError !== undefined && <Alert role="alert" color="red">{jobProjectOpeningError}</Alert>}
