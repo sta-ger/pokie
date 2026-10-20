@@ -18,6 +18,20 @@ const completedOpening = {
     result: {summary: "Project opening and runtime materialization completed.", outputs: [{label: "Opened project", path: openingSource}]},
 };
 
+const retainedOpeningCases = (["failed", "cancelled", "recovery-required"] as const).map(status => ({
+    job: {
+        id: `retained-open-${status}`, projectId: "/games/sample-slot", operation: "project-open-materialization",
+        request: {sourcePath: openingSource}, conflictKey: "open", status, createdAt: 1,
+        recovery: {action: "retry", reason: "Runtime materialization is not resumable after restart. Reopen the same project to retry."},
+    },
+    actionName: "Retry",
+    expectedSource: openingSource,
+}));
+const openingActionCases = [
+    {job: completedOpening, actionName: "Open Opened project", expectedSource: openingSource},
+    ...retainedOpeningCases,
+];
+
 function openingRoutes() {
     return {
         "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/sample-slot",
@@ -62,11 +76,12 @@ describe("ProjectDashboardPage durable jobs", () => {
         expect(calls.some(call => call.url === "/api/home/fs/open-folder")).toBe(false);
     });
 
-    it("confirms active operations before a project-opening side effect, preserves Cancel and retries with server permission", async () => {
+    it.each(openingActionCases)("confirms active operations for $job.status opening $actionName, preserves Cancel and retries with server permission", async ({job, actionName, expectedSource}) => {
         const user = userEvent.setup();
         let currentRoot = "/games/sample-slot";
         const {fetchImpl, calls} = createRoutedFakeFetch({
             ...openingRoutes(),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [job]}}),
             "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: currentRoot,
                 game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]}}),
             "/api/home/projects/open": call => {
@@ -76,23 +91,26 @@ describe("ProjectDashboardPage durable jobs", () => {
             },
         });
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await user.click(await screen.findByRole("button", {name: "Open Opened project"}));
+        await user.click(await screen.findByRole("button", {name: actionName}));
         await screen.findByText(/Active operations: certification-evidence-build/);
         await user.click(screen.getByRole("button", {name: "Cancel"}));
         expect(await screen.findByText(/Project switch cancelled/)).toBeInTheDocument();
+        await waitFor(() => expect(screen.queryByText(/Active operations: certification-evidence-build/)).not.toBeInTheDocument());
         expect(router.state.location.pathname).toMatch(/sample-slot.*overview$/);
         expect(calls.filter(call => call.url === "/api/home/projects/open")).toHaveLength(1);
-        await user.click(screen.getByRole("button", {name: "Open Opened project"}));
+        expect(screen.getByRole("region", {name: `project-open-materialization job ${job.id}`})).toHaveTextContent(JSON.stringify(job.request));
+        expect(screen.getByRole("button", {name: actionName})).toBeEnabled();
+        await user.click(screen.getByRole("button", {name: actionName}));
         await screen.findByText(/Active operations: certification-evidence-build/);
         await user.click(screen.getByRole("button", {name: "Confirm"}));
         await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(openedRuntime)}/overview`));
         expect(calls.filter(call => call.url === "/api/home/projects/open").map(call => JSON.parse(call.init!.body!))).toEqual([
-            {projectRoot: openingSource}, {projectRoot: openingSource}, {projectRoot: openingSource, confirmActiveJobs: true},
+            {projectRoot: expectedSource}, {projectRoot: expectedSource}, {projectRoot: expectedSource, confirmActiveJobs: true},
         ]);
-        expect(calls.some(call => call.url === "/api/home/fs/open-folder")).toBe(false);
+        expect(calls.some(call => call.url === "/api/home/fs/open-folder" || call.url === "/api/project/artifacts/build" || call.url.endsWith("/recover"))).toBe(false);
     });
 
-    it("guards dirty Game Model edits before Open, preserves Stay and rejected work, and allows a successful retry without a second prompt", async () => {
+    it.each(openingActionCases)("guards dirty edits for $job.status opening $actionName, preserves Stay and rejection, then recovers explicitly", async ({job, actionName, expectedSource}) => {
         let currentRoot = "/games/sample-slot";
         let rejectOpen = true;
         const blueprint = {manifest: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"},
@@ -100,6 +118,7 @@ describe("ProjectDashboardPage durable jobs", () => {
         const unavailable = {status: "unavailable", reason: "Not required for this edit"};
         const {fetchImpl, calls} = createRoutedFakeFetch({
             ...openingRoutes(),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [job]}}),
             "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: currentRoot,
                 game: blueprint.manifest, type: "blueprint", capabilities: ["blueprint.build"]}}),
             "/api/project/gameModel": () => ({ok: true, status: 200, body: {
@@ -121,19 +140,25 @@ describe("ProjectDashboardPage durable jobs", () => {
         fireEvent.change(await within(basics).findByLabelText("Game name"), {target: {value: "Unsaved producer edit"}});
         const confirmation = "You have unsaved changes to this game model section. Leave and lose them?";
         const opens = () => calls.filter(call => call.url === "/api/home/projects/open");
-        await user.click(screen.getByRole("button", {name: "Open Opened project"}));
+        if (actionName === "Retry") expect(screen.queryByRole("button", {name: "Open Opened project"})).not.toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: actionName}));
         await screen.findByText(confirmation);
         expect(opens()).toHaveLength(0);
         await user.click(screen.getByRole("button", {name: "Stay"}));
         expect(screen.getByLabelText("Game name")).toHaveValue("Unsaved producer edit");
         await waitFor(() => expect(screen.queryByText(confirmation)).not.toBeInTheDocument());
-        await user.click(screen.getByRole("button", {name: "Open Opened project"}));
+        await user.click(screen.getByRole("button", {name: actionName}));
         await screen.findByText(confirmation);
         expect(opens()).toHaveLength(0);
         await user.click(screen.getByRole("button", {name: "Leave"}));
-        await screen.findByText(/Source temporarily unavailable/);
+        const openingError = await screen.findByText(/Source temporarily unavailable/);
+        expect(openingError).toHaveTextContent(expectedSource);
+        expect(openingError).toHaveTextContent(/Retry.*Projects to Relocate/);
         await waitFor(() => expect(screen.queryByText(confirmation)).not.toBeInTheDocument());
         expect(opens()).toHaveLength(1);
+        expect(screen.getByRole("region", {name: `project-open-materialization job ${job.id}`})).toHaveTextContent(JSON.stringify(job.request));
+        expect(screen.getByRole("button", {name: actionName})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Find retained project in Projects"})).toBeEnabled();
         expect(router.state.location.pathname).toMatch(/\/gameModel$/);
         expect(screen.getByLabelText("Game name")).toHaveValue("Unsaved producer edit");
         // A failed action must not leave a navigation allowance armed.
@@ -143,14 +168,16 @@ describe("ProjectDashboardPage durable jobs", () => {
         await waitFor(() => expect(screen.queryByText(confirmation)).not.toBeInTheDocument());
         expect(router.state.location.pathname).toMatch(/\/gameModel$/);
         rejectOpen = false;
-        await user.click(screen.getByRole("button", {name: "Open Opened project"}));
+        await user.click(screen.getByRole("button", {name: actionName}));
         await screen.findByText(confirmation);
         expect(opens()).toHaveLength(1);
         await user.click(screen.getByRole("button", {name: "Leave"}));
         await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(openedRuntime)}/overview`));
         await waitFor(() => expect(screen.queryByText(confirmation)).not.toBeInTheDocument());
-        expect(opens()).toHaveLength(2);
-        expect(calls.some(call => call.url === "/api/home/fs/open-folder")).toBe(false);
+        expect(opens().map(call => JSON.parse(call.init!.body!))).toEqual([
+            {projectRoot: expectedSource}, {projectRoot: expectedSource},
+        ]);
+        expect(calls.some(call => call.url === "/api/home/fs/open-folder" || call.url === "/api/project/artifacts/build" || call.url.endsWith("/recover"))).toBe(false);
     });
 
     it("withholds missing project actions and reaches Projects recovery without replaying an open", async () => {

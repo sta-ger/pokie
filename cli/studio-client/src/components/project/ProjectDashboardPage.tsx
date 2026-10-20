@@ -568,7 +568,22 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     }, []);
     const [recoveryJob, setRecoveryJob] = useState<StudioJobView | undefined>();
     const [newSessionRecoveryRequested, setNewSessionRecoveryRequested] = useState(false);
+    const [jobProjectOpeningError, setJobProjectOpeningError] = useState<string>();
+    const openAndNavigate = useOpenProject();
+    const projectActionGuardRef = useRef<GuardedAction | undefined>(undefined);
+    const reopenJobProject = useCallback((sourcePath: string): void => {
+        setJobProjectOpeningError(undefined);
+        const open = () => openAndNavigate(sourcePath);
+        const guardedOpen = projectActionGuardRef.current;
+        (guardedOpen === undefined ? open() : guardedOpen(open)).catch((error: unknown) => {
+            setJobProjectOpeningError(`Couldn't reopen the retained project "${sourcePath}". ${errorMessage(error)} Retry if the source is available, or use Projects to Relocate it to its current location or add the game again.`);
+        });
+    }, [openAndNavigate]);
     const handleJobRecoveryAction = useCallback((job: StudioJobView): void => {
+        if (job.operation === "project-open-materialization" && typeof job.request.sourcePath === "string") {
+            reopenJobProject(job.request.sourcePath);
+            return;
+        }
         // Never replay durable work in the background.  The destination form
         // receives this immutable request and reconstructs it for an explicit
         // new submission, rather than opening an empty unrelated workflow.
@@ -585,7 +600,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         } else {
             setActiveTab("exportDeploy");
         }
-    }, [setActiveTab]);
+    }, [reopenJobProject, setActiveTab]);
     const handleFeatureOutcomeLibraryRecoveryAction = useCallback((jobId: string): void => {
         const job = commonJobs.jobs.find((candidate) => candidate.id === jobId);
         if (job === undefined || job.recovery === undefined) return;
@@ -1179,10 +1194,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const [closeError, setCloseError] = useState<string>();
     const [copyPathNotice, setCopyPathNotice] = useState<string>();
     const [jobOutputNotice, setJobOutputNotice] = useState<string>();
-    const [jobProjectOpeningError, setJobProjectOpeningError] = useState<string>();
     const [jobOutputActionsUnavailableReason, setJobOutputActionsUnavailableReason] = useState<string>();
-    const openAndNavigate = useOpenProject();
-    const projectActionGuardRef = useRef<GuardedAction | undefined>(undefined);
     const closeGuard = useDoubleSubmitGuard();
     const closeProjectAndReturnToProjects = (confirmActiveJobs = false): void => {
         if (!closeGuard.begin()) {
@@ -1239,15 +1251,6 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 setJobOutputNotice(result.status === "unavailable" ? result.reason : result.message);
             })
             .catch((error: unknown) => setJobOutputNotice(errorMessage(error)));
-    }
-
-    function reopenJobProject(sourcePath: string): void {
-        setJobProjectOpeningError(undefined);
-        const open = () => openAndNavigate(sourcePath);
-        const guardedOpen = projectActionGuardRef.current;
-        (guardedOpen === undefined ? open() : guardedOpen(open)).catch((error: unknown) => {
-            setJobProjectOpeningError(`Couldn't reopen the retained project "${sourcePath}". ${errorMessage(error)} Retry if the source is available, or use Projects to Relocate it to its current location or add the game again.`);
-        });
     }
 
     function revealJobOutput(resolvedOutputPath: string): void {
