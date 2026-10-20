@@ -269,6 +269,8 @@ function latch() {
 }
 
 async function httpStudio(loadGame = (file: string) => Promise.resolve(createTunableBlueprintGame(JSON.parse(fs.readFileSync(file, "utf8"))))) {
+    const studioRoot = path.join(directory, "studio");
+    fs.mkdirSync(studioRoot);
     const repository = new FileStudioJobRepository(path.join(directory, "http-jobs"));
     const httpJobs = new StudioJobService(repository);
     const completed = latch();
@@ -278,8 +280,8 @@ async function httpStudio(loadGame = (file: string) => Promise.resolve(createTun
         if (job.operation === "optimization" && job.status === "completed") completed.release();
     });
     const home = new StudioHomeService("1.3.0", undefined, loadGame, undefined, passthroughRuntimePackageResolver);
-    const server = new StudioServer({pokieVersion: "1.3.0", port: 0, studioRoot: directory, initialContext: {mode: "project", projectRoot: source},
-        jobService: httpJobs, homeService: home, blueprintService: new StudioBlueprintService("1.3.0", directory, home),
+    const server = new StudioServer({pokieVersion: "1.3.0", port: 0, studioRoot, initialContext: {mode: "project", projectRoot: source},
+        jobService: httpJobs, homeService: home, blueprintService: new StudioBlueprintService("1.3.0", studioRoot, home),
         projectRegistrationService: new StudioProjectRegistrationService(), loadGame, resolveRuntimePackageRoot: passthroughRuntimePackageResolver});
     const address = await server.start();
     const base = `http://${address.host}:${address.port}`;
@@ -374,6 +376,9 @@ it.each(["ready", "preparing"])("actual HTTP apply preserves rejected sessions a
             expect(heldSnapshot).toBeDefined();
             expect(fs.existsSync(heldSnapshot!)).toBe(true);
         }
+        const loadsBeforeCommit = [...loadedValues];
+        expect(loadsBeforeCommit).toEqual(expect.arrayContaining([2]));
+        expect(loadsBeforeCommit.every(value => value === 2)).toBe(true);
         commitGate.release();
         await committed.promise;
         if (phase === "preparing") {
@@ -386,12 +391,12 @@ it.each(["ready", "preparing"])("actual HTTP apply preserves rejected sessions a
         expect((await applying).status).toBe(200);
         const contextResponse = await fetch(`${base}/api/project/context`);
         expect(await contextResponse.json()).toMatchObject({status: "loaded", projectRoot: source, type: "blueprint"});
-        expect(loadedValues).toEqual(expect.arrayContaining([2, 3]));
-        expect(loadedValues[loadedValues.length - 1]).toBe(3);
+        expect(loadedValues).toEqual(loadsBeforeCommit);
         expect(JSON.parse(fs.readFileSync(source, "utf8")).paytable.A[2]).toBe(3);
         for (const id of [old.session.sessionId, overlappingId].filter(Boolean)) expect((await post(`project/play/sessions/${id}/spin`, {})).status).toBe(404);
         const fresh = await post("project/play/session", {seed: "committed-session"});
         expect(fresh.status).toBe(201);
+        expect(loadedValues).toEqual([...loadsBeforeCommit, 3]);
         const freshId = (await fresh.json() as {session: {sessionId: string}}).session.sessionId;
         const winning = await post(`project/play/sessions/${freshId}/find-any-win`, {});
         expect(winning.status).toBe(200);
