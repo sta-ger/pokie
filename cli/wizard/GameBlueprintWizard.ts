@@ -92,7 +92,7 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
             const scatters = await this.askScatters(prompt, symbols, wilds ?? [], editing);
             const availableBets = await this.askAvailableBets(prompt);
             const paylines = await this.askPaylines(prompt, reels, rows, editing);
-            const paytable = await this.askPaytable(prompt, symbols, reels, wilds ?? []);
+            const paytable = await this.askPaytable(prompt, symbols, reels, wilds ?? [], editing);
             // A "generated" reelStripGeneration has no representation in this wizard's own reel-weighting
             // question (symbolWeights or literal reelStrips only) -- "pokie reel generate" is the
             // dedicated editor for that shape (see its own doc comment), so an edit run carries it through
@@ -353,10 +353,11 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
         symbols: string[],
         reels: number,
         wilds: string[],
+        editing: boolean,
     ): Promise<Record<string, Record<string, number>>> {
         console.log(
             `\nPaytable — for each symbol, enter matchCount:multiplier pairs (e.g. 3:5,4:10,5:20), Enter for the ` +
-                `default shown, or "${SKIP_ANSWER}" to leave that symbol without a payout.`,
+                `default shown, or "${SKIP_ANSWER}" to leave that symbol without a payout. Multipliers must be finite and nonnegative; zero is an explicit no-award entry.`,
         );
 
         const wildSet = new Set(wilds);
@@ -368,7 +369,9 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
             if (wildSet.has(symbol)) {
                 continue;
             }
-            const defaultPayouts = this.defaultPayoutsFor(symbol, index, symbols.length, reels);
+            const defaultPayouts = editing && this.defaults.paytable[symbol] === undefined
+                ? {}
+                : this.defaultPayoutsFor(symbol, index, symbols.length, reels);
             const payouts = await this.askUntilValid(prompt, `  "${symbol}" [${this.formatPayouts(defaultPayouts)}]: `, (raw) => {
                 if (raw.length === 0) {
                     return {...defaultPayouts};
@@ -379,14 +382,15 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
 
                 const entries: Record<string, number> = {};
                 for (const pair of this.splitList(raw)) {
-                    const [timesRaw, multiplierRaw] = pair.split(":").map((part) => part.trim());
+                    const parts = pair.split(":").map((part) => part.trim());
+                    const [timesRaw, multiplierRaw] = parts;
                     const times = Number(timesRaw);
                     const multiplier = Number(multiplierRaw);
                     const timesValid = Number.isInteger(times) && times >= 2 && times <= reels;
-                    if (!timesValid || !Number.isFinite(multiplier) || multiplier <= 0) {
+                    if (parts.length !== 2 || multiplierRaw.length === 0 || !timesValid || !Number.isFinite(multiplier) || multiplier < 0) {
                         return new WizardParseError(
                             `Invalid pair "${pair}" — expected matchCount:multiplier, matchCount between 2 and ${reels} ` +
-                                `(the number of reels), e.g. "3:5".`,
+                                `(the number of reels), and a finite nonnegative multiplier, e.g. "2:0" or "3:5".`,
                         );
                     }
                     entries[String(times)] = multiplier;

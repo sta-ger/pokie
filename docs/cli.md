@@ -215,7 +215,9 @@ Per-question input handling:
   `reelStrips`/`symbolWeights` mutual exclusivity.
 - A blank paytable answer applies that symbol's default payouts rather than leaving it unpaid: the preset's own
   entry when it fits the chosen reel count, otherwise a generated ladder that respects it (match counts never
-  exceed `reels`, and matching more never pays less). Answer `-` to leave a symbol without a payout.
+  exceed `reels`, and matching more never pays less). When editing, Enter preserves a symbol's omitted payout.
+  Answer `-` to leave a symbol without a payout. A finite nonnegative multiplier is accepted: `2:0` authors an
+  explicit zero award, and `2:0.5` pays half the stake. Empty, negative and non-finite multipliers are rejected.
 - Symbol ids can't contain `:` — the wizard's own prompts reuse it as a pair separator later on (paytable, symbol
   weights), so a symbol id containing one would be unparseable there.
 - Wild/scatter symbols must each be one of the symbols already entered, and a symbol can't be both at once. Leaving
@@ -749,7 +751,7 @@ Every field above is checked before anything is generated: `manifest.id`/`name`/
 strings; `reels`/`rows` must be positive integers; `symbols` must be a non-empty array of unique non-empty
 strings; `wilds`/`scatters` must be arrays of unique symbol ids with no overlap between the two; `wilds`/`scatters`/
 `paytable` keys/`reelStrips` symbols/`reelStripGeneration` symbols/`symbolWeights` keys must all reference symbols
-actually listed in `symbols`; `paytable` match-counts must be integers between 2 and `reels`, with positive
+actually listed in `symbols`; `paytable` match-counts must be integers between 2 and `reels`, with finite nonnegative
 multipliers; `paylines` entries must have exactly `reels` row indexes, each within `[0, rows)`; `reelStrips` must
 have exactly one strip per reel; `reelStripGeneration` must have exactly one entry per reel, each entry either a
 well-formed `{type: "literal", strip}` (a non-empty array of known symbol ids) or `{type: "generated", ...}` with

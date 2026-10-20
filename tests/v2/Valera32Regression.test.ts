@@ -3,6 +3,9 @@ import path from "node:path";
 import {runInNewContext} from "node:vm";
 import * as api from "@fromstan/pokie";
 import {renderBuiltGameModule} from "../../src/generated/renderBuiltGameModule.js";
+import {CreateCommand} from "../../cli/commands/CreateCommand.js";
+import {EditCommand} from "../../cli/commands/EditCommand.js";
+import {PromptAdapting} from "../../cli/wizard/PromptAdapting.js";
 
 // Source-aware prerequisite checks, never independent first-contact evidence.
 const example = (): api.GameBlueprint => JSON.parse(fs.readFileSync(path.resolve("site/examples/weighted.blueprint.json"), "utf8"));
@@ -20,6 +23,94 @@ describe("V2C-32 public math prerequisites", () => {
         directory = fs.mkdtempSync(path.resolve("node_modules/.cache/pokie-tmp/valera32-"));
     });
     afterEach(() => fs.rmSync(directory, {recursive: true, force: true}));
+
+    describe.each(["create", "edit"] as const)("%s authored paytable", surface => {
+        let log: jest.SpyInstance;
+        beforeEach(() => {
+            log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        });
+        afterEach(() => log.mockRestore());
+
+        function command(answers: (string | null)[]) {
+            const source = path.join(directory, "source.blueprint.json");
+            const destination = path.join(directory, "saved.blueprint.json");
+            const blueprint: api.GameBlueprint = {...example(), paytable: {A: {2: 4}},
+                reelSequences: [{type: "exact", symbols: ["A", "A"]}, {type: "exact", symbols: ["A", "A"]}]};
+            fs.writeFileSync(source, JSON.stringify(blueprint));
+            const before = fs.readFileSync(source);
+            const questions: string[] = [];
+            const prompt: PromptAdapting = {
+                ask: question => {
+                    questions.push(question);
+                    if (answers.length === 0) throw new Error(`Unexpected question: ${question}`);
+                    return Promise.resolve(answers.shift()!);
+                },
+                close: jest.fn(),
+            };
+            const run = () => surface === "create"
+                ? new CreateCommand("2.0.0", undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => prompt, () => true)
+                    .run(["--out", destination])
+                : new EditCommand(undefined, undefined, undefined, undefined, undefined, () => prompt, () => true)
+                    .run([source, "--out", destination]);
+            return {source, destination, before, questions, prompt, run};
+        }
+
+        function authoringAnswers(bet: number, payouts: (string | null)[], confirm: string | null = "y"): (string | null)[] {
+            return ["valera32", "Valera 32", "1.0.0", "2", "1", "A,B,S", "", "", String(bet), "",
+                ...payouts, "-", "-", ...(surface === "create" ? ["s", "A,A", "A,A"] : []), "", confirm];
+        }
+
+        it.each([0.05, 7.5, 1e-7])("saves explicit zero and omitted payouts and executes the saved model at stake %s", async bet => {
+            const state = command(authoringAnswers(bet, ["2:0"]));
+            expect(await state.run()).toBe(0);
+            const saved = api.loadGameBlueprint(state.destination);
+            expect(saved.paytable).toEqual({A: {2: 0}});
+            expect(saved.availableBets).toEqual([bet]);
+            const session = generated(saved).createSession({seed: 0}) as api.VideoSlotSession;
+            session.setBet(bet);
+            session.play();
+            expect(session.getWinAmount()).toBe(0);
+            expect(fs.readFileSync(state.source)).toEqual(state.before);
+            expect(state.prompt.close).toHaveBeenCalledTimes(1);
+        });
+
+        it("rejects malformed and negative payouts before accepting a fractional retry", async () => {
+            const invalid = ["2:-1", "2:", "2:0:4", "2:Infinity"];
+            const state = command(authoringAnswers(0.05, [...invalid, "2:0.5"]));
+            expect(await state.run()).toBe(0);
+            expect(api.loadGameBlueprint(state.destination).paytable).toEqual({A: {2: 0.5}});
+            for (const pair of invalid) expect(log).toHaveBeenCalledWith(expect.stringContaining(`Invalid pair "${pair}"`));
+            expect(state.questions.filter(question => question.startsWith('  "A"'))).toHaveLength(5);
+        });
+
+        it.each(["n", null])("keeps the source and destination untouched when Save is declined or cancelled: %s", async confirm => {
+            const state = command(authoringAnswers(0.05, ["2:0"], confirm));
+            expect(await state.run()).toBe(1);
+            expect(fs.existsSync(state.destination)).toBe(false);
+            expect(fs.readFileSync(state.source)).toEqual(state.before);
+            expect(state.prompt.close).toHaveBeenCalledTimes(1);
+        });
+
+        it("cancels after a rejected payout without publishing", async () => {
+            const state = command(authoringAnswers(0.05, ["2:-1", null]));
+            expect(await state.run()).toBe(1);
+            expect(log).toHaveBeenCalledWith(expect.stringContaining('Invalid pair "2:-1"'));
+            expect(fs.existsSync(state.destination)).toBe(false);
+            expect(fs.readFileSync(state.source)).toEqual(state.before);
+            expect(state.prompt.close).toHaveBeenCalledTimes(1);
+        });
+
+        if (surface === "edit") {
+            it("preserves omitted payouts when accepting the existing model's defaults", async () => {
+                const state = command([...Array<string>(14).fill(""), "y"]);
+                expect(await state.run()).toBe(0);
+                const saved = api.loadGameBlueprint(state.destination);
+                expect(saved.paytable).toEqual({A: {2: 4}});
+                expect(saved.reelSequences).toEqual(JSON.parse(state.before.toString()).reelSequences);
+                expect(fs.readFileSync(state.source)).toEqual(state.before);
+            });
+        }
+    });
 
     it.each([0.05, 7.5, 1e-7])("retains the public weighted model, zero alternative and payout units through PAR and recorded replay at stake %s", async bet => {
         const original = example();
