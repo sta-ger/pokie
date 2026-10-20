@@ -148,7 +148,7 @@ describe("ProjectDashboardPage durable jobs", () => {
         expect(opens()).toHaveLength(1);
         await user.click(screen.getByRole("button", {name: "Leave"}));
         await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(openedRuntime)}/overview`));
-        expect(screen.queryByText(confirmation)).not.toBeInTheDocument();
+        await waitFor(() => expect(screen.queryByText(confirmation)).not.toBeInTheDocument());
         expect(opens()).toHaveLength(2);
         expect(calls.some(call => call.url === "/api/home/fs/open-folder")).toBe(false);
     });
