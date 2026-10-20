@@ -50,6 +50,7 @@ import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {usePlaySession} from "../../hooks/usePlaySession";
 import {useProjectContext} from "../../hooks/useProjectContext";
 import {useProjectJobs} from "../../hooks/useProjectJobs";
+import type {GuardedAction} from "../../hooks/useDesignNavigationGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {useReplayPoll} from "../../hooks/useReplayPoll";
 import {useSimulationPoll} from "../../hooks/useSimulationPoll";
@@ -1178,8 +1179,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const [closeError, setCloseError] = useState<string>();
     const [copyPathNotice, setCopyPathNotice] = useState<string>();
     const [jobOutputNotice, setJobOutputNotice] = useState<string>();
+    const [jobProjectOpeningError, setJobProjectOpeningError] = useState<string>();
     const [jobOutputActionsUnavailableReason, setJobOutputActionsUnavailableReason] = useState<string>();
     const openAndNavigate = useOpenProject();
+    const projectActionGuardRef = useRef<GuardedAction>();
     const closeGuard = useDoubleSubmitGuard();
     const closeProjectAndReturnToProjects = (confirmActiveJobs = false): void => {
         if (!closeGuard.begin()) {
@@ -1236,6 +1239,15 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 setJobOutputNotice(result.status === "unavailable" ? result.reason : result.message);
             })
             .catch((error: unknown) => setJobOutputNotice(errorMessage(error)));
+    }
+
+    function reopenJobProject(sourcePath: string): void {
+        setJobProjectOpeningError(undefined);
+        const open = () => openAndNavigate(sourcePath);
+        const guardedOpen = projectActionGuardRef.current;
+        (guardedOpen === undefined ? open() : guardedOpen(open)).catch((error: unknown) => {
+            setJobProjectOpeningError(`Couldn't reopen the retained project "${sourcePath}". ${errorMessage(error)} Retry if the source is available, or use Projects to Relocate it to its current location or add the game again.`);
+        });
     }
 
     function revealJobOutput(resolvedOutputPath: string): void {
@@ -1411,6 +1423,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     editable={headerCapabilities.includes(BLUEPRINT_BUILD_CAPABILITY)}
                                     projectRoot={projectKey}
                                     onDirtyChange={setGameModelDirty}
+                                    projectActionGuardRef={projectActionGuardRef}
                                 />
                             )}
                             {activeTab === "play" && (
@@ -1541,9 +1554,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         <Stack gap="xs" mb="md" aria-labelledby="studio-operations-heading">
                             <Title id="studio-operations-heading" order={3}>Studio operations</Title>
                             <Text size="sm" c="dimmed">Current and retained work stays available here while you continue through this project.</Text>
-                            {visibleCommonJobs.map((job) => <JobCard job={job} cancellationPending={commonJobs.pendingIds.includes(job.id) || (job.id === simulation.currentJobId && simulation.cancellationRequested)} onCancel={(id) => id === simulation.currentJobId ? simulation.cancel() : commonJobs.cancel(id)} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} onRevealOutput={revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} key={job.id} />)}
+                            {visibleCommonJobs.map((job) => <JobCard job={job} cancellationPending={commonJobs.pendingIds.includes(job.id) || (job.id === simulation.currentJobId && simulation.cancellationRequested)} onCancel={(id) => id === simulation.currentJobId ? simulation.cancel() : commonJobs.cancel(id)} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={job.operation === "project-open-materialization" ? reopenJobProject : openJobOutput} onRevealOutput={job.operation === "project-open-materialization" && jobOutputActionsUnavailableReason !== undefined ? undefined : revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason} key={job.id} />)}
                         </Stack>
                     )}
+                    {jobProjectOpeningError !== undefined && <Alert role="alert" color="red">{jobProjectOpeningError}</Alert>}
+                    {(jobProjectOpeningError !== undefined || visibleCommonJobs.some((job) => job.operation === "project-open-materialization" && job.result?.outputs?.some((output) => output.unavailableReason !== undefined))) &&
+                        <Button variant="default" onClick={() => navigate("/home/projects")}>Find retained project in Projects</Button>}
                     {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
                 </div>
             )}

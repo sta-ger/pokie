@@ -1,6 +1,7 @@
 import {MathDefinitionDiffPreview} from "../common/MathDefinitionDiffPreview";
 import {Button} from "@mantine/core";
-import {useCallback, useEffect, useRef, useState} from "react";
+import {modals} from "@mantine/modals";
+import {useCallback, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject} from "react";
 import {getGameModel, loadBlueprint, saveBlueprint, validateBlueprint} from "../../api/apiClient";
 import type {GameModelProjection} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -12,6 +13,7 @@ import {describePathActionError} from "../../domain/pathActionError";
 import {useBlueprintEditor, type BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
+import type {GuardedAction} from "../../hooks/useDesignNavigationGuard";
 import {useNavigationBlockerConfirm} from "../../hooks/useNavigationBlockerConfirm";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
@@ -81,11 +83,13 @@ export function GameModelTab({
     projectRoot,
     onDirtyChange,
     onBlueprintSaved,
+    projectActionGuardRef,
 }: {
     editable?: boolean;
     projectRoot?: string;
     onDirtyChange?: (dirty: boolean) => void;
     onBlueprintSaved?: () => void;
+    projectActionGuardRef?: MutableRefObject<GuardedAction | undefined>;
 } = {}) {
     const fetchImpl = useStudioApi();
     const confirm = useConfirm();
@@ -182,6 +186,34 @@ export function GameModelTab({
         onDirtyChange?.(isDirty);
     }, [isDirty, onDirtyChange]);
 
+    // A project Open has a server side effect before navigation. Confirm against this live
+    // edit state first, then allow only its navigation; rejection retains the dirty draft.
+    const confirmedProjectActionRef = useRef(false);
+    useLayoutEffect(() => {
+        if (projectActionGuardRef === undefined) return undefined;
+        projectActionGuardRef.current = (action) => {
+            if (!isDirty) return action();
+            return new Promise<void>((resolve, reject) => {
+                modals.openConfirmModal({
+                    title: "Unsaved changes",
+                    children: "You have unsaved changes to this game model section. Leave and lose them?",
+                    labels: {confirm: "Leave", cancel: "Stay"},
+                    withCloseButton: false, closeOnEscape: false, closeOnClickOutside: false,
+                    onConfirm: () => {
+                        confirmedProjectActionRef.current = true;
+                        action().then(resolve, reject).finally(() => {
+                            confirmedProjectActionRef.current = false;
+                        });
+                    },
+                    onCancel: () => resolve(),
+                });
+            });
+        };
+        return () => {
+            projectActionGuardRef.current = undefined;
+        };
+    }, [isDirty, projectActionGuardRef]);
+
     // Blocks leaving the Game Model tab (another tab, Home, a project close, browser Back/Forward -- any
     // in-app `navigate()` call or history transition) while a section edit has unsaved changes -- same
     // shared hook (predicate-driven useBlocker + an undismissable confirm modal) useDesignNavigationGuard
@@ -189,7 +221,13 @@ export function GameModelTab({
     // this component is mounted at all (ProjectDashboardPage only renders GameModelTab for
     // activeTab === "gameModel"), so the predicate only needs to check where the transition is *going*.
     useNavigationBlockerConfirm(
-        ({nextLocation}) => isDirty && nextLocation.pathname !== "/project/gameModel",
+        ({nextLocation}) => {
+            if (confirmedProjectActionRef.current) {
+                confirmedProjectActionRef.current = false;
+                return false;
+            }
+            return isDirty && nextLocation.pathname !== "/project/gameModel";
+        },
         {
             title: "Unsaved changes",
             children: "You have unsaved changes to this game model section. Leave and lose them?",

@@ -274,10 +274,15 @@ describe("V2C-34 retained project opening", () => {
         const registry = new StudioProjectRegistrationService();
         expect(await registry.registerManaged(source, "Starter Slot")).toMatchObject({status: "ok"});
         const jobsDirectory = path.join(directory, "jobs");
-        const jobs = new StudioJobService(new FileStudioJobRepository(jobsDirectory), () => 1, () => "retained-open");
+        const ids = ["retained-open", "artifact", "foreign-open"];
+        const jobs = new StudioJobService(new FileStudioJobRepository(jobsDirectory), () => 1, () => ids.shift()!);
         jobs.start({projectId: source, operation: "project-open-materialization", request: {sourcePath: source}, conflictKey: `project-open:${source}`});
         jobs.complete("retained-open", {summary: "Project opening and runtime materialization completed.",
             outputs: [{path: source, label: "Opened project"}], provenance: {sourcePath: source}, detail: {sourcePath: source, projectRoot: source}});
+        jobs.start({projectId: source, operation: "artifact-build", request: {}, conflictKey: "artifact"});
+        jobs.complete("artifact", {outputs: [{path: path.join(directory, "missing-artifact"), label: "Artifact"}, {label: "No path"}]});
+        jobs.start({projectId: relocated, operation: "project-open-materialization", request: {sourcePath: relocated}, conflictKey: "foreign"});
+        jobs.complete("foreign-open", {outputs: [{path: relocated, label: "Other project"}]});
         jobs.beginShutdown();
         await jobs.completeGracefulShutdown();
         const record = path.join(jobsDirectory, "retained-open.json");
@@ -285,7 +290,7 @@ describe("V2C-34 retained project opening", () => {
         const openFolder = jest.fn();
         const homeService = new StudioHomeService(api.POKIE_VERSION);
         const server = new StudioServer({pokieVersion: api.POKIE_VERSION, host: "127.0.0.1", port: 0,
-            studioRoot: directory, initialContext: {mode: "home"}, projectRegistrationService: registry,
+            studioRoot: directory, initialContext: {mode: "project", projectRoot: source}, projectRegistrationService: registry,
             homeService, blueprintService: new StudioBlueprintService(api.POKIE_VERSION, directory, homeService),
             jobService: new StudioJobService(new FileStudioJobRepository(jobsDirectory)), openFolder,
             isLoopbackRequest: () => true});
@@ -307,8 +312,18 @@ describe("V2C-34 retained project opening", () => {
             const output = async (route = "/api/home/jobs/retained-open") => {
                 const response = await request(route);
                 expect(response.status).toBe(200);
-                return route.includes("retained-open") ? response.body as StudioJobView : (response.body as {jobs: StudioJobView[]}).jobs[0];
+                return route.includes("retained-open") ? response.body as StudioJobView : (response.body as {jobs: StudioJobView[]}).jobs.find(job => job.id === "retained-open")!;
             };
+            const routes = ["/api/home/jobs", `/api/home/jobs?sourcePath=${encodeURIComponent(source)}`, "/api/home/jobs/retained-open",
+                "/api/project/jobs", "/api/project/jobs/retained-open"];
+            for (const route of routes) {
+                expect(await output(route)).toMatchObject({status: "completed", projectId: source, result: {outputs: [{path: source}]}});
+                expect((await output(route)).result?.outputs?.[0].unavailableReason).toBeUndefined();
+            }
+            expect(await request("/api/project/jobs/foreign-open")).toMatchObject({status: 404});
+            const artifact = (await request("/api/project/jobs/artifact")).body as StudioJobView;
+            expect(artifact.result?.outputs).toEqual([{path: path.join(directory, "missing-artifact"), label: "Artifact"}, {label: "No path"}]);
+            expect((await request("/api/project/jobs")).body).toMatchObject({jobs: expect.arrayContaining([artifact])});
             // The saved diagnostic also happens for an EXISTING Blueprint: native Open requires a directory.
             expect(await request("/api/home/fs/open-folder", {path: source})).toEqual({status: 200, body: {
                 status: "error", message: `"${source}" does not exist or is not a directory.`,
@@ -319,7 +334,7 @@ describe("V2C-34 retained project opening", () => {
             expect(openFolder).toHaveBeenCalledWith(path.dirname(source));
 
             fs.renameSync(source, relocated);
-            for (const route of ["/api/home/jobs", `/api/home/jobs?sourcePath=${encodeURIComponent(source)}`, "/api/home/jobs/retained-open"]) {
+            for (const route of routes) {
                 const job = await output(route);
                 expect(job).toMatchObject({status: "completed", request: {sourcePath: source}, result: {
                     outputs: [{path: source, unavailableReason: expect.stringContaining("Use Projects to Relocate")}],
@@ -337,7 +352,9 @@ describe("V2C-34 retained project opening", () => {
             expect(fs.readFileSync(record)).toEqual(completedBytes);
             // Reappearance is observed afresh, rather than persisting a permanent missing verdict.
             fs.copyFileSync(relocated, source);
-            expect((await output()).result?.outputs?.[0].unavailableReason).toBeUndefined();
+            for (const route of routes) {
+                expect((await output(route)).result?.outputs?.[0].unavailableReason).toBeUndefined();
+            }
             expect(fs.readFileSync(record)).toEqual(completedBytes);
         } finally {
             await server.stop();

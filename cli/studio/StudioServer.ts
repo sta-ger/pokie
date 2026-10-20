@@ -777,14 +777,14 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        this.sendJson(res, 200, {projectRoot: this.currentContext.projectRoot, projectId: this.canonicalPathIdentity(this.currentContext.projectRoot), jobs: this.jobService.list(this.canonicalPathIdentity(this.currentContext.projectRoot))});
+        this.sendJson(res, 200, {projectRoot: this.currentContext.projectRoot, projectId: this.canonicalPathIdentity(this.currentContext.projectRoot), jobs: this.jobService.list(this.canonicalPathIdentity(this.currentContext.projectRoot)).map((job) => this.jobAvailabilityView(job))});
     }
 
     private isHomeScopedJob(job: StudioJobView): boolean {
         return job.projectId.startsWith("design:") || job.operation === "project-open-materialization";
     }
 
-    private homeJobView(job: StudioJobView): StudioJobView {
+    private jobAvailabilityView(job: StudioJobView): StudioJobView {
         if (job.operation !== "project-open-materialization" || job.result?.outputs === undefined) return job;
         // Completion is historical; it does not promise that a moved/deleted source still exists.
         // Never guess a replacement from a basename or rewrite the durable request/provenance.
@@ -806,7 +806,7 @@ export class StudioServer implements StudioServerHandling {
                 return [...this.jobService.list(canonicalSource), ...this.jobService.list(`design:${canonicalSource}`)];
             })();
         jobs.sort((left, right) => right.createdAt - left.createdAt);
-        this.sendJson(res, 200, {jobs: jobs.map((job) => this.homeJobView(job))});
+        this.sendJson(res, 200, {jobs: jobs.map((job) => this.jobAvailabilityView(job))});
     }
 
     private handleHomeCommonJob(method: string, res: ServerResponse, id: string, action: "cancel" | "recover" | undefined, sourcePath: string | null): void {
@@ -821,7 +821,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (action === undefined && method === "GET") {
-            this.sendJson(res, 200, this.homeJobView(job));
+            this.sendJson(res, 200, this.jobAvailabilityView(job));
             return;
         }
         if (action === "cancel" && method === "POST") {
@@ -839,7 +839,7 @@ export class StudioServer implements StudioServerHandling {
         const projectId = this.canonicalPathIdentity(this.currentContext.projectRoot);
         if (action === undefined && method === "GET") {
             const job = this.jobService.get(projectId, id);
-            this.sendJson(res, job === undefined ? 404 : 200, job ?? {error: "Studio job not found."});
+            this.sendJson(res, job === undefined ? 404 : 200, job === undefined ? {error: "Studio job not found."} : this.jobAvailabilityView(job));
             return;
         }
         if (action === "cancel" && method === "POST") {
