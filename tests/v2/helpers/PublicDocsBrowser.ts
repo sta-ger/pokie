@@ -11,6 +11,8 @@ type PendingCommand = {
 /** Small owned CDP-pipe transport; all site-specific assertions stay in PublicDocsSite. */
 export class PublicDocsBrowser {
     private readonly process: ChildProcess;
+    private readonly closed: Promise<void>;
+    private closing?: Promise<void>;
     private readonly pending = new Map<number, PendingCommand>();
     private buffer = "";
     private sequence = 0;
@@ -45,6 +47,9 @@ export class PublicDocsBrowser {
             ],
             {stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"]},
         );
+        this.closed = new Promise((resolve) => {
+            this.process.once("close", () => resolve());
+        });
         this.process.stderr?.on("data", (chunk) => {
             this.stderr = (this.stderr + chunk).slice(-4000);
         });
@@ -146,20 +151,32 @@ export class PublicDocsBrowser {
         await this.send("Input.dispatchKeyEvent", {type: "keyUp", key, code, windowsVirtualKeyCode: virtualKey});
     }
 
-    public async close(): Promise<void> {
+    public close(): Promise<void> {
+        this.closing ??= this.closeBrowser();
+        return this.closing;
+    }
+
+    private async closeBrowser(): Promise<void> {
         for (const pending of this.pending.values()) {
             clearTimeout(pending.timer);
             pending.reject(new Error("Browser closing"));
         }
         this.pending.clear();
-        if (this.process.exitCode !== null || this.process.signalCode !== null) return;
-        await new Promise<void>((resolve) => {
-            const timer = setTimeout(() => this.process.kill("SIGKILL"), 3000);
-            this.process.once("exit", () => {
-                clearTimeout(timer);
-                resolve();
+        if (this.process.exitCode !== null || this.process.signalCode !== null) {
+            await this.closed;
+            return;
+        }
+        const timer = setTimeout(() => this.process.kill("SIGKILL"), 3000);
+        try {
+            // Let Chromium flush its profile and stop its children before deleting
+            // their files. Parent exit alone does not drain inherited stdio.
+            const shutdown = this.send("Browser.close", {}, false).catch(() => {
+                this.process.kill("SIGTERM");
             });
-            this.process.kill("SIGTERM");
-        });
+            await this.closed;
+            await shutdown;
+        } finally {
+            clearTimeout(timer);
+        }
     }
 }

@@ -125,6 +125,23 @@ afterAll(async () => {
 });
 
 describe("public documentation production build", () => {
+    it("closes a real Chromium profile completely with concurrent and repeated cleanup", async () => {
+        const profile = path.join(scratch, "shutdown-profile");
+        const owned = new PublicDocsBrowser(profile);
+        try {
+            await owned.start();
+            expect(fs.existsSync(profile)).toBe(true);
+            const closing = owned.close();
+            expect(owned.close()).toBe(closing);
+            await closing;
+            fs.rmSync(profile, {recursive: true, force: true});
+            await owned.close();
+            expect(fs.existsSync(profile)).toBe(false);
+        } finally {
+            await owned.close();
+        }
+    });
+
     it("preserves authenticated candidate selectors through the complete V2C-32 cleanup correction", () => {
         const directory = fs.mkdtempSync(path.join(scratch, "retained-candidate-"));
         try {
@@ -147,7 +164,8 @@ describe("public documentation production build", () => {
                 };
                 // Independent of the admission lists: every file in this correction.
                 const paths = ["tests/v2/PublicDocsSite.test.ts", "scripts/p9-11-candidate.mjs",
-                    "scripts/p8-05-release-handoff.mjs", "tests/testUtils/createP911CandidateFixture.mjs"];
+                    "scripts/p8-05-release-handoff.mjs", "tests/testUtils/createP911CandidateFixture.mjs",
+                    "tests/v2/helpers/PublicDocsBrowser.ts"];
                 for (const file of paths) {
                     assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
                     await writeFile(path.join(fixture.repository, file), "changed cleanup tooling");
@@ -177,7 +195,7 @@ describe("public documentation production build", () => {
                         /authenticated controller browser driver required|receipt digest mismatch|archive digest mismatch|stale installed asset/);
                     await writeFile(reference.path, bytes);
                 }
-                for (const file of ["tests/v2/PublicDocsSite.extra.test.ts", "tests/v2/helpers/PublicDocsBrowser.ts", "src/index.ts", "cli/pokie.ts",
+                for (const file of ["tests/v2/PublicDocsSite.extra.test.ts", "tests/v2/helpers/PublicDocsBrowser.extra.ts", "src/index.ts", "cli/pokie.ts",
                     "site/build.mjs", "site/content.json", "package.json", "package-lock.json", "tsconfig.prod.json", "generate-barrels.js", "docs/v2-completion/V2C-32.md"]) {
                     const target = path.join(fixture.repository, file);
                     await mkdir(path.dirname(target), {recursive: true});

@@ -38,6 +38,7 @@ const tooling = new Set([
     "tests/scripts/p9-11-corrective-closeout.test.mjs",
     // V2C-32 bounded docs-test teardown repair; site/product inputs stay protected.
     "tests/v2/PublicDocsSite.test.ts",
+    "tests/v2/helpers/PublicDocsBrowser.ts",
 ]);
 const evidence = (file) => file.startsWith("docs/evidence/p8-05-product-readiness/");
 const excluded = (file) => tooling.has(file) || evidence(file);
