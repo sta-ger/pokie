@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import {buildPackageJsonPatch, PackageJsonLike, PokieGamePackageValidating, PokieGamePackageValidator} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {RuntimePreparationCancelledError} from "../materialize/RuntimePreparationCancelledError.js";
 import {GamePackagePreparationError, GamePackagePreparationPhase} from "../prepare/GamePackagePreparationError.js";
 import {extractNpmStderr, PackageCommandRunning, runPackageCommand} from "../prepare/PackageCommandRunner.js";
 import {GamePackageMergeOverrides, GamePackageMerging} from "../scaffold/GamePackageMerging.js";
@@ -232,25 +233,45 @@ export class InitCommand implements CliCommandHandling {
             return 0;
         }
 
-        if (parsed.install) {
-            await this.runManagedCommand("dependencies", ["install"], projectRoot, extractNpmStderr);
-        }
-        await this.runManagedCommand("build", ["run", "build"], projectRoot);
-        await this.runVerifyPhase(projectRoot);
+        const controller = new AbortController();
+        const cancel = (): void => {
+            if (!controller.signal.aborted) {
+                console.log("Cancelling package preparation…");
+                controller.abort(new RuntimePreparationCancelledError("Package preparation was cancelled."));
+            }
+        };
+        // Keep handling interrupts until the runner has drained its owned process tree and the
+        // local dependency wrapper has restored portable metadata, including repeated Ctrl+C.
+        process.on("SIGINT", cancel);
+        process.on("SIGTERM", cancel);
+        try {
+            if (parsed.install) {
+                await this.runManagedCommand("dependencies", ["install"], projectRoot, controller.signal, extractNpmStderr);
+            }
+            await this.runManagedCommand("build", ["run", "build"], projectRoot, controller.signal);
+            await this.runVerifyPhase(projectRoot);
+            controller.signal.throwIfAborted();
 
-        this.printPrepared(scaffold, projectRoot);
-        return 0;
+            this.printPrepared(scaffold, projectRoot);
+            return 0;
+        } finally {
+            process.off("SIGINT", cancel);
+            process.off("SIGTERM", cancel);
+        }
     }
 
     private async runManagedCommand(
         phase: GamePackagePreparationPhase,
         npmArgs: string[],
         projectRoot: string,
+        signal: AbortSignal,
         extractDetails?: (error: unknown) => string | undefined,
     ): Promise<void> {
         const npmCommand = `npm ${npmArgs.join(" ")}`;
         try {
-            await this.runCommand("npm", npmArgs, projectRoot);
+            signal.throwIfAborted();
+            await this.runCommand("npm", npmArgs, projectRoot, {signal});
+            signal.throwIfAborted();
         } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
             throw new GamePackagePreparationError(

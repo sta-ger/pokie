@@ -72,8 +72,12 @@ function createCommand(
 describe("InitCommand", () => {
     let logSpy: jest.SpyInstance;
     let errorSpy: jest.SpyInstance;
+    let interruptListeners: ReturnType<typeof process.rawListeners>;
+    let terminationListeners: ReturnType<typeof process.rawListeners>;
 
     beforeEach(() => {
+        interruptListeners = process.rawListeners("SIGINT");
+        terminationListeners = process.rawListeners("SIGTERM");
         logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
         errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
     });
@@ -81,6 +85,8 @@ describe("InitCommand", () => {
     afterEach(() => {
         logSpy.mockRestore();
         errorSpy.mockRestore();
+        expect(process.rawListeners("SIGINT")).toEqual(interruptListeners);
+        expect(process.rawListeners("SIGTERM")).toEqual(terminationListeners);
     });
 
     it("has the expected name and description", () => {
@@ -227,6 +233,54 @@ describe("InitCommand", () => {
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain("scaffolded in");
             expect(printed).toContain('run "npm install" then "npm run build"');
+        });
+    });
+
+    describe("preparation cancellation", () => {
+        it("uses one live signal for install and build", async () => {
+            const signals: Array<AbortSignal | undefined> = [];
+            const runCommand: PackageCommandRunning = (_command, _args, _cwd, options) => {
+                signals.push(options?.signal);
+                return Promise.resolve({stdout: "", stderr: ""});
+            };
+            const {command} = createCommand(undefined, runCommand);
+
+            expect(await command.run(["some-dir"])).toBe(0);
+            expect(signals).toHaveLength(2);
+            expect(signals[0]).toBeInstanceOf(AbortSignal);
+            expect(signals[0]).toBe(signals[1]);
+            expect(signals[0]?.aborted).toBe(false);
+        });
+
+        it.each(["SIGINT", "SIGTERM"] as const)("cancels a --no-install build on %s and retries with a fresh signal", async signalName => {
+            const signals: AbortSignal[] = [];
+            const runCommand: PackageCommandRunning = (_command, _args, _cwd, options) => {
+                const signal = options!.signal!;
+                signals.push(signal);
+                if (signals.length === 1) process.emit(signalName);
+                // Even an injected runner returning success after cancellation must not reach verify.
+                return Promise.resolve({stdout: "", stderr: ""});
+            };
+            const {command, validator} = createCommand(undefined, runCommand);
+
+            await expect(command.run(["some-dir", "--no-install"])).rejects.toMatchObject({phase: "build", message: expect.stringContaining("cancelled")});
+            expect(validator.calledWith).toBeUndefined();
+            expect(logSpy.mock.calls.flat().join("\n")).not.toContain("prepared and verified");
+            expect(await command.run(["some-dir", "--no-install"])).toBe(0);
+            expect(signals.map(signal => signal.aborted)).toEqual([true, false]);
+            expect(signals[0]).not.toBe(signals[1]);
+        });
+
+        it("waits for verification but suppresses success if interrupted during it", async () => {
+            const validator = createStubValidator();
+            validator.validate = () => {
+                process.emit("SIGINT");
+                return Promise.resolve(validReport);
+            };
+            const {command} = createCommand(undefined, undefined, validator);
+
+            await expect(command.run(["some-dir"])).rejects.toThrow("Package preparation was cancelled.");
+            expect(logSpy.mock.calls.flat().join("\n")).not.toContain("prepared and verified");
         });
     });
 
