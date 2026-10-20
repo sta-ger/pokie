@@ -8,7 +8,7 @@ import {FileStudioJobRepository} from "../../../../../../cli/studio/jobs/FileStu
 import {validateSimulationRequest} from "../../../../../../cli/studio/simulation/validateSimulationRequest";
 import {ReplayRecorder} from "../../../../../../src/replay/ReplayRecorder";
 import {GameSession} from "../../../../../../src/session/GameSession";
-import {act, screen, waitFor, within} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createFakeFetch, createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -797,6 +797,149 @@ describe("V2C-34 saved-design simulation freshness", () => {
             await service.cancelAll();
             fs.rmSync(directory, {recursive: true, force: true});
         }
+    });
+
+    it.each(["loading", "fetch", "body"])("V2C-34-NAVIGATION-RECOVERY reaches guarded Configure after saved payout and %s exhaustion with the same real job", async phase => {
+        const user = userEvent.setup();
+        const test = fixture();
+        const root = "/games/sample-slot";
+        const directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c34-navigation-"));
+        const jobs = new StudioJobService(new FileStudioJobRepository(directory));
+        let release: () => void = () => undefined;
+        const gate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        const service = new StudioSimulationService(undefined, () => Promise.resolve(generatedMechanicsGame(test.blueprint())), undefined, 50, undefined, () => gate);
+        service.attachJobService(jobs);
+        let recoverContext = false;
+        let lateContext: (() => void) | undefined;
+        let submitted = 0;
+        let originalId = "";
+        const respond = (body: unknown, status = 200) => Promise.resolve({ok: status < 400, status, json: () => Promise.resolve(body)});
+        const context = {status: "loaded", projectRoot: root, game: test.blueprint().manifest, type: "blueprint", capabilities: ["blueprint.build"]};
+        const fetchImpl: FetchLike = (url, init) => {
+            const [route] = url.split("?");
+            if (route === "/api/project/context" && test.payout() === 11 && !recoverContext) {
+                if (phase === "loading") return respond({status: "loading", projectRoot: root});
+                return phase === "fetch" ? new Promise(resolve => {
+                    lateContext = () => resolve({ok: true, status: 200, json: () => Promise.resolve(context)});
+                }) : Promise.resolve({ok: true, status: 200, json: () => new Promise(resolve => {
+                    lateContext = () => resolve(context);
+                })});
+            }
+            if (route === "/api/project/jobs") return respond({jobs: jobs.list(root)});
+            if (route.startsWith("/api/project/jobs/")) return respond(jobs.get(root, route.split("/").at(-1)!));
+            if (route === "/api/project/simulations") {
+                submitted++;
+                const result = service.start(root, validateSimulationRequest(JSON.parse(init!.body!)));
+                if (result.status !== "created") throw new Error("Expected one new execution");
+                originalId = result.job.id;
+                return respond(result.job, 202);
+            }
+            if (route.startsWith("/api/project/simulations/")) {
+                return respond(service.getStatusForProject(root, route.split("/").at(-1)!));
+            }
+            if (route === "/api/project/reports") return respond(service.listReports(root));
+            return test.fetchImpl(url, init);
+        };
+        let view: ReturnType<typeof renderRoutedApp> | undefined;
+        try {
+            view = renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"], strictMode: true});
+            const rounds = await screen.findByLabelText(/^Rounds/);
+            await user.clear(rounds);
+            await user.type(rounds, "100");
+            await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+            await waitFor(() => expect(service.getStatus(originalId)).toMatchObject({status: "running", roundsCompleted: 50}));
+            const paytable = await editPayout(user, "11");
+            await user.click(within(paytable).getByRole("button", {name: "Save"}));
+            await within(paytable).findByRole("button", {name: "Edit"});
+            expect(test.payout()).toBe(11);
+            jest.useFakeTimers();
+            fireEvent.click(screen.getByRole("button", {name: "Simulation"}));
+            await act(() => jest.advanceTimersByTimeAsync(20_000));
+            expect(view.router.state.location.pathname).toMatch(/gameModel$/);
+            expect(screen.getByText(/Could not refresh this project/)).toBeVisible();
+            expect(screen.getByText("Project navigation needs a retry")).toHaveAttribute("data-pokie-lifecycle-terminal", "error");
+            expect(within(paytable).getByText("11")).toBeVisible();
+            expect(service.getStatus(originalId)).toMatchObject({status: "running", roundsCompleted: 50});
+            const card = screen.getByRole("region", {name: `simulation job ${originalId}`});
+            expect(within(card).getByRole("button", {name: "Cancel"})).toBeEnabled();
+            recoverContext = true;
+            fireEvent.click(screen.getByRole("button", {name: "Retry project context"}));
+            await act(() => jest.advanceTimersByTimeAsync(0));
+            expect(view.router.state.location.pathname).toMatch(/simulation$/);
+            const workflow = screen.getByRole("region", {name: "Simulation workflow"});
+            fireEvent.click(within(workflow).getByRole("button", {name: /Configure.*Set rounds/}));
+            await act(() => jest.advanceTimersByTimeAsync(0));
+            expect(within(workflow).getByRole("button", {name: "Run Simulation"})).toBeDisabled();
+            await act(async () => {
+                lateContext?.();
+                await Promise.resolve();
+            });
+            expect(screen.queryByText(/Could not refresh this project/)).not.toBeInTheDocument();
+            expect(submitted).toBe(1);
+            expect(jobs.list(root).map(job => job.id)).toEqual([originalId]);
+            expect(service.getStatus(originalId)?.status).toBe("running");
+            expect(within(workflow).getByText(/Historical simulation result/)).toBeVisible();
+        } finally {
+            view?.unmount();
+            jest.useRealTimers();
+            release();
+            await service.cancelAll();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it("V2C-34-SAVE-SUPERSEDE carries a pending selection to the accepted Save generation", async () => {
+        const user = userEvent.setup();
+        const test = fixture();
+        let finishSave: (() => void) | undefined;
+        let holdContext = false;
+        let contextReads = 0;
+        const releases: (() => void)[] = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/home/blueprints/save") return new Promise(resolve => {
+                finishSave = () => {
+                    test.fetchImpl(url, init).then(resolve);
+                };
+            });
+            if (url === "/api/project/context" && holdContext) {
+                contextReads++;
+                return new Promise(resolve => {
+                    releases.push(() => {
+                        test.fetchImpl(url, init).then(resolve);
+                    });
+                });
+            }
+            return test.fetchImpl(url, init);
+        };
+        const view = renderRoutedApp({fetchImpl, initialEntries: ["/project/gameModel"]});
+        await screen.findByRole("heading", {name: "Sample Slot"});
+        const paytable = await editPayout(user, "11");
+        await user.click(within(paytable).getByRole("button", {name: "Save"}));
+        await waitFor(() => expect(finishSave).toBeDefined());
+        holdContext = true;
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        await waitFor(() => expect(contextReads).toBe(1));
+        await act(async () => {
+            finishSave?.();
+            await Promise.resolve();
+        });
+        await within(paytable).findByRole("button", {name: "Edit"});
+        await waitFor(() => expect(contextReads).toBe(2));
+        // The old terminal response cannot release the Save's newer generation.
+        await act(async () => {
+            releases[0]();
+            await Promise.resolve();
+        });
+        expect(view.router.state.location.pathname).toMatch(/gameModel$/);
+        await act(async () => {
+            releases[1]();
+            await Promise.resolve();
+        });
+        await screen.findByRole("button", {name: "Run Simulation"});
+        expect(view.router.state.location.pathname).toMatch(/simulation$/);
+        expect(test.payout()).toBe(11);
     });
 
     it("V2C-34-SIMULATION-SAVE invalidates the current report on accepted Save and preserves explicit historical inspection", async () => {

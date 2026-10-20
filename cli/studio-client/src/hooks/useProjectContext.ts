@@ -5,9 +5,8 @@ import {errorMessage} from "../domain/errorMessage";
 import {describeProjectContextFailure, describeProjectHeader, type ProjectHeaderView} from "../domain/interpret/ProjectDashboard";
 import {useConfirmedProjectOpen} from "./useOpenProject";
 
-// Ports pollProjectDashboard (500ms interval, capped at 40 attempts, ~20s) -- only ever needed when
-// Studio starts directly into Project mode (`pokie .`), since Create/Open both resolve straight to
-// loaded/error. The old app's own "stop polling once the user navigates away" route-check is replaced
+// Ports pollProjectDashboard (500ms interval, capped at 40 attempts, ~20s).
+// Direct entry and saved-source revalidation can both require runtime preparation. The old app's own "stop polling once the user navigates away" route-check is replaced
 // here by the effect's cleanup function: ProjectDashboardPage only exists while mounted on "/project",
 // so unmounting (navigating to Home) naturally cancels the poll -- no route-comparison needed.
 const POLL_INTERVAL_MS = 500;
@@ -23,6 +22,8 @@ function projectContextErrorDetail(error: unknown): string {
 // while browser history may point back to an earlier one.
 export type ProjectContextRefresh = {
     header: ProjectHeaderView;
+    /** A failed same-project refresh retains live forms and owned job controls. */
+    refreshError?: string;
     /** The latest caller-owned refresh generation whose context is rendered. */
     completedRefreshGeneration: number;
     /** The latest caller-owned refresh generation that rendered a diagnostic. */
@@ -38,6 +39,7 @@ export type ProjectContextRefresh = {
 export function useProjectContext(requestedProjectRoot?: string, refreshGeneration = 0): ProjectContextRefresh {
     const fetchImpl = useStudioApi();
     const openWithConfirmation = useConfirmedProjectOpen();
+    const [refreshError, setRefreshError] = useState<string>();
     const [header, setHeader] = useState<ProjectHeaderView>({status: "empty"});
     const [completedRefreshGeneration, setCompletedRefreshGeneration] = useState(0);
     const [failedRefreshGeneration, setFailedRefreshGeneration] = useState(0);
@@ -66,6 +68,9 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
 
     useEffect(() => {
         let cancelled = false;
+        let finished = false;
+        let deadline: ReturnType<typeof setTimeout> | undefined;
+        setRefreshError(undefined);
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
         // React's development effect replay must not create a second context
@@ -90,6 +95,10 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
         };
 
         const publishDashboard = (dashboard: Parameters<typeof describeProjectHeader>[0]): void => {
+            if (dashboard.status === "error") {
+                publishFailure(dashboard.projectRoot, [dashboard.error, dashboard.errorDetail].filter(Boolean).join("\n\n"));
+                return;
+            }
             const nextHeader = describeProjectHeader(dashboard);
             const retainedHeader = headerRef.current;
             // Same-project loading is a revalidation placeholder. Keep the
@@ -107,34 +116,61 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
             // capability boundary.  Dashboard navigation must wait until the
             // refresh has reached a terminal context.
             if (dashboard.status !== "loading") {
+                finished = true;
+                clearTimeout(deadline);
                 setRenderedTerminal({generation: refreshGeneration, header: nextHeader, outcome: nextHeader.status === "error" ? "failed" : "completed"});
             }
         };
 
         const publishFailure = (projectRoot: string, error: unknown): void => {
-            const nextHeader = describeProjectContextFailure(projectRoot, errorMessage(error));
+            finished = true;
+            clearTimeout(deadline);
+            clearTimeout(timeoutId);
+            const retainedHeader = headerRef.current;
+            // Failure is not permission to discard a live editor or detach
+            // owned work. Nor can the retained header acknowledge completion.
+            if ((retainedHeader.status === "loaded" || retainedHeader.status === "outcome-source" || retainedHeader.status === "artifact") &&
+                retainedHeader.projectRoot === projectRoot) {
+                setRefreshError(projectContextErrorDetail(error));
+                setRenderedTerminal({generation: refreshGeneration, header: retainedHeader, outcome: "failed"});
+                return;
+            }
+            const nextHeader = describeProjectContextFailure(projectRoot, projectContextErrorDetail(error));
             setHeader(nextHeader);
             setRenderedTerminal({generation: refreshGeneration, header: nextHeader, outcome: "failed"});
+        };
+        const failureRoot = (): string => requestedProjectRoot ?? (headerRef.current.status === "empty" ? "" : headerRef.current.projectRoot);
+        const startDeadline = (): void => {
+            deadline = setTimeout(() => {
+                if (!cancelled && !finished) {
+                    publishFailure(failureRoot(), new Error("Studio is still preparing the saved design. Retry the section when preparation finishes. Active jobs and edits have been kept."));
+                }
+            }, POLL_INTERVAL_MS * POLL_MAX_ATTEMPTS);
         };
 
         const poll = (attemptsLeft: number): void => {
             requestDashboard()
                 .then((dashboard) => {
-                    if (cancelled) {
+                    if (cancelled || finished) {
                         return;
                     }
                     publishDashboard(dashboard);
-                    if (dashboard.status === "loading" && attemptsLeft > 0) {
-                        timeoutId = setTimeout(() => poll(attemptsLeft - 1), POLL_INTERVAL_MS);
+                    if (dashboard.status === "loading") {
+                        if (attemptsLeft > 0) {
+                            timeoutId = setTimeout(() => poll(attemptsLeft - 1), POLL_INTERVAL_MS);
+                        } else {
+                            publishFailure(dashboard.projectRoot, new Error("Studio is still preparing the saved design. Retry the section when preparation finishes. Active jobs and edits have been kept."));
+                        }
                     }
                 })
                 .catch((error: unknown) => {
-                    if (!cancelled) {
-                        publishFailure("", error);
+                    if (!cancelled && !finished) {
+                        publishFailure(failureRoot(), error);
                     }
                 });
         };
 
+        startDeadline();
         if (requestedProjectRoot === undefined) {
             poll(POLL_MAX_ATTEMPTS);
         } else {
@@ -152,7 +188,7 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
             }
             requestDashboard()
                 .then((dashboard) => {
-                    if (cancelled) {
+                    if (cancelled || finished) {
                         return;
                     }
                     // The usual Home -> Project flow has already opened this exact root before
@@ -165,22 +201,25 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
                         }
                         return;
                     }
+                    // A user-owned permission dialog and project opening are
+                    // separate operations; the context-read budget must not
+                    // expire while the user decides whether to switch.
+                    clearTimeout(deadline);
                     openWithConfirmation(requestedProjectRoot)
                         .then(() => {
-                            if (!cancelled) {
+                            if (!cancelled && !finished) {
+                                startDeadline();
                                 poll(POLL_MAX_ATTEMPTS);
                             }
                         })
                         .catch((error: unknown) => {
-                            if (!cancelled) {
-                                const nextHeader = describeProjectContextFailure(requestedProjectRoot, projectContextErrorDetail(error));
-                                setHeader(nextHeader);
-                                setRenderedTerminal({generation: refreshGeneration, header: nextHeader, outcome: "failed"});
+                            if (!cancelled && !finished) {
+                                publishFailure(requestedProjectRoot, error);
                             }
                         });
                 })
                 .catch((error: unknown) => {
-                    if (!cancelled) {
+                    if (!cancelled && !finished) {
                         publishFailure(requestedProjectRoot, error);
                     }
                 });
@@ -189,8 +228,9 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
         return () => {
             cancelled = true;
             clearTimeout(timeoutId);
+            clearTimeout(deadline);
         };
     }, [fetchImpl, openWithConfirmation, refreshGeneration, requestedProjectRoot]);
 
-    return {header, completedRefreshGeneration, failedRefreshGeneration, renderedTerminal};
+    return {header, refreshError, completedRefreshGeneration, failedRefreshGeneration, renderedTerminal};
 }

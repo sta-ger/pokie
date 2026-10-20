@@ -426,7 +426,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const migratedFrom = new URLSearchParams(location.search).get("migrated");
     const migration = legacyProjectRouteMigration(migratedFrom ?? undefined);
     const navigationRequestIdRef = useRef(0);
-    const [navigationLifecycle, setNavigationLifecycle] = useState<{tab: ProjectTab; status: "loading" | "rendered" | "error"; message?: string}>({tab: activeTab, status: "rendered"});
+    const [navigationLifecycle, setNavigationLifecycle] = useState<{tab: ProjectTab; status: "loading" | "rendered" | "error"; message?: string; retryTab?: ProjectTab}>({tab: activeTab, status: "rendered"});
     // This generation is deliberately shared by a completed durable operation
     // and a public tab transition. A capability-changing operation must refresh
     // the product-owned context before its dependent tab can be selected; the
@@ -435,7 +435,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const [contextRefreshGeneration, setContextRefreshGeneration] = useState(0);
     const contextRefreshGenerationRef = useRef(0);
     const [pendingNavigation, setPendingNavigation] = useState<{requestId: number; tab: ProjectTab; refreshGeneration: number} | undefined>();
-    const {header, completedRefreshGeneration, failedRefreshGeneration, renderedTerminal} = useProjectContext(requestedProjectRoot, contextRefreshGeneration);
+    const {header, refreshError, completedRefreshGeneration, failedRefreshGeneration, renderedTerminal} = useProjectContext(requestedProjectRoot, contextRefreshGeneration);
     // The active tab lives in the URL (`/project/:tab`, see routes.tsx) so refresh/back-forward/direct
     // links land on the right section; every existing call site below still just calls `setActiveTab(x)`,
     // now implemented as a navigation instead of local state.
@@ -473,7 +473,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             // Keep the current workflow selected and expose the freshly
             // rendered context diagnostic when its prerequisite cannot be
             // revalidated. A failed request must not turn into a stale route.
-            setNavigationLifecycle({tab: activeTab, status: "error", message: header.status === "error" ? header.message : "The project context could not be refreshed."});
+            setNavigationLifecycle({tab: activeTab, status: "error", message: refreshError ?? (header.status === "error" ? header.message : "The project context could not be refreshed."), retryTab: pendingNavigation.tab});
             setPendingNavigation(undefined);
             return;
         }
@@ -502,7 +502,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         navigate(`${routePrefix}/${pendingNavigation.tab}`);
         setNavigationLifecycle({tab: pendingNavigation.tab, status: "rendered"});
         setPendingNavigation(undefined);
-    }, [activeTab, completedRefreshGeneration, failedRefreshGeneration, header, navigate, pendingNavigation, renderedTerminal, requestedProjectRoot]);
+    }, [activeTab, completedRefreshGeneration, failedRefreshGeneration, header, navigate, pendingNavigation, refreshError, renderedTerminal, requestedProjectRoot]);
 
     // Keep the URL as understandable as the view.  Home already replaces unknown sections with its
     // default route; doing the same for a project means a stale bookmark/reload never leaves an
@@ -1117,6 +1117,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setCompareDetail({status: "empty"});
         setRunAgainNotice("The saved design changed. Run a new simulation for the current design. Retained reports remain available as historical results.");
         const next = ++contextRefreshGenerationRef.current;
+        setPendingNavigation((pending) => pending === undefined ? undefined : {...pending, refreshGeneration: next});
         setContextRefreshGeneration(next);
     };
 
@@ -1301,6 +1302,13 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         };
     }, [fetchImpl]);
 
+    let navigationMessage = "Preparing the selected section…";
+    if (navigationLifecycle.tab === activeTab && navigationLifecycle.status === "error") {
+        navigationMessage = "Project navigation needs a retry";
+    } else if (navigationLifecycle.tab === activeTab && navigationLifecycle.status === "rendered") {
+        navigationMessage = `${activeTabLabel} ready`;
+    }
+
     if (header.status === "empty") {
         return (
             <AppShellLayout navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}>
@@ -1375,8 +1383,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                             {migration.message}
                         </Alert>
                     )}
-                    {navigationLifecycle.tab === activeTab && navigationLifecycle.status === "error" && (
-                        <ErrorState message={`Could not refresh this project after navigation: ${navigationLifecycle.message ?? "Unknown error"}`} />
+                    {(refreshError !== undefined || (navigationLifecycle.tab === activeTab && navigationLifecycle.status === "error")) && (
+                        <>
+                            <ErrorState message={`Could not refresh this project: ${refreshError ?? navigationLifecycle.message ?? "Unknown error"}`} />
+                            <Button variant="default" size="xs" onClick={() => setActiveTab(navigationLifecycle.retryTab ?? activeTab)}>Retry project context</Button>
+                        </>
                     )}
                     <Text
                         role="status"
@@ -1390,7 +1401,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         size="xs"
                         c="dimmed"
                     >
-                        {navigationLifecycle.tab === activeTab && navigationLifecycle.status === "loading" ? `Opening ${activeTabLabel}…` : `${activeTabLabel} ready`}
+                        {navigationMessage}
                     </Text>
                     {!activeTabSupported && activeTabDescriptor !== undefined && (
                         <>

@@ -594,12 +594,31 @@ export async function closeProject(fetchImpl: FetchLike, confirmActiveJobs = fal
     return body.context;
 }
 
+// Bound the entire read, including body consumption. Some injected transports
+// ignore AbortSignal, so abort alone cannot guarantee a terminal client result.
 export async function getProjectContext(fetchImpl: FetchLike): Promise<ProjectDashboardContext> {
-    const response = await fetchImpl("/api/project/context");
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to load the project context"));
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const request = async (): Promise<ProjectDashboardContext> => {
+        const response = await fetchImpl("/api/project/context", {cache: "no-store", signal: controller.signal});
+        if (!response.ok) {
+            throw new Error(await extractErrorMessage(response, "Failed to load the project context"));
+        }
+        return (await response.json()) as ProjectDashboardContext;
+    };
+    try {
+        return await Promise.race([
+            request(),
+            new Promise<never>((_resolve, reject) => {
+                timeout = setTimeout(() => {
+                    reject(new Error("Project context request timed out. Retry the section after Studio finishes preparing the saved design."));
+                    controller.abort();
+                }, 10_000);
+            }),
+        ]);
+    } finally {
+        clearTimeout(timeout);
     }
-    return (await response.json()) as ProjectDashboardContext;
 }
 
 // Draws exactly one outcome from the currently open "outcomeLibrary" project's own `modeName` through
