@@ -51,6 +51,9 @@ const tooling = new Set([
     "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
     "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
     "tests/cli/studio/StudioServerParWorkbook.integration.test.ts",
+    // V2C-34 saved two-file gate correction; no product/build or sibling-test exemption.
+    "tests/cli/commands/BuildCommand.test.ts",
+    "tests/cli/studio/StudioServer.test.ts",
 ]);
 const evidence = (file) => file.startsWith("docs/evidence/p8-05-product-readiness/");
 const excluded = (file) => tooling.has(file) || evidence(file);

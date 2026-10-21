@@ -1,6 +1,6 @@
 import {generatedMechanicsGame} from "../../v2/fixtures/ExistingMechanicsGame.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
-import {writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {StudioRoundRecorder} from "../../../cli/studio/runtime/StudioRoundRecorder.js";
 import {transactionalRoundGame} from "../../v2/fixtures/TransactionalRoundGame.js";
 import {
@@ -487,6 +487,14 @@ async function pollUntilProjectContextSettled(url: string): Promise<{status: num
 }
 
 describe("StudioServer", () => {
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     let studioRoot: string;
     let server: StudioServer;
     let baseUrl: string;
@@ -771,9 +779,8 @@ describe("StudioServer", () => {
         expect(outcomeService.rebindCheckpointRequest).toHaveBeenCalled();
     });
 
-    // Both routes perform real package snapshot acquisition, generation and
-    // cleanup. Budget the combined workflow on constrained gate workers, including its server restart,
-    // rather than allowing Jest to tear down a still-running HTTP scenario.
+    // Two independently generated packages, both HTTP start routes, registry and drift
+    // checks each acquire real snapshots. Budget the combined workflow, including restart.
     it("runs both Outcome Library HTTP start routes against a real generated package and rejects a bound destination drift", async () => {
         await server.stop();
         const projectRoot = path.join(studioRoot, "real-outcome-library-package");
@@ -857,12 +864,12 @@ describe("StudioServer", () => {
         expect(fs.existsSync(path.join(sampledProjectRoot, "changed-destination"))).toBe(false);
         await server.stop();
         expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
-    }, 300000);
+    }, 2 * REAL_RUNTIME_TEST_TIMEOUT_MS);
 
     // This scenario includes two complete million-stop enumerations plus
     // independent runtimes for resume, stop, close, switch and rejection paths.
     // Keep the full populations and production loaders, with a bounded
-    // integration budget for the entire sequence on constrained CI workers.
+    // per-path runtime budget for the six combined lifecycle/rejection paths.
     it("keeps real Outcome Library HTTP lifecycle cancellation, restart, source drift, and diagnostics cleanup-safe", async () => {
         await server.stop();
         const lifecycleRoot = path.join(studioRoot, "real-outcome-library-lifecycle-package");
@@ -1053,7 +1060,7 @@ describe("StudioServer", () => {
             });
         }
         expectNoOutcomeLibraryPublication(unsupportedRoot, "outcomelibrary");
-    }, 900000);
+    }, 6 * REAL_RUNTIME_TEST_TIMEOUT_MS);
 
     it("reports safe diagnostics on GET /api/studio/diagnostics in home mode", async () => {
         const {status, body} = await get(`${baseUrl}/api/studio/diagnostics`);
@@ -8319,8 +8326,8 @@ describe("StudioServer", () => {
             return `http://${address.host}:${address.port}`;
         }
 
-        async function waitForArtifactBuildJob(projectBaseUrl: string, id: string): Promise<{status: string; result?: unknown}> {
-            const deadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
+        async function waitForArtifactBuildJob(projectBaseUrl: string, id: string, timeoutMs = RUNTIME_PHASE_POLL_TIMEOUT_MS): Promise<{status: string; result?: unknown}> {
+            const deadline = Date.now() + timeoutMs;
             let lastJob: unknown;
             while (Date.now() < deadline) {
                 const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${id}`);
@@ -8381,11 +8388,11 @@ describe("StudioServer", () => {
             expect(absent.status).toBe(409);
             const started = await post(`${url}/api/project/artifacts/build`, {target: "blueprint", outDir: destination, preparedOperationId: (preview.body as {preparedOperationId: string}).preparedOperationId});
             expect(started.status).toBe(202);
-            const completed = await waitForArtifactBuildJob(url, (started.body as {job: {id: string}}).job.id);
+            const completed = await waitForArtifactBuildJob(url, (started.body as {job: {id: string}}).job.id, REAL_RUNTIME_TEST_TIMEOUT_MS);
             expect(completed.status).toBe("completed");
             expect(completed.result).toMatchObject({status: "ok", outputPath: destination, conversionEvidencePath: `${destination}.conversion-evidence.json`});
             expect(fs.existsSync(destination)).toBe(true);
-        }, 180000);
+        }, 2 * REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         it.each(["source", "descriptor", "destination", "project", "companion", "unsupported"])("rejects %s drift across HTTP extraction preview/save without publication", async change => {
             const control = path.join(artifactWorkDir, "descriptor-control.txt");
@@ -8558,10 +8565,31 @@ describe("StudioServer", () => {
             });
             const destination = path.join(artifactWorkDir, "cancelled-outcome-library");
             const registryPath = path.join(artifactWorkDir, ".pokie", "managed-outcome-projects.json");
-            // Keep the complete production chain: Studio -> real ArtifactBuilderRegistry -> real
-            // BlueprintStakeOutcomeLibraryWorkflow -> real ManagedOutcomeProjectService.  The distinct
-            // outcome space yields while the canonical writer is actively publishing, giving
-            // the HTTP Cancel route a real in-flight bundle to interrupt.
+            // Keep the production generator, writer and managed-project owner. Hold the real
+            // stream only after its first record has been written, so the HTTP phase cannot
+            // disappear between polls on a busy gate worker. Release it after Cancel and drain
+            // the service before restoring the writer, including when an assertion fails.
+            let releaseWriting!: () => void;
+            const writingGate = new Promise<void>(resolve => {
+                releaseWriting = resolve;
+            });
+            const writeToDirectory = OutcomeLibraryBundleWriter.prototype.writeToDirectory;
+            const writer = jest.spyOn(OutcomeLibraryBundleWriter.prototype, "writeToDirectory")
+                .mockImplementation(function (this: OutcomeLibraryBundleWriter<string | number>, modes, outDir, options) {
+                    return Reflect.apply(writeToDirectory, this, [modes.map(mode => ({
+                        ...mode,
+                        outcomes: (async function *() {
+                            let first = true;
+                            for await (const outcome of mode.outcomes) {
+                                yield outcome;
+                                if (first) {
+                                    first = false;
+                                    await writingGate;
+                                }
+                            }
+                        }()),
+                    })), outDir, options]);
+                });
             const artifactBuildService = new StudioArtifactBuildService(
                 "1.3.0",
                 undefined,
@@ -8581,58 +8609,74 @@ describe("StudioServer", () => {
                 initialContext: {mode: "project", projectRoot: blueprintPath},
                 jobService: createIsolatedJobService(artifactWorkDir),
             });
-            const address = await artifactServer.start();
-            const projectBaseUrl = `http://${address.host}:${address.port}`;
+            try {
+                const address = await artifactServer.start();
+                const projectBaseUrl = `http://${address.host}:${address.port}`;
+                const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "outcomeLibrary", outDir: destination});
+                expect(started.status).toBe(202);
+                const job = (started.body as {job: {id: string; status: string}}).job;
+                expect(job.status).toBe("queued");
 
-            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "outcomeLibrary", outDir: destination});
-            expect(started.status).toBe(202);
-            const job = (started.body as {job: {id: string; status: string}}).job;
-            expect(job.status).toBe("queued");
-
-            let activeJob: {id: string; status: string; progress?: {message?: string}} | undefined;
-            for (let attempt = 0; attempt < 1200; attempt += 1) {
-                const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${job.id}`);
-                expect(response.status).toBe(200);
-                const current = response.body as {id: string; status: string; progress?: {message?: string}};
-                if (current.progress?.message?.startsWith("Writing Outcome mode")) {
-                    activeJob = current;
-                    break;
+                let activeJob: {id: string; status: string; progress?: {message?: string}} | undefined;
+                const writingDeadline = Date.now() + REAL_RUNTIME_TEST_TIMEOUT_MS;
+                while (Date.now() < writingDeadline) {
+                    const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${job.id}`);
+                    expect(response.status).toBe(200);
+                    const current = response.body as {id: string; status: string; progress?: {message?: string}};
+                    if (current.progress?.message?.startsWith("Writing Outcome mode")) {
+                        activeJob = current;
+                        break;
+                    }
+                    if (current.status !== "queued" && current.status !== "running") break;
+                    await new Promise<void>((resolve) => {
+                        setTimeout(resolve, 10);
+                    });
                 }
-                if (current.status !== "queued" && current.status !== "running") break;
-                await new Promise<void>((resolve) => {
-                    setTimeout(resolve, 10);
-                });
-            }
-            expect(activeJob).toEqual(expect.objectContaining({id: job.id, status: "running"}));
+                expect(activeJob).toEqual(expect.objectContaining({id: job.id, status: "running"}));
 
-            const cancelled = await post(`${projectBaseUrl}/api/project/artifacts/build/${job.id}/cancel`);
-            expect(cancelled.status).toBe(200);
-            expect(cancelled.body).toMatchObject({id: job.id, status: "cancelling", cancellationRequested: true});
+                const staging = fs.readdirSync(artifactWorkDir).find(entry => entry.startsWith("cancelled-outcome-library.staging-"));
+                expect(staging).toBeDefined();
+                const outcomes = path.join(artifactWorkDir, staging!, "outcomes_base.jsonl");
+                expect(fs.statSync(outcomes).size).toBeGreaterThan(0);
 
-            let terminalJob: {id: string; status: string; cancellationRequested: boolean; result?: {status: string}} | undefined;
-            for (let attempt = 0; attempt < 1200; attempt += 1) {
-                const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${job.id}`);
-                expect(response.status).toBe(200);
-                const current = response.body as {id: string; status: string; cancellationRequested: boolean; result?: {status: string}};
-                if (current.status !== "queued" && current.status !== "running" && current.status !== "cancelling") {
-                    terminalJob = current;
-                    break;
+                const cancelled = await post(`${projectBaseUrl}/api/project/artifacts/build/${job.id}/cancel`);
+                expect(cancelled.status).toBe(200);
+                expect(cancelled.body).toMatchObject({id: job.id, status: "cancelling", cancellationRequested: true});
+                releaseWriting();
+
+                let terminalJob: {id: string; status: string; cancellationRequested: boolean; result?: {status: string}} | undefined;
+                const cleanupDeadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
+                while (Date.now() < cleanupDeadline) {
+                    const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${job.id}`);
+                    expect(response.status).toBe(200);
+                    const current = response.body as {id: string; status: string; cancellationRequested: boolean; result?: {status: string}};
+                    if (current.status !== "queued" && current.status !== "running" && current.status !== "cancelling") {
+                        terminalJob = current;
+                        break;
+                    }
+                    await new Promise<void>((resolve) => {
+                        setTimeout(resolve, 10);
+                    });
                 }
-                await new Promise<void>((resolve) => {
-                    setTimeout(resolve, 10);
-                });
-            }
 
-            expect(terminalJob).toEqual(expect.objectContaining({
-                id: job.id,
-                status: "cancelled",
-                cancellationRequested: true,
-                result: expect.objectContaining({status: "cancelled"}),
-            }));
-            expect(fs.existsSync(destination)).toBe(false);
-            expect(fs.readdirSync(artifactWorkDir).filter((entry) => entry.startsWith("cancelled-outcome-library.staging-"))).toEqual([]);
-            expect(fs.existsSync(registryPath)).toBe(false);
-        });
+                expect(terminalJob).toEqual(expect.objectContaining({
+                    id: job.id,
+                    status: "cancelled",
+                    cancellationRequested: true,
+                    result: expect.objectContaining({status: "cancelled"}),
+                }));
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(fs.readdirSync(artifactWorkDir).filter((entry) => entry.startsWith("cancelled-outcome-library.staging-"))).toEqual([]);
+                expect(fs.existsSync(registryPath)).toBe(false);
+            } finally {
+                releaseWriting();
+                try {
+                    await artifactBuildService.cancelAll();
+                } finally {
+                    writer.mockRestore();
+                }
+            }
+        }, 2 * REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         it("returns a conflict (409) for a pre-existing non-empty destination and never writes to it", async () => {
             const blueprintPath = writeBlueprintFile();

@@ -66,6 +66,9 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "tests/cli/PC17CliStudioParity.integration.test.ts",
     "tests/cli/StudioFullWorkflow.integration.test.ts",
     "tests/cli/studio/StudioServerParWorkbook.integration.test.ts",
+    // V2C-34 saved two-file gate correction; no product/build or sibling-test exemption.
+    "tests/cli/commands/BuildCommand.test.ts",
+    "tests/cli/studio/StudioServer.test.ts",
 ];
 const commit = (repository, message) => {
     execFileSync("git", ["add", "."], {cwd:repository});
