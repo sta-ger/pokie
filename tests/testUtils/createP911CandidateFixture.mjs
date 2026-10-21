@@ -71,6 +71,9 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "tests/cli/studio/StudioServer.test.ts",
     // V2C-34 saved mechanics gate correction; only this named test is admitted.
     "tests/v2/ExistingMechanicsAuthoring.test.ts",
+    // V2C-34 retained interoperability and Replay route gate correction only.
+    "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
+    "tests/cli/studio/StudioJobRoutes.integration.test.ts",
 ];
 const commit = (repository, message) => {
     execFileSync("git", ["add", "."], {cwd:repository});
