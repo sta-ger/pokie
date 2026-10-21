@@ -407,7 +407,7 @@ describe("V2C-34 installed-help reference authority", () => {
             for (let attempt = 0; attempt < 2; attempt++) expect(JSON.parse(check()).pages).toBe(3);
             // The standalone public site remains a supported sibling of installed help.
             write("build-manifest.json", JSON.stringify({routes: ["/", "/docs/", "/gallery/"]}));
-            for (const [file, value] of [["index.html", '<a href="/docs/">Documentation</a>'], ["docs/index.html", page.replaceAll("/help/", "/")], ["gallery/index.html", '<a href="/docs/#dossier">Dossier</a>']]) write(file, value);
+            for (const [file, value] of [["index.html", '<a href="/docs/">Documentation</a>'], ["docs/index.html", page.replace(/\/help\//g, "/")], ["gallery/index.html", '<a href="/docs/#dossier">Dossier</a>']]) write(file, value);
             write("search.json", JSON.stringify([{...entries[0], url: "/docs/#dossier"}]));
             expect(JSON.parse(check()).pages).toBe(3);
         } finally {
