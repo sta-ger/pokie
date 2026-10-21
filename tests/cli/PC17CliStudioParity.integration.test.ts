@@ -11,8 +11,10 @@ import {
     BUILD_PRODUCT_MATRIX_TARGETS,
     ProjectTargetResolver,
     ProjectType,
+    STUDIO_OPERATION,
 } from "@fromstan/pokie";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
+import {createMaterializingRuntimePackageResolver, type RuntimePackageResolving} from "../../cli/materialize/materializeRuntimePackage.js";
 import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";
 import {StudioServer} from "../../cli/studio/StudioServer.js";
@@ -66,6 +68,26 @@ async function waitForJob(baseUrl: string, id: string): Promise<Record<string, u
     throw new Error(`Artifact build job ${id} did not finish.`);
 }
 
+async function waitForDashboard(baseUrl: string, projectRoot: string, source: ProjectType): Promise<void> {
+    const deadline = Date.now() + PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000;
+    while (Date.now() < deadline) {
+        const response = await fetch(`${baseUrl}/api/project/context`);
+        expect(response.status).toBe(200);
+        const context = await response.json() as {status: string};
+        if (context.status !== "loading") {
+            expect(context).toMatchObject({
+                status: source === "outcomeLibrary" || source === "stakeAdapter" ? "outcome-source" : "loaded",
+                projectRoot,
+            });
+            return;
+        }
+        await new Promise<void>(resolve => {
+            setTimeout(resolve, 10);
+        });
+    }
+    throw new Error(`Project dashboard ${projectRoot} did not finish preparing.`);
+}
+
 async function buildCli(source: string, target: ArtifactTargetType, destination: string): Promise<void> {
     expect(await new BuildCommand("1.3.0").run([source, "--target", target, "--out", destination])).toBe(0);
 }
@@ -107,6 +129,7 @@ function extensionFor(target: ArtifactTargetType): string {
 
 describe("PC-17 public CLI and Studio HTTP parity", () => {
     let restoreTemporaryDirectory: () => void;
+    let resolveRuntimePackageRoot: RuntimePackageResolving;
     let studioRoot: string;
     let workDir: string;
     let servers: StudioServer[];
@@ -114,6 +137,9 @@ describe("PC-17 public CLI and Studio HTTP parity", () => {
 
     beforeAll(() => {
         restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        // Match StudioCommand's production wiring: prepare against this running
+        // installation, including its real runtime, rather than registry 1.3.0.
+        resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", STUDIO_OPERATION, process.cwd());
     });
 
     afterAll(() => {
@@ -148,12 +174,14 @@ describe("PC-17 public CLI and Studio HTTP parity", () => {
         const server = new StudioServer({
             pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot, homeService,
             blueprintService: new StudioBlueprintService("1.3.0", studioRoot, homeService),
+            resolveRuntimePackageRoot,
             jobService: new StudioJobService(new FileStudioJobRepository(path.join(workDir, "jobs", String(servers.length)))),
             initialContext: {mode: "project", projectRoot: sourcePath},
         });
         servers.push(server);
         const address = await server.start();
         const baseUrl = `http://${address.host}:${address.port}`;
+        await waitForDashboard(baseUrl, sourcePath, source);
         const studioOutput = path.join(workDir, `${source}-${target}-studio${extension}`);
         const preview = await post(baseUrl, "/api/project/artifacts/preview", {target, outDir: studioOutput});
         expect(preview.status).toBe(200);
@@ -241,12 +269,14 @@ describe("PC-17 public CLI and Studio HTTP parity", () => {
         const conflictServer = new StudioServer({
             pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot, homeService,
             blueprintService: new StudioBlueprintService("1.3.0", studioRoot, homeService),
+            resolveRuntimePackageRoot,
             jobService: new StudioJobService(new FileStudioJobRepository(path.join(workDir, "jobs", String(servers.length)))),
             initialContext: {mode: "project", projectRoot: blueprint},
         });
         servers.push(conflictServer);
         const address = await conflictServer.start();
         const baseUrl = `http://${address.host}:${address.port}`;
+        await waitForDashboard(baseUrl, blueprint, "blueprint");
         const conflict = await post(baseUrl, "/api/project/artifacts/preview", {target: "tsPackage", outDir: destination});
         expect(conflict).toMatchObject({status: 409, body: {status: "conflict", target: "tsPackage"}});
         expect(fs.readFileSync(path.join(destination, "preserve.txt"), "utf8")).toBe("caller-owned");
@@ -262,12 +292,14 @@ describe("PC-17 public CLI and Studio HTTP parity", () => {
         const cancellationServer = new StudioServer({
             pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot, homeService,
             blueprintService: new StudioBlueprintService("1.3.0", studioRoot, homeService),
+            resolveRuntimePackageRoot,
             jobService: new StudioJobService(new FileStudioJobRepository(path.join(workDir, "jobs", String(servers.length)))),
             initialContext: {mode: "project", projectRoot: cancellableBlueprint},
         });
         servers.push(cancellationServer);
         const cancellationAddress = await cancellationServer.start();
         const cancellationBaseUrl = `http://${cancellationAddress.host}:${cancellationAddress.port}`;
+        await waitForDashboard(cancellationBaseUrl, cancellableBlueprint, "blueprint");
         const cancellationOutput = path.join(workDir, "cancelled-outcomes");
         const started = await post(cancellationBaseUrl, "/api/project/artifacts/build", {target: "outcomeLibrary", outDir: cancellationOutput});
         expect(started.status).toBe(202);
