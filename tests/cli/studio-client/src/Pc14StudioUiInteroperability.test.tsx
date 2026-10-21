@@ -285,13 +285,14 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.click(screen.getByRole("button", {name: "Continue to Build bundle"}));
         await user.clear(screen.getByRole("textbox", {name: "Output directory"}));
         await user.type(screen.getByRole("textbox", {name: "Output directory"}), "certification");
+        const certificationSourceBytes = new Map(["manifest.json", "index_base.json", "outcomes_base.jsonl"].map(file => [file, fs.readFileSync(path.join(outcomeLibraryPath, file))] as const));
         await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
         // The source is this opened bundle itself. A nested output would mutate
         // its evidence inputs; retain that rejection before choosing a new sibling.
         await waitFor(() => expect(certificationResponse).toMatchObject({status: 200, body: {status: "load-error", error: expect.stringContaining("source/output overlap")}}));
         await screen.findByText("The certification bundle directory could not be completed. Try again. If it continues, choose the location again and retry.");
         expect(fs.existsSync(path.join(outcomeLibraryPath, "certification"))).toBe(false);
-        const certificationSourceBytes = new Map(["manifest.json", "index_base.json", "outcomes_base.jsonl"].map(file => [file, fs.readFileSync(path.join(outcomeLibraryPath, file))] as const));
+        for (const [file, bytes] of certificationSourceBytes) expect(fs.readFileSync(path.join(outcomeLibraryPath, file))).toEqual(bytes);
         const certificationOutput = path.join(workDir, "studio-ui-certification");
         const certificationDestination = screen.getByRole("textbox", {name: "Output directory"});
         await user.clear(certificationDestination);
