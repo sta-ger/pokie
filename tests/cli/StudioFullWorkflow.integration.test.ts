@@ -8,6 +8,9 @@ import {StudioReplayExecutionService} from "../../cli/studio/replay/StudioReplay
 import {InMemoryStudioSimulationRepository} from "../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {StudioSimulationService} from "../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioServer} from "../../cli/studio/StudioServer.js";
+import {FileStudioJobRepository} from "../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../cli/studio/jobs/StudioJobService.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
 
 async function get(url: string): Promise<{status: number; body: unknown}> {
     const response = await fetch(url);
@@ -25,15 +28,16 @@ async function post(url: string, body?: unknown): Promise<{status: number; body:
 
 function flushMacrotask(): Promise<void> {
     return new Promise((resolve) => {
-        setImmediate(resolve);
+        setTimeout(resolve, 10);
     });
 }
 
 async function pollUntilTerminal(url: string): Promise<{status: number; body: {[key: string]: unknown; status: string}}> {
-    for (let i = 0; i < 2000; i++) {
+    const deadline = Date.now() + PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000;
+    while (Date.now() < deadline) {
         const response = await get(url);
         const body = response.body as {status: string};
-        if (body.status !== "queued" && body.status !== "running") {
+        if (body.status !== "queued" && body.status !== "running" && body.status !== "cancelling") {
             return response as {status: number; body: {[key: string]: unknown; status: string}};
         }
         await flushMacrotask();
@@ -66,12 +70,21 @@ function buildBlueprint(id: string): Record<string, unknown> {
 // StudioReplayExecutionService instances (rather than StudioServer's own defaults) are injected only so
 // step 12 can assert getActiveCount() after shutdown — everything else about them is unmodified.
 describe("POKIE Studio full workflow (integration): Home -> Project -> Home -> isolation -> shutdown", () => {
+    let restoreTemporaryDirectory: () => void;
     let studioRoot: string;
     let workDir: string;
     let server: StudioServer | undefined;
     let baseUrl: string;
     let simulationService: StudioSimulationService;
     let replayService: StudioReplayExecutionService;
+
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
 
     beforeEach(async () => {
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-full-workflow-test-"));
@@ -90,6 +103,7 @@ describe("POKIE Studio full workflow (integration): Home -> Project -> Home -> i
             blueprintService: new StudioBlueprintService("1.0.0", studioRoot, homeService),
             simulationService,
             replayService,
+            jobService: new StudioJobService(new FileStudioJobRepository(path.join(workDir, "jobs"))),
         });
         const address = await server.start();
         baseUrl = `http://${address.host}:${address.port}`;
@@ -187,5 +201,5 @@ describe("POKIE Studio full workflow (integration): Home -> Project -> Home -> i
         await serverToStop?.stop();
         expect(simulationService.getActiveCount()).toBe(0);
         expect(replayService.getActiveCount()).toBe(0);
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 });

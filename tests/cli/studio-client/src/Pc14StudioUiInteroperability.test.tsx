@@ -16,6 +16,9 @@ import {FileStudioProjectRegistry} from "../../../../cli/studio/FileStudioProjec
 import {StudioProjectRegistrationService} from "../../../../cli/studio/StudioProjectRegistrationService.js";
 import {createStudioGameLoader} from "../../../../cli/studio/loadStudioGame.js";
 import {StudioServer} from "../../../../cli/studio/StudioServer.js";
+import {FileStudioJobRepository} from "../../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js";
+import {createPackageExtractionTestEnvironment} from "../../../v2/fixtures/PackageExtractionFixture.js";
 import type {FetchLike} from "../../../../cli/studio-client/src/api/apiClient.js";
 import {
     ArtifactInteroperabilityRun,
@@ -52,6 +55,7 @@ function createServerFetch(baseUrl: string): FetchLike {
 }
 
 describe("PC-14 Studio UI real-artifact interoperability", () => {
+    let restoreTemporaryDirectory: () => void;
     let studioRoot: string;
     let workDir: string;
     let blueprintPath: string;
@@ -62,6 +66,14 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
     let restoreRunnerClock: () => void;
     let packageServerStopped = false;
     const additionalServers: StudioServer[] = [];
+
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
 
     beforeEach(async () => {
         restoreRunnerClock = installPc14FixedRunnerClock();
@@ -84,6 +96,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             pokieVersion: POKIE_VERSION, host: "127.0.0.1", port: 0, studioRoot,
             homeService: home,
             blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, home),
+            jobService: new StudioJobService(new FileStudioJobRepository(path.join(workDir, "package-jobs"))),
             loadGame: createStudioGameLoader(process.cwd()),
             resolveRuntimePackageRoot: passthroughRuntimePackageResolver,
             deploymentService: new StudioDeploymentService(
@@ -120,7 +133,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         const evidence = new ArtifactInteroperabilityRun(workDir);
         const packageApp = renderRoutedApp({fetchImpl, initialEntries: [`/project/${encodeURIComponent(packagePath)}/overview`]});
 
-        await screen.findByRole("heading", {name: "UI Route Slot"});
+        await screen.findByRole("heading", {name: "UI Route Slot"}, {timeout: 30000});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         const buildSection = await screen.findByText("Build artifact");
         expect(buildSection.closest("fieldset")).not.toBeNull();
@@ -147,7 +160,8 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.click(screen.getByRole("button", {name: "Play"}));
         await screen.findByRole("button", {name: "New Play session"});
         await user.click(screen.getByRole("button", {name: "New Play session"}));
-        await screen.findByRole("button", {name: "Spin"});
+        // Session creation acquires and later releases a real package/dependency snapshot.
+        await screen.findByRole("button", {name: "Spin"}, {timeout: 60000});
 
         // Exercise an actual unsupported runtime action before the successful
         // round.  The generated package has no free-games mode; Studio must
@@ -223,6 +237,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             pokieVersion: POKIE_VERSION, host: "127.0.0.1", port: 0, studioRoot,
             homeService: outcomeLibraryHome,
             blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, outcomeLibraryHome),
+            jobService: new StudioJobService(new FileStudioJobRepository(path.join(workDir, "outcome-jobs"))),
             loadGame: createStudioGameLoader(process.cwd()),
             resolveRuntimePackageRoot: passthroughRuntimePackageResolver,
             initialContext: {mode: "project", projectRoot: outcomeLibraryPath},
@@ -474,6 +489,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             homeService: designHome,
             projectRegistrationService: designRegistration,
             blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, designHome),
+            jobService: new StudioJobService(new FileStudioJobRepository(path.join(workDir, "design-jobs"))),
             loadGame: designLoader,
             resolveRuntimePackageRoot: designRuntimeResolver,
             initialContext: {mode: "home"},

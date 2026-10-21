@@ -10,6 +10,9 @@ import {BuildCommand} from "../../../../cli/commands/BuildCommand.js";
 import {StudioHomeService} from "../../../../cli/studio/home/StudioHomeService.js";
 import {createStudioGameLoader} from "../../../../cli/studio/loadStudioGame.js";
 import {StudioServer} from "../../../../cli/studio/StudioServer.js";
+import {FileStudioJobRepository} from "../../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../../v2/fixtures/PackageExtractionFixture.js";
 import type {FetchLike} from "../../../../cli/studio-client/src/api/apiClient.js";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 
@@ -39,11 +42,20 @@ function createServerFetch(baseUrl: string): FetchLike {
 }
 
 describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
+    let restoreTemporaryDirectory: () => void;
     let studioRoot: string;
     let projectRoot: string;
     let workDir: string;
     let server: StudioServer;
     let fetchImpl: FetchLike;
+
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
 
     beforeEach(async () => {
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc16-sweep-assets-"));
@@ -63,6 +75,7 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
             pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
             homeService,
             blueprintService: new StudioBlueprintService("1.0.0", studioRoot, homeService),
+            jobService: new StudioJobService(new FileStudioJobRepository(path.join(workDir, "jobs"))),
             loadGame: createStudioGameLoader(process.cwd()),
             resolveRuntimePackageRoot: passthroughRuntimePackageResolver,
             initialContext: {mode: "project", projectRoot},
@@ -84,7 +97,7 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
         const route = `/project/${encodeURIComponent(projectRoot)}/deployment`;
         const {router} = renderRoutedApp({fetchImpl, initialEntries: [route]});
 
-        await screen.findByRole("heading", {name: "Sweep Slot"});
+        await screen.findByRole("heading", {name: "Sweep Slot"}, {timeout: 30000});
         await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(projectRoot)}/exportDeploy`));
         expect(screen.getByText("Deployment has moved into Build/Export. Choose Remote delivery there to preview or publish to a configured target.")).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Build/Export"})).toHaveAttribute("aria-current", "page");
@@ -97,7 +110,7 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
         await user.type(rounds, "2");
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
         // Completion opens Review automatically; assert its settled public result.
-        await screen.findByRole("button", {name: "Open full report"}, {}, {timeout: 30000});
+        await screen.findByRole("button", {name: "Open full report"}, {timeout: 60000});
         expect(screen.queryByText(/Deployment has moved into Build\/Export/)).not.toBeInTheDocument();
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 });

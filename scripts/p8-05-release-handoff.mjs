@@ -45,6 +45,12 @@ const tooling = new Set([
     "tests/cli/studio/AdvancedModelValidationRoutes.test.ts",
     "tests/cli/studio/simulation/StudioSimulationService.test.ts",
     "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+    // V2C-34 exact saved five-file gate repair; no production/build exemptions.
+    "tests/cli/PC17CliStudioParity.integration.test.ts",
+    "tests/cli/StudioFullWorkflow.integration.test.ts",
+    "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
+    "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
+    "tests/cli/studio/StudioServerParWorkbook.integration.test.ts",
 ]);
 const evidence = (file) => file.startsWith("docs/evidence/p8-05-product-readiness/");
 const excluded = (file) => tooling.has(file) || evidence(file);

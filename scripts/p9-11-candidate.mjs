@@ -72,6 +72,10 @@ const tooling = new Set([
     // V2C-34 bounded timeout regressions; sibling tests and product/build inputs stay protected.
     "tests/cli/studio/AdvancedModelValidationRoutes.test.ts",
     "tests/cli/studio/simulation/StudioSimulationService.test.ts",
+    // Remaining V2C-34 saved gate files (the two rendered suites are named above).
+    "tests/cli/PC17CliStudioParity.integration.test.ts",
+    "tests/cli/StudioFullWorkflow.integration.test.ts",
+    "tests/cli/studio/StudioServerParWorkbook.integration.test.ts",
 ]);
 const git = (repository, args) => execFileSync("git", args, {cwd:repository, encoding:"utf8", timeout:10_000, maxBuffer:16 * 1024 * 1024}).trimEnd();
 
