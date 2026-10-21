@@ -3597,6 +3597,10 @@ describe("StudioServer", () => {
 
         it("V2C-34-SERVER-SAVE-CONTEXT publishes saved metadata without another runtime preparation while the original execution remains active", async () => {
             const test = await fixture();
+            let finishRefresh!: () => void;
+            const refreshGate = new Promise<void>(resolve => {
+                finishRefresh = resolve;
+            });
             try {
                 const started = await post(`${test.url}/api/project/simulations`, {rounds: 100, workers: 1});
                 const id = (started.body as {id: string}).id;
@@ -3605,8 +3609,21 @@ describe("StudioServer", () => {
                 const request = test.jobs.get(test.root, id)!.request;
                 const preparations = test.runtimeResolver.mock.calls.length;
                 const edited = {...test.blueprint, manifest: {id: "edited-slot", name: "Edited Slot", version: "2.0.0"}, paytable: {A: {3: 11}}};
+                const describe = test.registration.describeLocation.bind(test.registration);
+                jest.spyOn(test.registration, "describeLocation").mockImplementationOnce(async root => {
+                    await refreshGate;
+                    return describe(root);
+                });
                 expect(await post(`${test.url}/api/home/blueprints/save`, {path: test.root, blueprint: edited,
                     expectedHash: computeGameBlueprintHash(test.blueprint)})).toMatchObject({status: 201});
+                // Save acknowledges persisted bytes before its background metadata refresh settles.
+                expect(JSON.parse(fs.readFileSync(test.root, "utf8"))).toEqual(edited);
+                expect(await get(`${test.url}/api/project/context`)).toMatchObject({status: 200, body: {
+                    status: "loading", projectRoot: test.root,
+                }});
+                expect(test.simulation.getStatus(id)?.status).toBe("running");
+                finishRefresh();
+                expect((await pollUntilProjectContextSettled(`${test.url}/api/project/context`)).body).toMatchObject({status: "loaded"});
                 for (let retry = 0; retry < 2; retry++) {
                     expect(await get(`${test.url}/api/project/context`)).toMatchObject({status: 200, body: {
                         status: "loaded", projectRoot: test.root, game: edited.manifest, type: "blueprint",
@@ -3631,6 +3648,7 @@ describe("StudioServer", () => {
                 expect(test.simulation.getReport(test.root, nextId)).toMatchObject({status: "ok", report: {rtp: 11}});
                 expect(test.simulation.getReport(test.root, id)).toMatchObject({status: "ok", report: {rtp: 10}});
             } finally {
+                finishRefresh();
                 await test.cleanup(); 
             }
         });
@@ -3687,7 +3705,7 @@ describe("StudioServer", () => {
                 expect(applied).toMatchObject({status: 200, body: {outputPath: test.root}});
                 expect(applied.body).not.toHaveProperty("warning");
                 expect(JSON.parse(fs.readFileSync(test.root, "utf8")).paytable.A[3]).toBe(11);
-                expect((await get(`${test.url}/api/project/context`)).body).toMatchObject({status: "loaded", game: test.blueprint.manifest});
+                expect((await pollUntilProjectContextSettled(`${test.url}/api/project/context`)).body).toMatchObject({status: "loaded", game: test.blueprint.manifest});
                 expect(test.runtimeResolver).toHaveBeenCalledTimes(1);
             } finally {
                 await test.cleanup(); 
