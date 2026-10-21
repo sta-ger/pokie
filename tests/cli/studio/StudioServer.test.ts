@@ -43,6 +43,7 @@ import crypto from "crypto";
 import {spawn} from "child_process";
 import fs from "fs";
 import http, {type IncomingMessage} from "http";
+import {request} from "undici";
 import os from "os";
 import path from "path";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
@@ -8374,7 +8375,16 @@ describe("StudioServer", () => {
             const model = await get(`${url}/api/project/gameModel`);
             expect(model.status).toBe(200);
             expect(model.body).toMatchObject({basics: {status: "available", data: {id: "math-probe", version: "0.1.0"}}, packageExtraction: {status: "complete", source: {kind: "custom"}}});
-            const targets = await get(`${url}/api/project/artifacts/targets`);
+            // Target discovery plans every registered conversion against real isolated runtimes.
+            // Its combined snapshot work can exceed fetch's independent 300-second header
+            // deadline on a constrained gate worker. Bound this request explicitly, leaving
+            // route-only requests on the ordinary client and preserving every target assertion.
+            const targetsResponse = await request(`${url}/api/project/artifacts/targets`, {
+                headers: {Connection: "close"},
+                headersTimeout: 2 * REAL_RUNTIME_TEST_TIMEOUT_MS,
+                signal: AbortSignal.timeout(2 * REAL_RUNTIME_TEST_TIMEOUT_MS),
+            });
+            const targets = {status: targetsResponse.statusCode, body: await targetsResponse.body.json()};
             expect(targets.status).toBe(200);
             expect((targets.body as {target: string; plan: unknown}[]).find(target => target.target === "blueprint")).toMatchObject({supported: true, state: "supported", plan: {packageExtraction: {status: "complete"}}});
             const destination = path.join(artifactWorkDir, "extracted.json");
@@ -8392,7 +8402,7 @@ describe("StudioServer", () => {
             expect(completed.status).toBe("completed");
             expect(completed.result).toMatchObject({status: "ok", outputPath: destination, conversionEvidencePath: `${destination}.conversion-evidence.json`});
             expect(fs.existsSync(destination)).toBe(true);
-        }, 2 * REAL_RUNTIME_TEST_TIMEOUT_MS);
+        }, 4 * REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         it.each(["source", "descriptor", "destination", "project", "companion", "unsupported"])("rejects %s drift across HTTP extraction preview/save without publication", async change => {
             const control = path.join(artifactWorkDir, "descriptor-control.txt");
