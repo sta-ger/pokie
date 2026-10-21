@@ -11,6 +11,8 @@ import {StudioProjectRegistrationService} from "../../../../../../cli/studio/Stu
 import {StudioJobService} from "../../../../../../cli/studio/jobs/StudioJobService.js";
 import {FileStudioJobRepository} from "../../../../../../cli/studio/jobs/FileStudioJobRepository.js";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
+import {BrowserWasmStudioApi} from "../../../../../../cli/studio-client/src/wasm/BrowserWasmStudioApi.js";
+import {installPokieWasmWorker} from "../../../../../../src/wasm/PokieWasmWorkerClient.js";
 import {createProductionParityFixture} from "../../../../../fixtures/wasm/createProductionParityFixture.js";
 import {screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -18,6 +20,7 @@ import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
 const game = {id: "wasm-slot", name: "wasm-slot", version: "1.0.0"};
+type WorkerEventListener = (event: MessageEvent & ErrorEvent) => void;
 
 describe("ProjectDashboardPage canonical WASM workflow", () => {
     it("renders the ordinary capability-driven play, simulation, and replay navigation", async () => {
@@ -86,7 +89,7 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
         expect(await screen.findByText(/Play prepares this game/)).toBeInTheDocument();
     });
 
-    it("renders the real built artifact's first and subsequent Node-compatible rounds over Studio HTTP", async () => {
+    it.each(["Node Play", "browser Worker simulation"])("renders the real built artifact through %s over Studio HTTP", async transport => {
         // jsdom omits these browser globals; use Node's equivalent implementation.
         const crypto = Reflect.getOwnPropertyDescriptor(globalThis, "crypto");
         Reflect.defineProperty(globalThis, "crypto", {value: webcrypto, configurable: true});
@@ -105,19 +108,52 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
             initialContext: {mode: "project", projectRoot: fixture.artifact},
         });
         const address = await server.start();
-        const responses: {url: string; body: unknown}[] = [];
+        const responses: {url: string; body: unknown; status: number}[] = [];
         const fetchImpl: FetchLike = (url, init) => new Promise((resolve, reject) => {
             const request = http.request(`http://${address.host}:${address.port}${url}`, {method: init?.method, headers: init?.headers}, (response) => {
                 const chunks: Buffer[] = [];
                 response.on("data", (chunk: Buffer) => chunks.push(chunk));
                 response.on("end", () => {
                     const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-                    responses.push({url, body});
+                    responses.push({url, body, status: response.statusCode ?? 500});
                     resolve({ok: (response.statusCode ?? 500) < 300, status: response.statusCode ?? 500, json: () => Promise.resolve(body)});
                 });
             });
             request.on("error", reject);
             request.end(init?.body);
+        });
+        let liveWorkers = 0;
+        const commands: string[] = [];
+        const owner = new BrowserWasmStudioApi(fetchImpl, () => {
+            liveWorkers++;
+            let terminated = false;
+            let receive!: WorkerEventListener;
+            const listeners = new Map<string, WorkerEventListener>();
+            // Exercise the production message dispatcher and runtime; only the
+            // Worker port is in-process. Installed-browser collection is separate.
+            installPokieWasmWorker({addEventListener: (_type, listener) => {
+                receive = listener;
+            }, postMessage: data => {
+                if (!terminated) listeners.get("message")?.({data} as MessageEvent & ErrorEvent);
+            }});
+            return {
+                addEventListener: (type, listener) => {
+                    listeners.set(type, listener);
+                },
+                removeEventListener: type => {
+                    listeners.delete(type);
+                },
+                postMessage: data => {
+                    commands.push((data as {request: {type: string}}).request.type);
+                    queueMicrotask(() => {
+                        if (!terminated) receive({data} as MessageEvent & ErrorEvent);
+                    });
+                },
+                terminate: () => {
+                    if (!terminated) liveWorkers--;
+                    terminated = true;
+                },
+            };
         });
         let unmount: (() => void) | undefined;
         try {
@@ -127,9 +163,28 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
                 if ((context as {status: string}).status === "error") throw new Error(JSON.stringify(context));
                 expect(context).toMatchObject({status: "loaded"});
             });
-            const rendered = renderRoutedApp({fetchImpl, initialEntries: [`/project/${encodeURIComponent(fixture.artifact)}/overview`]});
+            const rendered = renderRoutedApp({fetchImpl: transport === "Node Play" ? fetchImpl : owner.fetch, initialEntries: [`/project/${encodeURIComponent(fixture.artifact)}/overview`]});
             unmount = rendered.unmount;
             await screen.findByRole("heading", {name: "rng-parity"});
+            if (transport === "browser Worker simulation") {
+                await user.click(screen.getByRole("button", {name: "Simulation"}));
+                const rounds = await screen.findByLabelText(/^Rounds/);
+                await user.clear(rounds);
+                await user.type(rounds, "10");
+                await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+                await user.click(await screen.findByRole("button", {name: "View results"}));
+                expect(await screen.findByRole("button", {name: "Open full report"})).toBeVisible();
+                expect(screen.queryByText(/Historical simulation result/)).not.toBeInTheDocument();
+                expect(screen.queryByText(/Run a new simulation/)).not.toBeInTheDocument();
+                await user.click(screen.getByRole("button", {name: "Open full report"}));
+                await user.click(screen.getByRole("button", {name: /Export.*Download report/}));
+                expect(await screen.findByRole("link", {name: "Download JSON"})).toHaveAttribute("href", expect.stringContaining("/download?format=json"));
+                expect(commands.filter(command => command === "simulate")).toHaveLength(1);
+                expect(responses.filter(({url}) => url === "/api/project/wasm/jobs")).toHaveLength(1);
+                expect(responses).toContainEqual(expect.objectContaining({url: expect.stringMatching(/^\/api\/project\/simulations\//), status: 200, body: expect.objectContaining({status: "completed", roundsCompleted: 10})}));
+                expect(liveWorkers).toBe(0);
+                return;
+            }
             await user.click(screen.getByRole("button", {name: "Play"}));
             await user.click(await screen.findByRole("button", {name: "Show advanced details (seed)"}));
             await user.type(screen.getByLabelText("Seed (optional)"), "0");
@@ -151,7 +206,9 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
             ]);
         } finally {
             unmount?.();
+            owner.dispose();
             await server.stop();
+            expect(liveWorkers).toBe(0);
             await fixture.release();
             fs.rmSync(directory, {recursive: true, force: true});
             if (crypto === undefined) Reflect.deleteProperty(globalThis, "crypto");

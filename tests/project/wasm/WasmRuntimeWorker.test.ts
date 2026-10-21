@@ -1212,6 +1212,70 @@ async function browserOwner(fixture = createCanonicalWasmFixture()) {
     }};
 }
 
+it.each(["simulation", "replay"] as const)("preserves rejected admission and failed %s reads, then creates first and subsequent executions", async operation => {
+    const test = await browserOwner();
+    const {StudioSimulationService} = await import("../../../cli/studio/simulation/StudioSimulationService.js");
+    const {StudioReplayExecutionService} = await import("../../../cli/studio/replay/StudioReplayExecutionService.js");
+    const simulation = new StudioSimulationService();
+    const replay = new StudioReplayExecutionService();
+    simulation.attachJobService(test.jobs);
+    replay.attachJobService(test.jobs);
+    const route = `/api/project/${operation === "simulation" ? "simulations" : "replays"}`;
+    const request = operation === "simulation" ? {rounds: 5, seed: "0", workers: 1} : {round: 3, seed: "0"};
+    const commands: string[] = [];
+    test.controls.dispatch = (data, deliver) => {
+        commands.push((data as {request: {type: string}}).request.type);
+        deliver();
+    };
+    const unavailable = {ok: false, status: 503, json: () => Promise.resolve({error: "Status temporarily unavailable", retryable: true})};
+    let failRead = true;
+    test.controls.before = (url, init) => {
+        if (url.startsWith(`${route}/`)) {
+            if (failRead) return Promise.resolve(unavailable);
+            const id = url.split("/").pop()!;
+            const body = operation === "simulation" ? simulation.getStatusForProject(test.file, id) : replay.getStatus(test.file, id);
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+        }
+        return test.network(url, init);
+    };
+    try {
+        const artifact = await (await test.network("/api/project/wasm/artifact")).json() as {generation: string; manifest: {artifact: {sha256: string}}};
+        const malformed = operation === "simulation" ? {...request, rounds: 0} : {...request, round: 0};
+        const direct = await test.network("/api/project/wasm/jobs", {method: "POST", body: JSON.stringify({owner: "negative-input", operation, projectRoot: test.file, generation: artifact.generation, artifactIdentity: artifact.manifest.artifact.sha256, request: malformed})});
+        const rejected = await test.owner.fetch(route, {method: "POST", body: JSON.stringify(malformed)});
+        expect(direct.ok).toBe(false);
+        expect(rejected.status).toBe(direct.status);
+        expect(await rejected.json()).toEqual(await direct.json());
+        expect(await rejected.json()).toEqual({error: `"${operation === "simulation" ? "rounds" : "round"}" must be a positive integer.`});
+        expect(test.jobs.list(test.file)).toHaveLength(0);
+        expect(test.controls.created).toBe(0);
+        for (let execution = 0; execution < 3; execution++) {
+            const started = await test.owner.fetch(route, {method: "POST", body: JSON.stringify(request)});
+            const job = test.jobs.list(test.file)[0];
+            if (execution === 0) {
+                expect(started).toBe(unavailable);
+                expect(await started.json()).toEqual({error: "Status temporarily unavailable", retryable: true});
+            } else {
+                expect(started.status).toBe(201);
+                expect(await started.json()).toMatchObject({id: job.id, seed: "0"});
+            }
+            const deadline = Date.now() + 3000;
+            while (test.jobs.get(test.file, job.id)?.status !== "completed") {
+                if (Date.now() > deadline) throw new Error("Admitted browser execution did not settle.");
+                await new Promise(resolve => {
+                    setTimeout(resolve, 5);
+                });
+            }
+            expect(test.controls.live).toBe(0);
+            expect(test.controls.created).toBe(execution + 1);
+            expect(commands.filter(command => command === (operation === "simulation" ? "simulate" : "replay-target"))).toHaveLength(execution + 1);
+            failRead = false;
+        }
+    } finally {
+        await test.close();
+    }
+});
+
 it("V2C-22-SIMULATION-REPLAY-BINDING admits only retained single/all-mode steps through the production browser API", async () => {
     const path = await import("path");
     const {FileStudioJobRepository} = await import("../../../cli/studio/jobs/FileStudioJobRepository.js");

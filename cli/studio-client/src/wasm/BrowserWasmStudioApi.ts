@@ -61,7 +61,10 @@ export class BrowserWasmStudioApi implements BrowserWasmStudioApiHandling {
             const execution = await started.json() as Execution;
             // Start returns the retained job before execution. Only this owner dispatches once.
             this.execute(execution, operation);
-            return this.network(`${url}/${execution.id}`);
+            const projected = await this.network(`${url}/${execution.id}`);
+            // The GET projects the public job DTO; admission, not that read,
+            // establishes creation. Failed reads must retain their diagnostics.
+            return projected.ok ? response(started.status, await projected.json()) : projected;
         }
         if (method === "DELETE") {
             const id = url.split("/").pop()!;
