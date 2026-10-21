@@ -201,5 +201,8 @@ describe("POKIE Studio full workflow (integration): Home -> Project -> Home -> i
         await serverToStop?.stop();
         expect(simulationService.getActiveCount()).toBe(0);
         expect(replayService.getActiveCount()).toBe(0);
-    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    // This journey loads, validates, simulates and replays real packages, then
+    // opens a second package. Its whole-session budget must cover those separate
+    // bounded acquisitions, rather than reuse the budget for just one extraction.
+    }, 300000);
 });

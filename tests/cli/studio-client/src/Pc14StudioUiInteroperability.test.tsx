@@ -1,4 +1,5 @@
 import {cleanup, screen, waitFor, within} from "@testing-library/react";
+import {configure, getConfig} from "@testing-library/dom";
 import userEvent from "@testing-library/user-event";
 import {createLocalJsonExternalDeploymentTarget, STUDIO_OPERATION} from "@fromstan/pokie";
 import fs from "fs";
@@ -56,6 +57,7 @@ function createServerFetch(baseUrl: string): FetchLike {
 
 describe("PC-14 Studio UI real-artifact interoperability", () => {
     let restoreTemporaryDirectory: () => void;
+    let originalAsyncTimeout: number;
     let studioRoot: string;
     let workDir: string;
     let blueprintPath: string;
@@ -69,9 +71,15 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
 
     beforeAll(() => {
         restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        originalAsyncTimeout = getConfig().asyncUtilTimeout;
+        // Publication, Play, model extraction and report preparation acquire real
+        // package/dependency snapshots. Keep each result assertion bounded while
+        // allowing that work to finish; the entire journey still has its own cap.
+        configure({asyncUtilTimeout: 60000});
     });
 
     afterAll(() => {
+        configure({asyncUtilTimeout: originalAsyncTimeout});
         restoreTemporaryDirectory();
     });
 
@@ -185,7 +193,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // Completion automatically opens Review, replacing the Run step's
         // transient "View results" control. Wait for the loaded summary's
         // stable action, then inspect the real report through its disclosure.
-        const openFullReport = await screen.findByRole("button", {name: "Open full report"}, {timeout: 30000});
+        const openFullReport = await screen.findByRole("button", {name: "Open full report"}, {timeout: 60000});
         expect(screen.getByRole("button", {name: /Review See results/})).toHaveAttribute("aria-current", "step");
         expect(screen.getAllByRole("cell", {name: /%/}).length).toBeGreaterThan(0);
         await user.click(openFullReport);
@@ -304,7 +312,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.type(stakeDestination, stakePath);
         await waitFor(() => expect(stake.getByRole("button", {name: "Build"})).toBeEnabled());
         await user.click(stake.getByRole("button", {name: "Build"}));
-        await screen.findByText(new RegExp(`Built to ${stakePath.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}`), {}, {timeout: 30000});
+        await screen.findByText(new RegExp(`Built to ${stakePath.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}`), {}, {timeout: 60000});
         expect(fs.existsSync(path.join(stakePath, "pokie-manifest.json"))).toBe(true);
 
         evidence.recordScenario({
@@ -519,7 +527,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // identity; artifact publication belongs to its workspace.
         await waitFor(() => expect(screen.getByRole("button", {name: "Save game"})).toBeEnabled());
         await user.click(screen.getByRole("button", {name: "Save game"}));
-        await screen.findByRole("heading", {name: "PC-14 Edited Studio Blueprint"}, {timeout: 30000});
+        await screen.findByRole("heading", {name: "PC-14 Edited Studio Blueprint"}, {timeout: 60000});
         expect(designApp.router.state.location.pathname).toBe(`/project/${encodeURIComponent(savedBlueprintPath)}/overview`);
         expect(JSON.parse(fs.readFileSync(designRegistryPath, "utf8"))).toEqual(expect.arrayContaining([
             expect.objectContaining({location: savedBlueprintPath, type: "blueprint"}),
@@ -544,7 +552,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.type(parExportInput, exportedParPath);
         await waitFor(() => expect(par.getByRole("button", {name: "Build"})).toBeEnabled());
         await user.click(par.getByRole("button", {name: "Build"}));
-        await par.findByText(`Built to ${exportedParPath}.`, {}, {timeout: 30000});
+        await par.findByText(`Built to ${exportedParPath}.`, {}, {timeout: 60000});
         expect(fs.existsSync(exportedParPath)).toBe(true);
         expect(fs.readFileSync(exportedParPath).subarray(0, 2).toString()).toBe("PK");
         expect(fs.readFileSync(occupiedParPath, "utf8")).toBe("caller-owned PAR destination");
