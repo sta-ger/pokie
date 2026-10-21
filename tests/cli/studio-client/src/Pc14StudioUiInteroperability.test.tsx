@@ -66,6 +66,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
     let outcomeLibraryPath: string;
     let server: StudioServer;
     let fetchImpl: FetchLike;
+    let playSessionResponse: {status: number; body: unknown} | undefined;
     let restoreRunnerClock: () => void;
     let packageServerStopped = false;
     const additionalServers: StudioServer[] = [];
@@ -87,6 +88,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
     beforeEach(async () => {
         restoreRunnerClock = installPc14FixedRunnerClock();
         packageServerStopped = false;
+        playSessionResponse = undefined;
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc14-ui-assets-"));
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc14-ui-artifacts-"));
         writeStudioAssets(studioRoot);
@@ -121,7 +123,9 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             initialContext: {mode: "project", projectRoot: packagePath},
         });
         const address = await server.start();
-        fetchImpl = createServerFetch(`http://${address.host}:${address.port}`);
+        fetchImpl = createServerFetch(`http://${address.host}:${address.port}`, (url, status, body) => {
+            if (url === "/api/project/play/session") playSessionResponse = {status, body};
+        });
     });
 
     afterEach(async () => {
@@ -131,7 +135,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         fs.rmSync(studioRoot, {recursive: true, force: true});
         fs.rmSync(workDir, {recursive: true, force: true});
         restoreRunnerClock();
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     // This is intentionally one end-to-end product journey over real generated artifacts (including
     // build, publication, simulation, replay, proof, certification, and PAR I/O). Its budget must cover
@@ -176,8 +180,14 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.click(screen.getByRole("button", {name: "Play"}));
         await screen.findByRole("button", {name: "New Play session"});
         await user.click(screen.getByRole("button", {name: "New Play session"}));
-        // Session creation acquires and later releases a real package/dependency snapshot.
-        await screen.findByRole("button", {name: "Spin"}, {timeout: 60000});
+        // Session creation loads an isolated package/dependency snapshot before
+        // replying. Give that HTTP phase the same budget as other runtime loads,
+        // then check the real response before waiting for its rendered controls.
+        // A failed session must expose its diagnostic here, not time out as a
+        // missing Spin button. This observer does not issue another request.
+        await waitFor(() => expect(playSessionResponse).toBeDefined(), {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
+        expect(playSessionResponse).toMatchObject({status: 201, body: {status: "ok", session: {sessionId: expect.any(String)}}});
+        await screen.findByRole("button", {name: "Spin"});
 
         // Exercise an actual unsupported runtime action before the successful
         // round.  The generated package has no free-games mode; Studio must
