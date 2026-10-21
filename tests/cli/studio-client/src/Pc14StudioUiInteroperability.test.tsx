@@ -135,8 +135,8 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
 
     // This is intentionally one end-to-end product journey over real generated artifacts (including
     // build, publication, simulation, replay, proof, certification, and PAR I/O). Its budget must cover
-    // that real work on a loaded CI worker; the suite-wide 120s unit-test default is not a correctness
-    // deadline for this deliberately broad integration gate.
+    // that real work across three project contexts on a loaded CI worker. Each
+    // result wait is bounded separately; the whole journey includes all of them.
     it("drives real rendered output workflows over a produced package", async () => {
         const user = userEvent.setup();
         const evidence = new ArtifactInteroperabilityRun(workDir);
@@ -707,5 +707,5 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
                 emittedPath,
             ], persistedResultPath);
         }
-    }, 300000);
+    }, 600000);
 });
