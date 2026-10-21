@@ -42,12 +42,16 @@ function writeStudioAssets(root: string): void {
 
 function createServerFetch(baseUrl: string, observe?: (url: string, status: number, body: unknown) => void): FetchLike {
     return (url, init) => new Promise((resolve, reject) => {
+        const startedAt = performance.now();
+        const mutation = init?.method === "POST";
+        if (mutation) console.info(`PC-14 HTTP started: POST ${url}`);
         const request = http.request(`${baseUrl}${url}`, {method: init?.method, headers: init?.headers}, (response) => {
             const chunks: Buffer[] = [];
             response.on("data", (chunk: Buffer) => chunks.push(chunk));
             response.on("end", () => {
                 const body = Buffer.concat(chunks).toString("utf8");
                 observe?.(url, response.statusCode ?? 500, JSON.parse(body));
+                if (mutation) console.info(`PC-14 HTTP completed: POST ${url} status=${response.statusCode} elapsedMs=${Math.round(performance.now() - startedAt)}`);
                 resolve({
                     ok: (response.statusCode ?? 500) >= 200 && (response.statusCode ?? 500) < 300,
                     status: response.statusCode ?? 500,
@@ -82,7 +86,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // Publication, Play, model extraction and report preparation acquire real
         // package/dependency snapshots. Keep each result assertion bounded while
         // allowing that work to finish; the entire journey still has its own cap.
-        configure({asyncUtilTimeout: 60000});
+        configure({asyncUtilTimeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
     });
 
     afterAll(() => {
@@ -362,7 +366,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.type(stakeDestination, stakePath);
         await waitFor(() => expect(stake.getByRole("button", {name: "Build"})).toBeEnabled());
         await user.click(stake.getByRole("button", {name: "Build"}));
-        await screen.findByText(new RegExp(`Built to ${stakePath.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}`), {}, {timeout: 60000});
+        await screen.findByText(new RegExp(`Built to ${stakePath.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}`), {}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
         expect(fs.existsSync(path.join(stakePath, "pokie-manifest.json"))).toBe(true);
 
         evidence.recordScenario({
@@ -578,7 +582,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // identity; artifact publication belongs to its workspace.
         await waitFor(() => expect(screen.getByRole("button", {name: "Save game"})).toBeEnabled());
         await user.click(screen.getByRole("button", {name: "Save game"}));
-        await screen.findByRole("heading", {name: "PC-14 Edited Studio Blueprint"}, {timeout: 60000});
+        await screen.findByRole("heading", {name: "PC-14 Edited Studio Blueprint"}, {timeout: PLAY_SESSION_TIMEOUT});
         expect(designApp.router.state.location.pathname).toBe(`/project/${encodeURIComponent(savedBlueprintPath)}/overview`);
         expect(JSON.parse(fs.readFileSync(designRegistryPath, "utf8"))).toEqual(expect.arrayContaining([
             expect.objectContaining({location: savedBlueprintPath, type: "blueprint"}),
@@ -603,7 +607,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.type(parExportInput, exportedParPath);
         await waitFor(() => expect(par.getByRole("button", {name: "Build"})).toBeEnabled());
         await user.click(par.getByRole("button", {name: "Build"}));
-        await par.findByText(`Built to ${exportedParPath}.`, {}, {timeout: 60000});
+        await par.findByText(`Built to ${exportedParPath}.`, {}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
         expect(fs.existsSync(exportedParPath)).toBe(true);
         expect(fs.readFileSync(exportedParPath).subarray(0, 2).toString()).toBe("PK");
         expect(fs.readFileSync(occupiedParPath, "utf8")).toBe("caller-owned PAR destination");
