@@ -10,7 +10,7 @@ import type {GameBlueprint} from "../../src/generated/GameBlueprint.js";
 import type {SimulationStatistics} from "../../src/simulation/SimulationStatistics.js";
 import {ScreenProjection} from "../../src/session/videoslot/coordinates/ScreenProjection.js";
 
-const siteBase = new URL("../../", import.meta.url).pathname;
+const siteBase = new URL(/* @vite-ignore */ "../../", import.meta.url).pathname;
 const gallery = document.querySelector<HTMLElement>("#gallery");
 if (gallery) for (const item of galleryModels) {
     const card = document.createElement("a");

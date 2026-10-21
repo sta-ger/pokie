@@ -825,11 +825,13 @@ describe("documented production preview in real Chromium", () => {
     });
 
     it("builds the same public site as installed help with local guides, search, Gallery and downloads", () => {
+        expect(() => node(["site/build.mjs", "--out", output, "--base", "/unknown/"])).toThrow(/Site base must be/);
+        expect(fs.existsSync(path.join(output, "build-manifest.json"))).toBe(false);
         expect(node(["site/build.mjs", "--out", output, "--base", "/help/"])).toContain("Site built:");
         const manifest = JSON.parse(fs.readFileSync(path.join(output, "build-manifest.json"), "utf8"));
         expect(manifest.base).toBe("/help/");
-        expect(manifest.routes).toEqual(inventory.pages.map((page: {route: string}) => `/help${page.route}`));
-        expect(JSON.parse(check()).pages).toBe(inventory.pages.length);
+        expect(manifest.routes).toEqual([...inventory.pages.map((page: {route: string}) => `/help${page.route}`), "/help/sources/"]);
+        expect(JSON.parse(check()).pages).toBe(inventory.pages.length + 1);
         for (const page of inventory.pages) {
             const document = new JSDOM(html(page.route), {url: `http://localhost/help${page.route}`}).window.document;
             for (const element of document.querySelectorAll<HTMLAnchorElement | HTMLScriptElement | HTMLLinkElement>("[href], [src]")) {
@@ -839,6 +841,9 @@ describe("documented production preview in real Chromium", () => {
             expect(document.querySelector(".source a")?.getAttribute("href")).toBe(`/help/sources/${page.source}`);
             expect(fs.readFileSync(path.join(output, "sources", page.source), "utf8")).toBe(fs.readFileSync(path.join(root, page.source), "utf8"));
         }
+        expect(html("/")).toContain('href="/help/sources/"');
+        expect(html("/")).not.toContain("https://github.com/fromstan/pokie");
+        expect(html("/docs/architecture/")).toContain('href="/help/sources/#src%2Fserver%2Fwallet"');
         expect(html("/docs/")).toContain('href="/help/gallery/"');
         expect(html("/docs/reproducibility/")).toContain("Dossier preparation");
         expect(html("/docs/reproducibility/")).toContain('href="/help/sources/docs/certification-evidence-bundle.md"');

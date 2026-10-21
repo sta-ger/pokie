@@ -16,7 +16,6 @@ function option(name, fallback) {
 }
 const output = path.resolve(root, option('--out', 'site/.output'));
 const base = option('--base', '/');
-if (base !== '/' && base !== '/help/') throw new Error('Site base must be / or /help/.');
 const siteUrl = route => `${base}${route.slice(1)}`;
 const inventoryPath = path.resolve(root, option('--inventory', 'site/content.json'));
 let staging;
@@ -32,6 +31,7 @@ try {
     fs.mkdirSync(path.dirname(output), {recursive: true});
     // A failed fresh build cannot leave an old deployable manifest behind.
     fs.rmSync(path.join(output, 'build-manifest.json'), {force: true});
+    if (base !== '/' && base !== '/help/') throw new Error('Site base must be / or /help/.');
     const inventory = JSON.parse(fs.readFileSync(localFile(path.relative(root, inventoryPath)), 'utf8'));
     if (inventory.origin !== 'https://pokie.fromstan.com') throw new Error('Unexpected public site origin.');
     const routes = new Map(), sources = new Map(), downloads = new Map();
@@ -71,7 +71,7 @@ try {
             } else if (!(/^L\d+(?:-L\d+)?$/).test(fragment)) throw new Error(`Invalid source fragment ${url}`);
         }
         references.add(file);
-        if (base === '/help/' && fs.statSync(target).isFile()) return siteUrl(`/sources/${file}`);
+        if (base === '/help/') return fs.statSync(target).isFile() ? siteUrl(`/sources/${file}`) : `${siteUrl('/sources/')}#${encodeURIComponent(file.replace(/\/$/, ''))}`;
         return `https://github.com/fromstan/pokie/${fs.statSync(target).isDirectory() ? 'tree' : 'blob'}/develop/${file}${suffix}`;
     };
     const contracts = JSON.parse(execFileSync(process.execPath, ['--no-warnings', '--loader', './site/source-loader.mjs', './site/contracts.mjs', inventoryPath], {cwd: root, encoding: 'utf8', timeout: 120000, maxBuffer: 8 * 1024 * 1024, stdio: 'pipe'}));
@@ -79,6 +79,7 @@ try {
     const search = [], renderedPages = [];
     for (const page of inventory.pages) {
         let source = fs.readFileSync(localFile(page.source), 'utf8');
+        if (base === '/help/') source = source.replace('[Source repository](https://github.com/fromstan/pokie)', '[Included source guides](/sources/)');
         source = source.replace(/\{\{example:([^}]+)\}\}/g, (_all, name) => {
             if (!downloads.has(name)) throw new Error(`Example not inventoried: ${name}`);
             const lang = name.endsWith('.ts') ? 'ts' : 'json';
@@ -112,9 +113,17 @@ try {
         write(page.route.endsWith('/') ? `${page.route.slice(1)}index.html` : page.route.slice(1), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(page.title)} — FromStan / POKIE</title><meta name="description" content="${esc(page.description)}"><link rel="canonical" href="${inventory.origin}${page.route}"><link rel="stylesheet" href="${siteUrl('/assets/site.css')}"><script type="module" src="${siteUrl('/assets/site.js')}"></script></head><body><a class="skip" href="#main">Skip to main content</a><header><a class="brand" href="${base}">FromStan <span>/ POKIE</span></a><span class="edition">Open source · Local tools</span></header><div class="layout"><aside><nav aria-label="Documentation">${navigation}</nav></aside><main id="main" tabindex="-1"><div class="search"><label for="docs-search">Search documentation</label><div class="search-controls"><input id="docs-search" type="search" autocomplete="off" placeholder="Try replay, weighted sequences…"><button id="clear-search" type="button">Clear</button></div><p id="search-status" role="status" aria-live="polite">Type to search this build.</p><ul id="search-results"></ul><noscript>Search requires JavaScript. All guides remain available in navigation.</noscript></div><nav class="toc" aria-label="On this page">${toc}</nav><article>${page.html}</article>${["/playground/", "/gallery/"].includes(page.route) ? `<script type="module" src="${siteUrl('/assets/playground/playground.js')}"></script>` : ""}<nav class="adjacent" aria-label="Previous and next guide">${adjacent}</nav><p class="source"><a href="${base === '/help/' ? siteUrl(`/sources/${page.source}`) : `https://github.com/fromstan/pokie/blob/develop/${page.source}`}">Read this guide's maintained source</a></p></main></div><footer>ISC · Copyright (c) 2018-2026, sta-ger · <a href="${siteUrl('/downloads/LICENSE')}">License</a> · Unpublished candidate · Deployment is separately controlled.</footer></body></html>`);
     }
     if (base === '/help/') {
-        for (const source of new Set([...references, ...inventory.pages.map(page => page.source)])) {
-            if (fs.statSync(localFile(source)).isFile()) write(`sources/${source}`, fs.readFileSync(localFile(source)));
+        const directories = [...references].filter(source => fs.statSync(localFile(source)).isDirectory());
+        const directoryFiles = new Map();
+        for (const directory of directories) {
+            const files = fs.readdirSync(localFile(directory), {withFileTypes: true}).filter(entry => entry.isFile()).map(entry => `${directory}${directory.endsWith('/') ? '' : '/'}${entry.name}`).sort();
+            directoryFiles.set(directory, files);
+            for (const file of files) references.add(file);
         }
+        const files = [...new Set([...references, ...inventory.pages.map(page => page.source)])].filter(source => fs.statSync(localFile(source)).isFile()).sort();
+        for (const source of files) write(`sources/${source}`, fs.readFileSync(localFile(source)));
+        const links = names => `<ul>${names.map(name => `<li><a href="${esc(siteUrl(`/sources/${name}`))}">${esc(name)}</a></li>`).join('')}</ul>`;
+        write('sources/index.html', `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Included source references — FromStan / POKIE</title></head><body><main><h1>Included source references</h1><p>This candidate snapshot includes the public guides and source files referenced by the documentation. It is not a complete repository checkout.</p><a href="${siteUrl('/docs/')}">Browse documentation</a>${links(files)}${directories.map(directory => `<h2 id="${esc(directory.replace(/\/$/, ''))}">${esc(directory)}</h2>${links(directoryFiles.get(directory))}`).join('')}</main></body></html>`);
     }
     for (const [source, destination] of downloads) write(destination.slice(1), fs.readFileSync(localFile(source)));
     for (const model of contracts.gallery) {
@@ -146,7 +155,7 @@ try {
             lib: {entry: {playground: path.join(root, 'site/playground/app.ts'), worker: path.join(root, 'site/playground/worker.ts')}, formats: ['es'], fileName: (_format, entry) => `${entry}.js`}}});
     const sourceHashes = Object.fromEntries([...new Set([...browserSources, ...inventory.pages.map(page => page.source), ...downloads.keys(), ...references, path.relative(root, inventoryPath), 'site/build.mjs', 'site/markdown.mjs', 'site/check.mjs', 'site/preview.mjs', 'site/source-loader.mjs', 'site/contracts.mjs', 'site/site.js', 'site/site.css', 'package.json', 'package-lock.json'])].filter(name => fs.statSync(localFile(name)).isFile()).sort().map(name => [name, hash(fs.readFileSync(localFile(name)))]));
     const artifactHashes = Object.fromEntries(siteFiles(staging).sort().map(file => [path.relative(staging, file).split(path.sep).join('/'), hash(fs.readFileSync(file))]));
-    write('build-manifest.json', JSON.stringify({origin: inventory.origin, base, candidate: execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8'}).trim(), routes: inventory.pages.map(page => siteUrl(page.route)), sourceHashes, artifactHashes, contracts}, null, 2));
+    write('build-manifest.json', JSON.stringify({origin: inventory.origin, base, candidate: execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8'}).trim(), routes: [...inventory.pages.map(page => siteUrl(page.route)), ...(base === '/help/' ? [siteUrl('/sources/')] : [])], sourceHashes, artifactHashes, contracts}, null, 2));
     checkSite(staging);
     fs.rmSync(output, {recursive: true, force: true});
     fs.renameSync(staging, output);

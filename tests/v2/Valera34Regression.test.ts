@@ -398,8 +398,10 @@ describe("V2C-34 installed-help reference authority", () => {
             write("build-manifest.json", JSON.stringify({...manifest, routes: ["/help/", "/help/invented/", "/help/gallery/"]}));
             write("search.json", JSON.stringify([{...entries[0], url: "/help/invented/"}]));
             expect(check).toThrow(/Broken route/);
-            write("build-manifest.json", JSON.stringify({...manifest, base: "/unknown/"}));
-            expect(check).toThrow(/Invalid site base/);
+            for (const invalidBase of ["/unknown/", null, false, 0]) {
+                write("build-manifest.json", JSON.stringify({...manifest, base: invalidBase}));
+                expect(check).toThrow(/Invalid site base/);
+            }
             write("build-manifest.json", JSON.stringify(manifest));
             write("search.json", JSON.stringify(entries));
             for (let attempt = 0; attempt < 2; attempt++) expect(JSON.parse(check()).pages).toBe(3);

@@ -8,7 +8,7 @@ export function siteFiles(directory) {
 // Checks the emitted site, not a source-only route map. Used by the build and focused negative tests.
 export function checkSite(directory) {
     const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'build-manifest.json'), 'utf8'));
-    const base = manifest.base ?? '/';
+    const base = manifest.base === undefined ? '/' : manifest.base;
     if (base !== '/' && base !== '/help/') throw new Error('Invalid site base');
     const files = siteFiles(directory), pages = new Map();
     for (const file of files.filter(name => name.endsWith('.html'))) {
