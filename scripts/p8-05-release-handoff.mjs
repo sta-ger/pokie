@@ -54,6 +54,8 @@ const tooling = new Set([
     // V2C-34 saved two-file gate correction; no product/build or sibling-test exemption.
     "tests/cli/commands/BuildCommand.test.ts",
     "tests/cli/studio/StudioServer.test.ts",
+    // V2C-34 saved mechanics gate correction; only this named test is admitted.
+    "tests/v2/ExistingMechanicsAuthoring.test.ts",
 ]);
 const evidence = (file) => file.startsWith("docs/evidence/p8-05-product-readiness/");
 const excluded = (file) => tooling.has(file) || evidence(file);
