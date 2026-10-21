@@ -12,6 +12,12 @@ type Devtools = {
     close(): Promise<void>;
 };
 
+// Package opening, context/validation reads and Play each acquire and release real
+// dependency snapshots. Budget those phases independently, as in the extraction
+// regressions; a later route cannot spend the earlier request's remaining time.
+const RUNTIME_PHASE_TIMEOUT = 120_000;
+const WORKFLOW_TIMEOUT = 6 * RUNTIME_PHASE_TIMEOUT;
+
 // Controller-owned regression, run after cold observations are frozen and the candidate is built.
 // This is deliberately separate from the unscripted initial collector. It neither builds nor packs
 // the candidate, substitutes UI/source loaders, nor runs the historical persona campaign.
@@ -26,8 +32,8 @@ async function bounded<T>(work: Promise<T>, label: string, timeout = 30_000): Pr
     }
 }
 
-async function waitUntil(check: () => Promise<boolean>, label: string, overallDeadline: number): Promise<void> {
-    const deadline = Math.min(Date.now() + 60_000, overallDeadline);
+async function waitUntil(check: () => Promise<boolean>, label: string, overallDeadline: number, timeout = 60_000): Promise<void> {
+    const deadline = Math.min(Date.now() + timeout, overallDeadline);
     while (Date.now() < deadline) {
         if (await check()) return;
         await new Promise((resolve) => {
@@ -80,9 +86,15 @@ it("retains the authenticated installed candidate across the complete gate-test 
         // authenticated candidate, including its already retained recheck receipt.
         const correctionPaths = [
             "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+            "tests/cli/commands/BuildCommand.test.ts",
+            "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
+            "tests/cli/studio/StudioJobRoutes.integration.test.ts",
+            "tests/cli/studio/StudioServer.test.ts",
+            "tests/v2/ExistingMechanicsAuthoring.test.ts",
             "scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs",
             "tests/testUtils/createP911CandidateFixture.mjs", "docs/v2-completion/V2C-34.md",
         ];
+        expect(P911_TOOLING_DESCENDANT_PATHS).toEqual(expect.arrayContaining(correctionPaths));
         for (const file of correctionPaths) await fs.writeFile(path.join(fixture.repository, file), "// Bounded correction fixture.\n");
         const commitFixture = () => {
             execFileSync("git", ["add", "."], {cwd: fixture.repository});
@@ -124,8 +136,8 @@ it("retains the authenticated installed candidate across the complete gate-test 
 
 it("saves an edited design, validates and plays it, then builds and reopens its real local package", async () => {
     const repository = process.cwd();
-    const overallDeadline = Date.now() + 180_000;
-    const until = (check: () => Promise<boolean>, label: string) => waitUntil(check, label, overallDeadline);
+    const overallDeadline = Date.now() + WORKFLOW_TIMEOUT;
+    const until = (check: () => Promise<boolean>, label: string, timeout?: number) => waitUntil(check, label, overallDeadline, timeout);
     const remaining = () => Math.max(1, Math.min(30_000, overallDeadline - Date.now()));
     // These exact assets are served by the production CLI. No fallback to mocked or source UI.
     const candidate = await productionStudioCandidate(process.env, repository);
@@ -205,8 +217,8 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
             return (response.result as {value: T}).value;
         };
         const button = (label: string, scope = "document") => `Array.from((${scope})?.querySelectorAll('button') ?? []).find(e => e.textContent.trim() === ${JSON.stringify(label)} && e.getClientRects().length && !e.disabled)`;
-        const click = async (expression: string) => {
-            await until(() => evaluate<boolean>(`Boolean(${expression})`), `available control: ${expression}`);
+        const click = async (expression: string, timeout?: number) => {
+            await until(() => evaluate<boolean>(`Boolean(${expression})`), `available control: ${expression}`, timeout);
             let point: {x: number; y: number} | undefined;
             // Validation and disclosure transitions can move or disable a control
             // after it first appears. Dispatch once, only at a settled, hittable target.
@@ -233,7 +245,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
             await click(button("Open Play"));
             await click(button("New Play session"));
             const cursor = connection.events.length;
-            await click(button("Spin"));
+            await click(button("Spin"), RUNTIME_PHASE_TIMEOUT);
             let played: {status: string; session: {studioRound: number; studioProjectRoot: string; debug: {artifact: {screen: unknown[][]}}}} | undefined;
             await until(async () => {
                 const response = connection.events.slice(cursor).find((event) => event.method === "Network.responseReceived" && event.params.response?.url.endsWith("/spin"));
@@ -246,7 +258,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
                 } catch {
                     return false;
                 }
-            }, "real settled spin response");
+            }, "real settled spin response", RUNTIME_PHASE_TIMEOUT);
             expect(played?.status).toBe("ok");
             expect(played?.session.studioRound).toBe(1);
             expect(played?.session.studioProjectRoot).toBe(projectRoot);
@@ -289,11 +301,27 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
         await until(() => evaluate<boolean>("document.querySelectorAll('[data-pokie-lifecycle-card=outcome-library]').length === 1"), "single outcome generator");
         const packageScope = "document.getElementById('artifact-build-tsPackage')?.closest('[data-pokie-lifecycle-form=artifact-build]')";
         await click(button("Build", packageScope));
+        const packageCursor = connection.events.length;
         await click(button("Open as Project", packageScope));
-        await until(() => evaluate<boolean>("location.hash.endsWith('/overview') && document.body.innerText.includes('Game Model is read-only for this package') && document.body.innerText.includes('Valid — no issues found.')"), "built package validation and truthful editability");
+        try {
+            await until(() => evaluate<boolean>("location.hash.endsWith('/overview') && document.body.innerText.includes('Game Model is read-only for this package')"), "built package opening and truthful editability", RUNTIME_PHASE_TIMEOUT);
+            await until(() => evaluate<boolean>("document.body.innerText.includes('Valid — no issues found.')"), "built package validation", RUNTIME_PHASE_TIMEOUT);
+        } catch (error) {
+            const rendered = await evaluate("({route: location.hash, text: document.body.innerText})");
+            const responses = await Promise.all(connection.events.filter((event) => event.method === "Network.responseReceived" && (/\/api\/(?:home\/projects\/open|project\/(?:context|validate))$/).test(event.params.response?.url ?? "")).slice(-8).map(async (event) => ({
+                url: event.params.response?.url,
+                status: event.params.response?.status,
+                body: await send("Network.getResponseBody", {requestId: event.params.requestId}).catch(String),
+            })));
+            throw new Error(`${String(error)}; rendered state: ${JSON.stringify(rendered)}; project responses: ${JSON.stringify(responses)}; Studio: ${stderr}`, {cause: error});
+        }
         const packagePath = await evaluate<string>("decodeURIComponent(location.hash.split('/')[2])");
         expect(packagePath).not.toBe(designPath);
         expect(packagePath.startsWith(root + path.sep)).toBe(true);
+        const validationResponse = connection.events.slice(packageCursor).find((event) => event.method === "Network.responseReceived" && event.params.response?.url.endsWith("/api/project/validate"));
+        expect(validationResponse?.params.response?.status).toBe(200);
+        const validationBody = await send("Network.getResponseBody", {requestId: validationResponse?.params.requestId});
+        expect(JSON.parse(validationBody.body as string)).toMatchObject({packageRoot: packagePath, valid: true, errors: [], warnings: []});
         await fs.access(path.join(packagePath, "dist/index.js"));
         await fs.access(designPath);
         await playRound(packagePath);
@@ -319,4 +347,4 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
             }
         }
     }
-}, 240_000);
+}, WORKFLOW_TIMEOUT + 30_000);
