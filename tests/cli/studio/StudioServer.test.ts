@@ -470,8 +470,8 @@ async function pollUntilTerminal(url: string): Promise<{status: number; body: {[
 // awaits -- including a real outcome-source resolution attempt -- before landing on "loaded"/"error", so
 // a single flushed tick isn't always enough for it to settle under load. Polls the same way
 // pollUntilTerminal does rather than relying on a fixed number of ticks.
-async function pollUntilProjectContextSettled(url: string): Promise<{status: number; body: {[key: string]: unknown; status: string}}> {
-    const deadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
+async function pollUntilProjectContextSettled(url: string, timeoutMs = RUNTIME_PHASE_POLL_TIMEOUT_MS): Promise<{status: number; body: {[key: string]: unknown; status: string}}> {
+    const deadline = Date.now() + timeoutMs;
     let lastBody: unknown;
     while (Date.now() < deadline) {
         const response = await get(url);
@@ -8327,7 +8327,7 @@ describe("StudioServer", () => {
             await artifactServer?.stop();
             fs.rmSync(artifactStudioRoot, {recursive: true, force: true});
             fs.rmSync(artifactWorkDir, {recursive: true, force: true});
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         async function startServerForProject(projectRoot: string | undefined): Promise<string> {
             const homeService = new StudioHomeService("1.3.0");
@@ -8385,7 +8385,7 @@ describe("StudioServer", () => {
             const sourceBytes = fs.readFileSync(path.join(source, "index.js"));
             const url = await startServerForProject(source);
             // Direct project startup returns before its asynchronous dashboard load settles.
-            const context = await pollUntilProjectContextSettled(`${url}/api/project/context`);
+            const context = await pollUntilProjectContextSettled(`${url}/api/project/context`, REAL_RUNTIME_TEST_TIMEOUT_MS);
             expect(context.status).toBe(200);
             expect(context.body).toMatchObject({status: "loaded", projectRoot: source, type: "tsPackage", game: {id: "math-probe", version: "0.1.0"}});
             expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(sourceBytes);
@@ -8422,12 +8422,18 @@ describe("StudioServer", () => {
             expect(fs.existsSync(destination)).toBe(true);
         }, 4 * REAL_RUNTIME_TEST_TIMEOUT_MS);
 
+        // Startup, extraction preview, binding recheck and (for project drift) Home Open
+        // each acquire real runtime snapshots. Give every phase its runtime budget and
+        // await startup before preview, so test timeouts cannot leak reads into the next case.
         it.each(["source", "descriptor", "destination", "project", "companion", "unsupported"])("rejects %s drift across HTTP extraction preview/save without publication", async change => {
             const control = path.join(artifactWorkDir, "descriptor-control.txt");
             fs.writeFileSync(control, "custom");
             const source = writeDescriptorPackage(artifactWorkDir, {descriptorBody:
                 `const kind = require("fs").readFileSync(${JSON.stringify(control)}, "utf8"); return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: kind === "unsupported" ? "custom" : kind, model, ...(kind === "unsupported" ? {unsupported: [{path: "mechanics.custom", code: "opaque", message: "Cannot represent this custom feature"}]} : {})};`});
             const url = await startServerForProject(source);
+            expect(await pollUntilProjectContextSettled(`${url}/api/project/context`, REAL_RUNTIME_TEST_TIMEOUT_MS)).toMatchObject({status: 200, body: {
+                status: "loaded", projectRoot: source, type: "tsPackage",
+            }});
             const destination = path.join(artifactWorkDir, "reviewed.json");
             const preview = await post(`${url}/api/project/artifacts/preview`, {target: "blueprint", outDir: destination});
             expect(preview.body).toMatchObject({status: "ok", preparedOperationId: expect.any(String)});
@@ -8447,7 +8453,7 @@ describe("StudioServer", () => {
             if (change === "destination" || change === "project") expect(started.status).toBe(409);
             else {
                 expect(started.status).toBe(202);
-                const failed = await waitForArtifactBuildJob(url, (started.body as {job: {id: string}}).job.id);
+                const failed = await waitForArtifactBuildJob(url, (started.body as {job: {id: string}}).job.id, REAL_RUNTIME_TEST_TIMEOUT_MS);
                 expect(failed.status).toBe("failed");
                 expect(failed.result).toMatchObject({plan: {packageExtraction: {source: {location: source}}}});
             }
@@ -8457,7 +8463,7 @@ describe("StudioServer", () => {
             else expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(false);
             expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(bytes);
             expect(fs.readdirSync(artifactWorkDir).sort()).toEqual(inventory);
-        }, 180000);
+        }, 4 * REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         it("returns 409 for every route when there is no active project", async () => {
             const homeBaseUrl = await startServerForProject(undefined);
