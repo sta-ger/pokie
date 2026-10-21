@@ -109,6 +109,13 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
     it("turns a retired deep link into one visible recovery path without mounting a duplicate workflow", async () => {
         const user = userEvent.setup();
         const route = `/project/${encodeURIComponent(projectRoot)}/deployment`;
+        // Startup snapshots the installed runtime/dependency graph. Observe its actual
+        // terminal context before the short rendered-navigation assertion starts.
+        await waitFor(async () => {
+            const context = await fetchImpl("/api/project/context");
+            expect(context.status).toBe(200);
+            expect(await context.json()).toMatchObject({status: "loaded", projectRoot, game: {name: "Sweep Slot"}});
+        }, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000});
         const {router} = renderRoutedApp({fetchImpl, initialEntries: [route]});
 
         await screen.findByRole("heading", {name: "Sweep Slot"}, {timeout: 30000});

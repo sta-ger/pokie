@@ -47,7 +47,7 @@
         "pretest": "npm run lint",
         "test": "mkdir -p \"$PWD/node_modules/.cache/pokie-tmp\" && TMPDIR=\"$PWD/node_modules/.cache/pokie-tmp\" NODE_OPTIONS=--experimental-vm-modules jest --selectProjects pokie pokie-examples studio-client-components --maxWorkers=\"${JEST_WORKERS:-2}\"",
         "test:integration": "jest --selectProjects pokie-integration --maxWorkers=2",
-        "test:targeted": "mkdir -p \"$PWD/node_modules/.cache/pokie-tmp\" && TMPDIR=\"$PWD/node_modules/.cache/pokie-tmp\" NODE_OPTIONS=--experimental-vm-modules node --expose-gc --max-old-space-size=1408 ./node_modules/jest/bin/jest.js --runInBand --logHeapUsage --runTestsByPath",
+        "test:targeted": "mkdir -p \"$PWD/node_modules/.cache/pokie-tmp\" && TMPDIR=\"$PWD/node_modules/.cache/pokie-tmp\" NODE_OPTIONS=--experimental-vm-modules node --expose-gc --max-old-space-size=1408 scripts/run-targeted-tests.mjs",
         "evidence:pc14-interoperability": "node scripts/generate-pc14-interoperability-evidence.mjs",
         "check:cli-inventory": "npm run build-cli && node scripts/check-cli-inventory.mjs --cli dist/cli/pokie.js --evidence-dir docs/audit-corrections/current-cli-inventory",
         "test:workflows": "node --max-old-space-size=512 scripts/run-studio-workflow-tests.mjs",

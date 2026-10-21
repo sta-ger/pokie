@@ -8,6 +8,8 @@ import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioP
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
+import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {buildStakeEngineTestLibrary} from "../../stakeengine/StakeEngineTestFixtures.js";
 
@@ -62,6 +64,7 @@ describe("StudioServer outcome-source project routes", () => {
     let server: StudioServer;
     let baseUrl: string;
     let loadGame: jest.Mock;
+    let repository: FileStudioJobRepository;
 
     beforeEach(async () => {
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-outcome-source-routes-test-"));
@@ -70,6 +73,7 @@ describe("StudioServer outcome-source project routes", () => {
         loadGame = jest.fn().mockImplementation(() => Promise.resolve(createFakeGame({id: "unused", name: "unused", version: "0.0.0"})));
 
         const homeService = new StudioHomeService("1.3.0", undefined, loadGame);
+        repository = new FileStudioJobRepository(path.join(studioRoot, "jobs"));
         server = new StudioServer({
             pokieVersion: "1.3.0",
             host: "127.0.0.1",
@@ -78,6 +82,7 @@ describe("StudioServer outcome-source project routes", () => {
             homeService,
             blueprintService: new StudioBlueprintService("1.3.0", studioRoot, homeService),
             loadGame,
+            jobService: new StudioJobService(repository),
             projectRegistrationService: new StudioProjectRegistrationService(new InMemoryStudioProjectRegistry()),
         });
         const address = await server.start();
@@ -86,6 +91,7 @@ describe("StudioServer outcome-source project routes", () => {
 
     afterEach(async () => {
         await server.stop();
+        expect(repository.getProcessState()?.status).toBe("gracefully-stopped");
         fs.rmSync(studioRoot, {recursive: true, force: true});
     });
 

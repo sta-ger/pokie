@@ -3,6 +3,7 @@ import {StudioSimulationService} from "../../cli/studio/simulation/StudioSimulat
 import {buildSimulationReportDownload} from "../../cli/studio/simulation/buildSimulationReportDownload.js";
 import {describeSimulationReport} from "../../cli/studio-client/src/domain/interpret/Simulation.js";
 import ExcelJS from "exceljs";
+import {PACKAGE_EXTRACTION_TEST_TIMEOUT} from "./fixtures/PackageExtractionFixture.js";
 import {mergeJackpotStatisticsSnapshots} from "../../src/simulation/JackpotStatisticsMerging.js";
 import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";
 import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprintService.js";
@@ -43,12 +44,17 @@ it("starts a fresh completed purchase bank through direct, generated TypeScript 
 
 describe("V2C-12 catalogue-driven public authored workflows", () => {
     let directory: string;
+    let workflow: Promise<void> | undefined;
     beforeEach(() => {
+        workflow = undefined;
         jest.spyOn(console, "log").mockImplementation(() => undefined);
         jest.spyOn(console, "error").mockImplementation(() => undefined);
         directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c12-"));
     });
-    afterEach(() => {
+    afterEach(async () => {
+        // A Jest timeout does not cancel its async callback. Drain the owned operation
+        // before removing its files or allowing the next row to install console spies.
+        await workflow?.catch(() => undefined);
         jest.restoreAllMocks();
         fs.rmSync(directory, {recursive: true, force: true});
     });
@@ -207,7 +213,7 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         await service.cancelAll();
     });
 
-    it.each(catalogue)("$id: validation/build/extraction/real XLSX/seeded continuation/replay/simulation/report", async row => {
+    async function runPublicWorkflow(row: (typeof catalogue)[number], directory: string): Promise<void> {
         const blueprint = existingMechanicsBlueprint(row);
         expect(errors(blueprint)).toEqual([]);
         const built = new api.GamePackageGenerator("1.3.0").generate(blueprint, directory);
@@ -318,7 +324,14 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
             expect(JSON.parse(JSON.stringify(report)).totalWin).toBe(report.totalWin);
             if (row.jackpot) expect(report.jackpot).toBeDefined();
         }
-    });
+    }
+
+    it.each(catalogue)("$id: validation/build/extraction/real XLSX/seeded continuation/replay/simulation/report", row => {
+        // Capture this row's directory by value; a timed-out callback cannot use the
+        // following row's workbook destination through the mutable fixture variable.
+        workflow = runPublicWorkflow(row, directory);
+        return workflow;
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("rejects conflicts and unknown fields through validation, direct rendering and generation without writing", () => {
         const b = existingMechanicsBlueprint(catalogue.find(row => row.id === "hold-flat")!);

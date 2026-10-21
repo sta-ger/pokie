@@ -140,6 +140,13 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
     it("drives real rendered output workflows over a produced package", async () => {
         const user = userEvent.setup();
         const evidence = new ArtifactInteroperabilityRun(workDir);
+        // Runtime preparation is a separate asynchronous HTTP boundary from rendering.
+        // Keep its real response in any failure instead of only a truncated DOM dump.
+        await waitFor(async () => {
+            const context = await fetchImpl("/api/project/context");
+            expect(context.status).toBe(200);
+            expect(await context.json()).toMatchObject({status: "loaded", projectRoot: packagePath, game: {name: "UI Route Slot"}});
+        }, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000});
         const packageApp = renderRoutedApp({fetchImpl, initialEntries: [`/project/${encodeURIComponent(packagePath)}/overview`]});
 
         await screen.findByRole("heading", {name: "UI Route Slot"}, {timeout: 30000});
