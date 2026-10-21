@@ -258,7 +258,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
 
         await screen.findByRole("heading", {name: "Outcome Source"});
         await user.type(screen.getByRole("textbox", {name: "Seed (optional)"}), "pc14-outcome-source-seed");
-        await user.click(screen.getByRole("button", {name: "Draw an outcome"}));
+        await user.click(screen.getByRole("button", {name: "Draw an outcome (base)"}));
         await screen.findByText(/Drew outcome/);
 
         await user.click(screen.getByRole("button", {name: "Certification"}));
