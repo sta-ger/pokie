@@ -134,6 +134,21 @@ it("aborts and drains an owned saved validation before completing a project tran
     try {
         const address = await server.start();
         const url = `http://${address.host}:${address.port}`;
+        // Startup recognition also owns package snapshots. Settle that independent
+        // dashboard load before pausing the validation lease whose drain we assert.
+        const deadline = Date.now() + 10_000;
+        for (;;) {
+            const context = await (await fetch(url + "/api/project/context")).json() as {status: string; error?: string};
+            if (context.status !== "loading") {
+                expect(context).toMatchObject({status: "error", error: "Dashboard runtime unavailable"});
+                break;
+            }
+            if (Date.now() >= deadline) throw new Error("Dashboard startup did not settle before validation");
+            await new Promise<void>(resolve => {
+                setTimeout(resolve, 10);
+            });
+        }
+        expect(runtimeSnapshotNames(fixture.source)).toEqual([]);
         fixture.arm();
         pending = fetch(url + "/api/project/validate");
         await fixture.readStarted;
@@ -147,6 +162,7 @@ it("aborts and drains an owned saved validation before completing a project tran
             setImmediate(resolve);
         });
         expect(closed).toBe(false); // Descriptor acquisition still owns its snapshot.
+        expect(runtimeSnapshotNames(fixture.source)).toHaveLength(1);
         const duringTransition = await fetch(url + "/api/project/validate");
         expect(duringTransition.status).toBe(409);
         fixture.settle();

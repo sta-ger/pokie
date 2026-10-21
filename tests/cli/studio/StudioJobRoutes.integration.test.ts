@@ -151,7 +151,7 @@ describe("Studio common job routes", () => {
 
         await expect(get(`http://${address.host}:${address.port}/api/project/jobs`)).resolves.toEqual({
             status: 200,
-            body: {jobs: [expect.objectContaining({id: "job-1", projectId: "/project-a", status: "completed"})]},
+            body: {projectRoot: "/project-a", projectId: "/project-a", jobs: [expect.objectContaining({id: "job-1", projectId: "/project-a", status: "completed"})]},
         });
     });
 
