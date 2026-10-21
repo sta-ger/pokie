@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
+import {execFileSync} from "node:child_process";
 import * as api from "@fromstan/pokie";
 import {CreateCommand} from "../../cli/commands/CreateCommand.js";
 import {OptimizeCommand} from "../../cli/commands/OptimizeCommand.js";
@@ -358,6 +359,56 @@ describe("V2C-34 retained project opening", () => {
             expect(fs.readFileSync(record)).toEqual(completedBytes);
         } finally {
             await server.stop();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+});
+
+
+describe("V2C-34 installed-help reference authority", () => {
+    it("checks emitted local routes and assets, rejects single and coordinated path edits, then permits repaired reuse", () => {
+        const directory = fs.mkdtempSync(path.resolve("node_modules/.cache/pokie-tmp/valera34-help-"));
+        const check = () => execFileSync(process.execPath, ["--input-type=module", "-e",
+            "import {checkSite} from './site/check.mjs'; console.log(JSON.stringify(checkSite(process.argv[1])));", directory,
+        ], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe"});
+        const write = (file: string, value: string) => {
+            const destination = path.join(directory, file);
+            fs.mkdirSync(path.dirname(destination), {recursive: true});
+            fs.writeFileSync(destination, value);
+        };
+        const manifest = {base: "/help/", routes: ["/help/", "/help/docs/", "/help/gallery/"]};
+        const entries = [{title: "Documentation", excerpt: "Producer guidance", text: "gallery dossier", url: "/help/docs/#dossier"}];
+        const page = '<h1 id="dossier">Dossier</h1><a href="/help/gallery/">Gallery</a><script src="/help/assets/site.js"></script><a href="/help/sources/guide.md">Source</a>';
+        try {
+            write("build-manifest.json", JSON.stringify(manifest));
+            write("search.json", JSON.stringify(entries));
+            write("index.html", '<a href="/help/docs/">Documentation</a>');
+            write("docs/index.html", page);
+            write("gallery/index.html", '<a href="/help/docs/#dossier">Dossier guidance</a>');
+            write("assets/site.js", "// generated local search");
+            write("sources/guide.md", "# Source guidance");
+            expect(JSON.parse(check())).toMatchObject({pages: 3, searchEntries: 1});
+            write("docs/index.html", page.replace("/help/assets/site.js", "/assets/site.js"));
+            expect(check).toThrow(/Reference outside site base/);
+            write("docs/index.html", page);
+            write("search.json", JSON.stringify([{...entries[0], url: "/help/docs/#invented"}]));
+            expect(check).toThrow(/Invalid fragment/);
+            write("search.json", JSON.stringify(entries));
+            // Changing mutually consistent metadata copies cannot authorize absent rendered routes.
+            write("build-manifest.json", JSON.stringify({...manifest, routes: ["/help/", "/help/invented/", "/help/gallery/"]}));
+            write("search.json", JSON.stringify([{...entries[0], url: "/help/invented/"}]));
+            expect(check).toThrow(/Broken route/);
+            write("build-manifest.json", JSON.stringify({...manifest, base: "/unknown/"}));
+            expect(check).toThrow(/Invalid site base/);
+            write("build-manifest.json", JSON.stringify(manifest));
+            write("search.json", JSON.stringify(entries));
+            for (let attempt = 0; attempt < 2; attempt++) expect(JSON.parse(check()).pages).toBe(3);
+            // The standalone public site remains a supported sibling of installed help.
+            write("build-manifest.json", JSON.stringify({routes: ["/", "/docs/", "/gallery/"]}));
+            for (const [file, value] of [["index.html", '<a href="/docs/">Documentation</a>'], ["docs/index.html", page.replaceAll("/help/", "/")], ["gallery/index.html", '<a href="/docs/#dossier">Dossier</a>']]) write(file, value);
+            write("search.json", JSON.stringify([{...entries[0], url: "/docs/#dossier"}]));
+            expect(JSON.parse(check()).pages).toBe(3);
+        } finally {
             fs.rmSync(directory, {recursive: true, force: true});
         }
     });

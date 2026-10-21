@@ -823,4 +823,34 @@ describe("documented production preview in real Chromium", () => {
         fs.rmSync(path.join(scratch, "chromium-profile"), {recursive: true, force: true});
         expect(fs.existsSync(path.join(scratch, "chromium-profile"))).toBe(false);
     });
+
+    it("builds the same public site as installed help with local guides, search, Gallery and downloads", () => {
+        expect(node(["site/build.mjs", "--out", output, "--base", "/help/"])).toContain("Site built:");
+        const manifest = JSON.parse(fs.readFileSync(path.join(output, "build-manifest.json"), "utf8"));
+        expect(manifest.base).toBe("/help/");
+        expect(manifest.routes).toEqual(inventory.pages.map((page: {route: string}) => `/help${page.route}`));
+        expect(JSON.parse(check()).pages).toBe(inventory.pages.length);
+        for (const page of inventory.pages) {
+            const document = new JSDOM(html(page.route), {url: `http://localhost/help${page.route}`}).window.document;
+            for (const element of document.querySelectorAll<HTMLAnchorElement | HTMLScriptElement | HTMLLinkElement>("[href], [src]")) {
+                const target = element.getAttribute("href") ?? element.getAttribute("src")!;
+                if (target.startsWith("/")) expect(target).toMatch(/^\/help\//);
+            }
+            expect(document.querySelector(".source a")?.getAttribute("href")).toBe(`/help/sources/${page.source}`);
+            expect(fs.readFileSync(path.join(output, "sources", page.source), "utf8")).toBe(fs.readFileSync(path.join(root, page.source), "utf8"));
+        }
+        expect(html("/docs/")).toContain('href="/help/gallery/"');
+        expect(html("/docs/reproducibility/")).toContain("Dossier preparation");
+        expect(html("/docs/reproducibility/")).toContain('href="/help/sources/docs/certification-evidence-bundle.md"');
+        expect(html("/gallery/")).toContain('src="/help/assets/playground/playground.js"');
+        expect(html("/docs/getting-started/")).not.toContain("/help/help/");
+        expect(fs.existsSync(path.join(output, "assets/playground/worker.js"))).toBe(true);
+        expect(fs.existsSync(path.join(output, "downloads/reproduce.mjs"))).toBe(true);
+        const entries = JSON.parse(fs.readFileSync(path.join(output, "search.json"), "utf8"));
+        expect(entries.every((entry: {url: string}) => entry.url.startsWith("/help/"))).toBe(true);
+        for (const [file, hash] of Object.entries(manifest.artifactHashes)) {
+            expect(createHash("sha256").update(fs.readFileSync(path.join(output, file))).digest("hex")).toBe(hash);
+        }
+    }, 150000);
+
 });

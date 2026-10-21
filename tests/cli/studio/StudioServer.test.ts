@@ -1097,6 +1097,50 @@ describe("StudioServer", () => {
         expect(await response.text()).toBe("<html>studio</html>");
     });
 
+    it("serves included help, Gallery and downloads without falling back to the Studio shell, then recovers after missing routes", async () => {
+        const helpRoot = path.join(studioRoot, "help");
+        const files = {
+            "index.html": "<html>FromStan / POKIE</html>",
+            "docs/index.html": "<html>Documentation <a href='/help/gallery/'>Gallery</a></html>",
+            "docs/getting-started/index.html": "<html>Getting started</html>",
+            "docs/cli-api/index.html": "<html>CLI reference</html>",
+            "gallery/index.html": "<html>Examples gallery</html>",
+            "assets/playground/worker.js": "// public Worker",
+            "assets/playground/models/lines.wasm": "wasm bytes",
+            "sources/docs/certification-evidence-bundle.md": "# Dossier guidance",
+            "downloads/reproduce.mjs": "// local reproduction",
+        };
+        for (const [name, body] of Object.entries(files)) {
+            const file = path.join(helpRoot, name);
+            fs.mkdirSync(path.dirname(file), {recursive: true});
+            fs.writeFileSync(file, body);
+        }
+        const redirect = await fetch(`${baseUrl}/help?topic=docs`, {redirect: "manual"});
+        expect(redirect.status).toBe(308);
+        expect(redirect.headers.get("location")).toBe("/help/?topic=docs");
+        const guideRedirect = await fetch(`${baseUrl}/help/docs?topic=producer`, {redirect: "manual"});
+        expect(guideRedirect.status).toBe(308);
+        expect(guideRedirect.headers.get("location")).toBe("/help/docs/?topic=producer");
+        for (const [name, body] of Object.entries(files)) {
+            const route = name.replace(/index\.html$/, "");
+            const response = await fetch(`${baseUrl}/help/${route}`);
+            expect(response.status).toBe(200);
+            expect(await response.text()).toBe(body);
+            if (name.endsWith(".wasm")) expect(response.headers.get("content-type")).toBe("application/wasm");
+            if (name.endsWith(".js") || name.endsWith(".mjs")) expect(response.headers.get("content-type")).toContain("text/javascript");
+            if (name.endsWith(".md")) expect(response.headers.get("content-type")).toContain("text/plain");
+        }
+        for (const missing of ["missing/", "assets/missing.js", "%2e%2e%2findex.html"]) {
+            const response = await fetch(`${baseUrl}/help/${missing}`);
+            expect(response.status).toBe(404);
+            expect(await response.json()).toEqual({error: "Documentation page not found. Return to /help/docs/."});
+        }
+        for (let attempt = 0; attempt < 2; attempt++) {
+            expect(await (await fetch(`${baseUrl}/help/docs/`)).text()).toContain("Documentation");
+            expect(await (await fetch(`${baseUrl}/home/projects`)).text()).toBe("<html>studio</html>");
+        }
+    });
+
     it("returns 404 for a file that doesn't exist", async () => {
         const response = await fetch(`${baseUrl}/does-not-exist.js`);
 

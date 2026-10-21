@@ -66,7 +66,7 @@
         "build-test-runtime": "npm run generate-barrels && npm run build-esm:compile && npm run build-cjs:compile",
         "build-client": "tsc --project tsconfig.client.json && shx cp cli/client/index.html cli/client/style.css dist/cli/client/",
         "typecheck-studio-client": "tsc --project cli/studio-client/tsconfig.json --noEmit",
-        "build-studio-client": "npm run typecheck-studio-client && vite build --config cli/studio-client/vite.config.ts && shx test -f dist/cli/studio-client/index.html",
+        "build-studio-client": "npm run typecheck-studio-client && vite build --config cli/studio-client/vite.config.ts && shx test -f dist/cli/studio-client/index.html && node site/build.mjs --out dist/cli/studio-client/help --base /help/",
         "audit:studio-polish": "node scripts/p8-04-studio-polish-browser-audit.mjs",
         "audit:product-readiness": "node scripts/p8-05-product-readiness-campaign.mjs",
         "audit:product-readiness:browser": "node scripts/p8-05-valera-browser-audit.mjs",

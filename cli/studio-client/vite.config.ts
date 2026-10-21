@@ -30,6 +30,10 @@ export default defineConfig(({command}) => {
             // dev server needs to proxy /api to a separately-running `pokie studio` instance for local HMR
             // development (see docs/studio-frontend.md).
             proxy: {
+                "/help": {
+                    target: "http://127.0.0.1:3200",
+                    changeOrigin: true,
+                },
                 "/api": {
                     target: "http://127.0.0.1:3200",
                     changeOrigin: true,

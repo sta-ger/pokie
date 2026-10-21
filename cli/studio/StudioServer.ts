@@ -224,6 +224,11 @@ const CONTENT_TYPES: Record<string, string> = {
     ".js": "text/javascript; charset=utf-8",
     ".css": "text/css; charset=utf-8",
     ".json": "application/json; charset=utf-8",
+    ".wasm": "application/wasm",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".md": "text/plain; charset=utf-8",
+    ".ts": "text/plain; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
 };
 
 // The first minimal stage of POKIE Studio (see docs/cli.md): serves the studio-client app shell
@@ -1553,6 +1558,28 @@ export class StudioServer implements StudioServerHandling {
 
         if (method !== "GET") {
             this.sendJson(res, 404, {error: `Not found: ${method} ${url.pathname}`});
+            return;
+        }
+
+        // Installed help is a static public site with its own routes, never a Studio route.
+        if (url.pathname === "/help") {
+            res.writeHead(308, {Location: `/help/${url.search}`});
+            res.end();
+            return;
+        }
+        if (url.pathname.startsWith("/help/")) {
+            const requested = url.pathname.endsWith("/") ? `${url.pathname}index.html` : url.pathname;
+            const helpFile = this.resolveStaticFilePath(requested);
+            if (helpFile === undefined && !url.pathname.endsWith("/")) {
+                const index = this.resolveStaticFilePath(`${url.pathname}/index.html`);
+                if (index !== undefined && isPathWithin(path.join(this.studioRoot, "help"), index)) {
+                    res.writeHead(308, {Location: `${url.pathname}/${url.search}`});
+                    res.end();
+                    return;
+                }
+            }
+            if (helpFile !== undefined && isPathWithin(path.join(this.studioRoot, "help"), helpFile)) this.sendFile(res, helpFile);
+            else this.sendJson(res, 404, {error: "Documentation page not found. Return to /help/docs/."});
             return;
         }
 

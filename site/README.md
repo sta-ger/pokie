@@ -30,3 +30,15 @@ The site test builds real output and owns a documented preview, Chromium process
 The public gallery at `/gallery/` and playground at `/playground/?example=lines` bundle their own local ES modules and Worker. Vite rejects Node builtins in this graph; generated fixture WASM/sidecars, runtime modules and sources are hashed in the build manifest. Preview serves `.wasm` as `application/wasm` and modules as JavaScript. No Studio server or remote runtime is needed. Reload resets work without local-storage restoration. Dynamic downloads bind to the current validated model and settings. See [the reproduction contract](content/playground.md).
 
 The named `tests/v2/PlaygroundGallery.test.ts` exercises built rendered actions in real local Workers, downloadable byte identities and shared-library reproduction, using a browser proxy that permits only localhost. Controller-owned mandatory verification and professional visual review remain separate authorities.
+
+
+## Included Studio help
+
+The normal `npm run build-studio-client` also builds this same public site into
+`dist/cli/studio-client/help` with base `/help/`. Installed Studio serves it at
+`/help/`; Home links work without DNS, GitHub, or a separate hosted deployment.
+Landing, guides, search, Gallery, playground Workers and example downloads retain
+the public site's existing implementations and support limits. Maintained guide
+sources linked from this included edition are shipped as local readable files.
+`npm run site:build` retains the standalone site's `/` base and deployment target;
+no hosting or DNS change is performed by either build.

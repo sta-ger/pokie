@@ -2,19 +2,19 @@ import {MantineProvider} from "@mantine/core";
 import {render, screen} from "@testing-library/react";
 import {DocumentationLinks} from "../../../../../../cli/studio-client/src/components/home/DocumentationLinks";
 
-it("renders the real Home documentation destinations with an honest source fallback", () => {
+it("renders the local Home documentation destinations without deployment dependencies", () => {
     render(
         <MantineProvider>
             <DocumentationLinks />
         </MantineProvider>,
     );
     const expected = [
-        ["Public docs (deployment target)", "https://pokie.fromstan.com/docs/"],
-        ["Getting started", "https://pokie.fromstan.com/docs/getting-started/"],
-        ["CLI reference", "https://pokie.fromstan.com/docs/cli-api/"],
+        ["Public docs (included locally)", "/help/docs/"],
+        ["Getting started", "/help/docs/getting-started/"],
+        ["CLI reference", "/help/docs/cli-api/"],
         [
-            "Source guides (available before site deployment)",
-            "https://github.com/fromstan/pokie/blob/develop/docs/README.md",
+            "FromStan / POKIE — examples and boundaries",
+            "/help/",
         ],
     ];
     for (const [name, href] of expected) {
