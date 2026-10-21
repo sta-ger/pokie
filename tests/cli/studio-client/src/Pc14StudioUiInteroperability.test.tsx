@@ -36,13 +36,14 @@ function writeStudioAssets(root: string): void {
     fs.writeFileSync(path.join(root, "style.css"), "");
 }
 
-function createServerFetch(baseUrl: string): FetchLike {
+function createServerFetch(baseUrl: string, observe?: (url: string, status: number, body: unknown) => void): FetchLike {
     return (url, init) => new Promise((resolve, reject) => {
         const request = http.request(`${baseUrl}${url}`, {method: init?.method, headers: init?.headers}, (response) => {
             const chunks: Buffer[] = [];
             response.on("data", (chunk: Buffer) => chunks.push(chunk));
             response.on("end", () => {
                 const body = Buffer.concat(chunks).toString("utf8");
+                observe?.(url, response.statusCode ?? 500, JSON.parse(body));
                 resolve({
                     ok: (response.statusCode ?? 500) >= 200 && (response.statusCode ?? 500) < 300,
                     status: response.statusCode ?? 500,
@@ -253,7 +254,10 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         });
         additionalServers.push(outcomeLibraryServer);
         const outcomeLibraryAddress = await outcomeLibraryServer.start();
-        const outcomeLibraryFetch = createServerFetch(`http://${outcomeLibraryAddress.host}:${outcomeLibraryAddress.port}`);
+        let certificationResponse: {status: number; body: unknown} | undefined;
+        const outcomeLibraryFetch = createServerFetch(`http://${outcomeLibraryAddress.host}:${outcomeLibraryAddress.port}`, (url, status, body) => {
+            if (url === "/api/project/certification/build") certificationResponse = {status, body};
+        });
         const outcomeLibraryApp = renderRoutedApp({fetchImpl: outcomeLibraryFetch, initialEntries: [`/project/${encodeURIComponent(outcomeLibraryPath)}/overview`]});
 
         await screen.findByRole("heading", {name: "Outcome Source"});
@@ -282,11 +286,27 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.clear(screen.getByRole("textbox", {name: "Output directory"}));
         await user.type(screen.getByRole("textbox", {name: "Output directory"}), "certification");
         await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
+        // The source is this opened bundle itself. A nested output would mutate
+        // its evidence inputs; retain that rejection before choosing a new sibling.
+        await waitFor(() => expect(certificationResponse).toMatchObject({status: 200, body: {status: "load-error", error: expect.stringContaining("source/output overlap")}}));
+        await screen.findByText("The certification bundle directory could not be completed. Try again. If it continues, choose the location again and retry.");
+        expect(fs.existsSync(path.join(outcomeLibraryPath, "certification"))).toBe(false);
+        const certificationSourceBytes = new Map(["manifest.json", "index_base.json", "outcomes_base.jsonl"].map(file => [file, fs.readFileSync(path.join(outcomeLibraryPath, file))] as const));
+        const certificationOutput = path.join(workDir, "studio-ui-certification");
+        const certificationDestination = screen.getByRole("textbox", {name: "Output directory"});
+        await user.clear(certificationDestination);
+        await user.type(certificationDestination, certificationOutput);
+        const buildCertification = screen.getByRole("button", {name: "Build certification bundle"});
+        await waitFor(() => expect(buildCertification).toBeEnabled());
+        await user.click(buildCertification);
+        await waitFor(() => expect(certificationResponse).toMatchObject({status: 200, body: {status: "ok", manifest: {game: {id: "ui-route-slot"}}}}));
         await screen.findByText("Continue to Inspect");
         await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
         await screen.findByText("Per-mode evidence");
         await user.click(screen.getByRole("button", {name: "Continue to Export"}));
         await screen.findByText("Output directory");
+        expect(JSON.parse(fs.readFileSync(path.join(certificationOutput, "manifest.json"), "utf8"))).toMatchObject({game: {id: "ui-route-slot"}});
+        for (const [file, bytes] of certificationSourceBytes) expect(fs.readFileSync(path.join(outcomeLibraryPath, file))).toEqual(bytes);
 
         // Build/Export is also the retained Studio route for Stake.  Drive
         // the rendered card through a failed occupied destination and then a
@@ -336,13 +356,14 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         evidence.recordScenario({
             id: "studio-ui-certification-output-error-recovery",
             sourcePath: outcomeLibraryPath,
-            producedPath: path.join(outcomeLibraryPath, "certification"),
+            producedPath: certificationOutput,
             result: "the rendered Certification workflow rejected a missing source, recovered with the opened Outcome Library, and published inspectable certification evidence",
             surface: "studio-ui",
             owner: "CertificationTab",
             systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
             assertions: [
                 "Certification rendered the missing-source diagnostic before any evidence publication",
+                "a nested evidence output was rejected before a disjoint destination published successfully, preserving source bytes",
                 "correcting the source to the opened native library enabled validation, evidence publication, inspection, and export",
             ],
             observations: [

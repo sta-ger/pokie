@@ -173,7 +173,9 @@ describe("PC-17 public CLI and Studio HTTP parity", () => {
         expect(terminal).toMatchObject({status: "completed", result: {status: "ok", target, sourceType: source, outputPath: studioOutput}});
         expect(fs.existsSync(studioOutput)).toBe(true);
         await server.stop();
-    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    // A cell generates its source, converts it through CLI, previews it, and
+    // converts it again through HTTP. Each job remains bounded independently.
+    }, 300000);
 
     it("preserves authenticated handoffs across the complete saved five-file gate repair", () => {
         execFileSync(process.execPath, ["--input-type=module", "-e", `
