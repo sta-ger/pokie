@@ -22,13 +22,14 @@ function writeStudioAssets(root: string): void {
     fs.writeFileSync(path.join(root, "style.css"), "body { margin: 0; }");
 }
 
-function createServerFetch(baseUrl: string): FetchLike {
+function createServerFetch(baseUrl: string, observe: (url: string, method: string, status: number, body: unknown) => void): FetchLike {
     return (url, init) => new Promise((resolve, reject) => {
         const request = http.request(`${baseUrl}${url}`, {method: init?.method, headers: init?.headers}, (response) => {
             const chunks: Buffer[] = [];
             response.on("data", (chunk: Buffer) => chunks.push(chunk));
             response.on("end", () => {
                 const body = Buffer.concat(chunks).toString("utf8");
+                observe(url, init?.method ?? "GET", response.statusCode ?? 500, JSON.parse(body));
                 resolve({
                     ok: (response.statusCode ?? 500) >= 200 && (response.statusCode ?? 500) < 300,
                     status: response.statusCode ?? 500,
@@ -48,6 +49,8 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
     let workDir: string;
     let server: StudioServer;
     let fetchImpl: FetchLike;
+    let simulationAdmission: {status: number; body: unknown} | undefined;
+    let simulationStatus: unknown;
 
     beforeAll(() => {
         restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
@@ -58,6 +61,8 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
     });
 
     beforeEach(async () => {
+        simulationAdmission = undefined;
+        simulationStatus = undefined;
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc16-sweep-assets-"));
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc16-sweep-project-"));
         writeStudioAssets(studioRoot);
@@ -81,7 +86,10 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
             initialContext: {mode: "project", projectRoot},
         });
         const address = await server.start();
-        fetchImpl = createServerFetch(`http://${address.host}:${address.port}`);
+        fetchImpl = createServerFetch(`http://${address.host}:${address.port}`, (url, method, status, body) => {
+            if (url === "/api/project/simulations" && method === "POST") simulationAdmission = {status, body};
+            if (url.startsWith("/api/project/simulations/") && method === "GET") simulationStatus = body;
+        });
     });
 
     afterEach(async () => {
@@ -108,9 +116,16 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
         const rounds = await screen.findByRole("textbox", {name: "Rounds"});
         await user.clear(rounds);
         await user.type(rounds, "2");
-        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        const run = screen.getByRole("button", {name: "Run Simulation"});
+        await waitFor(() => expect(run).toBeEnabled());
+        await user.click(run);
+        await waitFor(() => expect(simulationAdmission).toMatchObject({status: 202, body: {id: expect.any(String)}}));
         // Completion opens Review automatically; assert its settled public result.
-        await screen.findByRole("button", {name: "Open full report"}, {timeout: 60000});
+        await screen.findByRole("button", {name: "Open full report"}, {
+            timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000,
+            onTimeout: error => new Error(`${error.message}\nActual simulation admission/status: ${JSON.stringify({simulationAdmission, simulationStatus})}\nRendered state: ${document.body.textContent}`),
+        });
+        expect(simulationStatus).toMatchObject({status: "completed", rounds: 2, report: {rounds: 2}});
         expect(screen.queryByText(/Deployment has moved into Build\/Export/)).not.toBeInTheDocument();
-    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    }, 300000);
 });

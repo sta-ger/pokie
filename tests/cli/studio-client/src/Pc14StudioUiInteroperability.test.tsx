@@ -19,7 +19,7 @@ import {createStudioGameLoader} from "../../../../cli/studio/loadStudioGame.js";
 import {StudioServer} from "../../../../cli/studio/StudioServer.js";
 import {FileStudioJobRepository} from "../../../../cli/studio/jobs/FileStudioJobRepository.js";
 import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js";
-import {createPackageExtractionTestEnvironment} from "../../../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../../v2/fixtures/PackageExtractionFixture.js";
 import type {FetchLike} from "../../../../cli/studio-client/src/api/apiClient.js";
 import {
     ArtifactInteroperabilityRun,
@@ -183,7 +183,8 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // route-table assertion: it uses the package's real runtime and emits
         // the durable round artifact consumed by the Replay surface.
         await user.click(screen.getByRole("button", {name: "Spin"}));
-        await screen.findByText(/Round complete/i);
+        await screen.findByText(/^Round completed: 1 subrounds, 1 deliveries, stake 1, payout (0|3)$/);
+        expect(screen.getByText(/^Round complete(?:$| —)/)).toBeVisible();
 
         await user.click(screen.getByRole("button", {name: "Simulation"}));
         const rounds = await screen.findByRole("textbox", {name: "Rounds"});
@@ -193,7 +194,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // Completion automatically opens Review, replacing the Run step's
         // transient "View results" control. Wait for the loaded summary's
         // stable action, then inspect the real report through its disclosure.
-        const openFullReport = await screen.findByRole("button", {name: "Open full report"}, {timeout: 60000});
+        const openFullReport = await screen.findByRole("button", {name: "Open full report"}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000});
         expect(screen.getByRole("button", {name: /Review See results/})).toHaveAttribute("aria-current", "step");
         expect(screen.getAllByRole("cell", {name: /%/}).length).toBeGreaterThan(0);
         await user.click(openFullReport);
