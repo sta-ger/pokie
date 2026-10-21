@@ -51,6 +51,7 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
     let fetchImpl: FetchLike;
     let simulationAdmission: {status: number; body: unknown} | undefined;
     let simulationStatus: unknown;
+    let simulationSubmissions: number;
 
     beforeAll(() => {
         restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
@@ -63,6 +64,7 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
     beforeEach(async () => {
         simulationAdmission = undefined;
         simulationStatus = undefined;
+        simulationSubmissions = 0;
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc16-sweep-assets-"));
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc16-sweep-project-"));
         writeStudioAssets(studioRoot);
@@ -86,10 +88,14 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
             initialContext: {mode: "project", projectRoot},
         });
         const address = await server.start();
-        fetchImpl = createServerFetch(`http://${address.host}:${address.port}`, (url, method, status, body) => {
+        const network = createServerFetch(`http://${address.host}:${address.port}`, (url, method, status, body) => {
             if (url === "/api/project/simulations" && method === "POST") simulationAdmission = {status, body};
             if (url.startsWith("/api/project/simulations/") && method === "GET") simulationStatus = body;
         });
+        fetchImpl = (url, init) => {
+            if (url === "/api/project/simulations" && init?.method === "POST") simulationSubmissions++;
+            return network(url, init);
+        };
     });
 
     afterEach(async () => {
@@ -119,13 +125,18 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
         const run = screen.getByRole("button", {name: "Run Simulation"});
         await waitFor(() => expect(run).toBeEnabled());
         await user.click(run);
-        await waitFor(() => expect(simulationAdmission).toMatchObject({status: 202, body: {id: expect.any(String)}}));
-        // Completion opens Review automatically; assert its settled public result.
-        await screen.findByRole("button", {name: "Open full report"}, {
+        await waitFor(() => expect(simulationSubmissions).toBe(1));
+        // The capability check resolves package configuration provenance before
+        // admission returns, acquiring its own real runtime snapshot.
+        const simulationWait = {
             timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000,
-            onTimeout: error => new Error(`${error.message}\nActual simulation admission/status: ${JSON.stringify({simulationAdmission, simulationStatus})}\nRendered state: ${document.body.textContent}`),
-        });
+            onTimeout: (error: Error) => new Error(`${error.message}\nActual simulation request/admission/status: ${JSON.stringify({simulationSubmissions, simulationAdmission, simulationStatus})}\nRendered state: ${document.body.textContent}`),
+        };
+        await waitFor(() => expect(simulationAdmission).toMatchObject({status: 202, body: {id: expect.any(String)}}), simulationWait);
+        // Completion opens Review automatically; assert its settled public result.
+        await screen.findByRole("button", {name: "Open full report"}, simulationWait);
         expect(simulationStatus).toMatchObject({status: "completed", rounds: 2, report: {rounds: 2}});
+        expect(simulationSubmissions).toBe(1);
         expect(screen.queryByText(/Deployment has moved into Build\/Export/)).not.toBeInTheDocument();
     }, 300000);
 });
