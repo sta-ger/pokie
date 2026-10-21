@@ -29,6 +29,10 @@ import {
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 
 const POKIE_VERSION = "1.3.0";
+// ProjectTargetResolver reads/releases provenance through one runtime load;
+// Play then acquires its own executable session through a second load.
+const PLAY_SESSION_TIMEOUT = 2 * PACKAGE_EXTRACTION_TEST_TIMEOUT;
+const WORKFLOW_TIMEOUT = 15 * PACKAGE_EXTRACTION_TEST_TIMEOUT;
 
 function writeStudioAssets(root: string): void {
     fs.writeFileSync(path.join(root, "index.html"), "<html>Studio</html>");
@@ -66,6 +70,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
     let outcomeLibraryPath: string;
     let server: StudioServer;
     let fetchImpl: FetchLike;
+    let playSessionRequested: boolean;
     let playSessionResponse: {status: number; body: unknown} | undefined;
     let restoreRunnerClock: () => void;
     let packageServerStopped = false;
@@ -88,6 +93,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
     beforeEach(async () => {
         restoreRunnerClock = installPc14FixedRunnerClock();
         packageServerStopped = false;
+        playSessionRequested = false;
         playSessionResponse = undefined;
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc14-ui-assets-"));
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc14-ui-artifacts-"));
@@ -123,9 +129,13 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             initialContext: {mode: "project", projectRoot: packagePath},
         });
         const address = await server.start();
-        fetchImpl = createServerFetch(`http://${address.host}:${address.port}`, (url, status, body) => {
+        const serverFetch = createServerFetch(`http://${address.host}:${address.port}`, (url, status, body) => {
             if (url === "/api/project/play/session") playSessionResponse = {status, body};
         });
+        fetchImpl = (url, init) => {
+            if (url === "/api/project/play/session") playSessionRequested = true;
+            return serverFetch(url, init);
+        };
     });
 
     afterEach(async () => {
@@ -135,7 +145,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         fs.rmSync(studioRoot, {recursive: true, force: true});
         fs.rmSync(workDir, {recursive: true, force: true});
         restoreRunnerClock();
-    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    }, PLAY_SESSION_TIMEOUT);
 
     // This is intentionally one end-to-end product journey over real generated artifacts (including
     // build, publication, simulation, replay, proof, certification, and PAR I/O). Its budget must cover
@@ -180,12 +190,13 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.click(screen.getByRole("button", {name: "Play"}));
         await screen.findByRole("button", {name: "New Play session"});
         await user.click(screen.getByRole("button", {name: "New Play session"}));
-        // Session creation loads an isolated package/dependency snapshot before
-        // replying. Give that HTTP phase the same budget as other runtime loads,
+        expect(playSessionRequested).toBe(true);
+        // Session creation reads provenance, releases that snapshot, then loads
+        // the isolated session runtime. Budget both real runtime phases,
         // then check the real response before waiting for its rendered controls.
         // A failed session must expose its diagnostic here, not time out as a
         // missing Spin button. This observer does not issue another request.
-        await waitFor(() => expect(playSessionResponse).toBeDefined(), {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
+        await waitFor(() => expect(playSessionResponse).toBeDefined(), {timeout: PLAY_SESSION_TIMEOUT});
         expect(playSessionResponse).toMatchObject({status: 201, body: {status: "ok", session: {sessionId: expect.any(String)}}});
         await screen.findByRole("button", {name: "Spin"});
 
@@ -194,14 +205,14 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // retain that product diagnostic while keeping the real session
         // usable for the next action.
         await user.click(screen.getByRole("button", {name: "Find free games"}));
-        const unsupportedScenario = await screen.findByRole("alert");
+        const unsupportedScenario = await screen.findByRole("alert", {}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
         expect(unsupportedScenario).not.toBeEmptyDOMElement();
 
         // An ordinary Spin is a full user-visible product operation, not a
         // route-table assertion: it uses the package's real runtime and emits
         // the durable round artifact consumed by the Replay surface.
         await user.click(screen.getByRole("button", {name: "Spin"}));
-        await screen.findByText(/^Round completed: 1 subrounds, 1 deliveries, stake 1, payout (0|3)$/);
+        await screen.findByText(/^Round completed: 1 subrounds, 1 deliveries, stake 1, payout (0|3)$/, {}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
         expect(screen.getByText(/^Round complete(?:$| —)/)).toBeVisible();
 
         await user.click(screen.getByRole("button", {name: "Simulation"}));
@@ -212,7 +223,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // Completion automatically opens Review, replacing the Run step's
         // transient "View results" control. Wait for the loaded summary's
         // stable action, then inspect the real report through its disclosure.
-        const openFullReport = await screen.findByRole("button", {name: "Open full report"}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000});
+        const openFullReport = await screen.findByRole("button", {name: "Open full report"}, {timeout: 4 * PACKAGE_EXTRACTION_TEST_TIMEOUT});
         expect(screen.getByRole("button", {name: /Review See results/})).toHaveAttribute("aria-current", "step");
         expect(screen.getAllByRole("cell", {name: /%/}).length).toBeGreaterThan(0);
         await user.click(openFullReport);
@@ -724,5 +735,5 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
                 emittedPath,
             ], persistedResultPath);
         }
-    }, 600000);
+    }, WORKFLOW_TIMEOUT);
 });
