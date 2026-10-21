@@ -59,6 +59,9 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "tests/v2/helpers/PublicDocsBrowser.ts",
     // V2C-34 retained installed receipt, independently named from both readers.
     "docs/v2-completion/V2C-34.md",
+    // V2C-34 bounded timeout regressions; sibling tests and product/build inputs stay protected.
+    "tests/cli/studio/AdvancedModelValidationRoutes.test.ts",
+    "tests/cli/studio/simulation/StudioSimulationService.test.ts",
 ];
 const commit = (repository, message) => {
     execFileSync("git", ["add", "."], {cwd:repository});

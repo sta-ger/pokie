@@ -69,6 +69,9 @@ const tooling = new Set([
     "tests/v2/helpers/PublicDocsBrowser.ts",
     // V2C-34 installed recheck receipt; product/build inputs remain protected.
     "docs/v2-completion/V2C-34.md",
+    // V2C-34 bounded timeout regressions; sibling tests and product/build inputs stay protected.
+    "tests/cli/studio/AdvancedModelValidationRoutes.test.ts",
+    "tests/cli/studio/simulation/StudioSimulationService.test.ts",
 ]);
 const git = (repository, args) => execFileSync("git", args, {cwd:repository, encoding:"utf8", timeout:10_000, maxBuffer:16 * 1024 * 1024}).trimEnd();
 

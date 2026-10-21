@@ -41,6 +41,9 @@ const tooling = new Set([
     "tests/v2/helpers/PublicDocsBrowser.ts",
     // V2C-34 retained installed recheck and bounded Producer fixture correction.
     "docs/v2-completion/V2C-34.md",
+    // V2C-34 bounded timeout regressions; sibling tests and product/build inputs stay protected.
+    "tests/cli/studio/AdvancedModelValidationRoutes.test.ts",
+    "tests/cli/studio/simulation/StudioSimulationService.test.ts",
     "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
 ]);
 const evidence = (file) => file.startsWith("docs/evidence/p8-05-product-readiness/");
