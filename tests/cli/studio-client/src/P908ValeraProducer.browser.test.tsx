@@ -63,7 +63,7 @@ it("retains the authenticated installed candidate across the complete gate-test 
         const {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} = await runInThisContext(`import(${JSON.stringify(fixtureUrl)})`, {
             importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
         }) as {
-            candidateFixture: (directory: string) => Promise<{repository: string; reference: {path: string; sha256: string}; handoff: {installationRoot: string; browserDriver: {path: string}}}>;
+            candidateFixture: (directory: string) => Promise<{repository: string; reference: {path: string; sha256: string}; handoff: {candidateId: string; installationRoot: string; browserDriver: {path: string}}}>;
             commitP911ToolingDescendant: (fixture: {repository: string}) => Promise<string>;
             P911_TOOLING_DESCENDANT_PATHS: string[];
         };
@@ -73,7 +73,28 @@ it("retains the authenticated installed candidate across the complete gate-test 
             "tests/cli/studio-client/src/components/common/StudioPresentation.test.tsx",
             "scripts/p9-11-candidate.mjs",
             "tests/testUtils/createP911CandidateFixture.mjs",
+            "scripts/p8-05-release-handoff.mjs",
+            "docs/v2-completion/V2C-34.md",
         ]));
+        // Both archive selectors must admit the complete correction since the
+        // authenticated candidate, including its already retained recheck receipt.
+        const correctionPaths = [
+            "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+            "scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs",
+            "tests/testUtils/createP911CandidateFixture.mjs", "docs/v2-completion/V2C-34.md",
+        ];
+        for (const file of correctionPaths) await fs.writeFile(path.join(fixture.repository, file), "// Bounded correction fixture.\n");
+        const commitFixture = () => {
+            execFileSync("git", ["add", "."], {cwd: fixture.repository});
+            execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "fixture bounded correction"], {cwd: fixture.repository});
+            return execFileSync("git", ["rev-parse", "HEAD"], {cwd: fixture.repository, encoding: "utf8"}).trim();
+        };
+        const reviewedId = commitFixture();
+        const handoffUrl = pathToFileURL(path.join(process.cwd(), "scripts/p8-05-release-handoff.mjs")).href;
+        const {authenticateP805ProductTree} = await runInThisContext(`import(${JSON.stringify(handoffUrl)})`, {
+            importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+        }) as {authenticateP805ProductTree: (candidateId: string, reviewedId: string, repository: string) => {changedToolingAndEvidencePaths: string[]}};
+        expect(authenticateP805ProductTree(fixture.handoff.candidateId, reviewedId, fixture.repository).changedToolingAndEvidencePaths).toEqual([...correctionPaths].sort());
         await commitP911ToolingDescendant(fixture);
         const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
         const installed = await productionStudioCandidate(environment, fixture.repository);
@@ -85,11 +106,17 @@ it("retains the authenticated installed candidate across the complete gate-test 
         await fs.writeFile(fixture.handoff.browserDriver.path, "changed external driver");
         await expect(productionStudioCandidate(environment, fixture.repository)).rejects.toThrow("authenticated controller browser driver required");
         await fs.writeFile(fixture.handoff.browserDriver.path, driver);
-        await fs.mkdir(path.join(fixture.repository, "cli/studio-client/src"), {recursive: true});
-        await fs.writeFile(path.join(fixture.repository, "cli/studio-client/src/changed.ts"), "// Product input must remain protected.\n");
-        execFileSync("git", ["add", "."], {cwd: fixture.repository});
-        execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "fixture changed product"], {cwd: fixture.repository});
-        await expect(productionStudioCandidate(environment, fixture.repository)).rejects.toThrow("product/build inputs changed; affected proofs must be rerun");
+        const protectedBase = execFileSync("git", ["rev-parse", "HEAD"], {cwd: fixture.repository, encoding: "utf8"}).trim();
+        for (const file of ["cli/studio-client/src/changed.ts", "tsconfig.prod.json", "tests/cli/studio-client/src/unnamed.test.tsx"]) {
+            await fs.mkdir(path.dirname(path.join(fixture.repository, file)), {recursive: true});
+            await fs.writeFile(path.join(fixture.repository, file), "// Product, build and unnamed paths remain protected.\n");
+            const changedId = commitFixture();
+            await expect(productionStudioCandidate(environment, fixture.repository)).rejects.toThrow("product/build inputs changed; affected proofs must be rerun");
+            expect(() => authenticateP805ProductTree(protectedBase, changedId, fixture.repository)).toThrow("new blind retests are required");
+            await fs.rm(path.join(fixture.repository, file));
+            commitFixture();
+        }
+        await expect(productionStudioCandidate(environment, fixture.repository)).resolves.toEqual(installed);
     } finally {
         await fs.rm(root, {recursive: true, force: true});
     }
@@ -102,9 +129,13 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
     const remaining = () => Math.max(1, Math.min(30_000, overallDeadline - Date.now()));
     // These exact assets are served by the production CLI. No fallback to mocked or source UI.
     const candidate = await productionStudioCandidate(process.env, repository);
-    // Managed projects reject destinations beneath node_modules. Keep all owned fixture state
+    // Managed projects reject destinations beneath node_modules. Keep their fixture
     // in this worktree, outside the npm wrapper's TMPDIR, and remove it in finally.
     const root = await fs.mkdtemp(path.join(repository, ".p908-producer-"));
+    // The standalone CLI snapshots its checkout as the host runtime. Keep its
+    // temporary snapshots under the existing excluded node_modules boundary,
+    // outside the managed-project fixture it would otherwise copy into itself.
+    const cache = await fs.mkdtemp(path.join(repository, "node_modules/.cache/pokie-tmp/p908-runtime-"));
     let studio: ChildProcess | undefined;
     let browser: ChildProcess | undefined;
     let devtools: Devtools | undefined;
@@ -115,8 +146,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
         const documents = path.join(root, "documents");
         const workspace = path.join(root, "workspace");
         const profile = path.join(root, "browser-profile");
-        const cache = path.join(root, "runtime-cache");
-        for (const directory of [documents, workspace, profile, cache]) await fs.mkdir(directory);
+        for (const directory of [documents, workspace, profile]) await fs.mkdir(directory);
         // The production child gets the same caller context under npm and direct Jest launches.
         const studioEnvironment = {...process.env};
         for (const key of Object.keys(studioEnvironment)) {
@@ -280,7 +310,11 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
                 try {
                     await stop(studio);
                 } finally {
-                    await fs.rm(root, {recursive: true, force: true});
+                    try {
+                        await fs.rm(root, {recursive: true, force: true});
+                    } finally {
+                        await fs.rm(cache, {recursive: true, force: true});
+                    }
                 }
             }
         }

@@ -57,6 +57,8 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     // V2C-32 teardown correction, independently named from both candidate readers.
     "tests/v2/PublicDocsSite.test.ts",
     "tests/v2/helpers/PublicDocsBrowser.ts",
+    // V2C-34 retained installed receipt, independently named from both readers.
+    "docs/v2-completion/V2C-34.md",
 ];
 const commit = (repository, message) => {
     execFileSync("git", ["add", "."], {cwd:repository});

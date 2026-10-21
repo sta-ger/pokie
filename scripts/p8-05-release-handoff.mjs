@@ -39,6 +39,9 @@ const tooling = new Set([
     // V2C-32 bounded docs-test teardown repair; site/product inputs stay protected.
     "tests/v2/PublicDocsSite.test.ts",
     "tests/v2/helpers/PublicDocsBrowser.ts",
+    // V2C-34 retained installed recheck and bounded Producer fixture correction.
+    "docs/v2-completion/V2C-34.md",
+    "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
 ]);
 const evidence = (file) => file.startsWith("docs/evidence/p8-05-product-readiness/");
 const excluded = (file) => tooling.has(file) || evidence(file);
