@@ -14,6 +14,7 @@ import {SeededRandomNumberGenerator} from "../../src/session/videoslot/combinati
 import {VideoSlotWithFreeGamesSession} from "../../src/session/videoslot/VideoSlotWithFreeGamesSession.js";
 import {VideoSlotSession} from "../../src/session/videoslot/VideoSlotSession.js";
 import {SymbolsCombination} from "../../src/session/videoslot/combinations/SymbolsCombination.js";
+import {ProjectTargetResolver} from "../../src/project/ProjectTargetResolver.js";
 import {ProjectOptimizationService} from "../../src/optimization/ProjectOptimizationService.js";
 import type {OptimizationRequest, OptimizationResult} from "../../src/optimization/OptimizationPolicy.js";
 import {OptimizeCommand} from "../../cli/commands/OptimizeCommand.js";
@@ -336,7 +337,8 @@ describe("V2C-35 retained exact-finite request through public consumers", () => 
         const optimizer = new ProjectOptimizationService(path.join(directory, "scratch"));
         const controller = new AbortController();
         controller.abort();
-        const project = {type: "blueprint" as const, rootPath: source};
+        const project = await new ProjectTargetResolver().resolve(source, {readConfigurationProvenance: false});
+        if (!project) throw new Error("Expected resolved Blueprint");
         expect((await optimizer.optimize(project, optimizationRequest(), {signal: controller.signal})).status).toBe("cancelled");
         const invalid = optimizationRequest();
         invalid.policy.tunables[0].path = "/unknown";
