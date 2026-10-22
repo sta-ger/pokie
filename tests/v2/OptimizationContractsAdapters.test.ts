@@ -1257,7 +1257,7 @@ it.each(["blueprint", "parWorkbook", "wasm", "tsPackage"] as const)("V35 optimiz
     expect(events).toContainEqual({stage: "Enumerating reel stops", current: "4", total: "4", unit: "raw draws"});
     expect(events).toContainEqual({stage: "Materializing outcomes", current: "0", unit: "outcomes"});
     expect(events).toContainEqual({stage: "Materializing outcomes", current: "1", unit: "outcomes"});
-    expect(events.at(-1)).toEqual({stage: "Materializing outcomes", current: "2", total: "2", unit: "outcomes"});
+    expect(events[events.length - 1]).toEqual({stage: "Materializing outcomes", current: "2", total: "2", unit: "outcomes"});
     if (type === "wasm") expect(events).toContainEqual({stage: "Verifying executable", current: "4", total: "4", unit: "checks"});
     await expect(measure(work => {
         if (work.stage === "Materializing outcomes" && work.current === "1") throw new Error("observer rejected after executed work");
