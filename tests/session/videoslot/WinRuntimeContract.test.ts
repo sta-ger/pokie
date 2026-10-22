@@ -1,3 +1,4 @@
+import {SharedSlotMathPool} from "../../../src/wasm/math/internal/SharedSlotMathPool.js";
 import {evaluatorValidationCases} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {
     WinEvaluationPipeline, WinEvaluationContext, ValueWinComponent,
@@ -64,6 +65,32 @@ describe("shared calculator configuration authority", () => {
         const create = (declared = model): VideoSlotWinCalculator => new VideoSlotWinCalculator(config, undefined, undefined, undefined, undefined, undefined, {...options, sharedMathModel: declared});
         return {config, model, create};
     }
+
+    test("requires a concrete pool owner and preserves shared-model validation before pooled execution", () => {
+        class DerivedPool extends SharedSlotMathPool {}
+        const callback = jest.fn(() => {
+            throw new Error("Unvalidated math factory executed");
+        });
+        const altered = new SharedSlotMathPool();
+        altered.create = callback;
+        for (const pool of [null, {create: callback}, new DerivedPool(), altered]) {
+            const {create} = fixture({type: "lines"}, {sharedMathPool: pool as SharedSlotMathPool});
+            expect(() => create()).toThrow(/sharedMathPool/);
+        }
+        expect(callback).not.toHaveBeenCalled();
+        const pool = new SharedSlotMathPool();
+        try {
+            const {config, model, create} = fixture({type: "lines"}, {sharedMathPool: pool});
+            expect(() => new VideoSlotWinCalculator(config, undefined, undefined, undefined, undefined, undefined,
+                {sharedMathPool: pool})).toThrow(/sharedMathPool/);
+            expect(() => create({...model, paytable: {A: {3: 99}}})).toThrow(/does not match/);
+            const calculator = create();
+            calculator.calculateWin(0.05, new SymbolsCombination().fromMatrix([["A"], ["A"], ["A"]]));
+            expect(calculator.getWinAmount()).toBe(0.1);
+        } finally {
+            pool.dispose();
+        }
+    });
 
     test.each(["lines", "ways", "clusters"] as const)("%s executes current public payouts, including exact bet-specific amounts and replacement configs", type => {
         const {config, create} = fixture({type, ...(type === "clusters" ? {minimumClusterSize: 3} : {})});

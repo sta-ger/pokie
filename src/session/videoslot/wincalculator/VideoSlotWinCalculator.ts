@@ -47,7 +47,7 @@ import {WinEvaluationPipeline} from "../winevaluation/WinEvaluationPipeline.js";
 import {WinEvaluationResult} from "../winevaluation/WinEvaluationResult.js";
 import {WinEvaluator} from "../winevaluation/WinEvaluator.js";
 import {VideoSlotWinCalculatorOptions} from "./VideoSlotWinCalculatorOptions.js";
-import type {OwnedSharedSlotMath} from "../../../wasm/math/internal/SharedSlotMathPool.js";
+import {SharedSlotMathPool, type OwnedSharedSlotMath} from "../../../wasm/math/internal/SharedSlotMathPool.js";
 
 export class VideoSlotWinCalculator<T extends string | number | symbol = string> implements VideoSlotWinCalculating<T> {
     private readonly sharedMath?: OwnedSharedSlotMath;
@@ -84,6 +84,11 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
         this.valueWinCalculator = valueWinCalculator;
         this.waysWinCalculator = waysWinCalculator;
         this.options = {...options};
+        const pool = options.sharedMathPool;
+        if (pool !== undefined && (!options.sharedMathModel || !(pool instanceof SharedSlotMathPool) ||
+            pool.constructor !== SharedSlotMathPool || pool.create !== SharedSlotMathPool.prototype.create)) {
+            throw new Error("sharedMathPool requires a concrete SharedSlotMathPool and sharedMathModel; custom math factories cannot be lowered.");
+        }
         if (options.sharedMathModel) {
             if (!(conf instanceof VideoSlotConfig || conf instanceof VideoSlotWithFreeGamesConfig) || !conf.isResolvedForSessionRestoration() || !(lineWinCalculator instanceof LineWinCalculator) || lineWinCalculator.constructor !== LineWinCalculator || !lineWinCalculator.usesConfig(conf) || !(scatterWinCalculator instanceof ScatterWinCalculator) || scatterWinCalculator.constructor !== ScatterWinCalculator || !scatterWinCalculator.usesConfig(conf) || clusterWinCalculator || waysWinCalculator || valueWinCalculator || options.aggregationPolicy || options.multiplierResolver) {
                 throw new Error("Shared math cannot lower custom evaluators or aggregation policies.");

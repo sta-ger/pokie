@@ -129,6 +129,15 @@ describe("V2C-35 exact optimizer Wasm ownership", () => {
 
 
 describe("V2C-35 shared scratch authority and recovery", () => {
+    it("rejects an injected math factory at the authored-session public boundary before executing it", () => {
+        const create = jest.fn(() => {
+            throw new Error("Injected factory executed");
+        });
+        expect(() => createAuthoredSession(optimizationBlueprint(), new SeededRandomNumberGenerator(1), undefined,
+            {create} as unknown as SharedSlotMathPool)).toThrow(/sharedMathPool/);
+        expect(create).not.toHaveBeenCalled();
+    });
+
     it("keeps absent and authored zero paytable maps enumerable without inventing awards", () => {
         const table = new Paytable<string>([0.05]);
         expect(table.getAvailableSymbolsForBet(7.5)).toEqual([]);
@@ -340,6 +349,7 @@ describe("V2C-35 retained exact-finite request through public consumers", () => 
         try {
             const terminal = await start(request);
             expect(terminal).toMatchObject({status: "completed", result: {detail: {status: "infeasible", diagnostics: [], evidence: {evaluated: 3, consumedWork: 3, exhaustive: true}}}});
+            console.info("V2C-35 retained request completed: infeasible; all 3 candidates evaluated without OOM.");
             expect(fs.readFileSync(source)).toEqual(fixture);
             const result = terminal.result!.detail as unknown as OptimizationResult;
             const measured = result.evidence!.evaluations![0].measured![0];
@@ -348,7 +358,8 @@ describe("V2C-35 retained exact-finite request through public consumers", () => 
             corrected.targets[0].value = measured;
             corrected.targets[0].tolerance = {kind: "absolute", value: 0};
             const selected = await start(corrected);
-            expect(selected).toMatchObject({status: "completed", result: {detail: {status: "success", evidence: {evaluated: 1, measured: [measured]}}}});
+            expect(selected).toMatchObject({status: "completed", result: {detail: {status: "success", evidence: {evaluated: 1, measured: [measured], selected: {"/paytable/A/3": 1}}}}});
+            console.info("V2C-35 corrected explicit retry completed: success; candidate /paytable/A/3 = 1.");
             expect(fs.readFileSync(source)).toEqual(fixture);
             const body = {expectedProjectRoot: source, request: corrected, jobId: selected.id};
             expect((await service.handle("POST", "apply", {...body, request}, context)).status).toBe(409);
@@ -357,11 +368,13 @@ describe("V2C-35 retained exact-finite request through public consumers", () => 
             expect(JSON.parse(fs.readFileSync(source, "utf8")).paytable.A[3]).toBe(1);
             expect(new FileStudioJobRepository(path.join(directory, "jobs")).get(selected.id)!.result).toMatchObject({provenance: {authoredApply: {path: source}}});
             expect((await service.handle("POST", "apply", body, context)).status).toBe(409);
-            expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+            console.info("V2C-35 reviewed Apply persisted /paytable/A/3 = 1 and its durable marker; repeat Apply rejected.");
         } finally {
             await service.shutdown();
         }
-    }, 600000);
+        expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+        console.info("V2C-35 shutdown released the retained candidate workspace.");
+    }, 1200000);
 
     it("keeps CLI exact results, cancellation and a corrected explicit retry reusable", async () => {
         const source = path.join(directory, "source.blueprint.json");
