@@ -57,6 +57,23 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     // V2C-32 teardown correction, independently named from both candidate readers.
     "tests/v2/PublicDocsSite.test.ts",
     "tests/v2/helpers/PublicDocsBrowser.ts",
+    // V2C-34 retained installed receipt, independently named from both readers.
+    "docs/v2-completion/V2C-34.md",
+    // V2C-34 bounded timeout regressions; sibling tests and product/build inputs stay protected.
+    "tests/cli/studio/AdvancedModelValidationRoutes.test.ts",
+    "tests/cli/studio/simulation/StudioSimulationService.test.ts",
+    // Complete V2C-34 saved gate delta, independently named from the readers.
+    "tests/cli/PC17CliStudioParity.integration.test.ts",
+    "tests/cli/StudioFullWorkflow.integration.test.ts",
+    "tests/cli/studio/StudioServerParWorkbook.integration.test.ts",
+    // V2C-34 saved two-file gate correction; no product/build or sibling-test exemption.
+    "tests/cli/commands/BuildCommand.test.ts",
+    "tests/cli/studio/StudioServer.test.ts",
+    // V2C-34 saved mechanics gate correction; only this named test is admitted.
+    "tests/v2/ExistingMechanicsAuthoring.test.ts",
+    // V2C-34 retained interoperability and Replay route gate correction only.
+    "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
+    "tests/cli/studio/StudioJobRoutes.integration.test.ts",
 ];
 const commit = (repository, message) => {
     execFileSync("git", ["add", "."], {cwd:repository});

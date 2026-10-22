@@ -1,4 +1,5 @@
 import {cleanup, screen, waitFor, within} from "@testing-library/react";
+import {configure, getConfig} from "@testing-library/dom";
 import userEvent from "@testing-library/user-event";
 import {createLocalJsonExternalDeploymentTarget, STUDIO_OPERATION} from "@fromstan/pokie";
 import fs from "fs";
@@ -16,6 +17,9 @@ import {FileStudioProjectRegistry} from "../../../../cli/studio/FileStudioProjec
 import {StudioProjectRegistrationService} from "../../../../cli/studio/StudioProjectRegistrationService.js";
 import {createStudioGameLoader} from "../../../../cli/studio/loadStudioGame.js";
 import {StudioServer} from "../../../../cli/studio/StudioServer.js";
+import {FileStudioJobRepository} from "../../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../../v2/fixtures/PackageExtractionFixture.js";
 import type {FetchLike} from "../../../../cli/studio-client/src/api/apiClient.js";
 import {
     ArtifactInteroperabilityRun,
@@ -25,6 +29,10 @@ import {
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 
 const POKIE_VERSION = "1.3.0";
+// ProjectTargetResolver reads/releases provenance through one runtime load;
+// Play then acquires its own executable session through a second load.
+const PLAY_SESSION_TIMEOUT = 2 * PACKAGE_EXTRACTION_TEST_TIMEOUT;
+const WORKFLOW_TIMEOUT = 15 * PACKAGE_EXTRACTION_TEST_TIMEOUT;
 
 function writeStudioAssets(root: string): void {
     fs.writeFileSync(path.join(root, "index.html"), "<html>Studio</html>");
@@ -32,13 +40,18 @@ function writeStudioAssets(root: string): void {
     fs.writeFileSync(path.join(root, "style.css"), "");
 }
 
-function createServerFetch(baseUrl: string): FetchLike {
+function createServerFetch(baseUrl: string, observe?: (url: string, status: number, body: unknown) => void): FetchLike {
     return (url, init) => new Promise((resolve, reject) => {
+        const startedAt = performance.now();
+        const mutation = init?.method === "POST";
+        if (mutation) console.info(`PC-14 HTTP started: POST ${url}`);
         const request = http.request(`${baseUrl}${url}`, {method: init?.method, headers: init?.headers}, (response) => {
             const chunks: Buffer[] = [];
             response.on("data", (chunk: Buffer) => chunks.push(chunk));
             response.on("end", () => {
                 const body = Buffer.concat(chunks).toString("utf8");
+                observe?.(url, response.statusCode ?? 500, JSON.parse(body));
+                if (mutation) console.info(`PC-14 HTTP completed: POST ${url} status=${response.statusCode} elapsedMs=${Math.round(performance.now() - startedAt)}`);
                 resolve({
                     ok: (response.statusCode ?? 500) >= 200 && (response.statusCode ?? 500) < 300,
                     status: response.statusCode ?? 500,
@@ -52,6 +65,8 @@ function createServerFetch(baseUrl: string): FetchLike {
 }
 
 describe("PC-14 Studio UI real-artifact interoperability", () => {
+    let restoreTemporaryDirectory: () => void;
+    let originalAsyncTimeout: number;
     let studioRoot: string;
     let workDir: string;
     let blueprintPath: string;
@@ -59,13 +74,31 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
     let outcomeLibraryPath: string;
     let server: StudioServer;
     let fetchImpl: FetchLike;
+    let playSessionRequested: boolean;
+    let playSessionResponse: {status: number; body: unknown} | undefined;
     let restoreRunnerClock: () => void;
     let packageServerStopped = false;
     const additionalServers: StudioServer[] = [];
 
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        originalAsyncTimeout = getConfig().asyncUtilTimeout;
+        // Publication, Play, model extraction and report preparation acquire real
+        // package/dependency snapshots. Keep each result assertion bounded while
+        // allowing that work to finish; the entire journey still has its own cap.
+        configure({asyncUtilTimeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
+    });
+
+    afterAll(() => {
+        configure({asyncUtilTimeout: originalAsyncTimeout});
+        restoreTemporaryDirectory();
+    });
+
     beforeEach(async () => {
         restoreRunnerClock = installPc14FixedRunnerClock();
         packageServerStopped = false;
+        playSessionRequested = false;
+        playSessionResponse = undefined;
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc14-ui-assets-"));
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc14-ui-artifacts-"));
         writeStudioAssets(studioRoot);
@@ -84,6 +117,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             pokieVersion: POKIE_VERSION, host: "127.0.0.1", port: 0, studioRoot,
             homeService: home,
             blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, home),
+            jobService: new StudioJobService(new FileStudioJobRepository(path.join(workDir, "package-jobs"))),
             loadGame: createStudioGameLoader(process.cwd()),
             resolveRuntimePackageRoot: passthroughRuntimePackageResolver,
             deploymentService: new StudioDeploymentService(
@@ -99,7 +133,13 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             initialContext: {mode: "project", projectRoot: packagePath},
         });
         const address = await server.start();
-        fetchImpl = createServerFetch(`http://${address.host}:${address.port}`);
+        const serverFetch = createServerFetch(`http://${address.host}:${address.port}`, (url, status, body) => {
+            if (url === "/api/project/play/session") playSessionResponse = {status, body};
+        });
+        fetchImpl = (url, init) => {
+            if (url === "/api/project/play/session") playSessionRequested = true;
+            return serverFetch(url, init);
+        };
     });
 
     afterEach(async () => {
@@ -109,18 +149,25 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         fs.rmSync(studioRoot, {recursive: true, force: true});
         fs.rmSync(workDir, {recursive: true, force: true});
         restoreRunnerClock();
-    });
+    }, PLAY_SESSION_TIMEOUT);
 
     // This is intentionally one end-to-end product journey over real generated artifacts (including
     // build, publication, simulation, replay, proof, certification, and PAR I/O). Its budget must cover
-    // that real work on a loaded CI worker; the suite-wide 120s unit-test default is not a correctness
-    // deadline for this deliberately broad integration gate.
+    // that real work across three project contexts on a loaded CI worker. Each
+    // result wait is bounded separately; the whole journey includes all of them.
     it("drives real rendered output workflows over a produced package", async () => {
         const user = userEvent.setup();
         const evidence = new ArtifactInteroperabilityRun(workDir);
+        // Runtime preparation is a separate asynchronous HTTP boundary from rendering.
+        // Keep its real response in any failure instead of only a truncated DOM dump.
+        await waitFor(async () => {
+            const context = await fetchImpl("/api/project/context");
+            expect(context.status).toBe(200);
+            expect(await context.json()).toMatchObject({status: "loaded", projectRoot: packagePath, game: {name: "UI Route Slot"}});
+        }, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000});
         const packageApp = renderRoutedApp({fetchImpl, initialEntries: [`/project/${encodeURIComponent(packagePath)}/overview`]});
 
-        await screen.findByRole("heading", {name: "UI Route Slot"});
+        await screen.findByRole("heading", {name: "UI Route Slot"}, {timeout: 30000});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         const buildSection = await screen.findByText("Build artifact");
         expect(buildSection.closest("fieldset")).not.toBeNull();
@@ -147,6 +194,14 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.click(screen.getByRole("button", {name: "Play"}));
         await screen.findByRole("button", {name: "New Play session"});
         await user.click(screen.getByRole("button", {name: "New Play session"}));
+        expect(playSessionRequested).toBe(true);
+        // Session creation reads provenance, releases that snapshot, then loads
+        // the isolated session runtime. Budget both real runtime phases,
+        // then check the real response before waiting for its rendered controls.
+        // A failed session must expose its diagnostic here, not time out as a
+        // missing Spin button. This observer does not issue another request.
+        await waitFor(() => expect(playSessionResponse).toBeDefined(), {timeout: PLAY_SESSION_TIMEOUT});
+        expect(playSessionResponse).toMatchObject({status: 201, body: {status: "ok", session: {sessionId: expect.any(String)}}});
         await screen.findByRole("button", {name: "Spin"});
 
         // Exercise an actual unsupported runtime action before the successful
@@ -154,14 +209,15 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // retain that product diagnostic while keeping the real session
         // usable for the next action.
         await user.click(screen.getByRole("button", {name: "Find free games"}));
-        const unsupportedScenario = await screen.findByRole("alert");
+        const unsupportedScenario = await screen.findByRole("alert", {}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
         expect(unsupportedScenario).not.toBeEmptyDOMElement();
 
         // An ordinary Spin is a full user-visible product operation, not a
         // route-table assertion: it uses the package's real runtime and emits
         // the durable round artifact consumed by the Replay surface.
         await user.click(screen.getByRole("button", {name: "Spin"}));
-        await screen.findByText(/Round complete/i);
+        await screen.findByText(/^Round completed: 1 subrounds, 1 deliveries, stake 1, payout (0|3)$/, {}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
+        expect(screen.getByText(/^Round complete(?:$| —)/)).toBeVisible();
 
         await user.click(screen.getByRole("button", {name: "Simulation"}));
         const rounds = await screen.findByRole("textbox", {name: "Rounds"});
@@ -171,7 +227,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // Completion automatically opens Review, replacing the Run step's
         // transient "View results" control. Wait for the loaded summary's
         // stable action, then inspect the real report through its disclosure.
-        const openFullReport = await screen.findByRole("button", {name: "Open full report"}, {timeout: 30000});
+        const openFullReport = await screen.findByRole("button", {name: "Open full report"}, {timeout: 4 * PACKAGE_EXTRACTION_TEST_TIMEOUT});
         expect(screen.getByRole("button", {name: /Review See results/})).toHaveAttribute("aria-current", "step");
         expect(screen.getAllByRole("cell", {name: /%/}).length).toBeGreaterThan(0);
         await user.click(openFullReport);
@@ -223,18 +279,22 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             pokieVersion: POKIE_VERSION, host: "127.0.0.1", port: 0, studioRoot,
             homeService: outcomeLibraryHome,
             blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, outcomeLibraryHome),
+            jobService: new StudioJobService(new FileStudioJobRepository(path.join(workDir, "outcome-jobs"))),
             loadGame: createStudioGameLoader(process.cwd()),
             resolveRuntimePackageRoot: passthroughRuntimePackageResolver,
             initialContext: {mode: "project", projectRoot: outcomeLibraryPath},
         });
         additionalServers.push(outcomeLibraryServer);
         const outcomeLibraryAddress = await outcomeLibraryServer.start();
-        const outcomeLibraryFetch = createServerFetch(`http://${outcomeLibraryAddress.host}:${outcomeLibraryAddress.port}`);
+        let certificationResponse: {status: number; body: unknown} | undefined;
+        const outcomeLibraryFetch = createServerFetch(`http://${outcomeLibraryAddress.host}:${outcomeLibraryAddress.port}`, (url, status, body) => {
+            if (url === "/api/project/certification/build") certificationResponse = {status, body};
+        });
         const outcomeLibraryApp = renderRoutedApp({fetchImpl: outcomeLibraryFetch, initialEntries: [`/project/${encodeURIComponent(outcomeLibraryPath)}/overview`]});
 
         await screen.findByRole("heading", {name: "Outcome Source"});
         await user.type(screen.getByRole("textbox", {name: "Seed (optional)"}), "pc14-outcome-source-seed");
-        await user.click(screen.getByRole("button", {name: "Draw an outcome"}));
+        await user.click(screen.getByRole("button", {name: "Draw an outcome (base)"}));
         await screen.findByText(/Drew outcome/);
 
         await user.click(screen.getByRole("button", {name: "Certification"}));
@@ -257,12 +317,29 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.click(screen.getByRole("button", {name: "Continue to Build bundle"}));
         await user.clear(screen.getByRole("textbox", {name: "Output directory"}));
         await user.type(screen.getByRole("textbox", {name: "Output directory"}), "certification");
+        const certificationSourceBytes = new Map(["manifest.json", "index_base.json", "outcomes_base.jsonl"].map(file => [file, fs.readFileSync(path.join(outcomeLibraryPath, file))] as const));
         await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
+        // The source is this opened bundle itself. A nested output would mutate
+        // its evidence inputs; retain that rejection before choosing a new sibling.
+        await waitFor(() => expect(certificationResponse).toMatchObject({status: 200, body: {status: "load-error", error: expect.stringContaining("source/output overlap")}}));
+        await screen.findByText("The certification bundle directory could not be completed. Try again. If it continues, choose the location again and retry.");
+        expect(fs.existsSync(path.join(outcomeLibraryPath, "certification"))).toBe(false);
+        for (const [file, bytes] of certificationSourceBytes) expect(fs.readFileSync(path.join(outcomeLibraryPath, file))).toEqual(bytes);
+        const certificationOutput = path.join(workDir, "studio-ui-certification");
+        const certificationDestination = screen.getByRole("textbox", {name: "Output directory"});
+        await user.clear(certificationDestination);
+        await user.type(certificationDestination, certificationOutput);
+        const buildCertification = screen.getByRole("button", {name: "Build certification bundle"});
+        await waitFor(() => expect(buildCertification).toBeEnabled());
+        await user.click(buildCertification);
+        await waitFor(() => expect(certificationResponse).toMatchObject({status: 200, body: {status: "ok", manifest: {game: {id: "ui-route-slot"}}}}));
         await screen.findByText("Continue to Inspect");
         await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
         await screen.findByText("Per-mode evidence");
         await user.click(screen.getByRole("button", {name: "Continue to Export"}));
         await screen.findByText("Output directory");
+        expect(JSON.parse(fs.readFileSync(path.join(certificationOutput, "manifest.json"), "utf8"))).toMatchObject({game: {id: "ui-route-slot"}});
+        for (const [file, bytes] of certificationSourceBytes) expect(fs.readFileSync(path.join(outcomeLibraryPath, file))).toEqual(bytes);
 
         // Build/Export is also the retained Studio route for Stake.  Drive
         // the rendered card through a failed occupied destination and then a
@@ -289,7 +366,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.type(stakeDestination, stakePath);
         await waitFor(() => expect(stake.getByRole("button", {name: "Build"})).toBeEnabled());
         await user.click(stake.getByRole("button", {name: "Build"}));
-        await screen.findByText(new RegExp(`Built to ${stakePath.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}`), {}, {timeout: 30000});
+        await screen.findByText(new RegExp(`Built to ${stakePath.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}`), {}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
         expect(fs.existsSync(path.join(stakePath, "pokie-manifest.json"))).toBe(true);
 
         evidence.recordScenario({
@@ -312,13 +389,14 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         evidence.recordScenario({
             id: "studio-ui-certification-output-error-recovery",
             sourcePath: outcomeLibraryPath,
-            producedPath: path.join(outcomeLibraryPath, "certification"),
+            producedPath: certificationOutput,
             result: "the rendered Certification workflow rejected a missing source, recovered with the opened Outcome Library, and published inspectable certification evidence",
             surface: "studio-ui",
             owner: "CertificationTab",
             systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
             assertions: [
                 "Certification rendered the missing-source diagnostic before any evidence publication",
+                "a nested evidence output was rejected before a disjoint destination published successfully, preserving source bytes",
                 "correcting the source to the opened native library enabled validation, evidence publication, inspection, and export",
             ],
             observations: [
@@ -474,6 +552,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             homeService: designHome,
             projectRegistrationService: designRegistration,
             blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, designHome),
+            jobService: new StudioJobService(new FileStudioJobRepository(path.join(workDir, "design-jobs"))),
             loadGame: designLoader,
             resolveRuntimePackageRoot: designRuntimeResolver,
             initialContext: {mode: "home"},
@@ -503,7 +582,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // identity; artifact publication belongs to its workspace.
         await waitFor(() => expect(screen.getByRole("button", {name: "Save game"})).toBeEnabled());
         await user.click(screen.getByRole("button", {name: "Save game"}));
-        await screen.findByRole("heading", {name: "PC-14 Edited Studio Blueprint"}, {timeout: 30000});
+        await screen.findByRole("heading", {name: "PC-14 Edited Studio Blueprint"}, {timeout: PLAY_SESSION_TIMEOUT});
         expect(designApp.router.state.location.pathname).toBe(`/project/${encodeURIComponent(savedBlueprintPath)}/overview`);
         expect(JSON.parse(fs.readFileSync(designRegistryPath, "utf8"))).toEqual(expect.arrayContaining([
             expect.objectContaining({location: savedBlueprintPath, type: "blueprint"}),
@@ -528,7 +607,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.type(parExportInput, exportedParPath);
         await waitFor(() => expect(par.getByRole("button", {name: "Build"})).toBeEnabled());
         await user.click(par.getByRole("button", {name: "Build"}));
-        await par.findByText(`Built to ${exportedParPath}.`, {}, {timeout: 30000});
+        await par.findByText(`Built to ${exportedParPath}.`, {}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
         expect(fs.existsSync(exportedParPath)).toBe(true);
         expect(fs.readFileSync(exportedParPath).subarray(0, 2).toString()).toBe("PK");
         expect(fs.readFileSync(occupiedParPath, "utf8")).toBe("caller-owned PAR destination");
@@ -660,5 +739,5 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
                 emittedPath,
             ], persistedResultPath);
         }
-    }, 300000);
+    }, WORKFLOW_TIMEOUT);
 });

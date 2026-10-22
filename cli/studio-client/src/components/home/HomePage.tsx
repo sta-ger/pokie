@@ -1,4 +1,4 @@
-import {Alert, Stack, Text, Title} from "@mantine/core";
+import {Alert, Button, Stack, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
 import {useLocation, useNavigate, useParams} from "react-router-dom";
@@ -114,6 +114,12 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
     // Home does not have a current project identity.  The server therefore returns only Design and
     // project-opening records here, including retained terminal records after a reload.
     const homeJobs = useHomeSourceJobs(fetchImpl);
+    const reopenProject = (sourcePath: string): void => {
+        setRecoveryOpeningError(undefined);
+        openAndNavigate(sourcePath).catch((error: unknown) => {
+            setRecoveryOpeningError(`Couldn't reopen the retained project "${sourcePath}". ${errorMessage(error)} Retry if the source is available, or use Projects to Relocate it to its current location or add the game again.`);
+        });
+    };
     useEffect(() => {
         let cancelled = false;
         checkNativePickerAvailability(fetchImpl)
@@ -132,11 +138,7 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
         // owning workflow with its captured source so the user can inspect
         // the reconstructed operation and explicitly submit it again.
         if (job.operation === "project-open-materialization" && typeof job.request.sourcePath === "string") {
-            const sourcePath = job.request.sourcePath;
-            setRecoveryOpeningError(undefined);
-            openAndNavigate(sourcePath).catch((error: unknown) => {
-                setRecoveryOpeningError(`Couldn't reopen the retained project. ${errorMessage(error)} Retry this job to reopen "${sourcePath}".`);
-            });
+            reopenProject(job.request.sourcePath);
             return;
         }
         if (job.operation === "design-par-import" && typeof job.request.path === "string") {
@@ -160,15 +162,21 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
             {recoveryOpeningError !== undefined && <Alert role="alert" color="red">{recoveryOpeningError}</Alert>}
             {homeJobs.jobs.map((job) =>
                 <JobCard key={job.id} job={job} cancellationPending={homeJobs.pendingIds.includes(job.id)} onCancel={homeJobs.cancel} onRecover={homeJobs.recover} onRecoveryAction={handleHomeRecoveryAction} onOpenOutput={(outputPath) => {
+                    if (job.operation === "project-open-materialization") {
+                        reopenProject(outputPath);
+                        return;
+                    }
                     openOutputFolder(fetchImpl, outputPath).then((result) => {
                         setJobOutputNotice(describeJobOutputAction(result, "Opened job output."));
                     }).catch(() => setJobOutputNotice("Couldn't open the job output."));
-                }} onRevealOutput={(outputPath) => {
+                }} onRevealOutput={job.operation === "project-open-materialization" && jobOutputActionsUnavailableReason !== undefined ? undefined : (outputPath) => {
                     revealOutputPath(fetchImpl, outputPath).then((result) => {
                         setJobOutputNotice(describeJobOutputAction(result, "Revealed job output."));
                     }).catch(() => setJobOutputNotice("Couldn't reveal the job output."));
-                }} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} />,
+                }} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason} />,
             )}
+            {(recoveryOpeningError !== undefined || homeJobs.jobs.some((job) => job.result?.outputs?.some((output) => output.unavailableReason !== undefined))) &&
+                <Button variant="default" onClick={() => navigate("/home/projects")}>Find retained project in Projects</Button>}
             {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
         </Stack>
     );

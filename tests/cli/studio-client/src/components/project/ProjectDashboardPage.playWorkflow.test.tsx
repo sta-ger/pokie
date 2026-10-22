@@ -312,7 +312,11 @@ describe("ProjectDashboardPage - Play", () => {
 
         await waitFor(() => expect(calls.some((call) => call.url === "/api/project/play/sessions/sess-1/spin")).toBe(true));
         const spinCall = calls.find((call) => call.url === "/api/project/play/sessions/sess-1/spin");
-        expect(spinCall?.init?.body).toBe(JSON.stringify({bet: 5, mode: "buyFeature"}));
+        expect(JSON.parse(spinCall?.init?.body ?? "{}")).toEqual({
+            requestId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),
+            bet: 5,
+            mode: "buyFeature",
+        });
     }, 30000);
 
     it("Reset discards the current session and creates a fresh one, clearing the previous round", async () => {

@@ -1,3 +1,4 @@
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../../v2/fixtures/PackageExtractionFixture.js";
 import {existingMechanicsBlueprint, generatedMechanicsGame, replayModesBlueprint} from "../../../v2/fixtures/ExistingMechanicsGame.js";
 import {emitPublicRuntime} from "../../../v2/helpers/publicRuntime.js";
 import ts from "typescript";
@@ -248,11 +249,11 @@ function flushMacrotask(): Promise<void> {
     });
 }
 
-async function waitForTerminal(service: StudioSimulationService, id: string): Promise<StudioSimulationJobView> {
+async function waitForTerminal(service: StudioSimulationService, id: string, timeout = 30_000): Promise<StudioSimulationJobView> {
     // PAR recognition performs real asynchronous ZIP/filesystem work. A fixed
     // number of setImmediate ticks can expire before that I/O runs on a busy
     // gate worker, leaving it to finish after Jest tears down this environment.
-    const deadline = Date.now() + 30_000;
+    const deadline = Date.now() + timeout;
     while (Date.now() < deadline) {
         const job = service.getStatus(id);
         if (job && job.status !== "queued" && job.status !== "running" && job.status !== "cancelling") {
@@ -1280,41 +1281,57 @@ describe("StudioSimulationService with a resolved, multi-mode native outcome-lib
 });
 
 describe("StudioSimulationService (integration, real loadPokieGame + fixture game packages)", () => {
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     it("produces a JSON-shaped SimulationReport for a real, plain fixture game (no breakdown)", async () => {
         const fixtureRoot = path.join(__dirname, "..", "..", "fixtures", "playable-game");
         const service = new StudioSimulationService(new InMemoryStudioSimulationRepository(), loadPokieGame, undefined, 200);
 
-        const result = service.start(fixtureRoot, {rounds: 500, seed: "demo"});
-        if (result.status !== "created") {
-            throw new Error("expected job to be created");
-        }
-        const job = await waitForTerminal(service, result.job.id);
+        try {
+            const result = service.start(fixtureRoot, {rounds: 500, seed: "demo"});
+            if (result.status !== "created") {
+                throw new Error("expected job to be created");
+            }
+            const job = await waitForTerminal(service, result.job.id, PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000);
 
-        expect(job.status).toBe("completed");
-        expect(job.report?.game).toEqual({id: "playable-game", name: "Playable Game", version: "1.0.0"});
-        expect(job.report?.rounds).toBe(500);
-        expect(job.report?.breakdown).toBeUndefined();
-        expect(JSON.parse(JSON.stringify(job)).report.game.id).toBe("playable-game");
-    });
+            expect(job.status).toBe("completed");
+            expect(job.report?.game).toEqual({id: "playable-game", name: "Playable Game", version: "1.0.0"});
+            expect(job.report?.rounds).toBe(500);
+            expect(job.report?.breakdown).toBeUndefined();
+            expect(JSON.parse(JSON.stringify(job)).report.game.id).toBe("playable-game");
+        } finally {
+            await service.cancelAll();
+        }
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("produces a base/freeGames breakdown for a real fixture game with a free-games feature, across chunks", async () => {
         const fixtureRoot = path.join(__dirname, "..", "..", "fixtures", "playable-game-with-free-games");
         const service = new StudioSimulationService(new InMemoryStudioSimulationRepository(), loadPokieGame, undefined, 300);
 
-        const result = service.start(fixtureRoot, {rounds: 3000, seed: "demo"});
-        if (result.status !== "created") {
-            throw new Error("expected job to be created");
-        }
-        const job = await waitForTerminal(service, result.job.id);
+        try {
+            const result = service.start(fixtureRoot, {rounds: 3000, seed: "demo"});
+            if (result.status !== "created") {
+                throw new Error("expected job to be created");
+            }
+            const job = await waitForTerminal(service, result.job.id, PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000);
 
-        expect(job.status).toBe("completed");
-        if (!job.report || isSimulationReportSet(job.report)) throw new Error("Expected single-mode report");
-        const {base, freeGames} = job.report.breakdown!.components;
-        expect(base.rounds).toBeGreaterThan(0);
-        expect(freeGames.rounds).toBeGreaterThan(0);
-        expect(base.rounds + freeGames.rounds).toBe(job.report!.sampling?.acceptedSubrounds ?? job.report!.rounds);
-        expect(job.report!.analytics?.subrounds).toBe(base.rounds + freeGames.rounds);
-    });
+            expect(job.status).toBe("completed");
+            if (!job.report || isSimulationReportSet(job.report)) throw new Error("Expected single-mode report");
+            const {base, freeGames} = job.report.breakdown!.components;
+            expect(base.rounds).toBeGreaterThan(0);
+            expect(freeGames.rounds).toBeGreaterThan(0);
+            expect(base.rounds + freeGames.rounds).toBe(job.report!.sampling?.acceptedSubrounds ?? job.report!.rounds);
+            expect(job.report!.analytics?.subrounds).toBe(base.rounds + freeGames.rounds);
+        } finally {
+            await service.cancelAll();
+        }
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 });
 
 
@@ -1619,7 +1636,7 @@ it("retains adaptive request identity, phase and completed report through reatta
         while (!gate.pendingCount()) await flushMacrotask();
         expect(service.getStatusForProject(directory, started.job.id)).toMatchObject({status: "running", roundsCompleted: 5, progress: {stage: "simulation", current: 5, total: 100}});
         const attached = service.start(directory, request);
-        expect(attached).toMatchObject({status: "created", job: {id: started.job.id}});
+        expect(attached).toMatchObject({status: "reattached", job: {id: started.job.id}});
         expect(service.start(directory, {...request, convergence: {...request.convergence!, rtpTolerance: 1}})).toEqual({status: "conflict", activeJobId: started.job.id});
         expect(jobs.get(directory, started.job.id)?.request.convergence).toEqual(request.convergence);
         gate.release();

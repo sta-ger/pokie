@@ -4,6 +4,9 @@ import path from "path";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
+import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
+import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
 
 async function get(url: string): Promise<{status: number; body: unknown}> {
     const response = await fetch(url);
@@ -11,9 +14,18 @@ async function get(url: string): Promise<{status: number; body: unknown}> {
 }
 
 describe("Studio PAR workbook source dispatch", () => {
+    let restoreTemporaryDirectory: () => void;
     let studioRoot: string;
     let workRoot: string;
     let server: StudioServer | undefined;
+
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
 
     beforeEach(() => {
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-par-dispatch-assets-"));
@@ -40,6 +52,7 @@ describe("Studio PAR workbook source dispatch", () => {
             studioRoot,
             homeService: home,
             blueprintService: new StudioBlueprintService("1.3.0", studioRoot, home),
+            jobService: new StudioJobService(new FileStudioJobRepository(path.join(workRoot, "jobs"))),
             initialContext: {mode: "project", projectRoot: workbookPath},
         });
         const address = await server.start();

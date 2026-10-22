@@ -39,6 +39,28 @@ const tooling = new Set([
     // V2C-32 bounded docs-test teardown repair; site/product inputs stay protected.
     "tests/v2/PublicDocsSite.test.ts",
     "tests/v2/helpers/PublicDocsBrowser.ts",
+    // V2C-34 retained installed recheck and bounded Producer fixture correction.
+    "docs/v2-completion/V2C-34.md",
+    // V2C-34 bounded timeout regressions; sibling tests and product/build inputs stay protected.
+    "tests/cli/studio/AdvancedModelValidationRoutes.test.ts",
+    "tests/cli/studio/simulation/StudioSimulationService.test.ts",
+    "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+    // V2C-34 exact saved five-file gate repair; no production/build exemptions.
+    "tests/cli/PC17CliStudioParity.integration.test.ts",
+    "tests/cli/StudioFullWorkflow.integration.test.ts",
+    "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
+    "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
+    "tests/cli/studio/StudioServerParWorkbook.integration.test.ts",
+    // V2C-34 saved two-file gate correction; no product/build or sibling-test exemption.
+    "tests/cli/commands/BuildCommand.test.ts",
+    "tests/cli/studio/StudioServer.test.ts",
+    // V2C-34 saved mechanics gate correction; only this named test is admitted.
+    "tests/v2/ExistingMechanicsAuthoring.test.ts",
+    // V2C-34 retained interoperability and Replay route gate correction only.
+    "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
+    "tests/cli/studio/StudioJobRoutes.integration.test.ts",
+    // V2C-34 saved optimization gate correction; only this named test is admitted.
+    "tests/v2/OptimizationPublicWorkflow.test.ts",
 ]);
 const evidence = (file) => file.startsWith("docs/evidence/p8-05-product-readiness/");
 const excluded = (file) => tooling.has(file) || evidence(file);

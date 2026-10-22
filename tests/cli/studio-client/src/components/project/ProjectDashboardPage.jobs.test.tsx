@@ -1,4 +1,4 @@
-import {act, screen, waitFor} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
@@ -9,7 +9,214 @@ const activeJob = {
     status: "running", createdAt: 1, progress: {stage: "Writing evidence", unit: "files", current: 2, total: 4},
 };
 
+
+const openingSource = "/games/sample-slot/blueprint.json";
+const openedRuntime = "/generated/server-returned-runtime";
+const completedOpening = {
+    id: "completed-open", projectId: "/games/sample-slot", operation: "project-open-materialization",
+    request: {sourcePath: "/historical/request-is-not-the-output"}, conflictKey: "open", status: "completed", createdAt: 1,
+    result: {summary: "Project opening and runtime materialization completed.", outputs: [{label: "Opened project", path: openingSource}]},
+};
+
+const retainedOpeningCases = (["failed", "cancelled", "recovery-required"] as const).map(status => ({
+    job: {
+        id: `retained-open-${status}`, projectId: "/games/sample-slot", operation: "project-open-materialization",
+        request: {sourcePath: openingSource}, conflictKey: "open", status, createdAt: 1,
+        recovery: {action: "retry", reason: "Runtime materialization is not resumable after restart. Reopen the same project to retry."},
+    },
+    actionName: "Retry",
+    expectedSource: openingSource,
+}));
+const openingActionCases = [
+    {job: completedOpening, actionName: "Open Opened project", expectedSource: openingSource},
+    ...retainedOpeningCases,
+];
+
+function openingRoutes() {
+    return {
+        "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/sample-slot",
+            game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]}}),
+        "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [completedOpening]}}),
+        "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/sample-slot", valid: true}}),
+        "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+        "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+        "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+        "/api/project/validate": () => ({ok: true, status: 200, body: {valid: true, errors: [], warnings: [], suggestions: []}}),
+        "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "unavailable", reason: "Remote session."}}),
+    };
+}
+
 describe("ProjectDashboardPage durable jobs", () => {
+    it.each([true, false])("opens a completed Blueprint through Studio (native host available: %s), preserving Reveal semantics", async (nativeAvailable) => {
+        const user = userEvent.setup();
+        let currentRoot = "/games/sample-slot";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...openingRoutes(),
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: currentRoot,
+                game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]}}),
+            "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: nativeAvailable ? {status: "available"} : {status: "unavailable", reason: "Remote session."}}),
+            "/api/home/fs/reveal-path": () => ({ok: true, status: 200, body: {status: "ok"}}),
+            "/api/home/projects/open": () => {
+                currentRoot = openedRuntime;
+                return {ok: true, status: 200, body: {context: {mode: "project", projectRoot: currentRoot}}};
+            },
+        });
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("button", {name: "Open Opened project"});
+        await waitFor(() => expect(calls.some(call => call.url === "/api/home/fs/native-browse/availability")).toBe(true));
+        if (nativeAvailable) {
+            await user.click(await screen.findByRole("button", {name: "Reveal Opened project"}));
+            expect(calls.filter(call => call.url === "/api/home/fs/reveal-path").map(call => JSON.parse(call.init!.body!))).toEqual([{path: openingSource}]);
+        } else {
+            await waitFor(() => expect(screen.queryByRole("button", {name: "Reveal Opened project"})).not.toBeInTheDocument());
+        }
+        await user.click(screen.getByRole("button", {name: "Open Opened project"}));
+        await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(openedRuntime)}/overview`));
+        expect(calls.filter(call => call.url === "/api/home/projects/open").map(call => JSON.parse(call.init!.body!))).toEqual([{projectRoot: openingSource}]);
+        expect(calls.some(call => call.url === "/api/home/fs/open-folder")).toBe(false);
+    });
+
+    it.each(openingActionCases)("confirms active operations for $job.status opening $actionName, preserves Cancel and retries with server permission", async ({job, actionName, expectedSource}) => {
+        const user = userEvent.setup();
+        let currentRoot = "/games/sample-slot";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...openingRoutes(),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [job]}}),
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: currentRoot,
+                game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]}}),
+            "/api/home/projects/open": call => {
+                if (!JSON.parse(call.init!.body!).confirmActiveJobs) return {ok: false, status: 409, body: {code: "active-jobs-require-confirmation", operations: ["certification-evidence-build"]}};
+                currentRoot = openedRuntime;
+                return {ok: true, status: 200, body: {context: {mode: "project", projectRoot: currentRoot}}};
+            },
+        });
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await user.click(await screen.findByRole("button", {name: actionName}));
+        await screen.findByText(/Active operations: certification-evidence-build/);
+        await user.click(screen.getByRole("button", {name: "Cancel"}));
+        expect(await screen.findByText(/Project switch cancelled/)).toBeInTheDocument();
+        await waitFor(() => expect(screen.queryByText(/Active operations: certification-evidence-build/)).not.toBeInTheDocument());
+        expect(router.state.location.pathname).toMatch(/sample-slot.*overview$/);
+        expect(calls.filter(call => call.url === "/api/home/projects/open")).toHaveLength(1);
+        expect(screen.getByRole("region", {name: `project-open-materialization job ${job.id}`})).toHaveTextContent(JSON.stringify(job.request));
+        expect(screen.getByRole("button", {name: actionName})).toBeEnabled();
+        await user.click(screen.getByRole("button", {name: actionName}));
+        await screen.findByText(/Active operations: certification-evidence-build/);
+        await user.click(screen.getByRole("button", {name: "Confirm"}));
+        await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(openedRuntime)}/overview`));
+        expect(calls.filter(call => call.url === "/api/home/projects/open").map(call => JSON.parse(call.init!.body!))).toEqual([
+            {projectRoot: expectedSource}, {projectRoot: expectedSource}, {projectRoot: expectedSource, confirmActiveJobs: true},
+        ]);
+        expect(calls.some(call => call.url === "/api/home/fs/open-folder" || call.url === "/api/project/artifacts/build" || call.url.endsWith("/recover"))).toBe(false);
+    });
+
+    it.each(openingActionCases)("guards dirty edits for $job.status opening $actionName, preserves Stay and rejection, then recovers explicitly", async ({job, actionName, expectedSource}) => {
+        let currentRoot = "/games/sample-slot";
+        let rejectOpen = true;
+        const blueprint = {manifest: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"},
+            reels: 1, rows: 1, symbols: ["A"], reelStrips: [["A"]], paylines: [[0]], paytable: {A: {1: 1}}, availableBets: [1]};
+        const unavailable = {status: "unavailable", reason: "Not required for this edit"};
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...openingRoutes(),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [job]}}),
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: currentRoot,
+                game: blueprint.manifest, type: "blueprint", capabilities: ["blueprint.build"]}}),
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: {
+                basics: {status: "available", data: blueprint.manifest}, layout: unavailable, symbols: unavailable,
+                reels: unavailable, paytable: unavailable, betsAndModes: unavailable, mechanics: unavailable, limits: unavailable,
+            }}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: currentRoot, blueprint, blueprintHash: "h1"}}),
+            "/api/home/projects/open": () => {
+                if (rejectOpen) return {ok: false, status: 400, body: {error: "Source temporarily unavailable."}};
+                currentRoot = openedRuntime;
+                return {ok: true, status: 200, body: {context: {mode: "project", projectRoot: currentRoot}}};
+            },
+        });
+        const user = userEvent.setup();
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await user.click(await screen.findByRole("button", {name: "Game Model"}));
+        const basics = (await screen.findByText("Game basics", {selector: "span"})).closest("fieldset")!;
+        await user.click(within(basics).getByRole("button", {name: "Edit"}));
+        fireEvent.change(await within(basics).findByLabelText("Game name"), {target: {value: "Unsaved producer edit"}});
+        const confirmation = "You have unsaved changes to this game model section. Leave and lose them?";
+        const opens = () => calls.filter(call => call.url === "/api/home/projects/open");
+        if (actionName === "Retry") expect(screen.queryByRole("button", {name: "Open Opened project"})).not.toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: actionName}));
+        await screen.findByText(confirmation);
+        expect(opens()).toHaveLength(0);
+        await user.click(screen.getByRole("button", {name: "Stay"}));
+        expect(screen.getByLabelText("Game name")).toHaveValue("Unsaved producer edit");
+        await waitFor(() => expect(screen.queryByText(confirmation)).not.toBeInTheDocument());
+        await user.click(screen.getByRole("button", {name: actionName}));
+        await screen.findByText(confirmation);
+        expect(opens()).toHaveLength(0);
+        await user.click(screen.getByRole("button", {name: "Leave"}));
+        const openingError = await screen.findByText(/Source temporarily unavailable/);
+        expect(openingError).toHaveTextContent(expectedSource);
+        expect(openingError).toHaveTextContent(/Retry.*Projects to Relocate/);
+        await waitFor(() => expect(screen.queryByText(confirmation)).not.toBeInTheDocument());
+        expect(opens()).toHaveLength(1);
+        expect(screen.getByRole("region", {name: `project-open-materialization job ${job.id}`})).toHaveTextContent(JSON.stringify(job.request));
+        expect(screen.getByRole("button", {name: actionName})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Find retained project in Projects"})).toBeEnabled();
+        expect(router.state.location.pathname).toMatch(/\/gameModel$/);
+        expect(screen.getByLabelText("Game name")).toHaveValue("Unsaved producer edit");
+        // A failed action must not leave a navigation allowance armed.
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        await screen.findByText(confirmation);
+        await user.click(screen.getByRole("button", {name: "Stay"}));
+        await waitFor(() => expect(screen.queryByText(confirmation)).not.toBeInTheDocument());
+        expect(router.state.location.pathname).toMatch(/\/gameModel$/);
+        rejectOpen = false;
+        await user.click(screen.getByRole("button", {name: actionName}));
+        await screen.findByText(confirmation);
+        expect(opens()).toHaveLength(1);
+        await user.click(screen.getByRole("button", {name: "Leave"}));
+        await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(openedRuntime)}/overview`));
+        await waitFor(() => expect(screen.queryByText(confirmation)).not.toBeInTheDocument());
+        expect(opens().map(call => JSON.parse(call.init!.body!))).toEqual([
+            {projectRoot: expectedSource}, {projectRoot: expectedSource},
+        ]);
+        expect(calls.some(call => call.url === "/api/home/fs/open-folder" || call.url === "/api/project/artifacts/build" || call.url.endsWith("/recover"))).toBe(false);
+    });
+
+    it("withholds missing project actions and reaches Projects recovery without replaying an open", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...openingRoutes(),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [{...completedOpening, result: {...completedOpening.result,
+                outputs: [{label: "Opened project", path: openingSource, unavailableReason: "The retained project is missing. Use Projects to Relocate it to its current location, or add the game again."}]}}]}}),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByText(/Use Projects to Relocate/);
+        expect(screen.getByText("project-open-materialization · Completed")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Open Opened project"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Reveal Opened project"})).not.toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Find retained project in Projects"}));
+        expect(await screen.findByRole("heading", {name: "Projects"})).toBeInTheDocument();
+        expect(calls.some(call => call.url === "/api/home/projects/open" || call.url === "/api/home/fs/open-folder")).toBe(false);
+    });
+
+    it("keeps artifact folder actions and Outcome Library inspection on their existing paths", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...openingRoutes(),
+            "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "available"}}),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [
+                {...completedOpening, id: "artifact", operation: "artifact-build", result: {outputs: [{label: "Artifact", path: "/output/artifact"}]}},
+                {...completedOpening, id: "outcomes", operation: "outcome-library-generation", result: {outputs: [{label: "Library", path: "/output/library"}]}},
+            ]}}),
+            "/api/home/fs/open-folder": () => ({ok: true, status: 200, body: {status: "ok"}}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await user.click(await screen.findByRole("button", {name: "Open Artifact"}));
+        await user.click(screen.getByRole("button", {name: "Open Library"}));
+        expect(screen.getByRole("button", {name: "Inspect Library"})).toBeEnabled();
+        expect(calls.filter(call => call.url === "/api/home/fs/open-folder").map(call => JSON.parse(call.init!.body!))).toEqual([{path: "/output/artifact"}, {path: "/output/library"}]);
+        expect(calls.some(call => call.url === "/api/home/projects/open")).toBe(false);
+    });
+
     it("shows a rejected common simulation cancellation outside Simulation while retaining the active job", async () => {
         const user = userEvent.setup();
         const simulationJob = {...activeJob, id: "observed-simulation", operation: "simulation"};

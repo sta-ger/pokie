@@ -51,6 +51,10 @@ export function useSimulationPoll() {
     // This receipt is not: it is written only from a durable terminal job so
     // a replaced Retry control cannot be mistaken for a status-only result.
     const [terminalReceipt, setTerminalReceipt] = useState<SimulationTerminalReceipt>();
+    // Freshness belongs to an accepted creation after the last authored save,
+    // never to an attachment, restored history, or matching game metadata.
+    const sourceRevisionRef = useRef(0);
+    const [resultCurrent, setResultCurrent] = useState(false);
     const operationRef = useRef<SimulationOperation>("simulation");
     const currentJobId = useRef<string | undefined>(undefined);
     // Discovery may attach only before this workflow has an owner. An explicit
@@ -161,6 +165,7 @@ export function useSimulationPoll() {
             return;
         }
         const generation = generationRef.current + 1;
+        const sourceRevision = sourceRevisionRef.current;
         generationRef.current = generation;
         stopPollRequest();
         stopCancelRequest();
@@ -168,6 +173,7 @@ export function useSimulationPoll() {
         attachmentRef.current = "submitted";
         currentJobId.current = undefined;
         setJob(undefined);
+        setResultCurrent(false);
         if (timeoutRef.current !== undefined) {
             clearTimeout(timeoutRef.current);
             timeoutRef.current = undefined;
@@ -187,7 +193,8 @@ export function useSimulationPoll() {
                 }
                 const id = result.status === "conflict" ? result.activeJobId : result.job.id;
                 currentJobId.current = id;
-                if (result.status === "created") {
+                setResultCurrent(result.status === "created" && sourceRevision === sourceRevisionRef.current);
+                if (result.status !== "conflict") {
                     setJob(result.job);
                     setProgress(describeSimulationProgress(result.job));
                 }
@@ -245,6 +252,7 @@ export function useSimulationPoll() {
     // cancels the pending recursive-poll timer outright (otherwise one more, now-pointless request for
     // the old job still goes out before that same check stops it) and clears every piece of job state.
     function resetForProjectSwitch(): void {
+        invalidateResult();
         generationRef.current += 1;
         stopPollRequest();
         stopCancelRequest();
@@ -267,6 +275,13 @@ export function useSimulationPoll() {
         setTerminalReceipt(undefined);
         operationRef.current = "simulation";
         setOperation("simulation");
+    }
+
+    // Saving does not cancel or detach a running job. Its progress, Cancel,
+    // Retry and terminal provenance must remain available as historical work.
+    function invalidateResult(): void {
+        sourceRevisionRef.current++;
+        setResultCurrent(false);
     }
 
     function cancel(): void {
@@ -339,5 +354,5 @@ export function useSimulationPoll() {
         }
     }
 
-    return {progress, job, error, connectionError, cancellationRequested, operation, terminalReceipt, run, retry, restore, cancel, resetForProjectSwitch, canRestore: attachmentRef.current === "initial", currentJobId: currentJobId.current};
+    return {progress, job, error, connectionError, cancellationRequested, operation, terminalReceipt, resultCurrent, invalidateResult, run, retry, restore, cancel, resetForProjectSwitch, canRestore: attachmentRef.current === "initial", currentJobId: currentJobId.current};
 }

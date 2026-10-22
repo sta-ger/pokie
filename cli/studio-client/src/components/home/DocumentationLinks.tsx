@@ -10,23 +10,23 @@ export function DocumentationLinks() {
             </Title>
             <List size="sm">
                 <List.Item>
-                    <Anchor href="https://pokie.fromstan.com/docs/" target="_blank" rel="noreferrer">
-                        Public docs (deployment target)
+                    <Anchor href="/help/docs/" target="_blank" rel="noreferrer">
+                        Public docs (included locally)
                     </Anchor>
                 </List.Item>
                 <List.Item>
-                    <Anchor href="https://pokie.fromstan.com/docs/getting-started/" target="_blank" rel="noreferrer">
+                    <Anchor href="/help/docs/getting-started/" target="_blank" rel="noreferrer">
                         Getting started
                     </Anchor>
                 </List.Item>
                 <List.Item>
-                    <Anchor href="https://pokie.fromstan.com/docs/cli-api/" target="_blank" rel="noreferrer">
+                    <Anchor href="/help/docs/cli-api/" target="_blank" rel="noreferrer">
                         CLI reference
                     </Anchor>
                 </List.Item>
                 <List.Item>
-                    <Anchor href="https://github.com/fromstan/pokie/blob/develop/docs/README.md" target="_blank" rel="noreferrer">
-                        Source guides (available before site deployment)
+                    <Anchor href="/help/" target="_blank" rel="noreferrer">
+                        FromStan / POKIE — examples and boundaries
                     </Anchor>
                 </List.Item>
             </List>

@@ -44,6 +44,7 @@ export function SimulationTab({
     cancellationRequested,
     operation,
     terminalReceipt,
+    historicalResult = false,
     onRun,
     onCancel,
     onRetry,
@@ -73,6 +74,8 @@ export function SimulationTab({
     operation: "simulation" | "simulation-retry";
     /** A terminal durable job receipt, retained across the control's React replacement. */
     terminalReceipt: SimulationTerminalReceipt | undefined;
+    /** A retained report cannot establish freshness for the current saved source. */
+    historicalResult?: boolean;
     onRun: (rounds: number, seed: string | undefined, workers: number, modeName?: string, convergence?: StudioSimulationReportListEntry["convergence"]) => void;
     onCancel: () => void;
     onRetry: () => void;
@@ -246,6 +249,7 @@ export function SimulationTab({
         }}>
             {connectionError !== undefined && <ErrorState message={connectionError} />}
             {error !== undefined && <ErrorState message={describeProjectActionError("This simulation request", error)} />}
+            {historicalResult && <WarningState message="Historical simulation result — this report is not validated against the current saved design. Run a new simulation before using results for the current design. Downloads retain the original run's data." />}
             {!exportReachable && (
                 <Text id="simulation-export-unavailable" size="xs" c="dimmed" mb={4}>
                     Export becomes available after a completed simulation report is ready.
@@ -410,6 +414,7 @@ export function SimulationTab({
 
                             {compareOpened && outcome.kind === "completed" && (
                                 <PageSection legend="Compare with another run">
+                                    <Text size="sm" c="dimmed">Comparison reports retain the design used for each original run; they may predate the current saved design.</Text>
                                     {comparableEntries.length === 0 && <EmptyState message="No other completed runs yet to compare against." />}
                                     {comparableEntries.length > 0 && (
                                         <List listStyleType="none" spacing={4} mb="sm">
@@ -511,7 +516,7 @@ export function SimulationTab({
                         {progress !== undefined && <> — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}</>}
                         {terminalReceipt?.recoveredAfterRestart === true && <> — the prior executor is unavailable after restart; submit the captured settings to run a replacement simulation.</>}
                     </Text>
-                    {resultStatus === "completed" && (
+                    {resultStatus === "completed" && (!historicalResult || reviewedDetail.status === "loaded") && (
                         <Button data-pokie-lifecycle-artifact="simulation-report" variant="subtle" size="xs" onClick={() => setActiveStep(2)}>
                             Open completed simulation report
                         </Button>

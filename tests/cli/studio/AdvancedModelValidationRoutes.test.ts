@@ -1,3 +1,5 @@
+import {execFileSync} from "node:child_process";
+import {pathToFileURL} from "node:url";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -12,7 +14,16 @@ import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRep
 import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
 import {ValidateCommand} from "../../../cli/commands/ValidateCommand.js";
 import {fractionalBetBlueprint} from "../../fixtures/math/FractionalBetFixture.js";
+import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
 import type {AdvancedModelValidationReport} from "../../../src/validation/AdvancedModelValidation.js";
+
+let restoreTemporaryDirectory: () => void;
+beforeAll(() => {
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+});
+afterAll(() => {
+    restoreTemporaryDirectory();
+});
 
 it("shares candidate-bound library, draft Studio and CLI JSON reports, with corrected retries and read-only bytes", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "advanced-routes-"));
@@ -83,6 +94,16 @@ it("shares candidate-bound library, draft Studio and CLI JSON reports, with corr
 });
 
 function packageValidationServer(root: string, source: string, gamePackageValidator?: import("@fromstan/pokie").PokieGamePackageValidating): StudioServer {
+    if (fs.statSync(source).isDirectory()) {
+        // This descriptor-only fixture never imports POKIE or creates a session. Declare its
+        // dependency explicitly so acquisition copies that contract, not the host checkout.
+        const runtime = path.join(source, "node_modules", "@fromstan", "pokie");
+        fs.mkdirSync(runtime, {recursive: true});
+        fs.writeFileSync(path.join(runtime, "package.json"), JSON.stringify({name: "@fromstan/pokie", version: "0.0.0-declaration-only", main: "index.js"}));
+        fs.writeFileSync(path.join(runtime, "index.js"), 'throw new Error("Declaration analysis must not execute the package runtime");');
+        const manifest = path.join(source, "package.json");
+        fs.writeFileSync(manifest, JSON.stringify({...JSON.parse(fs.readFileSync(manifest, "utf8")), dependencies: {"@fromstan/pokie": "0.0.0-declaration-only"}}));
+    }
     const home = new StudioHomeService("1.3.0", new InMemoryRecentProjectsRepository());
     return new StudioServer({initialContext: {mode: "project", projectRoot: source}, pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: root, homeService: home,
         blueprintService: new StudioBlueprintService("1.3.0", root, home), jobService: new StudioJobService(new FileStudioJobRepository(path.join(root, "jobs"))),
@@ -134,9 +155,24 @@ it("aborts and drains an owned saved validation before completing a project tran
     try {
         const address = await server.start();
         const url = `http://${address.host}:${address.port}`;
+        // Startup recognition also owns package snapshots. Settle that independent
+        // dashboard load before pausing the validation lease whose drain we assert.
+        const deadline = Date.now() + 10_000;
+        for (;;) {
+            const context = await (await fetch(url + "/api/project/context")).json() as {status: string; error?: string};
+            if (context.status !== "loading") {
+                expect(context).toMatchObject({status: "error", error: "Dashboard runtime unavailable"});
+                break;
+            }
+            if (Date.now() >= deadline) throw new Error("Dashboard startup did not settle before validation");
+            await new Promise<void>(resolve => {
+                setTimeout(resolve, 10);
+            });
+        }
+        expect(runtimeSnapshotNames(fixture.source)).toEqual([]);
         fixture.arm();
         pending = fetch(url + "/api/project/validate");
-        await fixture.readStarted;
+        await fixture.waitForRead(pending);
         let closed = false;
         closing = fetch(url + "/api/projects/close", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"}).then(response => {
             closed = true;
@@ -147,6 +183,7 @@ it("aborts and drains an owned saved validation before completing a project tran
             setImmediate(resolve);
         });
         expect(closed).toBe(false); // Descriptor acquisition still owns its snapshot.
+        expect(runtimeSnapshotNames(fixture.source)).toHaveLength(1);
         const duringTransition = await fetch(url + "/api/project/validate");
         expect(duringTransition.status).toBe(409);
         fixture.settle();
@@ -183,6 +220,60 @@ it("bounds shared-weight normalization on the real Studio comparison route and r
         expect(await (await post(model)).json()).toMatchObject({status: "ok", advanced: {status: "complete"}});
     } finally {
         await server.stop();
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});
+
+
+it("preserves authenticated candidate selection across the complete bounded timeout correction", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "advanced-gate-handoff-"));
+    try {
+        execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from "node:assert/strict";
+            import {execFileSync} from "node:child_process";
+            import {mkdir, readFile, writeFile} from "node:fs/promises";
+            import path from "node:path";
+            import {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} from ${JSON.stringify(pathToFileURL(path.resolve("tests/testUtils/createP911CandidateFixture.mjs")).href)};
+            import {readP911Candidate, sha256} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
+            import {authenticateP805ProductTree} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p8-05-release-handoff.mjs")).href)};
+            const fixture = await candidateFixture(${JSON.stringify(root)});
+            const correction = [
+                "tests/cli/studio/AdvancedModelValidationRoutes.test.ts",
+                "tests/cli/studio/simulation/StudioSimulationService.test.ts",
+                "scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs",
+                "tests/testUtils/createP911CandidateFixture.mjs",
+            ];
+            for (const file of correction) assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
+            const reviewed = await commitP911ToolingDescendant(fixture);
+            const selected = await readP911Candidate(fixture.reference, {repository: fixture.repository});
+            assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, [...P911_TOOLING_DESCENDANT_PATHS].sort());
+            assert.equal(selected.packageRoot, path.join(fixture.handoff.installationRoot, "node_modules/@fromstan/pokie"));
+            assert.equal(selected.archiveSha256, sha256(await readFile(fixture.handoff.archivePath)));
+            // P8 has its own narrower admission set: exercise this complete correction separately.
+            const git = args => execFileSync("git", args, {cwd: fixture.repository, encoding: "utf8"}).trim();
+            git(["reset", "--hard", fixture.handoff.candidateId]);
+            for (const file of correction) await writeFile(path.join(fixture.repository, file), "// Bounded test repair.");
+            const commit = () => {
+                git(["add", "."]);
+                git(["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "fixture correction"]);
+                return git(["rev-parse", "HEAD"]);
+            };
+            const legacy = commit();
+            assert.deepEqual(authenticateP805ProductTree(fixture.handoff.candidateId, legacy, fixture.repository).changedToolingAndEvidencePaths, [...correction].sort());
+            for (const file of ["cli/studio/changed.ts", "tsconfig.prod.json", "tests/cli/studio/unnamed.test.ts"]) {
+                await mkdir(path.dirname(path.join(fixture.repository, file)), {recursive: true});
+                await writeFile(path.join(fixture.repository, file), "protected input");
+                commit();
+                assert.throws(() => authenticateP805ProductTree(fixture.handoff.candidateId, git(["rev-parse", "HEAD"]), fixture.repository), /product or build inputs/);
+                await assert.rejects(readP911Candidate(fixture.reference, {repository: fixture.repository}), /product.*build inputs/);
+                git(["reset", "--hard", legacy]);
+            }
+            git(["reset", "--hard", reviewed]);
+            await assert.rejects(readP911Candidate({...fixture.reference, sha256: "b".repeat(64)}, {repository: fixture.repository}), /receipt digest mismatch/);
+            await writeFile(fixture.handoff.browserDriver.path, "changed external driver");
+            await assert.rejects(readP911Candidate(fixture.reference, {repository: fixture.repository}), /authenticated controller browser driver required/);
+        `], {stdio: "pipe", timeout: 20_000});
+    } finally {
         fs.rmSync(root, {recursive: true, force: true});
     }
 });

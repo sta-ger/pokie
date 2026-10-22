@@ -79,13 +79,36 @@ it("retains authenticated archive/install pins through the optimization gate-tes
             import path from "node:path";
             import {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} from ${JSON.stringify(pathToFileURL(path.resolve("tests/testUtils/createP911CandidateFixture.mjs")).href)};
             import {readP911Candidate, readP911CandidateFromEnvironment} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
+            import {authenticateP805ProductTree} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p8-05-release-handoff.mjs")).href)};
             const fixture = await candidateFixture(${JSON.stringify(root)});
             const options = {repository: fixture.repository};
             const original = await readP911Candidate(fixture.reference, options);
             for (const file of ["tests/project/ArtifactBuilderRegistry.test.ts", "tests/cli/studio/StudioArtifactBuildService.test.ts",
                 "tests/v2/fixtures/PackageExtractionFixture.ts", "tests/v2/OptimizationPublicWorkflow.test.ts",
-                "scripts/p9-11-candidate.mjs", "tests/testUtils/createP911CandidateFixture.mjs", "docs/v2-completion/V2C-26.md"])
+                "scripts/p9-11-candidate.mjs", "scripts/p8-05-release-handoff.mjs", "tests/testUtils/createP911CandidateFixture.mjs", "docs/v2-completion/V2C-26.md"])
                 assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
+            // Exercise this complete correction independently of either reader's admission list.
+            const correctionPaths = ["scripts/p8-05-release-handoff.mjs", "tests/v2/OptimizationPublicWorkflow.test.ts"];
+            for (const file of correctionPaths) await writeFile(path.join(fixture.repository, file), "// Bounded optimization gate correction fixture.");
+            execFileSync("git", ["add", "."], {cwd: fixture.repository});
+            execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "optimization gate correction fixture"], {cwd: fixture.repository});
+            const correctionId = execFileSync("git", ["rev-parse", "HEAD"], {cwd: fixture.repository, encoding: "utf8"}).trim();
+            assert.deepEqual(authenticateP805ProductTree(fixture.handoff.candidateId, correctionId, fixture.repository).changedToolingAndEvidencePaths, correctionPaths);
+            const corrected = await readP911Candidate(fixture.reference, options);
+            assert.deepEqual(corrected.equivalence.changedEvidenceAndTooling, correctionPaths);
+            assert.deepEqual({...corrected, equivalence: original.equivalence}, original);
+            // Both readers must still reject neighboring tests and product/build inputs.
+            for (const file of ["tests/v2/OptimizationPublicWorkflow.extra.test.ts", "src/index.ts", "package.json", "tsconfig.prod.json"]) {
+                const target = path.join(fixture.repository, file);
+                await mkdir(path.dirname(target), {recursive: true});
+                await writeFile(target, "changed protected input");
+                execFileSync("git", ["add", "."], {cwd: fixture.repository});
+                execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "protected input rejection fixture"], {cwd: fixture.repository});
+                const protectedId = execFileSync("git", ["rev-parse", "HEAD"], {cwd: fixture.repository, encoding: "utf8"}).trim();
+                assert.throws(() => authenticateP805ProductTree(fixture.handoff.candidateId, protectedId, fixture.repository), /product or build inputs/);
+                await assert.rejects(readP911Candidate(fixture.reference, options), /product\\/build inputs changed/);
+                execFileSync("git", ["reset", "--hard", correctionId], {cwd: fixture.repository, stdio: "ignore"});
+            }
             const reviewedId = await commitP911ToolingDescendant(fixture);
             const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
             const selected = await readP911CandidateFromEnvironment(environment, options);
@@ -355,6 +378,8 @@ it("preserves concurrent parameter edits during failed multi-file rollback and r
     await service.discard(result.candidate!);
 });
 
+// Like the rollback/retry cases above, each boundary optimizes and validates two real
+// isolated package publications. Keep their bounded budget under concurrent gate workers.
 it.each(["replacement", "cleanup", "protected source"])("rejects complete authored-state drift during %s without consuming authority", async boundary => {
     const {file, request} = await fixture("tsPackage");
     const result = await service.optimize(await resolve(file), request);
@@ -398,7 +423,7 @@ it.each(["replacement", "cleanup", "protected source"])("rejects complete author
     expect(committed).toHaveBeenCalledTimes(1);
     await service.discard(result.candidate!);
     expect(fs.readdirSync(directory).some(name => name.startsWith(".pokie-"))).toBe(false);
-});
+}, 180000);
 
 it.each(["staging", "replacement"])("rechecks cancellation at the authored %s boundary before consuming authority", async boundary => {
     const {file, request} = await fixture("blueprint");

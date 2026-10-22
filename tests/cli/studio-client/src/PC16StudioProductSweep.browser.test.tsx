@@ -10,6 +10,9 @@ import {BuildCommand} from "../../../../cli/commands/BuildCommand.js";
 import {StudioHomeService} from "../../../../cli/studio/home/StudioHomeService.js";
 import {createStudioGameLoader} from "../../../../cli/studio/loadStudioGame.js";
 import {StudioServer} from "../../../../cli/studio/StudioServer.js";
+import {FileStudioJobRepository} from "../../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../../v2/fixtures/PackageExtractionFixture.js";
 import type {FetchLike} from "../../../../cli/studio-client/src/api/apiClient.js";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 
@@ -19,13 +22,14 @@ function writeStudioAssets(root: string): void {
     fs.writeFileSync(path.join(root, "style.css"), "body { margin: 0; }");
 }
 
-function createServerFetch(baseUrl: string): FetchLike {
+function createServerFetch(baseUrl: string, observe: (url: string, method: string, status: number, body: unknown) => void): FetchLike {
     return (url, init) => new Promise((resolve, reject) => {
         const request = http.request(`${baseUrl}${url}`, {method: init?.method, headers: init?.headers}, (response) => {
             const chunks: Buffer[] = [];
             response.on("data", (chunk: Buffer) => chunks.push(chunk));
             response.on("end", () => {
                 const body = Buffer.concat(chunks).toString("utf8");
+                observe(url, init?.method ?? "GET", response.statusCode ?? 500, JSON.parse(body));
                 resolve({
                     ok: (response.statusCode ?? 500) >= 200 && (response.statusCode ?? 500) < 300,
                     status: response.statusCode ?? 500,
@@ -39,13 +43,28 @@ function createServerFetch(baseUrl: string): FetchLike {
 }
 
 describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
+    let restoreTemporaryDirectory: () => void;
     let studioRoot: string;
     let projectRoot: string;
     let workDir: string;
     let server: StudioServer;
     let fetchImpl: FetchLike;
+    let simulationAdmission: {status: number; body: unknown} | undefined;
+    let simulationStatus: unknown;
+    let simulationSubmissions: number;
+
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
 
     beforeEach(async () => {
+        simulationAdmission = undefined;
+        simulationStatus = undefined;
+        simulationSubmissions = 0;
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc16-sweep-assets-"));
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc16-sweep-project-"));
         writeStudioAssets(studioRoot);
@@ -63,12 +82,20 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
             pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
             homeService,
             blueprintService: new StudioBlueprintService("1.0.0", studioRoot, homeService),
+            jobService: new StudioJobService(new FileStudioJobRepository(path.join(workDir, "jobs"))),
             loadGame: createStudioGameLoader(process.cwd()),
             resolveRuntimePackageRoot: passthroughRuntimePackageResolver,
             initialContext: {mode: "project", projectRoot},
         });
         const address = await server.start();
-        fetchImpl = createServerFetch(`http://${address.host}:${address.port}`);
+        const network = createServerFetch(`http://${address.host}:${address.port}`, (url, method, status, body) => {
+            if (url === "/api/project/simulations" && method === "POST") simulationAdmission = {status, body};
+            if (url.startsWith("/api/project/simulations/") && method === "GET") simulationStatus = body;
+        });
+        fetchImpl = (url, init) => {
+            if (url === "/api/project/simulations" && init?.method === "POST") simulationSubmissions++;
+            return network(url, init);
+        };
     });
 
     afterEach(async () => {
@@ -82,9 +109,16 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
     it("turns a retired deep link into one visible recovery path without mounting a duplicate workflow", async () => {
         const user = userEvent.setup();
         const route = `/project/${encodeURIComponent(projectRoot)}/deployment`;
+        // Startup snapshots the installed runtime/dependency graph. Observe its actual
+        // terminal context before the short rendered-navigation assertion starts.
+        await waitFor(async () => {
+            const context = await fetchImpl("/api/project/context");
+            expect(context.status).toBe(200);
+            expect(await context.json()).toMatchObject({status: "loaded", projectRoot, game: {name: "Sweep Slot"}});
+        }, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000});
         const {router} = renderRoutedApp({fetchImpl, initialEntries: [route]});
 
-        await screen.findByRole("heading", {name: "Sweep Slot"});
+        await screen.findByRole("heading", {name: "Sweep Slot"}, {timeout: 30000});
         await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(projectRoot)}/exportDeploy`));
         expect(screen.getByText("Deployment has moved into Build/Export. Choose Remote delivery there to preview or publish to a configured target.")).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Build/Export"})).toHaveAttribute("aria-current", "page");
@@ -95,9 +129,21 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
         const rounds = await screen.findByRole("textbox", {name: "Rounds"});
         await user.clear(rounds);
         await user.type(rounds, "2");
-        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        const run = screen.getByRole("button", {name: "Run Simulation"});
+        await waitFor(() => expect(run).toBeEnabled());
+        await user.click(run);
+        await waitFor(() => expect(simulationSubmissions).toBe(1));
+        // The capability check resolves package configuration provenance before
+        // admission returns, acquiring its own real runtime snapshot.
+        const simulationWait = {
+            timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000,
+            onTimeout: (error: Error) => new Error(`${error.message}\nActual simulation request/admission/status: ${JSON.stringify({simulationSubmissions, simulationAdmission, simulationStatus})}\nRendered state: ${document.body.textContent}`),
+        };
+        await waitFor(() => expect(simulationAdmission).toMatchObject({status: 202, body: {id: expect.any(String)}}), simulationWait);
         // Completion opens Review automatically; assert its settled public result.
-        await screen.findByRole("button", {name: "Open full report"}, {}, {timeout: 30000});
+        await screen.findByRole("button", {name: "Open full report"}, simulationWait);
+        expect(simulationStatus).toMatchObject({status: "completed", rounds: 2, report: {rounds: 2}});
+        expect(simulationSubmissions).toBe(1);
         expect(screen.queryByText(/Deployment has moved into Build\/Export/)).not.toBeInTheDocument();
-    });
+    }, 300000);
 });

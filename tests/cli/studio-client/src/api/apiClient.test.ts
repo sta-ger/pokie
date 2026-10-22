@@ -899,8 +899,39 @@ describe("studio-client apiClient", () => {
 
             const dashboard = await getProjectContext(fetchImpl);
 
-            expect(calls).toEqual([{url: "/api/project/context", init: undefined}]);
+            expect(calls).toEqual([{url: "/api/project/context", init: {cache: "no-store", signal: expect.any(AbortSignal)}}]);
             expect(dashboard).toEqual({status: "empty"});
+        });
+
+        it.each(["fetch", "body"])("bounds a hung %s, aborts transport, ignores its late result and permits subsequent reads", async (phase) => {
+            jest.useFakeTimers();
+            try {
+                let signal: AbortSignal | undefined;
+                let release: (() => void) | undefined;
+                const body = {status: "loaded", projectRoot: "/a", game: {id: "a", name: "A", version: "1"}};
+                const fetchImpl: FetchLike = (_url, init) => {
+                    signal = init?.signal;
+                    return phase === "fetch" ? new Promise(resolve => {
+                        release = () => resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+                    }) : Promise.resolve({ok: true, status: 200, json: () => new Promise(resolve => {
+                        release = () => resolve(body);
+                    })});
+                };
+                const pending = getProjectContext(fetchImpl);
+                // Register the rejection before advancing the clock.
+                const rejected = expect(pending).rejects.toThrow("Project context request timed out");
+                await jest.advanceTimersByTimeAsync(10_000);
+                await rejected;
+                expect(signal?.aborted).toBe(true);
+                release?.();
+                await Promise.resolve();
+                const repaired = createFakeFetch(() => ({ok: true, status: 200, body}));
+                await expect(getProjectContext(repaired.fetchImpl)).resolves.toEqual(body);
+                await expect(getProjectContext(repaired.fetchImpl)).resolves.toEqual(body);
+                expect(jest.getTimerCount()).toBe(0);
+            } finally {
+                jest.useRealTimers();
+            }
         });
 
         it("returns a loading/loaded/error dashboard as-is", async () => {
@@ -983,6 +1014,12 @@ describe("studio-client apiClient", () => {
                 },
             ]);
             expect(result).toEqual({status: "created", job});
+        });
+
+        it.each([200, 201, 202])("uses HTTP %s as the execution receipt independently of matching job metadata", async status => {
+            const job = {id: "pre-save", status: "running", rounds: 1000, seed: "same", workers: 1};
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status, body: job}));
+            expect(await startSimulation(fetchImpl, 1000, "same", 1)).toEqual({status: status === 200 ? "reattached" : "created", job});
         });
 
         it("omits seed from the body when not given", async () => {

@@ -4,6 +4,16 @@ Studio owns the lifecycle of work that can outlive a browser request. The common
 
 A job has an immutable project identity, operation, request summary and conflict key. Its progress is a named `stage`, semantic `unit`, `current`, and `total`, rather than a percentage. Terminal records retain timestamps, duration, safe result/provenance/output references and an explicit recovery instruction. IDs cannot be read or cancelled from another project.
 
+Home's completed project-opening card opens the project in Studio, including
+Blueprint files. Reveal opens its containing folder on the server's machine
+when local host access is available. Completion records an earlier operation;
+it does not guarantee that a project remains at the saved path. A missing
+project keeps its completion and provenance visible, with Open/Reveal withheld
+and a **Find retained project in Projects** action. Use the missing registry
+entry's **Relocate** control to select its current location, then **Open** that
+entry. If it is no longer registered, add the game through Projects. Studio
+does not guess replacement paths or copy, restore or delete project files.
+
 The file repository writes each JSON record through a temporary file and rename. On restart, queued/running/cancelling work is marked `recovery-required`: normal work must be retried from scratch because Studio never publishes a partial result. An executor may instead provide the validated `resume` recovery instruction only when it owns an exact immutable checkpoint (currently Outcome Library exact enumeration).
 
 Cancellation is deliberately two-stage. `cancel` records `cancelling` and aborts the executor; it is `cancelled` only after that executor has completed its staging cleanup. A terminal cancellation is idempotent. A conflicting request with the same conflict key and a different immutable request receives a typed conflict with its active job id and retry guidance; an exact retry reattaches to the active record.

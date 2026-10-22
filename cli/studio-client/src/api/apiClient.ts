@@ -594,12 +594,31 @@ export async function closeProject(fetchImpl: FetchLike, confirmActiveJobs = fal
     return body.context;
 }
 
+// Bound the entire read, including body consumption. Some injected transports
+// ignore AbortSignal, so abort alone cannot guarantee a terminal client result.
 export async function getProjectContext(fetchImpl: FetchLike): Promise<ProjectDashboardContext> {
-    const response = await fetchImpl("/api/project/context");
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to load the project context"));
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const request = async (): Promise<ProjectDashboardContext> => {
+        const response = await fetchImpl("/api/project/context", {cache: "no-store", signal: controller.signal});
+        if (!response.ok) {
+            throw new Error(await extractErrorMessage(response, "Failed to load the project context"));
+        }
+        return (await response.json()) as ProjectDashboardContext;
+    };
+    try {
+        return await Promise.race([
+            request(),
+            new Promise<never>((_resolve, reject) => {
+                timeout = setTimeout(() => {
+                    reject(new Error("Project context request timed out. Retry the section after Studio finishes preparing the saved design."));
+                    controller.abort();
+                }, 10_000);
+            }),
+        ]);
+    } finally {
+        clearTimeout(timeout);
     }
-    return (await response.json()) as ProjectDashboardContext;
 }
 
 // Draws exactly one outcome from the currently open "outcomeLibrary" project's own `modeName` through
@@ -670,7 +689,7 @@ export async function previewGameModel(fetchImpl: FetchLike, blueprint: unknown,
 }
 
 export type StartSimulationResult =
-    | {status: "created"; job: StudioSimulationJobView}
+    | {status: "created" | "reattached"; job: StudioSimulationJobView}
     | {status: "conflict"; activeJobId: string};
 
 // Distinguishes the two different 409 cases the endpoint can return: "another simulation is already
@@ -708,7 +727,9 @@ export async function startSimulation(
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to start simulation"));
     }
-    return {status: "created", job: (await response.json()) as StudioSimulationJobView};
+    // The server preserves the job body on attachment (200). Only explicit
+    // execution acceptance (202, or 201 creation) can grant new-run authority.
+    return {status: response.status === 202 || response.status === 201 ? "created" : "reattached", job: (await response.json()) as StudioSimulationJobView};
 }
 
 export async function getSimulation(fetchImpl: FetchLike, id: string, signal?: AbortSignal): Promise<StudioSimulationJobView> {

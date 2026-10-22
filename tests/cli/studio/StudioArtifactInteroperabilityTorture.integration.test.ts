@@ -27,30 +27,50 @@ import {GamePackagePreparer} from "../../../cli/prepare/GamePackagePreparer.js";
 import {PREPARATION_STATE_FILE} from "../../../cli/prepare/PreparationStateStore.js";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
 import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock} from "../../support/ArtifactInteroperabilityRun.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../v2/fixtures/PackageExtractionFixture.js";
 
 const POKIE_VERSION = "1.3.0";
+// Conversion, generation, compatibility, export and lifecycle phases acquire independent
+// runtime graphs. Budget the complete chain separately from each public job poll.
+const WORKFLOW_TIMEOUT = 15 * PACKAGE_EXTRACTION_TEST_TIMEOUT;
 
 describe("PC-14 Studio real-artifact interoperability torture", () => {
     let workDir: string;
     let restoreRunnerClock: () => void;
+    let restoreTemporaryDirectory: () => void;
+    let workflow: Promise<void> | undefined;
+
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
 
     beforeEach(() => {
         restoreRunnerClock = installPc14FixedRunnerClock();
-        // This real-artifact suite creates and reopens several packages. The
-        // targeted-test wrapper redirects TMPDIR to its cache inside the
-        // checkout, where that high-churn workflow can exceed the contract
-        // timeout. Keep disposable runner state on the system temporary
-        // volume, as the immutable historical verification does.
-        const temporaryRoot = process.platform === "win32" ? os.tmpdir() : "/tmp";
-        workDir = fs.mkdtempSync(path.join(temporaryRoot, "pokie-studio-artifact-torture-"));
+        workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-artifact-torture-"));
     });
 
-    afterEach(() => {
-        fs.rmSync(workDir, {recursive: true, force: true});
-        restoreRunnerClock();
-    });
+    afterEach(async () => {
+        const pending = workflow;
+        workflow = undefined;
+        try {
+            // Jest timeouts do not cancel an async callback. Drain its servers and
+            // runtime leases before deleting their source or tearing down imports.
+            await pending?.catch(() => undefined);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+            restoreRunnerClock();
+        }
+    }, WORKFLOW_TIMEOUT);
 
-    it("uses the same prepared artifact chain for Studio build, generation, registry reuse and Stake export", async () => {
+    it("uses the same prepared artifact chain for Studio build, generation, registry reuse and Stake export", () => {
+        workflow = runArtifactWorkflow();
+        return workflow;
+    }, WORKFLOW_TIMEOUT);
+
+    async function runArtifactWorkflow(): Promise<void> {
         const evidence = new ArtifactInteroperabilityRun(workDir);
         const blueprint: GameBlueprint = {
             manifest: {id: "studio-artifact-torture", name: "Studio Artifact Torture", version: "1.0.0"},
@@ -152,7 +172,8 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
             expect(cancelledStart.status).toBe(202);
             const cancelledJob = await cancelledStart.json() as {job: {id: string}};
             let activeBuild: {status: number; body: {status: string; progress?: {message?: string}}} | undefined;
-            for (let attempt = 0; attempt < 1200; attempt += 1) {
+            const publicationDeadline = performance.now() + PACKAGE_EXTRACTION_TEST_TIMEOUT;
+            while (performance.now() < publicationDeadline) {
                 const current = await fetch(`${baseUrl}/api/project/artifacts/build/${cancelledJob.job.id}`)
                     .then(async (response) => ({status: response.status, body: await response.json() as {status: string; progress?: {message?: string}}}));
                 if (current.body.status === "running" && current.body.progress?.message?.startsWith("Writing Outcome mode")) {
@@ -826,18 +847,22 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         // it has emitted its own records.  Merging here would validate the
         // PC-05 inventory against only CLI and Studio API owners, producing a
         // false incomplete-matrix failure before the UI owners can run.
-    }, 300_000);
+    }
 });
 
 async function waitForStudioJob(
     get: () => Promise<{readonly status: number; readonly body: {readonly status?: string}}>,
 ): Promise<{readonly status: number; readonly body: {readonly status?: string}}> {
-    for (let attempt = 0; attempt < 300; attempt += 1) {
+    // The fixed evidence clock changes Date.now(), so use a monotonic timer.
+    const deadline = performance.now() + PACKAGE_EXTRACTION_TEST_TIMEOUT;
+    let lastResult: unknown;
+    while (performance.now() < deadline) {
         const result = await get();
+        lastResult = result;
         if (result.body.status === "completed" || result.body.status === "failed" || result.body.status === "cancelled") return result;
         await new Promise<void>((resolve) => {
             setTimeout(resolve, 10);
         });
     }
-    throw new Error("Studio artifact job did not reach a terminal state while exercising its public polling route.");
+    throw new Error(`Studio artifact job did not reach a terminal state while exercising its public polling route: ${JSON.stringify(lastResult)}`);
 }

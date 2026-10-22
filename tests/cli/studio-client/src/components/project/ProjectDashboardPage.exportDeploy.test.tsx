@@ -768,7 +768,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         let supportedSource = false;
         let buildRequest: unknown;
         const plan = {status: "planned", source: {kind: "blueprint", capabilities: []}, target: {kind: "wasm", capabilities: []}, steps: [], preflight: {destinationKind: "file", estimatedWork: "publish", losses: [], oneWay: false}};
-        const diagnostic = 'Blueprint "a" uses winModel.type "ways", which canonical POKIE WASM does not implement. Next: use line wins before building.';
+        const diagnostic = "Unsupported shared WASM math model. Limits: 64 reels, 64 rows, 1024 cells, 128 unique symbols, 1024 paylines, 65536 stops per reel, 262144 total stops and 8 MiB memory. Next: reduce the model or build a TypeScript package.";
         const fetchImpl: FetchLike = (url, init) => {
             if (url === "/api/project/artifacts/preview") {
                 const {outDir} = JSON.parse(init?.body ?? "{}") as {outDir?: string};
@@ -789,7 +789,10 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         expect(await screen.findByText(diagnostic)).toBeInTheDocument();
-        expect(screen.getByText(/separate JavaScript evaluateWinMultiplier/)).toHaveTextContent("30 total stop bits across all reels");
+        const executionBoundary = screen.getByText(/same pokie.math.v2 WebAssembly evaluator/);
+        expect(executionBoundary).toHaveTextContent("no total-bit cap across reels");
+        expect(executionBoundary).toHaveTextContent("all 36 launch catalogue rows");
+        expect(executionBoundary).toHaveTextContent("Custom callbacks, custom evaluators/generators, opaque wrappers and external wallet/shared-progressive services are unsupported");
         const section = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
         expect(within(section).getByRole("button", {name: "Build"})).toBeDisabled();
         expect(buildRequest).toBeUndefined();

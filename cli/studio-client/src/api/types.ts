@@ -22,7 +22,7 @@ export type StudioJobView = {
     completedAt?: number;
     durationMs?: number;
     progress?: {stage: string; unit: string; current: number | string; total: number | string; message?: string};
-    result?: {summary: string; outputs?: {path?: string; downloadPath?: string; label: string}[]; provenance?: Record<string, unknown>; warnings?: string[]; detail?: Record<string, unknown>};
+    result?: {summary: string; outputs?: {path?: string; downloadPath?: string; label: string; unavailableReason?: string}[]; provenance?: Record<string, unknown>; warnings?: string[]; detail?: Record<string, unknown>};
     error?: string;
     recovery?: {action: "resume" | "retry" | "rebuild" | "new-session"; reason: string};
 };

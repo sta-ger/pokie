@@ -12,6 +12,12 @@ type Devtools = {
     close(): Promise<void>;
 };
 
+// Package opening, context/validation reads and Play each acquire and release real
+// dependency snapshots. Budget those phases independently, as in the extraction
+// regressions; a later route cannot spend the earlier request's remaining time.
+const RUNTIME_PHASE_TIMEOUT = 120_000;
+const WORKFLOW_TIMEOUT = 6 * RUNTIME_PHASE_TIMEOUT;
+
 // Controller-owned regression, run after cold observations are frozen and the candidate is built.
 // This is deliberately separate from the unscripted initial collector. It neither builds nor packs
 // the candidate, substitutes UI/source loaders, nor runs the historical persona campaign.
@@ -26,8 +32,8 @@ async function bounded<T>(work: Promise<T>, label: string, timeout = 30_000): Pr
     }
 }
 
-async function waitUntil(check: () => Promise<boolean>, label: string, overallDeadline: number): Promise<void> {
-    const deadline = Math.min(Date.now() + 60_000, overallDeadline);
+async function waitUntil(check: () => Promise<boolean>, label: string, overallDeadline: number, timeout = 60_000): Promise<void> {
+    const deadline = Math.min(Date.now() + timeout, overallDeadline);
     while (Date.now() < deadline) {
         if (await check()) return;
         await new Promise((resolve) => {
@@ -63,7 +69,7 @@ it("retains the authenticated installed candidate across the complete gate-test 
         const {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} = await runInThisContext(`import(${JSON.stringify(fixtureUrl)})`, {
             importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
         }) as {
-            candidateFixture: (directory: string) => Promise<{repository: string; reference: {path: string; sha256: string}; handoff: {installationRoot: string; browserDriver: {path: string}}}>;
+            candidateFixture: (directory: string) => Promise<{repository: string; reference: {path: string; sha256: string}; handoff: {candidateId: string; installationRoot: string; browserDriver: {path: string}}}>;
             commitP911ToolingDescendant: (fixture: {repository: string}) => Promise<string>;
             P911_TOOLING_DESCENDANT_PATHS: string[];
         };
@@ -73,7 +79,34 @@ it("retains the authenticated installed candidate across the complete gate-test 
             "tests/cli/studio-client/src/components/common/StudioPresentation.test.tsx",
             "scripts/p9-11-candidate.mjs",
             "tests/testUtils/createP911CandidateFixture.mjs",
+            "scripts/p8-05-release-handoff.mjs",
+            "docs/v2-completion/V2C-34.md",
         ]));
+        // Both archive selectors must admit the complete correction since the
+        // authenticated candidate, including its already retained recheck receipt.
+        const correctionPaths = [
+            "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+            "tests/cli/commands/BuildCommand.test.ts",
+            "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
+            "tests/cli/studio/StudioJobRoutes.integration.test.ts",
+            "tests/cli/studio/StudioServer.test.ts",
+            "tests/v2/ExistingMechanicsAuthoring.test.ts",
+            "scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs",
+            "tests/testUtils/createP911CandidateFixture.mjs", "docs/v2-completion/V2C-34.md",
+        ];
+        expect(P911_TOOLING_DESCENDANT_PATHS).toEqual(expect.arrayContaining(correctionPaths));
+        for (const file of correctionPaths) await fs.writeFile(path.join(fixture.repository, file), "// Bounded correction fixture.\n");
+        const commitFixture = () => {
+            execFileSync("git", ["add", "."], {cwd: fixture.repository});
+            execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "fixture bounded correction"], {cwd: fixture.repository});
+            return execFileSync("git", ["rev-parse", "HEAD"], {cwd: fixture.repository, encoding: "utf8"}).trim();
+        };
+        const reviewedId = commitFixture();
+        const handoffUrl = pathToFileURL(path.join(process.cwd(), "scripts/p8-05-release-handoff.mjs")).href;
+        const {authenticateP805ProductTree} = await runInThisContext(`import(${JSON.stringify(handoffUrl)})`, {
+            importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+        }) as {authenticateP805ProductTree: (candidateId: string, reviewedId: string, repository: string) => {changedToolingAndEvidencePaths: string[]}};
+        expect(authenticateP805ProductTree(fixture.handoff.candidateId, reviewedId, fixture.repository).changedToolingAndEvidencePaths).toEqual([...correctionPaths].sort());
         await commitP911ToolingDescendant(fixture);
         const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
         const installed = await productionStudioCandidate(environment, fixture.repository);
@@ -85,11 +118,17 @@ it("retains the authenticated installed candidate across the complete gate-test 
         await fs.writeFile(fixture.handoff.browserDriver.path, "changed external driver");
         await expect(productionStudioCandidate(environment, fixture.repository)).rejects.toThrow("authenticated controller browser driver required");
         await fs.writeFile(fixture.handoff.browserDriver.path, driver);
-        await fs.mkdir(path.join(fixture.repository, "cli/studio-client/src"), {recursive: true});
-        await fs.writeFile(path.join(fixture.repository, "cli/studio-client/src/changed.ts"), "// Product input must remain protected.\n");
-        execFileSync("git", ["add", "."], {cwd: fixture.repository});
-        execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "fixture changed product"], {cwd: fixture.repository});
-        await expect(productionStudioCandidate(environment, fixture.repository)).rejects.toThrow("product/build inputs changed; affected proofs must be rerun");
+        const protectedBase = execFileSync("git", ["rev-parse", "HEAD"], {cwd: fixture.repository, encoding: "utf8"}).trim();
+        for (const file of ["cli/studio-client/src/changed.ts", "tsconfig.prod.json", "tests/cli/studio-client/src/unnamed.test.tsx"]) {
+            await fs.mkdir(path.dirname(path.join(fixture.repository, file)), {recursive: true});
+            await fs.writeFile(path.join(fixture.repository, file), "// Product, build and unnamed paths remain protected.\n");
+            const changedId = commitFixture();
+            await expect(productionStudioCandidate(environment, fixture.repository)).rejects.toThrow("product/build inputs changed; affected proofs must be rerun");
+            expect(() => authenticateP805ProductTree(protectedBase, changedId, fixture.repository)).toThrow("new blind retests are required");
+            await fs.rm(path.join(fixture.repository, file));
+            commitFixture();
+        }
+        await expect(productionStudioCandidate(environment, fixture.repository)).resolves.toEqual(installed);
     } finally {
         await fs.rm(root, {recursive: true, force: true});
     }
@@ -97,14 +136,18 @@ it("retains the authenticated installed candidate across the complete gate-test 
 
 it("saves an edited design, validates and plays it, then builds and reopens its real local package", async () => {
     const repository = process.cwd();
-    const overallDeadline = Date.now() + 180_000;
-    const until = (check: () => Promise<boolean>, label: string) => waitUntil(check, label, overallDeadline);
+    const overallDeadline = Date.now() + WORKFLOW_TIMEOUT;
+    const until = (check: () => Promise<boolean>, label: string, timeout?: number) => waitUntil(check, label, overallDeadline, timeout);
     const remaining = () => Math.max(1, Math.min(30_000, overallDeadline - Date.now()));
     // These exact assets are served by the production CLI. No fallback to mocked or source UI.
     const candidate = await productionStudioCandidate(process.env, repository);
-    // Managed projects reject destinations beneath node_modules. Keep all owned fixture state
+    // Managed projects reject destinations beneath node_modules. Keep their fixture
     // in this worktree, outside the npm wrapper's TMPDIR, and remove it in finally.
     const root = await fs.mkdtemp(path.join(repository, ".p908-producer-"));
+    // The standalone CLI snapshots its checkout as the host runtime. Keep its
+    // temporary snapshots under the existing excluded node_modules boundary,
+    // outside the managed-project fixture it would otherwise copy into itself.
+    const cache = await fs.mkdtemp(path.join(repository, "node_modules/.cache/pokie-tmp/p908-runtime-"));
     let studio: ChildProcess | undefined;
     let browser: ChildProcess | undefined;
     let devtools: Devtools | undefined;
@@ -115,8 +158,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
         const documents = path.join(root, "documents");
         const workspace = path.join(root, "workspace");
         const profile = path.join(root, "browser-profile");
-        const cache = path.join(root, "runtime-cache");
-        for (const directory of [documents, workspace, profile, cache]) await fs.mkdir(directory);
+        for (const directory of [documents, workspace, profile]) await fs.mkdir(directory);
         // The production child gets the same caller context under npm and direct Jest launches.
         const studioEnvironment = {...process.env};
         for (const key of Object.keys(studioEnvironment)) {
@@ -175,8 +217,8 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
             return (response.result as {value: T}).value;
         };
         const button = (label: string, scope = "document") => `Array.from((${scope})?.querySelectorAll('button') ?? []).find(e => e.textContent.trim() === ${JSON.stringify(label)} && e.getClientRects().length && !e.disabled)`;
-        const click = async (expression: string) => {
-            await until(() => evaluate<boolean>(`Boolean(${expression})`), `available control: ${expression}`);
+        const click = async (expression: string, timeout?: number) => {
+            await until(() => evaluate<boolean>(`Boolean(${expression})`), `available control: ${expression}`, timeout);
             let point: {x: number; y: number} | undefined;
             // Validation and disclosure transitions can move or disable a control
             // after it first appears. Dispatch once, only at a settled, hittable target.
@@ -203,7 +245,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
             await click(button("Open Play"));
             await click(button("New Play session"));
             const cursor = connection.events.length;
-            await click(button("Spin"));
+            await click(button("Spin"), RUNTIME_PHASE_TIMEOUT);
             let played: {status: string; session: {studioRound: number; studioProjectRoot: string; debug: {artifact: {screen: unknown[][]}}}} | undefined;
             await until(async () => {
                 const response = connection.events.slice(cursor).find((event) => event.method === "Network.responseReceived" && event.params.response?.url.endsWith("/spin"));
@@ -216,7 +258,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
                 } catch {
                     return false;
                 }
-            }, "real settled spin response");
+            }, "real settled spin response", RUNTIME_PHASE_TIMEOUT);
             expect(played?.status).toBe("ok");
             expect(played?.session.studioRound).toBe(1);
             expect(played?.session.studioProjectRoot).toBe(projectRoot);
@@ -259,11 +301,27 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
         await until(() => evaluate<boolean>("document.querySelectorAll('[data-pokie-lifecycle-card=outcome-library]').length === 1"), "single outcome generator");
         const packageScope = "document.getElementById('artifact-build-tsPackage')?.closest('[data-pokie-lifecycle-form=artifact-build]')";
         await click(button("Build", packageScope));
+        const packageCursor = connection.events.length;
         await click(button("Open as Project", packageScope));
-        await until(() => evaluate<boolean>("location.hash.endsWith('/overview') && document.body.innerText.includes('Game Model is read-only for this package') && document.body.innerText.includes('Valid — no issues found.')"), "built package validation and truthful editability");
+        try {
+            await until(() => evaluate<boolean>("location.hash.endsWith('/overview') && document.body.innerText.includes('Game Model is read-only for this package')"), "built package opening and truthful editability", RUNTIME_PHASE_TIMEOUT);
+            await until(() => evaluate<boolean>("document.body.innerText.includes('Valid — no issues found.')"), "built package validation", RUNTIME_PHASE_TIMEOUT);
+        } catch (error) {
+            const rendered = await evaluate("({route: location.hash, text: document.body.innerText})");
+            const responses = await Promise.all(connection.events.filter((event) => event.method === "Network.responseReceived" && (/\/api\/(?:home\/projects\/open|project\/(?:context|validate))$/).test(event.params.response?.url ?? "")).slice(-8).map(async (event) => ({
+                url: event.params.response?.url,
+                status: event.params.response?.status,
+                body: await send("Network.getResponseBody", {requestId: event.params.requestId}).catch(String),
+            })));
+            throw new Error(`${String(error)}; rendered state: ${JSON.stringify(rendered)}; project responses: ${JSON.stringify(responses)}; Studio: ${stderr}`, {cause: error});
+        }
         const packagePath = await evaluate<string>("decodeURIComponent(location.hash.split('/')[2])");
         expect(packagePath).not.toBe(designPath);
         expect(packagePath.startsWith(root + path.sep)).toBe(true);
+        const validationResponse = connection.events.slice(packageCursor).find((event) => event.method === "Network.responseReceived" && event.params.response?.url.endsWith("/api/project/validate"));
+        expect(validationResponse?.params.response?.status).toBe(200);
+        const validationBody = await send("Network.getResponseBody", {requestId: validationResponse?.params.requestId});
+        expect(JSON.parse(validationBody.body as string)).toMatchObject({packageRoot: packagePath, valid: true, errors: [], warnings: []});
         await fs.access(path.join(packagePath, "dist/index.js"));
         await fs.access(designPath);
         await playRound(packagePath);
@@ -280,9 +338,13 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
                 try {
                     await stop(studio);
                 } finally {
-                    await fs.rm(root, {recursive: true, force: true});
+                    try {
+                        await fs.rm(root, {recursive: true, force: true});
+                    } finally {
+                        await fs.rm(cache, {recursive: true, force: true});
+                    }
                 }
             }
         }
     }
-}, 240_000);
+}, WORKFLOW_TIMEOUT + 30_000);

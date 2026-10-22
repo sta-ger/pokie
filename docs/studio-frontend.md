@@ -480,3 +480,14 @@ See [finite same-type math optimization](optimization.md) for MathTarget units, 
 ## Canonical dossier preparation (V2C-27)
 
 Certification supports explicit model/report/replay/revision/template inputs, persisted request identity, partial/unavailable model disclosures and bounded JSON/console/Markdown/HTML/PDF downloads. Field edits invalidate inspection/export; downloads revalidate retained job inputs and reject changed source/model/evidence/template files. Cancellation cleanup failures remain failures. Every dossier is preparation only, never regulatory/RNG certification. See [the canonical dossier](certification-evidence-bundle.md).
+
+
+### Included public documentation
+
+Studio Home opens the candidate's included documentation and FromStan / POKIE
+landing in a separate tab under `/help/`. Getting started, CLI reference, search,
+examples Gallery, interactive playground and report/dossier guidance are served
+locally with the installed candidate; a hosted site or GitHub is not required.
+The normal Studio build includes these public assets. A missing help route
+returns an explicit 404 with `/help/docs/` recovery guidance rather than opening
+the Studio workspace. Closing a help tab leaves the authoring tab intact.

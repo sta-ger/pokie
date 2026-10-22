@@ -187,6 +187,58 @@ describe("HomePage", () => {
         await waitFor(() => expect(calls.some((call) => call.url === "/api/home/projects/open" && call.init?.body === JSON.stringify({projectRoot: "/games/recoverable"}))).toBe(true));
     });
 
+    it("opens a completed Blueprint job in Studio through the guarded transition even without native folder access", async () => {
+        const source = "/games/starter-slot/blueprint.json";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...retainedOpeningRoutes(),
+            "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "unavailable", reason: "Remote session."}}),
+            "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+                id: "completed-open", projectId: source, operation: "project-open-materialization", request: {sourcePath: source},
+                conflictKey: "open", status: "completed", createdAt: 1,
+                result: {summary: "Project opening and runtime materialization completed.", outputs: [{label: "Opened project", path: source}]},
+            }]}}),
+            "/api/home/projects/open": () => ({ok: true, status: 200, body: {context: {mode: "project", projectRoot: RETAINED_OPEN_RUNTIME}}}),
+        });
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        await dirtyOpeningDraft("form");
+        fireEvent.click(await screen.findByRole("button", {name: "Open Opened project"}));
+        await screen.findByText(DIRTY_CONFIRMATION);
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(0);
+        fireEvent.click(screen.getByRole("button", {name: "Stay"}));
+        expect(screen.getByLabelText("Game name")).toHaveValue("Unsaved A");
+        expect(screen.queryByRole("button", {name: "Reveal Opened project"})).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", {name: "Open Opened project"}));
+        await screen.findByText(DIRTY_CONFIRMATION);
+        fireEvent.click(screen.getByRole("button", {name: "Leave"}));
+        await screen.findByRole("heading", {name: "Recoverable"});
+        expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(RETAINED_OPEN_RUNTIME)}/overview`);
+        expect(calls.filter((call) => call.url === "/api/home/projects/open").map((call) => JSON.parse(call.init!.body!))).toEqual([{projectRoot: source}]);
+        expect(calls.filter((call) => call.url === "/api/home/fs/open-folder")).toHaveLength(0);
+    });
+
+    it("retains a missing completed opening and leads to the existing Projects relocation control", async () => {
+        const source = "/old-profile/Documents/POKIE Projects/starter-slot/blueprint.json";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...retainedOpeningRoutes(),
+            "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+                id: "missing-open", projectId: source, operation: "project-open-materialization", request: {sourcePath: source},
+                conflictKey: "open", status: "completed", createdAt: 1,
+                result: {summary: "Project opening and runtime materialization completed.", outputs: [{label: "Opened project", path: source,
+                    unavailableReason: "The retained project is missing. Use Projects to Relocate it to its current location, or add the game again."}]},
+            }]}}),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: [{location: source, type: "blueprint", name: "Starter Slot",
+                origin: "managed", capabilities: [], status: "missing", lastOpenedAt: "2026-10-20T13:00:00Z"}]}),
+        });
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        expect(await screen.findByText(/The retained project is missing/)).toBeVisible();
+        expect(screen.queryByRole("button", {name: "Open Opened project"})).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", {name: "Find retained project in Projects"}));
+        expect(router.state.location.pathname).toBe("/home/projects");
+        fireEvent.click(await screen.findByRole("button", {name: "Relocate"}));
+        expect(await screen.findByLabelText("New location")).toBeVisible();
+        expect(calls.filter((call) => call.url === "/api/home/projects/open" || call.url === "/api/home/fs/open-folder")).toHaveLength(0);
+    });
+
     it.each(["form", "JSON"] as const)("guards retained project-opening Retry before side effects for dirty %s, preserving Stay and committing Leave once", async (mode) => {
         let serverIdentity = "/games/previous";
         const {fetchImpl, calls} = createRoutedFakeFetch({

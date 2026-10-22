@@ -117,9 +117,10 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
                             {output.downloadPath !== undefined && <Anchor size="xs" href={output.downloadPath}>Download {output.label}</Anchor>}
                             {job.operation === "outcome-library-generation" && outputPath !== undefined && onInspectOutput !== undefined &&
                                 <Button size="xs" variant="subtle" onClick={() => onInspectOutput(outputPath)}>Inspect {output.label}</Button>}
-                            {outputPath !== undefined && outputActionsUnavailableReason === undefined && onOpenOutput !== undefined &&
+                            {output.unavailableReason !== undefined && <Text size="xs" data-job-detail>{output.unavailableReason}</Text>}
+                            {outputPath !== undefined && output.unavailableReason === undefined && outputActionsUnavailableReason === undefined && onOpenOutput !== undefined &&
                                 <Button size="xs" variant="subtle" onClick={() => onOpenOutput(outputPath)}>Open {output.label}</Button>}
-                            {outputPath !== undefined && outputActionsUnavailableReason === undefined && onRevealOutput !== undefined &&
+                            {outputPath !== undefined && output.unavailableReason === undefined && outputActionsUnavailableReason === undefined && onRevealOutput !== undefined &&
                                 <Button size="xs" variant="subtle" onClick={() => onRevealOutput(outputPath)}>Reveal {output.label}</Button>}
                             {outputPath !== undefined && outputActionsUnavailableReason !== undefined &&
                                 <Text size="xs" data-job-detail>Open and reveal are unavailable: {outputActionsUnavailableReason}</Text>}

@@ -3,11 +3,12 @@ const results = document.querySelector('#search-results');
 const status = document.querySelector('#search-status');
 let generation = 0;
 let indexPromise;
+const siteBase = new URL('../', import.meta.url).pathname;
 const normalized = value => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
 function index() {
     if (!indexPromise) {
-        indexPromise = fetch('/search.json').then(response => {
+        indexPromise = fetch(`${siteBase}search.json`).then(response => {
             if (!response.ok) throw new Error('Search unavailable');
             return response.json();
         }).then(entries => {

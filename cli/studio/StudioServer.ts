@@ -6,6 +6,7 @@ import {compareMathDefinitions} from "../../src/diff/MathDefinitionSourceReader.
 import type {MathDefinitionDiff} from "../../src/diff/MathDefinitionDiff.js";
 import {
     ArtifactConversionPlan,
+    GameBlueprint,
     GamePackageInspecting,
     GamePackageInspectionReport,
     GamePackageInspector,
@@ -223,6 +224,11 @@ const CONTENT_TYPES: Record<string, string> = {
     ".js": "text/javascript; charset=utf-8",
     ".css": "text/css; charset=utf-8",
     ".json": "application/json; charset=utf-8",
+    ".wasm": "application/wasm",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".md": "text/plain; charset=utf-8",
+    ".ts": "text/plain; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
 };
 
 // The first minimal stage of POKIE Studio (see docs/cli.md): serves the studio-client app shell
@@ -777,11 +783,23 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        this.sendJson(res, 200, {projectRoot: this.currentContext.projectRoot, projectId: this.canonicalPathIdentity(this.currentContext.projectRoot), jobs: this.jobService.list(this.canonicalPathIdentity(this.currentContext.projectRoot))});
+        this.sendJson(res, 200, {projectRoot: this.currentContext.projectRoot, projectId: this.canonicalPathIdentity(this.currentContext.projectRoot), jobs: this.jobService.list(this.canonicalPathIdentity(this.currentContext.projectRoot)).map((job) => this.jobAvailabilityView(job))});
     }
 
     private isHomeScopedJob(job: StudioJobView): boolean {
         return job.projectId.startsWith("design:") || job.operation === "project-open-materialization";
+    }
+
+    private jobAvailabilityView(job: StudioJobView): StudioJobView {
+        if (job.operation !== "project-open-materialization" || job.result?.outputs === undefined) return job;
+        // Completion is historical; it does not promise that a moved/deleted source still exists.
+        // Never guess a replacement from a basename or rewrite the durable request/provenance.
+        return {...job, result: {...job.result, outputs: job.result.outputs.map((output) => ({
+            ...output,
+            unavailableReason: output.path !== undefined && !fs.existsSync(output.path)
+                ? `The retained project at "${output.path}" is missing. Use Projects to Relocate it to its current location, or add the game again.`
+                : undefined,
+        }))}};
     }
 
     private handleHomeListJobs(res: ServerResponse, sourcePath: string | null): void {
@@ -794,7 +812,7 @@ export class StudioServer implements StudioServerHandling {
                 return [...this.jobService.list(canonicalSource), ...this.jobService.list(`design:${canonicalSource}`)];
             })();
         jobs.sort((left, right) => right.createdAt - left.createdAt);
-        this.sendJson(res, 200, {jobs});
+        this.sendJson(res, 200, {jobs: jobs.map((job) => this.jobAvailabilityView(job))});
     }
 
     private handleHomeCommonJob(method: string, res: ServerResponse, id: string, action: "cancel" | "recover" | undefined, sourcePath: string | null): void {
@@ -809,7 +827,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (action === undefined && method === "GET") {
-            this.sendJson(res, 200, job);
+            this.sendJson(res, 200, this.jobAvailabilityView(job));
             return;
         }
         if (action === "cancel" && method === "POST") {
@@ -827,7 +845,7 @@ export class StudioServer implements StudioServerHandling {
         const projectId = this.canonicalPathIdentity(this.currentContext.projectRoot);
         if (action === undefined && method === "GET") {
             const job = this.jobService.get(projectId, id);
-            this.sendJson(res, job === undefined ? 404 : 200, job ?? {error: "Studio job not found."});
+            this.sendJson(res, job === undefined ? 404 : 200, job === undefined ? {error: "Studio job not found."} : this.jobAvailabilityView(job));
             return;
         }
         if (action === "cancel" && method === "POST") {
@@ -876,13 +894,34 @@ export class StudioServer implements StudioServerHandling {
         };
     }
 
-    private startProjectDashboardLoad(projectRoot: string): void {
+    private startProjectDashboardLoad(projectRoot: string, authoredRefresh = false): void {
         const preparation = this.beginRuntimePreparation();
         this.projectDashboard = {status: "loading", projectRoot};
-        const loading = loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeProjectLocation, undefined, undefined, {
+        const options = {
             signal: preparation.controller.signal,
             isCurrent: () => this.isCurrentRuntimePreparation(preparation),
-        })
+        };
+        const loadDashboard = async (): Promise<ProjectDashboardContext> => {
+            if (authoredRefresh) {
+                const identity = await this.describeProjectLocation(projectRoot);
+                if (!options.isCurrent()) throw new StudioProjectOpeningCancelledError();
+                if (identity?.type === "blueprint") {
+                    // Refresh descriptive source metadata after Save/Apply without installing a
+                    // second runtime just to navigate. Every execution still prepares its own
+                    // current-source runtime; this receipt grants no authority to an old job.
+                    const loaded = this.blueprintService.load(projectRoot);
+                    if (loaded.status !== "ok") throw new Error(loaded.error);
+                    const validation = this.blueprintService.validate(loaded.blueprint);
+                    if (validation.status !== "ok") throw new Error(validation.errors.map(issue => `${issue.code}: ${issue.message}`).join("\n"));
+                    return {
+                        status: "loaded", projectRoot, game: (loaded.blueprint as GameBlueprint).manifest,
+                        type: identity.type, capabilities: identity.capabilities, origin: identity.origin,
+                    };
+                }
+            }
+            return loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeProjectLocation, undefined, undefined, options);
+        };
+        const loading = loadDashboard()
             .then((dashboard) => {
                 if (this.isCurrentRuntimePreparation(preparation) && this.currentContext.mode === "project" && this.currentContext.projectRoot === projectRoot) {
                     this.projectDashboard = dashboard;
@@ -1230,7 +1269,7 @@ export class StudioServer implements StudioServerHandling {
                         await Promise.all([...this.playPreparations]);
                         if (!this.stopping && this.currentContext === context && this.validationTransitions === 0) {
                             this.currentContext = {...context};
-                            this.startProjectDashboardLoad(context.projectRoot);
+                            this.startProjectDashboardLoad(context.projectRoot, true);
                             await Promise.all([...this.dashboardLoads]);
                         }
                     } finally {
@@ -1519,6 +1558,28 @@ export class StudioServer implements StudioServerHandling {
 
         if (method !== "GET") {
             this.sendJson(res, 404, {error: `Not found: ${method} ${url.pathname}`});
+            return;
+        }
+
+        // Installed help is a static public site with its own routes, never a Studio route.
+        if (url.pathname === "/help") {
+            res.writeHead(308, {Location: `/help/${url.search}`});
+            res.end();
+            return;
+        }
+        if (url.pathname.startsWith("/help/")) {
+            const requested = url.pathname.endsWith("/") ? `${url.pathname}index.html` : url.pathname;
+            const helpFile = this.resolveStaticFilePath(requested);
+            if (helpFile === undefined && !url.pathname.endsWith("/")) {
+                const index = this.resolveStaticFilePath(`${url.pathname}/index.html`);
+                if (index !== undefined && isPathWithin(path.join(this.studioRoot, "help"), index)) {
+                    res.writeHead(308, {Location: `${url.pathname}/${url.search}`});
+                    res.end();
+                    return;
+                }
+            }
+            if (helpFile !== undefined && isPathWithin(path.join(this.studioRoot, "help"), helpFile)) this.sendFile(res, helpFile);
+            else this.sendJson(res, 404, {error: "Documentation page not found. Return to /help/docs/."});
             return;
         }
 
@@ -2048,7 +2109,7 @@ export class StudioServer implements StudioServerHandling {
             // The Dashboard retains a loaded Project snapshot for its Overview. Refresh that snapshot
             // after an in-place Blueprint save so every Project-facing surface observes the newly
             // authoritative source, not the pre-save dashboard model.
-            this.startProjectDashboardLoad(result.path);
+            this.startProjectDashboardLoad(result.path, true);
         }
         this.sendJson(res, this.statusForBlueprintSave(result.status), result);
     }
@@ -3649,7 +3710,8 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: result.message});
             return;
         }
-        this.sendJson(res, 202, result.job);
+        // Attachment observes existing work; only 202 accepts a new execution.
+        this.sendJson(res, result.status === "reattached" ? 200 : 202, result.job);
     }
 
     private handleGetSimulation(res: ServerResponse, id: string): void {

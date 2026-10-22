@@ -50,6 +50,7 @@ import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {usePlaySession} from "../../hooks/usePlaySession";
 import {useProjectContext} from "../../hooks/useProjectContext";
 import {useProjectJobs} from "../../hooks/useProjectJobs";
+import type {GuardedAction} from "../../hooks/useDesignNavigationGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {useReplayPoll} from "../../hooks/useReplayPoll";
 import {useSimulationPoll} from "../../hooks/useSimulationPoll";
@@ -425,7 +426,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const migratedFrom = new URLSearchParams(location.search).get("migrated");
     const migration = legacyProjectRouteMigration(migratedFrom ?? undefined);
     const navigationRequestIdRef = useRef(0);
-    const [navigationLifecycle, setNavigationLifecycle] = useState<{tab: ProjectTab; status: "loading" | "rendered" | "error"; message?: string}>({tab: activeTab, status: "rendered"});
+    const [navigationLifecycle, setNavigationLifecycle] = useState<{tab: ProjectTab; status: "loading" | "rendered" | "error"; message?: string; retryTab?: ProjectTab}>({tab: activeTab, status: "rendered"});
     // This generation is deliberately shared by a completed durable operation
     // and a public tab transition. A capability-changing operation must refresh
     // the product-owned context before its dependent tab can be selected; the
@@ -434,7 +435,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const [contextRefreshGeneration, setContextRefreshGeneration] = useState(0);
     const contextRefreshGenerationRef = useRef(0);
     const [pendingNavigation, setPendingNavigation] = useState<{requestId: number; tab: ProjectTab; refreshGeneration: number} | undefined>();
-    const {header, completedRefreshGeneration, failedRefreshGeneration, renderedTerminal} = useProjectContext(requestedProjectRoot, contextRefreshGeneration);
+    const {header, refreshError, completedRefreshGeneration, failedRefreshGeneration, renderedTerminal} = useProjectContext(requestedProjectRoot, contextRefreshGeneration);
     // The active tab lives in the URL (`/project/:tab`, see routes.tsx) so refresh/back-forward/direct
     // links land on the right section; every existing call site below still just calls `setActiveTab(x)`,
     // now implemented as a navigation instead of local state.
@@ -472,7 +473,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             // Keep the current workflow selected and expose the freshly
             // rendered context diagnostic when its prerequisite cannot be
             // revalidated. A failed request must not turn into a stale route.
-            setNavigationLifecycle({tab: activeTab, status: "error", message: header.status === "error" ? header.message : "The project context could not be refreshed."});
+            setNavigationLifecycle({tab: activeTab, status: "error", message: refreshError ?? (header.status === "error" ? header.message : "The project context could not be refreshed."), retryTab: pendingNavigation.tab});
             setPendingNavigation(undefined);
             return;
         }
@@ -501,7 +502,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         navigate(`${routePrefix}/${pendingNavigation.tab}`);
         setNavigationLifecycle({tab: pendingNavigation.tab, status: "rendered"});
         setPendingNavigation(undefined);
-    }, [activeTab, completedRefreshGeneration, failedRefreshGeneration, header, navigate, pendingNavigation, renderedTerminal, requestedProjectRoot]);
+    }, [activeTab, completedRefreshGeneration, failedRefreshGeneration, header, navigate, pendingNavigation, refreshError, renderedTerminal, requestedProjectRoot]);
 
     // Keep the URL as understandable as the view.  Home already replaces unknown sections with its
     // default route; doing the same for a project means a stale bookmark/reload never leaves an
@@ -567,7 +568,22 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     }, []);
     const [recoveryJob, setRecoveryJob] = useState<StudioJobView | undefined>();
     const [newSessionRecoveryRequested, setNewSessionRecoveryRequested] = useState(false);
+    const [jobProjectOpeningError, setJobProjectOpeningError] = useState<string>();
+    const openAndNavigate = useOpenProject();
+    const projectActionGuardRef = useRef<GuardedAction | undefined>(undefined);
+    const reopenJobProject = useCallback((sourcePath: string): void => {
+        setJobProjectOpeningError(undefined);
+        const open = () => openAndNavigate(sourcePath);
+        const guardedOpen = projectActionGuardRef.current;
+        (guardedOpen === undefined ? open() : guardedOpen(open)).catch((error: unknown) => {
+            setJobProjectOpeningError(`Couldn't reopen the retained project "${sourcePath}". ${errorMessage(error)} Retry if the source is available, or use Projects to Relocate it to its current location or add the game again.`);
+        });
+    }, [openAndNavigate]);
     const handleJobRecoveryAction = useCallback((job: StudioJobView): void => {
+        if (job.operation === "project-open-materialization" && typeof job.request.sourcePath === "string") {
+            reopenJobProject(job.request.sourcePath);
+            return;
+        }
         // Never replay durable work in the background.  The destination form
         // receives this immutable request and reconstructs it for an explicit
         // new submission, rather than opening an empty unrelated workflow.
@@ -584,7 +600,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         } else {
             setActiveTab("exportDeploy");
         }
-    }, [setActiveTab]);
+    }, [reopenJobProject, setActiveTab]);
     const handleFeatureOutcomeLibraryRecoveryAction = useCallback((jobId: string): void => {
         const job = commonJobs.jobs.find((candidate) => candidate.id === jobId);
         if (job === undefined || job.recovery === undefined) return;
@@ -1089,6 +1105,22 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // letting a Close silently discard an unsaved Game Model edit.
     const [gameModelDirty, setGameModelDirty] = useState(false);
 
+    // Both in-place authoring surfaces change the source used by simulation.
+    // Retire pending reads as well as the visible report, while leaving owned
+    // jobs attached so saving during a run never removes its Cancel control.
+    const handleBlueprintSaved = (): void => {
+        simulation.invalidateResult();
+        reportRequestIdRef.current++;
+        compareRequestIdRef.current++;
+        setReportDetail({status: "empty"});
+        setSelectedReportId(undefined);
+        setCompareDetail({status: "empty"});
+        setRunAgainNotice("The saved design changed. Run a new simulation for the current design. Retained reports remain available as historical results.");
+        const next = ++contextRefreshGenerationRef.current;
+        setPendingNavigation((pending) => pending === undefined ? undefined : {...pending, refreshGeneration: next});
+        setContextRefreshGeneration(next);
+    };
+
     useEffect(() => {
         if (projectKey === undefined) {
             return;
@@ -1179,7 +1211,6 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const [copyPathNotice, setCopyPathNotice] = useState<string>();
     const [jobOutputNotice, setJobOutputNotice] = useState<string>();
     const [jobOutputActionsUnavailableReason, setJobOutputActionsUnavailableReason] = useState<string>();
-    const openAndNavigate = useOpenProject();
     const closeGuard = useDoubleSubmitGuard();
     const closeProjectAndReturnToProjects = (confirmActiveJobs = false): void => {
         if (!closeGuard.begin()) {
@@ -1271,6 +1302,13 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         };
     }, [fetchImpl]);
 
+    let navigationMessage = "Preparing the selected section…";
+    if (navigationLifecycle.tab === activeTab && navigationLifecycle.status === "error") {
+        navigationMessage = "Project navigation needs a retry";
+    } else if (navigationLifecycle.tab === activeTab && navigationLifecycle.status === "rendered") {
+        navigationMessage = `${activeTabLabel} ready`;
+    }
+
     if (header.status === "empty") {
         return (
             <AppShellLayout navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}>
@@ -1345,8 +1383,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                             {migration.message}
                         </Alert>
                     )}
-                    {navigationLifecycle.tab === activeTab && navigationLifecycle.status === "error" && (
-                        <ErrorState message={`Could not refresh this project after navigation: ${navigationLifecycle.message ?? "Unknown error"}`} />
+                    {(refreshError !== undefined || (navigationLifecycle.tab === activeTab && navigationLifecycle.status === "error")) && (
+                        <>
+                            <ErrorState message={`Could not refresh this project: ${refreshError ?? navigationLifecycle.message ?? "Unknown error"}`} />
+                            <Button variant="default" size="xs" onClick={() => setActiveTab(navigationLifecycle.retryTab ?? activeTab)}>Retry project context</Button>
+                        </>
                     )}
                     <Text
                         role="status"
@@ -1360,7 +1401,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         size="xs"
                         c="dimmed"
                     >
-                        {navigationLifecycle.tab === activeTab && navigationLifecycle.status === "loading" ? `Opening ${activeTabLabel}…` : `${activeTabLabel} ready`}
+                        {navigationMessage}
                     </Text>
                     {!activeTabSupported && activeTabDescriptor !== undefined && (
                         <>
@@ -1394,10 +1435,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     ? <WasmManifestInspection projectRoot={header.projectRoot} summary={header.wasmPresentation.inspectionSummary} />
                                     : <Text>This {describeProjectType(header.type).toLowerCase()} can be republished from Build/Export.</Text>
                             )}
-                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} onApplied={() => {
-                                const next = ++contextRefreshGenerationRef.current;
-                                setContextRefreshGeneration(next);
-                            }} />}
+                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} onApplied={handleBlueprintSaved} />}
                             {activeTab === "gameModel" && (
                                 // GameModelTab owns all of its own fetch state locally (no page-level hook),
                                 // so a genuine project switch needs a full remount, not just a re-render of a
@@ -1411,6 +1449,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     editable={headerCapabilities.includes(BLUEPRINT_BUILD_CAPABILITY)}
                                     projectRoot={projectKey}
                                     onDirtyChange={setGameModelDirty}
+                                    onBlueprintSaved={handleBlueprintSaved}
+                                    projectActionGuardRef={projectActionGuardRef}
                                 />
                             )}
                             {activeTab === "play" && (
@@ -1436,6 +1476,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     cancellationRequested={simulation.cancellationRequested}
                                     operation={simulation.operation}
                                     terminalReceipt={simulation.terminalReceipt}
+                                    historicalResult={
+                                        (reportDetail.status !== "empty" && (!simulation.resultCurrent || selectedReportId !== simulation.job?.id)) ||
+                                        (simulation.job?.status === "completed" && !simulation.resultCurrent)
+                                    }
                                     onRun={startRun}
                                     recoveryRequest={recoveryJob?.operation.includes("simulation") ? recoveryJob.request : undefined}
                                     onCancel={() => {
@@ -1541,9 +1585,20 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         <Stack gap="xs" mb="md" aria-labelledby="studio-operations-heading">
                             <Title id="studio-operations-heading" order={3}>Studio operations</Title>
                             <Text size="sm" c="dimmed">Current and retained work stays available here while you continue through this project.</Text>
-                            {visibleCommonJobs.map((job) => <JobCard job={job} cancellationPending={commonJobs.pendingIds.includes(job.id) || (job.id === simulation.currentJobId && simulation.cancellationRequested)} onCancel={(id) => id === simulation.currentJobId ? simulation.cancel() : commonJobs.cancel(id)} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} onRevealOutput={revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} key={job.id} />)}
+                            {visibleCommonJobs.map((job) => {
+                                // This is display-only guidance; retain the durable job, request,
+                                // provenance and original report bytes unchanged.
+                                const displayedJob = job.operation === "simulation" && job.result !== undefined &&
+                                    (!simulation.resultCurrent || job.id !== simulation.job?.id)
+                                    ? {...job, result: {...job.result, warnings: [...(job.result.warnings ?? []), "Historical simulation result — not validated against the current saved design. Run a new simulation for current results."]}}
+                                    : job;
+                                return <JobCard job={displayedJob} cancellationPending={commonJobs.pendingIds.includes(job.id) || (job.id === simulation.currentJobId && simulation.cancellationRequested)} onCancel={(id) => id === simulation.currentJobId ? simulation.cancel() : commonJobs.cancel(id)} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={job.operation === "project-open-materialization" ? reopenJobProject : openJobOutput} onRevealOutput={job.operation === "project-open-materialization" && jobOutputActionsUnavailableReason !== undefined ? undefined : revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason} key={job.id} />;
+                            })}
                         </Stack>
                     )}
+                    {jobProjectOpeningError !== undefined && <Alert role="alert" color="red">{jobProjectOpeningError}</Alert>}
+                    {(jobProjectOpeningError !== undefined || visibleCommonJobs.some((job) => job.operation === "project-open-materialization" && job.result?.outputs?.some((output) => output.unavailableReason !== undefined))) &&
+                        <Button variant="default" onClick={() => navigate("/home/projects")}>Find retained project in Projects</Button>}
                     {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
                 </div>
             )}

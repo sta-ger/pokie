@@ -1,5 +1,5 @@
 import {act, renderHook, waitFor} from "@testing-library/react";
-import type {ReactNode} from "react";
+import {StrictMode, type ReactNode} from "react";
 import type {FetchLike} from "../../../../../cli/studio-client/src/api/apiClient";
 import {StudioApiProvider} from "../../../../../cli/studio-client/src/context/StudioApiProvider";
 import {useProjectContext} from "../../../../../cli/studio-client/src/hooks/useProjectContext";
@@ -93,5 +93,106 @@ describe("useProjectContext refresh acknowledgement", () => {
         await act(() => Promise.resolve(pending[1]()));
         await waitFor(() => expect(result.current.completedRefreshGeneration).toBe(3));
         expect(result.current.renderedTerminal).toEqual(expect.objectContaining({generation: 3, outcome: "completed", header: result.current.header}));
+    });
+});
+
+
+describe("V2C-34 bounded context recovery", () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    const root = "/games/valera";
+    const loaded = {status: "loaded", projectRoot: root, game: {id: "valera", name: "Valera", version: "1.0.0"}};
+    const response = (body: unknown) => ({ok: true, status: 200, json: () => Promise.resolve(body)});
+
+    it.each([undefined, root])("V2C-34-CONTEXT-BUDGET retains same-project controls on route %s, fails terminally and recovers twice", async route => {
+        let loading = false;
+        let requests = 0;
+        const fetchImpl: FetchLike = () => {
+            requests++;
+            return Promise.resolve(response(loading ? {status: "loading", projectRoot: root} : loaded));
+        };
+        const {result, rerender, unmount} = renderHook(({generation}) => useProjectContext(route, generation), {initialProps: {generation: 1}, wrapper: wrapper(fetchImpl)});
+        await act(() => jest.advanceTimersByTimeAsync(0));
+        expect(result.current.completedRefreshGeneration).toBe(1);
+        const retained = result.current.header;
+        loading = true;
+        rerender({generation: 2});
+        await act(() => jest.advanceTimersByTimeAsync(20_000));
+        expect(result.current.failedRefreshGeneration).toBe(2);
+        expect(result.current.completedRefreshGeneration).toBe(1);
+        expect(result.current.header).toBe(retained);
+        expect(result.current.refreshError).toMatch(/still preparing.*Retry/);
+        expect(result.current.renderedTerminal).toEqual({generation: 2, header: retained, outcome: "failed"});
+        const exhaustedRequests = requests;
+        await act(() => jest.advanceTimersByTimeAsync(30_000));
+        expect(requests).toBe(exhaustedRequests);
+        loading = false;
+        for (const generation of [3, 4]) {
+            rerender({generation});
+            await act(() => jest.advanceTimersByTimeAsync(0));
+            expect(result.current.completedRefreshGeneration).toBe(generation);
+            expect(result.current.refreshError).toBeUndefined();
+            expect(result.current.renderedTerminal).toEqual({generation, header: result.current.header, outcome: "completed"});
+        }
+        unmount();
+        expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it.each(["fetch", "body", "http", "context"])("V2C-34-CONTEXT-REUSE retains a loaded screen across %s failure and rejects late authority", async phase => {
+        let fail = false;
+        let release: (() => void) | undefined;
+        const fetchImpl: FetchLike = () => {
+            if (!fail) return Promise.resolve(response(loaded));
+            if (phase === "http") return Promise.resolve({ok: false, status: 503, json: () => Promise.resolve({error: "Context unavailable"})});
+            if (phase === "context") return Promise.resolve(response({status: "error", projectRoot: root, error: "Preparation failed"}));
+            return phase === "fetch" ? new Promise(resolve => {
+                release = () => resolve(response({...loaded, game: {...loaded.game, name: "Superseded"}}));
+            }) : Promise.resolve({ok: true, status: 200, json: () => new Promise(resolve => {
+                release = () => resolve({...loaded, game: {...loaded.game, name: "Superseded"}});
+            })});
+        };
+        const {result, rerender} = renderHook(({generation}) => useProjectContext(root, generation), {initialProps: {generation: 1}, wrapper: wrapper(fetchImpl)});
+        await act(() => jest.advanceTimersByTimeAsync(0));
+        const retained = result.current.header;
+        fail = true;
+        rerender({generation: 2});
+        await act(() => jest.advanceTimersByTimeAsync(10_000));
+        expect(result.current.failedRefreshGeneration).toBe(2);
+        expect(result.current.header).toBe(retained);
+        expect(result.current.completedRefreshGeneration).toBe(1);
+        fail = false;
+        rerender({generation: 3});
+        await act(() => jest.advanceTimersByTimeAsync(0));
+        expect(result.current.completedRefreshGeneration).toBe(3);
+        await act(async () => {
+            release?.();
+            await Promise.resolve();
+        });
+        expect(result.current.header).toMatchObject({status: "loaded", name: "Valera"});
+        expect(result.current.renderedTerminal?.generation).toBe(3);
+    });
+
+    it("V2C-34-CONTEXT-INITIAL terminates initial loading in StrictMode, then reuses one request on recovery", async () => {
+        let loading = true;
+        let requests = 0;
+        const fetchImpl: FetchLike = () => {
+            requests++;
+            return Promise.resolve(response(loading ? {status: "loading", projectRoot: root} : loaded));
+        };
+        const Wrapper = ({children}: {children: ReactNode}) => <StrictMode><StudioApiProvider fetchImpl={fetchImpl}>{children}</StudioApiProvider></StrictMode>;
+        const {result, rerender, unmount} = renderHook(({generation}) => useProjectContext(root, generation), {initialProps: {generation: 1}, wrapper: Wrapper});
+        await act(() => jest.advanceTimersByTimeAsync(20_000));
+        expect(result.current.header.status).toBe("error");
+        expect(result.current.failedRefreshGeneration).toBe(1);
+        expect(result.current.completedRefreshGeneration).toBe(0);
+        const attempts = requests;
+        loading = false;
+        rerender({generation: 2});
+        await act(() => jest.advanceTimersByTimeAsync(0));
+        expect(requests).toBe(attempts + 1);
+        expect(result.current.completedRefreshGeneration).toBe(2);
+        unmount();
+        expect(jest.getTimerCount()).toBe(0);
     });
 });

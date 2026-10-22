@@ -1,5 +1,6 @@
+import {generatedMechanicsGame} from "../../v2/fixtures/ExistingMechanicsGame.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
-import {writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {StudioRoundRecorder} from "../../../cli/studio/runtime/StudioRoundRecorder.js";
 import {transactionalRoundGame} from "../../v2/fixtures/TransactionalRoundGame.js";
 import {
@@ -42,6 +43,7 @@ import crypto from "crypto";
 import {spawn} from "child_process";
 import fs from "fs";
 import http, {type IncomingMessage} from "http";
+import {request} from "undici";
 import os from "os";
 import path from "path";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
@@ -468,8 +470,8 @@ async function pollUntilTerminal(url: string): Promise<{status: number; body: {[
 // awaits -- including a real outcome-source resolution attempt -- before landing on "loaded"/"error", so
 // a single flushed tick isn't always enough for it to settle under load. Polls the same way
 // pollUntilTerminal does rather than relying on a fixed number of ticks.
-async function pollUntilProjectContextSettled(url: string): Promise<{status: number; body: {[key: string]: unknown; status: string}}> {
-    const deadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
+async function pollUntilProjectContextSettled(url: string, timeoutMs = RUNTIME_PHASE_POLL_TIMEOUT_MS): Promise<{status: number; body: {[key: string]: unknown; status: string}}> {
+    const deadline = Date.now() + timeoutMs;
     let lastBody: unknown;
     while (Date.now() < deadline) {
         const response = await get(url);
@@ -486,6 +488,14 @@ async function pollUntilProjectContextSettled(url: string): Promise<{status: num
 }
 
 describe("StudioServer", () => {
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     let studioRoot: string;
     let server: StudioServer;
     let baseUrl: string;
@@ -770,9 +780,8 @@ describe("StudioServer", () => {
         expect(outcomeService.rebindCheckpointRequest).toHaveBeenCalled();
     });
 
-    // Both routes perform real package snapshot acquisition, generation and
-    // cleanup. Budget the combined workflow on constrained gate workers, including its server restart,
-    // rather than allowing Jest to tear down a still-running HTTP scenario.
+    // Two independently generated packages, both HTTP start routes, registry and drift
+    // checks each acquire real snapshots. Budget the combined workflow, including restart.
     it("runs both Outcome Library HTTP start routes against a real generated package and rejects a bound destination drift", async () => {
         await server.stop();
         const projectRoot = path.join(studioRoot, "real-outcome-library-package");
@@ -856,12 +865,12 @@ describe("StudioServer", () => {
         expect(fs.existsSync(path.join(sampledProjectRoot, "changed-destination"))).toBe(false);
         await server.stop();
         expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
-    }, 300000);
+    }, 2 * REAL_RUNTIME_TEST_TIMEOUT_MS);
 
     // This scenario includes two complete million-stop enumerations plus
     // independent runtimes for resume, stop, close, switch and rejection paths.
     // Keep the full populations and production loaders, with a bounded
-    // integration budget for the entire sequence on constrained CI workers.
+    // per-path runtime budget for the six combined lifecycle/rejection paths.
     it("keeps real Outcome Library HTTP lifecycle cancellation, restart, source drift, and diagnostics cleanup-safe", async () => {
         await server.stop();
         const lifecycleRoot = path.join(studioRoot, "real-outcome-library-lifecycle-package");
@@ -1052,7 +1061,7 @@ describe("StudioServer", () => {
             });
         }
         expectNoOutcomeLibraryPublication(unsupportedRoot, "outcomelibrary");
-    }, 900000);
+    }, 6 * REAL_RUNTIME_TEST_TIMEOUT_MS);
 
     it("reports safe diagnostics on GET /api/studio/diagnostics in home mode", async () => {
         const {status, body} = await get(`${baseUrl}/api/studio/diagnostics`);
@@ -1086,6 +1095,50 @@ describe("StudioServer", () => {
         expect(response.status).toBe(200);
         expect(response.headers.get("content-type")).toContain("text/html");
         expect(await response.text()).toBe("<html>studio</html>");
+    });
+
+    it("serves included help, Gallery and downloads without falling back to the Studio shell, then recovers after missing routes", async () => {
+        const helpRoot = path.join(studioRoot, "help");
+        const files = {
+            "index.html": "<html>FromStan / POKIE</html>",
+            "docs/index.html": "<html>Documentation <a href='/help/gallery/'>Gallery</a></html>",
+            "docs/getting-started/index.html": "<html>Getting started</html>",
+            "docs/cli-api/index.html": "<html>CLI reference</html>",
+            "gallery/index.html": "<html>Examples gallery</html>",
+            "assets/playground/worker.js": "// public Worker",
+            "assets/playground/models/lines.wasm": "wasm bytes",
+            "sources/docs/certification-evidence-bundle.md": "# Dossier guidance",
+            "downloads/reproduce.mjs": "// local reproduction",
+        };
+        for (const [name, body] of Object.entries(files)) {
+            const file = path.join(helpRoot, name);
+            fs.mkdirSync(path.dirname(file), {recursive: true});
+            fs.writeFileSync(file, body);
+        }
+        const redirect = await fetch(`${baseUrl}/help?topic=docs`, {redirect: "manual"});
+        expect(redirect.status).toBe(308);
+        expect(redirect.headers.get("location")).toBe("/help/?topic=docs");
+        const guideRedirect = await fetch(`${baseUrl}/help/docs?topic=producer`, {redirect: "manual"});
+        expect(guideRedirect.status).toBe(308);
+        expect(guideRedirect.headers.get("location")).toBe("/help/docs/?topic=producer");
+        for (const [name, body] of Object.entries(files)) {
+            const route = name.replace(/index\.html$/, "");
+            const response = await fetch(`${baseUrl}/help/${route}`);
+            expect(response.status).toBe(200);
+            expect(await response.text()).toBe(body);
+            if (name.endsWith(".wasm")) expect(response.headers.get("content-type")).toBe("application/wasm");
+            if (name.endsWith(".js") || name.endsWith(".mjs")) expect(response.headers.get("content-type")).toContain("text/javascript");
+            if (name.endsWith(".md")) expect(response.headers.get("content-type")).toContain("text/plain");
+        }
+        for (const missing of ["missing/", "assets/missing.js", "%2e%2e%2findex.html"]) {
+            const response = await fetch(`${baseUrl}/help/${missing}`);
+            expect(response.status).toBe(404);
+            expect(await response.json()).toEqual({error: "Documentation page not found. Return to /help/docs/."});
+        }
+        for (let attempt = 0; attempt < 2; attempt++) {
+            expect(await (await fetch(`${baseUrl}/help/docs/`)).text()).toContain("Documentation");
+            expect(await (await fetch(`${baseUrl}/home/projects`)).text()).toBe("<html>studio</html>");
+        }
     });
 
     it("returns 404 for a file that doesn't exist", async () => {
@@ -3546,6 +3599,188 @@ describe("StudioServer", () => {
         });
     });
 
+    describe("V2C-34 authored dashboard context", () => {
+        async function fixture() {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-authored-context-"));
+            const studioRoot = path.join(directory, "studio");
+            fs.mkdirSync(studioRoot);
+            writeStudioAssets(studioRoot);
+            const root = path.join(directory, "blueprint.json");
+            const blueprint = {
+                manifest: {id: "sample-slot", name: "Sample Slot", version: "1.0.0", description: "Original description"},
+                reels: 3, rows: 1, symbols: ["A"], paylines: [[0, 0, 0]],
+                reelStrips: [["A"], ["A"], ["A"]], availableBets: [1], paytable: {A: {3: 10}},
+            };
+            fs.writeFileSync(root, JSON.stringify(blueprint));
+            let release!: () => void;
+            const gate = new Promise<void>(resolve => {
+                release = resolve;
+            });
+            const runtimeResolver = jest.fn(() => Promise.resolve({runtimePath: root, release: () => Promise.resolve()}));
+            const loader = jest.fn(() => Promise.resolve(generatedMechanicsGame(JSON.parse(fs.readFileSync(root, "utf8")))));
+            const simulation = new StudioSimulationService(undefined, loader, undefined, 50, undefined, () => gate,
+                undefined, undefined, undefined, undefined, runtimeResolver);
+            const jobs = createIsolatedJobService(studioRoot);
+            const home = new StudioHomeService("2.0.0", undefined, loader, undefined, runtimeResolver);
+            const service = new StudioBlueprintService("2.0.0", studioRoot, home);
+            const registration = new StudioProjectRegistrationService();
+            const server = new StudioServer({pokieVersion: "2.0.0", port: 0, host: "127.0.0.1", studioRoot,
+                homeService: home, blueprintService: service, jobService: jobs, simulationService: simulation,
+                loadGame: loader, resolveRuntimePackageRoot: runtimeResolver, projectRegistrationService: registration,
+                initialContext: {mode: "project", projectRoot: root}});
+            const address = await server.start();
+            const url = `http://${address.host}:${address.port}`;
+            await pollUntilProjectContextSettled(`${url}/api/project/context`);
+            return {directory, root, blueprint, service, simulation, jobs, runtimeResolver, loader, registration, url, release,
+                cleanup: async () => {
+                    release();
+                    await server.stop();
+                    fs.rmSync(directory, {recursive: true, force: true});
+                }};
+        }
+
+        it("V2C-34-SERVER-SAVE-CONTEXT publishes saved metadata without another runtime preparation while the original execution remains active", async () => {
+            const test = await fixture();
+            let finishRefresh!: () => void;
+            const refreshGate = new Promise<void>(resolve => {
+                finishRefresh = resolve;
+            });
+            try {
+                const started = await post(`${test.url}/api/project/simulations`, {rounds: 100, workers: 1});
+                const id = (started.body as {id: string}).id;
+                await flushMacrotask();
+                expect(test.simulation.getStatus(id)).toMatchObject({status: "running", roundsCompleted: 50});
+                const request = test.jobs.get(test.root, id)!.request;
+                const preparations = test.runtimeResolver.mock.calls.length;
+                const edited = {...test.blueprint, manifest: {id: "edited-slot", name: "Edited Slot", version: "2.0.0"}, paytable: {A: {3: 11}}};
+                const describe = test.registration.describeLocation.bind(test.registration);
+                jest.spyOn(test.registration, "describeLocation").mockImplementationOnce(async root => {
+                    await refreshGate;
+                    return describe(root);
+                });
+                expect(await post(`${test.url}/api/home/blueprints/save`, {path: test.root, blueprint: edited,
+                    expectedHash: computeGameBlueprintHash(test.blueprint)})).toMatchObject({status: 201});
+                // Save acknowledges persisted bytes before its background metadata refresh settles.
+                expect(JSON.parse(fs.readFileSync(test.root, "utf8"))).toEqual(edited);
+                expect(await get(`${test.url}/api/project/context`)).toMatchObject({status: 200, body: {
+                    status: "loading", projectRoot: test.root,
+                }});
+                expect(test.simulation.getStatus(id)?.status).toBe("running");
+                finishRefresh();
+                expect((await pollUntilProjectContextSettled(`${test.url}/api/project/context`)).body).toMatchObject({status: "loaded"});
+                for (let retry = 0; retry < 2; retry++) {
+                    expect(await get(`${test.url}/api/project/context`)).toMatchObject({status: 200, body: {
+                        status: "loaded", projectRoot: test.root, game: edited.manifest, type: "blueprint",
+                        capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                    }});
+                }
+                expect((await get(`${test.url}/api/project/context`)).body).not.toHaveProperty("game.description");
+                expect(test.runtimeResolver).toHaveBeenCalledTimes(preparations);
+                expect(test.simulation.getStatus(id)?.status).toBe("running");
+                expect(test.jobs.get(test.root, id)!.request).toEqual(request);
+                const attached = await post(`${test.url}/api/project/simulations`, {rounds: 100, workers: 1});
+                expect(attached).toMatchObject({status: 200, body: {id}});
+                expect(test.jobs.list(test.root).map(job => job.id)).toEqual([id]);
+                expect((await get(`${test.url}/api/project/gameModel`)).body).toMatchObject({paytable: {data: [{symbolId: "A", matchCount: 3, payout: 11}]}});
+                test.release();
+                await pollUntilTerminal(`${test.url}/api/project/simulations/${id}`);
+                expect(test.simulation.getReport(test.root, id)).toMatchObject({status: "ok", report: {rtp: 10}});
+                const next = await post(`${test.url}/api/project/simulations`, {rounds: 100, workers: 1});
+                const nextId = (next.body as {id: string}).id;
+                expect(nextId).not.toBe(id);
+                await pollUntilTerminal(`${test.url}/api/project/simulations/${nextId}`);
+                expect(test.simulation.getReport(test.root, nextId)).toMatchObject({status: "ok", report: {rtp: 11}});
+                expect(test.simulation.getReport(test.root, id)).toMatchObject({status: "ok", report: {rtp: 10}});
+            } finally {
+                finishRefresh();
+                await test.cleanup(); 
+            }
+        });
+
+        it("V2C-34-SERVER-CONTEXT-REUSE rejects malformed persisted models through the shared validator then supports repeated corrected Save", async () => {
+            const test = await fixture();
+            try {
+                const malformed = {...test.blueprint, rows: 0};
+                const validation = test.service.validate(malformed);
+                expect(validation.status).toBe("invalid");
+                expect(await post(`${test.url}/api/home/blueprints/validate`, {blueprint: malformed})).toMatchObject({status: 200, body: {status: "invalid"}});
+                // Save deliberately permits invalid authored content. It must never turn it into
+                // loaded metadata just because the request and persisted copy agree.
+                expect(await post(`${test.url}/api/home/blueprints/save`, {path: test.root, blueprint: malformed, overwrite: true})).toMatchObject({status: 201});
+                const rejected = await pollUntilProjectContextSettled(`${test.url}/api/project/context`);
+                expect(rejected.body.status).toBe("error");
+                if (validation.status === "invalid") for (const issue of validation.errors) {
+                    expect(rejected.body.error).toContain(issue.code);
+                    expect(rejected.body.error).toContain(issue.message);
+                }
+                for (let attempt = 0; attempt < 2; attempt++) {
+                    expect(await post(`${test.url}/api/home/blueprints/save`, {path: test.root, blueprint: test.blueprint, overwrite: true})).toMatchObject({status: 201});
+                    expect((await pollUntilProjectContextSettled(`${test.url}/api/project/context`)).body).toMatchObject({status: "loaded", game: test.blueprint.manifest});
+                }
+                const before = (await get(`${test.url}/api/project/context`)).body;
+                expect(await post(`${test.url}/api/home/blueprints/save`, {path: test.root, blueprint: malformed, expectedHash: "stale"})).toMatchObject({status: 409});
+                expect((await get(`${test.url}/api/project/context`)).body).toEqual(before);
+                expect(await post(`${test.url}/api/home/blueprints/save`, {path: path.join(test.directory, "separate.json"), blueprint: malformed})).toMatchObject({status: 201});
+                expect((await get(`${test.url}/api/project/context`)).body).toEqual(before);
+                expect(test.runtimeResolver).toHaveBeenCalledTimes(1);
+            } finally {
+                await test.cleanup(); 
+            }
+        });
+
+        it("V2C-34-SERVER-APPLY-CONTEXT refreshes the persisted optimized Blueprint without eagerly preparing another runtime", async () => {
+            const test = await fixture();
+            try {
+                const request = {
+                    targets: [{metric: "rtp", unit: "ratio", value: 11}],
+                    policy: {strategy: "exact-finite-v1", seed: "context", budget: 2, maxOutcomes: 100,
+                        stake: 1, mode: "base", scope: "logical-round",
+                        tunables: [{path: "/paytable/A/3", values: [10, 11]}],
+                        locks: ["/paylines", "/reelStrips", "/availableBets"]},
+                };
+                const reviewed = await post(`${test.url}/api/project/optimization/support`, {expectedProjectRoot: test.root, request});
+                expect(reviewed.status).toBe(200);
+                const started = await post(`${test.url}/api/project/optimization/start`, {expectedProjectRoot: test.root,
+                    request, sourceRevision: (reviewed.body as {sourceRevision: string}).sourceRevision});
+                expect(started.status).toBe(202);
+                const jobId = (started.body as {job: {id: string}}).job.id;
+                expect((await pollUntilTerminal(`${test.url}/api/project/jobs/${jobId}`)).body.status).toBe("completed");
+                const applied = await post(`${test.url}/api/project/optimization/apply`, {expectedProjectRoot: test.root, request, jobId});
+                expect(applied).toMatchObject({status: 200, body: {outputPath: test.root}});
+                expect(applied.body).not.toHaveProperty("warning");
+                expect(JSON.parse(fs.readFileSync(test.root, "utf8")).paytable.A[3]).toBe(11);
+                expect((await pollUntilProjectContextSettled(`${test.url}/api/project/context`)).body).toMatchObject({status: "loaded", game: test.blueprint.manifest});
+                expect(test.runtimeResolver).toHaveBeenCalledTimes(1);
+            } finally {
+                await test.cleanup(); 
+            }
+        });
+
+        it("V2C-34-SERVER-CONTEXT-SUPERSEDE cannot republish an authored refresh after Project close", async () => {
+            const test = await fixture();
+            let finish!: () => void;
+            const gate = new Promise<void>(resolve => {
+                finish = resolve;
+            });
+            const describe = test.registration.describeLocation.bind(test.registration);
+            jest.spyOn(test.registration, "describeLocation").mockImplementation(async root => {
+                await gate;
+                return describe(root);
+            });
+            try {
+                expect(await post(`${test.url}/api/home/blueprints/save`, {path: test.root, blueprint: test.blueprint, overwrite: true})).toMatchObject({status: 201});
+                expect((await get(`${test.url}/api/project/context`)).body).toMatchObject({status: "loading"});
+                const closing = post(`${test.url}/api/projects/close`);
+                finish();
+                expect((await closing).status).toBe(200);
+                expect((await get(`${test.url}/api/project/context`)).body).toEqual({status: "empty"});
+            } finally {
+                finish();
+                await test.cleanup();
+            }
+        });
+    });
+
     describe("Project Dashboard: GET /api/project/inspect", () => {
         it("returns 409 when there is no active project", async () => {
             const {status, body} = await get(`${baseUrl}/api/project/inspect`);
@@ -5208,6 +5443,10 @@ describe("StudioServer", () => {
 
             const first = await post(`${baseUrl}/api/project/simulations`, {rounds: 1000});
             const firstBody = first.body as {id: string};
+            const attached = await post(`${baseUrl}/api/project/simulations`, {rounds: 1000});
+            expect(attached).toMatchObject({status: 200, body: {id: firstBody.id}});
+            // Status is the execution receipt; the job body retains its lifecycle status.
+            expect(first.status).toBe(202);
             const second = await post(`${baseUrl}/api/project/simulations`, {rounds: 500});
 
             expect(second.status).toBe(409);
@@ -8132,7 +8371,7 @@ describe("StudioServer", () => {
             await artifactServer?.stop();
             fs.rmSync(artifactStudioRoot, {recursive: true, force: true});
             fs.rmSync(artifactWorkDir, {recursive: true, force: true});
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         async function startServerForProject(projectRoot: string | undefined): Promise<string> {
             const homeService = new StudioHomeService("1.3.0");
@@ -8150,8 +8389,8 @@ describe("StudioServer", () => {
             return `http://${address.host}:${address.port}`;
         }
 
-        async function waitForArtifactBuildJob(projectBaseUrl: string, id: string): Promise<{status: string; result?: unknown}> {
-            const deadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
+        async function waitForArtifactBuildJob(projectBaseUrl: string, id: string, timeoutMs = RUNTIME_PHASE_POLL_TIMEOUT_MS): Promise<{status: string; result?: unknown}> {
+            const deadline = Date.now() + timeoutMs;
             let lastJob: unknown;
             while (Date.now() < deadline) {
                 const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${id}`);
@@ -8190,7 +8429,7 @@ describe("StudioServer", () => {
             const sourceBytes = fs.readFileSync(path.join(source, "index.js"));
             const url = await startServerForProject(source);
             // Direct project startup returns before its asynchronous dashboard load settles.
-            const context = await pollUntilProjectContextSettled(`${url}/api/project/context`);
+            const context = await pollUntilProjectContextSettled(`${url}/api/project/context`, REAL_RUNTIME_TEST_TIMEOUT_MS);
             expect(context.status).toBe(200);
             expect(context.body).toMatchObject({status: "loaded", projectRoot: source, type: "tsPackage", game: {id: "math-probe", version: "0.1.0"}});
             expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(sourceBytes);
@@ -8198,7 +8437,16 @@ describe("StudioServer", () => {
             const model = await get(`${url}/api/project/gameModel`);
             expect(model.status).toBe(200);
             expect(model.body).toMatchObject({basics: {status: "available", data: {id: "math-probe", version: "0.1.0"}}, packageExtraction: {status: "complete", source: {kind: "custom"}}});
-            const targets = await get(`${url}/api/project/artifacts/targets`);
+            // Target discovery plans every registered conversion against real isolated runtimes.
+            // Its combined snapshot work can exceed fetch's independent 300-second header
+            // deadline on a constrained gate worker. Bound this request explicitly, leaving
+            // route-only requests on the ordinary client and preserving every target assertion.
+            const targetsResponse = await request(`${url}/api/project/artifacts/targets`, {
+                headers: {Connection: "close"},
+                headersTimeout: 2 * REAL_RUNTIME_TEST_TIMEOUT_MS,
+                signal: AbortSignal.timeout(2 * REAL_RUNTIME_TEST_TIMEOUT_MS),
+            });
+            const targets = {status: targetsResponse.statusCode, body: await targetsResponse.body.json()};
             expect(targets.status).toBe(200);
             expect((targets.body as {target: string; plan: unknown}[]).find(target => target.target === "blueprint")).toMatchObject({supported: true, state: "supported", plan: {packageExtraction: {status: "complete"}}});
             const destination = path.join(artifactWorkDir, "extracted.json");
@@ -8212,18 +8460,24 @@ describe("StudioServer", () => {
             expect(absent.status).toBe(409);
             const started = await post(`${url}/api/project/artifacts/build`, {target: "blueprint", outDir: destination, preparedOperationId: (preview.body as {preparedOperationId: string}).preparedOperationId});
             expect(started.status).toBe(202);
-            const completed = await waitForArtifactBuildJob(url, (started.body as {job: {id: string}}).job.id);
+            const completed = await waitForArtifactBuildJob(url, (started.body as {job: {id: string}}).job.id, REAL_RUNTIME_TEST_TIMEOUT_MS);
             expect(completed.status).toBe("completed");
             expect(completed.result).toMatchObject({status: "ok", outputPath: destination, conversionEvidencePath: `${destination}.conversion-evidence.json`});
             expect(fs.existsSync(destination)).toBe(true);
-        }, 180000);
+        }, 4 * REAL_RUNTIME_TEST_TIMEOUT_MS);
 
+        // Startup, extraction preview, binding recheck and (for project drift) Home Open
+        // each acquire real runtime snapshots. Give every phase its runtime budget and
+        // await startup before preview, so test timeouts cannot leak reads into the next case.
         it.each(["source", "descriptor", "destination", "project", "companion", "unsupported"])("rejects %s drift across HTTP extraction preview/save without publication", async change => {
             const control = path.join(artifactWorkDir, "descriptor-control.txt");
             fs.writeFileSync(control, "custom");
             const source = writeDescriptorPackage(artifactWorkDir, {descriptorBody:
                 `const kind = require("fs").readFileSync(${JSON.stringify(control)}, "utf8"); return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: kind === "unsupported" ? "custom" : kind, model, ...(kind === "unsupported" ? {unsupported: [{path: "mechanics.custom", code: "opaque", message: "Cannot represent this custom feature"}]} : {})};`});
             const url = await startServerForProject(source);
+            expect(await pollUntilProjectContextSettled(`${url}/api/project/context`, REAL_RUNTIME_TEST_TIMEOUT_MS)).toMatchObject({status: 200, body: {
+                status: "loaded", projectRoot: source, type: "tsPackage",
+            }});
             const destination = path.join(artifactWorkDir, "reviewed.json");
             const preview = await post(`${url}/api/project/artifacts/preview`, {target: "blueprint", outDir: destination});
             expect(preview.body).toMatchObject({status: "ok", preparedOperationId: expect.any(String)});
@@ -8243,7 +8497,7 @@ describe("StudioServer", () => {
             if (change === "destination" || change === "project") expect(started.status).toBe(409);
             else {
                 expect(started.status).toBe(202);
-                const failed = await waitForArtifactBuildJob(url, (started.body as {job: {id: string}}).job.id);
+                const failed = await waitForArtifactBuildJob(url, (started.body as {job: {id: string}}).job.id, REAL_RUNTIME_TEST_TIMEOUT_MS);
                 expect(failed.status).toBe("failed");
                 expect(failed.result).toMatchObject({plan: {packageExtraction: {source: {location: source}}}});
             }
@@ -8253,7 +8507,7 @@ describe("StudioServer", () => {
             else expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(false);
             expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(bytes);
             expect(fs.readdirSync(artifactWorkDir).sort()).toEqual(inventory);
-        }, 180000);
+        }, 4 * REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         it("returns 409 for every route when there is no active project", async () => {
             const homeBaseUrl = await startServerForProject(undefined);
@@ -8389,10 +8643,31 @@ describe("StudioServer", () => {
             });
             const destination = path.join(artifactWorkDir, "cancelled-outcome-library");
             const registryPath = path.join(artifactWorkDir, ".pokie", "managed-outcome-projects.json");
-            // Keep the complete production chain: Studio -> real ArtifactBuilderRegistry -> real
-            // BlueprintStakeOutcomeLibraryWorkflow -> real ManagedOutcomeProjectService.  The distinct
-            // outcome space yields while the canonical writer is actively publishing, giving
-            // the HTTP Cancel route a real in-flight bundle to interrupt.
+            // Keep the production generator, writer and managed-project owner. Hold the real
+            // stream only after its first record has been written, so the HTTP phase cannot
+            // disappear between polls on a busy gate worker. Release it after Cancel and drain
+            // the service before restoring the writer, including when an assertion fails.
+            let releaseWriting!: () => void;
+            const writingGate = new Promise<void>(resolve => {
+                releaseWriting = resolve;
+            });
+            const writeToDirectory = OutcomeLibraryBundleWriter.prototype.writeToDirectory;
+            const writer = jest.spyOn(OutcomeLibraryBundleWriter.prototype, "writeToDirectory")
+                .mockImplementation(function (this: OutcomeLibraryBundleWriter<string | number>, modes, outDir, options) {
+                    return Reflect.apply(writeToDirectory, this, [modes.map(mode => ({
+                        ...mode,
+                        outcomes: (async function *() {
+                            let first = true;
+                            for await (const outcome of mode.outcomes) {
+                                yield outcome;
+                                if (first) {
+                                    first = false;
+                                    await writingGate;
+                                }
+                            }
+                        }()),
+                    })), outDir, options]);
+                });
             const artifactBuildService = new StudioArtifactBuildService(
                 "1.3.0",
                 undefined,
@@ -8412,58 +8687,74 @@ describe("StudioServer", () => {
                 initialContext: {mode: "project", projectRoot: blueprintPath},
                 jobService: createIsolatedJobService(artifactWorkDir),
             });
-            const address = await artifactServer.start();
-            const projectBaseUrl = `http://${address.host}:${address.port}`;
+            try {
+                const address = await artifactServer.start();
+                const projectBaseUrl = `http://${address.host}:${address.port}`;
+                const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "outcomeLibrary", outDir: destination});
+                expect(started.status).toBe(202);
+                const job = (started.body as {job: {id: string; status: string}}).job;
+                expect(job.status).toBe("queued");
 
-            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "outcomeLibrary", outDir: destination});
-            expect(started.status).toBe(202);
-            const job = (started.body as {job: {id: string; status: string}}).job;
-            expect(job.status).toBe("queued");
-
-            let activeJob: {id: string; status: string; progress?: {message?: string}} | undefined;
-            for (let attempt = 0; attempt < 1200; attempt += 1) {
-                const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${job.id}`);
-                expect(response.status).toBe(200);
-                const current = response.body as {id: string; status: string; progress?: {message?: string}};
-                if (current.progress?.message?.startsWith("Writing Outcome mode")) {
-                    activeJob = current;
-                    break;
+                let activeJob: {id: string; status: string; progress?: {message?: string}} | undefined;
+                const writingDeadline = Date.now() + REAL_RUNTIME_TEST_TIMEOUT_MS;
+                while (Date.now() < writingDeadline) {
+                    const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${job.id}`);
+                    expect(response.status).toBe(200);
+                    const current = response.body as {id: string; status: string; progress?: {message?: string}};
+                    if (current.progress?.message?.startsWith("Writing Outcome mode")) {
+                        activeJob = current;
+                        break;
+                    }
+                    if (current.status !== "queued" && current.status !== "running") break;
+                    await new Promise<void>((resolve) => {
+                        setTimeout(resolve, 10);
+                    });
                 }
-                if (current.status !== "queued" && current.status !== "running") break;
-                await new Promise<void>((resolve) => {
-                    setTimeout(resolve, 10);
-                });
-            }
-            expect(activeJob).toEqual(expect.objectContaining({id: job.id, status: "running"}));
+                expect(activeJob).toEqual(expect.objectContaining({id: job.id, status: "running"}));
 
-            const cancelled = await post(`${projectBaseUrl}/api/project/artifacts/build/${job.id}/cancel`);
-            expect(cancelled.status).toBe(200);
-            expect(cancelled.body).toMatchObject({id: job.id, status: "cancelling", cancellationRequested: true});
+                const staging = fs.readdirSync(artifactWorkDir).find(entry => entry.startsWith("cancelled-outcome-library.staging-"));
+                expect(staging).toBeDefined();
+                const outcomes = path.join(artifactWorkDir, staging!, "outcomes_base.jsonl");
+                expect(fs.statSync(outcomes).size).toBeGreaterThan(0);
 
-            let terminalJob: {id: string; status: string; cancellationRequested: boolean; result?: {status: string}} | undefined;
-            for (let attempt = 0; attempt < 1200; attempt += 1) {
-                const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${job.id}`);
-                expect(response.status).toBe(200);
-                const current = response.body as {id: string; status: string; cancellationRequested: boolean; result?: {status: string}};
-                if (current.status !== "queued" && current.status !== "running" && current.status !== "cancelling") {
-                    terminalJob = current;
-                    break;
+                const cancelled = await post(`${projectBaseUrl}/api/project/artifacts/build/${job.id}/cancel`);
+                expect(cancelled.status).toBe(200);
+                expect(cancelled.body).toMatchObject({id: job.id, status: "cancelling", cancellationRequested: true});
+                releaseWriting();
+
+                let terminalJob: {id: string; status: string; cancellationRequested: boolean; result?: {status: string}} | undefined;
+                const cleanupDeadline = Date.now() + RUNTIME_PHASE_POLL_TIMEOUT_MS;
+                while (Date.now() < cleanupDeadline) {
+                    const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${job.id}`);
+                    expect(response.status).toBe(200);
+                    const current = response.body as {id: string; status: string; cancellationRequested: boolean; result?: {status: string}};
+                    if (current.status !== "queued" && current.status !== "running" && current.status !== "cancelling") {
+                        terminalJob = current;
+                        break;
+                    }
+                    await new Promise<void>((resolve) => {
+                        setTimeout(resolve, 10);
+                    });
                 }
-                await new Promise<void>((resolve) => {
-                    setTimeout(resolve, 10);
-                });
-            }
 
-            expect(terminalJob).toEqual(expect.objectContaining({
-                id: job.id,
-                status: "cancelled",
-                cancellationRequested: true,
-                result: expect.objectContaining({status: "cancelled"}),
-            }));
-            expect(fs.existsSync(destination)).toBe(false);
-            expect(fs.readdirSync(artifactWorkDir).filter((entry) => entry.startsWith("cancelled-outcome-library.staging-"))).toEqual([]);
-            expect(fs.existsSync(registryPath)).toBe(false);
-        });
+                expect(terminalJob).toEqual(expect.objectContaining({
+                    id: job.id,
+                    status: "cancelled",
+                    cancellationRequested: true,
+                    result: expect.objectContaining({status: "cancelled"}),
+                }));
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(fs.readdirSync(artifactWorkDir).filter((entry) => entry.startsWith("cancelled-outcome-library.staging-"))).toEqual([]);
+                expect(fs.existsSync(registryPath)).toBe(false);
+            } finally {
+                releaseWriting();
+                try {
+                    await artifactBuildService.cancelAll();
+                } finally {
+                    writer.mockRestore();
+                }
+            }
+        }, 2 * REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         it("returns a conflict (409) for a pre-existing non-empty destination and never writes to it", async () => {
             const blueprintPath = writeBlueprintFile();

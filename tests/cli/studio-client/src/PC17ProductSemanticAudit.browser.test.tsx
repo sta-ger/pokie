@@ -1,4 +1,4 @@
-import {act, screen, waitFor} from "@testing-library/react";
+import {act, cleanup, screen, waitFor} from "@testing-library/react";
 import fs from "fs";
 import http from "http";
 import os from "os";
@@ -7,6 +7,8 @@ import {passthroughRuntimePackageResolver} from "../../../../cli/materialize/mat
 import {StudioBlueprintService} from "../../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../../../../cli/studio/home/StudioHomeService.js";
 import {StudioServer} from "../../../../cli/studio/StudioServer.js";
+import {FileStudioJobRepository} from "../../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js";
 import type {FetchLike} from "../../../../cli/studio-client/src/api/apiClient.js";
 import {describeOutcomeLibraryGenerationTerminalOutcome} from "../../../../cli/studio-client/src/domain/outcomeLibraryGenerateError.js";
 import {describeProjectContextFailure} from "../../../../cli/studio-client/src/domain/interpret/ProjectDashboard.js";
@@ -71,9 +73,11 @@ describe("PC-17 product-semantic audit", () => {
             id: projectRoot === first ? "first" : "second", name: projectRoot === first ? "First Slot" : "Second Slot", version: "1.0.0",
         })}) as never;
         const homeService = new StudioHomeService("1.0.0", undefined, loadGame, undefined, passthroughRuntimePackageResolver);
+        const repository = new FileStudioJobRepository(path.join(workDir, "jobs"));
         const server = new StudioServer({
             pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot, homeService,
             blueprintService: new StudioBlueprintService("1.0.0", studioRoot, homeService), loadGame,
+            jobService: new StudioJobService(repository),
             resolveRuntimePackageRoot: passthroughRuntimePackageResolver, initialContext: {mode: "project", projectRoot: first},
         });
         try {
@@ -92,7 +96,10 @@ describe("PC-17 product-semantic audit", () => {
             expect(screen.getByText("Build/Export")).toBeInTheDocument();
             expect(screen.queryByRole("button", {name: "Deployment"})).not.toBeInTheDocument();
         } finally {
+            cleanup();
             await server.stop();
+            expect(repository.getProcessState()?.status).toBe("gracefully-stopped");
+            expect(repository.list().every(job => job.status !== "running" && job.status !== "queued" && job.status !== "cancelling")).toBe(true);
             fs.rmSync(studioRoot, {recursive: true, force: true});
             fs.rmSync(workDir, {recursive: true, force: true});
         }

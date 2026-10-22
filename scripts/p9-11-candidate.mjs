@@ -67,6 +67,23 @@ const tooling = new Set([
     // V2C-32 bounded docs-test teardown repair; site/product inputs stay protected.
     "tests/v2/PublicDocsSite.test.ts",
     "tests/v2/helpers/PublicDocsBrowser.ts",
+    // V2C-34 installed recheck receipt; product/build inputs remain protected.
+    "docs/v2-completion/V2C-34.md",
+    // V2C-34 bounded timeout regressions; sibling tests and product/build inputs stay protected.
+    "tests/cli/studio/AdvancedModelValidationRoutes.test.ts",
+    "tests/cli/studio/simulation/StudioSimulationService.test.ts",
+    // Remaining V2C-34 saved gate files (the two rendered suites are named above).
+    "tests/cli/PC17CliStudioParity.integration.test.ts",
+    "tests/cli/StudioFullWorkflow.integration.test.ts",
+    "tests/cli/studio/StudioServerParWorkbook.integration.test.ts",
+    // V2C-34 saved two-file gate correction; no product/build or sibling-test exemption.
+    "tests/cli/commands/BuildCommand.test.ts",
+    "tests/cli/studio/StudioServer.test.ts",
+    // V2C-34 saved mechanics gate correction; only this named test is admitted.
+    "tests/v2/ExistingMechanicsAuthoring.test.ts",
+    // V2C-34 retained interoperability and Replay route gate correction only.
+    "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
+    "tests/cli/studio/StudioJobRoutes.integration.test.ts",
 ]);
 const git = (repository, args) => execFileSync("git", args, {cwd:repository, encoding:"utf8", timeout:10_000, maxBuffer:16 * 1024 * 1024}).trimEnd();
 

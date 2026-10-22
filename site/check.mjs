@@ -7,10 +7,13 @@ export function siteFiles(directory) {
 }
 // Checks the emitted site, not a source-only route map. Used by the build and focused negative tests.
 export function checkSite(directory) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'build-manifest.json'), 'utf8'));
+    const base = manifest.base === undefined ? '/' : manifest.base;
+    if (base !== '/' && base !== '/help/') throw new Error('Invalid site base');
     const files = siteFiles(directory), pages = new Map();
     for (const file of files.filter(name => name.endsWith('.html'))) {
         const relative = `/${path.relative(directory, file).split(path.sep).join('/')}`;
-        const route = relative.replace(/index\.html$/, '');
+        const route = `${base}${relative.slice(1)}`.replace(/index\.html$/, '');
         const html = fs.readFileSync(file, 'utf8');
         if (pages.has(route)) throw new Error(`Duplicate route identity: ${route}`);
         const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => decode(match[1]));
@@ -22,9 +25,10 @@ export function checkSite(directory) {
         const url = new URL(value, `https://pokie.fromstan.com${from}`);
         if (url.origin !== 'https://pokie.fromstan.com') throw new Error(`Invalid URL scheme: ${value}`);
         const target = decodeURIComponent(url.pathname);
+        if (!target.startsWith(base)) throw new Error(`Reference outside site base: ${value}`);
         const page = pages.get(target);
         if (!page) {
-            const file = path.resolve(directory, `.${target}`);
+            const file = path.resolve(directory, target.slice(base.length));
             if (!file.startsWith(`${path.resolve(directory)}${path.sep}`) || !fs.existsSync(file) || !fs.statSync(file).isFile()) throw new Error(`Broken route/asset/download ${value} from ${from}`);
         }
         if (url.hash && (!page || !page.ids.has(decodeURIComponent(url.hash.slice(1))))) throw new Error(`Invalid fragment ${value} from ${from}`);
@@ -38,7 +42,6 @@ export function checkSite(directory) {
         if (!entry.title || !entry.excerpt || typeof entry.text !== 'string' || !entry.url?.startsWith('/')) throw new Error('Malformed search entry');
         checkReference(entry.url, '/');
     }
-    const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'build-manifest.json'), 'utf8'));
     if (new Set(manifest.routes).size !== manifest.routes.length || manifest.routes.length !== pages.size) throw new Error('Duplicate or missing route in build manifest');
     for (const route of manifest.routes) if (!pages.has(route)) throw new Error(`Missing rendered route ${route}`);
     return {pages: pages.size, files: files.length, searchEntries: index.length};

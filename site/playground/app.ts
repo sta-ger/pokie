@@ -10,10 +10,11 @@ import type {GameBlueprint} from "../../src/generated/GameBlueprint.js";
 import type {SimulationStatistics} from "../../src/simulation/SimulationStatistics.js";
 import {ScreenProjection} from "../../src/session/videoslot/coordinates/ScreenProjection.js";
 
+const siteBase = new URL(/* @vite-ignore */ "../../", import.meta.url).pathname;
 const gallery = document.querySelector<HTMLElement>("#gallery");
 if (gallery) for (const item of galleryModels) {
     const card = document.createElement("a");
-    card.href = `/playground/?example=${item.id}`;
+    card.href = `${siteBase}playground/?example=${item.id}`;
     const title = document.createElement("h2"),
         text = document.createElement("p"),
         arrow = document.createElement("span");
@@ -34,7 +35,7 @@ function mount(root: HTMLElement): void {
 <p id="pg-status" role="status" aria-live="polite" data-status="idle">Idle. Reload resets all work, results and previews.</p><progress aria-label="Completed work" aria-describedby="pg-status" id="pg-progress" max="1" value="0" hidden></progress>
 <section class="pg-result" aria-label="Results"><h3>Run identity</h3><pre tabindex="0" id="pg-identity">No validated run yet.</pre><div id="pg-screen" aria-label="Visible screen"></div><p id="pg-summary">Use Inspect to check executable support before running.</p><details><summary>Complete observed output</summary><pre tabindex="0" id="pg-output">No output.</pre></details></section>
 <details class="pg-optimizer" open><summary>Optimization · preview then apply</summary><p>Simple base line paytables only. One Worker, at most 16 candidates and 8192 search / assessment observations. Sampled estimates can be inconclusive; they do not prove configured RTP.</p><label for="pg-policy">Optimization request · seed and stake stay synchronized above</label><textarea id="pg-policy" rows="10" spellcheck="false"></textarea><button data-action="optimize">Generate candidate preview</button><button id="pg-apply" disabled>Apply reviewed candidate</button><button id="pg-discard" disabled>Discard preview</button><pre tabindex="0" id="pg-preview">No candidate.</pre></details>
-<section class="pg-downloads"><h3>Reproduce this revision</h3><p>Downloads contain the validated current draft and actual observed output. A public round is an observation, not an audit recording. Only the separately labelled runtime state can be restored.</p><div id="pg-download-buttons"></div><p id="pg-download-status" role="status"></p><a href="/playground/#reproduce-downloads-locally">Local reproduction and support boundaries →</a></section>`;
+<section class="pg-downloads"><h3>Reproduce this revision</h3><p>Downloads contain the validated current draft and actual observed output. A public round is an observation, not an audit recording. Only the separately labelled runtime state can be restored.</p><div id="pg-download-buttons"></div><p id="pg-download-status" role="status"></p><a href="${siteBase}playground/#reproduce-downloads-locally">Local reproduction and support boundaries →</a></section>`;
     const element = <T extends HTMLElement>(id: string): T => root.querySelector<T>(`#pg-${id}`)!;
     const model = element<HTMLTextAreaElement>("model"),
         policy = element<HTMLTextAreaElement>("policy"),
@@ -45,7 +46,7 @@ function mount(root: HTMLElement): void {
     let reports: unknown;
     let uiGeneration = 0;
     const controller = new PlaygroundController(
-        () => new Worker("/assets/playground/worker.js", {type: "module", name: "POKIE public playground"}) as PokieWasmWorkerPort,
+        () => new Worker(`${siteBase}assets/playground/worker.js`, {type: "module", name: "POKIE public playground"}) as PokieWasmWorkerPort,
         update,
     );
     function update(event: PlaygroundEvent): void {

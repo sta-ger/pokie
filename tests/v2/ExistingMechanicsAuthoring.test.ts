@@ -3,6 +3,7 @@ import {StudioSimulationService} from "../../cli/studio/simulation/StudioSimulat
 import {buildSimulationReportDownload} from "../../cli/studio/simulation/buildSimulationReportDownload.js";
 import {describeSimulationReport} from "../../cli/studio-client/src/domain/interpret/Simulation.js";
 import ExcelJS from "exceljs";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "./fixtures/PackageExtractionFixture.js";
 import {mergeJackpotStatisticsSnapshots} from "../../src/simulation/JackpotStatisticsMerging.js";
 import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";
 import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprintService.js";
@@ -14,6 +15,8 @@ import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
 import {StudioPlayService} from "../../cli/studio/runtime/StudioPlayService.js";
 import fs from "node:fs";
+import {execFileSync} from "node:child_process";
+import {pathToFileURL} from "node:url";
 import path from "node:path";
 import * as api from "@fromstan/pokie";
 import {assertWorkflowRejections, existingMechanicsBlueprint, generatedMechanicsGame, mechanicsSession, replayModesBlueprint} from "./fixtures/ExistingMechanicsGame.js";
@@ -42,15 +45,97 @@ it("starts a fresh completed purchase bank through direct, generated TypeScript 
 });
 
 describe("V2C-12 catalogue-driven public authored workflows", () => {
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     let directory: string;
+    let workflow: Promise<void> | undefined;
     beforeEach(() => {
+        workflow = undefined;
         jest.spyOn(console, "log").mockImplementation(() => undefined);
         jest.spyOn(console, "error").mockImplementation(() => undefined);
         directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c12-"));
     });
-    afterEach(() => {
+    afterEach(async () => {
+        // A Jest timeout does not cancel its async callback. Drain the owned operation
+        // before removing its files or allowing the next row to install console spies.
+        await workflow?.catch(() => undefined);
         jest.restoreAllMocks();
         fs.rmSync(directory, {recursive: true, force: true});
+    });
+
+    it("retains candidate authentication across the complete V2C-34 mechanics gate correction", () => {
+        // Synthetic reader fixtures only: no product build/install or acceptance collection.
+        execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from "node:assert/strict";
+            import {mkdir, readFile, symlink, unlink, writeFile} from "node:fs/promises";
+            import {execFileSync} from "node:child_process";
+            import path from "node:path";
+            import {candidateFixture, P911_TOOLING_DESCENDANT_PATHS} from ${JSON.stringify(pathToFileURL(path.resolve("tests/testUtils/createP911CandidateFixture.mjs")).href)};
+            import {readP911Candidate, readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment, validateP911SmokeCandidateIdentity} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
+            import {authenticateP805ProductTree} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p8-05-release-handoff.mjs")).href)};
+            const fixture = await candidateFixture(${JSON.stringify(directory)});
+            const options = {repository: fixture.repository};
+            const git = args => execFileSync("git", args, {cwd: fixture.repository, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"]}).trim();
+            const commit = () => {
+                git(["add", "."]);
+                git(["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "bounded gate fixture"]);
+                return git(["rev-parse", "HEAD"]);
+            };
+            const original = await readP911Candidate(fixture.reference, options);
+            const paths = ["tests/cli/commands/BuildCommand.test.ts", "tests/cli/studio/StudioServer.test.ts", "tests/v2/ExistingMechanicsAuthoring.test.ts",
+                "scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs", "tests/testUtils/createP911CandidateFixture.mjs"];
+            for (const file of paths) {
+                assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction fixture: " + file);
+                await writeFile(path.join(fixture.repository, file), "changed bounded gate tooling");
+            }
+            const reviewedId = commit();
+            const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256,
+                POKIE_PACK_SMOKE_CANDIDATE_ID: reviewedId, POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256: original.archiveSha256};
+            const direct = await readP911Candidate(fixture.reference, options);
+            const selectors = [readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment];
+            for (const selector of selectors) {
+                const selected = await selector(environment, options);
+                assert.deepEqual(selected, direct);
+                assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, [...paths].sort());
+                assert.deepEqual({...selected, equivalence: original.equivalence}, original);
+                await assert.rejects(selector({...environment, POKIE_P911_CANDIDATE_HANDOFF_SHA256: "0".repeat(64)}, options), /receipt digest mismatch/);
+                await assert.rejects(async () => selector({...environment, POKIE_P805_RELEASE_HANDOFF: "conflict"}, options), /cannot be combined/);
+            }
+            validateP911SmokeCandidateIdentity(direct, environment, options);
+            const legacy = () => authenticateP805ProductTree(original.candidateId, git(["rev-parse", "HEAD"]), fixture.repository);
+            assert.deepEqual(legacy().changedToolingAndEvidencePaths, [...paths].sort());
+            for (const file of ["tests/v2/ExistingMechanicsAuthoring.extra.test.ts", "src/index.ts", "cli/pokie.ts", "package.json", "package-lock.json", "tsconfig.prod.json", "generate-barrels.js"]) {
+                const target = path.join(fixture.repository, file);
+                await mkdir(path.dirname(target), {recursive: true});
+                await writeFile(target, "changed protected input");
+                commit();
+                for (const selector of selectors) await assert.rejects(selector(environment, options), /product\\/build inputs changed/);
+                assert.throws(legacy, /changes product or build inputs/);
+                git(["reset", "--hard", reviewedId]);
+            }
+            const admitted = path.join(fixture.repository, "tests/v2/ExistingMechanicsAuthoring.test.ts");
+            await unlink(admitted);
+            await symlink("nonregular-target", admitted);
+            commit();
+            for (const selector of selectors) await assert.rejects(selector(environment, options), /nonregular tooling/);
+            assert.throws(legacy, /nonregular Git entries/);
+            git(["reset", "--hard", reviewedId]);
+            for (const reference of [fixture.handoff.browserDriver, fixture.handoff.buildReceipt, fixture.handoff.installReceipt,
+                {path: fixture.handoff.archivePath}, {path: path.join(direct.packageRoot, "dist/cli/pokie.js")}]) {
+                const bytes = await readFile(reference.path);
+                await writeFile(reference.path, "changed pinned input");
+                for (const selector of selectors) await assert.rejects(selector(environment, options),
+                    /authenticated controller browser driver required|receipt digest mismatch|archive digest mismatch|stale installed asset/);
+                await writeFile(reference.path, bytes);
+            }
+            assert.deepEqual(await readP911SmokeCandidateFromEnvironment(environment, options), direct);
+        `], {timeout: 30_000, stdio: ["ignore", "pipe", "pipe"]});
     });
 
     it("covers every declared supported variant and composition with a fixture", () => {
@@ -207,7 +292,7 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         await service.cancelAll();
     });
 
-    it.each(catalogue)("$id: validation/build/extraction/real XLSX/seeded continuation/replay/simulation/report", async row => {
+    async function runPublicWorkflow(row: (typeof catalogue)[number], directory: string): Promise<void> {
         const blueprint = existingMechanicsBlueprint(row);
         expect(errors(blueprint)).toEqual([]);
         const built = new api.GamePackageGenerator("1.3.0").generate(blueprint, directory);
@@ -318,7 +403,17 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
             expect(JSON.parse(JSON.stringify(report)).totalWin).toBe(report.totalWin);
             if (row.jackpot) expect(report.jackpot).toBeDefined();
         }
-    });
+    }
+
+    // One build plus up to four mode-specific Replay commands acquire and release
+    // real runtime graphs sequentially. Budget each operation as in extraction tests;
+    // keep every catalogue row, workbook, persisted replay and continuation assertion.
+    it.each(catalogue)("$id: validation/build/extraction/real XLSX/seeded continuation/replay/simulation/report", row => {
+        // Capture this row's directory by value; a timed-out callback cannot use the
+        // following row's workbook destination through the mutable fixture variable.
+        workflow = runPublicWorkflow(row, directory);
+        return workflow;
+    }, 5 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("rejects conflicts and unknown fields through validation, direct rendering and generation without writing", () => {
         const b = existingMechanicsBlueprint(catalogue.find(row => row.id === "hold-flat")!);
