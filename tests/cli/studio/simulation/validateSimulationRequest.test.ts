@@ -27,8 +27,8 @@ describe("validateSimulationRequest", () => {
         expect(() => validateSimulationRequest({rounds: -5})).toThrow('"rounds" must be a positive integer.');
     });
 
-    it("rejects rounds above the safe Studio limit", () => {
-        expect(() => validateSimulationRequest({rounds: MAX_STUDIO_SIMULATION_ROUNDS + 1})).toThrow(
+    it.each([MAX_STUDIO_SIMULATION_ROUNDS + 1, 5000000])("rejects rounds %s above the safe Studio limit", rounds => {
+        expect(() => validateSimulationRequest({rounds})).toThrow(
             `"rounds" must not exceed ${MAX_STUDIO_SIMULATION_ROUNDS}.`,
         );
     });

@@ -108,23 +108,6 @@ export function SimulationTab({
         validateInputOnBlur: ["rounds"],
     });
 
-    useEffect(() => {
-        if (recoveryRequest === undefined) return;
-        const rounds = typeof recoveryRequest.rounds === "number" ? recoveryRequest.rounds : undefined;
-        const seed = typeof recoveryRequest.seed === "string" ? recoveryRequest.seed : undefined;
-        const workers = typeof recoveryRequest.workers === "number" ? recoveryRequest.workers : undefined;
-        const modeName = typeof recoveryRequest.modeName === "string" ? recoveryRequest.modeName : undefined;
-        form.setValues({
-            ...(rounds === undefined ? {} : {rounds}),
-            ...(seed === undefined ? {} : {seed}),
-            ...(workers === undefined ? {} : {workers}),
-            ...(modeName === undefined ? {} : {modeName}),
-        });
-        setCapturedConvergence(recoveryRequest.convergence as StudioSimulationReportListEntry["convergence"]);
-        form.validateField("rounds");
-        // Mantine's uncontrolled form object is intentionally stable.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [recoveryRequest]);
 
     // Defaults the picker to the first real mode the moment the list becomes available -- SimulationTab
     // can mount before the project header's own outcome-source report necessarily has (see PlayTab's own
@@ -159,6 +142,29 @@ export function SimulationTab({
         }
         return 0;
     });
+
+    useEffect(() => {
+        if (recoveryRequest === undefined) return;
+        const rounds = typeof recoveryRequest.rounds === "number" ? recoveryRequest.rounds : undefined;
+        const seed = typeof recoveryRequest.seed === "string" ? recoveryRequest.seed : undefined;
+        const workers = typeof recoveryRequest.workers === "number" ? recoveryRequest.workers : undefined;
+        const modeName = typeof recoveryRequest.modeName === "string" ? recoveryRequest.modeName : undefined;
+        form.setValues({
+            rounds: rounds ?? DEFAULT_ROUNDS,
+            seed: seed ?? "",
+            workers: workers ?? 1,
+            modeName: modeName ?? "",
+        });
+        setCapturedConvergence(recoveryRequest.convergence as StudioSimulationReportListEntry["convergence"]);
+        form.validateField("rounds");
+        // A retained-job action can arrive while this tab is still on Review.
+        // Reconstructing hidden fields leaves that visible Retry without an
+        // outcome. Show its explicit submission step instead of replaying work.
+        setActiveStep(0);
+        // Mantine's uncontrolled form object is intentionally stable.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [recoveryRequest]);
+
 
     const active = progress !== undefined && (progress.status === "queued" || progress.status === "running" || progress.status === "cancelling");
     const cancellationPending = cancellationRequested || progress?.status === "cancelling";
@@ -292,6 +298,11 @@ export function SimulationTab({
                         onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined, capturedConvergence),
                     )}
                 >
+                    {recoveryRequest !== undefined && (
+                        <Text role="status" aria-live="polite" size="sm" mb="sm">
+                            Captured simulation settings restored. Review them and choose Run Simulation to retry.
+                        </Text>
+                    )}
                     <Text size="sm" c="dimmed" mb="sm">
                         Simulation plays many rounds of this game to estimate RTP, win frequency, and the largest win.
                         When it finishes, review the summary here or export the full report.

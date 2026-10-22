@@ -587,7 +587,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         // Never replay durable work in the background.  The destination form
         // receives this immutable request and reconstructs it for an explicit
         // new submission, rather than opening an empty unrelated workflow.
-        setRecoveryJob(job);
+        // Each explicit simulation Retry must notify an already mounted form,
+        // including selecting the same retained job after editing its settings.
+        setRecoveryJob(job.operation === "simulation" ? {...job, request: {...job.request}} : job);
         if (job.recovery?.action === "new-session" || job.operation === "browser-play" || job.operation.startsWith("play-")) {
             setNewSessionRecoveryRequested(true);
             setActiveTab("play");
