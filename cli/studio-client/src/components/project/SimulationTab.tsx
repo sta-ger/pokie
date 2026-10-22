@@ -95,7 +95,7 @@ export function SimulationTab({
     availableModes?: string[];
     packageModes?: boolean;
     modeDiscoveryError?: string;
-    /** Immutable request retained by a terminal common job, restored for an explicit Run. */
+    /** Captured terminal-job or report settings, restored for an explicit Run. */
     recoveryRequest?: Readonly<Record<string, unknown>>;
 }) {
     const confirm = useConfirm();
@@ -176,8 +176,8 @@ export function SimulationTab({
     const resultJobId = terminalReceipt?.jobId ?? progress?.jobId;
     const resultStatus = terminalReceipt?.status ?? progress?.status;
 
-    // Auto-advances to Run the moment a fresh run starts (Configure submit or a Recent Runs "Run
-    // again", either way progress.status transitions to "queued"), and to Review the moment a run
+    // Auto-advances to Run the moment an explicit submission starts (progress.status transitions
+    // to "queued"), and to Review the moment a run
     // that was actually active goes terminal -- requirement 5's "auto-open summary". Keyed only on
     // the status *value*, not the progress object identity, so re-renders while already terminal
     // (e.g. the user manually flips back to Configure to look at defaults) never yank them back.

@@ -566,7 +566,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const handleFeatureOwnedOutcomeLibraryJobChange = useCallback((jobId: string | undefined): void => {
         setFeatureOwnedOutcomeLibraryJobId(jobId);
     }, []);
-    const [recoveryJob, setRecoveryJob] = useState<StudioJobView | undefined>();
+    const [recoveryJob, setRecoveryJob] = useState<Pick<StudioJobView, "operation" | "request"> | undefined>();
     // Simulation recovery is a pending Configure handoff, not durable view
     // authority. A newer submission or report selection consumes it; tab
     // remounts must then derive their view from that newer result instead.
@@ -777,7 +777,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [simulation.job, selectReport]);
 
-    // Configure and Recent Runs "Run again" share this report/compare reset.
+    // Explicit Configure submissions own this report/compare reset.
     // Validate before clearing a retained result or invalidating its in-flight
     // reads. Only an accepted configuration clears the previous run-again notice.
     // Retry uses the hook's retained request and its same rounds preflight.
@@ -850,10 +850,19 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 setRunAgainNotice("A simulation is already running for this project. Cancel it from the Run step before starting a different configuration.");
                 return;
             }
-            // No explicit clear here -- startRun() itself always clears runAgainNotice.
-            startRun(entry.requestedRounds, entry.seed, entry.workers, entry.modeName, entry.convergence);
+            // A completed report uses the same configuration-only handoff as
+            // common-card Retry. Only an explicit Configure submission may
+            // clear the retained result and create replacement durable work.
+            setRecoveryJob({operation: "simulation", request: {
+                rounds: entry.requestedRounds,
+                workers: entry.workers,
+                ...(entry.seed === undefined ? {} : {seed: entry.seed}),
+                ...(entry.modeName === undefined ? {} : {modeName: entry.modeName}),
+                ...(entry.convergence === undefined ? {} : {convergence: entry.convergence}),
+            }});
+            setRunAgainNotice(undefined);
         },
-        [simulation.job, startRun],
+        [simulation.job],
     );
 
     const [replayListView, setReplayListView] = useState<ReplayListView>({status: "empty"});

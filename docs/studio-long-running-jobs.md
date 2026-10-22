@@ -102,6 +102,8 @@ Simulation exposes real preparation, simulation, finalization/cleanup and termin
 
 Reload/remount reattaches to the same active job and retains its identity through transient observation errors. A server restart cannot resume an interrupted simulation executor: it becomes recovery-required with captured retry settings. Completed saved reports survive repository reconstruction. The saved report's metrics take precedence over supplementary statistics.
 
+Simulation job-card Retry and Recent runs “Run again” open Configure with the captured settings. Review or change those settings, then choose Run Simulation to create a new operation. Selecting either control again restores the captured settings without submitting work. Explicit Run or selecting a saved report consumes that configuration handoff, so later tab navigation preserves the newer result.
+
 The simulation API accepts an optional coherent `convergence` object (`minRounds`, `rtpTolerance` in RTP units, `checkIntervalRounds`, optional `stableChecks`). It is validated, forwarded to package workers and retained with the durable request and retry identity. Different adaptive settings conflict with an active request. Native outcome-library and WASM samplers explicitly reject adaptive settings; their budgets are fixed. The Configure form defaults to fixed budgets. A captured adaptive recovery request shows its retained settings and offers an explicit switch back to a fixed budget; Retry and Recent runs “Run again” preserve adaptive parameters. All-mode retries retain the per-mode budget rather than multiplying the displayed total again.
 
 

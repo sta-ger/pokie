@@ -219,7 +219,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         expect(await screen.findByRole("button", {name: "Open full report"})).toBeEnabled();
     });
 
-    it("keeps the retained report through invalid Configure and historic Run again, then allows a valid Run again", async () => {
+    it("keeps the retained report through invalid Configure and historic Run again, then requires explicit valid Run", async () => {
         const user = userEvent.setup();
         const entry = (id: string, requestedRounds: number): StudioSimulationReportListEntry => ({
             id, game: {id: "a", version: "1.0.0"}, requestedRounds, actualRounds: requestedRounds,
@@ -250,10 +250,15 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         expect(retained.parentElement).toHaveAttribute("data-pokie-lifecycle-result-job", "retained-completed");
         expect(screen.getByRole("button", {name: stepperStep("Export", "Download report")})).toBeEnabled();
         await user.click(screen.getAllByRole("button", {name: "Run again"})[0]);
-        expect(await screen.findByText("Rounds must be a positive integer between 1 and 2,000,000.", {selector: ".mantine-Alert-message"})).toBeVisible();
+        expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("5000000");
+        expect(screen.getByLabelText(/^Rounds/)).toHaveAttribute("aria-invalid", "true");
+        expect(screen.getByRole("button", {name: "Run Simulation"})).toBeDisabled();
         expect(retained).toBeInTheDocument();
         expect(calls.filter((call) => call.url === "/api/project/simulations" && call.init?.method === "POST")).toHaveLength(0);
         await user.click(screen.getAllByRole("button", {name: "Run again"})[1]);
+        expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("500000");
+        expect(calls.filter((call) => call.url === "/api/project/simulations" && call.init?.method === "POST")).toHaveLength(0);
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
         expect(await screen.findByText(/^Simulation completed — 500000\/500000/)).toBeInTheDocument();
         expect(JSON.parse(calls.find((call) => call.url === "/api/project/simulations" && call.init?.method === "POST")?.init?.body ?? "{}")).toEqual({rounds: 500000, workers: 1});
         expect(screen.queryByText("Rounds must be a positive integer between 1 and 2,000,000.", {selector: ".mantine-Alert-message"})).not.toBeInTheDocument();
@@ -642,6 +647,11 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await waitFor(() => expect(screen.getByText("old-seed")).toBeInTheDocument(), {timeout: 15000});
 
         await user.click(within(recentRunsSection).getByRole("button", {name: "Run again"}));
+        expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("5000");
+        expect(screen.getByLabelText("Seed (optional)")).toHaveValue("old-seed");
+        expect(screen.getByLabelText(/^Workers/)).toHaveValue("2");
+        expect(runCalls).toHaveLength(0);
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
         await waitFor(() => expect(runCalls).toHaveLength(1));
         expect(runCalls[0]).toMatchObject({rounds: 5000, seed: "old-seed", workers: 2});
     }, 60000);
@@ -1557,6 +1567,9 @@ it.each(["ante", "all"])("explicit history rerun preserves %s mode policy", asyn
     renderRoutedApp({fetchImpl: fake.fetchImpl, initialEntries: ["/project/overview"]});
     await goToSimulationTab(user);
     await user.click(await screen.findByRole("button", {name: "Run again"}));
+    expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("2");
+    expect(requests).toHaveLength(0);
+    await user.click(screen.getByRole("button", {name: "Run Simulation"}));
     await waitFor(() => expect(requests[0]).toMatchObject({rounds: 2, seed: "retained-seed", workers: 1, modeName}));
 });
 

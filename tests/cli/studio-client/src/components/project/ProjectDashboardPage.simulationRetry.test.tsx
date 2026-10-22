@@ -21,6 +21,109 @@ function stepperStep(label: string, description: string): RegExp {
 }
 
 describe("V35 retained simulation retry", () => {
+    it.each(["cancelled", "failed"] as const)("V35-COMPLETED-RUN-AGAIN opens captured Configure without submitting, then preserves the explicit replacement's %s view", async status => {
+        const user = userEvent.setup();
+        const originalId = "1d305f0190f643efb76ef415ba7e2f22";
+        const report: SimulationReport = {game: {id: "a", name: "A", version: "1.0.0"}, requestedRounds: 1, rounds: 1, seed: null,
+            totalBet: 1, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0, durationMs: 2641, spinsPerSecond: 1,
+            workers: 1, warnings: [], recommendations: []};
+        const entry: StudioSimulationReportListEntry = {id: originalId, status: "completed", game: report.game,
+            requestedRounds: 1, actualRounds: 1, rtp: 0, workers: 1, durationMs: 2641,
+            startedAt: "2026-10-22T19:33:51.000Z", completedAt: "2026-10-22T19:33:54.000Z", hasWarnings: false};
+        const submissions: unknown[] = [];
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: submissions.length > 0 ? [entry] : []}),
+            [`/api/project/reports/${originalId}`]: () => ({ok: true, status: 200, body: {report}}),
+            "/api/project/simulations": call => {
+                const submitted = JSON.parse(call.init!.body!);
+                submissions.push(submitted);
+                return {ok: true, status: 201, body: jobFor(submissions.length === 1 ? originalId : "explicit-replacement", {
+                    ...submitted, status: "queued", roundsCompleted: 0,
+                })};
+            },
+            [`/api/project/simulations/${originalId}`]: () => ({ok: true, status: 200, body: jobFor(originalId, {rounds: 1, roundsCompleted: 1, durationMs: 2641, report})}),
+            "/api/project/simulations/explicit-replacement": () => ({ok: true, status: 200, body: jobFor("explicit-replacement", {rounds: 7, roundsCompleted: 0, status})}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
+        await user.clear(await screen.findByLabelText(/^Rounds/));
+        await user.type(screen.getByLabelText(/^Rounds/), "1");
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        await screen.findByText(/^Simulation completed —/);
+        const recentRuns = screen.getByText("Recent runs").closest("fieldset")!;
+        const runAgain = await within(recentRuns).findByRole("button", {name: "Run again"});
+        for (let selection = 0; selection < 2; selection++) {
+            await user.click(runAgain);
+            expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("1");
+            expect(screen.getByRole("button", {name: stepperStep("Configure", "Set rounds")})).toHaveAttribute("aria-current", "step");
+            expect(runAgain).toHaveFocus();
+            expect(submissions).toEqual([{rounds: 1, workers: 1}]);
+            expect(screen.getByText(/^Simulation completed —/).parentElement).toHaveAttribute("data-pokie-lifecycle-result-durable-job", originalId);
+            await user.clear(screen.getByLabelText(/^Rounds/));
+            await user.type(screen.getByLabelText(/^Rounds/), "7");
+        }
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        const terminal = await screen.findByText(new RegExp(`^Simulation ${status} —`));
+        expect(terminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-durable-job", "explicit-replacement");
+        expect(submissions).toEqual([{rounds: 1, workers: 1}, {rounds: 7, workers: 1}]);
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page"));
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        expect(await screen.findByRole("button", {name: stepperStep("Review", "See results")})).toHaveAttribute("aria-current", "step");
+        expect(screen.queryByLabelText(/^Rounds/)).not.toBeInTheDocument();
+        expect(screen.getByText(new RegExp(`^Simulation ${status} —`)).parentElement).toHaveAttribute("data-pokie-lifecycle-result-durable-job", "explicit-replacement");
+        await user.click(screen.getByRole("button", {name: "Run again"}));
+        expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("1");
+        await user.click(screen.getByRole("button", {name: "Open latest report"}));
+        await screen.findByRole("button", {name: "Open full report"});
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page"));
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        expect(await screen.findByRole("button", {name: stepperStep("Review", "See results")})).toHaveAttribute("aria-current", "step");
+        expect(screen.queryByText(/Captured simulation settings restored/)).not.toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: stepperStep("Export", "Download report")}));
+        expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", `/api/project/reports/${originalId}/download?format=json`);
+        await user.click(screen.getByRole("button", {name: "Run again"}));
+        expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("1");
+        expect(submissions).toHaveLength(2);
+    });
+
+    it.each(["ante", "all"])("V35-COMPLETED-RUN-AGAIN retains the requested adaptive %s budget and optional settings until explicit submission", async modeName => {
+        const user = userEvent.setup();
+        const convergence = {minRounds: 2, rtpTolerance: 0.01, checkIntervalRounds: 2};
+        const request = {rounds: 100, seed: "retained-seed", workers: 2, modeName, convergence};
+        const submissions: unknown[] = [];
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: [{
+                id: "adaptive", status: "completed", game: {id: "a", version: "1.0.0"},
+                requestedRounds: request.rounds, actualRounds: modeName === "all" ? undefined : 4,
+                seed: request.seed, workers: request.workers, modeName, convergence,
+                modes: modeName === "all" ? {base: {rounds: 4}, ante: {rounds: 6}} : undefined,
+                durationMs: 1, startedAt: "2026-10-22T12:00:00.000Z", completedAt: "2026-10-22T12:00:00.001Z", hasWarnings: false,
+            }]}),
+            "/api/project/simulations": call => {
+                const submitted = JSON.parse(call.init!.body!);
+                submissions.push(submitted);
+                return {ok: true, status: 201, body: jobFor("adaptive-replacement", {status: "queued", ...submitted})};
+            },
+            "/api/project/simulations/adaptive-replacement": () => ({ok: true, status: 200, body: jobFor("adaptive-replacement", {status: "cancelled", ...request})}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
+        await user.click(await screen.findByRole("button", {name: "Run again"}));
+        expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("100");
+        expect(screen.getByLabelText("Seed (optional)")).toHaveValue("retained-seed");
+        expect(screen.getByLabelText(/^Workers/)).toHaveValue("2");
+        expect(screen.getByText(/Captured adaptive stopping/)).toHaveTextContent("stable checks 3");
+        expect(submissions).toHaveLength(0);
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        await screen.findByText(/^Simulation cancelled —/);
+        expect(submissions).toEqual([request]);
+        expect(convergence).not.toHaveProperty("stableChecks");
+    });
+
     it.each(["cancelled", "failed"] as const)("V35-RETRY-HANDOFF-LIFETIME retained %s Retry is reusable while consumed handoffs cannot override replacement terminal navigation", async status => {
         const user = userEvent.setup();
         const request = {rounds: 2000000, workers: 1};
@@ -135,7 +238,7 @@ describe("V35 retained simulation retry", () => {
         expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("2000000");
     });
 
-    it("V35-RETRY-HANDOFF-LIFETIME preserves invalid and server-rejected settings through correction and subsequent successful reuse", async () => {
+    it.each(["common-card", "recent-report"])("V35-RETRY-HANDOFF-LIFETIME %s preserves invalid and server-rejected settings through correction and subsequent successful reuse", async surface => {
         const user = userEvent.setup();
         const request = {rounds: 5000000, workers: 2, seed: "captured-seed"};
         const submissions: unknown[] = [];
@@ -146,7 +249,11 @@ describe("V35 retained simulation retry", () => {
             ...BASE_ROUTES,
             "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [retained]}}),
             "/api/project/simulations/invalid-retry": () => ({ok: true, status: 200, body: jobFor("invalid-retry", {...request, status: "cancelled"})}),
-            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: surface === "recent-report" ? [{
+                id: "oversized-history", status: "completed", game: {id: "a", version: "1.0.0"}, requestedRounds: request.rounds,
+                actualRounds: 5, seed: request.seed, workers: request.workers, durationMs: 1,
+                startedAt: "2026-10-22T12:00:00.000Z", completedAt: "2026-10-22T12:00:00.001Z", hasWarnings: false,
+            }] : []}),
             "/api/project/simulations": call => {
                 submissions.push(JSON.parse(call.init!.body!));
                 if (submissions.length === 1) return {ok: false, status: 400, body: {error: "Correct the worker setting."}};
@@ -156,7 +263,10 @@ describe("V35 retained simulation retry", () => {
             "/api/project/simulations/corrected-3": () => ({ok: true, status: 200, body: jobFor("corrected-3", {status: "cancelled", rounds: 1234})}),
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
-        await user.click(within(await screen.findByRole("region", {name: "simulation job invalid-retry"})).getByRole("button", {name: "Retry"}));
+        const recover = surface === "common-card"
+            ? within(await screen.findByRole("region", {name: "simulation job invalid-retry"})).getByRole("button", {name: "Retry"})
+            : await screen.findByRole("button", {name: "Run again"});
+        await user.click(recover);
         expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("5000000");
         expect(screen.getByLabelText(/^Rounds/)).toHaveAttribute("aria-invalid", "true");
         expect(screen.getByRole("button", {name: "Run Simulation"})).toBeDisabled();
@@ -184,7 +294,7 @@ describe("V35 retained simulation retry", () => {
         }
     });
 
-    it("V35 selecting a different retained request clears absent optional fields instead of reusing the previous retry", async () => {
+    it.each(["common-card", "recent-report"])("V35 %s selection clears absent optional fields instead of reusing the previous retry", async surface => {
         const user = userEvent.setup();
         const convergence = {minRounds: 2, rtpTolerance: 0.01, checkIntervalRounds: 2, stableChecks: 1};
         const requests = [{rounds: 100, seed: "old", workers: 2, modeName: "all", convergence}, {rounds: 10, workers: 1}];
@@ -196,7 +306,12 @@ describe("V35 retained simulation retry", () => {
             ...BASE_ROUTES,
             "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs}}),
             "/api/project/simulations/retained-0": () => ({ok: true, status: 200, body: jobFor("retained-0", {...requests[0], status: "cancelled"})}),
-            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: surface === "recent-report" ? requests.map((request, i) => ({
+                id: `report-${i}`, status: "completed", game: {id: "a", version: "1.0.0"}, requestedRounds: request.rounds,
+                actualRounds: i === 0 ? undefined : 10, workers: request.workers,
+                seed: request.seed, modeName: request.modeName, convergence: request.convergence,
+                durationMs: 1, startedAt: "2026-10-22T12:00:00.000Z", completedAt: "2026-10-22T12:00:00.001Z", hasWarnings: false,
+            })) : []}),
             "/api/project/simulations": call => {
                 const request = JSON.parse(call.init!.body!);
                 submissions.push(request);
@@ -207,9 +322,15 @@ describe("V35 retained simulation retry", () => {
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
         for (const i of [0, 1]) {
-            const card = await screen.findByRole("region", {name: `simulation job retained-${i}`});
-            await user.click(within(card).getByRole("button", {name: "Retry"}));
+            const recover = surface === "common-card"
+                ? within(await screen.findByRole("region", {name: `simulation job retained-${i}`})).getByRole("button", {name: "Retry"})
+                : (await screen.findAllByRole("button", {name: "Run again"}))[i];
+            await user.click(recover);
             expect(await screen.findByLabelText(/^Rounds/)).toHaveValue(String(requests[i].rounds));
+            expect(screen.getByLabelText("Seed (optional)")).toHaveValue(requests[i].seed ?? "");
+            expect(screen.getByLabelText(/^Workers/)).toHaveValue(String(requests[i].workers));
+            if (i === 0) expect(screen.getByText(/Captured adaptive stopping/)).toHaveTextContent("stable checks 1");
+            expect(submissions).toHaveLength(0);
         }
         expect(screen.queryByText(/Captured adaptive stopping/)).not.toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
