@@ -1,10 +1,88 @@
 import {MantineProvider} from "@mantine/core";
-import {render, screen} from "@testing-library/react";
+import {fireEvent, render, screen} from "@testing-library/react";
 import {JobProgressCard} from "../../../../../../cli/studio-client/src/components/common/JobProgressCard";
 import {JobCard} from "../../../../../../cli/studio-client/src/components/common/JobCard";
 import {jobFocusLayout} from "../../testUtils/jobFocusLayout";
+import type {StudioJobView} from "../../../../../../cli/studio-client/src/api/types";
 
 describe("JobProgressCard", () => {
+    it.each(["queued", "running"] as const)("describes a %s job honestly before its first progress sample", status => {
+        const cancel = jest.fn();
+        render(<MantineProvider><JobProgressCard job={{
+            id: "no-sample", projectId: "/project", operation: "simulation", request: {}, conflictKey: "simulation",
+            status, createdAt: 1,
+        }} onCancel={cancel} /></MantineProvider>);
+        expect(screen.getByText(status === "queued" ? "Queued" : "Running")).toBeInTheDocument();
+        expect(screen.queryByRole("progressbar")).toBeNull();
+        expect(screen.queryByText(/Throughput:/)).toBeNull();
+        expect(screen.getByRole("button", {name: "Cancel"})).toBeEnabled();
+        fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
+        expect(cancel).toHaveBeenCalledWith("no-sample");
+        if (status === "running") {
+            expect(screen.queryByText("Queued")).toBeNull();
+            expect(screen.getByText(/Progress is indeterminate/)).toBeInTheDocument();
+        }
+    });
+
+    it.each(["id", "projectId", "startedAt"] as const)("does not carry a rate across a changed execution %s", field => {
+        let now = 1_000;
+        const dateNow = jest.spyOn(Date, "now").mockImplementation(() => now);
+        const job: StudioJobView = {
+            id: "rate-owner", projectId: "/project", operation: "simulation", request: {}, conflictKey: "simulation",
+            status: "running", createdAt: 1, startedAt: 1,
+            progress: {stage: "Simulating", unit: "rounds", current: 10, total: 100},
+        };
+        try {
+            const view = (value: StudioJobView) => <MantineProvider><JobProgressCard job={value} /></MantineProvider>;
+            const {rerender} = render(view(job));
+            now = 2_000;
+            const advanced = {...job, progress: {...job.progress!, current: 20}};
+            rerender(view(advanced));
+            expect(screen.getByText(/Throughput: 10\.00 rounds\/s/)).toBeInTheDocument();
+            now = 3_000;
+            // Keep the very same progress object: execution identity itself must invalidate the rate.
+            const next = {...advanced, [field]: field === "startedAt" ? 3_000 : "another-owner"};
+            rerender(view(next));
+            expect(screen.queryByText(/Throughput:/)).toBeNull();
+            now = 4_000;
+            rerender(view({...next, progress: {...next.progress!, current: 30}}));
+            expect(screen.getByText(/Throughput: 10\.00 rounds\/s · ETA: 7000ms/)).toBeInTheDocument();
+        } finally {
+            dateNow.mockRestore();
+        }
+    });
+
+    it.each(["pending", "cancelling"] as const)("removes the work ETA while cancellation is %s and cleanup is unmeasured", phase => {
+        let now = 1_000;
+        const dateNow = jest.spyOn(Date, "now").mockImplementation(() => now);
+        const job: StudioJobView = {
+            id: "cancel-rate", projectId: "/project", operation: "simulation", request: {}, conflictKey: "simulation",
+            status: "running", createdAt: 1, startedAt: 1,
+            progress: {stage: "Simulating", unit: "rounds", current: 10, total: 100},
+        };
+        try {
+            const view = (value: StudioJobView, pending = false) => <MantineProvider><JobProgressCard job={value} cancellationPending={pending} onCancel={() => undefined} /></MantineProvider>;
+            const {rerender} = render(view(job));
+            now = 2_000;
+            const advanced = {...job, progress: {...job.progress!, current: 20}};
+            rerender(view(advanced));
+            expect(screen.getByText(/Throughput:/)).toBeInTheDocument();
+            rerender(view({...advanced, status: phase === "cancelling" ? "cancelling" : "running"}, phase === "pending"));
+            expect(screen.queryByText(/Throughput:/)).toBeNull();
+            expect(screen.getByRole("button", {name: "Cancel"})).toBeDisabled();
+            expect(screen.getByText(phase === "pending" ? "Sending cancellation request…" : "Cancellation requested; waiting for cleanup.")).toBeInTheDocument();
+            // A rejected cancellation returns to running; two new observations are needed for a rate.
+            now = 3_000;
+            rerender(view(advanced));
+            expect(screen.queryByText(/Throughput:/)).toBeNull();
+            now = 4_000;
+            rerender(view({...advanced, progress: {...advanced.progress, current: 30}}));
+            expect(screen.getByText(/Throughput: 10\.00 rounds\/s/)).toBeInTheDocument();
+        } finally {
+            dateNow.mockRestore();
+        }
+    });
+
     it.each(["completed", "cancelled", "failed"] as const)("keeps the same %s region visible after later ancestor expansion, then releases layout observation", async status => {
         const layout = jobFocusLayout();
         const job = {id: "displaced", projectId: "/project", operation: "simulation", request: {}, conflictKey: "simulation", status: "running" as const, createdAt: 1};

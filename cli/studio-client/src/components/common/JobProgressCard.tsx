@@ -26,7 +26,7 @@ function percentFor(current: number | string | undefined, total: number | string
 
 export function JobProgressCard({job, onCancel, cancellationPending = false}: {job: StudioJobView; onCancel?: (id: string) => void; cancellationPending?: boolean}) {
     const [observedAt, setObservedAt] = useState<number | undefined>(undefined);
-    const previousProgress = useRef<{stage: string; unit: string; current: bigint; total: bigint; at: number} | undefined>(undefined);
+    const previousProgress = useRef<{id: string; projectId: string; startedAt?: number; stage: string; unit: string; current: bigint; total: bigint; at: number} | undefined>(undefined);
     const [rate, setRate] = useState<{perSecond: number; etaMs: number} | undefined>();
     useEffect(() => {
         let timer: number | undefined;
@@ -38,10 +38,10 @@ export function JobProgressCard({job, onCancel, cancellationPending = false}: {j
         return () => {
             if (timer !== undefined) window.clearInterval(timer);
         };
-    }, [job.startedAt, job.completedAt]);
+    }, [job.id, job.projectId, job.startedAt, job.completedAt]);
     useEffect(() => {
         const progress = job.progress;
-        if (progress === undefined) {
+        if (progress === undefined || job.status !== "running" || cancellationPending) {
             previousProgress.current = undefined;
             setRate(undefined);
             return;
@@ -52,8 +52,10 @@ export function JobProgressCard({job, onCancel, cancellationPending = false}: {j
             if (current < BigInt(0) || total <= BigInt(0)) throw new Error("indeterminate progress");
             const now = Date.now();
             const previous = previousProgress.current;
-            previousProgress.current = {stage: progress.stage, unit: progress.unit, current, total, at: now};
-            if (previous === undefined || previous.stage !== progress.stage || previous.unit !== progress.unit || previous.total !== total || current <= previous.current || now <= previous.at) {
+            previousProgress.current = {id: job.id, projectId: job.projectId, startedAt: job.startedAt, stage: progress.stage, unit: progress.unit, current, total, at: now};
+            // A rate belongs to one owned execution. Its work samples cannot
+            // estimate another run or the unmeasured cancellation cleanup.
+            if (previous === undefined || previous.id !== job.id || previous.projectId !== job.projectId || previous.startedAt !== job.startedAt || previous.stage !== progress.stage || previous.unit !== progress.unit || previous.total !== total || current <= previous.current || now <= previous.at) {
                 setRate(undefined);
                 return;
             }
@@ -75,12 +77,12 @@ export function JobProgressCard({job, onCancel, cancellationPending = false}: {j
             previousProgress.current = undefined;
             setRate(undefined);
         }
-    }, [job.progress]);
+    }, [job.id, job.projectId, job.startedAt, job.status, job.progress, cancellationPending]);
     if (!active(job.status)) return null;
     const progress = job.progress;
     const percent = percentFor(progress?.current, progress?.total);
     const elapsedMs = job.startedAt === undefined ? undefined : (job.completedAt ?? observedAt ?? job.startedAt) - job.startedAt;
-    let description = progress?.stage ?? "Queued";
+    let description = progress?.stage ?? statusLabel(job.status);
     if (job.status === "cancelling") description = "Cancellation requested; waiting for cleanup.";
     else if (cancellationPending) description = "Sending cancellation request…";
     return (

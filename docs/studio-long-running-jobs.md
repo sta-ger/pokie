@@ -4,6 +4,11 @@ Studio owns the lifecycle of work that can outlive a browser request. The common
 
 A job has an immutable project identity, operation, request summary and conflict key. Its progress is a named `stage`, semantic `unit`, `current`, and `total`, rather than a percentage. Terminal records retain timestamps, duration, safe result/provenance/output references and an explicit recovery instruction. IDs cannot be read or cancelled from another project.
 
+Before the first progress sample, a running job shows **Running** with indeterminate
+progress. Throughput and ETA require two advancing observations of the same execution,
+stage, unit and known total. They reset when the execution changes or cancellation is
+requested; a work ETA does not estimate how long cancellation cleanup will take.
+
 Home's completed project-opening card opens the project in Studio, including
 Blueprint files. Reveal opens its containing folder on the server's machine
 when local host access is available. Completion records an earlier operation;
