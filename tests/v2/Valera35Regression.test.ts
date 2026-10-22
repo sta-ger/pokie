@@ -28,6 +28,8 @@ import {SharedSlotMath} from "../../src/wasm/math/SharedSlotMath.js";
 import {ForcedSymbolsCombinationsGenerator} from "../../src/weightedoutcome/generate/internal/ForcedSymbolsCombinationsGenerator.js";
 import {optimizationBlueprint, optimizationRequest} from "./fixtures/OptimizationFixture.js";
 import {weightedBlueprint} from "./fixtures/WeightedWholeSequenceGame.js";
+import {GameBlueprintValidator} from "../../src/generated/GameBlueprintValidator.js";
+import {setSymbolWeight} from "../../cli/studio-client/src/domain/blueprintFormOps.js";
 
 // Source-aware editor -> authoritative filesystem boundary checks. Real browser
 // observations, observer independence and material finding closure are separate.
@@ -45,6 +47,29 @@ describe("V2C-35 draft correction and explicit persistence", () => {
     });
 
     afterEach(() => fs.rmSync(directory, {recursive: true, force: true}));
+
+    it("diagnoses the exact -1 symbol weight without coercion through shared validation and Studio persistence, then saves corrected reuse", () => {
+        const model: Record<string, unknown> = optimizationBlueprint();
+        Reflect.deleteProperty(model, "reelStrips");
+        setSymbolWeight(model, "A", -1);
+        const original = fs.readFileSync(source);
+        const diagnostics = new GameBlueprintValidator().validate(model);
+        expect(diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({
+            code: "blueprint-symbolweights-invalid-weight", message: '"symbolWeights.A" must be a positive integer.',
+        })]));
+        expect(service.validate(model)).toMatchObject({status: "invalid", errors: expect.arrayContaining([
+            expect.objectContaining({code: "blueprint-symbolweights-invalid-weight"}),
+        ])});
+        expect(service.save(source, model, true).status).toBe("error");
+        expect(model.symbolWeights).toEqual({A: -1});
+        expect(fs.readFileSync(source)).toEqual(original);
+        for (const weight of [2, 3]) {
+            setSymbolWeight(model, "A", weight);
+            expect(service.validate(model).status).toBe("ok");
+            expect(service.save(source, model, true).status).toBe("ok");
+            expect(service.load(source)).toMatchObject({status: "ok", blueprint: {symbolWeights: {A: weight}}});
+        }
+    });
 
     it("retains rejected JSON and weighted drafts until correction, then persists only on explicit Save", () => {
         const original = fs.readFileSync(source);
@@ -347,6 +372,41 @@ describe("V2C-35 retained exact-finite request through public consumers", () => 
             return jobs.get(source, job.id)!;
         };
         try {
+            // Use the real retained workload and the real host clock: an HTTP
+            // handler, like this timer, must run DURING a candidate's artifact
+            // execution rather than after its first full evaluation.
+            const evaluate = SharedSlotMath.prototype.evaluate;
+            let emitted = 0;
+            let emittedAtCancellation: number | undefined;
+            let observedRecord: StudioJobView | undefined;
+            let cancellationStatus: StudioJobView["status"] | undefined;
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const evaluating = jest.spyOn(SharedSlotMath.prototype, "evaluate").mockImplementation(function (this: SharedSlotMath, ...args) {
+                if (++emitted === 1) timer = setTimeout(() => {
+                    const active = jobs.list(source).find(job => job.operation === "optimization" && job.status === "running");
+                    emittedAtCancellation = emitted;
+                    if (active !== undefined) {
+                        observedRecord = new FileStudioJobRepository(path.join(directory, "jobs")).get(active.id);
+                        cancellationStatus = jobs.cancel(source, active.id)?.status;
+                    }
+                }, 0);
+                return Reflect.apply(evaluate, this, args);
+            });
+            try {
+                const cancelled = await start(request);
+                expect(emittedAtCancellation).toBeGreaterThan(0);
+                expect(emittedAtCancellation).toBeLessThan(1000);
+                expect(observedRecord).toMatchObject({status: "running", operation: "optimization"});
+                expect(cancellationStatus).toBe("cancelling");
+                expect(cancelled).toMatchObject({status: "cancelled", result: {detail: {status: "cancelled", evidence: {evaluated: 0}}}});
+                expect(new FileStudioJobRepository(path.join(directory, "jobs")).get(cancelled.id)?.status).toBe("cancelled");
+                expect(fs.readFileSync(source)).toEqual(fixture);
+                expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+                console.info(`V2C-35 active observation and accepted cancellation during first candidate: ${emittedAtCancellation} artifacts; durable cancelled terminal and drained scratch.`);
+            } finally {
+                clearTimeout(timer);
+                evaluating.mockRestore();
+            }
             const terminal = await start(request);
             expect(terminal).toMatchObject({status: "completed", result: {detail: {status: "infeasible", diagnostics: [], evidence: {evaluated: 3, consumedWork: 3, exhaustive: true}}}});
             console.info("V2C-35 retained request completed: infeasible; all 3 candidates evaluated without OOM.");

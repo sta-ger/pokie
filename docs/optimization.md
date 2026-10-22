@@ -186,6 +186,12 @@ source revisions; changing Projects invalidates the request even for identical f
 Terminal evidence is shown alongside diagnostics, job errors, recovery guidance and
 connection/cancellation failures.
 
+Exact evaluation lets Studio answer status, reattachment and cancellation requests
+between batches of round artifacts, including while a single candidate is being
+measured. Cancellation waits for the current synchronous round and owned cleanup;
+it does not publish the unfinished candidate. Reattachment observes the same job
+and does not start another optimization.
+
 ## Seeded search and held-out assessment
 
 Set `policy.strategy` to `seeded-search-v1` and supply a complete `sampling` object:
