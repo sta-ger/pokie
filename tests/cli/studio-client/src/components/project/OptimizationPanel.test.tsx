@@ -361,8 +361,10 @@ it("V35 optimizer progress renders raw work, indeterminate materialization and t
     expect(screen.getByRole("button", {name: "Cancel optimization"})).toBeEnabled();
     expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
     await waitFor(() => expect(detail).toBeDefined());
+    const terminal = completedJob();
+    terminal.result!.detail = {...terminal.result!.detail, candidate: {type: "blueprint", path: "/scratch/candidate"}};
     await act(async () => {
-        detail!(await response(completedJob()));
+        detail!(await response(terminal));
     });
     await screen.findByText("Verdict: success");
     expect(screen.queryByRole("button", {name: "Cancel optimization"})).not.toBeInTheDocument();
