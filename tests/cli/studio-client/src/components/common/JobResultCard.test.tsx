@@ -1,8 +1,96 @@
 import {MantineProvider} from "@mantine/core";
-import {fireEvent, render, screen} from "@testing-library/react";
+import {act, fireEvent, render, screen, within} from "@testing-library/react";
+import {JobCard} from "../../../../../../cli/studio-client/src/components/common/JobCard";
 import {JobResultCard} from "../../../../../../cli/studio-client/src/components/common/JobResultCard";
+import {jobFocusLayout} from "../../testUtils/jobFocusLayout";
 
 describe("JobResultCard", () => {
+    it.each(["simulation", "design-build"])("V35-RETRY-FOCUS-REFLOW keeps the actual %s Retry visible through layout and viewport changes", async operation => {
+        const layout = jobFocusLayout();
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const removed = jest.spyOn(window, "removeEventListener");
+        const recover = jest.fn();
+        const job = {id: "retained-reflow", projectId: "/project", operation, request: {rounds: 2000000}, conflictKey: operation,
+            status: "cancelled" as const, createdAt: 1, recovery: {action: "retry" as const, reason: "Review the captured request."}};
+        const rendered = render(<MantineProvider><main>
+            <JobCard job={job} onRecoveryAction={recover} />
+            <button>Sibling task</button>
+            <JobCard job={{...job, id: "another-job"}} onRecoveryAction={recover} />
+            <div role="dialog"><button>Dialog action</button></div>
+        </main></MantineProvider>);
+        const region = screen.getByRole("region", {name: `${operation} job retained-reflow`});
+        const retry = within(region).getByRole("button", {name: "Retry"});
+        // Exact retained desktop and narrow Retry bounds, read from JSONL
+        // records 140/143. Region intersection alone missed this failure.
+        let narrow = false;
+        const bounds = jest.spyOn(retry, "getBoundingClientRect").mockImplementation(() => ({
+            x: narrow ? 33 : 293, y: narrow ? 1049.390625 : 836.828125,
+            left: narrow ? 33 : 293, right: (narrow ? 33 : 293) + 66.859375,
+            top: narrow ? 1049.390625 : 836.828125, bottom: (narrow ? 1049.390625 : 836.828125) + 30,
+            width: 66.859375, height: 30, toJSON: () => ({}),
+        }));
+        const regionGeometry = layout.place(region, 792.1875);
+        try {
+            Object.assign(window, {innerWidth: 1439, innerHeight: 956});
+            retry.focus();
+            fireEvent.click(retry);
+            expect(recover).toHaveBeenCalledWith(job);
+            expect(layout.scroll).not.toHaveBeenCalled();
+            expect(layout.observing(region.closest("main")!)).toBe(true);
+            narrow = true;
+            Object.assign(window, {innerWidth: 390, innerHeight: 844});
+            await layout.expand(region.closest("main")!);
+            expect(retry).toHaveFocus();
+            expect(layout.scroll).toHaveBeenCalledTimes(1);
+            expect(layout.scroll.mock.instances[0]).toBe(retry);
+            expect(layout.scroll).toHaveBeenLastCalledWith({block: "nearest", inline: "nearest", behavior: "instant"});
+
+            // A viewport-only height change is independent of ResizeObserver.
+            await act(async () => {
+                fireEvent.resize(window);
+                await new Promise(requestAnimationFrame);
+            });
+            expect(layout.scroll).toHaveBeenCalledTimes(2);
+            expect(layout.scroll.mock.instances[1]).toBe(retry);
+            for (const target of [screen.getByRole("button", {name: "Sibling task"}),
+                within(screen.getByRole("region", {name: `${operation} job another-job`})).getByRole("button", {name: "Retry"}),
+                screen.getByRole("button", {name: "Dialog action"})]) {
+                narrow = false;
+                Object.assign(window, {innerWidth: 1439, innerHeight: 956});
+                retry.focus();
+                narrow = true;
+                Object.assign(window, {innerWidth: 390, innerHeight: 844});
+                // Queue while Retry owns focus, then transfer before the frame.
+                await layout.expand(region.closest("main")!, () => target.focus());
+                expect(target).toHaveFocus();
+                expect(layout.scroll).toHaveBeenCalledTimes(2);
+                expect(layout.observing(region)).toBe(false);
+            }
+            narrow = false;
+            Object.assign(window, {innerWidth: 1439, innerHeight: 956});
+            retry.focus();
+            expect(layout.observing(region)).toBe(true);
+            narrow = true;
+            fireEvent.resize(window);
+            rendered.unmount();
+            expect(layout.observing(region)).toBe(false);
+            expect(removed).toHaveBeenCalledWith("resize", expect.any(Function));
+            await act(async () => {
+                fireEvent.resize(window);
+                await new Promise(requestAnimationFrame);
+            });
+            expect(layout.scroll).toHaveBeenCalledTimes(2);
+        } finally {
+            rendered.unmount();
+            Object.assign(window, {innerWidth: width, innerHeight: height});
+            bounds.mockRestore();
+            regionGeometry.restore();
+            removed.mockRestore();
+            layout.restore();
+        }
+    });
+
     it("keeps historical completion and provenance visible without offering missing project output actions", () => {
         const open = jest.fn();
         const reveal = jest.fn();

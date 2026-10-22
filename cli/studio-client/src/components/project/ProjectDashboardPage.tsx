@@ -567,6 +567,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setFeatureOwnedOutcomeLibraryJobId(jobId);
     }, []);
     const [recoveryJob, setRecoveryJob] = useState<StudioJobView | undefined>();
+    // Simulation recovery is a pending Configure handoff, not durable view
+    // authority. A newer submission or report selection consumes it; tab
+    // remounts must then derive their view from that newer result instead.
+    const consumeSimulationRecovery = useCallback(() => {
+        setRecoveryJob(job => job?.operation.includes("simulation") ? undefined : job);
+    }, []);
     const [newSessionRecoveryRequested, setNewSessionRecoveryRequested] = useState(false);
     const [jobProjectOpeningError, setJobProjectOpeningError] = useState<string>();
     const openAndNavigate = useOpenProject();
@@ -733,6 +739,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // ever meaningful against *this* report (requirement 7).
     const selectReport = useCallback(
         (id: string, openTab = true) => {
+            consumeSimulationRecovery();
             if (openTab) setActiveTab("simulation");
             setSelectedReportId(id);
             setReportDetail({status: "loading"});
@@ -751,7 +758,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     }
                 });
         },
-        [fetchImpl, setActiveTab],
+        [consumeSimulationRecovery, fetchImpl, setActiveTab],
     );
 
     // Auto-opens the report the instant a *live* job this session started completes -- requirement 5's
@@ -781,6 +788,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 setRunAgainNotice(roundsError);
                 return;
             }
+            consumeSimulationRecovery();
             reportRequestIdRef.current++;
             compareRequestIdRef.current++;
             setReportDetail({status: "empty"});
@@ -790,7 +798,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             simulation.run(rounds, seed, workers, modeName, "simulation", convergence);
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [simulation.run],
+        [consumeSimulationRecovery, simulation.run],
     );
 
     // Also clears once the *previous* blocking simulation reaches a terminal state on its own (completes,
@@ -1491,7 +1499,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                         setRunAgainNotice(undefined);
                                         simulation.cancel();
                                     }}
-                                    onRetry={simulation.retry}
+                                    onRetry={() => {
+                                        consumeSimulationRecovery();
+                                        simulation.retry();
+                                    }}
                                     recentRuns={reportsView}
                                     recentRunsError={reportsError}
                                     onRefreshRecentRuns={refreshReports}

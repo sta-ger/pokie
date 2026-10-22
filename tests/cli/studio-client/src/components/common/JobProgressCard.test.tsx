@@ -161,11 +161,15 @@ describe("JobProgressCard", () => {
             await layout.expand(ancestor);
             expect(layout.scroll).toHaveBeenCalledTimes(1);
             screen.getByRole("link", {name: "Download Report"}).focus();
-            expect(layout.observing(ancestor)).toBe(false);
+            // Descendants keep their own visibility owner; the region must
+            // no longer scroll itself just because its bounds changed.
+            expect(layout.observing(ancestor)).toBe(true);
             geometry.moveTo(994.75);
             await layout.expand(ancestor);
             expect(screen.getByRole("link", {name: "Download Report"})).toHaveFocus();
             expect(layout.scroll).toHaveBeenCalledTimes(1);
+            screen.getByRole("button", {name: "Another task"}).focus();
+            expect(layout.observing(ancestor)).toBe(false);
             geometry.moveTo(100);
             region.focus();
             expect(layout.observing(ancestor)).toBe(true);

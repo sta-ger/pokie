@@ -138,7 +138,7 @@ export function SimulationTab({
             return 2;
         }
         if (progress !== undefined && progress.status !== "recovery-required") {
-            return 1;
+            return progress.status === "queued" || progress.status === "running" || progress.status === "cancelling" ? 1 : 2;
         }
         return 0;
     });
@@ -203,7 +203,9 @@ export function SimulationTab({
         // configuration visible and editable beside its actionable error.
         if (status === undefined && wasActive) setActiveStep(0);
         const nowTerminal = status === "completed" || status === "failed" || status === "cancelled" || status === "recovery-required";
-        if (nowTerminal && (wasActive || (prevStatusRef.current === undefined && status === "completed"))) {
+        // On a tab remount an explicit card handoff takes precedence over
+        // the previously completed job; a new execution's terminal still wins.
+        if (nowTerminal && (wasActive || (prevStatusRef.current === undefined && status === "completed" && recoveryRequest === undefined))) {
             setActiveStep(2);
             closeFullReport();
             setCompareOpened(false);
