@@ -1446,7 +1446,10 @@ describe("StudioArtifactBuildService", () => {
 
     describe("bounded build jobs", () => {
         it("projects real automatic Blueprint-to-Stake progress without substituting artifact totals", async () => {
-            const source = writeBlueprintFile(buildBlueprint({rows: 1, reelStrips: Array.from({length: 3}, () => Array.from({length: 9}, () => "A"))}));
+            // Distinct visible grids are required: repeated A stops generate
+            // 729 raw tuples but correctly deduplicate to one written record.
+            const symbols = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
+            const source = writeBlueprintFile(buildBlueprint({rows: 1, symbols, paytable: Object.fromEntries(symbols.map(symbol => [symbol, {3: 1}])), reelStrips: [symbols, symbols, symbols]}));
             const input = fs.readFileSync(source);
             const jobs = new StudioJobService(new FileStudioJobRepository(path.join(workDir, "progress-jobs")));
             service.attachJobService(jobs);

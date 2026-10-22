@@ -48,7 +48,7 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
                 ...(generation === "sampled" ? {outcomeLibraryGeneration: {sampled: {sampleSize: BigInt(5), seed: "progress"}}} : {})};
             await workflow.resolveOrGenerate(project, path.join(directory, "outcome"), options);
             expect(progress).toContainEqual(expect.objectContaining({phase: "Generating Outcome mode base", unit: generation === "exact" ? "raw combinations" : "draws", total: BigInt(generation === "exact" ? 8 : 5)}));
-            expect(progress).toContainEqual(expect.objectContaining({message: "Writing Outcome mode base", unit: "outcome records", total: undefined}));
+            expect(progress).toContainEqual(expect.objectContaining({message: "Writing Outcome mode base", unit: "outcome records", completed: BigInt(1), total: undefined}));
             expect(progress).toContainEqual(expect.objectContaining({message: "Analyzing Outcome mode base (pass 2 of 2)", unit: "outcome records", total: expect.any(BigInt)}));
             expect(progress).toContainEqual(expect.objectContaining({phase: "Building Outcome Library index base", unit: "bytes", total: expect.any(BigInt)}));
             expect(progress).toContainEqual(expect.objectContaining({phase: "Publishing Outcome files", unit: "bundle files", total: expect.any(BigInt)}));
