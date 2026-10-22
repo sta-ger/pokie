@@ -47,6 +47,7 @@ import {describeProjectActionError} from "../../domain/projectActionError";
 import {describeOutcomeLibraryGenerationTerminalOutcome} from "../../domain/outcomeLibraryGenerateError";
 import type {DeploymentManager} from "../../hooks/useDeploymentManager";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
+import {useDesignFocusVisibility} from "../../hooks/useDesignFocusVisibility";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
@@ -1121,6 +1122,8 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
 }) {
     const fetchImpl = useStudioApi();
     const openAndNavigate = useOpenProject();
+    const controlsRegion = useRef<HTMLDivElement>(null);
+    useDesignFocusVisibility(controlsRegion, true);
     const {targetsView: deploymentTargetsView, selectTarget: selectDeploymentTarget} = deployment;
     const deploymentTargets = deploymentTargetsView.status === "loaded" ? deploymentTargetsView.targets : [];
     const defaultModeName = resolveDefaultModeName(deployment.projectModesView);
@@ -1759,7 +1762,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     }
 
     return (
-        <div>
+        <div ref={controlsRegion} className="studio-export-deploy">
             <Text size="sm" c="dimmed" mb="sm">
                 Build game outputs, export a bundle, or deliver it to a configured destination. Each option
                 shows what it needs and what happens next; details about the underlying integration are

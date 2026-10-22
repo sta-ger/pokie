@@ -3,6 +3,7 @@ import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+import {jobFocusLayout} from "../../testUtils/jobFocusLayout";
 
 const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unknown}> = {
     "/api/project/context": () => ({
@@ -1836,6 +1837,92 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
     });
 
     describe("Build/Export: Build artifact (ArtifactBuilderRegistry, shared with the CLI)", () => {
+        it.each(["input", "sibling", "dialog"] as const)("handles the retained 375×667 to 1439×956 destination reflow while %s owns focus", async owner => {
+            const user = userEvent.setup();
+            const layout = jobFocusLayout();
+            const width = jest.replaceProperty(window, "innerWidth", 375);
+            const height = jest.replaceProperty(window, "innerHeight", 667);
+            const fetchImpl = fetchImplFrom({
+                ...BASE_ROUTES,
+                "/api/project/artifacts/preview": () => ({ok: false, status: 409, body: {
+                    status: "conflict", target: "tsPackage", destination: "/games", destinationKind: "directory", plannedOutputs: ["package.json"],
+                    message: '"/games" already exists and is not empty. Choose a different destination.',
+                }}),
+                "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/games", displayPath: "/games", entries: []}}),
+                "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "unavailable", reason: "No graphical display."}}),
+            });
+            const rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            let bounds: jest.SpyInstance | undefined;
+            let ownerBounds: jest.SpyInstance | undefined;
+            try {
+                await screen.findByRole("heading", {name: "A"});
+                await user.click(screen.getByRole("button", {name: "Build/Export"}));
+                const section = (await screen.findByText("Build artifact")).closest("fieldset")!;
+                const input = within(section).getByRole("textbox", {name: "Output directory (optional)"});
+                const region = input.closest(".studio-export-deploy")!;
+                expect(layout.observing(region)).toBe(true);
+                fireEvent.change(input, {target: {value: "."}});
+                await within(section).findByText(/already exists and is not empty/);
+                let desktop = false;
+                // Exact retained pre/post-resize rectangles. jsdom delivers
+                // layout events; installed Chromium remains geometry authority.
+                bounds = jest.spyOn(input, "getBoundingClientRect").mockImplementation(() => {
+                    const x = desktop ? 307 : 47;
+                    const y = desktop ? -59.078125 : 315.203125;
+                    const w = desktop ? 955.171875 : 266;
+                    return {x, y, left: x, top: y, right: x + w, bottom: y + 36, width: w, height: 36, toJSON: () => ({})};
+                });
+                await act(() => input.focus());
+                const resize = async (beforeFrame?: () => void) => {
+                    await act(async () => {
+                        window.dispatchEvent(new Event("resize"));
+                        beforeFrame?.();
+                        await new Promise(resolve => {
+                            requestAnimationFrame(resolve);
+                        });
+                    });
+                };
+                await resize();
+                expect(input).toHaveFocus();
+                expect(layout.scroll).not.toHaveBeenCalled();
+                let focusOwner = input;
+                if (owner === "dialog") {
+                    await user.click(within(section).getByRole("button", {name: "Browse…"}));
+                    const dialog = await screen.findByRole("dialog");
+                    focusOwner = within(dialog).getAllByRole("button")[0]!;
+                    focusOwner.focus();
+                } else if (owner === "sibling") {
+                    focusOwner = screen.getByRole("button", {name: "Refresh registered targets"});
+                }
+                if (owner !== "input") ownerBounds = jest.spyOn(focusOwner, "getBoundingClientRect").mockReturnValue({
+                    x: 307, y: 200, left: 307, top: 200, right: 467, bottom: 236, width: 160, height: 36, toJSON: () => ({}),
+                });
+                layout.scroll.mockClear();
+                desktop = true;
+                width.replaceValue(1439);
+                height.replaceValue(956);
+                await resize(owner === "sibling" ? () => focusOwner.focus() : undefined);
+                expect(focusOwner).toHaveFocus();
+                expect(input).toHaveValue(".");
+                expect(input).toHaveAttribute("aria-invalid", "true");
+                expect(within(section).getByRole("button", {name: "Build", hidden: owner === "dialog"})).toBeDisabled();
+                if (owner === "input") {
+                    expect(layout.scroll).toHaveBeenCalledTimes(1);
+                    expect(layout.scroll.mock.instances[0]).toBe(input);
+                    expect(layout.scroll).toHaveBeenCalledWith({block: "nearest", inline: "nearest", behavior: "instant"});
+                } else expect(layout.scroll).not.toHaveBeenCalled();
+                rendered.unmount();
+                expect(layout.observing(region)).toBe(false);
+            } finally {
+                rendered.unmount();
+                bounds?.mockRestore();
+                ownerBounds?.mockRestore();
+                width.restore();
+                height.restore();
+                layout.restore();
+            }
+        });
+
         it("renders server preflight and live progress before the artifact job completes", async () => {
             const user = userEvent.setup();
             let statusReads = 0;

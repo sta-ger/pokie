@@ -1,11 +1,60 @@
 import {MantineProvider} from "@mantine/core";
 import {fireEvent, render, screen} from "@testing-library/react";
+import {useLayoutEffect, useRef} from "react";
 import {JobProgressCard} from "../../../../../../cli/studio-client/src/components/common/JobProgressCard";
 import {JobCard} from "../../../../../../cli/studio-client/src/components/common/JobCard";
 import {jobFocusLayout} from "../../testUtils/jobFocusLayout";
 import type {StudioJobView} from "../../../../../../cli/studio-client/src/api/types";
 
 describe("JobProgressCard", () => {
+    it.each(["pending", "cancelling", "queued", "id", "projectId", "startedAt", "progress", "stage", "unit", "total", "regression", "execution-and-progress"] as const)("excludes stale estimates from the first committed %s transition before passive effects", transition => {
+        let now = 1_000;
+        const dateNow = jest.spyOn(Date, "now").mockImplementation(() => now);
+        const commits: string[] = [];
+        function ObservedCard({job, pending = false}: {job: StudioJobView; pending?: boolean}) {
+            const region = useRef<HTMLDivElement>(null);
+            // Layout effects observe committed DOM before the rate's passive
+            // reset. A settled RTL rerender alone missed the retained frame.
+            useLayoutEffect(() => {
+                commits.push(region.current?.textContent ?? "");
+            });
+            return <div ref={region}><JobProgressCard job={job} cancellationPending={pending} onCancel={() => undefined} /></div>;
+        }
+        const job: StudioJobView = {
+            id: "committed-rate", projectId: "/project", operation: "simulation", request: {}, conflictKey: "simulation",
+            status: "running", createdAt: 1, startedAt: 1,
+            progress: {stage: "simulation", unit: "accepted plays", current: 10, total: 100},
+        };
+        const view = (value: StudioJobView, pending = false) => <MantineProvider><ObservedCard job={value} pending={pending} /></MantineProvider>;
+        const rendered = render(view(job));
+        try {
+            now = 2_000;
+            const advanced = {...job, progress: {...job.progress!, current: 20}};
+            rendered.rerender(view(advanced));
+            expect(screen.getByText(/Throughput: 10\.00 accepted plays\/s/)).toBeInTheDocument();
+            let next: StudioJobView = advanced;
+            if (transition === "cancelling" || transition === "queued") next = {...advanced, status: transition};
+            else if (transition === "id" || transition === "projectId") next = {...advanced, [transition]: "new-owner"};
+            else if (transition === "startedAt") next = {...advanced, startedAt: 3_000};
+            else if (transition === "progress") next = {...advanced, progress: undefined};
+            else if (transition === "stage" || transition === "unit") next = {...advanced, progress: {...advanced.progress, [transition]: "changed"}};
+            else if (transition === "total") next = {...advanced, progress: {...advanced.progress, total: "unknown"}};
+            else if (transition === "regression") next = {...advanced, progress: {...advanced.progress, current: 5}};
+            else if (transition === "execution-and-progress") next = {...advanced, id: "new-owner", projectId: "/new-project", startedAt: 3_000, progress: {...advanced.progress, current: 30}};
+            commits.length = 0;
+            now = 3_000;
+            rendered.rerender(view(next, transition === "pending"));
+            expect(commits.length).toBeGreaterThan(0);
+            expect(commits[0]).not.toMatch(/Throughput:|ETA:/);
+            if (transition === "pending") expect(commits[0]).toContain("Sending cancellation request…");
+            if (transition === "cancelling") expect(commits[0]).toContain("Cancellation requested; waiting for cleanup.");
+            expect(screen.queryByText(/Throughput:/)).toBeNull();
+        } finally {
+            rendered.unmount();
+            dateNow.mockRestore();
+        }
+    });
+
     it.each(["queued", "running"] as const)("describes a %s job honestly before its first progress sample", status => {
         const cancel = jest.fn();
         render(<MantineProvider><JobProgressCard job={{

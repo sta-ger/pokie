@@ -364,7 +364,8 @@ body,
     }
 }
 
-.studio-design-editor :focus {
+.studio-design-editor :focus,
+.studio-export-deploy :focus {
     scroll-margin-block-start: calc(var(--app-shell-header-offset, 0px) + 8px);
     scroll-margin-block-end: 8px;
     scroll-margin-inline: 8px;
