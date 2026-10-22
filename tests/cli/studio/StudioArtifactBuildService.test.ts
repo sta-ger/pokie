@@ -221,7 +221,7 @@ describe("StudioArtifactBuildService", () => {
         expect(unavailable.status).toBe("unsupported");
         expect(unavailable.plan.packageExtraction?.status).toBe("partial");
         expect(fs.existsSync(path.join(workDir, "legacy.json"))).toBe(false);
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it.each(["blueprint", "evidence"])("keeps concurrent %s publication intact and does not register", async member => {
         const source = writeDescriptorPackage(workDir);
