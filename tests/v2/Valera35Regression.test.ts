@@ -49,8 +49,8 @@ describe("V2C-35 draft correction and explicit persistence", () => {
         model.availableBets = [0.05, 7.5, 1e-7];
         const sequence = model.reelSequences![0];
         if (sequence.type !== "weighted") throw new Error("Expected weighted source fixture");
-        sequence.variants[0].id = "authored tiny weight";
-        sequence.variants[0].weight = 1e-7;
+        model.reelSequences = [{...sequence, variants: sequence.variants.map((variant, index) =>
+            index === 0 ? {...variant, id: "authored tiny weight", weight: 1e-7} : variant)}, ...model.reelSequences!.slice(1)];
         const corrected = applyJsonText(invalid, JSON.stringify(model));
         expect(service.validate(corrected.blueprint).status).toBe("ok");
         expect(corrected.revision).toBeGreaterThan(invalid.revision);
