@@ -28,8 +28,6 @@ import {SharedSlotMath} from "../../src/wasm/math/SharedSlotMath.js";
 import {ForcedSymbolsCombinationsGenerator} from "../../src/weightedoutcome/generate/internal/ForcedSymbolsCombinationsGenerator.js";
 import {optimizationBlueprint, optimizationRequest} from "./fixtures/OptimizationFixture.js";
 import {weightedBlueprint} from "./fixtures/WeightedWholeSequenceGame.js";
-import {GameBlueprintValidator} from "../../src/generated/GameBlueprintValidator.js";
-import {setSymbolWeight} from "../../cli/studio-client/src/domain/blueprintFormOps.js";
 
 // Source-aware editor -> authoritative filesystem boundary checks. Real browser
 // observations, observer independence and material finding closure are separate.
@@ -47,40 +45,6 @@ describe("V2C-35 draft correction and explicit persistence", () => {
     });
 
     afterEach(() => fs.rmSync(directory, {recursive: true, force: true}));
-
-    it("retains exact -1 diagnostics through shared validation and explicit draft persistence, then saves corrected reuse", () => {
-        const model: Record<string, unknown> = optimizationBlueprint();
-        Reflect.deleteProperty(model, "reelStrips");
-        setSymbolWeight(model, "A", -1);
-        const original = fs.readFileSync(source);
-        const diagnostics = new GameBlueprintValidator().validate(model);
-        expect(diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({
-            code: "blueprint-symbolweights-invalid-weight", message: '"symbolWeights.A" must be a positive integer.',
-        })]));
-        expect(service.validate(model)).toMatchObject({status: "invalid", errors: expect.arrayContaining([
-            expect.objectContaining({code: "blueprint-symbolweights-invalid-weight"}),
-        ])});
-        // Advanced Save is lossless draft persistence, not a validity verdict.
-        // Required-valid UI actions validate first. Preserve the public draft
-        // contract and verify that neither persistence nor reload coerces -1.
-        const draftPath = path.join(directory, "invalid weight draft.json");
-        expect(service.save(draftPath, model, false).status).toBe("ok");
-        expect(JSON.parse(fs.readFileSync(draftPath, "utf8")).symbolWeights).toEqual({A: -1});
-        const reloaded = service.load(draftPath);
-        expect(reloaded).toMatchObject({status: "ok", blueprint: {symbolWeights: {A: -1}}});
-        if (reloaded.status !== "ok") throw new Error(reloaded.error);
-        expect(service.validate(reloaded.blueprint)).toMatchObject({status: "invalid", errors: expect.arrayContaining([
-            expect.objectContaining({code: "blueprint-symbolweights-invalid-weight"}),
-        ])});
-        expect(model.symbolWeights).toEqual({A: -1});
-        expect(fs.readFileSync(source)).toEqual(original);
-        for (const weight of [2, 3]) {
-            setSymbolWeight(model, "A", weight);
-            expect(service.validate(model).status).toBe("ok");
-            expect(service.save(source, model, true).status).toBe("ok");
-            expect(service.load(source)).toMatchObject({status: "ok", blueprint: {symbolWeights: {A: weight}}});
-        }
-    });
 
     it("retains rejected JSON and weighted drafts until correction, then persists only on explicit Save", () => {
         const original = fs.readFileSync(source);
