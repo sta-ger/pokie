@@ -1,11 +1,23 @@
 import {MantineProvider} from "@mantine/core";
-import {fireEvent, render, screen, waitFor} from "@testing-library/react";
+import {act, fireEvent, render, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {OptimizationPanel} from "../../../../../../cli/studio-client/src/components/project/OptimizationPanel";
-import {StudioApiProvider} from "../../../../../../cli/studio-client/src/context/StudioApiProvider";
+import {StudioApiProvider, useStudioApi} from "../../../../../../cli/studio-client/src/context/StudioApiProvider";
+import {useProjectJobs} from "../../../../../../cli/studio-client/src/hooks/useProjectJobs";
+import {JobCard} from "../../../../../../cli/studio-client/src/components/common/JobCard";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {StudioJobView} from "../../../../../../cli/studio-client/src/api/types";
 import {optimizationRequest} from "../../../../../v2/fixtures/OptimizationFixture";
+
+function ObservedPanel({projectRoot, onApplied, showOperations = false}: {
+    projectRoot: string; onApplied?: () => void; showOperations?: boolean;
+}) {
+    const jobs = useProjectJobs(useStudioApi(), projectRoot, 0);
+    return <>
+        <OptimizationPanel projectRoot={projectRoot} jobs={jobs} onApplied={onApplied} />
+        {showOperations && jobs.jobs.map(job => <JobCard key={job.id} job={job} onCancel={jobs.cancel} cancellationPending={jobs.pendingIds.includes(job.id)} />)}
+    </>;
+}
 
 function setup(supported = true) {
     const calls: {url: string; body?: string}[] = [];
@@ -34,7 +46,7 @@ function setup(supported = true) {
     const view = render(
         <MantineProvider>
             <StudioApiProvider fetchImpl={fetchImpl}>
-                <OptimizationPanel projectRoot="/project" />
+                <ObservedPanel projectRoot="/project" />
             </StudioApiProvider>
         </MantineProvider>,
     );
@@ -78,7 +90,7 @@ it("shows unsupported source reasons and invalidates support after policy edits"
 });
 
 function panel(fetchImpl: FetchLike, projectRoot = "/project") {
-    return <MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><OptimizationPanel projectRoot={projectRoot} /></StudioApiProvider></MantineProvider>;
+    return <MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><ObservedPanel projectRoot={projectRoot} /></StudioApiProvider></MantineProvider>;
 }
 function completedJob(status: StudioJobView["status"] = "completed"): StudioJobView {
     return {id: "saved-job", projectId: "/project", operation: "optimization", conflictKey: "opt", status, createdAt: 1, request: {request: optimizationRequest()}, result: {summary: "Optimization result", detail: {status: "success", diagnostics: [], evidence: {measured: [0.75]}, candidate: {path: "/scratch/candidate"}}}};
@@ -189,7 +201,7 @@ it("renders held-out estimates, CI, population, constraints and parameter change
         }
         return response({jobs: [job]});
     };
-    render(<MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><OptimizationPanel projectRoot="/project" onApplied={applied} /></StudioApiProvider></MantineProvider>);
+    render(<MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><ObservedPanel projectRoot="/project" onApplied={applied} /></StudioApiProvider></MantineProvider>);
     const comparison = await screen.findByRole("table", {name: "Target comparison"});
     expect(comparison).toHaveTextContent("rtp");
     expect(comparison).toHaveTextContent("ratio");
@@ -233,3 +245,83 @@ it("keeps consumed authored preview actions hidden after reload while retaining 
     expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
     expect(screen.queryByRole("button", {name: "Save reviewed candidate"})).not.toBeInTheDocument();
 });
+
+it.each(["completed", "failed", "cancelled", "recovery-required"] as const)(
+    "V35 optimizer lifecycle shares %s with its operation card and permits a fresh retry",
+    async status => {
+        // Retained transcript observation 45: running: 3 / 100 candidates Finite search
+        // alongside optimization · Completed / Optimization infeasible. These are
+        // source-aware transport regressions, not independent first-contact evidence.
+        let current: StudioJobView | undefined;
+        let finishDetail: ((value: Awaited<ReturnType<FetchLike>>) => void) | undefined;
+        let discoveries = 0;
+        let starts = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url.endsWith("/support")) return response({supported: true, reason: "Finite workflow available", sourceRevision: "sha256:source"});
+            if (url.endsWith("/start")) {
+                const submitted = JSON.parse(init!.body as string);
+                current = {
+                    id: `opt-${++starts}`, projectId: "/project", operation: "optimization", conflictKey: "opt",
+                    createdAt: starts, status: "running", request: {request: submitted.request},
+                    progress: {current: 3, total: 100, unit: "candidates", stage: "Finite search"},
+                };
+                return response({job: current});
+            }
+            if (url === "/api/project/jobs") {
+                discoveries++;
+                return response({jobs: current ? [current] : []});
+            }
+            if (url === "/api/project/jobs/opt-1") return new Promise(resolve => {
+                finishDetail = resolve;
+            });
+            throw new Error(`Unexpected request: ${url}`);
+        };
+        const view = render(<MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><ObservedPanel projectRoot="/project" showOperations /></StudioApiProvider></MantineProvider>);
+        await waitFor(() => expect(discoveries).toBe(1));
+        await userEvent.click(screen.getByRole("button", {name: "Check tuning support"}));
+        await screen.findByText("Finite workflow available");
+        await userEvent.click(screen.getByRole("button", {name: "Run optimization"}));
+        await screen.findByText("running: 3 / 100 candidates Finite search");
+        expect(screen.getByRole("button", {name: "Cancel optimization"})).toBeEnabled();
+        expect(screen.getByLabelText("Math targets and optimization policy (JSON)")).toBeDisabled();
+        await waitFor(() => expect(finishDetail).toBeDefined());
+        const verdict = {completed: "infeasible", cancelled: "cancelled", failed: "failure", "recovery-required": "failure"}[status];
+        const terminal = {
+            ...current!, status,
+            result: {summary: `Optimization ${verdict}`, detail: {status: verdict, diagnostics: []}},
+            ...(status === "failed" ? {error: "Evaluation failed"} : {}),
+            ...(status === "recovery-required" ? {recovery: {action: "retry" as const, reason: "Inspect retained scratch"}} : {}),
+        };
+        const contradictions: string[] = [];
+        const observer = new MutationObserver(() => {
+            if (view.container.textContent?.includes(`Optimization ${verdict}`) &&
+                (view.container.textContent.includes("running: 3 / 100") || screen.queryByRole("button", {name: "Cancel optimization"}))) {
+                contradictions.push(view.container.textContent);
+            }
+        });
+        observer.observe(view.container, {subtree: true, childList: true, characterData: true});
+        try {
+            await act(async () => {
+                finishDetail!(await response(terminal));
+            });
+            expect(screen.getByText(`Optimization ${verdict}`)).toBeInTheDocument();
+            expect(screen.getByText(`Verdict: ${verdict}`)).toBeInTheDocument();
+            expect(screen.queryByText(/running: 3 \/ 100/)).not.toBeInTheDocument();
+            expect(screen.queryByRole("button", {name: "Cancel optimization"})).not.toBeInTheDocument();
+            expect(screen.getByLabelText("Math targets and optimization policy (JSON)")).toBeEnabled();
+            expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
+            expect(screen.queryByRole("button", {name: "Save reviewed candidate"})).not.toBeInTheDocument();
+            expect(contradictions).toEqual([]);
+        } finally {
+            observer.disconnect();
+        }
+        // Discovery still reports the stale running snapshot; the shared durable
+        // observer must retain the terminal while a new execution is submitted.
+        await userEvent.click(screen.getByRole("button", {name: "Run optimization"}));
+        await screen.findByText("running: 3 / 100 candidates Finite search");
+        expect(starts).toBe(2);
+        expect(screen.queryByText(`Verdict: ${verdict}`)).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Cancel optimization"})).toBeEnabled();
+        view.unmount();
+    },
+);

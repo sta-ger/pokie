@@ -9,7 +9,7 @@ import type {
     StudioOptimizationSupport,
 } from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
-import {useProjectJobs} from "../../hooks/useProjectJobs";
+import type {useProjectJobs} from "../../hooks/useProjectJobs";
 import {validateOptimizationRequest} from "../../../../../src/optimization/validateOptimizationRequest";
 
 const initialRequest: StudioOptimizationRequest = {
@@ -26,8 +26,12 @@ const initialRequest: StudioOptimizationRequest = {
         locks: [],
     },
 };
-/** One shared policy form, available in runtime, native outcome and artifact dashboards. */
-export function OptimizationPanel({projectRoot, onApplied}: {projectRoot: string; onApplied?: () => void}) {
+/** Policy form and operation cards consume the dashboard's same durable observations. */
+export function OptimizationPanel({projectRoot, jobs, onApplied}: {
+    projectRoot: string;
+    jobs: ReturnType<typeof useProjectJobs>;
+    onApplied?: () => void;
+}) {
     const fetchImpl = useStudioApi();
     const [text, setText] = useState(JSON.stringify(initialRequest, null, 2));
     const [support, setSupport] = useState<StudioOptimizationSupport>();
@@ -40,7 +44,6 @@ export function OptimizationPanel({projectRoot, onApplied}: {projectRoot: string
     const generation = useRef(0);
     const edited = useRef(false);
     const controller = useRef<AbortController | undefined>(undefined);
-    const jobs = useProjectJobs(fetchImpl, projectRoot, 0);
     useEffect(
         () => {
             setApplied(false);
