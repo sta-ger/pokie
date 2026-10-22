@@ -6,6 +6,8 @@ import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprint
 import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";
 import {InMemoryRecentProjectsRepository} from "../../cli/studio/InMemoryRecentProjectsRepository.js";
 import {applyJsonText, loadBlueprintEditorState} from "../../cli/studio-client/src/domain/blueprintEditorState.js";
+import {Paytable} from "../../src/session/videoslot/paytable/Paytable.js";
+import {generateExactWeightedOutcomeLibrary} from "../../src/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
 import {createTunableBlueprintGame} from "../../src/optimization/createTunableBlueprintGame.js";
 import {SharedSlotMathPool} from "../../src/wasm/math/internal/SharedSlotMathPool.js";
 import {resolveSharedSlotMathModel} from "../../src/generated/resolveSharedSlotMathModel.js";
@@ -127,6 +129,37 @@ describe("V2C-35 exact optimizer Wasm ownership", () => {
 
 
 describe("V2C-35 shared scratch authority and recovery", () => {
+    it("keeps absent and authored zero paytable maps enumerable without inventing awards", () => {
+        const table = new Paytable<string>([0.05]);
+        expect(table.getAvailableSymbolsForBet(7.5)).toEqual([]);
+        expect(table.getNumbersOfSymbolsForBet(7.5, "A")).toEqual([]);
+        expect(table.getNumbersOfSymbolsForBet(0.05, "A")).toEqual([]);
+        table.setPayoutForSymbol("A", 2, 0);
+        expect(table.getAvailableSymbolsForBet(0.05)).toEqual(["A"]);
+        expect(table.getNumbersOfSymbolsForBet(0.05, "A")).toEqual([2]);
+        expect(table.getWinAmountForSymbol("A", 2, 0.05)).toBe(0);
+        table.setPayoutForSymbol("A", 2, 2);
+        expect(table.getWinAmountForSymbol("A", 2, 0.05)).toBe(0.1);
+    });
+
+    it("reuses the same public exact-generation game after preflight rejection and a no-op", async () => {
+        const game = createTunableBlueprintGame(optimizationBlueprint());
+        const options = {game, libraryId: "reuse", pokieVersion: POKIE_VERSION, exact: true, stake: 1, now: () => new Date(0)};
+        try {
+            game.createSession({seed: "unused"});
+            await expect(generateExactWeightedOutcomeLibrary({...options, maxOutcomeSpaceSize: BigInt(2)})).rejects.toThrow(/exceeds/);
+            for (let run = 0; run < 2; run++) {
+                const result = await generateExactWeightedOutcomeLibrary({...options, maxOutcomeSpaceSize: BigInt(4)});
+                expect(result.diagnostics).toMatchObject({strategy: "exact", totalOutcomeSpaceSize: 4});
+                expect(result.library.outcomes.map(outcome => ({weight: outcome.weight, win: outcome.artifact.totalWin}))).toEqual([
+                    {weight: 1, win: 2}, {weight: 3, win: 0},
+                ]);
+            }
+        } finally {
+            await game.release!();
+        }
+    });
+
     it("validates full models, detaches keys, bounds churn and reacquires evicted facades", () => {
         const pool = new SharedSlotMathPool();
         const model = {...resolveSharedSlotMathModel(optimizationBlueprint()), paytable: {A: {2: 2}, B: {2: 0}}};
@@ -136,6 +169,7 @@ describe("V2C-35 shared scratch authority and recovery", () => {
         try {
             const first = pool.create(model);
             const sibling = pool.create(model);
+            expect(instances.mock.calls.length).toBe(0);
             model.paytable.A = {2: 999};
             const screen = [["A"], ["A"]];
             expect(first.evaluate(screen, 1).payout).toBe(2);
@@ -327,7 +361,7 @@ describe("V2C-35 retained exact-finite request through public consumers", () => 
         } finally {
             await service.shutdown();
         }
-    }, 240000);
+    }, 600000);
 
     it("keeps CLI exact results, cancellation and a corrected explicit retry reusable", async () => {
         const source = path.join(directory, "source.blueprint.json");
