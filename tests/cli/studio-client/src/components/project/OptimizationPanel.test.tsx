@@ -355,19 +355,19 @@ it("V35 optimizer progress renders raw work, indeterminate materialization and t
     const resolveMaterialization = detail!;
     detail = undefined;
     await act(async () => {
-        resolveMaterialization(await response({job: {...running, progress: {stage: "Materializing outcomes", current: "11", total: "indeterminate", unit: "outcomes", message: "0 evaluated; 0 rejected"}}}));
+        resolveMaterialization(await response({...running, progress: {stage: "Materializing outcomes", current: "11", total: "indeterminate", unit: "outcomes", message: "0 evaluated; 0 rejected"}}));
     });
     await screen.findByText("running: 11 / indeterminate outcomes Materializing outcomes · 0 evaluated; 0 rejected");
     expect(screen.getByRole("button", {name: "Cancel optimization"})).toBeEnabled();
     expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
     await waitFor(() => expect(detail).toBeDefined());
     await act(async () => {
-        detail!(await response({job: completedJob()}));
+        detail!(await response(completedJob()));
     });
     await screen.findByText("Verdict: success");
     expect(screen.queryByRole("button", {name: "Cancel optimization"})).not.toBeInTheDocument();
     expect(screen.queryByText(/running: /)).not.toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("completed: No execution progress recorded.");
+    expect(screen.getByText("completed: No execution progress recorded.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", {name: "Apply reviewed changes to source"}));
     await screen.findByText(/Authored changes applied/);
     expect(applies).toBe(1);
