@@ -5,6 +5,7 @@ import type {PublishDirectoryAtomicallyOwnership} from "../../stakeengine/intern
 // Lifecycle hooks intentionally live with the writer rather than in project/, because direct bundle users
 // need the same ability to observe and stop a long streaming publish as ArtifactBuilder users do.
 export type OutcomeLibraryBundleWriteProgress = {
+    readonly phase?: string;
     readonly completed: bigint;
     readonly message: string;
     readonly unit?: "outcome records" | "outcome records checked" | "bytes" | "bundle files";

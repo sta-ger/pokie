@@ -1553,6 +1553,8 @@ export type StudioArtifactBuildJobView = {
     cancellationRequested: boolean;
     progress?: {
         status: "preflight" | "running" | "completed" | "cancelled" | "failed";
+        phase?: string;
+        unit?: string;
         completed?: string;
         total?: string;
         preflight?: {estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string};

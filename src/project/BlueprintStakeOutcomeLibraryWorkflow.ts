@@ -238,8 +238,6 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 const project = await this.managedOutcomeProjects.registerAndOpen(source.rootPath, boundDestination, compatibility);
                 reportArtifactBuildProgress(options, {
                     status: "completed",
-                    completed: preflight.estimatedItemCount,
-                    total: preflight.estimatedItemCount,
                     preflight,
                 });
                 return {project, reused: false};
@@ -376,7 +374,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 ...(destinationSafety === undefined ? {} : {outputDestinationSafety: destinationSafety}),
                 signal: options?.signal,
                 onProgress: (completed, total) => {
-                    reportArtifactBuildProgress(options, {status: "running", completed, total, preflight});
+                    reportArtifactBuildProgress(options, {status: "running", phase: `Generating Outcome mode ${mode.id}`, message: `Generating Outcome mode ${mode.id}`, unit: generation.generation === "sampled" ? "draws" : "raw combinations", completed, total, preflight});
                 },
             });
             return {mode, stream};
@@ -413,9 +411,12 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                         throw new Error("Managed Outcome Library destination changed before publication.");
                     }
                 },
+                onLifecycleStage: (phase) => reportArtifactBuildProgress(options, {status: "running", phase, message: `Outcome Library ${phase}`}),
                 onProgress: (progress) => {
                     reportArtifactBuildProgress(options, {
                         status: "running",
+                        phase: progress.phase ?? progress.message,
+                        unit: progress.unit,
                         completed: progress.completed,
                         // The writer's local totals are records, bytes, or
                         // files. Never display the raw enumeration estimate

@@ -7,6 +7,70 @@ import {jobFocusLayout} from "../../testUtils/jobFocusLayout";
 import type {StudioJobView} from "../../../../../../cli/studio-client/src/api/types";
 
 describe("JobProgressCard", () => {
+    it.each([
+        {current: "650", total: "1", unit: "artifacts"},
+        {current: "650", total: "indeterminate", unit: "outcome records"},
+        {current: "2", total: "1", unit: "files"},
+        {current: "-1", total: "100", unit: "records"},
+        {current: "1.5", total: "100", unit: "records"},
+        {current: "0x10", total: "100", unit: "records"},
+        {current: 9007199254740992, total: "18014398509481986", unit: "records"},
+        {current: "20", total: "100", unit: ""},
+        {current: "0", total: "0", unit: "files"},
+    ])("uses indeterminate progress for malformed or unmeasured $current/$total $unit and recovers", invalid => {
+        let now = 1_000;
+        const clock = jest.spyOn(Date, "now").mockImplementation(() => now);
+        const job: StudioJobView = {id: "invalid", projectId: "/project", operation: "artifact-build", request: {}, conflictKey: "artifact", status: "running", createdAt: 1,
+            progress: {stage: "writing", unit: "records", current: "10", total: "100"}};
+        const view = (progress: StudioJobView["progress"]) => <MantineProvider><JobProgressCard job={{...job, progress}} /></MantineProvider>;
+        const rendered = render(view(job.progress));
+        try {
+            now = 2_000;
+            rendered.rerender(view({...job.progress!, current: "20"}));
+            expect(screen.getByText(/Throughput:/)).toBeInTheDocument();
+            now = 3_000;
+            rendered.rerender(view({...job.progress!, ...invalid}));
+            expect(screen.queryByRole("progressbar")).toBeNull();
+            expect(screen.queryByText(/Throughput:|ETA:/)).toBeNull();
+            expect(screen.getByText(/Progress is indeterminate/)).toBeInTheDocument();
+            now = 4_000;
+            rendered.rerender(view({...job.progress!, current: "30"}));
+            expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "30");
+            expect(screen.queryByText(/Throughput:/)).toBeNull();
+            now = 5_000;
+            rendered.rerender(view({...job.progress!, current: "40"}));
+            expect(screen.getByText(/Throughput: 10.00 records\/s/)).toBeInTheDocument();
+        } finally {
+            rendered.unmount();
+            clock.mockRestore();
+        }
+    });
+
+    it("resets progress estimates when phase and unit change together even with compatible counts", () => {
+        let now = 1_000;
+        const clock = jest.spyOn(Date, "now").mockImplementation(() => now);
+        const job: StudioJobView = {id: "phases", projectId: "/project", operation: "artifact-build", request: {}, conflictKey: "artifact", status: "running", createdAt: 1};
+        const view = (stage: string, unit: string, current: string) => <MantineProvider><JobProgressCard job={{...job, progress: {stage, unit, current, total: "100"}}} /></MantineProvider>;
+        const rendered = render(view("generation", "draws", "10"));
+        try {
+            now = 2_000;
+            rendered.rerender(view("generation", "draws", "20"));
+            expect(screen.getByText(/Throughput:/)).toBeInTheDocument();
+            now = 3_000;
+            rendered.rerender(view("index", "bytes", "30"));
+            expect(screen.queryByText(/Throughput:/)).toBeNull();
+            now = 4_000;
+            rendered.rerender(view("index", "bytes", "40"));
+            expect(screen.getByText(/Throughput: 10.00 bytes\/s/)).toBeInTheDocument();
+            now = 5_000;
+            rendered.rerender(view("index", "bytes", "100"));
+            expect(screen.queryByText(/ETA:/)).toBeNull();
+        } finally {
+            rendered.unmount();
+            clock.mockRestore();
+        }
+    });
+
     it.each(["pending", "cancelling", "queued", "id", "projectId", "startedAt", "progress", "stage", "unit", "total", "regression", "execution-and-progress"] as const)("excludes stale estimates from the first committed %s transition before passive effects", transition => {
         let now = 1_000;
         const dateNow = jest.spyOn(Date, "now").mockImplementation(() => now);

@@ -1923,7 +1923,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             }
         });
 
-        it("renders server preflight and live progress before the artifact job completes", async () => {
+        it.each(["known", "unknown"] as const)("renders server preflight and phase-local %s progress before the artifact job completes", async denominator => {
             const user = userEvent.setup();
             let statusReads = 0;
             const fetchImpl: FetchLike = (url, init) => {
@@ -1937,7 +1937,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                         ok: true,
                         status: 200,
                         json: () => Promise.resolve(statusReads === 1
-                            ? {id: "job-1", target: "tsPackage", status: "running", cancellationRequested: false, progress: {status: "running", completed: "1", total: "10", message: "Writing outcomes", preflight: {estimatedItemCount: "10", estimatedBytes: "20", complexityWarning: "Large publish"}}}
+                            ? {id: "job-1", target: "tsPackage", status: "running", cancellationRequested: false, progress: {status: "running", phase: "Writing Outcome mode base", unit: "outcome records", completed: "650", ...(denominator === "known" ? {total: "729"} : {}), message: "Writing outcomes", preflight: {estimatedItemCount: "10", estimatedBytes: "20", complexityWarning: "Large publish"}}}
                             : {id: "job-1", target: "tsPackage", status: "completed", cancellationRequested: false, result: {status: "ok", target: "tsPackage", outputPath: "/games/tsPackage", outputKind: "directory", sourceType: "blueprint"}}),
                     });
                 }
@@ -1950,7 +1950,10 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             const section = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
             await user.click(within(section).getByRole("button", {name: "Build"}));
 
-            expect(await within(section).findByText(/Preflight: 10 estimated item/)).toHaveTextContent("Large publish");
+            const progress = await within(section).findByText(/Preflight: 10 estimated item/);
+            expect(progress).toHaveTextContent("Large publish");
+            expect(progress).toHaveTextContent(denominator === "known" ? "(650/729 outcome records)" : "(650 outcome records)");
+            expect(progress).not.toHaveTextContent("650/10");
             expect(await within(section).findByText(/Built to \/games\/tsPackage/)).toBeInTheDocument();
         });
 

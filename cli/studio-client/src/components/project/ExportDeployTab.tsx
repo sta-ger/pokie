@@ -796,7 +796,7 @@ function TargetCard({
                                     <>
                                         <br />
                                         {`Building artifact${artifactBuildRun.progress.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
-                                            `${artifactBuildRun.progress.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""})` : ""}`}
+                                            `${artifactBuildRun.progress.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""}${artifactBuildRun.progress.unit === undefined ? "" : ` ${artifactBuildRun.progress.unit}`})` : ""}`}
                                     </>
                                 )}
                                 {artifactBuildRun.status === "running" && artifactBuildRun.cancellationRequested ? " Cancellation requested…" : ""}
@@ -806,7 +806,7 @@ function TargetCard({
                             <Text size="sm" c="dimmed" mt={4}>
                                 {artifactBuildRun.progress?.status !== "preflight" &&
                                     (`${artifactBuildRun.jobId ? "Building artifact" : "Starting artifact build"}${artifactBuildRun.progress?.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
-                                        `${artifactBuildRun.progress?.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""})` : ""}`)}
+                                        `${artifactBuildRun.progress?.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""}${artifactBuildRun.progress.unit === undefined ? "" : ` ${artifactBuildRun.progress.unit}`})` : ""}`)}
                                 {artifactBuildRun.cancellationRequested ? " Cancellation requested…" : ""}
                             </Text>
                         )}

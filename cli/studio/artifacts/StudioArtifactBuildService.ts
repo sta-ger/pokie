@@ -600,7 +600,7 @@ export class StudioArtifactBuildService {
     private async run(record: StudioArtifactBuildJobRecord, outDir: string | undefined): Promise<void> {
         record.status = "running";
         this.jobService?.markRunning(record.id);
-        this.jobService?.progress(record.id, {stage: "preparing", unit: "artifacts", current: 0, total: 1});
+        this.jobService?.progress(record.id, {stage: "preparing", unit: "work", current: "indeterminate", total: "indeterminate"});
         const options: ArtifactBuildOptions = {
             signal: record.controller.signal,
             onProgress: (progress) => {
@@ -612,10 +612,10 @@ export class StudioArtifactBuildService {
                     ? {...next, preflight: record.progress.preflight}
                     : next;
                 this.jobService?.progress(record.id, {
-                    stage: next.status,
-                    unit: "artifacts",
-                    current: next.completed ?? "0",
-                    total: next.total ?? "1",
+                    stage: next.phase ?? next.message ?? next.status,
+                    unit: next.unit ?? "work",
+                    current: next.completed ?? "indeterminate",
+                    total: next.unit === undefined ? "indeterminate" : next.total ?? "indeterminate",
                     ...(next.message === undefined ? {} : {message: next.message}),
                 });
             },
@@ -951,6 +951,8 @@ type PreparedStakeOperationRecord = {
 function toProgressView(progress: ArtifactBuildProgress): StudioArtifactBuildProgressView {
     return {
         status: progress.status,
+        ...(progress.phase === undefined ? {} : {phase: progress.phase}),
+        ...(progress.unit === undefined ? {} : {unit: progress.unit}),
         ...(progress.completed !== undefined ? {completed: progress.completed.toString()} : {}),
         ...(progress.total !== undefined ? {total: progress.total.toString()} : {}),
         ...(progress.preflight !== undefined

@@ -313,7 +313,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                         assertNotCancelled(options);
                         this.renameDirectory(path.join(stagingDir, file), path.join(tempDir, file));
                         publishedFiles++;
-                        options?.onProgress?.({completed: publishedFiles, total: BigInt(filesToPublish.length), unit: "bundle files", message: `Publishing Outcome file ${file}`});
+                        options?.onProgress?.({phase: "Publishing Outcome files", completed: publishedFiles, total: BigInt(filesToPublish.length), unit: "bundle files", message: `Publishing Outcome file ${file}`});
                         // A progress listener is allowed to abort the work it is observing.  This check
                         // must be after the callback as well as before the next file: the last callback
                         // is immediately followed by the atomic swap below.
@@ -369,7 +369,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 assertNotCancelled(options);
                 fs.writeSync(destination, buffer, 0, bytesRead);
                 copied += BigInt(bytesRead);
-                options?.onProgress?.({completed: copied, total: totalBytes, unit: "bytes", message: "Building Outcome Library index"});
+                options?.onProgress?.({phase: `Building Outcome Library index ${header.modeName}`, completed: copied, total: totalBytes, unit: "bytes", message: "Building Outcome Library index"});
                 bytesRead = fs.readSync(source, buffer, 0, buffer.length, null);
                 // Native index copying is synchronous I/O, so yield between
                 // bounded chunks before another cancellation check.

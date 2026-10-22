@@ -13,6 +13,9 @@ export type ArtifactBuildPreflight = {
 
 export type ArtifactBuildProgress = {
     readonly status: ArtifactBuildStatus;
+    /** Phase-local measurements. Omit unknown units/totals; preflight is never their denominator. */
+    readonly phase?: string;
+    readonly unit?: string;
     readonly completed?: bigint;
     readonly total?: bigint;
     readonly preflight?: ArtifactBuildPreflight;

@@ -32,6 +32,22 @@ describe("canonical package extraction CLI", () => {
     const command = () => new BuildCommand("1.3.0");
     const output = () => log.mock.calls.flat().join("\n");
 
+    it("prints producer progress units and absent totals through automatic Stake and package builds", async () => {
+        const source = path.join(root, "game.json");
+        fs.writeFileSync(source, JSON.stringify({
+            manifest: {id: "progress", name: "Progress", version: "1.0.0"}, reels: 3, rows: 1,
+            symbols: ["A"], paytable: {A: {3: 1}}, reelStrips: [["A", "A"], ["A", "A"], ["A", "A"]], availableBets: [1],
+        }));
+        const input = fs.readFileSync(source);
+        expect(await command().run([source, "--target", "stakeAdapter", "--out", path.join(root, "stake")])).toBe(0);
+        expect(output()).toMatch(/Writing Outcome mode base \(1 outcome records\)/);
+        expect(output()).toMatch(/Publishing Stake file .*\(\d+\/4 files\)/);
+        expect(output()).not.toMatch(/Writing Outcome mode base \(1\//);
+        expect(await command().run([source, "--target", "tsPackage", "--out", path.join(root, "package")])).toBe(0);
+        expect(output()).toMatch(/Publishing TypeScript package file .*\(\d+\/\d+ files\)/);
+        expect(fs.readFileSync(source)).toEqual(input);
+    });
+
     // Library extraction, CLI preview and CLI publication each acquire real runtime snapshots.
     it("previews every supplied field and saves the same library extraction plus evidence explicitly", async () => {
         const source = writeDescriptorPackage(root);

@@ -1445,6 +1445,35 @@ describe("StudioArtifactBuildService", () => {
     });
 
     describe("bounded build jobs", () => {
+        it("projects real automatic Blueprint-to-Stake progress without substituting artifact totals", async () => {
+            const source = writeBlueprintFile(buildBlueprint({rows: 1, reelStrips: Array.from({length: 3}, () => Array.from({length: 9}, () => "A"))}));
+            const input = fs.readFileSync(source);
+            const jobs = new StudioJobService(new FileStudioJobRepository(path.join(workDir, "progress-jobs")));
+            service.attachJobService(jobs);
+            const observations: Array<{durable: Parameters<StudioJobService["progress"]>[1]; specialized: ReturnType<StudioArtifactBuildService["getStatusForProject"]>}> = [];
+            const publish = jobs.progress.bind(jobs);
+            jest.spyOn(jobs, "progress").mockImplementation((id, progress) => {
+                observations.push({durable: progress, specialized: service.getStatusForProject(source, id)});
+                return publish(id, progress);
+            });
+            const started = service.start(source, "stakeAdapter", path.join(workDir, "stake"));
+            if (started.status !== "created") throw new Error("expected created build");
+            expect(await terminal(service, source, started.job.id)).toMatchObject({status: "completed"});
+            const writing = observations.filter(({durable}) => durable.stage === "Writing Outcome mode base");
+            expect(writing.length).toBeGreaterThan(650);
+            expect(writing.find(({durable}) => durable.current === "650")).toMatchObject({
+                durable: {unit: "outcome records", current: "650", total: "indeterminate"},
+                specialized: {progress: {unit: "outcome records", completed: "650"}},
+            });
+            expect(writing.every(({specialized}) => specialized?.progress?.total === undefined)).toBe(true);
+            expect(observations).toContainEqual(expect.objectContaining({durable: expect.objectContaining({stage: "Generating Outcome mode base", unit: "raw combinations", total: "729"})}));
+            expect(observations).toContainEqual(expect.objectContaining({durable: expect.objectContaining({stage: "Building Outcome Library index base", unit: "bytes"})}));
+            expect(observations).toContainEqual(expect.objectContaining({durable: expect.objectContaining({stage: "Publishing Stake files", unit: "files", total: "4", current: "4"})}));
+            expect(observations.filter(({durable}) => durable.stage === "publication").every(({durable}) => durable.total === "indeterminate")).toBe(true);
+            expect(fs.readFileSync(source)).toEqual(input);
+            expect(fs.existsSync(path.join(workDir, "stake", "index.json"))).toBe(true);
+        });
+
         it("publishes preflight and running progress before completion, and cancellation reaches the shared builder signal", async () => {
             let releaseBuild: (() => void) | undefined;
             const publishGate = new Promise<void>((resolve) => {

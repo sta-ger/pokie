@@ -90,6 +90,8 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
                 onProgress: (progress) =>
                     reportArtifactBuildProgress(options, {
                         status: "running",
+                        phase: "Writing TypeScript package files",
+                        unit: "files",
                         completed: BigInt(progress.completed),
                         total: BigInt(progress.total),
                         message: progress.message,

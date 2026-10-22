@@ -84,12 +84,12 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
                     outcomes: library.outcomes,
                     generator: entry.generator,
                 });
-                completed += BigInt(entry.outcomeCount);
-                reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: `Loaded mode ${entry.modeName}`});
+                completed += BigInt(library.outcomes.length);
+                reportArtifactBuildProgress(options, {status: "running", phase: "Loading outcome-library modes", unit: "outcome records", completed, total: preflight.estimatedItemCount, preflight, message: `Loaded mode ${entry.modeName}`});
                 assertArtifactBuildNotCancelled(options);
             }
 
-            reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: "Publishing outcome-library bundle"});
+            reportArtifactBuildProgress(options, {status: "running", phase: "Preparing outcome-library publication", preflight, message: "Publishing outcome-library bundle"});
             const result = await this.writer.writeToDirectory(modes, destinationPath, {
                 signal: options?.signal,
                 assertDestinationAvailable: () => {
@@ -105,9 +105,12 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
                         throw error;
                     }
                 },
+                onLifecycleStage: (phase) => reportArtifactBuildProgress(options, {status: "running", phase, message: `Outcome Library ${phase}`}),
                 onProgress: (progress) => {
                     reportArtifactBuildProgress(options, {
                         status: "running",
+                        phase: progress.phase ?? progress.message,
+                        unit: progress.unit,
                         completed: progress.completed,
                         // Writer phases use their own units (records, bytes,
                         // bundle files). A source-library record estimate is
@@ -129,7 +132,7 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
                 );
             }
 
-            reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount, preflight});
+            reportArtifactBuildProgress(options, {status: "completed", preflight});
             return {outputPath: result.outDir, preflight};
         } catch (error) {
             if (publication !== undefined) {

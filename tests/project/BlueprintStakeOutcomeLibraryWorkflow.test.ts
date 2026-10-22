@@ -16,6 +16,7 @@ import {
     WeightedOutcomeLibraryAnalyzer,
     PROJECT_TYPE_CAPABILITIES,
     type PokieProject,
+    type ArtifactBuildProgress,
 } from "../../src/index.js";
 
 function runtimeSnapshotsForPackage(packageName: string): string[] {
@@ -32,6 +33,36 @@ function runtimeSnapshotsForPackage(packageName: string): string[] {
 }
 
 describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
+    it.each(["exact", "sampled"] as const)("preserves %s producer progress through generation, writing and publication", async generation => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-progress-workflow-"));
+        try {
+            const source = path.join(directory, "game.json");
+            fs.writeFileSync(source, JSON.stringify({
+                manifest: {id: "progress", name: "Progress", version: "1.0.0"}, reels: 3, rows: 1,
+                symbols: ["A"], paytable: {A: {3: 1}}, reelStrips: [["A", "A"], ["A", "A"], ["A", "A"]], availableBets: [1],
+            }));
+            const project: PokieProject = {type: "blueprint", rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"};
+            const progress: ArtifactBuildProgress[] = [];
+            const workflow = new BlueprintStakeOutcomeLibraryWorkflow("1.3.0", loadGameBlueprint);
+            const options = {onProgress: (event: ArtifactBuildProgress) => progress.push(event),
+                ...(generation === "sampled" ? {outcomeLibraryGeneration: {sampled: {sampleSize: BigInt(5), seed: "progress"}}} : {})};
+            await workflow.resolveOrGenerate(project, path.join(directory, "outcome"), options);
+            expect(progress).toContainEqual(expect.objectContaining({phase: "Generating Outcome mode base", unit: generation === "exact" ? "raw combinations" : "draws", total: BigInt(generation === "exact" ? 8 : 5)}));
+            expect(progress).toContainEqual(expect.objectContaining({message: "Writing Outcome mode base", unit: "outcome records", total: undefined}));
+            expect(progress).toContainEqual(expect.objectContaining({message: "Analyzing Outcome mode base (pass 2 of 2)", unit: "outcome records", total: expect.any(BigInt)}));
+            expect(progress).toContainEqual(expect.objectContaining({phase: "Building Outcome Library index base", unit: "bytes", total: expect.any(BigInt)}));
+            expect(progress).toContainEqual(expect.objectContaining({phase: "Publishing Outcome files", unit: "bundle files", total: expect.any(BigInt)}));
+            expect(progress.find(event => event.phase === "publication")?.completed).toBeUndefined();
+            expect(progress[progress.length - 1]?.completed).toBeUndefined();
+            progress.length = 0;
+            expect((await workflow.resolveOrGenerate(project, path.join(directory, "unused"), options)).reused).toBe(true);
+            expect(progress).toEqual([{status: "completed"}]);
+            expect(fs.existsSync(path.join(directory, "unused"))).toBe(false);
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
     it.each(["missing-symbol", "zero"] as const)("persists and reopens an exact %s Blueprint bundle without implicit awards", async kind => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-authored-managed-"));
         try {

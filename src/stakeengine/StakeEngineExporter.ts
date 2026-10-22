@@ -122,8 +122,9 @@ export class StakeEngineExporter<T extends string | number = string> implements 
 
             const buildResults: ModeBuildResult[] = [];
             let completed = BigInt(0);
+            const total = modes.reduce((sum, entry) => sum + BigInt(entry.library.outcomes.length), BigInt(0));
             for (const mode of modes) {
-                const result = await this.buildMode(mode, options, completed);
+                const result = await this.buildMode(mode, options, completed, total);
                 buildResults.push(result);
                 completed += BigInt(mode.library.outcomes.length);
             }
@@ -165,7 +166,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
 
             assertSafeToReplaceStakeEngineExportDirectory(outDir);
             assertNotCancelled(options);
-            const publication = this.writeToTempDirectoryThenSwap(outDir, builtModes, index, manifest, options, completed, destinationOwnership);
+            const publication = this.writeToTempDirectoryThenSwap(outDir, builtModes, index, manifest, options, destinationOwnership);
             const cleanupWarning = publication.cleanupWarning;
             const finalIssues = cleanupWarning !== undefined ? [...allIssues, cleanupWarning] : allIssues;
 
@@ -190,7 +191,6 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         index: StakeEngineIndex,
         manifest: StakeEngineManifest,
         options: StakeEngineExportOptions | undefined,
-        completed: bigint,
         destinationOwnership: PublishDirectoryAtomicallyOwnership,
     ): {readonly publication: PublishedDirectoryOwnership; readonly cleanupWarning?: ValidationIssue} {
         const {cleanupWarning, publication} = publishDirectoryAtomically({
@@ -203,23 +203,27 @@ export class StakeEngineExporter<T extends string | number = string> implements 
                 assertNotCancelled(options);
             },
             writeFilesIntoTempDir: (tempDir) => {
+                let completed = BigInt(0);
+                const reportFile = (message: string): void => {
+                    options?.onProgress?.({phase: "Publishing Stake files", unit: "files", completed: ++completed, total: BigInt(builtModes.length * 2 + 2), message});
+                };
                 for (const builtMode of builtModes) {
                     assertNotCancelled(options);
                     this.writeFile(path.join(tempDir, builtMode.csvFileName), builtMode.csvContent);
-                    options?.onProgress?.({completed, message: `Publishing Stake file ${builtMode.csvFileName}`});
+                    reportFile(`Publishing Stake file ${builtMode.csvFileName}`);
                     assertNotCancelled(options);
                     assertNotCancelled(options);
                     this.writeFile(path.join(tempDir, builtMode.booksFileName), builtMode.booksBuffer);
-                    options?.onProgress?.({completed, message: `Publishing Stake file ${builtMode.booksFileName}`});
+                    reportFile(`Publishing Stake file ${builtMode.booksFileName}`);
                     assertNotCancelled(options);
                 }
                 assertNotCancelled(options);
                 this.writeFile(path.join(tempDir, "index.json"), `${JSON.stringify(index, null, 4)}\n`);
-                options?.onProgress?.({completed, message: "Publishing Stake file index.json"});
+                reportFile("Publishing Stake file index.json");
                 assertNotCancelled(options);
                 assertNotCancelled(options);
                 this.writeFile(path.join(tempDir, "pokie-manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
-                options?.onProgress?.({completed, message: "Publishing Stake file pokie-manifest.json"});
+                reportFile("Publishing Stake file pokie-manifest.json");
                 // The final callback is still a cancellation boundary: returning from this closure
                 // authorizes publishDirectoryAtomically to commit its temp directory.
                 assertNotCancelled(options);
@@ -255,6 +259,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         mode: StakeEngineExportModeInput<T>,
         options: StakeEngineExportOptions | undefined,
         completedBefore: bigint,
+        total: bigint,
     ): Promise<ModeBuildResult> {
         const issues: ValidationIssue[] = [];
         const bookLines: StakeEngineBookLine[] = [];
@@ -308,7 +313,7 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             bookLines.push({id, events, payoutMultiplier: stakePayoutMultiplier});
             csvRows.push({simulationId: id, weight: outcome.weight, payoutMultiplier: stakePayoutMultiplier});
             processed++;
-            options?.onProgress?.({completed: completedBefore + processed, message: `Building Stake mode ${mode.modeName}`});
+            options?.onProgress?.({phase: "Building Stake books", unit: "outcome records", total, completed: completedBefore + processed, message: `Building Stake mode ${mode.modeName}`});
             assertNotCancelled(options);
             if (processed % BigInt(256) === BigInt(0)) {
                 await new Promise<void>((resolve) => {

@@ -83,11 +83,11 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
                 const result = publishExactStakeSource(exact, destinationPath, {
                     signal: options?.signal,
                     destinationOwnership,
-                    onProgress: progress => reportArtifactBuildProgress(options, {status: "running", preflight, completed: progress.completed, message: progress.message}),
+                    onProgress: progress => reportArtifactBuildProgress(options, {status: "running", preflight, phase: progress.phase ?? progress.message, unit: progress.unit, completed: progress.completed, total: progress.total, message: progress.message}),
                 });
                 publication = result.publication;
                 assertArtifactBuildNotCancelled(options);
-                reportArtifactBuildProgress(options, {status: "completed", preflight, completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount});
+                reportArtifactBuildProgress(options, {status: "completed", preflight});
                 return {outputPath: result.outDir, preflight, stakeManifest: result.manifest, stakeFiles: result.files, publishedStakeDirectoryOwnership: publication === undefined ? undefined : {...publication, restoreEmptyOnRollback: destinationOwnership.destinationIdentity !== undefined}};
             }
             const modes = prepared.modes;
@@ -98,10 +98,10 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
             let completed = BigInt(0);
             for (const mode of modes) {
                 completed += BigInt(mode.library.outcomes.length);
-                reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: `Prepared Stake mode ${mode.modeName}`});
+                reportArtifactBuildProgress(options, {status: "running", phase: "Preparing Stake modes", unit: "outcome records", completed, total: preflight.estimatedItemCount, preflight, message: `Prepared Stake mode ${mode.modeName}`});
                 assertArtifactBuildNotCancelled(options);
             }
-            reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: "Publishing Stake export"});
+            reportArtifactBuildProgress(options, {status: "running", phase: "Preparing Stake publication", preflight, message: "Publishing Stake export"});
             assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
             assertSourceUnchanged();
             const result = await this.exporter.exportToDirectory(modes, destinationPath, {
@@ -110,8 +110,10 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
                 onProgress: (progress) => {
                     reportArtifactBuildProgress(options, {
                         status: "running",
+                        phase: progress.phase ?? progress.message,
+                        unit: progress.unit,
                         completed: progress.completed,
-                        total: preflight.estimatedItemCount,
+                        total: progress.total,
                         preflight,
                         message: progress.message,
                     });
@@ -128,7 +130,7 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
                 );
             }
 
-            reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount, preflight});
+            reportArtifactBuildProgress(options, {status: "completed", preflight});
             return {outputPath: result.outDir, preflight, stakeManifest: result.manifest, stakeFiles: result.files, publishedStakeDirectoryOwnership: publication === undefined ? undefined : {...publication, restoreEmptyOnRollback: destinationOwnership.destinationIdentity !== undefined}};
         } catch (error) {
             // Atomic publishers clean their staging on failure. Only a returned ownership token

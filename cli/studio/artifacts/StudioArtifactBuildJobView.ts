@@ -17,6 +17,8 @@ export type StudioArtifactBuildJobView = {
 
 export type StudioArtifactBuildProgressView = {
     readonly status: ArtifactBuildProgress["status"];
+    readonly phase?: string;
+    readonly unit?: string;
     readonly completed?: string;
     readonly total?: string;
     readonly preflight?: {readonly estimatedItemCount?: string; readonly estimatedBytes?: string; readonly complexityWarning?: string};

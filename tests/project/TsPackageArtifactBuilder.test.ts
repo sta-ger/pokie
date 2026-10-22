@@ -5,6 +5,7 @@ import path from "path";
 import {
     ArtifactBuildConflictError,
     ArtifactBuildCancelledError,
+    type ArtifactBuildProgress,
     GameBlueprint,
     loadPokieGame,
     loadPokieGameRuntime,
@@ -87,10 +88,15 @@ describe("TsPackageArtifactBuilder", () => {
         expect(fs.readdirSync(dir).some(entry => entry.startsWith("built-package.tmp-"))).toBe(false);
     });
 
-    it("builds a real, loadable tsPackage from a blueprint file", async () => {
+    it("builds a real, loadable tsPackage with file progress from a blueprint", async () => {
         const builder = new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(process.cwd());
 
-        const result = await builder.build(blueprintProjectOf(blueprintPath), destinationDir);
+        const progress: ArtifactBuildProgress[] = [];
+        const result = await builder.build(blueprintProjectOf(blueprintPath), destinationDir, {onProgress: event => progress.push(event)});
+        const files = progress.filter(event => event.unit === "files");
+        expect(files.length).toBeGreaterThan(1);
+        expect(files.every(event => event.phase === "Writing TypeScript package files" && event.total === BigInt(files.length))).toBe(true);
+        expect(progress.find(event => event.message === "Publishing TypeScript package")?.total).toBeUndefined();
 
         expect(result.outputPath).toBe(destinationDir);
         expect(fs.existsSync(path.join(destinationDir, "package.json"))).toBe(true);
