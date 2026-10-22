@@ -170,6 +170,17 @@ within its process. After server restart, durable evidence remains available;
 rerun optimization to obtain a new save receipt. Closing/switching Project or
 cancelling a job discards an unfinished candidate and drains the executor.
 
+Exact evaluation reports progress inside each candidate: raw reel-stop draws,
+then materialized outcomes, and executable checks where applicable. These are
+separate stages and units. The deduplicated outcome total is indeterminate until
+materialization finishes; completed raw draws do not mean the candidate is ready.
+Studio displays these live counts, and library `onProgress` / CLI `--progress`
+evidence includes optional `work` with decimal-string counts and an optional total.
+The candidate counter counts evaluated or rejected candidates. Updates are bounded
+to roughly ten per second plus stage changes, first work and population completion;
+this observation cadence never limits execution. Supported tuning can still end
+infeasible; cancellation discards unfinished work and cannot expose an Apply preview.
+
 CLI JSON is always structured; `--progress` emits progress JSON to stderr.
 Exit codes: exact success or sampled attained **0**, operational failure **1**, infeasible **2**, invalid
 **3**, unsupported **4**, exhausted **5**, cancelled **6**, sampled inconclusive **7**. Ctrl-C requests

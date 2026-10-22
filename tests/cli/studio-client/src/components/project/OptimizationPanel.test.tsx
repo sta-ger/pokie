@@ -63,6 +63,8 @@ it("checks real policy validation, submits reviewed revision, and exposes cancel
     await screen.findByText("Finite workflow available");
     await user.click(screen.getByRole("button", {name: "Run optimization"}));
     await screen.findByRole("button", {name: "Cancel optimization"});
+    expect(screen.getByRole("status")).toHaveTextContent("Preparing optimization; waiting for execution progress.");
+    expect(screen.queryByText(/unknown work/)).not.toBeInTheDocument();
     expect(JSON.parse(calls.find((call) => call.url.endsWith("start"))!.body!)).toMatchObject({
         sourceRevision: "sha256:source",
         expectedProjectRoot: "/project",
@@ -325,3 +327,51 @@ it.each(["completed", "failed", "cancelled", "recovery-required"] as const)(
         view.unmount();
     },
 );
+
+
+it("V35 optimizer progress renders raw work, indeterminate materialization and terminal reviewed Apply through one durable observer", async () => {
+    const running = completedJob("running");
+    running.result = undefined;
+    running.progress = {stage: "Enumerating reel stops", current: "46656", total: "46656", unit: "raw draws", message: "0 evaluated; 0 rejected"};
+    let detail: ((value: Awaited<ReturnType<FetchLike>>) => void) | undefined;
+    let applies = 0;
+    const fetchImpl: FetchLike = (url, init) => {
+        if (url === "/api/project/jobs") return response({jobs: [running]});
+        if (url === "/api/project/jobs/saved-job") return new Promise(resolve => {
+            detail = resolve;
+        });
+        if (url.endsWith("/apply")) {
+            expect(JSON.parse(init!.body as string)).toMatchObject({jobId: "saved-job", request: optimizationRequest()});
+            applies++;
+            return response({outputPath: "/project"});
+        }
+        throw new Error(`Unexpected request: ${url}`);
+    };
+    const applied = jest.fn();
+    const view = render(<MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><ObservedPanel projectRoot="/project" onApplied={applied} showOperations /></StudioApiProvider></MantineProvider>);
+    await screen.findByText("running: 46656 / 46656 raw draws Enumerating reel stops · 0 evaluated; 0 rejected");
+    expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
+    await waitFor(() => expect(detail).toBeDefined());
+    const resolveMaterialization = detail!;
+    detail = undefined;
+    await act(async () => {
+        resolveMaterialization(await response({job: {...running, progress: {stage: "Materializing outcomes", current: "11", total: "indeterminate", unit: "outcomes", message: "0 evaluated; 0 rejected"}}}));
+    });
+    await screen.findByText("running: 11 / indeterminate outcomes Materializing outcomes · 0 evaluated; 0 rejected");
+    expect(screen.getByRole("button", {name: "Cancel optimization"})).toBeEnabled();
+    expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
+    await waitFor(() => expect(detail).toBeDefined());
+    await act(async () => {
+        detail!(await response({job: completedJob()}));
+    });
+    await screen.findByText("Verdict: success");
+    expect(screen.queryByRole("button", {name: "Cancel optimization"})).not.toBeInTheDocument();
+    expect(screen.queryByText(/running: /)).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("completed: No execution progress recorded.");
+    await userEvent.click(screen.getByRole("button", {name: "Apply reviewed changes to source"}));
+    await screen.findByText(/Authored changes applied/);
+    expect(applies).toBe(1);
+    expect(applied).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
+    view.unmount();
+});

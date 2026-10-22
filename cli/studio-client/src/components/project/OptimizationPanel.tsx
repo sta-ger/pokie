@@ -133,6 +133,7 @@ export function OptimizationPanel({projectRoot, jobs, onApplied}: {
             if (current === generation.current) setBusy(false);
         }
     };
+    const unreportedProgress = active ? "Preparing optimization; waiting for execution progress." : "No execution progress recorded.";
     return (
         <Stack mt="lg">
             <Title order={3}>Optimize math</Title>
@@ -188,8 +189,10 @@ export function OptimizationPanel({projectRoot, jobs, onApplied}: {
             )}
             {job && (
                 <Text role="status">
-                    {job.status}: {job.progress?.current ?? 0} / {job.progress?.total ?? "unknown"}{" "}
-                    {job.progress?.unit ?? "work"} {job.progress?.stage}
+                    {job.status}: {job.progress ? <>
+                        {job.progress.current} / {job.progress.total} {job.progress.unit} {job.progress.stage}
+                        {job.progress.message && ` · ${job.progress.message}`}
+                    </> : unreportedProgress}
                 </Text>
             )}
             {result && (

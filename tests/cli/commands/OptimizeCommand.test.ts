@@ -4,6 +4,8 @@ import fs from "fs";
 import path from "path";
 import {execFileSync} from "child_process";
 import ts from "typescript";
+import {ProjectOptimizationService} from "../../../src/optimization/ProjectOptimizationService.js";
+import type {OptimizationEvidence} from "../../../src/optimization/OptimizationPolicy.js";
 import {OptimizeCommand} from "../../../cli/commands/OptimizeCommand.js";
 import {optimizationBlueprint, optimizationRequest, stochasticOptimizationRequest, declaredOptimizationGameCode} from "../../v2/fixtures/OptimizationFixture.js";
 let directory: string;
@@ -338,3 +340,43 @@ it("rejects a reviewed CLI apply after executable dependency drift with identica
     expect(result().status).toBe("failure");
     expect(reviewed.review.executableRevision).toMatch(/^sha256:/);
 }, 60000);
+
+
+it("V35 optimizer progress preserves CLI stdout, executed cancellation, cleanup and subsequent reuse", async () => {
+    const service = new ProjectOptimizationService(path.join(directory, "scratch"));
+    const command = new OptimizeCommand(service);
+    const before = fs.readFileSync(source);
+    const listeners = process.listenerCount("SIGINT");
+    const observations: OptimizationEvidence[] = [];
+    let cancel = true;
+    const stderr = jest.spyOn(console, "error").mockImplementation(value => {
+        const event = JSON.parse(String(value)) as {type: string; evidence: OptimizationEvidence};
+        expect(event.type).toBe("progress");
+        observations.push(event.evidence);
+        if (cancel && event.evidence.work?.stage === "Materializing outcomes" && event.evidence.work.current === "1") {
+            cancel = false;
+            process.emit("SIGINT");
+        }
+    });
+    try {
+        expect(await command.run([source, "--policy", policy, "--progress"])).toBe(6);
+        expect(result().status).toBe("cancelled");
+        expect(observations.some(evidence => evidence.evaluated === 0 && evidence.work?.current === "1")).toBe(true);
+        expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+        expect(process.listenerCount("SIGINT")).toBe(listeners);
+        for (let i = 0; i < 2; i++) {
+            expect(await command.run([source, "--policy", policy, "--progress"])).toBe(0);
+            expect(result()).toMatchObject({status: "success", evidence: {evaluated: 2, measured: [0.75]}});
+            expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+        }
+        expect(stdout).toHaveBeenCalledTimes(3);
+        expect(stdout.mock.calls.every(call => JSON.parse(String(call[0])).type !== "progress")).toBe(true);
+        const count = observations.length;
+        expect(await command.run([source, "--policy", policy])).toBe(0);
+        expect(observations).toHaveLength(count);
+        expect(fs.readFileSync(source)).toEqual(before);
+        expect(process.listenerCount("SIGINT")).toBe(listeners);
+    } finally {
+        stderr.mockRestore();
+    }
+});

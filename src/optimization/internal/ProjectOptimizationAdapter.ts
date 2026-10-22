@@ -47,7 +47,7 @@ import {
     type CanonicalWasmTuningContract,
     type DeclaredPackageTuningContract,
 } from "../DeclaredTuningContract.js";
-import type {MathTarget, OptimizationPolicy, OptimizationScalar} from "../OptimizationPolicy.js";
+import type {MathTarget, OptimizationPolicy, OptimizationScalar, OptimizationWorkProgress} from "../OptimizationPolicy.js";
 import {copyPackage, digest, inventory, jsonHash, paytablePaths, readJson, writeJson} from "./optimizationData.js";
 
 type NativeOutcome = {
@@ -75,6 +75,7 @@ export interface ProjectOptimizationAdapting {
         targets: MathTarget[],
         policy: OptimizationPolicy,
         signal?: AbortSignal,
+        onProgress?: (progress: OptimizationWorkProgress) => void,
     ): Promise<number[]>;
 }
 function errors(issues: readonly {severity: string; message: string}[]): void {
@@ -179,6 +180,7 @@ async function measureGame(
     policy: OptimizationPolicy,
     signal?: AbortSignal,
     onValidationWork?: (count: number) => void,
+    onProgress?: (progress: OptimizationWorkProgress) => void,
 ): Promise<number[]> {
     try {
         cancelled(signal);
@@ -192,10 +194,16 @@ async function measureGame(
             stake: policy.stake,
             maxOutcomeSpaceSize: BigInt(policy.maxOutcomes),
             signal,
-            onProgress: onValidationWork ? count => onValidationWork(Number(count)) : undefined,
+            onProgress: (count, total) => {
+                onValidationWork?.(Number(count));
+                onProgress?.({stage: "Enumerating reel stops", current: count.toString(), total: total.toString(), unit: "raw draws"});
+            },
+            onPostEnumeration: () => onProgress?.({stage: "Materializing outcomes", current: "0", unit: "outcomes"}),
+            onPostEnumerationProgress: count => onProgress?.({stage: "Materializing outcomes", current: count.toString(), unit: "outcomes"}),
             now: () => new Date(0),
         });
         if (result.diagnostics.strategy !== "exact") throw new OptimizationUnsupportedError("Sampled analysis cannot prove an exact target.");
+        onProgress?.({stage: "Materializing outcomes", current: String(result.library.outcomes.length), total: String(result.library.outcomes.length), unit: "outcomes"});
         return selectLibraryMetrics([...result.library.outcomes], "optimization", targets, policy);
     } finally {
         if (game.release) await releaseOwnedRuntime(() => game.release!());
@@ -564,18 +572,18 @@ export async function acquireOptimizationAdapter(
                 } : undefined, computeGameBlueprintHash(model));
             return {...result, validationWork};
         },
-        async measure(file, value, targets, requested, signal) {
+        async measure(file, value, targets, requested, signal, onProgress) {
             const model = value as GameBlueprint;
             if (project.type === "tsPackage") {
                 const runtime = await loadPokieGameRuntime(file);
                 try {
-                    return await measureGame(runtime.game, model, targets, requested, signal);
+                    return await measureGame(runtime.game, model, targets, requested, signal, undefined, onProgress);
                 } finally {
                     await releaseOwnedRuntime(() => runtime.release());
                 }
             }
-            if (project.type === "wasm") await verifyWasmExecutable(file, model, requested, signal);
-            return measureGame(createTunableBlueprintGame(model), model, targets, requested, signal);
+            if (project.type === "wasm") await verifyWasmExecutable(file, model, requested, signal, undefined, onProgress);
+            return measureGame(createTunableBlueprintGame(model), model, targets, requested, signal, undefined, onProgress);
         },
     };
 }
@@ -586,6 +594,7 @@ async function verifyWasmExecutable(
     policy: OptimizationPolicy,
     signal?: AbortSignal,
     onValidationWork?: (count: number) => void,
+    onProgress?: (progress: OptimizationWorkProgress) => void,
 ): Promise<void> {
     const sourceGame = createTunableBlueprintGame(model);
     let library;
@@ -598,7 +607,12 @@ async function verifyWasmExecutable(
             exact: true,
             maxOutcomeSpaceSize: BigInt(policy.maxOutcomes),
             signal,
-            onProgress: onValidationWork ? count => onValidationWork(Number(count)) : undefined,
+            onProgress: (count, total) => {
+                onValidationWork?.(Number(count));
+                onProgress?.({stage: "Enumerating reel stops", current: count.toString(), total: total.toString(), unit: "raw draws"});
+            },
+            onPostEnumeration: () => onProgress?.({stage: "Materializing outcomes", current: "0", unit: "outcomes"}),
+            onPostEnumerationProgress: count => onProgress?.({stage: "Materializing outcomes", current: count.toString(), unit: "outcomes"}),
             now: () => new Date(0),
         });
     } finally {
@@ -618,6 +632,7 @@ async function verifyWasmExecutable(
         },
     });
     try {
+        onProgress?.({stage: "Verifying executable", current: "0", total: String(count), unit: "checks"});
         for (let ordinal = 0; ordinal < count; ordinal++) {
             cancelled(signal);
             let remaining = ordinal;
@@ -631,6 +646,7 @@ async function verifyWasmExecutable(
                 const round = await session.play({bet: policy.stake}, {signal});
                 if (round.payout !== expected.get(JSON.stringify(round.screen))) throw new Error("Rebuilt WASM executable differs from its exact source population.");
                 onValidationWork?.(count + ordinal + 1);
+                onProgress?.({stage: "Verifying executable", current: String(ordinal + 1), total: String(count), unit: "checks"});
             } finally {
                 session.dispose();
             }

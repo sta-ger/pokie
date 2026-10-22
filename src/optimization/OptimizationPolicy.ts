@@ -44,7 +44,16 @@ export type OptimizationStatus =
     | "cancelled"
     | "failure";
 export type OptimizationDiagnostic = {path: string; message: string};
+/** Live exact-evaluation telemetry; never authority for a candidate or publication. */
+export type OptimizationWorkProgress = {
+    stage: "Enumerating reel stops" | "Materializing outcomes" | "Verifying executable";
+    current: string;
+    /** Absent when deduplicated outcome population is not yet known. */
+    total?: string;
+    unit: "raw draws" | "outcomes" | "checks";
+};
 export type OptimizationEvidence = {
+    work?: OptimizationWorkProgress;
     phase?: "preparing" | "search" | "assessment" | "finalizing";
     stopReason?: "domain-complete" | "candidate-budget" | "search-budget" | "assessment-budget" | "assessment-complete" | "no-valid-candidate";
     stochastic?: {

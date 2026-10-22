@@ -555,3 +555,60 @@ it("reports a committed apply with recovery information and fails lifecycle comp
     await expect(owned.shutdown()).rejects.toThrow(/runtime release refused/);
     expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
 });
+
+it("V35 optimizer progress persists the retained 46656-draw workload before cancellation and permits reviewed retry/apply", async () => {
+    const fixture = fs.readFileSync(path.resolve("tests/v2/fixtures/Valera35FeralBlazingSafari.blueprint.json"));
+    fs.writeFileSync(source, fixture);
+    const request = {
+        targets: [{metric: "rtp", unit: "ratio", value: 0.95, tolerance: {kind: "absolute", value: 0.001}}],
+        policy: {strategy: "exact-finite-v1", seed: "optimization-1", budget: 100, maxOutcomes: 100000,
+            mode: "base", stake: 1, scope: "paid-entry", tunables: [{path: "/paytable/A/3", values: [1, 2, 3]}], locks: []},
+    } as ReturnType<typeof optimizationRequest>;
+    const support = await preview(request);
+    expect(support.supported).toBe(true);
+    const observations: NonNullable<StudioJobView["progress"]>[] = [];
+    const progress = jobs.progress.bind(jobs);
+    const observer = jest.spyOn(jobs, "progress").mockImplementation((id, value) => {
+        const updated = progress(id, value);
+        observations.push(value);
+        if (value.stage === "Materializing outcomes" && value.current === "1") {
+            // Read the actual retained running record as a reload/reattach does.
+            expect(new FileStudioJobRepository(path.join(directory, "jobs")).get(id)).toMatchObject({status: "running", progress: value});
+            expect(value.total).toBe("indeterminate");
+            jobs.cancel(source, id);
+        }
+        return updated;
+    });
+    const started = await routes.handle("POST", "start", {request, expectedProjectRoot: source, sourceRevision: support.sourceRevision}, context());
+    const {job} = started.body as {job: StudioJobView};
+    await routes.drain();
+    observer.mockRestore();
+    expect(observations).toContainEqual(expect.objectContaining({stage: "Enumerating reel stops", current: "46656", total: "46656", unit: "raw draws"}));
+    expect(observations).toContainEqual(expect.objectContaining({stage: "Materializing outcomes", current: "1", total: "indeterminate", unit: "outcomes"}));
+    expect(jobs.get(source, job.id)).toMatchObject({status: "cancelled", result: {detail: {status: "cancelled", evidence: {evaluated: 0, consumedWork: 1}}}});
+    expect(jobs.get(source, job.id)?.result?.detail?.candidate).toBeUndefined();
+    expect(fs.readFileSync(source)).toEqual(fixture);
+    expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+    expect((await routes.handle("POST", "apply", {request, expectedProjectRoot: source, jobId: job.id}, context())).status).toBe(409);
+    // Independent Apply acceptance remains pending. This bounded recovery uses
+    // the small known-answer fixture through the same real service and authority.
+    fs.writeFileSync(source, JSON.stringify(optimizationBlueprint()));
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const retry = optimizationRequest();
+        const supported = await preview(retry);
+        const next = await routes.handle("POST", "start", {request: retry, expectedProjectRoot: source, sourceRevision: supported.sourceRevision}, context());
+        await routes.drain();
+        const id = (next.body as {job: StudioJobView}).job.id;
+        expect(id).not.toBe(job.id);
+        expect(jobs.get(source, id)).toMatchObject({status: "completed", result: {detail: {status: "success", evidence: {measured: [0.75]}}}});
+        if (attempt === 1) {
+            const body = {request: retry, expectedProjectRoot: source, jobId: id};
+            expect((await routes.handle("POST", "apply", body, context())).status).toBe(200);
+            expect(JSON.parse(fs.readFileSync(source, "utf8")).paytable.A[2]).toBe(3);
+            expect(new FileStudioJobRepository(path.join(directory, "jobs")).get(id)?.result?.provenance?.authoredApply).toEqual({path: source});
+            expect((await routes.handle("POST", "apply", body, context())).status).toBe(409);
+        }
+    }
+    await routes.shutdown();
+    expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+}, 60000);

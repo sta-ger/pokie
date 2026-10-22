@@ -10,7 +10,7 @@ import path from "path";
 import {ProjectOptimizationService} from "../../src/optimization/ProjectOptimizationService.js";
 import {ArtifactPublicationOwnership, rollbackArtifactPublication} from "../../src/project/ArtifactPublicationOwnership.js";
 import {validateOptimizationRequest} from "../../src/optimization/validateOptimizationRequest.js";
-import type {OptimizationRequest} from "../../src/optimization/OptimizationPolicy.js";
+import type {OptimizationRequest, OptimizationEvidence, OptimizationWorkProgress} from "../../src/optimization/OptimizationPolicy.js";
 import {ProjectTargetResolver} from "../../src/project/ProjectTargetResolver.js";
 import {ParSheetExporter} from "../../src/parsheet/ParSheetExporter.js";
 import {WasmArtifactBuilder} from "../../src/project/WasmArtifactBuilder.js";
@@ -1232,3 +1232,70 @@ const write = multiplier => fs.writeFileSync(leaf, ${JSON.stringify(format === "
         expect(sourceInventory(project)).toEqual(before);
     }, 330000,
 );
+
+
+it.each(["blueprint", "parWorkbook", "wasm", "tsPackage"] as const)("V35 optimizer progress comes from actual %s evaluation and permits executed rejection/reuse", async type => {
+    let file = source;
+    if (type === "parWorkbook") {
+        file = path.join(directory, "progress.xlsx");
+        await new ParSheetExporter("2.0.0").exportToFile(model(), file);
+    } else if (type === "wasm") {
+        file = path.join(directory, "progress.wasm");
+        await new WasmArtifactBuilder("2.0.0").build(await resolve(source), file);
+        await bindCanonicalWasmTuningSource(file, model(), ["/paytable/A/2"]);
+    } else if (type === "tsPackage") file = declaredPackage("progress").root;
+    const request = optimizationRequest();
+    const project = await resolve(file);
+    const before = sourceInventory(project);
+    const adapter = await acquireOptimizationAdapter(project, request.policy);
+    const events: OptimizationWorkProgress[] = [];
+    const measure = (observer = (work: OptimizationWorkProgress) => {
+        events.push(structuredClone(work));
+    }) =>
+        adapter.measure(file, adapter.model, request.targets, request.policy, undefined, observer);
+    expect(await measure()).toEqual([0.5]);
+    expect(events).toContainEqual({stage: "Enumerating reel stops", current: "4", total: "4", unit: "raw draws"});
+    expect(events).toContainEqual({stage: "Materializing outcomes", current: "0", unit: "outcomes"});
+    expect(events).toContainEqual({stage: "Materializing outcomes", current: "1", unit: "outcomes"});
+    expect(events.at(-1)).toEqual({stage: "Materializing outcomes", current: "2", total: "2", unit: "outcomes"});
+    if (type === "wasm") expect(events).toContainEqual({stage: "Verifying executable", current: "4", total: "4", unit: "checks"});
+    await expect(measure(work => {
+        if (work.stage === "Materializing outcomes" && work.current === "1") throw new Error("observer rejected after executed work");
+    })).rejects.toThrow("observer rejected after executed work");
+    expect(await measure()).toEqual([0.5]);
+    expect(await measure()).toEqual([0.5]);
+    expect(sourceInventory(project)).toEqual(before);
+}, 60000);
+
+it("V35 optimizer progress observations cannot mutate execution authority and failures permit first/subsequent reuse", async () => {
+    const project = await resolve(source);
+    const before = sourceInventory(project);
+    const request = optimizationRequest();
+    const received: OptimizationEvidence[] = [];
+    const selected = await service.optimize(project, request, {onProgress: evidence => {
+        received.push(structuredClone(evidence));
+        // Coordinated edits to dependent copies of the observation are still not
+        // authority for request, parameters, candidate selection or work accounting.
+        evidence.evaluated = evidence.consumedWork = 999;
+        evidence.request.targets[0].value = 999;
+        evidence.request.policy.tunables[0].values = [999];
+        evidence.selected = {"/paytable/A/2": 999};
+        if (evidence.work) evidence.work.current = evidence.work.total = "999";
+    }});
+    expect(received.some(evidence => evidence.evaluated === 0 && evidence.work?.stage === "Materializing outcomes")).toBe(true);
+    expect(selected).toMatchObject({status: "success", evidence: {evaluated: 2, consumedWork: 2, measured: [0.75], selected: {"/paytable/A/2": 3}}});
+    expect(selected.evidence!.work).toBeUndefined();
+    await service.discard(selected.candidate!);
+    const rejected = await service.optimize(project, request, {onProgress: evidence => {
+        if (evidence.work?.stage === "Materializing outcomes" && evidence.work.current === "1") throw new Error("executed progress rejection");
+    }});
+    expect(rejected).toMatchObject({status: "failure", diagnostics: [{message: "executed progress rejection"}], evidence: {evaluated: 0, consumedWork: 1}});
+    expect(rejected.candidate).toBeUndefined();
+    expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+    for (let i = 0; i < 2; i++) {
+        const next = await service.optimize(project, request);
+        expect(next.status).toBe("success");
+        await service.discard(next.candidate!);
+    }
+    expect(sourceInventory(project)).toEqual(before);
+});
