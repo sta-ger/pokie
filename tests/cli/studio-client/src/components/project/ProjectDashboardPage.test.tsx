@@ -764,14 +764,16 @@ describe("V2C-34 saved-design simulation freshness", () => {
             await waitFor(() => expect(receipts).toEqual(["reattached"]));
             expect(jobs.list(root)).toHaveLength(1);
             expect(service.getStatus(original.job.id)?.status).toBe("running");
-            expect(await screen.findByRole("button", {name: "Cancel"})).toBeEnabled();
+            const workflow = await screen.findByRole("region", {name: "Simulation workflow"});
+            expect(await within(workflow).findByRole("button", {name: "Cancel"})).toBeEnabled();
+            const jobCard = await screen.findByRole("region", {name: `simulation job ${original.job.id}`});
+            expect(await within(jobCard).findByRole("button", {name: "Cancel"})).toBeEnabled();
             await act(async () => {
                 release();
                 await Promise.resolve();
             });
             await waitFor(() => expect(service.getStatus(original.job.id)?.status).toBe("completed"));
             const originalReport = JSON.stringify(service.getReport(root, original.job.id));
-            const workflow = await screen.findByRole("region", {name: "Simulation workflow"});
             await within(workflow).findByText(/Historical simulation result/);
             // Terminal observation can show the original report, but never as current design.
             expect(service.getReport(root, original.job.id)).toMatchObject({status: "ok", report: {rtp: 10}});
