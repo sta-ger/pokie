@@ -48,7 +48,7 @@ describe("V2C-35 draft correction and explicit persistence", () => {
 
     afterEach(() => fs.rmSync(directory, {recursive: true, force: true}));
 
-    it("diagnoses the exact -1 symbol weight without coercion through shared validation and Studio persistence, then saves corrected reuse", () => {
+    it("retains exact -1 diagnostics through shared validation and explicit draft persistence, then saves corrected reuse", () => {
         const model: Record<string, unknown> = optimizationBlueprint();
         Reflect.deleteProperty(model, "reelStrips");
         setSymbolWeight(model, "A", -1);
@@ -60,7 +60,18 @@ describe("V2C-35 draft correction and explicit persistence", () => {
         expect(service.validate(model)).toMatchObject({status: "invalid", errors: expect.arrayContaining([
             expect.objectContaining({code: "blueprint-symbolweights-invalid-weight"}),
         ])});
-        expect(service.save(source, model, true).status).toBe("error");
+        // Advanced Save is lossless draft persistence, not a validity verdict.
+        // Required-valid UI actions validate first. Preserve the public draft
+        // contract and verify that neither persistence nor reload coerces -1.
+        const draftPath = path.join(directory, "invalid weight draft.json");
+        expect(service.save(draftPath, model, false).status).toBe("ok");
+        expect(JSON.parse(fs.readFileSync(draftPath, "utf8")).symbolWeights).toEqual({A: -1});
+        const reloaded = service.load(draftPath);
+        expect(reloaded).toMatchObject({status: "ok", blueprint: {symbolWeights: {A: -1}}});
+        if (reloaded.status !== "ok") throw new Error(reloaded.error);
+        expect(service.validate(reloaded.blueprint)).toMatchObject({status: "invalid", errors: expect.arrayContaining([
+            expect.objectContaining({code: "blueprint-symbolweights-invalid-weight"}),
+        ])});
         expect(model.symbolWeights).toEqual({A: -1});
         expect(fs.readFileSync(source)).toEqual(original);
         for (const weight of [2, 3]) {

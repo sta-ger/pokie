@@ -100,7 +100,7 @@ export function SymbolWeightsEditor({blueprint, mutate}: {blueprint: Record<stri
                         setOutcome(undefined);
                         if (selectionError !== undefined || valueError !== undefined || newSymbol === null) return;
                         mutate((b) => setSymbolWeight(b, newSymbol, newWeight as number));
-                        setOutcome(`${newSymbol} weight ${weights[newSymbol] === undefined ? "added to" : "updated in"} the draft. Save to keep the change.`);
+                        setOutcome(`${newSymbol} weight ${weights[newSymbol] === undefined ? "added to" : "updated in"} the draft.`);
                     }}
                 >
                     Add weight

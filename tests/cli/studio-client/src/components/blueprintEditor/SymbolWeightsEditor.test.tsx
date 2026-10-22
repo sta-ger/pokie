@@ -42,7 +42,7 @@ describe("SymbolWeightsEditor invalid-input recovery", () => {
         await user.type(weight, "2");
         await user.click(screen.getByRole("button", {name: "Add weight"}));
         expect(screen.getByTestId("applied-weights")).toHaveTextContent('{"A":2}');
-        expect(screen.getByRole("status")).toHaveTextContent("A weight added to the draft. Save to keep the change.");
+        expect(screen.getByRole("status")).toHaveTextContent("A weight added to the draft.");
         expect(weight).not.toHaveAttribute("aria-invalid", "true");
         expect(screen.queryByText("Choose a symbol before adding a weight.")).not.toBeInTheDocument();
     });
