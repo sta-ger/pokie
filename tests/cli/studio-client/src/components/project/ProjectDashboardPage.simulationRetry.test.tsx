@@ -77,8 +77,9 @@ describe("V35 retained simulation retry", () => {
             const receipt = await screen.findByText(new RegExp(`^Simulation ${status} —`));
             expect(receipt.parentElement).toHaveAttribute("data-pokie-lifecycle-result-durable-job", `replacement-${attempt}`);
             await user.click(screen.getByRole("button", {name: "Overview"}));
+            await waitFor(() => expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page"));
             await user.click(screen.getByRole("button", {name: "Simulation"}));
-            expect(screen.getByRole("button", {name: stepperStep("Review", "See results")})).toHaveAttribute("aria-current", "step");
+            expect(await screen.findByRole("button", {name: stepperStep("Review", "See results")})).toHaveAttribute("aria-current", "step");
             expect(screen.queryByLabelText(/^Rounds/)).not.toBeInTheDocument();
             expect(screen.queryByText(/Captured simulation settings restored/)).not.toBeInTheDocument();
             expect(screen.getByText(new RegExp(`^Simulation ${status} —`)).parentElement).toHaveAttribute("data-pokie-lifecycle-result-durable-job", `replacement-${attempt}`);
@@ -87,6 +88,7 @@ describe("V35 retained simulation retry", () => {
             // A fresh explicit selection after consumption restores Configure
             // again, even when dispatched from a different project tab.
             await user.click(screen.getByRole("button", {name: "Overview"}));
+            await waitFor(() => expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page"));
             await user.click(within(screen.getByRole("region", {name: `simulation job ${retained.id}`})).getByRole("button", {name: "Retry"}));
             expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("2000000");
             expect(submissions).toHaveLength(attempt);
@@ -119,8 +121,9 @@ describe("V35 retained simulation retry", () => {
         await screen.findByText("96.00%");
         for (let revisit = 0; revisit < 2; revisit++) {
             await user.click(screen.getByRole("button", {name: "Overview"}));
+            await waitFor(() => expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page"));
             await user.click(screen.getByRole("button", {name: "Simulation"}));
-            expect(screen.getByRole("button", {name: stepperStep("Review", "See results")})).toHaveAttribute("aria-current", "step");
+            expect(await screen.findByRole("button", {name: stepperStep("Review", "See results")})).toHaveAttribute("aria-current", "step");
             expect(screen.getByText("96.00%")).toBeVisible();
             await user.click(screen.getByRole("button", {name: stepperStep("Export", "Download report")}));
             expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/reports/historic/download?format=json");
@@ -162,7 +165,7 @@ describe("V35 retained simulation retry", () => {
         await user.clear(screen.getByLabelText(/^Rounds/));
         await user.type(screen.getByLabelText(/^Rounds/), "1234");
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
-        await screen.findByText(/This simulation request was rejected as invalid/);
+        await screen.findByText("This simulation request couldn't be completed. Try again. If it continues, reopen the project and retry.");
         expect(screen.getByLabelText(/^Rounds/)).toHaveValue("1234");
         expect(screen.getByLabelText("Seed (optional)")).toHaveValue("captured-seed");
         expect(screen.getByLabelText(/^Workers/)).toHaveValue("2");
@@ -197,9 +200,10 @@ describe("V35 retained simulation retry", () => {
             "/api/project/simulations": call => {
                 const request = JSON.parse(call.init!.body!);
                 submissions.push(request);
-                return {ok: true, status: 201, body: jobFor("new-fixed", {...request, status: "queued"})};
+                return {ok: true, status: 201, body: jobFor(submissions.length === 1 ? "new-fixed" : "new-repeat", {...request, status: "queued"})};
             },
             "/api/project/simulations/new-fixed": () => ({ok: true, status: 200, body: jobFor("new-fixed", {rounds: 10, status: "cancelled"})}),
+            "/api/project/simulations/new-repeat": () => ({ok: true, status: 200, body: jobFor("new-repeat", {rounds: 10, status: "cancelled"})}),
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
         for (const i of [0, 1]) {
@@ -211,6 +215,21 @@ describe("V35 retained simulation retry", () => {
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
         await waitFor(() => expect(submissions).toEqual([requests[1]]));
         await screen.findByText(/^Simulation cancelled —/);
+        // Feature Repeat uses the hook's current captured execution, and
+        // consumes a pending common-card handoff just as Configure Run does.
+        await user.click(within(screen.getByRole("region", {name: "simulation job retained-1"})).getByRole("button", {name: "Retry"}));
+        expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("10");
+        await user.click(screen.getByRole("button", {name: stepperStep("Review", "See results")}));
+        await user.click(screen.getByRole("button", {name: "Repeat simulation"}));
+        const receipt = await screen.findByText(/^Simulation retry cancelled —/);
+        expect(receipt.parentElement).toHaveAttribute("data-pokie-lifecycle-result-durable-job", "new-repeat");
+        expect(submissions).toEqual([requests[1], requests[1]]);
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page"));
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        expect(await screen.findByRole("button", {name: stepperStep("Review", "See results")})).toHaveAttribute("aria-current", "step");
+        expect(screen.queryByLabelText(/^Rounds/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Captured simulation settings restored/)).not.toBeInTheDocument();
     });
 
 });
