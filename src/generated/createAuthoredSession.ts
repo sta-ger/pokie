@@ -31,11 +31,12 @@ import {AccumulatingJackpotPool} from "../session/videoslot/jackpot/Accumulating
 import {PercentageOfBetJackpotContributor} from "../session/videoslot/jackpot/PercentageOfBetJackpotContributor.js";
 import {SymbolCountJackpotTrigger} from "../session/videoslot/jackpot/SymbolCountJackpotTrigger.js";
 import {SingleTierJackpotAwarding} from "../session/videoslot/jackpot/SingleTierJackpotAwarding.js";
+import type {SharedSlotMathPool} from "../wasm/math/internal/SharedSlotMathPool.js";
 
 /** Resolved declarative assembly shared by generated packages and portable hosts.
  * No extraction, filesystem access, code evaluation or alternate feature engine.
  */
-export function createAuthoredSession(blueprint: GameBlueprint, random: SeededRandomNumberGenerator | PortableRandomNumberGenerator, forcedGenerator?: SymbolsCombinationsGenerating) {
+export function createAuthoredSession(blueprint: GameBlueprint, random: SeededRandomNumberGenerator | PortableRandomNumberGenerator, forcedGenerator?: SymbolsCombinationsGenerating, sharedMathPool?: SharedSlotMathPool) {
     if (forcedGenerator && Object.entries(blueprint.mechanics ?? {}).some(([key, value]) => value !== undefined && key !== "freeGames")) throw new Error("Forced exact enumeration is unavailable for stateful authored mechanics.");
     const config = new VideoSlotConfig();
     config.setAvailableBets(blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]);
@@ -60,7 +61,7 @@ export function createAuthoredSession(blueprint: GameBlueprint, random: SeededRa
     const resolved = free ? new VideoSlotWithFreeGamesConfig(config, {}) : config;
     if (free && resolved instanceof VideoSlotWithFreeGamesConfig) for (const [count, grant] of Object.entries(free.awardsByCount)) resolved.setFreeGamesForScatters(free.scatterSymbol, Number(count), grant);
     const generator = new SymbolsCombinationsGenerator(resolved, random);
-    const calculator = new VideoSlotWinCalculator(resolved, undefined, undefined, undefined, undefined, undefined, {sharedMathModel: model});
+    const calculator = new VideoSlotWinCalculator(resolved, undefined, undefined, undefined, undefined, undefined, {sharedMathModel: model, sharedMathPool});
     const {cascade, respins, collection, weightedBonus} = blueprint.mechanics ?? {};
     const bounded = {...(cascade ? {cascade} : {}), ...(respins ? {respins} : {}), ...(collection ? {collection} : {}), ...(weightedBonus ? {weightedBonus} : {})};
     let session: VideoSlotSessionHandling;
