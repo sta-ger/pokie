@@ -525,6 +525,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setProjectGeneration((previous) => previous + 1);
     }, [projectKey]);
     const commonJobs = useProjectJobs(fetchImpl, projectKey, projectGeneration);
+    const simulation = useSimulationPoll();
+    const releaseSimulationRestoration = simulation.releaseRestoration;
     const refreshJobs = commonJobs.refresh;
     useEffect(() => {
         refreshJobs();
@@ -595,6 +597,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         // new submission, rather than opening an empty unrelated workflow.
         // Each explicit simulation Retry must notify an already mounted form,
         // including selecting the same retained job after editing its settings.
+        if (job.operation === "simulation" && !commonJobs.jobs.some(item => item.operation === "simulation" && ["queued", "running", "cancelling"].includes(item.status))) {
+            releaseSimulationRestoration();
+        }
         setRecoveryJob(job.operation === "simulation" ? {...job, request: {...job.request}} : job);
         if (job.recovery?.action === "new-session" || job.operation === "browser-play" || job.operation.startsWith("play-")) {
             setNewSessionRecoveryRequested(true);
@@ -608,7 +613,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         } else {
             setActiveTab("exportDeploy");
         }
-    }, [reopenJobProject, setActiveTab]);
+    }, [commonJobs.jobs, releaseSimulationRestoration, reopenJobProject, setActiveTab]);
     const handleFeatureOutcomeLibraryRecoveryAction = useCallback((jobId: string): void => {
         const job = commonJobs.jobs.find((candidate) => candidate.id === jobId);
         if (job === undefined || job.recovery === undefined) return;
@@ -676,8 +681,6 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 if (current()) setValidation({status: "error", message: errorMessage(error)});
             });
     }, [fetchImpl]);
-
-    const simulation = useSimulationPoll();
 
     const restorableSimulation = commonJobs.jobs.find((job) => job.operation === "simulation");
     let simulationRestorationMessage: string | undefined;
@@ -860,6 +863,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 setRunAgainNotice("A simulation is already running for this project. Cancel it from the Run step before starting a different configuration.");
                 return;
             }
+            if (commonJobs.discoveryStatus !== "pending" && commonJobs.discoveryStatus !== "failed" && !commonJobs.jobs.some(item => item.operation === "simulation" && ["queued", "running", "cancelling"].includes(item.status))) {
+                releaseSimulationRestoration();
+            }
             // A completed report uses the same configuration-only handoff as
             // common-card Retry. Only an explicit Configure submission may
             // clear the retained result and create replacement durable work.
@@ -872,7 +878,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             }});
             setRunAgainNotice(undefined);
         },
-        [simulation.job],
+        [simulation.job, releaseSimulationRestoration, commonJobs.jobs, commonJobs.discoveryStatus],
     );
 
     const [replayListView, setReplayListView] = useState<ReplayListView>({status: "empty"});

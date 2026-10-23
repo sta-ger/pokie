@@ -181,7 +181,7 @@ describe("HomePage", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
 
         expect(await screen.findByRole("heading", {name: "Home jobs"})).toBeInTheDocument();
-        expect(screen.getByText("project-open-materialization · Recovery required")).toBeInTheDocument();
+        expect(await screen.findByText("project-open-materialization · Recovery required")).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Retry"}));
 
         await waitFor(() => expect(calls.some((call) => call.url === "/api/home/projects/open" && call.init?.body === JSON.stringify({projectRoot: "/games/recoverable"}))).toBe(true));

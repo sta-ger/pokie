@@ -400,7 +400,7 @@ describe("V35-RELOAD-DISCOVERY-STATUS", () => {
             resolveDetail?.(response(jobFor(retained.id, {status: "running", rounds: 2000000, roundsCompleted: 26000})));
             await Promise.resolve();
         });
-        await screen.findByRole("button", {name: "Cancel"});
+        await within(screen.getByRole("region", {name: "Simulation workflow"})).findByRole("button", {name: "Cancel"});
         expect(screen.queryByText("Reattaching to retained simulation; waiting for its details…")).not.toBeInTheDocument();
         expect(writes).toEqual([]);
     });
@@ -459,7 +459,7 @@ describe("V35-RELOAD-DISCOVERY-STATUS", () => {
         });
         await screen.findByText(/^Simulation cancelled —/);
         expect(screen.queryByText(/Cannot observe this simulation/)).not.toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Retry simulation"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Repeat simulation"})).toBeEnabled();
     });
 
     it("does not let an old project's delayed detail settle the new project's unresolved discovery", async () => {
@@ -504,6 +504,42 @@ describe("V35-RELOAD-DISCOVERY-STATUS", () => {
             await Promise.resolve();
         });
         await waitFor(() => expect(screen.getByRole("button", {name: "Run Simulation"})).toBeEnabled());
+    });
+
+    it("lets explicit terminal Retry supersede delayed historical detail without submitting or replaying it over Configure", async () => {
+        let finishDetail: ((value: ReturnType<typeof response>) => void) | undefined;
+        const terminal = {...retained, status: "cancelled", recovery: {action: "retry", reason: "Run again with captured parameters."}};
+        const base = createRoutedFakeFetch({...BASE_ROUTES, "/api/project/reports": () => ({ok: true, status: 200, body: []})});
+        const writes: unknown[] = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/jobs") return Promise.resolve(response({jobs: [terminal]}));
+            if (url === `/api/project/simulations/${retained.id}`) return new Promise(resolve => {
+                finishDetail = resolve;
+            });
+            if (url === "/api/project/simulations") {
+                writes.push(JSON.parse(init!.body!));
+                return Promise.resolve(response(jobFor("replacement", {status: "queued"})));
+            }
+            if (url === "/api/project/simulations/replacement") return Promise.resolve(response(jobFor("replacement", {status: "failed"})));
+            return base.fetchImpl(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
+        const card = await screen.findByRole("region", {name: `simulation job ${retained.id}`});
+        await waitFor(() => expect(finishDetail).toBeDefined());
+        expect(screen.getByRole("button", {name: "Run Simulation"})).toBeDisabled();
+        await userEvent.click(within(card).getByRole("button", {name: "Retry"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Run Simulation"})).toBeEnabled());
+        expect(screen.getByLabelText(/^Rounds/)).toHaveValue("2000000");
+        await act(async () => {
+            finishDetail?.(response(jobFor(retained.id, {status: "cancelled", rounds: 123})));
+            await Promise.resolve();
+        });
+        expect(screen.getByLabelText(/^Rounds/)).toHaveValue("2000000");
+        expect(screen.getByRole("button", {name: "Run Simulation"})).toBeEnabled();
+        expect(writes).toEqual([]);
+        await userEvent.click(screen.getByRole("button", {name: "Run Simulation"}));
+        await screen.findByText(/^Simulation failed —/);
+        expect(writes).toEqual([{rounds: 2000000, workers: 1}]);
     });
 
 });

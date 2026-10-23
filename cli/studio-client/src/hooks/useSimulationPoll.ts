@@ -60,7 +60,7 @@ export function useSimulationPoll() {
     const currentJobId = useRef<string | undefined>(undefined);
     // Discovery may attach only before this workflow has an owner. An explicit
     // submission retains ownership even if acceptance fails without a job id.
-    const attachmentRef = useRef<"initial" | "restored" | "submitted">("initial");
+    const attachmentRef = useRef<"initial" | "restored" | "configured" | "submitted">("initial");
     // A terminal view can outlive the in-memory job snapshot while a reload
     // or recovery reconciliation settles. Keep the real request that created
     // it so Retry remains a public operation, never a visible no-op.
@@ -250,6 +250,25 @@ export function useSimulationPoll() {
         poll(id, generation);
     }
 
+    /** An explicit terminal Configure handoff supersedes a pending history read.
+     * The dashboard checks durable discovery for active work before calling this.
+     * It never submits or reconstructs a simulation detail from a generic card.
+     */
+    function releaseRestoration(): void {
+        if (restoringJobId === undefined) return;
+        generationRef.current++;
+        stopPollRequest();
+        if (timeoutRef.current !== undefined) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = undefined;
+        }
+        attachmentRef.current = "configured";
+        currentJobId.current = undefined;
+        setRestoringJobId(undefined);
+        setConnectionError(undefined);
+        setError(undefined);
+    }
+
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
     // never show a trace of the previous one's simulation. Clears `currentJobId` first (so a poll response
     // already in flight from the old project, once it lands, fails the `currentJobId.current !== id`
@@ -361,5 +380,5 @@ export function useSimulationPoll() {
         }
     }
 
-    return {progress, job, error, connectionError, restoringJobId, cancellationRequested, operation, terminalReceipt, resultCurrent, invalidateResult, run, retry, restore, cancel, resetForProjectSwitch, canRestore: attachmentRef.current === "initial", currentJobId: currentJobId.current};
+    return {progress, job, error, connectionError, restoringJobId, cancellationRequested, operation, terminalReceipt, resultCurrent, invalidateResult, run, retry, restore, releaseRestoration, cancel, resetForProjectSwitch, canRestore: attachmentRef.current === "initial", currentJobId: currentJobId.current};
 }
