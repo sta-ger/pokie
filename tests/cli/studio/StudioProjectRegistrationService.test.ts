@@ -10,6 +10,7 @@ import {
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {projectRevision} from "../../../src/optimization/internal/optimizationData.js";
 import type {PlatformDirectoryEnvironment} from "../../../cli/paths/PlatformDirectoryEnvironment.js";
 import {PokiePathResolver} from "../../../cli/paths/PokiePathResolver.js";
 import {FileStudioProjectRegistry} from "../../../cli/studio/FileStudioProjectRegistry.js";
@@ -767,6 +768,7 @@ describe("Studio Blueprint Project save conflicts", () => {
             const prior = {manifest: {id: "game"}, rows: 3};
             const saved = {manifest: {id: "game"}, rows: 4};
             fs.writeFileSync(filePath, JSON.stringify(prior));
+            const priorRevision = projectRevision({type: "blueprint", rootPath: filePath});
             const service = createService(path.join(directory, "studio"));
             const loaded = service.load(filePath);
             expect(loaded.status).toBe("ok");
@@ -778,7 +780,9 @@ describe("Studio Blueprint Project save conflicts", () => {
                 status: "ok",
                 path: filePath,
                 blueprintHash: computeGameBlueprintHash(saved),
+                sourceRevision: projectRevision({type: "blueprint", rootPath: filePath}),
             });
+            expect(projectRevision({type: "blueprint", rootPath: filePath})).not.toBe(priorRevision);
             expect(service.load(filePath)).toEqual({status: "ok", path: filePath, blueprint: saved, blueprintHash: computeGameBlueprintHash(saved)});
         } finally {
             fs.rmSync(directory, {recursive: true, force: true});
