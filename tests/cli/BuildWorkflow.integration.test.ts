@@ -9,6 +9,7 @@ import {DevCommand} from "../../cli/commands/DevCommand.js";
 import {InspectCommand} from "../../cli/commands/InspectCommand.js";
 import {ParCommand} from "../../cli/commands/ParCommand.js";
 import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
+import {OutcomeSourceDevServer} from "../../src/server/OutcomeSourceDevServer.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {ServeCommand} from "../../cli/commands/ServeCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
@@ -268,12 +269,13 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(JSON.parse(fs.readFileSync(replayFile, "utf-8"))).toMatchObject({round: 2, seed: "lifecycle"});
 
         let server: PokieDevServerHandling | undefined;
-        const serve = new ServeCommand(loadPokieGame, (game, options) => {
-            server = new PokieDevServer(game, options);
+        const serve = new ServeCommand(undefined, undefined, undefined, undefined, (project, modeName, options) => {
+            server = new OutcomeSourceDevServer(project, modeName, options);
             return server;
         });
-        await serve.run([outcomeDir, "--mode", "base", "--port", "0"]);
         try {
+            await serve.run([outcomeDir, "--mode", "base", "--port", "0"]);
+            expect(server).toBeDefined();
             const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
             const port = Number(printed.match(/http:\/\/127\.0\.0\.1:(\d+)/)![1]);
             expect((await fetch(`http://127.0.0.1:${port}/game`)).status).toBe(200);

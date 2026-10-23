@@ -1,5 +1,5 @@
 import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
-import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import {EventEmitter} from "events";
 import os from "os";
@@ -1924,9 +1924,9 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {"scenario_results": {execution: {assertions: string[]; observations: unknown[]}}[]}).scenario_results).toEqual(expect.arrayContaining([
             expect.objectContaining({execution: expect.objectContaining({assertions: expect.any(Array), observations: expect.any(Array)})}),
         ]));
-    // This full public-artifact matrix performs real package preparation and
-    // conversion work.  Give the standalone regeneration child the same
-    // bounded allowance as the Studio runner rather than timing out before it
-    // can emit its deterministic ledger on constrained workers.
-    }, 300_000);
+    // This complete matrix snapshots real packages and runs the public lifecycle.
+    // Measured serial runs reach 288 seconds; the generic five-minute ceiling
+    // can expire before the final assertions. Keep a finite allowance for the
+    // complete matrix, including contention with another changed-test worker.
+    }, 5 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
 });
