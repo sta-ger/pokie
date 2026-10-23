@@ -146,9 +146,16 @@ it("reads current symbols, weights, roles and geometry on coordinated edits and 
     const view = render(<GameModelSections projection={api.previewGameModel(blueprint)} />, {wrapper: MantineProvider});
     fireEvent.change(screen.getByLabelText("Reel 1 inspection variant"), {target: {value: "tiny"}});
     expect(windowRows()[0][0]).toBe("J");
+    const symbolsChanged = mixed();
+    const weighted = symbolsChanged.reelSequences![0];
+    if (weighted.type !== "weighted") throw new Error("Expected weighted fixture");
+    weighted.variants = weighted.variants.map(variant => variant.id === "tiny" ? {...variant, symbols: ["K", "A", "Q", "J"]} : variant);
+    view.rerender(<GameModelSections projection={api.previewGameModel(symbolsChanged)} />);
+    expect(screen.getByLabelText("Reel 1 inspection variant")).toHaveValue("tiny");
+    expect(windowRows()[0][0]).toBe("K");
     const changed: GameBlueprint = {...mixed(), wilds: [], scatters: [], screenGeometry: {
-        generated: {reels: 2, rows: 3}, visible: {rowOffset: 1, rows: 1},
-        evaluated: {rowOffset: 1, rows: 1}, paylineSpace: "evaluated",
+        generated: {reels: 2, rows: 4}, visible: {rowOffset: 1, rows: 3},
+        evaluated: {rowOffset: 1, rows: 3}, paylineSpace: "evaluated",
     }, reelSequences: [
         {type: "weighted", variants: [
             {id: "regular", weight: 1, symbols: ["Q", "A", "J", "K"]},
@@ -156,6 +163,7 @@ it("reads current symbols, weights, roles and geometry on coordinated edits and 
         ]},
         {type: "exact", symbols: ["J", "Q"]},
     ]};
+    expect(validateBlueprintReelSequences(changed as unknown as Record<string, unknown>)).toEqual([]);
     view.rerender(<GameModelSections projection={api.previewGameModel(changed)} />);
     expect(screen.getByLabelText("Reel 1 inspection variant")).toHaveValue("regular");
     expect(windowRows()).toEqual([["A", "Q"], ["J", "J"], ["K", "Q"]]);
@@ -177,6 +185,11 @@ it("reads current symbols, weights, roles and geometry on coordinated edits and 
         view.rerender(<GameModelSections projection={api.previewGameModel(changed)} />);
         expect(windowRows()[0][0]).toBe("A");
     }
+    view.rerender(<GameModelSections projection={api.previewGameModel({...changed, reelSequences: [
+        {type: "weighted", variants: [{id: "replacement", weight: 1, symbols: ["J", "K", "Q", "A"]}]}, changed.reelSequences![1],
+    ]})} />);
+    expect(screen.getByLabelText("Reel 1 inspection variant")).toHaveValue("replacement");
+    expect(windowRows()[0][0]).toBe("K");
     expect(invalid.reelSequences[0]).toMatchObject({variants: [{weight: 0}]});
 });
 
