@@ -1100,6 +1100,8 @@ it.each(["changed", "missing", "transitive"])("rejects %s executable dependencie
     await service.discard(result.candidate!);
 }, 60000);
 
+// This includes package search, held-out assessment and publication-time runtime
+// loading. Match the whole-scenario budget of the sampled package adapter above.
 it.each([false, true])("validates sampled destination loadability failure=%s without another assessment and preserves unowned files", async failLoad => {
     const marker = path.join(directory, "loaded-destinations");
     const {root} = declaredPackage("publish-runtime", `require('fs').appendFileSync(${JSON.stringify(marker)}, 'loaded\\n'); if (__dirname.includes('pokie-runtime-') && require('fs').existsSync(${JSON.stringify(path.join(directory, "reject-load"))})) { require('fs').writeFileSync(${JSON.stringify(path.join(directory, "published-runtime", "unowned.txt"))}, 'another writer'); throw Error('destination runtime unavailable'); }\n`);
@@ -1107,6 +1109,7 @@ it.each([false, true])("validates sampled destination loadability failure=%s wit
     request.policy.tunables[0].values = [3];
     const result = await service.optimize(await resolve(root), request);
     expect(result.diagnostics).toEqual([]);
+    expect(result.status).toBe("attained");
     const assessment = JSON.stringify(result.evidence);
     const loadsBefore = fs.readFileSync(marker, "utf8");
     const output = path.join(directory, "published-runtime");
@@ -1132,7 +1135,7 @@ it.each([false, true])("validates sampled destination loadability failure=%s wit
     expect(simulation).not.toHaveBeenCalled();
     expect(JSON.stringify(result.evidence)).toBe(assessment);
     await service.discard(result.candidate!);
-}, 60000);
+}, 180000);
 
 
 it.each([["cjs", false], ["cjs", true], ["esm", false], ["esm", true]] as const)(

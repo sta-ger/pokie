@@ -317,6 +317,8 @@ it("requires an unchanged reviewed source, candidate and policy for explicit aut
 });
 
 
+// Preview and Apply each run the complete exact package search, including isolated
+// runtime loads and dependency fingerprints. Budget both under concurrent gates.
 it("rejects a reviewed CLI apply after executable dependency drift with identical source/candidate parameters", async () => {
     const root = path.join(directory, "custom");
     const dependency = path.join(root, "node_modules", "binding");
@@ -336,10 +338,14 @@ it("rejects a reviewed CLI apply after executable dependency drift with identica
     const sourceRevision = projectRevision({type: "tsPackage", rootPath: root});
     fs.appendFileSync(executable, "\n// changed installed executable bytes");
     expect(await command.run([root, "--policy", policy, "--apply", reviewFile])).toBe(1);
+    const rejected = JSON.parse(stdout.mock.calls[stdout.mock.calls.length - 1][0]);
+    expect(rejected.diagnostics).toEqual([{path: "$", message: "Candidate or executable dependencies differ from reviewed preview; review again."}]);
+    expect(rejected.review.candidateRevision).toBe(reviewed.review.candidateRevision);
+    expect(rejected.review.executableRevision).not.toBe(reviewed.review.executableRevision);
     expect(projectRevision({type: "tsPackage", rootPath: root})).toBe(sourceRevision);
     expect(result().status).toBe("failure");
     expect(reviewed.review.executableRevision).toMatch(/^sha256:/);
-}, 60000);
+}, 180000);
 
 
 it("V35 optimizer progress preserves CLI stdout, executed cancellation, cleanup and subsequent reuse", async () => {
