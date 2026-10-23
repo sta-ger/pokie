@@ -88,7 +88,7 @@ export function GameModelTab({
     editable?: boolean;
     projectRoot?: string;
     onDirtyChange?: (dirty: boolean) => void;
-    onBlueprintSaved?: () => void;
+    onBlueprintSaved?: (sourceRevision?: string) => void;
     projectActionGuardRef?: MutableRefObject<GuardedAction | undefined>;
 } = {}) {
     const fetchImpl = useStudioApi();
@@ -390,7 +390,7 @@ export function GameModelTab({
                     // View Mode must show exactly the saved truth, straight off the server -- never the
                     // in-editor draft this component happens to still be holding.
                     refresh();
-                    onBlueprintSaved?.();
+                    onBlueprintSaved?.(saveResult.sourceRevision);
                 });
             })
             .catch((error: unknown) => {

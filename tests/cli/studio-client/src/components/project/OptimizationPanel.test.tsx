@@ -9,12 +9,13 @@ import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiCli
 import type {StudioJobView} from "../../../../../../cli/studio-client/src/api/types";
 import {optimizationRequest} from "../../../../../v2/fixtures/OptimizationFixture";
 
-function ObservedPanel({projectRoot, onApplied, showOperations = false}: {
+function ObservedPanel({projectRoot, sourceChange, onApplied, showOperations = false}: {
+    sourceChange?: {sourceRevision?: string};
     projectRoot: string; onApplied?: () => void; showOperations?: boolean;
 }) {
     const jobs = useProjectJobs(useStudioApi(), projectRoot, 0);
     return <>
-        <OptimizationPanel projectRoot={projectRoot} jobs={jobs} onApplied={onApplied} />
+        <OptimizationPanel projectRoot={projectRoot} jobs={jobs} sourceChange={sourceChange} onApplied={onApplied} />
         {showOperations && jobs.jobs.map(job => <JobCard key={job.id} job={job} onCancel={jobs.cancel} cancellationPending={jobs.pendingIds.includes(job.id)} />)}
     </>;
 }
@@ -91,8 +92,8 @@ it("shows unsupported source reasons and invalidates support after policy edits"
     expect(screen.queryByText("Opaque WASM: missing source/build contract")).not.toBeInTheDocument();
 });
 
-function panel(fetchImpl: FetchLike, projectRoot = "/project") {
-    return <MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><ObservedPanel projectRoot={projectRoot} /></StudioApiProvider></MantineProvider>;
+function panel(fetchImpl: FetchLike, projectRoot = "/project", sourceChange: {sourceRevision?: string} | undefined = undefined) {
+    return <MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><ObservedPanel projectRoot={projectRoot} sourceChange={sourceChange} /></StudioApiProvider></MantineProvider>;
 }
 function completedJob(status: StudioJobView["status"] = "completed"): StudioJobView {
     return {id: "saved-job", projectId: "/project", operation: "optimization", conflictKey: "opt", status, createdAt: 1, request: {request: optimizationRequest()}, result: {summary: "Optimization result", detail: {status: "success", diagnostics: [], evidence: {measured: [0.75]}, candidate: {path: "/scratch/candidate"}}}};
@@ -412,4 +413,132 @@ it("V35 waits for initial discovery before optimization start while support and 
     expect(calls.filter(url => url.endsWith("/start"))).toHaveLength(1);
     expect(calls).toContain("/api/project/jobs/saved-job/cancel");
     unmount();
+});
+
+
+describe("V35 source revision ownership", () => {
+    function reviewedJob(revision = "sha256:old"): StudioJobView {
+        const job = completedJob();
+        job.request.sourceRevision = revision;
+        job.result!.detail = {...job.result!.detail, candidate: {type: "blueprint", sourceRevision: revision}, evidence: {sourceRevision: revision, measured: [0.75]}};
+        return job;
+    }
+
+    it.each(["request", "evidence", "candidate", "disagreement", "missing"])("marks %s identity stale after Save without removing durable evidence", async identity => {
+        const job = reviewedJob();
+        if (identity !== "disagreement") {
+            Reflect.deleteProperty(job.request, "sourceRevision");
+            job.result!.detail = {status: "success", diagnostics: [], candidate: {type: "blueprint"}};
+            if (identity === "request") job.request.sourceRevision = "sha256:old";
+            if (identity === "evidence") job.result!.detail.evidence = {sourceRevision: "sha256:old"};
+            if (identity === "candidate") job.result!.detail.candidate = {type: "blueprint", sourceRevision: "sha256:old"};
+        } else job.request.sourceRevision = "sha256:current";
+        const original = JSON.stringify(job);
+        const fetchImpl: FetchLike = () => response({jobs: [job]});
+        const view = render(panel(fetchImpl));
+        await screen.findByText("Verdict: success");
+        expect(screen.getByRole("button", {name: "Apply reviewed changes to source"})).toBeEnabled();
+        view.rerender(panel(fetchImpl, "/project", {sourceRevision: "sha256:current"}));
+        expect(screen.getByText(/Stale optimization result/)).toBeVisible();
+        expect(screen.queryByText("Verdict: success")).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Save reviewed candidate"})).not.toBeInTheDocument();
+        expect(screen.getByText("Historical optimization — completed: No execution progress recorded.")).toBeVisible();
+        await userEvent.click(screen.getByText("Historical optimization evidence"));
+        expect(screen.getByText(/"status": "success"/)).toBeVisible();
+        expect(JSON.stringify(job)).toBe(original);
+    });
+
+    it("preserves current-revision review and both candidate actions after a Save", async () => {
+        const job = reviewedJob("sha256:current");
+        const calls: string[] = [];
+        const fetchImpl: FetchLike = url => {
+            calls.push(url);
+            return response(url.endsWith("save") || url.endsWith("apply") ? {outputPath: "/reviewed.json"} : {jobs: [job]});
+        };
+        render(panel(fetchImpl, "/project", {sourceRevision: "sha256:current"}));
+        await screen.findByText("Verdict: success");
+        expect(screen.queryByText(/Stale optimization result/)).not.toBeInTheDocument();
+        fireEvent.change(screen.getByLabelText("Candidate destination"), {target: {value: "/reviewed.json"}});
+        await userEvent.click(screen.getByRole("button", {name: "Save reviewed candidate"}));
+        await screen.findByText("Candidate saved: /reviewed.json");
+        await userEvent.click(screen.getByRole("button", {name: "Apply reviewed changes to source"}));
+        await screen.findByText(/Authored changes applied/);
+        expect(calls).toContain("/api/project/optimization/save");
+        expect(calls).toContain("/api/project/optimization/apply");
+    });
+
+    it("retires old support on Save and starts one fresh current-revision optimization", async () => {
+        const old = reviewedJob();
+        let finishOldSupport: ((value: Awaited<ReturnType<FetchLike>>) => void) | undefined;
+        let checks = 0;
+        const starts: Record<string, unknown>[] = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url.endsWith("support")) {
+                if (++checks === 1) return new Promise(resolve => {
+                    finishOldSupport = resolve;
+                });
+                return response({supported: true, reason: "Current tuning support", sourceRevision: "sha256:current"});
+            }
+            if (url.endsWith("start")) {
+                const body = JSON.parse(init!.body as string);
+                starts.push(body);
+                return response({job: {...old, id: "fresh", status: "running", request: {request: body.request, sourceRevision: body.sourceRevision}, result: undefined}});
+            }
+            return response({jobs: [old]});
+        };
+        const view = render(panel(fetchImpl));
+        await screen.findByText("Verdict: success");
+        await userEvent.click(screen.getByRole("button", {name: "Check tuning support"}));
+        const sourceChange = {sourceRevision: "sha256:current"};
+        view.rerender(panel(fetchImpl, "/project", sourceChange));
+        await act(async () => {
+            finishOldSupport!(await response({supported: true, reason: "Obsolete support", sourceRevision: "sha256:old"}));
+        });
+        expect(screen.queryByText("Obsolete support")).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Run optimization"})).toBeDisabled();
+        await userEvent.click(screen.getByRole("button", {name: "Check tuning support"}));
+        await screen.findByText("Current tuning support");
+        expect(screen.getByText(/Stale optimization result/)).toBeVisible();
+        await userEvent.click(screen.getByRole("button", {name: "Run optimization"}));
+        expect(await screen.findByRole("button", {name: "Cancel optimization"})).toBeEnabled();
+        expect(screen.queryByText(/Stale optimization result/)).not.toBeInTheDocument();
+        expect(starts).toEqual([{request: optimizationRequest(), sourceRevision: "sha256:current", expectedProjectRoot: "/project"}]);
+    });
+
+    it("keeps old active work cancellable across Save, then labels its late terminal stale", async () => {
+        const job = reviewedJob();
+        job.status = "running";
+        job.result = undefined;
+        let cancellations = 0;
+        const fetchImpl: FetchLike = url => {
+            if (url.endsWith("cancel")) {
+                cancellations++;
+                return response(reviewedJob());
+            }
+            return response(url.endsWith("jobs") ? {jobs: [job]} : job);
+        };
+        const view = render(panel(fetchImpl));
+        await screen.findByRole("button", {name: "Cancel optimization"});
+        view.rerender(panel(fetchImpl, "/project", {sourceRevision: "sha256:current"}));
+        expect(screen.getByRole("button", {name: "Cancel optimization"})).toBeEnabled();
+        expect(screen.queryByText(/Stale optimization result/)).not.toBeInTheDocument();
+        await userEvent.click(screen.getByRole("button", {name: "Cancel optimization"}));
+        await screen.findByText(/Stale optimization result/);
+        expect(cancellations).toBe(1);
+        expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
+    });
+
+    it("requires renewed support when an authored Apply has no returned source identity", async () => {
+        const job = reviewedJob();
+        const fetchImpl: FetchLike = url => response(url.endsWith("support")
+            ? {supported: true, reason: "Rechecked identity", sourceRevision: "sha256:old"} : {jobs: [job]});
+        render(panel(fetchImpl, "/project", {}));
+        await screen.findByText(/Stale optimization result/);
+        expect(screen.queryByRole("button", {name: "Save reviewed candidate"})).not.toBeInTheDocument();
+        await userEvent.click(screen.getByRole("button", {name: "Check tuning support"}));
+        await screen.findByText("Rechecked identity");
+        expect(screen.getByText("Verdict: success")).toBeVisible();
+        expect(screen.getByRole("button", {name: "Apply reviewed changes to source"})).toBeEnabled();
+    });
 });

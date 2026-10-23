@@ -1,3 +1,4 @@
+import {projectRevision} from "../../../src/optimization/internal/optimizationData.js";
 import {AdvancedModelSourceValidator} from "../../../src/validation/AdvancedModelSourceValidator.js";
 import {
     ArtifactConversionPlanner,
@@ -437,7 +438,16 @@ export class StudioBlueprintService {
             fs.mkdirSync(path.dirname(resolved), {recursive: true});
             this.materializeSymbolArtwork(resolved, blueprint);
             writeBlueprintAtomically(resolved, blueprint);
-            return {status: "ok", path: resolved, blueprintHash: editedHash};
+            // A model hash and an optimizer authored-byte revision are different identities.
+            // Unsupported optimizer paths (for example aliases) must not turn a committed Save
+            // into an error; the client then invalidates retained results conservatively.
+            let sourceRevision: string | undefined;
+            try {
+                sourceRevision = projectRevision({type: "blueprint", rootPath: resolved});
+            } catch {
+                // The Blueprint write succeeded even when no optimizer identity is available.
+            }
+            return {status: "ok", path: resolved, blueprintHash: editedHash, sourceRevision};
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }

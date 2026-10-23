@@ -556,7 +556,7 @@ export type StudioBlueprintRandomView = {
 // Compare and Save As without risking a stale overwrite. "blueprintHash" on "ok" is the just-written
 // content's own hash — a caller uses it as the next known-good snapshot for StudioBlueprintCheckView.
 export type StudioBlueprintSaveView =
-    | {status: "ok"; path: string; blueprintHash: string}
+    | {status: "ok"; path: string; blueprintHash: string; sourceRevision?: string}
     | {
           status: "conflict";
           reason: "existing" | "stale";

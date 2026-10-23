@@ -1,3 +1,4 @@
+import {projectRevision} from "../../../../src/optimization/internal/optimizationData.js";
 import {weightedBlueprint} from "../../../v2/fixtures/WeightedWholeSequenceGame.js";
 import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../../../fixtures/math/AuthoritativePaytableFixture.js";
 import {
@@ -1008,7 +1009,7 @@ describe("StudioBlueprintService", () => {
 
             const result = service.save(filePath, buildBlueprint(), false);
 
-            expect(result).toEqual({status: "ok", path: filePath, blueprintHash: computeGameBlueprintHash(buildBlueprint())});
+            expect(result).toEqual({status: "ok", path: filePath, blueprintHash: computeGameBlueprintHash(buildBlueprint()), sourceRevision: projectRevision({type: "blueprint", rootPath: filePath})});
             expect(fs.existsSync(filePath)).toBe(true);
         });
 
@@ -1030,7 +1031,7 @@ describe("StudioBlueprintService", () => {
 
             const result = service.save(filePath, buildBlueprint(), true);
 
-            expect(result).toEqual({status: "ok", path: filePath, blueprintHash: computeGameBlueprintHash(buildBlueprint())});
+            expect(result).toEqual({status: "ok", path: filePath, blueprintHash: computeGameBlueprintHash(buildBlueprint()), sourceRevision: projectRevision({type: "blueprint", rootPath: filePath})});
             expect(fs.readFileSync(filePath, "utf-8")).toContain('"sample-slot"');
         });
 

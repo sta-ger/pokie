@@ -1140,10 +1140,13 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // letting a Close silently discard an unsaved Game Model edit.
     const [gameModelDirty, setGameModelDirty] = useState(false);
 
-    // Both in-place authoring surfaces change the source used by simulation.
+    const [optimizerSourceChange, setOptimizerSourceChange] = useState<{projectRoot: string; sourceRevision?: string}>();
+
+    // Both in-place authoring surfaces change the source used by simulation and optimization.
     // Retire pending reads as well as the visible report, while leaving owned
     // jobs attached so saving during a run never removes its Cancel control.
-    const handleBlueprintSaved = (): void => {
+    const handleBlueprintSaved = (sourceRevision?: string): void => {
+        if (projectKey !== undefined) setOptimizerSourceChange({projectRoot: projectKey, sourceRevision});
         simulation.invalidateResult();
         reportRequestIdRef.current++;
         compareRequestIdRef.current++;
@@ -1173,6 +1176,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setReportsView({status: "empty"});
         setReportsError(undefined);
         setRunAgainNotice(undefined);
+        setOptimizerSourceChange(undefined);
         expectedReplayRequestIdRef.current++;
         setExpectedReplay({status: "empty"});
         recentSpinsRequestIdRef.current++;
@@ -1474,7 +1478,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     ? <WasmManifestInspection projectRoot={header.projectRoot} summary={header.wasmPresentation.inspectionSummary} />
                                     : <Text>This {describeProjectType(header.type).toLowerCase()} can be republished from Build/Export.</Text>
                             )}
-                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} jobs={commonJobs} onApplied={handleBlueprintSaved} />}
+                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} jobs={commonJobs} sourceChange={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange : undefined} onStarted={(sourceRevision) => setOptimizerSourceChange(previous => previous?.projectRoot === header.projectRoot && previous.sourceRevision === sourceRevision ? previous : {projectRoot: header.projectRoot, sourceRevision})} onApplied={handleBlueprintSaved} />}
                             {activeTab === "gameModel" && (
                                 // GameModelTab owns all of its own fetch state locally (no page-level hook),
                                 // so a genuine project switch needs a full remount, not just a re-render of a

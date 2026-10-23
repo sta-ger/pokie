@@ -1,7 +1,7 @@
 import {JobObservationNotice} from "../common/JobObservationNotice";
 import {OptimizationPreview} from "./OptimizationPreview";
 import {Alert, Button, Code, Stack, Text, Textarea, TextInput, Title} from "@mantine/core";
-import {useEffect, useRef, useState} from "react";
+import {useEffect, useLayoutEffect, useRef, useState} from "react";
 import {optimizationAction} from "../../api/apiClient";
 import type {
     StudioJobView,
@@ -28,14 +28,17 @@ const initialRequest: StudioOptimizationRequest = {
     },
 };
 /** Policy form and operation cards consume the dashboard's same durable observations. */
-export function OptimizationPanel({projectRoot, jobs, onApplied}: {
+export function OptimizationPanel({projectRoot, jobs, sourceChange, onStarted, onApplied}: {
     projectRoot: string;
     jobs: ReturnType<typeof useProjectJobs>;
+    sourceChange?: {sourceRevision?: string};
+    onStarted?: (sourceRevision: string) => void;
     onApplied?: () => void;
 }) {
     const fetchImpl = useStudioApi();
     const [text, setText] = useState(JSON.stringify(initialRequest, null, 2));
-    const [support, setSupport] = useState<StudioOptimizationSupport>();
+    const [supportSnapshot, setSupportSnapshot] = useState<{value: StudioOptimizationSupport; sourceChange: typeof sourceChange}>();
+    const support = supportSnapshot?.sourceChange === sourceChange ? supportSnapshot?.value : undefined;
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string>();
     const [destination, setDestination] = useState("");
@@ -48,7 +51,7 @@ export function OptimizationPanel({projectRoot, jobs, onApplied}: {
     useEffect(
         () => {
             setApplied(false);
-            setSupport(undefined);
+            setSupportSnapshot(undefined);
             setStarted(undefined);
             setSaved(undefined);
             setError(undefined);
@@ -62,6 +65,16 @@ export function OptimizationPanel({projectRoot, jobs, onApplied}: {
         },
         [projectRoot],
     );
+    // Retire an old support/action response even when this panel stays mounted during Apply.
+    // The dashboard owns this boundary so leaving Game Model cannot forget an accepted Save.
+    useLayoutEffect(() => {
+        generation.current++;
+        controller.current?.abort();
+        setSupportSnapshot(previous => sourceChange?.sourceRevision !== undefined && previous?.value.sourceRevision === sourceChange.sourceRevision
+            ? {...previous, sourceChange} : undefined);
+        setSaved(undefined);
+        setBusy(false);
+    }, [sourceChange]);
     const projectJobs = jobs.jobs;
     const job =
         projectJobs.find((item) => item.id === started?.id) ??
@@ -80,11 +93,20 @@ export function OptimizationPanel({projectRoot, jobs, onApplied}: {
     } catch {
         /* Editable invalid input remains visible. */
     }
-    const result = matchesRequest ? (job?.result?.detail as StudioOptimizationResult | undefined) : undefined;
+    const retainedResult = job?.result?.detail as StudioOptimizationResult | undefined;
     const active = job !== undefined && ["queued", "running", "cancelling"].includes(job.status);
+    const currentRevision = support?.sourceRevision ?? sourceChange?.sourceRevision;
+    const resultRevisions = [job?.request.sourceRevision, retainedResult?.evidence?.sourceRevision, retainedResult?.candidate?.sourceRevision]
+        .filter((revision): revision is string => typeof revision === "string");
+    const stale = !active && job !== undefined && (
+        (currentRevision !== undefined && resultRevisions.some(revision => revision !== currentRevision)) ||
+        (sourceChange !== undefined && (currentRevision === undefined || resultRevisions.length === 0))
+    );
+    const result = matchesRequest && !stale ? retainedResult : undefined;
     const discoveryUnresolved = started === undefined && (jobs.discoveryStatus === "pending" || jobs.discoveryStatus === "failed");
     const action = async (kind: "support" | "start" | "save" | "apply"): Promise<void> => {
-        if (kind === "start" && discoveryUnresolved) return;
+        if (kind === "start" && (discoveryUnresolved || !support?.supported)) return;
+        if ((kind === "save" || kind === "apply") && stale) return;
         const current = ++generation.current;
         controller.current?.abort();
         controller.current = new AbortController();
@@ -100,7 +122,7 @@ export function OptimizationPanel({projectRoot, jobs, onApplied}: {
                     {request, expectedProjectRoot: projectRoot},
                     controller.current.signal,
                 );
-                if (current === generation.current) setSupport(value);
+                if (current === generation.current) setSupportSnapshot({value, sourceChange});
             } else if (kind === "start") {
                 const value = await optimizationAction<{job: StudioJobView}>(
                     fetchImpl,
@@ -112,6 +134,7 @@ export function OptimizationPanel({projectRoot, jobs, onApplied}: {
                     setApplied(false);
                     setStarted(value.job);
                     jobs.refresh();
+                    if (support?.sourceRevision !== undefined) onStarted?.(support.sourceRevision);
                 }
             } else {
                 const value = await optimizationAction<{outputPath: string; warning?: string}>(
@@ -125,7 +148,7 @@ export function OptimizationPanel({projectRoot, jobs, onApplied}: {
                     if (value.warning) setError(value.warning);
                     if (kind === "apply") {
                         setApplied(true);
-                        setSupport(undefined);
+                        setSupportSnapshot(undefined);
                         onApplied?.();
                     }
                 }
@@ -154,7 +177,7 @@ export function OptimizationPanel({projectRoot, jobs, onApplied}: {
                     controller.current?.abort();
                     setBusy(false);
                     setText(event.currentTarget.value);
-                    setSupport(undefined);
+                    setSupportSnapshot(undefined);
                     setStarted(undefined);
                 }}
             />
@@ -192,12 +215,16 @@ export function OptimizationPanel({projectRoot, jobs, onApplied}: {
             )}
             {job && (
                 <Text role="status">
-                    {job.status}: {job.progress ? <>
+                    {stale && "Historical optimization — "}{job.status}: {job.progress ? <>
                         {job.progress.current} / {job.progress.total} {job.progress.unit} {job.progress.stage}
                         {job.progress.message && ` · ${job.progress.message}`}
                     </> : unreportedProgress}
                 </Text>
             )}
+            {stale && <Alert color="yellow" role="alert">
+                Stale optimization result — the saved design changed. Check tuning support and run a new optimization for the current design. Retained evidence remains available as history.
+                {retainedResult && <details><summary>Historical optimization evidence</summary><Code block>{JSON.stringify(retainedResult, null, 2)}</Code></details>}
+            </Alert>}
             {result && (
                 <>
                     <Text>Verdict: {result.status}</Text>

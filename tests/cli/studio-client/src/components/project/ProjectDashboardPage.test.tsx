@@ -660,7 +660,7 @@ describe("V2C-34 saved-design simulation freshness", () => {
             "/api/home/blueprints/save": ({init}) => {
                 if (saveRejected) return {ok: false, status: 409, body: {status: "conflict", reason: "stale", error: "Source changed; reload before saving."}};
                 blueprint = JSON.parse(init!.body!).blueprint;
-                return {ok: true, status: 200, body: {status: "ok", path: "/games/sample-slot", blueprintHash: `payout-${blueprint.paytable.A[3]}`}};
+                return {ok: true, status: 200, body: {status: "ok", path: "/games/sample-slot", blueprintHash: `payout-${blueprint.paytable.A[3]}`, sourceRevision: `sha256:payout-${blueprint.paytable.A[3]}`}};
             },
             "/api/project/simulations": () => ({ok: true, status: 201, body: simulationJob(`run-${++run}`)}),
             "/api/project/simulations/run-1": () => ({ok: true, status: 200, body: simulationJob("run-1")}),
@@ -1075,6 +1075,88 @@ describe("V2C-34 saved-design simulation freshness", () => {
         await user.click(within(workflow).getByRole("button", {name: "Open latest report"}));
         await within(workflow).findByRole("button", {name: "Open full report"});
         expect(within(workflow).getByText(/Historical simulation result/)).toBeVisible();
+    });
+
+    it("V35 saved-source revision follows the accepted Game Model edit back to Overview and permits a fresh run", async () => {
+        const user = userEvent.setup();
+        const test = fixture();
+        const old = {
+            id: "old-opt", projectId: "/games/sample-slot", operation: "optimization", status: "completed",
+            createdAt: 1, conflictKey: "opt", request: {request: optimizationRequest(), sourceRevision: "sha256:payout-10"},
+            result: {summary: "Retained optimization", detail: {status: "attained", diagnostics: [], evidence: {sourceRevision: "sha256:payout-10"}, candidate: {type: "blueprint", sourceRevision: "sha256:payout-10"}}},
+        };
+        const original = JSON.stringify(old);
+        const starts: Record<string, unknown>[] = [];
+        let retainedJobs: unknown[] = [old];
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/jobs") return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({jobs: retainedJobs})});
+            if (url.endsWith("/optimization/support")) return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({supported: true, reason: "Saved payout tuning", sourceRevision: `sha256:payout-${test.payout()}`})});
+            if (url.endsWith("/optimization/start")) {
+                const body = JSON.parse(init!.body as string);
+                starts.push(body);
+                const fresh = {...old, id: "new-opt", createdAt: 2, status: "running", request: {request: body.request, sourceRevision: body.sourceRevision}, result: undefined};
+                retainedJobs = [fresh, old];
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({job: fresh})});
+            }
+            return test.fetchImpl(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByText("Verdict: attained");
+        expect(screen.getByRole("button", {name: "Apply reviewed changes to source"})).toBeEnabled();
+        const paytable = await editPayout(user, "11");
+        await user.click(within(paytable).getByRole("button", {name: "Save"}));
+        await within(paytable).findByRole("button", {name: "Edit"});
+        expect(test.payout()).toBe(11);
+        expect(within(paytable).getByText("11")).toBeVisible();
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        expect(await screen.findByText(/Stale optimization result/)).toBeVisible();
+        expect(screen.queryByText("Verdict: attained")).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Save reviewed candidate"})).not.toBeInTheDocument();
+        expect(screen.getByRole("region", {name: "optimization job old-opt"})).toHaveTextContent("Retained optimization");
+        expect(JSON.stringify(old)).toBe(original);
+        await user.click(screen.getByRole("button", {name: "Check tuning support"}));
+        await screen.findByText("Saved payout tuning");
+        await user.click(screen.getByRole("button", {name: "Run optimization"}));
+        expect(await screen.findByRole("button", {name: "Cancel optimization"})).toBeEnabled();
+        expect(starts).toEqual([{request: optimizationRequest(), sourceRevision: "sha256:payout-11", expectedProjectRoot: "/games/sample-slot"}]);
+        retainedJobs = [{...old, id: "new-opt", createdAt: 2, request: {...old.request, sourceRevision: "sha256:payout-11"}, result: {...old.result, detail: {...old.result.detail, evidence: {sourceRevision: "sha256:payout-11"}, candidate: {type: "blueprint", sourceRevision: "sha256:payout-11"}}}}, old];
+        await user.click(screen.getByRole("button", {name: "Game Model"}));
+        await screen.findByText("Paytable", {selector: "span"});
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        expect(await screen.findByText("Verdict: attained")).toBeVisible();
+        expect(screen.queryByText(/Stale optimization result/)).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Apply reviewed changes to source"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Save reviewed candidate"})).toBeDisabled();
+    });
+
+    it.each(["invalid", "conflict", "cancel"])("V35 saved-source keeps optimizer review current after %s without an accepted Save", async rejection => {
+        const user = userEvent.setup();
+        const test = fixture();
+        const job = {
+            id: "reviewed-opt", projectId: "/games/sample-slot", operation: "optimization", status: "completed",
+            createdAt: 1, conflictKey: "opt", request: {request: optimizationRequest(), sourceRevision: "sha256:payout-10"},
+            result: {summary: "Reviewed optimization", detail: {status: "attained", diagnostics: [], candidate: {type: "blueprint", sourceRevision: "sha256:payout-10"}}},
+        };
+        const fetchImpl: FetchLike = (url, init) => url === "/api/project/jobs"
+            ? Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({jobs: [job]})}) : test.fetchImpl(url, init);
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByText("Verdict: attained");
+        const paytable = await editPayout(user, rejection === "invalid" ? "0" : "11");
+        if (rejection !== "cancel") {
+            test.setSaveRejected(rejection === "conflict");
+            await user.click(within(paytable).getByRole("button", {name: "Save"}));
+            await screen.findByText(rejection === "invalid" ? /Save blocked — correct these errors/ : /Source changed; reload before saving/);
+        }
+        await user.click(within(paytable).getByRole("button", {name: "Cancel"}));
+        await user.click(await screen.findByRole("button", {name: "Confirm"}));
+        await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        expect(await screen.findByText("Verdict: attained")).toBeVisible();
+        expect(screen.queryByText(/Stale optimization result/)).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Apply reviewed changes to source"})).toBeEnabled();
+        expect(screen.getByLabelText("Candidate destination")).toBeVisible();
+        expect(test.payout()).toBe(10);
     });
 
     it("V2C-34-SIMULATION-APPLY invalidates through the sibling authored Apply but preserves Save-as", async () => {
