@@ -578,11 +578,11 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "report",
-        description: "Render a pokie sim report or a resolved outcome-library/Stake adapter analysis as JSON, Markdown, or HTML.",
+        description: "Render simulation/outcome analysis as JSON, Markdown or HTML, or a canonical evidence dossier as JSON, console, Markdown, HTML or local PDF.",
         verbs: [
             {
                 verb: undefined,
-                usage: "Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]",
+                usage: "Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json|console|pdf] [--template <json>] [--out <file>]",
                 positionals: ["projectOrSimulationReportJson"],
                 options: [
                     // --format has a real seam: renderers.markdown/renderers.html are two independently swappable
@@ -2217,7 +2217,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "missing <projectOrSimulationReportJson>",
         args: [],
         expectedExitCode: 1,
-        expectedError: "Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]",
+        expectedError: "Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json|console|pdf] [--template <json>] [--out <file>]",
     },
     {
         command: "report",
@@ -2226,7 +2226,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["report.json", "--format", "xml"],
         expectedExitCode: 1,
         expectedError:
-            '--format must be "markdown", "html", or "json". Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]',
+            '--format must be "markdown", "html", or "json". Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json|console|pdf] [--template <json>] [--out <file>]',
     },
     {
         command: "report",
@@ -3044,7 +3044,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["report.json", "--format"],
         expectedExitCode: 1,
         expectedError:
-            "--format must be \"markdown\", \"html\", or \"json\". Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]",
+            "--format must be \"markdown\", \"html\", or \"json\". Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json|console|pdf] [--template <json>] [--out <file>]",
     },
     {
         command: "report",
@@ -3052,7 +3052,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--out given with no value",
         args: ["report.json", "--out"],
         expectedExitCode: 1,
-        expectedError: "--out requires a file path. Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]",
+        expectedError: "--out requires a file path. Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json|console|pdf] [--template <json>] [--out <file>]",
     },
 
     // --- serve: missing-value cases ---

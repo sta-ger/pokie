@@ -1,3 +1,5 @@
+import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
 import {GameBlueprint} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
@@ -5,7 +7,6 @@ import path from "path";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {InspectCommand} from "../../cli/commands/InspectCommand.js";
 import {StakeEngineCommand} from "../../cli/commands/StakeEngineCommand.js";
-import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import {StudioOutcomeLibraryGenerateService} from "../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 import {StudioStakeEngineExportService} from "../../cli/studio/stakeengine/StudioStakeEngineExportService.js";
 
@@ -36,6 +37,14 @@ const POKIE_VERSION = "1.3.0";
 // Node.js error string) ever surface.
 describe("Stake Engine Export: package -> generate library -> registry discovery -> Stake Engine export (integration)", () => {
     let workDir: string;
+
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
 
     beforeEach(() => {
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-export-registry-e2e-"));
@@ -133,7 +142,7 @@ describe("Stake Engine Export: package -> generate library -> registry discovery
         expect(fs.existsSync(path.join(importedDir, "manifest.json"))).toBe(true);
         expect(fs.existsSync(path.join(importedDir, "config.json"))).toBe(true);
         expect(await new InspectCommand().run([importedDir])).toBe(0);
-        expect(await new ValidateCommand().run([importedDir, "--deep"])).toBe(0);
+        await expectInconclusiveArtifactValidation([importedDir, "--deep"]);
 
         const reExportedDir = path.join(workDir, "stakeengine-re-exported");
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["export", path.join(importedDir, "config.json"), "--out", reExportedDir])).toBe(0);

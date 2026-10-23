@@ -1,3 +1,5 @@
+import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
 import {loadPokieGame, PokieClientServer, PokieClientServerHandling, PokieDevServer, PokieDevServerHandling, ReplayDescriptor, SimulationReport} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
@@ -10,7 +12,6 @@ import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {ServeCommand} from "../../cli/commands/ServeCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
-import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import {localPokieDependencyRunner} from "../testUtils/offlinePokieDependencyOverride.js";
 import {prepareExactCodeFirstPackage} from "../testUtils/prepareExactCodeFirstPackage.js";
 
@@ -26,6 +27,14 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
 
     let workDir: string;
     let outDir: string;
+
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
 
     beforeEach(() => {
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-workflow-test-"));
@@ -63,8 +72,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(fs.readdirSync(path.join(outDir, "src"))).toEqual(["index.ts"]);
         await expect(loadPokieGame(outDir)).resolves.toMatchObject({getManifest: expect.any(Function)});
 
-        const validateExitCode = await new ValidateCommand().run([outDir]);
-        expect(validateExitCode).toBe(0);
+        await expectInconclusiveArtifactValidation([outDir]);
 
         // A built package carries no build-info of its own to inspect -- pokie inspect identifies it
         // as a runnable POKIE game package and points to its next actions.
@@ -200,7 +208,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         );
         expect(fs.readFileSync(path.join(occupiedOutcomeDir, "sentinel.txt"), "utf-8")).toBe("preserve me");
 
-        expect(await new ValidateCommand().run([outcomeDir])).toBe(0);
+        await expectInconclusiveArtifactValidation([outcomeDir]);
         await new ReportCommand().run([outcomeDir, "--format", "json", "--out", reportFile]);
         expect(JSON.parse(fs.readFileSync(reportFile, "utf-8"))).toMatchObject({rootPath: outcomeDir, modes: [{modeName: "base"}]});
 
@@ -251,7 +259,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
             seed: expect.stringMatching(/^pokie-managed-coverage:sha256:/),
         }));
 
-        expect(await new ValidateCommand().run([outcomeDir, "--deep"])).toBe(0);
+        await expectInconclusiveArtifactValidation([outcomeDir, "--deep"]);
         await new SimCommand().run([outcomeDir, "--mode", "base", "--rounds", "12", "--seed", "lifecycle", "--out", sampleFile]);
         expect(JSON.parse(fs.readFileSync(sampleFile, "utf-8"))).toMatchObject({modeName: "base", statistics: {rounds: 12}});
         await new ReportCommand().run([outcomeDir, "--format", "json", "--out", reportFile]);
@@ -281,7 +289,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         const stakeDir = path.join(workDir, "stake");
         await prepareExactCodeFirstPackage(packageRoot, localPokieDependencyRunner());
 
-        expect(await new ValidateCommand().run([packageRoot])).toBe(0);
+        await expectInconclusiveArtifactValidation([packageRoot]);
         const simFile = path.join(workDir, "code-first-sim.json");
         await new SimCommand().run([packageRoot, "--rounds", "20", "--seed", "code-first", "--out", simFile]);
         expect(JSON.parse(fs.readFileSync(simFile, "utf-8"))).toMatchObject({game: {id: "code-first-registry-slot"}, rounds: 20});

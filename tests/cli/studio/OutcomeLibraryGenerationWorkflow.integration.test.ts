@@ -1,3 +1,4 @@
+import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {ArtifactConversionPlan, computeWeightedOutcomeLibraryHash, OutcomeLibraryBundleReader, OutcomeLibraryBundleWriter, OutcomeLibraryBundleWriting, generateWeightedOutcomeLibrary, loadPokieGame, releasePokieGame} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
@@ -93,6 +94,14 @@ function expectEquivalentPreflight(
 
 describe("Outcome Library CLI and Studio generation (integration)", () => {
     let root: string;
+
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
 
     beforeEach(() => {
         root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-outcome-parity-"));

@@ -43,19 +43,38 @@ describe("StakeAdapterArtifactBuilder", () => {
         fs.rmSync(destinationDir, {recursive: true, force: true});
     });
 
-    it("republishes an already-exported Stake directory with file progress, byte-identically", async () => {
+    it("republishes a numeric Stake directory with file progress and unchanged exchange files", async () => {
         const builder = new StakeAdapterArtifactBuilder("1.3.0");
 
         const progress: ArtifactBuildProgress[] = [];
         const result = await builder.build(stakeAdapterProjectOf(sourceDir), destinationDir, {onProgress: event => progress.push(event)});
-        const files = progress.filter(event => event.phase === "Publishing exact Stake files");
+        const files = progress.filter(event => event.phase === "Publishing Stake files");
         expect(files.length).toBe(fs.readdirSync(destinationDir).length);
         expect(files.map(event => event.completed)).toEqual(files.map((_, index) => BigInt(index + 1)));
         expect(files.every(event => event.unit === "files" && event.total === BigInt(files.length))).toBe(true);
 
         expect(result.outputPath).toBe(destinationDir);
         expect(new Set(fs.readdirSync(destinationDir))).toEqual(new Set(fs.readdirSync(sourceDir)));
-        expect(fs.readFileSync(path.join(destinationDir, "index.json"), "utf-8")).toBe(fs.readFileSync(path.join(sourceDir, "index.json"), "utf-8"));
+        for (const name of fs.readdirSync(sourceDir).filter(file => file !== "pokie-manifest.json")) {
+            expect(fs.readFileSync(path.join(destinationDir, name))).toEqual(fs.readFileSync(path.join(sourceDir, name)));
+        }
+    });
+
+    it("preserves exact UInt64 Stake bytes and file-local progress", async () => {
+        const index = JSON.parse(fs.readFileSync(path.join(sourceDir, "index.json"), "utf8")) as {modes: {weights: string}[]};
+        for (const mode of index.modes) {
+            const weights = path.join(sourceDir, mode.weights);
+            fs.writeFileSync(weights, fs.readFileSync(weights, "utf8").replace(/^(\d+),\d+/gm, "$1,9007199254740992"));
+        }
+        const progress: ArtifactBuildProgress[] = [];
+        const result = await new StakeAdapterArtifactBuilder("1.3.0").build(stakeAdapterProjectOf(sourceDir), destinationDir, {onProgress: event => progress.push(event)});
+        const files = fs.readdirSync(sourceDir);
+        expect(result.outputPath).toBe(destinationDir);
+        expect(fs.readdirSync(destinationDir)).toEqual(files);
+        for (const file of files) expect(fs.readFileSync(path.join(destinationDir, file))).toEqual(fs.readFileSync(path.join(sourceDir, file)));
+        const samples = progress.filter(event => event.phase === "Publishing exact Stake files");
+        expect(samples.map(event => event.completed)).toEqual(files.map((_, index) => BigInt(index + 1)));
+        expect(samples.every(event => event.unit === "files" && event.total === BigInt(files.length))).toBe(true);
     });
 
     it("validates a readable Stake source without creating a destination", async () => {

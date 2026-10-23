@@ -1,4 +1,4 @@
-import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
 import {
     ArtifactBuildCancelledError,
     ArtifactBuilder,
@@ -86,6 +86,14 @@ describe("BuildCommand", () => {
     let logSpy: jest.SpyInstance;
     let errorSpy: jest.SpyInstance;
 
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     beforeEach(() => {
         logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
         errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
@@ -108,7 +116,7 @@ describe("BuildCommand", () => {
         try {
             const checked = expect(new BuildCommand("1.3.0").run([fixture.source, "--target", target, "--out", path.join(root, "output")]))
                 .rejects.toBeInstanceOf(ArtifactBuildCancelledError);
-            await fixture.readStarted;
+            await fixture.waitForRead(checked);
             expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
             expect(process.listenerCount("SIGINT")).toBe(listeners + 1);
             process.emit("SIGINT");
@@ -142,7 +150,7 @@ describe("BuildCommand", () => {
             try {
                 const running = command.run([fixture.source, "--target", target, "--out", path.join(root, "output"), "--dry-run"]);
                 const checked = cancel ? expect(running).rejects.toBeInstanceOf(ArtifactBuildCancelledError) : expect(running).resolves.toBe(0);
-                await fixture.readStarted;
+                await fixture.waitForRead(checked);
                 expect(fixture.readCount).toBe(2);
                 expect(validate).toHaveBeenCalledTimes(1);
                 expect(validate.mock.calls[0][2]?.packageExtraction?.status).toBe("complete");
@@ -184,7 +192,7 @@ describe("BuildCommand", () => {
             try {
                 const checked = expect(new BuildCommand("1.3.0").run([fixture.source, "--target", target, "--out", path.join(root, "output"), "--dry-run"]))
                     .rejects.toThrow(/Package extraction malformed:.*manifest/);
-                await fixture.readStarted;
+                await fixture.waitForRead(checked);
                 fixture.settle();
                 await checked;
                 expect(logSpy.mock.calls.flat().join("\n")).not.toContain("Dry run -- would build");

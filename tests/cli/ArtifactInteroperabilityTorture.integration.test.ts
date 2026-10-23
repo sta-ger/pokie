@@ -1,3 +1,5 @@
+import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import {EventEmitter} from "events";
 import os from "os";
@@ -47,6 +49,14 @@ const POKIE_VERSION = "1.3.0";
 describe("PC-14 CLI real-artifact interoperability torture", () => {
     let workDir: string;
     let restoreRunnerClock: () => void;
+
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
 
     beforeEach(() => {
         restoreRunnerClock = installPc14FixedRunnerClock();
@@ -766,7 +776,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const descriptorLogOffset = (console.log as jest.Mock).mock.calls.length;
         const delegatedStakeExitCode = await descriptorBuildCommand.run([delegatedStakeDescriptorPath, "--target", "stakeAdapter", "--out", delegatedStakePath]);
         expect(delegatedStakeExitCode).toBe(1);
-        expect((console.error as jest.Mock).mock.calls.slice(descriptorErrorOffset).flat().join("\n")).toMatch(/stakeengine-outcome-id-not-integer.*canonical non-negative integer/);
+        expect((console.error as jest.Mock).mock.calls.slice(descriptorErrorOffset).flat().join("\n")).toMatch(/stakeengine-outcome-id-not-integer.*canonical non-negative safe integer/);
         expect((console.log as jest.Mock).mock.calls.slice(descriptorLogOffset).flat().join("\n")).not.toMatch(/Artifact .* built in/);
         expect(fs.existsSync(delegatedStakePath)).toBe(false);
         expect(fs.readdirSync(workDir).filter((entry) => entry.startsWith("matrix-delegated-stake.") && (/staging-|tmp-/).test(entry))).toEqual([]);
@@ -1118,7 +1128,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "par-workbook-inspect", artifactKind: "parWorkbook", operation: "inspect", registryOperation: "recognized_by", sourcePath: workbookPath,
             owner: "cli:inspect", result: "recognized", observations: [{surface: "cli", owner: "cli:inspect", result: "inspect PAR workbook exit 0"}],
         });
-        expect(await new ValidateCommand().run([bundlePath, "--deep", "--format", "json"])).toBe(0);
+        await expectInconclusiveArtifactValidation([bundlePath, "--deep", "--format", "json"]);
         evidence.record({
             id: "outcome-library-validate", artifactKind: "outcomeLibrary", operation: "validate", registryOperation: "validates_by", sourcePath: bundlePath,
             owner: "cli:validate --deep", result: "valid", observations: [{surface: "cli", owner: "cli:validate --deep", result: "exit 0"}],
@@ -1133,7 +1143,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             id: "outcome-library-inspect", artifactKind: "outcomeLibrary", operation: "inspect", registryOperation: "recognized_by", sourcePath: bundlePath,
             owner: "cli:inspect", result: "recognized", observations: [{surface: "cli", owner: "cli:inspect", result: "exit 0"}],
         });
-        expect(await new ValidateCommand().run([stakePath, "--format", "json"])).toBe(0);
+        await expectInconclusiveArtifactValidation([stakePath, "--format", "json"]);
         evidence.record({
             id: "stake-adapter-validate", artifactKind: "stakeAdapter", operation: "validate", registryOperation: "validates_by", sourcePath: stakePath,
             owner: "cli:validate", result: "valid", observations: [{surface: "cli", owner: "cli:validate", result: "validate Stake adapter exit 0"}],

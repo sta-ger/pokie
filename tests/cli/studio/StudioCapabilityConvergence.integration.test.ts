@@ -1,12 +1,22 @@
+import {createPackageExtractionTestEnvironment, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
+import {ParSheetImporter} from "../../../src/parsheet/ParSheetImporter.js";
 import {ParSheetExporter} from "../../../src/parsheet/ParSheetExporter.js";
 
 describe("Studio capability convergence (integration)", () => {
     let workDir: string;
+
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
 
     beforeEach(() => {
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-capability-convergence-"));
@@ -99,18 +109,37 @@ describe("Studio capability convergence (integration)", () => {
             game: {id: blueprint.manifest.id},
         });
 
-        // Both adapters reject the same missing prerequisite: a generated
-        // package cannot become a PAR workbook.  The CLI exception and
-        // Studio's structured diagnostic are the distinct public forms of
-        // the canonical planner decision.
+        // A complete public package descriptor now supports PAR through the shared
+        // package -> Blueprint extraction edge. Both callers must retain that path.
         const packagePath = outputFor("cli", "tsPackage");
-        await expect(new BuildCommand("1.3.0").run([
-            packagePath, "--target", "parWorkbook", "--out", path.join(workDir, "unavailable.xlsx"),
-        ])).rejects.toThrow(/Missing prerequisite: a Game Blueprint or PAR workbook/);
-        await expect(service.build(packagePath, "parWorkbook", path.join(workDir, "studio-unavailable.xlsx"))).resolves.toMatchObject({
-            status: "unsupported",
-            target: "parWorkbook",
-            plan: {status: "unavailable", diagnostic: {failedEdge: {from: "tsPackage", to: "parWorkbook"}}},
+        const packageBytes = fs.readFileSync(path.join(packagePath, "dist", "index.js"));
+        const cliWorkbook = path.join(workDir, "package-cli.xlsx");
+        const studioWorkbook = path.join(workDir, "package-studio.xlsx");
+        expect(await new BuildCommand("1.3.0").run([
+            packagePath, "--target", "parWorkbook", "--out", cliWorkbook,
+        ])).toBe(0);
+        await expect(service.build(packagePath, "parWorkbook", studioWorkbook)).resolves.toMatchObject({
+            status: "ok", target: "parWorkbook", outputPath: studioWorkbook,
+            plan: {packageExtraction: {status: "complete"}},
         });
+        for (const workbook of [cliWorkbook, studioWorkbook]) {
+            const imported = await new ParSheetImporter().importFromFile(workbook);
+            expect(imported.blueprint).toMatchObject(blueprint);
+            expect(imported.issues.filter(issue => issue.severity === "error")).toEqual([]);
+        }
+        expect(fs.readFileSync(path.join(packagePath, "dist", "index.js"))).toEqual(packageBytes);
+
+        // A legacy executable without a public descriptor remains unavailable;
+        // no fallback may infer a model merely because the package can execute.
+        const legacyPath = writeDescriptorPackage(workDir, {legacy: true});
+        const unavailable = path.join(workDir, "unavailable.xlsx");
+        await expect(new BuildCommand("1.3.0").run([
+            legacyPath, "--target", "parWorkbook", "--out", unavailable,
+        ])).rejects.toThrow(/extraction|descriptor/i);
+        await expect(service.build(legacyPath, "parWorkbook", unavailable)).resolves.toMatchObject({
+            status: "unsupported", target: "parWorkbook",
+            plan: {status: "unavailable", packageExtraction: {status: "unsupported"}},
+        });
+        expect(fs.existsSync(unavailable)).toBe(false);
     });
 });

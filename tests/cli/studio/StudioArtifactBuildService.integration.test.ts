@@ -1,3 +1,4 @@
+import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -24,6 +25,14 @@ describe("StudioArtifactBuildService (integration)", () => {
             lockName: "compiled-runtime",
             command: ["npm", "run", "build-test-runtime"],
         });
+    });
+
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
     });
 
     beforeEach(() => {
