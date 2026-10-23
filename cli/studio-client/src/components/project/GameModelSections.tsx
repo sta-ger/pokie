@@ -1,7 +1,7 @@
 import {validateAuthoredMechanics} from "../../../../../src/generated/validateAuthoredMechanics";
 import {ExistingMechanicsFieldset} from "../blueprintEditor/ExistingMechanicsFieldset";
 import {PackageExtractionDiagnostics} from "./PackageExtractionDiagnostics";
-import {Badge, Button, Group, NumberInput, Table, Tabs, Text} from "@mantine/core";
+import {Badge, Button, Group, NativeSelect, NumberInput, Table, Tabs, Text} from "@mantine/core";
 import {getReelGenerationMode} from "../../domain/blueprintFormOps";
 import {useState} from "react";
 import type {
@@ -219,7 +219,9 @@ function UnresolvedReelNotice({reel, includeDiagnostics = false}: {reel: GameMod
     return (
         <div>
             <Text size="sm" c="red" mb="xs">
-                This reel couldn&apos;t be generated. Check its generation settings, then try viewing the Game Model again.
+                {reel.source === "weighted"
+                    ? "This reel has no positive-weight variant to inspect. Check its whole-sequence settings, then try viewing the Game Model again."
+                    : "This reel couldn't be generated. Check its generation settings, then try viewing the Game Model again."}
             </Text>
             <TechnicalDetails reason={reel.reason} diagnostics={includeDiagnostics ? reel.generationDiagnostics : undefined} />
         </div>
@@ -335,37 +337,74 @@ function isResolvedReel(reel: GameModelReel): reel is GameModelResolvedReel {
     return "positions" in reel;
 }
 
-// This reel's own window column starting at `stop`, wrapping circularly -- the exact same modulo
+// A resolved strip or explicitly inspected variant starting at `stop`, wrapping circularly -- the same modulo
 // resolution ReelStrip.getSymbolAt uses server-side (see GameModelGameWindow's own doc comment), computed
 // here purely so the Game Window view can move its own stop client-side without a round trip for every
-// position: `positions` already carries every stop this reel could ever show (see GameModelReels.reels).
-function reelWindowColumn(reel: GameModelReel, stop: number, rows: number): GameModelReelWindowCell[] {
-    if (!isResolvedReel(reel) || reel.positions.length === 0 || rows <= 0) {
+// position: the projection already carries the complete ordered symbols.
+function reelWindowColumn(positions: readonly GameModelReelWindowCell[], stop: number, rows: number): GameModelReelWindowCell[] {
+    if (positions.length === 0 || rows <= 0) {
         return [];
     }
-    const length = reel.positions.length;
+    const length = positions.length;
     const normalizedStop = ((stop % length) + length) % length;
-    return Array.from({length: rows}, (_, rowOffset) => reel.positions[(normalizedStop + rowOffset) % length]);
+    return Array.from({length: rows}, (_, rowOffset) => positions[(normalizedStop + rowOffset) % length]);
 }
 
 // Game window: this project's own reel grid, [reelIndex][rowIndex], read at a user-movable stop position
-// -- computed from each reel's own full circular `positions` (see GameModelReels.reels) rather than the
-// projection's own gameWindow.grid, which is always fixed at stop 0. Every reel shares the same `stop`
+// -- computed from each reel's own full circular positions or explicitly inspected whole-sequence
+// variant rather than gameWindow.grid, which has no selected variant and is fixed at stop 0. Every reel shares the same `stop`
 // (a single scrub control, not one per reel) purely so moving it reads as one coherent spin outcome to
 // inspect; each reel's own window still wraps independently around its own length via reelWindowColumn
 // above. Wild/scatter cells are highlighted as the window's own overlay.
-function GameWindowView({gameWindow, reels}: {gameWindow: GameModelGameWindow; reels: GameModelReel[]}) {
+function GameWindowView({gameWindow, reels, symbols}: {gameWindow: GameModelGameWindow; reels: GameModelReel[]; symbols: GameModelSymbol[]}) {
     const [stop, setStop] = useState(0);
-    if (gameWindow.reels === 0 || reels.every((reel) => !isResolvedReel(reel) || reel.positions.length === 0)) {
+    const [inspectionVariants, setInspectionVariants] = useState<Record<number, string>>({});
+    if (gameWindow.reels === 0 || reels.length === 0) {
         return <EmptyState message="No reels configured yet." />;
     }
-    const grid = reels.map((reel) => reelWindowColumn(reel, stop + Math.floor(gameWindow.screenGeometry?.visible.rowOffset ?? 0), gameWindow.rows));
+    // Keep only the reader's choice of ID. Symbols and eligibility always come
+    // from the current projection, including after an edit or project switch.
+    const inspectedVariant = (reel: GameModelReel) => reel.weightedVariants?.find(variant => variant.id === inspectionVariants[reel.reelIndex] && variant.weight > 0)
+        ?? reel.weightedVariants?.find(variant => variant.weight > 0);
+    const weightedReels = reels.filter(reel => reel.weightedVariants !== undefined);
+    const grid = reels.map((reel) => {
+        const positions = isResolvedReel(reel) ? reel.positions : inspectedVariant(reel)?.symbols.map(symbolId => {
+            const symbol = symbols.find(item => item.id === symbolId);
+            return {symbolId, isWild: symbol?.isWild ?? false, isScatter: symbol?.isScatter ?? false};
+        }) ?? [];
+        return reelWindowColumn(positions, stop + Math.floor(gameWindow.screenGeometry?.visible.rowOffset ?? 0), gameWindow.rows);
+    });
     return (
         <div>
+            {weightedReels.length > 0 && <>
+                <Text size="sm" c="dimmed" mb="sm">
+                    Inspection only: choose a whole-sequence variant for each weighted reel. During play, the runtime
+                    selects a variant once per logical round using its relative weight. These choices do not change
+                    the saved design or predict the next round.
+                </Text>
+                <Group gap="sm" mb="sm" align="end">
+                    {weightedReels.map(reel => <NativeSelect
+                        key={reel.reelIndex}
+                        label={`Reel ${reel.reelIndex + 1} inspection variant`}
+                        value={inspectedVariant(reel)?.id ?? ""}
+                        disabled={inspectedVariant(reel) === undefined}
+                        data={reel.weightedVariants!.map(variant => ({value: variant.id, label: `${variant.id} (relative weight ${variant.weight})`, disabled: variant.weight <= 0}))}
+                        onChange={event => {
+                            const id = event.currentTarget.value;
+                            setInspectionVariants(current => ({...current, [reel.reelIndex]: id}));
+                        }}
+                    />)}
+                </Group>
+            </>}
+            {reels.filter((reel): reel is GameModelUnresolvedReel => !isResolvedReel(reel) && inspectedVariant(reel) === undefined).map(reel => (
+                <PageSection key={reel.reelIndex} legend={`Reel ${reel.reelIndex + 1}`}>
+                    <UnresolvedReelNotice reel={reel} />
+                </PageSection>
+            ))}
             <Text size="sm" c="dimmed" mb="sm">
                 {gameWindow.reels} reel column(s) × {gameWindow.rows} row(s) (row 0 on top) -- every reel wraps back
-                to its own start once it runs past its own end. Move the stop position below to see every window
-                this configuration can show. Wild/scatter symbols are highlighted.
+                to its own start once it runs past its own end. Move the stop position below to inspect the current
+                strips or chosen variants. Wild/scatter symbols are highlighted.
             </Text>
             {gameWindow.screenGeometry && <Text size="sm" mb="sm">Generated rows: {gameWindow.screenGeometry.generated.rows}. Visible offset: {gameWindow.screenGeometry.visible.rowOffset}. Evaluation rows: {gameWindow.screenGeometry.evaluated.rows}, starting at generated row {gameWindow.screenGeometry.evaluated.rowOffset}. Paylines use evaluation-local rows.</Text>}
             <Group gap="xs" mb="sm" wrap="nowrap">
@@ -385,7 +424,7 @@ function GameWindowView({gameWindow, reels}: {gameWindow: GameModelGameWindow; r
                 </Button>
             </Group>
             <Table.ScrollContainer minWidth={200}>
-                <Table withColumnBorders>
+                <Table withColumnBorders aria-label="Inspected game window">
                     <Table.Tbody>
                         {Array.from({length: gameWindow.rows}, (_, rowIndex) => (
                             <Table.Tr key={rowIndex}>
@@ -592,7 +631,7 @@ function AnalysisView({reels, sharedWeightsSample}: {reels: GameModelReel[]; sha
 // own doc comment) -- an explicit note plus each view's own "sample" labeling, a "New sample" reroll, and
 // (when `sampleControls` wires it up) an explicit "Convert to generated reels" action make that
 // unmistakable rather than ever presenting the sample as a fixed strip.
-function ReelsSection({section, sampleControls}: {section: GameModelSection<GameModelReels>; sampleControls?: GameModelReelsSampleControls}) {
+function ReelsSection({section, sampleControls, symbols}: {section: GameModelSection<GameModelReels>; sampleControls?: GameModelReelsSampleControls; symbols: GameModelSymbol[]}) {
     if (section.status === "unavailable") {
         return <UnavailableSection reason={section.reason} />;
     }
@@ -639,7 +678,7 @@ function ReelsSection({section, sampleControls}: {section: GameModelSection<Game
                     <Tabs.Tab value="analysis">Analysis</Tabs.Tab>
                 </Tabs.List>
                 <Tabs.Panel value="gameWindow" pt="sm">
-                    <GameWindowView gameWindow={data.gameWindow} reels={data.reels} />
+                    <GameWindowView gameWindow={data.gameWindow} reels={data.reels} symbols={symbols} />
                 </Tabs.Panel>
                 <Tabs.Panel value="fullStrips" pt="sm">
                     <FullStripsView reels={data.reels} />
@@ -875,7 +914,7 @@ export function GameModelSections({
                         <ReelGenerationModeSelector blueprint={edit.blueprint} mutate={edit.mutate} drafts={edit.drafts} modeDrafts={edit.modeDrafts} revision={edit.revision} onDirtyChange={edit.onSequenceDirtyChange} />
                     </fieldset>
                 ) : (
-                    <ReelsSection section={projection.reels} sampleControls={reelsSampleControls} />
+                    <ReelsSection section={projection.reels} sampleControls={reelsSampleControls} symbols={projection.symbols.status === "available" ? projection.symbols.data : []} />
                 )}
             </PageSection>
 
