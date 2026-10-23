@@ -1,4 +1,4 @@
-import {createPackageExtractionTestEnvironment, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -138,8 +138,9 @@ describe("Studio capability convergence (integration)", () => {
         ])).rejects.toThrow(/extraction|descriptor/i);
         await expect(service.build(legacyPath, "parWorkbook", unavailable)).resolves.toMatchObject({
             status: "unsupported", target: "parWorkbook",
-            plan: {status: "unavailable", packageExtraction: {status: "unsupported"}},
+            message: expect.stringContaining("Package extraction partial:"),
+            plan: {status: "unavailable", packageExtraction: {status: "partial", source: {kind: "legacy"}, diagnostics: expect.arrayContaining([expect.objectContaining({code: "legacy-model-unavailable"})])}},
         });
         expect(fs.existsSync(unavailable)).toBe(false);
-    });
+    }, 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
 });

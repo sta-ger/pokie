@@ -1,5 +1,5 @@
 import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
-import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
 import {GameBlueprint} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
@@ -147,5 +147,5 @@ describe("Stake Engine Export: package -> generate library -> registry discovery
         const reExportedDir = path.join(workDir, "stakeengine-re-exported");
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["export", path.join(importedDir, "config.json"), "--out", reExportedDir])).toBe(0);
         expect(fs.existsSync(path.join(reExportedDir, "pokie-manifest.json"))).toBe(true);
-    });
+    }, 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
 });

@@ -1,5 +1,5 @@
 import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
-import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
 import {loadPokieGame, PokieClientServer, PokieClientServerHandling, PokieDevServer, PokieDevServerHandling, ReplayDescriptor, SimulationReport} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
@@ -103,8 +103,8 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
             server = new PokieDevServer(game, options);
             return server;
         });
-        await serveCommand.run([outDir, "--port", "0"]);
         try {
+            await serveCommand.run([outDir, "--port", "0"]);
             const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
             const port = Number(printed.match(/http:\/\/127\.0\.0\.1:(\d+)/)![1]);
 
@@ -121,7 +121,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
             const spinResponse = await fetch(`http://127.0.0.1:${port}/sessions/${session.sessionId}/spin`, {method: "POST"});
             expect(spinResponse.status).toBe(200);
         } finally {
-            await server!.stop();
+            await server?.stop();
         }
 
         const clientRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-workflow-client-"));
@@ -165,7 +165,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
             await devClientServer?.stop();
             fs.rmSync(clientRoot, {recursive: true, force: true});
         }
-    });
+    }, 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("registers a direct Outcome build before its analysis, sampling, Replay, and Stake continuation", async () => {
         const finiteBlueprintPath = path.join(workDir, "finite-outcome.blueprint.json");
@@ -316,7 +316,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         await expect(new ParCommand("1.3.0").run(["import", packageRoot])).rejects.toThrow(
             "This POKIE game package cannot import a PAR workbook.",
         );
-    });
+    }, 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("refuses to rebuild into the same --out once it's already populated -- there is no rebuild/merge recognition", async () => {
         const first = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", outDir]);

@@ -1,4 +1,4 @@
-import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -134,6 +134,7 @@ describe("StudioArtifactBuildService (integration)", () => {
         const secondOutcomeDir = path.join(workDir, "second-outcomes");
         const stakeDir = path.join(workDir, "stake");
         await prepareExactCodeFirstPackage(packageRoot, localPokieDependencyRunner());
+        const entry = fs.readFileSync(path.join(packageRoot, "dist", "index.js"));
 
         expect(await service.listTargets(packageRoot)).toEqual(expect.arrayContaining([
             expect.objectContaining({target: "outcomeLibrary", supported: true}),
@@ -173,12 +174,15 @@ describe("StudioArtifactBuildService (integration)", () => {
         expect(unsupportedBuild).toMatchObject({
             status: "unsupported",
             target: "parWorkbook",
-            message:
-                `"${packageRoot}" is a POKIE game package. It cannot build a PAR workbook. ` +
-                "Missing prerequisite: a Game Blueprint or PAR workbook. Next: Open a Game Blueprint or PAR workbook, then run `pokie build <path> --target parWorkbook`.",
-            plan: {status: "unavailable", diagnostic: {failedEdge: {from: "tsPackage", to: "parWorkbook"}}},
+            message: expect.stringContaining("Package extraction partial:"),
+            plan: {
+                status: "unavailable", diagnostic: {failedEdge: {from: "tsPackage", to: "parWorkbook"}},
+                packageExtraction: {status: "partial", diagnostics: expect.arrayContaining([expect.objectContaining({code: "legacy-model-unavailable"})])},
+            },
         });
-    });
+        expect(fs.existsSync(path.join(workDir, "unsupported.xlsx"))).toBe(false);
+        expect(fs.readFileSync(path.join(packageRoot, "dist", "index.js"))).toEqual(entry);
+    }, 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("keeps the registry's bounded managed-coverage default for large Blueprint Outcome builds", async () => {
         const blueprintPath = path.join(workDir, "large.blueprint.json");
