@@ -9,6 +9,8 @@ export interface DurableJobsObserving {
     recover(id: string, signal: AbortSignal): Promise<StudioJobView>;
 }
 
+export type JobDiscoveryStatus = "pending" | "empty" | "retained" | "failed";
+
 const active = (job: StudioJobView): boolean => job.status === "queued" || job.status === "running" || job.status === "cancelling";
 
 /** An observation cannot undo accepted cancellation or a retained terminal. */
@@ -24,6 +26,7 @@ function observed(previous: StudioJobView | undefined, next: StudioJobView): Stu
 
 /** Shared transport recovery, with project/source scoping left to each API adapter. */
 export function useDurableJobs(port: DurableJobsObserving, scope: string | undefined, generation = 0) {
+    const [discovery, setDiscovery] = useState<{scope: string | undefined; status: "pending" | "complete" | "failed"}>({scope, status: "pending"});
     const [jobs, setJobs] = useState<StudioJobView[]>([]);
     const [connectionError, setConnectionError] = useState<string>();
     const [actionError, setActionError] = useState<string>();
@@ -67,10 +70,12 @@ export function useDurableJobs(port: DurableJobsObserving, scope: string | undef
                 // A transiently incomplete list never erases known durable work.
                 return merged.sort((left, right) => right.createdAt - left.createdAt);
             });
+            setDiscovery({scope, status: "complete"});
             setConnectionError(undefined);
         } catch (error: unknown) {
             if (token === owner.current && sequence === listSequence.current) {
-                setConnectionError(`Connection to Studio lost. Known work is retained; reconnecting automatically. ${errorMessage(error)}`);
+                setDiscovery(previous => previous.scope === scope && previous.status === "complete" ? previous : {scope, status: "failed"});
+                setConnectionError(`Connection to Studio lost. ${knownJobs.current.length > 0 ? "Known work is retained" : "Cannot check for retained work"}; reconnecting automatically. ${errorMessage(error)}`);
             }
         }
     }, [port, request, scope]);
@@ -79,6 +84,7 @@ export function useDurableJobs(port: DurableJobsObserving, scope: string | undef
         const token = ++owner.current;
         const ownedRequests = requests.current;
         if (previousScope.current !== scope) {
+            setDiscovery({scope, status: "pending"});
             setJobs([]);
             knownJobs.current = [];
         }
@@ -161,5 +167,14 @@ export function useDurableJobs(port: DurableJobsObserving, scope: string | undef
 
     const cancel = useCallback((id: string) => control(id, "cancel"), [control]);
     const recover = useCallback((id: string) => control(id, "recover"), [control]);
-    return {jobs, refresh, cancel, recover, connectionError, actionError, pendingIds};
+    // Hide the previous scope during the render preceding effect cleanup too:
+    // a consumer's restoration effect must never attach the old project's id.
+    const visibleJobs = discovery.scope === scope ? jobs : [];
+    let discoveryStatus: JobDiscoveryStatus = "empty";
+    if (scope !== undefined) {
+        if (discovery.scope !== scope) discoveryStatus = "pending";
+        else if (discovery.status === "complete") discoveryStatus = visibleJobs.length === 0 ? "empty" : "retained";
+        else discoveryStatus = discovery.status;
+    }
+    return {jobs: visibleJobs, discoveryStatus, refresh, cancel, recover, connectionError, actionError, pendingIds};
 }

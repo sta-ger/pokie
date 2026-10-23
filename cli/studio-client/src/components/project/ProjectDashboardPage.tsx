@@ -679,6 +679,16 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
 
     const simulation = useSimulationPoll();
 
+    const restorableSimulation = commonJobs.jobs.find((job) => job.operation === "simulation");
+    let simulationRestorationMessage: string | undefined;
+    if (simulation.restoringJobId !== undefined || (simulation.canRestore && restorableSimulation !== undefined)) {
+        simulationRestorationMessage = "Reattaching to retained simulation; waiting for its details…";
+    } else if (simulation.canRestore && commonJobs.discoveryStatus === "pending") {
+        simulationRestorationMessage = "Checking for retained simulations…";
+    } else if (simulation.canRestore && commonJobs.discoveryStatus === "failed") {
+        simulationRestorationMessage = "Cannot check retained simulations. Reconnect to Studio before starting another run.";
+    }
+
     // A reload recreates the hook, but the server-owned project-job list
     // remains authoritative. Reattach to an active simulation or its
     // restart-reconciled terminal so the Simulation workflow, rather than
@@ -687,12 +697,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // executor must be represented as recovery-required, never as completed.
     useEffect(() => {
         if (projectKey === undefined || !simulation.canRestore) return;
-        const restorableSimulation = commonJobs.jobs.find((job) => job.operation === "simulation");
         if (restorableSimulation !== undefined) {
             if (restorableSimulation.status === "recovery-required") setRecoveryJob(restorableSimulation);
             simulation.restore(restorableSimulation.id);
         }
-    }, [commonJobs.jobs, projectKey, simulation]);
+    }, [restorableSimulation, projectKey, simulation]);
 
     const [reportsView, setReportsView] = useState<ReportListView>({status: "empty"});
     const [reportsError, setReportsError] = useState<string>();
@@ -783,6 +792,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // Retry uses the hook's retained request and its same rounds preflight.
     const startRun = useCallback(
         (rounds: number, seed: string | undefined, workers: number, modeName?: string, convergence?: StudioSimulationReportListEntry["convergence"]) => {
+            if (simulationRestorationMessage !== undefined) return;
             const roundsError = getSimulationRoundsError(rounds);
             if (roundsError !== null) {
                 setRunAgainNotice(roundsError);
@@ -798,7 +808,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             simulation.run(rounds, seed, workers, modeName, "simulation", convergence);
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [consumeSimulationRecovery, simulation.run],
+        [consumeSimulationRecovery, simulation.run, simulationRestorationMessage],
     );
 
     // Also clears once the *previous* blocking simulation reaches a terminal state on its own (completes,
@@ -1328,6 +1338,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         navigationMessage = `${activeTabLabel} ready`;
     }
 
+    if (activeTab === "simulation" && simulationRestorationMessage !== undefined) {
+        navigationMessage = simulationRestorationMessage;
+    }
+
     if (header.status === "empty") {
         return (
             <AppShellLayout navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}>
@@ -1491,6 +1505,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     key={projectKey ?? "no-project"}
                                     progress={simulation.progress}
                                     error={simulation.error}
+                                    restorationMessage={simulationRestorationMessage}
                                     connectionError={simulation.connectionError}
                                     cancellationRequested={simulation.cancellationRequested}
                                     operation={simulation.operation}
@@ -1602,7 +1617,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     {/* Polling job details belong after the active workflow so
                         progress, throughput and retained terminals cannot move
                         its controls while a user presses them. */}
-                    <JobObservationNotice connectionError={commonJobs.connectionError} actionError={commonJobs.actionError ?? (activeTab !== "simulation" && simulation.error !== undefined ? `Simulation control failed. Try again or reattach to retained work. ${simulation.error}` : undefined)} onReattach={commonJobs.refresh} />
+                    <JobObservationNotice discoveryStatus={commonJobs.discoveryStatus} connectionError={commonJobs.connectionError} actionError={commonJobs.actionError ?? (activeTab !== "simulation" && simulation.error !== undefined ? `Simulation control failed. Try again or reattach to retained work. ${simulation.error}` : undefined)} onReattach={commonJobs.refresh} />
                     {visibleCommonJobs.length > 0 && (
                         <Stack gap="xs" mb="md" aria-labelledby="studio-operations-heading">
                             <Title id="studio-operations-heading" order={3}>Studio operations</Title>

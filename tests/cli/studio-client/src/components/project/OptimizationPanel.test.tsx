@@ -377,3 +377,39 @@ it("V35 optimizer progress renders raw work, indeterminate materialization and t
     expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
     view.unmount();
 });
+
+it("V35 waits for initial discovery before optimization start while support and unrelated job controls remain independent", async () => {
+    let resolveList: ((value: ReturnType<typeof response>) => void) | undefined;
+    const list = new Promise<ReturnType<typeof response>>(resolve => {
+        resolveList = resolve;
+    });
+    const calls: string[] = [];
+    let delayRefresh = false;
+    const fetchImpl: FetchLike = (url, init) => {
+        calls.push(url);
+        if (url === "/api/project/jobs") return delayRefresh ? new Promise(() => { /* routine refresh is still pending */ }) : list;
+        if (url.endsWith("/support")) return Promise.resolve(response({supported: true, reason: "Supported independently", sourceRevision: "revision"}));
+        if (url.endsWith("/start")) return Promise.resolve(response({job: {...completedJob("running"), result: undefined}}));
+        if (init?.method === "POST" && url.endsWith("/cancel")) return Promise.resolve(response({...completedJob("cancelled"), result: undefined}));
+        throw new Error(`Unexpected request ${url}`);
+    };
+    const {unmount} = render(panel(fetchImpl));
+    expect(screen.getByText("Checking for retained work…")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", {name: "Check tuning support"}));
+    await screen.findByText("Supported independently");
+    expect(screen.getByRole("button", {name: "Run optimization"})).toBeDisabled();
+    // A simulation card must not block an independent optimization after discovery.
+    await act(async () => {
+        resolveList?.(response({jobs: [{...completedJob("running"), id: "other-operation", operation: "simulation", result: undefined}]}));
+        await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByRole("button", {name: "Run optimization"})).toBeEnabled());
+    delayRefresh = true;
+    await userEvent.click(screen.getByRole("button", {name: "Run optimization"}));
+    expect(await screen.findByRole("button", {name: "Cancel optimization"})).toBeEnabled();
+    expect(screen.queryByText("Checking for retained work…")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", {name: "Cancel optimization"}));
+    expect(calls.filter(url => url.endsWith("/start"))).toHaveLength(1);
+    expect(calls).toContain("/api/project/jobs/saved-job/cancel");
+    unmount();
+});

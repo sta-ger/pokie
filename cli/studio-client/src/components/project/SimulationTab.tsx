@@ -41,6 +41,7 @@ export function SimulationTab({
     progress,
     error,
     connectionError,
+    restorationMessage,
     cancellationRequested,
     operation,
     terminalReceipt,
@@ -68,6 +69,8 @@ export function SimulationTab({
     progress: SimulationProgressView | undefined;
     error: string | undefined;
     connectionError?: string;
+    /** Discovery and first-detail restoration must settle before explicit Run. */
+    restorationMessage?: string;
     /** A cancel request accepted locally before the next durable poll catches up. */
     cancellationRequested: boolean;
     /** The rendered public control that started the current durable job. */
@@ -255,6 +258,7 @@ export function SimulationTab({
                 focusedControlRef.current = undefined;
             }
         }}>
+            {restorationMessage !== undefined && <Text role="status" aria-live="polite">{restorationMessage}</Text>}
             {connectionError !== undefined && <ErrorState message={connectionError} />}
             {error !== undefined && <ErrorState message={describeProjectActionError("This simulation request", error)} />}
             {historicalResult && <WarningState message="Historical simulation result — this report is not validated against the current saved design. Run a new simulation before using results for the current design. Downloads retain the original run's data." />}
@@ -296,9 +300,9 @@ export function SimulationTab({
             {activeStep === 0 && (
                 <form
                     data-pokie-lifecycle-form="simulation"
-                    onSubmit={form.onSubmit((values) =>
-                        onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined, capturedConvergence),
-                    )}
+                    onSubmit={form.onSubmit((values) => {
+                        if (restorationMessage === undefined) onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined, capturedConvergence);
+                    })}
                 >
                     {recoveryRequest !== undefined && (
                         <Text role="status" aria-live="polite" size="sm" mb="sm">
@@ -322,7 +326,7 @@ export function SimulationTab({
                             {...form.getInputProps("rounds")}
                             key={form.key("rounds")}
                         />
-                        <Button id="simulation-run" type="submit" data-pokie-lifecycle="operation" data-pokie-transaction-state="editable-submission" data-pokie-lifecycle-operation="simulation" loading={progress?.status === "queued"} disabled={active || !form.isValid()}>
+                        <Button id="simulation-run" type="submit" data-pokie-lifecycle="operation" data-pokie-transaction-state="editable-submission" data-pokie-lifecycle-operation="simulation" loading={progress?.status === "queued"} disabled={restorationMessage !== undefined || active || !form.isValid()}>
                             Run Simulation
                         </Button>
                     </QuickActions>

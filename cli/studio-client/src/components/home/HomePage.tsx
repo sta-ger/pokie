@@ -154,11 +154,11 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
         }
     };
 
-    const homeJobsPanel = homeJobs.jobs.length === 0 && homeJobs.connectionError === undefined && homeJobs.actionError === undefined ? undefined : (
+    const homeJobsPanel = homeJobs.discoveryStatus !== "pending" && homeJobs.jobs.length === 0 && homeJobs.connectionError === undefined && homeJobs.actionError === undefined ? undefined : (
         <Stack gap="xs" mt="lg" aria-label="Home jobs">
             <Title order={3}>Home jobs</Title>
             <Text size="sm" c="dimmed">Retained Design and project-opening work stays visible on every Home section after a reload. Cancel active work or reconstruct a server-supported recovery.</Text>
-            <JobObservationNotice connectionError={homeJobs.connectionError} actionError={homeJobs.actionError} onReattach={homeJobs.refresh} />
+            <JobObservationNotice discoveryStatus={homeJobs.discoveryStatus} connectionError={homeJobs.connectionError} actionError={homeJobs.actionError} onReattach={homeJobs.refresh} />
             {recoveryOpeningError !== undefined && <Alert role="alert" color="red">{recoveryOpeningError}</Alert>}
             {homeJobs.jobs.map((job) =>
                 <JobCard key={job.id} job={job} cancellationPending={homeJobs.pendingIds.includes(job.id)} onCancel={homeJobs.cancel} onRecover={homeJobs.recover} onRecoveryAction={handleHomeRecoveryAction} onOpenOutput={(outputPath) => {

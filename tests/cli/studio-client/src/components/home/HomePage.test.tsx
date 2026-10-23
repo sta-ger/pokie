@@ -722,3 +722,40 @@ describe("HomePage", () => {
         expect(await screen.findByRole("heading", {name: "A"})).toBeInTheDocument();
     });
 });
+
+it("V35 shows retained-work discovery on Home without blocking independent navigation, then retains a known card through refresh failure", async () => {
+    let settle: ((value: {ok: boolean; status: number; json: () => Promise<unknown>}) => void) | undefined;
+    let reject: ((error: Error) => void) | undefined;
+    const base = createRoutedFakeFetch(retainedOpeningRoutes());
+    const fetchImpl: import("../../../../../../cli/studio-client/src/api/apiClient").FetchLike = (url, init) => {
+        if (url === "/api/home/jobs") return new Promise((resolve, fail) => {
+            settle = resolve;
+            reject = fail;
+        });
+        return base.fetchImpl(url, init);
+    };
+    const {unmount} = renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
+    await screen.findByText("Checking for retained work…");
+    expect(sectionsNav().getByRole("button", {name: "Start a game"})).toBeEnabled();
+    await act(async () => {
+        settle?.({ok: true, status: 200, json: () => Promise.resolve({jobs: [{
+            id: "home-discovered", projectId: "/game", operation: "design-build", request: {}, conflictKey: "build",
+            status: "completed", createdAt: 1, result: {summary: "Retained build finished"},
+        }]})});
+        await Promise.resolve();
+    });
+    await screen.findByRole("region", {name: "design-build job home-discovered"});
+    expect(screen.queryByText("Checking for retained work…")).not.toBeInTheDocument();
+    await waitFor(() => expect(reject).toBeDefined());
+    // The next routine list owns a distinct deferred request.
+    const firstReject = reject;
+    await waitFor(() => expect(reject).not.toBe(firstReject));
+    await act(async () => {
+        reject?.(new Error("refresh disconnected"));
+        await Promise.resolve();
+    });
+    await screen.findByText(/refresh disconnected/);
+    expect(screen.getByRole("region", {name: "design-build job home-discovered"})).toHaveTextContent("Retained build finished");
+    expect(sectionsNav().getByRole("button", {name: "Start a game"})).toBeEnabled();
+    unmount();
+});

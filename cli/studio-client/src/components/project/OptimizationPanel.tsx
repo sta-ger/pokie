@@ -1,3 +1,4 @@
+import {JobObservationNotice} from "../common/JobObservationNotice";
 import {OptimizationPreview} from "./OptimizationPreview";
 import {Alert, Button, Code, Stack, Text, Textarea, TextInput, Title} from "@mantine/core";
 import {useEffect, useRef, useState} from "react";
@@ -81,7 +82,9 @@ export function OptimizationPanel({projectRoot, jobs, onApplied}: {
     }
     const result = matchesRequest ? (job?.result?.detail as StudioOptimizationResult | undefined) : undefined;
     const active = job !== undefined && ["queued", "running", "cancelling"].includes(job.status);
+    const discoveryUnresolved = started === undefined && (jobs.discoveryStatus === "pending" || jobs.discoveryStatus === "failed");
     const action = async (kind: "support" | "start" | "save" | "apply"): Promise<void> => {
+        if (kind === "start" && discoveryUnresolved) return;
         const current = ++generation.current;
         controller.current?.abort();
         controller.current = new AbortController();
@@ -170,7 +173,7 @@ export function OptimizationPanel({projectRoot, jobs, onApplied}: {
                 </Alert>
             )}
             <Button
-                disabled={busy || active || !support?.supported}
+                disabled={busy || active || discoveryUnresolved || !support?.supported}
                 onClick={() => {
                     action("start");
                 }}
@@ -208,8 +211,7 @@ export function OptimizationPanel({projectRoot, jobs, onApplied}: {
             )}
             {job?.error && <Alert color="red" role="alert">{job.error}</Alert>}
             {job?.recovery && <Alert color="yellow" role="alert">Recovery ({job.recovery.action}): {job.recovery.reason}</Alert>}
-            {jobs.connectionError && <Alert color="red" role="alert">{jobs.connectionError}</Alert>}
-            {jobs.actionError && <Alert color="red" role="alert">{jobs.actionError}</Alert>}
+            <JobObservationNotice discoveryStatus={jobs.discoveryStatus} connectionError={jobs.connectionError} actionError={jobs.actionError} onReattach={jobs.refresh} />
             {!applied && !job?.result?.provenance?.authoredApply && result?.candidate && ["success", "attained", "inconclusive", "exhausted"].includes(result.status) && job?.status === "completed" && (
                 <>
                     { ["blueprint", "parWorkbook", "tsPackage"].includes(result.candidate.type) && <Button disabled={busy} onClick={() => {
