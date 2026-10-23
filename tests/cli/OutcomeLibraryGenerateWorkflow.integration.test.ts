@@ -217,6 +217,10 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         const packageRoot = await buildPackage(finiteBlueprint("raw-publication-cancel-slot"), "raw-publication-package");
         const rawLibrary = path.join(workDir, "cancelled-raw.json");
         const fakeProcess = new EventEmitter() as unknown as NodeJS.Process;
+        const command = new OutcomeLibraryCommand(
+            "1.3.0", undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, fakeProcess,
+        );
         const originalOpen = fs.openSync;
         let cancelled = false;
         const openSync = jest.spyOn(fs, "openSync").mockImplementation(((...args: Parameters<typeof fs.openSync>) => {
@@ -228,24 +232,29 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
             return descriptor;
         }) as typeof fs.openSync);
         try {
-            const command = new OutcomeLibraryCommand(
-                "1.3.0", undefined, undefined, undefined, undefined, undefined,
-                undefined, undefined, undefined, undefined, undefined, fakeProcess,
-            );
             expect(await command.run(["generate", packageRoot, "--exact", "--out", rawLibrary])).toBe(130);
             expect(cancelled).toBe(true);
+            expect(fakeProcess.listenerCount("SIGINT")).toBe(0);
             expect(fs.existsSync(rawLibrary)).toBe(false);
             expect(fs.readdirSync(workDir).some((entry) => entry.includes(".cancelled-raw.json.pokie-"))).toBe(false);
-
-            // Cancellation has no durable checkpoint or hidden staging to
-            // resume, so the public retry starts cleanly and owns the exact
-            // destination it publishes.
-            expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", rawLibrary])).toBe(0);
-            expect(readLibrary(rawLibrary).outcomes).toHaveLength(4);
         } finally {
             openSync.mockRestore();
         }
-    });
+
+        // Retry through the same public command after removing the cancellation
+        // probe; it must not keep intercepting the retry's runtime snapshot and
+        // source-binding reads. No checkpoint or hidden staging authorizes reuse.
+        expect(await command.run(["generate", packageRoot, "--exact", "--out", rawLibrary])).toBe(0);
+        expect(fakeProcess.listenerCount("SIGINT")).toBe(0);
+        const library = readLibrary(rawLibrary);
+        expect(library.outcomes).toHaveLength(4);
+        expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(6);
+        expect(new WeightedOutcomeLibraryValidator().validate(library).filter((issue) => issue.severity === "error")).toEqual([]);
+        expect(fs.readdirSync(workDir).some((entry) => entry.includes(".cancelled-raw.json.pokie-"))).toBe(false);
+        // Both invocations acquire and drain real isolated runtime snapshots.
+        // Budget the cancellation plus complete retry together, including when
+        // direct Jest follows the 614,656-outcome workload with bounded memory.
+    }, 120_000);
 
     it("package -> generate -> validate -> analyze -> bundle: exact weights match the hand-computable fixture", async () => {
         const packageRoot = await buildPackage(finiteBlueprint("exact-cli-slot"), "pkg");
