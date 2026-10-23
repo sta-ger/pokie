@@ -15,7 +15,7 @@ function statusLabel(status: StudioJobView["status"]): string {
 function measuredProgress(progress: StudioJobView["progress"]): {current: bigint; total: bigint} | undefined {
     if (progress === undefined || typeof progress.unit !== "string" || !progress.unit.trim()) return undefined;
     const count = (value: number | string): bigint | undefined => {
-        if (typeof value === "number" ? !Number.isSafeInteger(value) : !(/^[0-9]+$/).test(value)) return undefined;
+        if ((typeof value !== "number" && typeof value !== "string") || (typeof value === "number" ? !Number.isSafeInteger(value) : !(/^[0-9]+$/).test(value))) return undefined;
         try {
             const parsed = BigInt(value);
             return parsed < BigInt(0) ? undefined : parsed;
@@ -32,7 +32,8 @@ function measuredProgress(progress: StudioJobView["progress"]): {current: bigint
 export function JobProgressCard({job, onCancel, cancellationPending = false}: {job: StudioJobView; onCancel?: (id: string) => void; cancellationPending?: boolean}) {
     const [observedAt, setObservedAt] = useState<number | undefined>(undefined);
     const previousProgress = useRef<{id: string; projectId: string; startedAt?: number; stage: string; unit: string; current: bigint; total: bigint; at: number} | undefined>(undefined);
-    const [rate, setRate] = useState<(Pick<StudioJobView, "id" | "projectId" | "startedAt" | "progress"> & {perSecond: number; etaMs: number}) | undefined>();
+    const [rate, setRate] = useState<(Pick<StudioJobView, "id" | "projectId" | "startedAt" | "progress"> & {stage: string; unit: string; current: bigint; total: bigint; perSecond: number; etaMs: number}) | undefined>();
+    const progressCurrent = job.progress?.current;
     useEffect(() => {
         let timer: number | undefined;
         if (job.startedAt !== undefined && job.completedAt === undefined) {
@@ -77,18 +78,18 @@ export function JobProgressCard({job, onCancel, cancellationPending = false}: {j
                 setRate(undefined);
                 return;
             }
-            setRate({id: job.id, projectId: job.projectId, startedAt: job.startedAt, progress, perSecond, etaMs: Number(remaining) / perSecond * 1000});
+            setRate({id: job.id, projectId: job.projectId, startedAt: job.startedAt, progress, stage: progress.stage, unit: progress.unit, current, total, perSecond, etaMs: Number(remaining) / perSecond * 1000});
         } catch {
             previousProgress.current = undefined;
             setRate(undefined);
         }
-    }, [job.id, job.projectId, job.startedAt, job.status, job.progress, cancellationPending]);
+    }, [job.id, job.projectId, job.startedAt, job.status, job.progress, job.progress?.stage, job.progress?.unit, progressCurrent, job.progress?.total, cancellationPending]);
     if (!active(job.status)) return null;
     const progress = job.progress;
     // Effects reset the sampling baseline, but the first committed render
     // already has to exclude another execution, snapshot or cleanup phase.
     const measured = measuredProgress(progress);
-    const visibleRate = measured !== undefined && measured.current < measured.total && job.status === "running" && !cancellationPending && rate?.id === job.id && rate.projectId === job.projectId && rate.startedAt === job.startedAt && rate.progress === progress ? rate : undefined;
+    const visibleRate = measured !== undefined && measured.current < measured.total && job.status === "running" && !cancellationPending && rate?.id === job.id && rate.projectId === job.projectId && rate.startedAt === job.startedAt && rate.progress === progress && rate.stage === progress?.stage && rate.unit === progress?.unit && rate.current === measured.current && rate.total === measured.total ? rate : undefined;
     const percent = measured === undefined ? undefined : Number((measured.current * BigInt(10_000)) / measured.total) / 100;
     const elapsedMs = job.startedAt === undefined ? undefined : (job.completedAt ?? observedAt ?? job.startedAt) - job.startedAt;
     let description = progress?.stage ?? statusLabel(job.status);

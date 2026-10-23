@@ -9,6 +9,7 @@ import type {StudioJobView} from "../../../../../../cli/studio-client/src/api/ty
 describe("JobProgressCard", () => {
     it.each([
         {current: "650", total: "1", unit: "artifacts"},
+        {current: [1] as unknown as string, total: [1] as unknown as string, unit: "files"},
         {current: "650", total: "indeterminate", unit: "outcome records"},
         {current: "2", total: "1", unit: "files"},
         {current: "-1", total: "100", unit: "records"},
@@ -40,6 +41,51 @@ describe("JobProgressCard", () => {
             now = 5_000;
             rendered.rerender(view({...job.progress!, current: "40"}));
             expect(screen.getByText(/Throughput: 10.00 records\/s/)).toBeInTheDocument();
+        } finally {
+            rendered.unmount();
+            clock.mockRestore();
+        }
+    });
+
+    it("binds cached progress rates to captured values when a caller reuses the same mutable sample", () => {
+        let now = 1_000;
+        const clock = jest.spyOn(Date, "now").mockImplementation(() => now);
+        const commits: string[] = [];
+        const job: StudioJobView = {id: "mutable", projectId: "/project", operation: "artifact-build", request: {}, conflictKey: "artifact", status: "running", createdAt: 1};
+        const progress = {stage: "generation", unit: "draws", current: "10", total: "100"};
+        function ObservedCard() {
+            const element = useRef<HTMLDivElement>(null);
+            useLayoutEffect(() => {
+                commits.push(element.current?.textContent ?? "");
+            });
+            return <div ref={element}><JobProgressCard job={{...job, progress}} /></div>;
+        }
+        const view = () => <MantineProvider><ObservedCard /></MantineProvider>;
+        const rendered = render(view());
+        try {
+            now = 2_000;
+            progress.current = "20";
+            rendered.rerender(view());
+            expect(screen.getByText(/Throughput: 10.00 draws\/s/)).toBeInTheDocument();
+            now = 3_000;
+            Object.assign(progress, {stage: "index", unit: "bytes", current: "30"});
+            commits.length = 0;
+            rendered.rerender(view());
+            expect(commits[0]).not.toMatch(/Throughput:|ETA:/);
+            expect(screen.queryByText(/Throughput:/)).toBeNull();
+            now = 4_000;
+            Object.assign(progress, {current: "650", total: "1"});
+            rendered.rerender(view());
+            expect(screen.queryByRole("progressbar")).toBeNull();
+            expect(screen.queryByText(/Throughput:/)).toBeNull();
+            now = 5_000;
+            Object.assign(progress, {current: "40", total: "100"});
+            rendered.rerender(view());
+            expect(screen.queryByText(/Throughput:/)).toBeNull();
+            now = 6_000;
+            progress.current = "50";
+            rendered.rerender(view());
+            expect(screen.getByText(/Throughput: 10.00 bytes\/s/)).toBeInTheDocument();
         } finally {
             rendered.unmount();
             clock.mockRestore();
