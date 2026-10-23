@@ -387,7 +387,10 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         ])).toBe(1);
     }, 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
-    it("uses the declared runtime default as one identity across domain, CLI, and Studio exact/sampled generation", async () => {
+    // Each default owns a complete real-package journey and its own fixture/deadline.
+    // Combining both in one test accumulates their runtime/dependency snapshot I/O
+    // under a single timeout and can tear down the fixture mid-generation.
+    it.each([["base", 1], ["ante", 2]] as const)("uses the declared %s runtime default as one identity across domain, CLI, and Studio exact/sampled generation", async (defaultMode, stake) => {
         const writeRuntimePackage = async (name: string, defaultMode: "base" | "ante"): Promise<string> => {
             const blueprint = path.join(root, `${name}.blueprint.json`);
             const packageRoot = path.join(root, name);
@@ -403,40 +406,38 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
             return packageRoot;
         };
 
-        for (const [defaultMode, stake] of [["base", 1], ["ante", 2]] as const) {
-            const packageRoot = await writeRuntimePackage(`runtime-default-${defaultMode}`, defaultMode);
-            const expectedLibraryId = `runtime-default-${defaultMode}-${defaultMode}`;
-            const game = await loadPokieGame(packageRoot);
-            try {
-                const domain = await generateWeightedOutcomeLibrary({libraryId: expectedLibraryId, game, pokieVersion: "1.3.0", generation: "exact"});
-                expect(domain.library.outcomes.every((outcome) => outcome.artifact.betMode === defaultMode && outcome.artifact.stake === stake)).toBe(true);
-            } finally {
-                await releasePokieGame(game);
-            }
-
-            const cliOutput = path.join(root, `${defaultMode}-default-cli.json`);
-            expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", cliOutput, "--format", "json"])).toBe(0);
-            const cli = JSON.parse(fs.readFileSync(cliOutput, "utf8")) as {libraryId: string; outcomes: Array<{artifact: {betMode: string; stake: number}}>};
-            expect(cli.libraryId).toBe(expectedLibraryId);
-            expect(cli.outcomes.every((outcome) => outcome.artifact.betMode === defaultMode && outcome.artifact.stake === stake)).toBe(true);
-
-            const studio = new StudioOutcomeLibraryGenerateService("1.3.0", loadPokieGame);
-            const exactRequest = {generation: "exact" as const, outDir: `${defaultMode}-default-exact`};
-            const exactPreview = await studio.estimate(packageRoot, exactRequest);
-            if (exactPreview.status !== "ok") throw new Error(`Expected ${defaultMode} default exact preflight, got ${JSON.stringify(exactPreview)}`);
-            await expect(studio.generate(packageRoot, {...exactRequest, preflightToken: exactPreview.preflightToken})).resolves.toMatchObject({status: "ok", mode: {modeName: defaultMode, libraryId: expectedLibraryId}});
-            const exact = await new OutcomeLibraryBundleReader().readLibrary(path.join(packageRoot, exactRequest.outDir), defaultMode);
-            expect(exact.libraryId).toBe(expectedLibraryId);
-            expect(exact.outcomes.every((outcome) => outcome.artifact.betMode === defaultMode && outcome.artifact.stake === stake)).toBe(true);
-
-            const sampledRequest = {generation: "sampled" as const, sample: {sampleSize: BigInt(19), seed: `${defaultMode}-default`}, outDir: `${defaultMode}-default-sampled`};
-            const sampledPreview = await studio.estimate(packageRoot, sampledRequest);
-            if (sampledPreview.status !== "ok") throw new Error(`Expected ${defaultMode} default sampled preflight, got ${JSON.stringify(sampledPreview)}`);
-            await expect(studio.generate(packageRoot, {...sampledRequest, preflightToken: sampledPreview.preflightToken})).resolves.toMatchObject({status: "ok", mode: {modeName: defaultMode, libraryId: expectedLibraryId}});
-            const sampled = await new OutcomeLibraryBundleReader().readLibrary(path.join(packageRoot, sampledRequest.outDir), defaultMode);
-            expect(sampled.libraryId).toBe(expectedLibraryId);
-            expect(sampled.outcomes.every((outcome) => outcome.artifact.betMode === defaultMode && outcome.artifact.stake === stake)).toBe(true);
+        const packageRoot = await writeRuntimePackage(`runtime-default-${defaultMode}`, defaultMode);
+        const expectedLibraryId = `runtime-default-${defaultMode}-${defaultMode}`;
+        const game = await loadPokieGame(packageRoot);
+        try {
+            const domain = await generateWeightedOutcomeLibrary({libraryId: expectedLibraryId, game, pokieVersion: "1.3.0", generation: "exact"});
+            expect(domain.library.outcomes.every((outcome) => outcome.artifact.betMode === defaultMode && outcome.artifact.stake === stake)).toBe(true);
+        } finally {
+            await releasePokieGame(game);
         }
+
+        const cliOutput = path.join(root, `${defaultMode}-default-cli.json`);
+        expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", cliOutput, "--format", "json"])).toBe(0);
+        const cli = JSON.parse(fs.readFileSync(cliOutput, "utf8")) as {libraryId: string; outcomes: Array<{artifact: {betMode: string; stake: number}}>};
+        expect(cli.libraryId).toBe(expectedLibraryId);
+        expect(cli.outcomes.every((outcome) => outcome.artifact.betMode === defaultMode && outcome.artifact.stake === stake)).toBe(true);
+
+        const studio = new StudioOutcomeLibraryGenerateService("1.3.0", loadPokieGame);
+        const exactRequest = {generation: "exact" as const, outDir: `${defaultMode}-default-exact`};
+        const exactPreview = await studio.estimate(packageRoot, exactRequest);
+        if (exactPreview.status !== "ok") throw new Error(`Expected ${defaultMode} default exact preflight, got ${JSON.stringify(exactPreview)}`);
+        await expect(studio.generate(packageRoot, {...exactRequest, preflightToken: exactPreview.preflightToken})).resolves.toMatchObject({status: "ok", mode: {modeName: defaultMode, libraryId: expectedLibraryId}});
+        const exact = await new OutcomeLibraryBundleReader().readLibrary(path.join(packageRoot, exactRequest.outDir), defaultMode);
+        expect(exact.libraryId).toBe(expectedLibraryId);
+        expect(exact.outcomes.every((outcome) => outcome.artifact.betMode === defaultMode && outcome.artifact.stake === stake)).toBe(true);
+
+        const sampledRequest = {generation: "sampled" as const, sample: {sampleSize: BigInt(19), seed: `${defaultMode}-default`}, outDir: `${defaultMode}-default-sampled`};
+        const sampledPreview = await studio.estimate(packageRoot, sampledRequest);
+        if (sampledPreview.status !== "ok") throw new Error(`Expected ${defaultMode} default sampled preflight, got ${JSON.stringify(sampledPreview)}`);
+        await expect(studio.generate(packageRoot, {...sampledRequest, preflightToken: sampledPreview.preflightToken})).resolves.toMatchObject({status: "ok", mode: {modeName: defaultMode, libraryId: expectedLibraryId}});
+        const sampled = await new OutcomeLibraryBundleReader().readLibrary(path.join(packageRoot, sampledRequest.outDir), defaultMode);
+        expect(sampled.libraryId).toBe(expectedLibraryId);
+        expect(sampled.outcomes.every((outcome) => outcome.artifact.betMode === defaultMode && outcome.artifact.stake === stake)).toBe(true);
     }, 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("rejects a corrupted retained mode instead of silently rebuilding it while adding another mode", async () => {
