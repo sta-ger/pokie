@@ -459,6 +459,7 @@ describe("V35-RELOAD-DISCOVERY-STATUS", () => {
         });
         await screen.findByText(/^Simulation cancelled —/);
         expect(screen.queryByText(/Cannot observe this simulation/)).not.toBeInTheDocument();
+        await userEvent.click(screen.getByRole("button", {name: stepperStep("Review", "See results")}));
         expect(screen.getByRole("button", {name: "Repeat simulation"})).toBeEnabled();
     });
 
