@@ -568,7 +568,6 @@ describe("GamePackageGenerator", () => {
         expect(readme).toContain("pokie validate .");
     });
 
-
     it("embeds a short header naming the game and pokie version in dist/index.js, but no blueprint-hash/provenance metadata", () => {
         const generator = new GamePackageGenerator("1.3.0");
 
