@@ -583,8 +583,9 @@ handling](#conflict-handling-an-existing---out-destination) below) — and write
   omitted), a `pokie` dependency, `start`/`server`/`client`/`build` scripts, and `pokie.entry`/`main`/`exports`
   all pointing at `./dist/index.js` — the exact same entry path `pokie init` packages compile their own
   TypeScript source into, written by the exact same shared `buildPackageJsonPatch` those commands use;
-- `package-lock.json`/`tsconfig.json` — the same lockfile seed/compiler config `pokie init` writes (`tsconfig.json`
-  via the same shared `renderTsconfig`), so `npm install && npm run build` behaves identically in a built package;
+- `package-lock.json`/`tsconfig.json` — a lockfile seed matching the generated dependencies and the shared
+  compiler config. CLI/Studio builds persist the running POKIE installation as a `file:` dependency in
+  both manifests, so `npm install && npm run build` also works with an unpublished local candidate;
 - `README.md` — a short orientation doc for the built package itself: what each file is, that `src/index.ts`/
   `dist/index.js` shouldn't be hand-edited, and the `build -> inspect -> validate -> sim -> report -> replay ->
   serve`/`dev` workflow below;
@@ -881,14 +882,17 @@ real build would produce, with no `--out` destination created or touched.
 
 The minimal loop from a blueprint to a running local server, chaining every command this file documents. Unlike
 the [`init` workflow](#workflow) below, there's no `npm run build` step in the middle — `pokie build`
-output is locally loadable immediately through a link to the running POKIE installation. Run `npm install`
-inside the output when moving it to another machine or preparing an independent developer package; the local
-runtime link is not portable. Direct `GamePackageGenerator` library callers must supply/install runtime
-dependencies themselves. No TypeScript compile step is required for the generated entry:
+output is locally loadable immediately through a link to the running POKIE installation. Its `file:`
+dependency keeps a later `npm install` bound to that installation, including unpublished candidates.
+Keep the installation at its recorded location. To move the output to another machine, explicitly
+select an available POKIE archive or installation there before installing developer dependencies;
+see [the package dependency contract](game-packages.md#native-imports-and-moving-a-generated-package) and the generated README.
+Direct `GamePackageGenerator` library callers must supply/install runtime dependencies themselves or
+pass `runtimePackageRoot` in the generation options. No TypeScript compile step is required for the generated entry:
 
 ```
 pokie build examples/blueprints/sample-slot.blueprint.json --target tsPackage --out sample-slot
-# Optional for a portable developer package: cd sample-slot && npm install && cd ..
+# Optional for local developer dependencies: cd sample-slot && npm install && cd ..
 
 pokie inspect ./sample-slot
 

@@ -117,17 +117,28 @@ describe("TsPackageArtifactBuilder", () => {
         await new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(runtimeRoot).build(blueprintProjectOf(blueprintPath), destinationDir);
 
         expect(fs.readlinkSync(path.join(destinationDir, "node_modules", "@fromstan", "pokie"))).toBe(runtimeRoot);
+        const pkg = JSON.parse(fs.readFileSync(path.join(destinationDir, "package.json"), "utf8"));
+        const lock = JSON.parse(fs.readFileSync(path.join(destinationDir, "package-lock.json"), "utf8"));
+        expect(pkg.dependencies["@fromstan/pokie"]).toBe(`file:${runtimeRoot}`);
+        expect(lock.packages[""].dependencies["@fromstan/pokie"]).toBe(`file:${runtimeRoot}`);
     });
 
     it.each([false, true])("cleans a failed scoped runtime link while preserving the original empty destination (%s)", async existed => {
         if (existed) fs.mkdirSync(destinationDir);
+        const builder = new TsPackageArtifactBuilder("2.0.0").withRuntimePackageRoot(dir);
+        await builder.build(blueprintProjectOf(blueprintPath), path.join(dir, "first-success"));
         const link = jest.spyOn(fs, "symlinkSync").mockImplementationOnce(() => {
             throw new Error("scoped link failed");
         });
         try {
-            await expect(new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(dir).build(blueprintProjectOf(blueprintPath), destinationDir)).rejects.toThrow("scoped link failed");
+            await expect(builder.build(blueprintProjectOf(blueprintPath), destinationDir)).rejects.toThrow("scoped link failed");
             expect(fs.existsSync(destinationDir)).toBe(existed);
             if (existed) expect(fs.readdirSync(destinationDir)).toEqual([]);
+            expect(fs.readdirSync(dir).some(entry => entry.startsWith("built-package.tmp-"))).toBe(false);
+            for (const output of [destinationDir, path.join(dir, "second-success")]) {
+                await expect(builder.build(blueprintProjectOf(blueprintPath), output)).resolves.toMatchObject({outputPath: output});
+                expect(JSON.parse(fs.readFileSync(path.join(output, "package.json"), "utf8")).dependencies["@fromstan/pokie"]).toBe(`file:${dir}`);
+            }
         } finally {
             link.mockRestore(); 
         }
@@ -218,7 +229,7 @@ describe("TsPackageArtifactBuilder", () => {
         const messages: string[] = [];
 
         await expect(
-            new TsPackageArtifactBuilder("1.3.0").build(blueprintProjectOf(blueprintPath), destinationDir, {
+            new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(dir).build(blueprintProjectOf(blueprintPath), destinationDir, {
                 signal: controller.signal,
                 onProgress: (progress) => {
                     messages.push(progress.message ?? progress.status);

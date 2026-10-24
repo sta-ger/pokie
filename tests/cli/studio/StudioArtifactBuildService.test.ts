@@ -223,6 +223,26 @@ describe("StudioArtifactBuildService", () => {
         expect(fs.existsSync(path.join(workDir, "legacy.json"))).toBe(false);
     }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
+    it("builds against the supplied unpublished Studio runtime and converts that actual package separately", async () => {
+        const source = writeBlueprintFile();
+        const input = fs.readFileSync(source);
+        const packageRoot = path.join(workDir, "local-runtime-package");
+        const runtimeRoot = process.cwd();
+        const building = new StudioArtifactBuildService("2.0.0", undefined, undefined, undefined, undefined, runtimeRoot);
+        expect(await building.build(source, "tsPackage", packageRoot)).toMatchObject({status: "ok"});
+        expect(JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8")).dependencies["@fromstan/pokie"]).toBe(`file:${runtimeRoot}`);
+        expect(JSON.parse(fs.readFileSync(path.join(packageRoot, "package-lock.json"), "utf8")).packages[""].dependencies["@fromstan/pokie"]).toBe(`file:${runtimeRoot}`);
+        expect(await new StudioProjectRegistrationService().previewImport(packageRoot)).toMatchObject({status: "recognized", type: "tsPackage"});
+        const destination = path.join(workDir, "extracted-local-runtime.json");
+        const preview = await building.preview(packageRoot, "blueprint", destination);
+        expect(preview.status).toBe("ok");
+        expect(preview.plan.packageExtraction?.status).toBe("complete");
+        expect(fs.existsSync(destination)).toBe(false);
+        expect(await building.build(packageRoot, "blueprint", destination)).toMatchObject({status: "ok"});
+        expect(JSON.parse(fs.readFileSync(destination, "utf8")).manifest.id).toBe("sample-slot");
+        expect(fs.readFileSync(source)).toEqual(input);
+    }, 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
+
     it.each(["blueprint", "evidence"])("keeps concurrent %s publication intact and does not register", async member => {
         const source = writeDescriptorPackage(workDir);
         const destination = path.join(workDir, "extracted.json");

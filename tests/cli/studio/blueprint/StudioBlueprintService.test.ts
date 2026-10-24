@@ -1566,6 +1566,28 @@ describe("StudioBlueprintService", () => {
             }
         });
 
+        it.each([false, true])("rolls back local runtime publication and supports repeated explicit reuse (existed=%s)", async existed => {
+            const output = path.join(tmpDir, "local-runtime");
+            if (existed) fs.mkdirSync(output);
+            const runtimeRoot = process.cwd();
+            const service = createService().withRuntimePackageRoot(runtimeRoot);
+            const registration = jest.spyOn(homeService, "rememberRecentProject").mockRejectedValueOnce(new Error("registration failed"));
+            try {
+                expect(await service.build(buildBlueprint(), output)).toMatchObject({status: "error", error: expect.stringContaining("registration failed")});
+                expect(fs.existsSync(output)).toBe(existed);
+                if (existed) expect(fs.readdirSync(output)).toEqual([]);
+                for (const destination of [output, path.join(tmpDir, "local-runtime-again")]) {
+                    const result = await service.build(buildBlueprint(), destination);
+                    expect(result).toMatchObject({status: "ok", createdFiles: expect.arrayContaining(["node_modules/@fromstan/pokie"])});
+                    expect(JSON.parse(fs.readFileSync(path.join(destination, "package.json"), "utf8")).dependencies["@fromstan/pokie"]).toBe(`file:${runtimeRoot}`);
+                    expect(JSON.parse(fs.readFileSync(path.join(destination, "package-lock.json"), "utf8")).packages[""].dependencies["@fromstan/pokie"]).toBe(`file:${runtimeRoot}`);
+                    expect(fs.readlinkSync(path.join(destination, "node_modules/@fromstan/pokie"))).toBe(runtimeRoot);
+                }
+            } finally {
+                registration.mockRestore();
+            }
+        });
+
         it("keeps unrelated user content and reports rollback cleanup failure", async () => {
             const output = path.join(tmpDir, "cleanup-failed");
             const registration = jest.spyOn(homeService, "rememberRecentProject").mockImplementation(() => {

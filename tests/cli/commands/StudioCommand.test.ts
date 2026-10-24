@@ -2,6 +2,7 @@ import {PokieDevServerAddress} from "@fromstan/pokie";
 import path from "path";
 import {StudioCommand} from "../../../cli/commands/StudioCommand.js";
 import {StudioServerOptions} from "../../../cli/studio/StudioServerOptions.js";
+import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 
 function createStubServer(
     address: PokieDevServerAddress,
@@ -47,6 +48,17 @@ describe("StudioCommand", () => {
 
         expect(command.getName()).toBe("studio");
         expect(command.getDescription().length).toBeGreaterThan(0);
+    });
+
+    it("supplies its installed runtime to the sibling editor package builder", () => {
+        const configure = jest.spyOn(StudioBlueprintService.prototype, "withRuntimePackageRoot");
+        try {
+            const command = new StudioCommand("2.0.0", "/installed/pokie");
+            expect(command.getName()).toBe("studio");
+            expect(configure).toHaveBeenCalledWith("/installed/pokie");
+        } finally {
+            configure.mockRestore();
+        }
     });
 
     it("renders the implicit entry as `pokie`, never as a public studio verb", () => {
