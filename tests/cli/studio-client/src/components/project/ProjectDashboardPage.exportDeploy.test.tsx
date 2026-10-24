@@ -1925,18 +1925,18 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         it.each(["known", "unknown"] as const)("renders server preflight and phase-local %s progress before the artifact job completes", async denominator => {
             const user = userEvent.setup();
-            let statusReads = 0;
+            // Keep the job running until its rendered phase has been asserted, even under a slow launcher.
+            let completeBuild = false;
             const fetchImpl: FetchLike = (url, init) => {
                 const [requestPath] = url.split("?");
                 if (requestPath === "/api/project/artifacts/build" && init?.method === "POST") {
                     return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({status: "created", job: {id: "job-1", target: "tsPackage", status: "queued", cancellationRequested: false}})});
                 }
                 if (requestPath === "/api/project/artifacts/build/job-1") {
-                    statusReads += 1;
                     return Promise.resolve({
                         ok: true,
                         status: 200,
-                        json: () => Promise.resolve(statusReads === 1
+                        json: () => Promise.resolve(!completeBuild
                             ? {id: "job-1", target: "tsPackage", status: "running", cancellationRequested: false, progress: {status: "running", phase: "Writing Outcome mode base", unit: "outcome records", completed: "650", ...(denominator === "known" ? {total: "729"} : {}), message: "Writing outcomes", preflight: {estimatedItemCount: "10", estimatedBytes: "20", complexityWarning: "Large publish"}}}
                             : {id: "job-1", target: "tsPackage", status: "completed", cancellationRequested: false, result: {status: "ok", target: "tsPackage", outputPath: "/games/tsPackage", outputKind: "directory", sourceType: "blueprint"}}),
                     });
@@ -1954,7 +1954,13 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             expect(progress).toHaveTextContent("Large publish");
             expect(progress).toHaveTextContent(denominator === "known" ? "(650/729 outcome records)" : "(650 outcome records)");
             expect(progress).not.toHaveTextContent("650/10");
+            expect(within(section).getByRole("button", {name: "Build"})).toBeDisabled();
+            expect(within(section).getByRole("button", {name: "Cancel"})).toBeEnabled();
+            expect(within(section).queryByText(/Built to \/games\/tsPackage/)).not.toBeInTheDocument();
+            completeBuild = true;
             expect(await within(section).findByText(/Built to \/games\/tsPackage/)).toBeInTheDocument();
+            expect(within(section).queryByText(/Building artifact: Writing outcomes/)).not.toBeInTheDocument();
+            expect(within(section).queryByRole("button", {name: "Cancel"})).not.toBeInTheDocument();
         });
 
         it.each([

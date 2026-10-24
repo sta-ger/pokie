@@ -16,7 +16,8 @@ const metadata = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "ut
 const tempRoot = path.join(root, "node_modules/.cache/pokie-tmp");
 
 // Includes prose package guidance and commands split over whitespace/newlines.
-const staleDeliveryIdentity = /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*(?:\(\s*)?)[`"']+pokie(?:[`"']|\/)|\bnpx\s+(?:--?[\w-]+(?:=[^\s`]+)?\s+)*pokie\b|\bnpm\s+(?:install|i)\s+(?:--?[\w-]+(?:=[^\s`]+)?\s+)*pokie\b|github\.com\/sta-ger\/pokie(?![-\w])|npmjs\.com\/package\/pokie\b|node_modules\/pokie\b/;
+// The explicit no-install form runs the installed binary without requesting the unscoped package.
+const staleDeliveryIdentity = /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*(?:\(\s*)?)[`"']+pokie(?:[`"']|\/)|\bnpx\s+(?!--no-install\s+pokie(?:\s|`|$))(?:--?[\w-]+(?:=[^\s`]+)?\s+)*pokie\b|\bnpm\s+(?:install|i)\s+(?:--?[\w-]+(?:=[^\s`]+)?\s+)*pokie\b|github\.com\/sta-ger\/pokie(?![-\w])|npmjs\.com\/package\/pokie\b|node_modules\/pokie\b/;
 
 function fixtureDirectory(): string {
     fs.mkdirSync(tempRoot, {recursive: true});
@@ -258,12 +259,16 @@ describe("V2C-01 delivery identity", () => {
         'npx\n  pokie dev ./game', 'npx --yes\n pokie dev ./game', 'npm install\n  -g pokie', 'npm i --global\n pokie', 'npm install --save-dev pokie',
         'exports from `"pokie"`', 'GameBlueprint imported from `pokie`',
         'import {Game} from "pokie";', "const p = require('pokie/browser');", "void import('pokie/wasm');",
+        'npx --no-install=false pokie dev ./game', 'npx --no-install pokie/browser',
+        'npx --no-install pokie inspect .\nnpx pokie dev .',
+        'npx --no-install pokie inspect .\nimport {Game} from "pokie";',
     ])("detects stale maintained guidance: %s", text => {
         expect(staleDeliveryIdentity.test(text)).toBe(true);
     });
 
     it.each([
         'npx --package @fromstan/pokie pokie dev ./game', 'from "@fromstan/pokie"',
+        'npx --no-install pokie inspect .', 'npx --no-install\n  pokie dev ./game',
         'pokie.entry .pokie pokie-manifest.json pokie.state.v2', 'https://github.com/sta-ger/pokie-examples',
     ])("preserves product contracts and explicit scoped launch guidance: %s", text => {
         expect(staleDeliveryIdentity.test(text)).toBe(false);

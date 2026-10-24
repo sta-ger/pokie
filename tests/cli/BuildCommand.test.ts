@@ -248,7 +248,7 @@ describe("BuildCommand", () => {
         expect(printed).toContain("Build running: Writing bundle (1/8)");
     });
 
-    it("emits a usable rebuild handoff that chooses a new output and preserves the saved design", async () => {
+    it.each(["local", "registry"] as const)("emits a usable %s runtime rebuild handoff that chooses a new output and preserves the saved design", async runtime => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-producer-build-docs-"));
         const source = path.join(root, "design.blueprint.json");
         const output = path.join(root, "first-package");
@@ -256,7 +256,8 @@ describe("BuildCommand", () => {
         const original = JSON.stringify(fullBlueprint);
         fs.writeFileSync(source, original);
         try {
-            const command = new BuildCommand("1.3.0");
+            const runtimeRoot = runtime === "local" ? path.resolve(__dirname, "../..") : undefined;
+            const command = new BuildCommand("1.3.0", undefined, undefined, undefined, undefined, undefined, runtimeRoot);
             await expect(command.run([source, "--target", "tsPackage", "--out", output])).resolves.toBe(0);
             const readme = fs.readFileSync(path.join(output, "README.md"), "utf8");
             const handoff = readme.match(/`pokie build <config.json> ([^`]+)`/);
@@ -266,8 +267,25 @@ describe("BuildCommand", () => {
             expect(fs.existsSync(path.join(nextOutput, "dist/index.js"))).toBe(true);
             expect(fs.readFileSync(source, "utf8")).toBe(original);
             expect(fs.readFileSync(path.join(output, "README.md"), "utf8")).toBe(readme);
-            expect(readme).toContain("the local link is not portable");
+            for (const packageRoot of [output, nextOutput]) {
+                const dependency = runtimeRoot === undefined ? "^1.3.0" : `file:${runtimeRoot}`;
+                expect(JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8")).dependencies["@fromstan/pokie"]).toBe(dependency);
+                expect(JSON.parse(fs.readFileSync(path.join(packageRoot, "package-lock.json"), "utf8")).packages[""].dependencies["@fromstan/pokie"]).toBe(dependency);
+                const runtimeLink = path.join(packageRoot, "node_modules/@fromstan/pokie");
+                if (runtimeRoot === undefined) expect(fs.existsSync(runtimeLink)).toBe(false);
+                else expect(fs.realpathSync(runtimeLink)).toBe(fs.realpathSync(runtimeRoot));
+            }
+            expect(readme).toContain(runtime === "local"
+                ? "declares that same installation as a `file:` dependency"
+                : "Install that version from an available registry or explicitly select your local POKIE installation before use.");
+            expect(readme).toContain("A local `file:` dependency requires the original POKIE installation to remain at its recorded location.");
+            expect(readme).toContain("When moving to another machine, explicitly select an available runtime");
+            expect(readme).toContain("No registry publication of this candidate is assumed.");
+            expect(readme).toContain("npx --no-install pokie inspect .");
             expect(readme).not.toContain("--target .");
+            await expect(command.run([source, "--target", "tsPackage", "--out", output])).rejects.toThrow(/not empty/);
+            expect(fs.readFileSync(source, "utf8")).toBe(original);
+            expect(fs.readFileSync(path.join(output, "README.md"), "utf8")).toBe(readme);
         } finally {
             fs.rmSync(root, {recursive: true, force: true});
         }
