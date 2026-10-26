@@ -85,6 +85,15 @@ async function configureOutput(id: string): Promise<void> {
     if (toggle.getAttribute("aria-expanded") === "false") fireEvent.click(toggle);
 }
 
+// The group shell exists while discovery is pending; ordinary workflow cases
+// wait for its real target response before inspecting controls. Discovery tests
+// below deliberately observe the earlier shell themselves.
+async function findExportGroup(legend: string): Promise<HTMLElement> {
+    const section = (await screen.findByText(legend)).closest("fieldset") as HTMLElement;
+    await waitFor(() => expect(within(section).queryByText("Discovering artifact targets…")).not.toBeInTheDocument());
+    return section;
+}
+
 it("retains distinct progress through repeated identical polls", () => {
     const initial = {source: "start", jobId: "bounded-job", durableStatus: "queued"} as const;
     const running = {source: "poll", jobId: "bounded-job", durableStatus: "running", durableProgress: {stage: "Enumerating", unit: "combinations", current: "10", total: "1000"}} as const;
@@ -231,7 +240,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        const outputs = (await screen.findByText("Build artifact")).closest("fieldset")!;
+        const outputs = await findExportGroup("Build artifact");
         const generation = screen.getByText("Outcome libraries").closest("fieldset")!;
         expect(outputs.compareDocumentPosition(generation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         await waitFor(() => expect(within(outputs).getAllByRole("button", {name: "Build"})).toHaveLength(1));
@@ -295,7 +304,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        const section = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+        const section = await findExportGroup("Build artifact");
         const input = within(section).getByLabelText(destinationKind === "file" ? "Output file (optional)" : "Output directory (optional)");
         fireEvent.change(input, {target: {value: selected}});
         expect(await within(section).findByText(`Resolves to: /games/${selected}`)).toBeInTheDocument();
@@ -396,7 +405,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
         await user.click(await screen.findByRole("button", {name: "Retry"}));
 
-        expect(await screen.findByLabelText("Output destination")).toHaveValue("retained-output");
+        await waitFor(() => expect(screen.getByLabelText("Output destination")).toHaveValue("retained-output"));
         expect(screen.getByLabelText("Library identity")).toHaveValue("retry-library");
         expect(screen.getByLabelText("Max outcome space size")).toHaveValue("123");
         expect(screen.getByRole("button", {name: "Conditional bounded"})).toHaveAttribute("data-variant", "filled");
@@ -797,7 +806,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "PAR spreadsheet"});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-        const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+        const buildArtifactSection = await findExportGroup("Build artifact");
         expect(await within(buildArtifactSection).findByText("PAR sheet (.xlsx)")).toBeInTheDocument();
         expect(within(buildArtifactSection).getByText(/republished-sheet\.xlsx/)).toBeInTheDocument();
         expect(within(buildArtifactSection).getByLabelText("Output file (optional)")).toBeInTheDocument();
@@ -836,7 +845,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-        const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+        const buildArtifactSection = await findExportGroup("Build artifact");
         expect(await within(buildArtifactSection).findByText("PAR sheet (.xlsx)")).toBeInTheDocument();
         expect(within(buildArtifactSection).getByText("Export this Game Blueprint as a PAR workbook snapshot, or republish this PAR workbook.")).toBeInTheDocument();
         expect(within(buildArtifactSection).getByLabelText("Output file (optional)")).toBeInTheDocument();
@@ -956,7 +965,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-        const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+        const buildArtifactSection = await findExportGroup("Build artifact");
         expect(await within(buildArtifactSection).findByText("Portable WASM game")).toBeInTheDocument();
         expect(within(buildArtifactSection).getByLabelText("Output file (optional)")).toBeInTheDocument();
         expect(await within(buildArtifactSection).findByText("Resolved absolute path: /games/game.wasm")).toBeInTheDocument();
@@ -988,10 +997,10 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await configureOutput("outcome-library");
         await configureOutput("remote-deployment-placeholder");
 
-        const outcomeLibrarySection = (await screen.findByText("Outcome libraries")).closest("fieldset") as HTMLElement;
+        const outcomeLibrarySection = await findExportGroup("Outcome libraries");
         expect(within(outcomeLibrarySection).getByText("Outcome library generator")).toBeInTheDocument();
 
-        const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+        const buildArtifactSection = await findExportGroup("Build artifact");
         expect(within(buildArtifactSection).getByText("Stake Engine export")).toBeInTheDocument();
 
         expect(screen.queryByText("local-json-example")).not.toBeInTheDocument();
@@ -1011,7 +1020,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         await configureOutput("outcome-library");
 
-        const outcomeLibrarySection = (await screen.findByText("Outcome libraries")).closest("fieldset") as HTMLElement;
+        const outcomeLibrarySection = await findExportGroup("Outcome libraries");
         expect(within(outcomeLibrarySection).getByText("Outcome library generator")).toBeInTheDocument();
         expect(within(outcomeLibrarySection).getByText("Prerequisites")).not.toBeVisible();
         expect(within(outcomeLibrarySection).getByText("Prerequisites")).toBeInTheDocument();
@@ -1045,7 +1054,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-        const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+        const buildArtifactSection = await findExportGroup("Build artifact");
         expect(await within(buildArtifactSection).findByText("PAR workbook export is unavailable for this project.")).toBeVisible();
         expect(
             within(buildArtifactSection).getByText(
@@ -1215,7 +1224,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         const remoteSection = (await screen.findByText("Remote deployment")).closest("fieldset") as HTMLElement;
         expect(await within(remoteSection).findByRole("button", {name: "Check compatibility"})).toBeEnabled();
 
-        const outcomeLibrarySection = (await screen.findByText("Outcome libraries")).closest("fieldset") as HTMLElement;
+        const outcomeLibrarySection = await findExportGroup("Outcome libraries");
         expect(within(outcomeLibrarySection).getByRole("button", {name: "Generate exact outcome library (base)"})).toBeEnabled();
     });
 
@@ -1349,7 +1358,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-        const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+        const buildArtifactSection = await findExportGroup("Build artifact");
         expect(await within(buildArtifactSection).findByText("Target: Stake Engine export")).toBeInTheDocument();
         expect(within(buildArtifactSection).getByText("Plan: generate generateManagedOutcomeLibrary")).toBeInTheDocument();
         await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
@@ -1539,7 +1548,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         expect(await screen.findByText("Writing outcomes")).toBeInTheDocument();
         expect(screen.getAllByText("Writing outcomes")).toHaveLength(1);
-        const outcomeLibrarySection = (await screen.findByText("Outcome libraries")).closest("fieldset") as HTMLElement;
+        const outcomeLibrarySection = await findExportGroup("Outcome libraries");
         expect(within(outcomeLibrarySection).getAllByRole("status")).toHaveLength(1);
         expect(screen.getByText("Analyzing outcomes")).toBeInTheDocument();
         expect(screen.getAllByText("Analyzing outcomes")).toHaveLength(1);
@@ -1654,7 +1663,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
         expect(await screen.findByText("Finalizing generated outcomes…")).toBeInTheDocument();
-        const outcomeLibrarySection = (await screen.findByText("Outcome libraries")).closest("fieldset") as HTMLElement;
+        const outcomeLibrarySection = await findExportGroup("Outcome libraries");
         expect([...within(outcomeLibrarySection).queryAllByRole("alert"), ...within(outcomeLibrarySection).queryAllByRole("status")]).toHaveLength(1);
         const cancellationControls = within(outcomeLibrarySection).getAllByRole("button", {name: "Cancel generation"});
         expect(cancellationControls).toHaveLength(1);
@@ -1725,7 +1734,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
         expect(await screen.findByText("Enumerating combinations")).toBeInTheDocument();
-        const outcomeLibrarySection = (await screen.findByText("Outcome libraries")).closest("fieldset") as HTMLElement;
+        const outcomeLibrarySection = await findExportGroup("Outcome libraries");
         expect([...within(outcomeLibrarySection).queryAllByRole("alert"), ...within(outcomeLibrarySection).queryAllByRole("status")]).toHaveLength(1);
         const cancellationControls = within(outcomeLibrarySection).getAllByRole("button", {name: "Cancel"});
         expect(cancellationControls).toHaveLength(1);
@@ -1937,7 +1946,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             try {
                 await screen.findByRole("heading", {name: "A"});
                 await user.click(screen.getByRole("button", {name: "Build/Export"}));
-                const section = (await screen.findByText("Build artifact")).closest("fieldset")!;
+                const section = await findExportGroup("Build artifact");
                 const input = within(section).getByRole("textbox", {name: "Output directory (optional)"});
                 const region = input.closest(".studio-export-deploy")!;
                 expect(layout.observing(region)).toBe(true);
@@ -2027,7 +2036,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
             await screen.findByRole("heading", {name: "A"});
             await user.click(screen.getByRole("button", {name: "Build/Export"}));
-            const section = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+            const section = await findExportGroup("Build artifact");
             await user.click(within(section).getByRole("button", {name: "Build"}));
 
             const progress = await within(section).findByText(/Preflight: 10 estimated item/);
@@ -2086,7 +2095,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
             await screen.findByRole("heading", {name: "A"});
             fireEvent.click(screen.getByRole("button", {name: "Build/Export"}));
-            const section = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+            const section = await findExportGroup("Build artifact");
             await within(section).findByText("Ready to build");
             const destination = within(section).getByLabelText(destinationKind === "file" ? "Output file (optional)" : "Output directory (optional)");
             fireEvent.click(within(section).getByRole("button", {name: "Build"}));
@@ -2151,7 +2160,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
             await screen.findByRole("heading", {name: "A"});
             await user.click(screen.getByRole("button", {name: "Build/Export"}));
-            const section = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+            const section = await findExportGroup("Build artifact");
             await user.click(within(section).getByRole("button", {name: "Build"}));
             await user.click(await within(section).findByRole("button", {name: "Cancel"}));
 
@@ -2199,7 +2208,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             await screen.findByRole("heading", {name: "A"});
             await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-            const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+            const buildArtifactSection = await findExportGroup("Build artifact");
             expect(within(buildArtifactSection).getByText("TypeScript Game Package")).toBeInTheDocument();
             expect(within(buildArtifactSection).queryByText("Outcome library")).not.toBeInTheDocument();
             expect(screen.getAllByText("Outcome library generator")).toHaveLength(1);
@@ -2259,7 +2268,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             await screen.findByRole("heading", {name: "A"});
             await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-            const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+            const buildArtifactSection = await findExportGroup("Build artifact");
             await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
 
             expect(await within(buildArtifactSection).findByText(/tsPackage build returned a parWorkbook job/)).toBeInTheDocument();
@@ -2360,7 +2369,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             await screen.findByRole("heading", {name: "PAR spreadsheet"});
             await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-            const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+            const buildArtifactSection = await findExportGroup("Build artifact");
             await user.click(await within(buildArtifactSection).findByRole("button", {name: "Build"}));
 
             const openAsProject = await within(buildArtifactSection).findByRole("button", {name: "Open as Project"});
@@ -2478,7 +2487,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             await screen.findByRole("heading", {name: "PAR spreadsheet"});
             await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-            const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+            const buildArtifactSection = await findExportGroup("Build artifact");
             expect(await within(buildArtifactSection).findByText("Game Blueprint")).toBeInTheDocument();
             expect(within(buildArtifactSection).getByLabelText("Output file (optional)")).toBeInTheDocument();
             expect(await within(buildArtifactSection).findByText("Resolved absolute path: /games/blueprint.json")).toBeInTheDocument();
@@ -2527,7 +2536,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             await screen.findByRole("heading", {name: "A"});
             await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-            const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+            const buildArtifactSection = await findExportGroup("Build artifact");
             await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
 
             expect(await within(buildArtifactSection).findByText(/already exists and is not empty/)).toBeInTheDocument();
@@ -2559,7 +2568,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             await screen.findByRole("heading", {name: "A"});
             await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-            const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+            const buildArtifactSection = await findExportGroup("Build artifact");
 
             // The resolved destination is already on screen -- fetched automatically, never behind its own
             // click -- before the "Build" button is ever pressed.
@@ -2600,7 +2609,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             await screen.findByRole("heading", {name: "A"});
             await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-            const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+            const buildArtifactSection = await findExportGroup("Build artifact");
             expect(await within(buildArtifactSection).findByText("Target: Stake Engine export")).toBeInTheDocument();
             expect(buildArtifactSection).not.toHaveTextContent("stakeAdapter");
         });
@@ -2635,7 +2644,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             await screen.findByRole("heading", {name: "A"});
             await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-            const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+            const buildArtifactSection = await findExportGroup("Build artifact");
 
             expect(await within(buildArtifactSection).findByText(/already exists and is not empty/)).toBeInTheDocument();
             expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeDisabled();

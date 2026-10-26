@@ -51,6 +51,9 @@ function transport(handler: FetchLike, sourcePlan = plan()): FetchLike {
         if (url.endsWith("/activate")) return response({});
         const request = url.split("?")[0];
         if (request === "/api/project/jobs") return response({jobs: []});
+        if (request === "/api/project/deployment/build-modes") return response({status: "ok", modeIds: ["base"]});
+        if (request === "/api/project/outcome-libraries/generate/jobs") return response({jobs: []});
+        if (request === "/api/project/outcome-libraries/registry") return response({status: "ok", buildStatus: "missing"});
         if (request === "/api/home/fs/browse") return response({status: "error", reason: "absent", error: "Path does not exist", resolvedPath: "/games"});
         if (request === "/api/home/fs/native-browse/availability") return response({status: "unavailable", reason: "Fixture has no native picker"});
         if (request === "/api/project/context") return response({
@@ -207,7 +210,8 @@ it("suppresses a stale extraction preview after changing the destination", async
     let resolveFirst: ((value: Awaited<ReturnType<FetchLike>>) => void) | undefined;
     let reads = 0;
     const section = await open(
-        transport((_url, init) => {
+        transport((url, init) => {
+            if (!url.endsWith("/preview")) return response({});
             reads++;
             if (reads === 1) return new Promise((resolve) => {
                 resolveFirst = resolve;
@@ -426,7 +430,9 @@ it("coalesces rapid extraction edits behind one executing plan and preserves unr
             if (body.outDir !== undefined) return new Promise((resolve, reject) => {
                 pending.push({resolve, reject});
             });
-            return response({...preview(), target: body.target});
+            return response(body.target === "blueprint" ? preview() : {
+                status: "ok", target: body.target, destination: "/games/package", destinationKind: "directory", plannedOutputs: ["package.json"], sourceType: "tsPackage",
+            });
         }
         return response({});
     });
@@ -515,7 +521,8 @@ it("revokes an executing extraction plan through discovery refresh and does not 
 it("drops a queued destination and late extraction result on navigation without submitting obsolete work", async () => {
     let settle!: (value: Awaited<ReturnType<FetchLike>>) => void;
     let previews = 0;
-    const fetchImpl = transport(() => {
+    const fetchImpl = transport(url => {
+        if (!url.endsWith("/preview")) return response({});
         previews++;
         if (previews === 1) return new Promise(resolve => {
             settle = resolve;
@@ -525,7 +532,7 @@ it("drops a queued destination and late extraction result on navigation without 
     const app = renderRoutedApp({fetchImpl, initialEntries: ["/project/exportDeploy"]});
     const section = (await screen.findByText("Build artifact")).closest("fieldset")!;
     await waitFor(() => expect(settle).toBeDefined());
-    fireEvent.change(within(section).getByLabelText("Output file (optional)"), {target: {value: "/games/queued.json"}});
+    fireEvent.change(await within(section).findByLabelText("Output file (optional)"), {target: {value: "/games/queued.json"}});
     await act(() => app.router.navigate("/project/overview"));
     await act(async () => settle(await response(preview("/games/obsolete.json"))));
     await act(async () => {
