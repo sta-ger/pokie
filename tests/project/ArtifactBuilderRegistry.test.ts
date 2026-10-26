@@ -1310,6 +1310,9 @@ describe("ArtifactBuilderRegistry", () => {
             }
         });
 
+        // Planning, validation and publication each snapshot the real package/runtime graph.
+        // Use the same bounded lifecycle budget as the other package-source conversions,
+        // including when the controller runs this file alongside other Jest workers.
         it("materializes a real tsPackage through the registry for Outcome and Stake, preserving all runtime modes", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-tspackage-outcome-registry-test-"));
             const blueprintPath = path.join(workDir, "game.blueprint.json");
@@ -1368,7 +1371,7 @@ describe("ArtifactBuilderRegistry", () => {
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});
             }
-        });
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
         it("returns a Game Model fix route for an invalid Blueprint and lets the same Stake request succeed after retry", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-blueprint-stake-retry-test-"));
