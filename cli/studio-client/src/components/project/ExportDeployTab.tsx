@@ -1241,7 +1241,12 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                         // in server defaults: that frame otherwise combines a
                         // prior token with the next request body.
                         setOutcomeLibraryPreflight({status: "loading"});
-                        setOutcomeLibraryGenerationOptions((current) => ({...current, maxOutcomeSpaceSize, sampleSize, seed}));
+                        // Recovery or an edit can be accepted before this
+                        // response's effect cleanup runs. Defaults may only
+                        // fill the exact options that requested them.
+                        setOutcomeLibraryGenerationOptions((current) => current === outcomeLibraryGenerationOptions
+                            ? {...current, maxOutcomeSpaceSize, sampleSize, seed}
+                            : current);
                         return;
                     }
                 }
@@ -1873,7 +1878,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                                     ? <LoadingState label="Discovering artifact targets…" />
                                     : <ErrorState message={artifactTargetsView.message} />
                             )}
-                            {(kind === "remoteDeployment" || artifactTargetsView.status === "loaded" || artifactTargetsView.targets !== undefined) && (groupCards.length === 0 ? (
+                            {(kind === "remoteDeployment" || artifactTargetsView.status === "loaded" || artifactTargetsView.targets !== undefined && groupCards.length > 0) && (groupCards.length === 0 ? (
                                 <EmptyState message="Nothing in this group yet." />
                             ) : (
                                 groupCards.map((card) => {

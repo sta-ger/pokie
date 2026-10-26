@@ -262,7 +262,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(within(outputs).getAllByRole("button", {name: "Build"})).toHaveLength(2);
         expect(writes).toEqual([]);
         expect(screen.getByText("PAR workbook export is unavailable for this project.")).toBeVisible();
-        const details = within(region).getByRole("button", {name: "Show Build plan and provenance"});
+        const details = await within(region).findByRole("button", {name: "Show Build plan and provenance"});
         expect(details).toHaveAttribute("aria-expanded", "false");
         details.focus();
         await user.keyboard("{Enter}");
@@ -401,7 +401,12 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             }]}}),
         };
 
-        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
+        const estimates: unknown[] = [];
+        const base = fetchImplFrom(routes);
+        renderRoutedApp({fetchImpl: (url, init) => {
+            if (url === "/api/project/outcome-libraries/generate/estimate") estimates.push(JSON.parse(String(init?.body)));
+            return base(url, init);
+        }, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
         await user.click(await screen.findByRole("button", {name: "Retry"}));
 
@@ -411,6 +416,10 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(screen.getByRole("button", {name: "Conditional bounded"})).toHaveAttribute("data-variant", "filled");
         expect(screen.getByLabelText("Sample size")).toHaveValue("11");
         expect(screen.getByLabelText("Coverage seed")).toHaveValue("retained-seed");
+        await waitFor(() => expect(estimates.at(-1)).toMatchObject({
+            generation: "bounded", maxOutcomeSpaceSize: "123", outDir: "retained-output",
+            sample: {sampleSize: "11", seed: "retained-seed"},
+        }));
     });
 
     it.each([
@@ -978,6 +987,8 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             fileFilters: [{name: "POKIE WASM games", extensions: ["wasm"]}],
         });
 
+        await within(buildArtifactSection).findByText("Resolved absolute path: /games/chosen-game.wasm");
+        await waitFor(() => expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeEnabled());
         await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
         expect(buildRequest).toEqual({target: "wasm", outDir: "/games/chosen-game.wasm", deferExecution: true});
         expect(await within(buildArtifactSection).findByText(/Built to \/games\/chosen-game\.wasm/)).toBeInTheDocument();
