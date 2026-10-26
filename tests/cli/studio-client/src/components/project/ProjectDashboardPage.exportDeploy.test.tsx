@@ -935,6 +935,11 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         };
         const fetchImpl: FetchLike = (url, init) => {
             const [requestPath] = url.split("?");
+            if (requestPath === "/api/project/artifacts/preview") {
+                const {outDir} = JSON.parse(String(init?.body)) as {outDir?: string};
+                const result = routes["/api/project/artifacts/preview"]();
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({...result.body, destination: outDir ?? result.body.destination})});
+            }
             if (requestPath === "/api/home/fs/native-browse/availability") {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "available"})});
             }
