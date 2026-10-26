@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import {mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync} from "node:fs";
 import {webcrypto} from "node:crypto";
 import {join} from "node:path";
+import {useState} from "react";
 import {useLocation} from "react-router-dom";
 import {ProjectsPanel} from "../../../../../../cli/studio-client/src/components/home/ProjectsPanel";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
@@ -11,6 +12,7 @@ import {InMemoryStudioProjectRegistry} from "../../../../../../cli/studio/InMemo
 import {createCanonicalWasmFixture} from "../../../../../fixtures/wasm/createCanonicalWasmFixture";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+import {jobFocusLayout} from "../../testUtils/jobFocusLayout";
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
 
 // Covers the Import Project flow this step (P3-POLISH-13) added to the Projects tab -- Detect (a
@@ -1514,4 +1516,195 @@ describe("ProjectsPanel: Import Project", () => {
         expect(screen.queryByText("Missing A (missing)")).not.toBeInTheDocument();
         expect(screen.queryByText("Missing B (missing)")).not.toBeInTheDocument();
     });
+});
+
+function removalFocusRoutes() {
+    return createRoutedFakeFetch({
+        "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+        "/api/home/projects/registry": () => ({ok: true, status: 200, body: [
+            {
+                location: "/home/stager/Work/sta-ger/agents/runtime/verifier-hrnesses/V2C-35-7b16e5934c65e89d/fixtures/stale-packae",
+                name: "Graceful Serene Frontier", type: "tsPackage", capabilities: [], origin: "external", status: "ok",
+            },
+            {location: "/games/sibling", name: "Sibling", type: "tsPackage", capabilities: [], origin: "external", status: "ok"},
+        ]}),
+        "/api/home/projects/registry/remove": () => ({ok: true, status: 200, body: {status: "ok"}}),
+    });
+}
+
+async function resizeProjects(beforeFrame?: () => void): Promise<void> {
+    await act(async () => {
+        window.dispatchEvent(new Event("resize"));
+        beforeFrame?.();
+        await new Promise(resolve => {
+            requestAnimationFrame(resolve);
+        });
+    });
+}
+
+// Home keeps Projects mounted while hidden. Exercise that same public prop
+// lifecycle without launching the controller-owned Home navigation workflow.
+function ProjectsFocusHarness() {
+    const [visible, setVisible] = useState(true);
+    return <>
+        <button onClick={() => setVisible(value => !value)}>{visible ? "Hide projects" : "Show projects"}</button>
+        <div style={{display: visible ? undefined : "none"}}><ProjectsPanel isVisible={visible} /></div>
+    </>;
+}
+
+describe("V35 Home project removal focus", () => {
+    it("V35-HOME-REMOVE-FOCUS-RESIZE keeps the cancelled launcher's visibility through reflow and delayed layout", async () => {
+        const user = userEvent.setup();
+        const layout = jobFocusLayout();
+        const width = jest.replaceProperty(window, "innerWidth", 1439);
+        const height = jest.replaceProperty(window, "innerHeight", 956);
+        const {fetchImpl, calls} = removalFocusRoutes();
+        const rendered = renderWithProviders(<ProjectsFocusHarness />, {fetchImpl});
+        let bounds: jest.SpyInstance | undefined;
+        try {
+            const remove = (await screen.findAllByRole("button", {name: "Remove"}))[0];
+            const region = remove.closest(".studio-projects")!;
+            let x = 1294.125;
+            let y = 463.03125;
+            // Exact retained observation 155/158 rectangles. Only visibility
+            // dispatch is simulated here; installed Chromium owns actual layout.
+            bounds = jest.spyOn(remove, "getBoundingClientRect").mockImplementation(() => ({
+                x, y, left: x, top: y, right: x + 84.09375, bottom: y + 30,
+                width: 84.09375, height: 30, toJSON: () => ({}),
+            }));
+            await act(() => remove.focus());
+            await user.keyboard("[Space]");
+            const dialog = await screen.findByRole("dialog");
+            expect(dialog).toHaveTextContent('Remove "Graceful Serene Frontier" from Projects?');
+            await act(() => within(dialog).getByRole("button", {name: "Cancel"}).focus());
+            await user.keyboard("[Space]");
+            await waitFor(() => expect(remove).toHaveFocus());
+            await resizeProjects();
+            expect(layout.scroll).not.toHaveBeenCalled();
+            expect(layout.observing(region)).toBe(true);
+
+            width.replaceValue(800);
+            height.replaceValue(650);
+            x = 524.171875;
+            y = 891.75;
+            await resizeProjects();
+            expect(remove).toHaveFocus();
+            expect(layout.scroll).toHaveBeenCalledTimes(1);
+            expect(layout.scroll.mock.instances[0]).toBe(remove);
+            expect(layout.scroll).toHaveBeenLastCalledWith({block: "nearest", inline: "nearest", behavior: "instant"});
+
+            // Native scrolling has settled; another resize needs no correction.
+            layout.scroll.mockClear();
+            y = 200;
+            await resizeProjects();
+            expect(layout.scroll).not.toHaveBeenCalled();
+            y = 891.75;
+            await layout.expand(region.parentElement!);
+            expect(layout.scroll.mock.instances).toEqual([remove]);
+
+            layout.scroll.mockClear();
+            y = 600;
+            height.replaceValue(600);
+            await resizeProjects();
+            expect(layout.scroll.mock.instances).toEqual([remove]);
+
+            // Reverse reflow can move the same control above the fixed header.
+            layout.scroll.mockClear();
+            x = 1294.125;
+            y = -24;
+            width.replaceValue(1439);
+            height.replaceValue(956);
+            await resizeProjects();
+            expect(layout.scroll.mock.instances).toEqual([remove]);
+            expect(remove).toHaveFocus();
+            expect(calls.filter(call => call.url.endsWith("/registry/remove"))).toEqual([]);
+        } finally {
+            rendered.unmount();
+            bounds?.mockRestore();
+            width.restore();
+            height.restore();
+            layout.restore();
+        }
+    });
+
+    it("V35-HOME-REMOVE-FOCUS-OWNERSHIP rechecks sibling and dialog ownership and releases hidden or unmounted Projects", async () => {
+        const user = userEvent.setup();
+        const layout = jobFocusLayout();
+        const {fetchImpl, calls} = removalFocusRoutes();
+        const rendered = renderWithProviders(<ProjectsFocusHarness />, {fetchImpl});
+        let bounds: jest.SpyInstance | undefined;
+        let siblingBounds: jest.SpyInstance | undefined;
+        try {
+            const [remove, sibling] = await screen.findAllByRole("button", {name: "Remove"});
+            const region = remove.closest(".studio-projects")!;
+            let y = 200;
+            bounds = jest.spyOn(remove, "getBoundingClientRect").mockImplementation(() => ({
+                x: 524.171875, y, left: 524.171875, top: y, right: 608.265625, bottom: y + 30,
+                width: 84.09375, height: 30, toJSON: () => ({}),
+            }));
+            siblingBounds = jest.spyOn(sibling, "getBoundingClientRect").mockReturnValue({
+                x: 300, y: 200, left: 300, top: 200, right: 384, bottom: 230,
+                width: 84, height: 30, toJSON: () => ({}),
+            });
+            await act(() => remove.focus());
+            y = 891.75;
+            await resizeProjects(() => sibling.focus());
+            expect(sibling).toHaveFocus();
+            expect(layout.scroll).not.toHaveBeenCalled();
+            await user.keyboard("[Space]");
+            const dialog = await screen.findByRole("dialog");
+            expect(dialog).toHaveTextContent('Remove "Sibling" from Projects?');
+            const cancel = within(dialog).getByRole("button", {name: "Cancel"});
+            await act(() => cancel.focus());
+            await layout.expand(region.parentElement!);
+            expect(cancel).toHaveFocus();
+            expect(layout.scroll).not.toHaveBeenCalled();
+            await user.keyboard("[Space]");
+            await waitFor(() => expect(sibling).toHaveFocus());
+
+            // Ownership can change after an observer schedules its callback.
+            y = 200;
+            await act(() => remove.focus());
+            y = 891.75;
+            await layout.expand(region.parentElement!, () => sibling.focus());
+            expect(sibling).toHaveFocus();
+            expect(layout.scroll).not.toHaveBeenCalled();
+            expect(calls.filter(call => call.url.endsWith("/registry/remove"))).toEqual([]);
+
+            // Explicit confirmation still uses the chosen registry entry only.
+            await user.keyboard("[Space]");
+            const confirm = within(await screen.findByRole("dialog")).getByRole("button", {name: "Confirm"});
+            await act(() => confirm.focus());
+            await user.keyboard("[Space]");
+            await waitFor(() => expect(sibling).not.toBeInTheDocument());
+            expect(calls.filter(call => call.url.endsWith("/registry/remove")).map(call => JSON.parse(call.init!.body!)))
+                .toEqual([{location: "/games/sibling"}]);
+
+            const navigation = screen.getByRole("button", {name: "Hide projects"});
+            await resizeProjects(() => navigation.focus());
+            expect(navigation).toHaveFocus();
+            expect(layout.scroll).not.toHaveBeenCalled();
+            await user.keyboard("[Space]");
+            await screen.findByRole("button", {name: "Show projects"});
+            expect(layout.observing(region)).toBe(false);
+            await resizeProjects();
+            expect(layout.scroll).not.toHaveBeenCalled();
+
+            await user.click(screen.getByRole("button", {name: "Show projects"}));
+            await screen.findByRole("button", {name: "Hide projects"});
+            expect(layout.observing(region)).toBe(true);
+            y = 200;
+            await act(() => remove.focus());
+            y = 891.75;
+            await layout.expand(region, () => rendered.unmount());
+            expect(layout.observing(region)).toBe(false);
+            expect(layout.scroll).not.toHaveBeenCalled();
+        } finally {
+            rendered.unmount();
+            bounds?.mockRestore();
+            siblingBounds?.mockRestore();
+            layout.restore();
+        }
+    });
+
 });
