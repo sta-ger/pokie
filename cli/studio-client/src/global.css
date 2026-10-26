@@ -366,6 +366,7 @@ body,
 
 .studio-design-editor :focus,
 .studio-export-deploy :focus,
+.studio-projects :focus,
 .studio-job-card :focus {
     scroll-margin-block-start: calc(var(--app-shell-header-offset, 0px) + 8px);
     scroll-margin-block-end: 8px;
