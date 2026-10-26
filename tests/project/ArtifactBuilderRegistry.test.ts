@@ -84,6 +84,8 @@ describe("ArtifactBuilderRegistry", () => {
         }
     });
 
+    // These compound cases acquire several real runtime/dependency snapshots, just like
+    // the package lifecycle cases below. Keep their full assertions within that budget.
     it.each(["declared", "unknown"] as const)("refuses %s max-win policy in every model conversion and direct publication", async type => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-policy-conversion-"));
         try {
@@ -108,7 +110,7 @@ describe("ArtifactBuilderRegistry", () => {
         } finally {
             fs.rmSync(root, {recursive: true, force: true});
         }
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("uses extraction once as the model stage for downstream packages/PAR and retains source-bound evidence", async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-extraction-registry-"));
@@ -129,7 +131,7 @@ describe("ArtifactBuilderRegistry", () => {
         } finally {
             fs.rmSync(root, {recursive: true, force: true});
         }
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)("cancels the final descriptor read for %s before publishing or running downstream writers", async target => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-async-extraction-registry-"));
