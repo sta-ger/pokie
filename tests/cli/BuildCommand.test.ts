@@ -1,4 +1,4 @@
-import {createPackageExtractionTestEnvironment, runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
 import {
     ArtifactBuildCancelledError,
     ArtifactBuilder,
@@ -110,14 +110,22 @@ describe("BuildCommand", () => {
         const snapshots = runtimeSnapshotNames(fixture.source);
         const input = fs.readFileSync(path.join(fixture.source, "index.js"));
         const listeners = process.listenerCount("SIGINT");
+        let readsBeforeExtraction: number | undefined;
+        let running: Promise<number> | undefined;
         logSpy.mockImplementation(message => {
-            if (message === "Build running: Extracting public package model into Blueprint") fixture.arm();
+            if (message === "Build running: Extracting public package model into Blueprint") {
+                readsBeforeExtraction = fixture.readCount;
+                fixture.arm();
+            }
         });
         try {
-            const checked = expect(new BuildCommand("1.3.0").run([fixture.source, "--target", target, "--out", path.join(root, "output")]))
-                .rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+            running = new BuildCommand("1.3.0").run([fixture.source, "--target", target, "--out", path.join(root, "output")]);
+            const checked = expect(running).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
             await fixture.waitForRead(checked);
+            expect(readsBeforeExtraction).toBeGreaterThan(0);
+            expect(fixture.readCount).toBe(readsBeforeExtraction! + 1);
             expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
+            expect(fs.existsSync(path.join(root, "output"))).toBe(false);
             expect(process.listenerCount("SIGINT")).toBe(listeners + 1);
             process.emit("SIGINT");
             fixture.settle();
@@ -132,10 +140,16 @@ describe("BuildCommand", () => {
             expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
             expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
         } finally {
+            // Drain the real command before restoring its read spy or removing inputs,
+            // including when an assertion fails while the descriptor is still leased.
+            fixture.settle();
+            await running?.catch(() => undefined);
             fixture.restore();
             fs.rmSync(root, {recursive: true, force: true});
         }
-    });
+    // Like the registry/Studio regressions, this runs several real runtime graph
+    // snapshots before reaching the paused final read. Allow their shared bound.
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     describe.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)("package %s dry-run validation", target => {
         it.each([true, false])("settles the second descriptor read with cancellation=%s before any preview", async cancel => {
