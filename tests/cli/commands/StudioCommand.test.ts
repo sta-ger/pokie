@@ -113,6 +113,9 @@ describe("StudioCommand", () => {
         logSpy.mockRestore();
     });
 
+    // This real loader snapshots its host installation, including this source
+    // checkout when run here. Allow that filesystem work to finish before Jest
+    // tears down the VM used by the entry loader; retain the real load/assertion.
     it("opens a registered package through Studio's bundled POKIE runtime when the package has no node_modules", async () => {
         const server = createStubServer({host: "127.0.0.1", port: 3200});
         let receivedOptions: StudioServerOptions | undefined;
@@ -137,7 +140,7 @@ describe("StudioCommand", () => {
         });
 
         logSpy.mockRestore();
-    });
+    }, 180000);
 
     it("resolves a project context when a projectRoot argument is given", async () => {
         const server = createStubServer({host: "127.0.0.1", port: 3200});
@@ -203,7 +206,7 @@ describe("StudioCommand", () => {
                 for (let launch = 0; launch < 2; launch++) {
                     errorSpy.mockClear();
                     expect(await dispatch([command], argv)).toBe(0);
-                    expect(contexts.at(-1)).toEqual({mode: "project", projectRoot: destination});
+                    expect(contexts[contexts.length - 1]).toEqual({mode: "project", projectRoot: destination});
                     expect(errorSpy).not.toHaveBeenCalled();
                     expect(fs.readFileSync(destination)).toEqual(bytes);
                 }
