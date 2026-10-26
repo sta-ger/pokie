@@ -134,6 +134,86 @@ it("binds a replaced durable job's progress history without retaining a prior jo
 });
 
 describe("ProjectDashboardPage - Export & Deploy shell", () => {
+    it.each([false, true])("keeps delayed artifact discovery distinct from settled emptiness (empty: %s)", async empty => {
+        let settle!: (value: Awaited<ReturnType<FetchLike>>) => void;
+        const base = fetchImplFrom(BASE_ROUTES);
+        renderRoutedApp({initialEntries: ["/project/exportDeploy"], fetchImpl: (url, init) =>
+            url === "/api/project/artifacts/targets" ? new Promise(resolve => {
+                settle = resolve;
+            }) : base(url, init)});
+        const section = (await screen.findByText("Build artifact")).closest("fieldset")!;
+        const outcome = screen.getByText("Outcome libraries").closest("fieldset")!;
+        expect(within(section).getByText("Discovering artifact targets…")).toBeInTheDocument();
+        expect(within(section).queryByText("Nothing in this group yet.")).not.toBeInTheDocument();
+        expect(within(outcome).queryByText("Unavailable")).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Refresh artifact targets"})).toBeDisabled();
+        await act(() => settle({ok: true, status: 200, json: () => Promise.resolve(empty ? [] : BASE_ROUTES["/api/project/artifacts/targets"]().body)}));
+        if (empty) expect(await within(section).findByText("Nothing in this group yet.")).toBeInTheDocument();
+        else expect(await within(section).findByText("TypeScript Game Package", {selector: "p"})).toBeInTheDocument();
+        expect(within(section).queryByText("Discovering artifact targets…")).not.toBeInTheDocument();
+    });
+
+    it("retries failed artifact discovery independently of registered deployment refresh", async () => {
+        let artifacts = 0;
+        let deployments = 0;
+        const base = fetchImplFrom(BASE_ROUTES);
+        renderRoutedApp({initialEntries: ["/project/exportDeploy"], fetchImpl: (url, init) => {
+            if (url === "/api/project/artifacts/targets" && ++artifacts === 1) return Promise.reject(new Error("Failed to fetch"));
+            if (url === "/api/project/deployment/targets") deployments++;
+            return base(url, init);
+        }});
+        const retry = await screen.findByRole("button", {name: "Retry artifact discovery"});
+        const section = screen.getByText("Build artifact").closest("fieldset")!;
+        expect(within(section).getByText(/The build artifact target list couldn't reach the Studio server/)).toBeInTheDocument();
+        const reads = deployments;
+        fireEvent.click(screen.getByRole("button", {name: "Refresh registered targets"}));
+        await waitFor(() => expect(deployments).toBe(reads + 1));
+        expect(artifacts).toBe(1);
+        fireEvent.click(retry);
+        await within(section).findByText("TypeScript Game Package", {selector: "p"});
+        expect(artifacts).toBe(2);
+        expect(deployments).toBe(reads + 1);
+        expect(within(section).queryByText(/couldn't reach/)).not.toBeInTheDocument();
+        const after = deployments;
+        fireEvent.click(screen.getByRole("button", {name: "Refresh artifact targets"}));
+        await waitFor(() => expect(artifacts).toBe(3));
+        await within(section).findByText("TypeScript Game Package", {selector: "p"});
+        expect(deployments).toBe(after);
+    });
+
+    it.each([false, true])("rejects obsolete artifact discovery after a project switch (failure: %s)", async failure => {
+        let settle!: (value: Awaited<ReturnType<FetchLike>>) => void;
+        let reject!: (error: Error) => void;
+        let projectRoot = "/games/a";
+        const base = fetchImplFrom(BASE_ROUTES);
+        const app = renderRoutedApp({initialEntries: ["/project/%2Fgames%2Fa/exportDeploy"], fetchImpl: (url, init) => {
+            if (url === "/api/project/context") return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({
+                status: "loaded", projectRoot, type: "blueprint", game: {id: projectRoot, name: projectRoot, version: "1"}, capabilities: ["blueprint.build"],
+            })});
+            if (url === "/api/project/artifacts/targets") {
+                if (projectRoot === "/games/a") return new Promise((resolve, rejectRequest) => {
+                    settle = resolve;
+                    reject = rejectRequest;
+                });
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
+            }
+            return base(url, init);
+        }});
+        await waitFor(() => expect(settle).toBeDefined());
+        projectRoot = "/games/b";
+        await act(() => app.router.navigate("/project/%2Fgames%2Fb/exportDeploy"));
+        const section = (await screen.findByText("Build artifact")).closest("fieldset")!;
+        await within(section).findByText("Nothing in this group yet.");
+        await act(() => {
+            if (failure) reject(new Error("Failed to fetch"));
+            else settle({ok: true, status: 200, json: () => Promise.resolve(BASE_ROUTES["/api/project/artifacts/targets"]().body)});
+        });
+        expect(within(section).getByText("Nothing in this group yet.")).toBeInTheDocument();
+        expect(within(section).queryByText("TypeScript Game Package", {selector: "p"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Retry artifact discovery"})).not.toBeInTheDocument();
+        app.unmount();
+    });
+
     it("opens one build form, reveals other outputs by keyboard and retains edited destinations across disclosures", async () => {
         const user = userEvent.setup();
         const writes: string[] = [];

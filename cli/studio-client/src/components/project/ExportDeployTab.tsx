@@ -1,5 +1,5 @@
 import {PackageExtractionDiagnostics} from "./PackageExtractionDiagnostics";
-import {useEffect, useId, useRef, useState} from "react";
+import {useCallback, useEffect, useId, useRef, useState} from "react";
 import {Badge, Button, Group, List, Text, TextInput} from "@mantine/core";
 import {
     activateArtifactBuild,
@@ -20,6 +20,7 @@ import {
     startArtifactBuild,
     OutcomeLibraryGenerationStartError,
     OutcomeLibraryGenerationPollError,
+    type FetchLike,
 } from "../../api/apiClient";
 import type {
     StudioArtifactBuildView,
@@ -271,6 +272,21 @@ type ArtifactBuildRunView =
 function describeArtifactBuildResultError(view: Exclude<StudioArtifactBuildView, {status: "ok"}>): string {
     return view.message;
 }
+
+type ArtifactTargetsView = (
+    | {status: "pending"; targets?: readonly StudioArtifactTargetView[]}
+    | {status: "loaded"; targets: readonly StudioArtifactTargetView[]}
+    | {status: "failed"; targets?: readonly StudioArtifactTargetView[]; message: string}
+) & {owner: FetchLike};
+
+type ArtifactPreviewQueue = {
+    key?: string;
+    version: number;
+    approved: boolean;
+    running: boolean;
+    pending?: {version: number; outDir?: string; ready: boolean};
+    timer?: ReturnType<typeof setTimeout>;
+};
 
 // One entry per "buildArtifact" card's own registry-backed preview -- fetched automatically once its own
 // target is known to be supported (see the artifactPreviews effect below), never behind an explicit click,
@@ -1239,30 +1255,28 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         };
     }, [defaultModeName, fetchImpl, outcomeLibraryGenerationOptions, outcomeLibraryPreflightRevision]);
 
-    // The "Build artifact" group's own target list -- see StudioArtifactBuildService.listTargets's own
-    // doc comment. Fetched once on mount: it depends only on the active project's own resolved ProjectType,
-    // which is fixed for the lifetime of this tab (switching projects remounts the whole Project Dashboard).
-    const [artifactTargets, setArtifactTargets] = useState<readonly StudioArtifactTargetView[]>([]);
-    const [artifactTargetsError, setArtifactTargetsError] = useState<string>();
+    // Discovery is independent of registered deployment targets. A response,
+    // including an empty one, must settle before capability prose is rendered.
+    const [artifactDiscovery, setArtifactTargetsView] = useState<ArtifactTargetsView>({status: "pending", owner: fetchImpl});
+    const artifactTargetsView = artifactDiscovery.owner === fetchImpl ? artifactDiscovery : {status: "pending" as const, owner: fetchImpl, targets: undefined};
+    const [artifactTargetsRevision, setArtifactTargetsRevision] = useState(0);
     useEffect(() => {
         let cancelled = false;
+        setArtifactTargetsView(current => ({status: "pending", owner: fetchImpl, targets: current.owner === fetchImpl ? current.targets : undefined}));
         listArtifactTargets(fetchImpl)
             .then((targets) => {
-                if (!cancelled) {
-                    setArtifactTargets(targets);
-                }
+                if (!cancelled) setArtifactTargetsView({status: "loaded", targets, owner: fetchImpl});
             })
             .catch((error: unknown) => {
-                if (!cancelled) {
-                    setArtifactTargetsError(describeProjectActionError("The build artifact target list", errorMessage(error)));
-                }
+                if (!cancelled) setArtifactTargetsView(current => ({status: "failed", owner: fetchImpl, targets: current.owner === fetchImpl ? current.targets : undefined, message: describeProjectActionError("The build artifact target list", errorMessage(error))}));
             });
         return () => {
             cancelled = true;
         };
-    }, [fetchImpl]);
-    const artifactCards = describeArtifactBuildTargetCards(artifactTargets);
-    const cards = [...describeExportDeployTargetCards(deploymentTargets, artifactTargets), ...artifactCards];
+    }, [fetchImpl, artifactTargetsRevision]);
+    const artifactTargets = artifactTargetsView.status === "loaded" ? artifactTargetsView.targets : undefined;
+    const artifactCards = describeArtifactBuildTargetCards(artifactTargetsView.targets ?? []);
+    const cards = [...describeExportDeployTargetCards(deploymentTargets, artifactTargetsView.targets ?? []), ...artifactCards];
     const outcomeGeneratorVisible = cards.some((card) => card.kind === "outcomeLibrary" && card.supported);
     useEffect(() => {
         // A hidden/unavailable generator cannot replace the common durable job receipt.
@@ -1279,6 +1293,34 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     // Ownership starts before POST returns, and survives cancellation and transient poll failures.
     // Keep intent synchronously so neither a render nor an older server read can discard it.
     const artifactActiveBuilds = useRef<Record<string, {jobId: string; cancellationRequested: boolean}>>({});
+    // A completed Outcome Library publication changes the canonical input the
+    // Stake projection is allowed to reuse.  Refresh its server-owned
+    // prepared operation before enabling the follow-on Build action; retaining
+    // the pre-publication preview would make Stake re-decide from stale input.
+    const [artifactPreviewRevision, setArtifactPreviewRevision] = useState(0);
+    const artifactPreviewScope = useRef<{active: boolean; queues: Record<string, ArtifactPreviewQueue>} | undefined>(undefined);
+    useEffect(() => {
+        const scope = {active: true, queues: {} as Record<string, ArtifactPreviewQueue>};
+        artifactPreviewScope.current = scope;
+        setArtifactPreviews({});
+        return () => {
+            scope.active = false;
+            Object.values(scope.queues).forEach((queue) => clearTimeout(queue.timer));
+        };
+    }, [fetchImpl]);
+
+    const revokeArtifactPreview = useCallback((target: string): void => {
+        const queue = artifactPreviewScope.current?.queues[target];
+        if (queue !== undefined) {
+            queue.version++;
+            queue.approved = false;
+            queue.key = undefined;
+            queue.pending = undefined;
+            clearTimeout(queue.timer);
+        }
+        setArtifactPreviews((previews) => ({...previews, [target]: {status: "loading"}}));
+    }, []);
+
     useEffect(() => {
         if (recoveryRequest === undefined) return;
         // Outcome Library recovery is a form reconstruction, never an
@@ -1317,6 +1359,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             const target = recoveryRequest.target;
             const outDir = recoveryRequest.outDir;
             if (!artifactActiveBuilds.current[target]) {
+                revokeArtifactPreview(target);
                 setArtifactDestinations((destinations) => ({...destinations, [target]: outDir}));
             }
         }
@@ -1327,41 +1370,75 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             const target = deploymentTargetsView.targets.find((candidate) => candidate.id === recoveryRequest.targetId);
             if (target !== undefined) selectDeploymentTarget(target);
         }
-    }, [selectDeploymentTarget, deploymentTargetsView, recoveryRequest]);
-    // A completed Outcome Library publication changes the canonical input the
-    // Stake projection is allowed to reuse.  Refresh its server-owned
-    // prepared operation before enabling the follow-on Build action; retaining
-    // the pre-publication preview would make Stake re-decide from stale input.
-    const [artifactPreviewRevision, setArtifactPreviewRevision] = useState(0);
-    function refreshArtifactPreviews(): void {
-        // Invalidate the visible handles in the same update as publication's
-        // terminal receipt. Build must wait for the replacement server plan.
-        setArtifactPreviews((previews) => Object.fromEntries(Object.keys(previews).map((target) => [target, {status: "loading"}])));
+    }, [selectDeploymentTarget, deploymentTargetsView, recoveryRequest, revokeArtifactPreview]);
+    function refreshArtifactPreviews(target?: StudioArtifactTargetType): void {
+        // Revoke synchronously, including during an executing older plan. Its
+        // replacement uses the same queue rather than overlapping that work.
+        const targets = target === undefined ? Object.keys(artifactPreviewScope.current?.queues ?? {}) : [target];
+        targets.forEach(revokeArtifactPreview);
         setArtifactPreviewRevision((revision) => revision + 1);
     }
+
+    function refreshArtifactTargets(): void {
+        refreshArtifactPreviews();
+        setArtifactTargetsView(current => ({status: "pending", owner: fetchImpl, targets: current.owner === fetchImpl ? current.targets : undefined}));
+        setArtifactTargetsRevision((revision) => revision + 1);
+    }
+
     useEffect(() => {
-        let cancelled = false;
-        const supportedTargets = artifactTargets.filter((entry) => entry.supported).map((entry) => entry.target);
-        supportedTargets.forEach((target) => {
-            setArtifactPreviews((previews) => ({...previews, [target]: {status: "loading"}}));
-            previewArtifact(fetchImpl, target, artifactDestinations[target]?.trim() || undefined)
-                .then((view) => {
-                    if (!cancelled) {
-                        setArtifactPreviews((previews) => ({...previews, [target]: toArtifactPreviewRunView(view)}));
-                    }
-                })
-                .catch((error: unknown) => {
-                    if (!cancelled) {
-                        setArtifactPreviews((previews) => ({
-                            ...previews,
-                            [target]: {status: "error", message: describeProjectActionError("The build destination preview", errorMessage(error))},
-                        }));
-                    }
-                });
+        const scope = artifactPreviewScope.current!;
+        const supportedTargets = new Set(artifactTargets?.filter((entry) => entry.supported).map((entry) => entry.target));
+        // Discovery failure/refresh also removes publication authority and any
+        // queued work. Running server work settles without scheduling a successor.
+        Object.entries(scope.queues).forEach(([target, queue]) => {
+            if (!supportedTargets.has(target as StudioArtifactTargetType)) {
+                queue.version++;
+                queue.approved = false;
+                queue.key = undefined;
+                queue.pending = undefined;
+                clearTimeout(queue.timer);
+            }
         });
-        return () => {
-            cancelled = true;
-        };
+        supportedTargets.forEach((target) => {
+            const outDir = artifactDestinations[target]?.trim() || undefined;
+            const key = JSON.stringify([outDir]);
+            const queue = scope.queues[target] ??= {version: 0, approved: false, running: false};
+            if (queue.key === key) return;
+            const initial = queue.key === undefined && queue.version === 0;
+            queue.key = key;
+            queue.approved = false;
+            const request = {version: ++queue.version, outDir, ready: initial};
+            queue.pending = request;
+            clearTimeout(queue.timer);
+            setArtifactPreviews((previews) => ({...previews, [target]: {status: "loading"}}));
+            // One executing request and one replaceable pending request per
+            // target. Aborting HTTP alone would not stop server-side planning.
+            function drain(): void {
+                const next = queue.pending;
+                if (!scope.active || queue.running || next === undefined || !next.ready) return;
+                queue.pending = undefined;
+                queue.running = true;
+                previewArtifact(fetchImpl, target, next.outDir)
+                    .then((view) => {
+                        if (!scope.active || queue.version !== next.version) return;
+                        queue.approved = view.status === "ok";
+                        setArtifactPreviews((previews) => ({...previews, [target]: toArtifactPreviewRunView(view)}));
+                    })
+                    .catch((error: unknown) => {
+                        if (!scope.active || queue.version !== next.version) return;
+                        setArtifactPreviews((previews) => ({...previews, [target]: {status: "error", message: describeProjectActionError("The build destination preview", errorMessage(error))}}));
+                    })
+                    .finally(() => {
+                        queue.running = false;
+                        drain();
+                    });
+            }
+            if (initial) drain();
+            else queue.timer = setTimeout(() => {
+                request.ready = true;
+                drain();
+            }, 200);
+        });
     }, [artifactTargets, artifactDestinations, artifactPreviewRevision, fetchImpl]);
 
     // One run per artifactTarget (keyed by StudioArtifactTargetType), each independent of every other --
@@ -1587,7 +1664,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         }
         const preview = artifactPreviews[target];
         const preparedOperationId = preview?.status === "ok" ? preview.result.preparedOperationId : undefined;
-        if (preview?.status !== "ok") return;
+        if (preview?.status !== "ok" || artifactTargetsView.status !== "loaded" || !artifactPreviewScope.current?.queues[target]?.approved) return;
         const version = artifactRunVersions.current[target] = (artifactRunVersions.current[target] ?? 0) + 1;
         artifactActiveBuilds.current[target] = {jobId: "", cancellationRequested: false};
         setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running", jobId: "", cancellationRequested: false}}));
@@ -1619,7 +1696,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 if (!artifactMounted.current || artifactRunVersions.current[target] !== version) return;
                 Reflect.deleteProperty(artifactActiveBuilds.current, target);
                 setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "error", message: describeProjectActionError("The artifact build", errorMessage(error))}}));
-                refreshArtifactPreviews();
+                refreshArtifactPreviews(target);
             });
     }
 
@@ -1689,7 +1766,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 Reflect.deleteProperty(artifactBuildPollTimers.current, target);
                 const cancellationRequested = artifactActiveBuilds.current[target]?.cancellationRequested;
                 Reflect.deleteProperty(artifactActiveBuilds.current, target);
-                if (target === "blueprint") refreshArtifactPreviews();
+                if (target === "blueprint") refreshArtifactPreviews(target);
                 if (job.status === "cancelled" && job.result?.status === "cancelled") {
                     // The terminal response is authoritative.  Do not turn a
                     // cancelled job into a client-side capability decision.
@@ -1769,6 +1846,9 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 available when you need them.
             </Text>
             <QuickActions>
+                <Button variant="default" size="xs" onClick={refreshArtifactTargets} disabled={artifactTargetsView.status === "pending"}>
+                    {artifactTargetsView.status === "failed" ? "Retry artifact discovery" : "Refresh artifact targets"}
+                </Button>
                 <Button variant="default" size="xs" onClick={deployment.refreshTargets}>
                     Refresh registered targets
                 </Button>
@@ -1776,10 +1856,9 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             {deployment.targetsView.status === "loading" && <LoadingState label="Loading registered deployment targets…" />}
             {deployment.targetsError && <ErrorState message={describeProjectActionError("The deployment targets list", deployment.targetsError)} />}
             {openFolderError && <ErrorState message={openFolderError} />}
-            {artifactTargetsError && <ErrorState message={artifactTargetsError} />}
             {artifactActionError && <ErrorState message={artifactActionError} />}
 
-            {cards.length === 0 ? (
+            {cards.length === 0 && artifactTargetsView.status === "loaded" ? (
                 <EmptyState message="This project can't be built or exported from Studio -- see the current project's own capabilities." />
             ) : (
                 GROUP_ORDER.map((kind) => {
@@ -1789,7 +1868,12 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                             <Text size="sm" c="dimmed" mb="sm">
                                 {GROUP_LABELS[kind].blurb}
                             </Text>
-                            {groupCards.length === 0 ? (
+                            {kind !== "remoteDeployment" && artifactTargetsView.status !== "loaded" && (
+                                artifactTargetsView.status === "pending"
+                                    ? <LoadingState label="Discovering artifact targets…" />
+                                    : <ErrorState message={artifactTargetsView.message} />
+                            )}
+                            {(kind === "remoteDeployment" || artifactTargetsView.status === "loaded" || artifactTargetsView.targets !== undefined) && (groupCards.length === 0 ? (
                                 <EmptyState message="Nothing in this group yet." />
                             ) : (
                                 groupCards.map((card) => {
@@ -1836,7 +1920,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                                                 artifactRunVersions.current[target] = (artifactRunVersions.current[target] ?? 0) + 1;
                                                 clearTimeout(artifactBuildPollTimers.current[target]);
                                                 setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "idle"}}));
-                                                setArtifactPreviews((previews) => ({...previews, [target]: {status: "loading"}}));
+                                                revokeArtifactPreview(target);
                                                 setArtifactDestinations((destinations) => ({...destinations, [target]: destination}));
                                             }}
                                             onOpenAsProject={(result) => handleOpenArtifactAsProject(card.artifactTarget!, result)}
@@ -1848,7 +1932,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                                         />
                                     );
                                 })
-                            )}
+                            ))}
                         </PageSection>
                     );
                 })
