@@ -186,6 +186,18 @@ export function GameModelTab({
         onDirtyChange?.(isDirty);
     }, [isDirty, onDirtyChange]);
 
+    // An accepted Leave retires both the mounted edit and its tab-local recovery slot before
+    // history can remount this project. Ordinary unmount/refresh never calls this: it must keep
+    // an undiscarded draft available for an explicit Restore after F5.
+    const leaveGameModel = useCallback((): void => {
+        if (projectRoot !== undefined) clearPersistedProjectBlueprintDraft(projectRoot);
+        editRequestId.current += 1;
+        setRetainedDraft(undefined);
+        sequenceDirtyRef.current = false;
+        setSequenceDraftDirty(false);
+        setEditState({status: "viewing"});
+    }, [projectRoot]);
+
     // A project Open has a server side effect before navigation. Confirm against this live
     // edit state first, then allow only its navigation; rejection retains the dirty draft.
     const confirmedProjectActionRef = useRef(false);
@@ -219,14 +231,18 @@ export function GameModelTab({
     // shared hook (predicate-driven useBlocker + an undismissable confirm modal) useDesignNavigationGuard
     // uses for a dirty Home Design Game draft. `currentLocation` is only ever this tab's own route while
     // this component is mounted at all (ProjectDashboardPage only renders GameModelTab for
-    // activeTab === "gameModel"), so the predicate only needs to check where the transition is *going*.
+    // activeTab === "gameModel"). Compare the mounted pathname so scoped and legacy routes have
+    // the same ownership; a same-path transition does not leave the editor.
     useNavigationBlockerConfirm(
-        ({nextLocation}) => {
+        ({currentLocation, nextLocation}) => {
             if (confirmedProjectActionRef.current) {
                 confirmedProjectActionRef.current = false;
+                // Open/Retry has succeeded and is committing its one authorized navigation.
+                // Rejected actions never reach this boundary and retain their recovery data.
+                leaveGameModel();
                 return false;
             }
-            return isDirty && nextLocation.pathname !== "/project/gameModel";
+            return isDirty && nextLocation.pathname !== currentLocation.pathname;
         },
         {
             title: "Unsaved changes",
@@ -234,7 +250,7 @@ export function GameModelTab({
             labels: {confirm: "Leave", cancel: "Stay"},
             controlIds: {confirm: "game-model-unsaved-leave", cancel: "game-model-unsaved-stay"},
         },
-        () => setEditState({status: "viewing"}),
+        leaveGameModel,
     );
 
     // Covers the one exit a router transition can never see -- an actual tab/browser close or refresh.
@@ -404,7 +420,7 @@ export function GameModelTab({
         <div>
             {retainedDraft && editState.status !== "saving" && (
                 <RecoveryNotice
-                    message="Recovered an unsaved game model draft from your last session in this tab."
+                    message="An unsaved game model draft is available in this tab. Restore it to continue editing, or Discard it. Restoring does not save changes."
                     actionLabel="Restore"
                     onAction={handleRestoreDraft}
                     secondaryActionLabel="Discard"

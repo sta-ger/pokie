@@ -310,7 +310,7 @@ describe("Design recovery in the same browser tab", () => {
 
 
 const projectRoot = "/games/explicit.json";
-const projectRecoveryMessage = "Recovered an unsaved game model draft from your last session in this tab.";
+const projectRecoveryMessage = "An unsaved game model draft is available in this tab. Restore it to continue editing, or Discard it. Restoring does not save changes.";
 const projectDraftKey = `pokie-studio:project-draft:v1:${projectRoot}`;
 
 function projectApi(blueprint: typeof retained & Record<string, unknown> = retained) {
@@ -332,9 +332,12 @@ function projectApi(blueprint: typeof retained & Record<string, unknown> = retai
 
 function renderProject(fetchImpl: FetchLike, root = projectRoot, editable = true) {
     const dirty = jest.fn();
-    const router = createMemoryRouter([{path: "*", element: <GameModelTab editable={editable} projectRoot={root} onDirtyChange={dirty} />}], {initialEntries: ["/project/gameModel"]});
+    const router = createMemoryRouter([
+        {path: "/project/gameModel", element: <GameModelTab editable={editable} projectRoot={root} onDirtyChange={dirty} />},
+        {path: "/project/overview", element: <p>Project overview</p>},
+    ], {initialEntries: ["/project/overview", "/project/gameModel"]});
     const view = render(<MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><ModalsProvider><RouterProvider router={router} /></ModalsProvider></StudioApiProvider></MantineProvider>);
-    return {...view, dirty};
+    return {...view, dirty, router};
 }
 
 function gameModelAction(action: "edit" | "save" | "cancel"): HTMLElement {
@@ -399,6 +402,81 @@ describe("Project Game Model tab-local recovery", () => {
         renderProject(api.fetchImpl);
         await screen.findByText("Name: Tab Draft");
         expect(screen.queryByText(projectRecoveryMessage)).not.toBeInTheDocument();
+    });
+
+    it.each(["history Leave", "refresh"])("distinguishes %s from recovery, then recovers a subsequent undiscarded edit", async (exit) => {
+        const user = userEvent.setup();
+        const api = projectApi();
+        savePersistedBlueprintDraft(retained);
+        savePersistedProjectBlueprintDraft("/games/other.json", {blueprint: retained, section: "basics", sourceHash: "other"});
+        const first = renderProject(api.fetchImpl);
+        await screen.findByText("Name: Tab Draft");
+        fireEvent.click(gameModelAction("edit"));
+        const description = await screen.findByLabelText("Description (optional)");
+        description.focus();
+        fireEvent.input(description, {target: {value: "Fresh affected navigation draft"}});
+        const saved = window.sessionStorage.getItem(projectDraftKey);
+        expect(loadPersistedProjectBlueprintDraft(projectRoot)?.blueprint.manifest).toMatchObject({description: "Fresh affected navigation draft"});
+        const unload = new Event("beforeunload", {cancelable: true});
+        window.dispatchEvent(unload);
+        expect(unload.defaultPrevented).toBe(true);
+        expect(window.sessionStorage.getItem(projectDraftKey)).toBe(saved);
+
+        if (exit === "history Leave") {
+            await act(async () => {
+                await first.router.navigate(-1);
+            });
+            await user.click(await screen.findByRole("button", {name: "Stay"}));
+            await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+            await waitFor(() => expect(description).toHaveFocus());
+            expect(description).toHaveValue("Fresh affected navigation draft");
+            expect(window.sessionStorage.getItem(projectDraftKey)).toBe(saved);
+            await act(async () => {
+                await first.router.navigate(-1);
+            });
+            await user.click(await screen.findByRole("button", {name: "Leave"}));
+            await screen.findByText("Project overview");
+            expect(loadPersistedProjectBlueprintDraft(projectRoot)).toBeUndefined();
+            await act(async () => {
+                await first.router.navigate(1);
+            });
+            await screen.findByText("Name: Tab Draft");
+            expect(screen.queryByText(projectRecoveryMessage)).not.toBeInTheDocument();
+            expect(screen.queryByRole("button", {name: "Restore", exact: true})).not.toBeInTheDocument();
+            const cleanUnload = new Event("beforeunload", {cancelable: true});
+            window.dispatchEvent(cleanUnload);
+            expect(cleanUnload.defaultPrevented).toBe(false);
+        }
+        first.unmount();
+        // Same sessionStorage + a new mount models the client lifetime across F5. A real browser
+        // F5 and installed asset identity remain the controller's independent workflow evidence.
+        const next = renderProject(api.fetchImpl);
+        await screen.findByText("Name: Tab Draft");
+        if (exit === "refresh") {
+            expect(screen.getByText(projectRecoveryMessage)).toBeVisible();
+            expect(window.sessionStorage.getItem(projectDraftKey)).toBe(saved);
+            const restore = screen.getByRole("button", {name: "Restore", exact: true});
+            act(() => restore.focus());
+            await user.keyboard("{Enter}");
+            expect(screen.getByLabelText("Description (optional)")).toHaveValue("Fresh affected navigation draft");
+            expect(next.dirty).toHaveBeenLastCalledWith(true);
+            expect(screen.queryByText(projectRecoveryMessage)).not.toBeInTheDocument();
+        } else {
+            expect(screen.queryByText(projectRecoveryMessage)).not.toBeInTheDocument();
+            fireEvent.click(gameModelAction("edit"));
+            await screen.findByLabelText("Description (optional)");
+        }
+        fireEvent.input(screen.getByLabelText("Description (optional)"), {target: {value: "Subsequent recoverable edit"}});
+        expect(loadPersistedProjectBlueprintDraft(projectRoot)?.blueprint.manifest).toMatchObject({description: "Subsequent recoverable edit"});
+        next.unmount();
+        renderProject(api.fetchImpl);
+        await screen.findByText(projectRecoveryMessage);
+        await user.click(screen.getByRole("button", {name: "Restore", exact: true}));
+        expect(screen.getByLabelText("Description (optional)")).toHaveValue("Subsequent recoverable edit");
+        expect(loadPersistedBlueprintDraft()).toEqual({blueprint: retained});
+        expect(loadPersistedProjectBlueprintDraft("/games/other.json")?.sourceHash).toBe("other");
+        expect(api.calls.some(call => (/\/(save|validate|build)$/).test(call.url))).toBe(false);
+        expect(api.server.blueprint).toEqual(retained);
     });
 
     it("preserves Design and other-project drafts, and never exposes recovery in read-only projects", async () => {

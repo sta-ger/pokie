@@ -1,6 +1,7 @@
 import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {modals} from "@mantine/modals";
+import {loadPersistedProjectBlueprintDraft} from "../../../../../../cli/studio-client/src/domain/blueprintDraftStorage";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -68,7 +69,7 @@ describe("ProjectDashboardPage durable jobs", () => {
             const basics = (await screen.findByText("Game basics", {selector: "span"})).closest("fieldset")!;
             const editingPath = router.state.location.pathname;
             await user.click(within(basics).getByRole("button", {name: "Edit"}));
-            fireEvent.change(await within(basics).findByLabelText("Description (optional)"), {target: {value: "Fresh dirty-navigation retest."}});
+            fireEvent.change(await within(basics).findByLabelText("Description (optional)"), {target: {value: "Fresh affected navigation draft"}});
             for (const keyboard of [false, true]) {
                 opened.mockClear();
                 await user.click(screen.getByRole("button", {name: "Play"}));
@@ -84,8 +85,12 @@ describe("ProjectDashboardPage durable jobs", () => {
                 } else await user.click(stay);
                 await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
                 expect(router.state.location.pathname).toBe(editingPath);
-                expect(screen.getByLabelText("Description (optional)")).toHaveValue("Fresh dirty-navigation retest.");
+                expect(screen.getByLabelText("Description (optional)")).toHaveValue("Fresh affected navigation draft");
                 expect(opened).toHaveBeenCalledTimes(1);
+                // NavTabs returns focus to the drawer toggle in this layout-less DOM.
+                // The browser verifier separately owns visible desktop/mobile focus bounds.
+                await waitFor(() => expect(screen.getByRole("button", {name: "Toggle navigation"})).toHaveFocus());
+                expect(loadPersistedProjectBlueprintDraft(activeJob.projectId)?.blueprint.manifest).toMatchObject({description: "Fresh affected navigation draft"});
                 expect(document.querySelector('[data-pokie-lifecycle-result-control="project-tab:gameModel"]')).toHaveTextContent("Game Model ready");
                 expect(document.querySelector('[data-pokie-lifecycle-result-control="project-tab:gameModel"]')).toHaveAttribute("data-pokie-lifecycle-terminal", "rendered");
                 const unload = new Event("beforeunload", {cancelable: true});
@@ -97,11 +102,15 @@ describe("ProjectDashboardPage durable jobs", () => {
             await waitFor(() => expect(router.state.location.pathname).toMatch(/\/overview$/));
             await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
             expect(screen.getByText("Overview ready")).toBeVisible();
+            expect(loadPersistedProjectBlueprintDraft(activeJob.projectId)).toBeUndefined();
             await act(async () => {
                 await router.navigate(-1);
             });
             await waitFor(() => expect(router.state.location.pathname).toBe(editingPath));
             expect(await screen.findByText("Game Model ready")).toBeVisible();
+            expect(screen.queryByText(/unsaved game model draft/)).not.toBeInTheDocument();
+            expect(screen.queryByRole("button", {name: "Restore", exact: true})).not.toBeInTheDocument();
+            expect(screen.queryByRole("button", {name: "Discard", exact: true})).not.toBeInTheDocument();
             expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
             await act(async () => {
                 await router.navigate(1);
@@ -284,6 +293,7 @@ describe("ProjectDashboardPage durable jobs", () => {
         expect(opens()).toHaveLength(0);
         await user.click(screen.getByRole("button", {name: "Stay"}));
         expect(screen.getByLabelText("Game name")).toHaveValue("Unsaved producer edit");
+        expect(loadPersistedProjectBlueprintDraft(activeJob.projectId)?.blueprint.manifest).toMatchObject({name: "Unsaved producer edit"});
         await waitFor(() => expect(screen.queryByText(confirmation)).not.toBeInTheDocument());
         await user.click(screen.getByRole("button", {name: actionName}));
         await screen.findByText(confirmation);
@@ -299,6 +309,7 @@ describe("ProjectDashboardPage durable jobs", () => {
         expect(screen.getByRole("button", {name: "Find retained project in Projects"})).toBeEnabled();
         expect(router.state.location.pathname).toMatch(/\/gameModel$/);
         expect(screen.getByLabelText("Game name")).toHaveValue("Unsaved producer edit");
+        expect(loadPersistedProjectBlueprintDraft(activeJob.projectId)?.blueprint.manifest).toMatchObject({name: "Unsaved producer edit"});
         // A failed action must not leave a navigation allowance armed.
         await user.click(screen.getByRole("button", {name: "Overview"}));
         await screen.findByText(confirmation);
@@ -312,6 +323,7 @@ describe("ProjectDashboardPage durable jobs", () => {
         await user.click(screen.getByRole("button", {name: "Leave"}));
         await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(openedRuntime)}/overview`));
         await waitFor(() => expect(screen.queryByText(confirmation)).not.toBeInTheDocument());
+        expect(loadPersistedProjectBlueprintDraft(activeJob.projectId)).toBeUndefined();
         expect(opens().map(call => JSON.parse(call.init!.body!))).toEqual([
             {projectRoot: expectedSource}, {projectRoot: expectedSource},
         ]);
