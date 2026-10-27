@@ -17,6 +17,7 @@ import {optimizationRequest} from "../../../../../v2/fixtures/OptimizationFixtur
 
 function baseFetchRoutes() {
     return {
+        "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
         // Discovery runs alongside feature requests and continues after returning Home.
         "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
         "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
@@ -408,9 +409,7 @@ describe("ProjectDashboardPage", () => {
             expect(await screen.findByRole("heading", {name: "Projects"})).toBeInTheDocument();
         });
 
-        // The Projects breadcrumb is the direct return path to the project list. It must still close
-        // the active project first rather than raw-navigating back into the same server-side workspace.
-        it("returns to Your projects via its breadcrumb, closing the project first", async () => {
+        it("visits Your projects via its breadcrumb without closing the current project", async () => {
             const user = userEvent.setup();
             const {fetchImpl, calls} = createRoutedFakeFetch({
                 ...baseFetchRoutes(),
@@ -425,7 +424,7 @@ describe("ProjectDashboardPage", () => {
 
             await waitFor(() => expect(screen.queryByRole("heading", {name: "Sample Slot"})).not.toBeInTheDocument());
             expect(await screen.findByRole("heading", {name: "Projects"})).toBeInTheDocument();
-            expect(calls.some((call) => call.url === "/api/projects/close")).toBe(true);
+            expect(calls.some((call) => call.url === "/api/projects/close")).toBe(false);
         });
 
         // Every other mutating apiClient.ts function throws on a non-ok response; closeProject() used to

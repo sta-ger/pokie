@@ -143,8 +143,8 @@ export class ProjectTransitionConflict extends Error {
     }
 }
 
-export async function getContext(fetchImpl: FetchLike): Promise<StudioContext> {
-    const response = await fetchImpl("/api/context");
+export async function getContext(fetchImpl: FetchLike, signal?: AbortSignal): Promise<StudioContext> {
+    const response = await fetchImpl("/api/context", signal === undefined ? undefined : {signal, cache: "no-store"});
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to determine the Studio launch context"));
     }

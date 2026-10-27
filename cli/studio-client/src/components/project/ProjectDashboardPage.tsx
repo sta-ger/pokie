@@ -1283,6 +1283,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         ].filter((reason): reason is string => reason !== undefined);
         confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, closeProjectAndReturnToProjects);
     };
+    // Visiting Home leaves server-owned work running. GameModelTab's router
+    // blocker still guards unsaved edits; only explicit Close drains the project.
+    const returnToProjects = (): void => navigate("/home/projects");
 
     function copyProjectPath(): void {
         if (projectKey === undefined || navigator.clipboard === undefined) {
@@ -1367,15 +1370,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         <AppShellLayout
             navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}
             breadcrumbs={[
-                {label: "Your projects", id: "project-breadcrumb-projects", onClick: handleClose},
+                {label: "Your projects", id: "project-breadcrumb-projects", onClick: returnToProjects},
                 {label: projectName, onClick: () => setActiveTab("overview")},
                 {label: activeTabLabel},
             ]}
-            // Same warn-then-close-then-navigate path as the "Close project" button below (see
-            // handleClose) -- without this, the brand link's default `href="#/"` would silently bounce
-            // back to this same still-active project (see AppShellLayout's own onHomeClick doc comment),
-            // discarding an unapplied Mechanics Editor draft or an active operation with no warning at all.
-            onHomeClick={handleClose}
+            onHomeClick={returnToProjects}
         >
             <div className="studio-page">
                 <Title id="project-dashboard-heading" order={2}>{describeProjectName(header)}</Title>

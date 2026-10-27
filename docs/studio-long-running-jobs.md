@@ -75,7 +75,18 @@ executor.
 Potentially noticeable rows above are all common-job operations; they are not excused merely because the current implementation awaits I/O. Their existing endpoints remain compatibility
 projections while their domain services remain executors.
 
-When leaving a project, Studio asks the server for the complete active job set. The browser names those operations and must confirm the transition; the server rejects an unconfirmed close, Home navigation, or opening/switching to another project with the affected operation names. A new project generation invalidates stale list/start/poll/cancel responses so no response from project A is rendered in project B.
+The **Your projects** breadcrumb and Studio brand visit Home without closing the
+current project. Home shows that project's durable operations on both sections,
+including progress, Cancel, checkpoint Resume and retained terminal records.
+**Return to project** opens its scoped dashboard for result review and explicit
+Retry configuration. Dirty Game Model and Home Design edits still require a
+Leave/Stay choice. Browser-owned work retains its documented tab/Worker lifetime.
+
+Explicit **Close project** and opening a different project remain cleanup
+transitions. Studio asks the server for the complete active job set, names those
+operations and requires confirmation before cancelling them. A new project
+generation invalidates stale list/start/poll/cancel responses so no response from
+project A is rendered in project B.
 
 Logical composite delivery commits each subround through the existing runtime
 boundary. Cancellation stops subsequent subrounds and publication, and preserves

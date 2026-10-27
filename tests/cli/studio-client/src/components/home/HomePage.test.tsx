@@ -9,6 +9,7 @@ const DIRTY_CONFIRMATION = "You have unsaved changes in Design Game. Leave and l
 
 function retainedOpeningRoutes() {
     return {
+        "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
         "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
             id: "open-retained", projectId: RETAINED_OPEN_SOURCE, operation: "project-open-materialization",
@@ -100,6 +101,7 @@ describe("HomePage", () => {
     it("exposes draft package publication from fresh Home advanced options without a retained job", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
             "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
@@ -122,6 +124,7 @@ describe("HomePage", () => {
         const user = userEvent.setup();
         const manifest = {id: "starter-slot", name: "Starter Slot", version: "0.1.0"};
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
             "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
@@ -162,6 +165,7 @@ describe("HomePage", () => {
     it("keeps retained project-opening recovery visible on Projects and invokes its captured open action", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
                 id: "open-retained", projectId: "/games/recoverable", operation: "project-open-materialization",
@@ -190,6 +194,7 @@ describe("HomePage", () => {
     it("opens a completed Blueprint job in Studio through the guarded transition even without native folder access", async () => {
         const source = "/games/starter-slot/blueprint.json";
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...retainedOpeningRoutes(),
             "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "unavailable", reason: "Remote session."}}),
             "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
@@ -219,6 +224,7 @@ describe("HomePage", () => {
     it("retains a missing completed opening and leads to the existing Projects relocation control", async () => {
         const source = "/old-profile/Documents/POKIE Projects/starter-slot/blueprint.json";
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...retainedOpeningRoutes(),
             "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
                 id: "missing-open", projectId: source, operation: "project-open-materialization", request: {sourcePath: source},
@@ -242,6 +248,7 @@ describe("HomePage", () => {
     it.each(["form", "JSON"] as const)("guards retained project-opening Retry before side effects for dirty %s, preserving Stay and committing Leave once", async (mode) => {
         let serverIdentity = "/games/previous";
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...retainedOpeningRoutes(),
             "/api/home/projects/open": () => {
                 serverIdentity = RETAINED_OPEN_RUNTIME;
@@ -292,6 +299,7 @@ describe("HomePage", () => {
         let rejectOpening = true;
         const mode = failure === "HTTP" ? "form" : "JSON";
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...retainedOpeningRoutes(),
             "/api/home/projects/open": () => {
                 if (rejectOpening) {
@@ -342,6 +350,7 @@ describe("HomePage", () => {
     it("reconstructs a retained PAR import on Home without importing until the user explicitly submits it", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
                 id: "retained-par-import", projectId: "design:/games/retained.par.xlsx", operation: "design-par-import",
@@ -370,6 +379,7 @@ describe("HomePage", () => {
         const user = userEvent.setup();
         const blueprint = {manifest: {id: "recovered", name: "Recovered", version: "1.0.0"}, reels: 3, rows: 3, symbols: ["A"], paytable: {A: {3: 5}}};
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
                 id: "retained-design-build", projectId: "design:/games/recovered.blueprint.json", operation: "design-build",
@@ -419,6 +429,7 @@ describe("HomePage", () => {
         const user = userEvent.setup();
         const blueprint = {manifest: {id: "recovered", name: "Recovered", version: "1.0.0"}, reels: 3, rows: 3, symbols: ["A"], paytable: {A: {3: 5}}};
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
                 id: "retained-par-export", projectId: "design:/games/recovered.blueprint.json", operation: "design-par-export",
@@ -445,6 +456,7 @@ describe("HomePage", () => {
         const user = userEvent.setup();
         const blueprint = {manifest: {id: "B", name: "Recovered B", version: "1.0.0"}, reels: 3, rows: 1, symbols: ["A"], paytable: {A: {3: 5}}};
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
                 id: "retained", projectId: "design:draft:B", operation: "design-build", request: {blueprint, destinationPath: "/games/B"},
@@ -482,6 +494,7 @@ describe("HomePage", () => {
     it("defaults to Design Game and switches between tabs, keeping aria-current on the active one", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
 
@@ -510,6 +523,7 @@ describe("HomePage", () => {
         const user = userEvent.setup();
         let status: "ok" | "missing" = "ok";
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({
                 ok: true,
                 status: 200,
@@ -546,6 +560,7 @@ describe("HomePage", () => {
     it("opens an already-registered project from the Projects tab's registry list", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({
                 ok: true,
                 status: 200,
@@ -598,6 +613,7 @@ describe("HomePage", () => {
     it("preserves a Design Game draft across Design -> Projects -> Design (tabs stay mounted, never unmounted)", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
 
@@ -631,6 +647,7 @@ describe("HomePage", () => {
     it("asks for confirmation before leaving a dirty Design Game draft to open a project, and Cancel preserves it", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({
                 ok: true,
                 status: 200,

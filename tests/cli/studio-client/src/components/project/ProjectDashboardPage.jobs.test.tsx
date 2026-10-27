@@ -47,6 +47,77 @@ function openingRoutes() {
 }
 
 describe("ProjectDashboardPage durable jobs", () => {
+    it.each(["Your projects", "FromStan/POKIE Studio"])("V35-HOME-PROJECT-JOB: %s preserves active work through Home sections and scoped return", async launcher => {
+        const user = userEvent.setup();
+        let optimization = {...activeJob, operation: "optimization", status: "running"};
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...openingRoutes(),
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "project", projectRoot: activeJob.projectId}}),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {projectRoot: activeJob.projectId, jobs: [optimization]}}),
+            "/api/project/jobs/job-1": () => ({ok: true, status: 200, body: optimization}),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+        });
+        const {router, unmount} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("region", {name: "optimization job job-1"});
+        await user.click(screen.getByRole("button", {name: launcher}));
+        await waitFor(() => expect(router.state.location.pathname).toBe("/home/projects"));
+        const homeCard = await screen.findByRole("region", {name: "optimization job job-1"});
+        expect(homeCard).toHaveTextContent("2 / 4 files");
+        expect(within(homeCard).getByRole("button", {name: "Cancel"})).toBeEnabled();
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Start a game"}));
+        await waitFor(() => expect(router.state.location.pathname).toBe("/home/design"));
+        expect(screen.getByRole("region", {name: "optimization job job-1"})).toBe(homeCard);
+        await user.click(screen.getByRole("button", {name: "Projects"}));
+        await waitFor(() => expect(router.state.location.pathname).toBe("/home/projects"));
+        act(() => within(homeCard).getByRole("button", {name: "Cancel"}).focus());
+        optimization = {...optimization, status: "completed"};
+        await screen.findByText("optimization · Completed");
+        expect(homeCard).toHaveFocus();
+        await user.click(screen.getByRole("button", {name: "Return to project"}));
+        await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(activeJob.projectId)}/overview`));
+        expect(await screen.findByRole("region", {name: "optimization job job-1"})).toHaveTextContent("Completed");
+        expect(calls.filter(call => call.url === "/api/projects/close" || call.url === "/api/home/projects/open" || call.url.endsWith("/cancel") || call.url.endsWith("/recover"))).toEqual([]);
+        unmount();
+    });
+
+    it("V35-HOME-DIRTY-NAVIGATION: Stay retains the edit and Leave visits Home without cancelling work", async () => {
+        const user = userEvent.setup();
+        const blueprint = {manifest: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"},
+            reels: 1, rows: 1, symbols: ["A"], reelStrips: [["A"]], paylines: [[0]], paytable: {A: {1: 1}}, availableBets: [1]};
+        const unavailable = {status: "unavailable", reason: "Not required for this edit"};
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...openingRoutes(),
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "project", projectRoot: activeJob.projectId}}),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {projectRoot: activeJob.projectId, jobs: [activeJob]}}),
+            "/api/project/jobs/job-1": () => ({ok: true, status: 200, body: activeJob}),
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: {
+                basics: {status: "available", data: blueprint.manifest}, layout: unavailable, symbols: unavailable,
+                reels: unavailable, paytable: unavailable, betsAndModes: unavailable, mechanics: unavailable, limits: unavailable,
+            }}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: activeJob.projectId, blueprint, blueprintHash: "h1"}}),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+        });
+        const {router, unmount} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await user.click(await screen.findByRole("button", {name: "Game Model"}));
+        const basics = (await screen.findByText("Game basics", {selector: "span"})).closest("fieldset")!;
+        await user.click(within(basics).getByRole("button", {name: "Edit"}));
+        fireEvent.change(await within(basics).findByLabelText("Game name"), {target: {value: "Unsaved name"}});
+        await user.click(screen.getByRole("button", {name: "Your projects"}));
+        await user.click(await screen.findByRole("button", {name: "Stay"}));
+        expect(screen.getByLabelText("Game name")).toHaveValue("Unsaved name");
+        expect(router.state.location.pathname).toMatch(/\/gameModel$/);
+        await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+        await user.click(screen.getByRole("button", {name: "FromStan/POKIE Studio"}));
+        await user.click(await screen.findByRole("button", {name: "Leave"}));
+        await waitFor(() => expect(router.state.location.pathname).toBe("/home/projects"));
+        expect(await screen.findByRole("region", {name: "certification-evidence-build job job-1"})).toHaveTextContent("Writing evidence");
+        expect(calls.some(call => call.url === "/api/projects/close" || call.url.endsWith("/cancel") || call.url === "/api/home/blueprints/save")).toBe(false);
+        unmount();
+    });
+
     it.each([true, false])("opens a completed Blueprint through Studio (native host available: %s), preserving Reveal semantics", async (nativeAvailable) => {
         const user = userEvent.setup();
         let currentRoot = "/games/sample-slot";

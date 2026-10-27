@@ -96,6 +96,9 @@ describe("V2C-22-SIDECAR-DIAGNOSTICS: rendered Home recovery", () => {
             let body: unknown;
             try {
                 switch (route) {
+                    case "/api/context":
+                        body = {mode: "home"};
+                        break;
                     case "/api/home/projects/registry":
                         body = await service.list();
                         break;
@@ -265,6 +268,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("renders conversion evidence retained by a registry reload", async () => {
         const evidencePath = "/POKIE Projects/imported/blueprint.json.conversion-evidence.json";
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({
                 ok: true,
                 status: 200,
@@ -295,6 +299,7 @@ describe("ProjectsPanel: Import Project", () => {
         const user = userEvent.setup();
         let attempts = 0;
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => {
                 attempts++;
                 return attempts === 1
@@ -320,6 +325,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("renders the resolver's actionable unavailable WASM reason and never offers an open action", async () => {
         const reason = "The WASM sidecar is malformed; repair its JSON.";
         const {fetchImpl} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({
                 ok: true,
                 status: 200,
@@ -359,6 +365,7 @@ describe("ProjectsPanel: Import Project", () => {
             inspectionSummary: "POKIE reads compatible component metadata only.",
         };
         const {fetchImpl} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({
                 ok: true,
                 status: 200,
@@ -385,6 +392,7 @@ describe("ProjectsPanel: Import Project", () => {
 
     it("renders a canonical WASM artifact as an ordinary Open project", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({
                 ok: true,
                 status: 200,
@@ -417,6 +425,7 @@ describe("ProjectsPanel: Import Project", () => {
         };
         const location = "/games/component.wasm";
         const {fetchImpl} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/projects/registry/preview": () => ({
                 ok: true,
@@ -454,6 +463,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("detects a recognized package, prefills the suggested name, and Register adds it to the list", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/projects/registry/preview": () => ({
@@ -569,6 +579,7 @@ describe("ProjectsPanel: Import Project", () => {
         const user = userEvent.setup();
         const location = "/games/sheet.xlsx";
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/projects/registry/preview": () => ({
@@ -677,6 +688,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("picks a PAR workbook through the native file picker, then detects and retains its Design Game route", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "unavailable"}}),
             "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "available"}}),
@@ -721,6 +733,7 @@ describe("ProjectsPanel: Import Project", () => {
         const user = userEvent.setup();
         const selectedLocation = "/games/already-selected.xlsx";
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/fs/browse": () => ({
                 ok: true,
@@ -743,6 +756,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("falls back to file-only server selection when the native PAR picker is unavailable", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "unavailable"}}),
             "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "unavailable", reason: "No display"}}),
@@ -773,6 +787,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("falls back to file-only server selection when the native PAR picker request fails", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "unavailable"}}),
             "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "available"}}),
@@ -809,6 +824,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("keeps the ordinary Import Project Browse picker generic for files and folders", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "unavailable"}}),
             "/api/home/fs/browse": () => ({
@@ -844,6 +860,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("shows a not-recognized message for a path that isn't any known project type, without registering anything", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/projects/registry/preview": () => ({ok: true, status: 200, body: {status: "unrecognized", path: "/tmp/nothing"}}),
@@ -861,6 +878,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("accepts a Blueprint file path with no folder-only warning, requesting kind=any (not directory-only) for its resolved-path hint", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/fs/browse": () => ({
@@ -910,6 +928,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("registers an imported Blueprint file and Open lands it on its Studio project workspace, same as a package", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/fs/browse": () => ({
@@ -992,6 +1011,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("accepts a package directory path with no file-only warning, requesting kind=any for its resolved-path hint", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/fs/browse": () => ({
@@ -1041,6 +1061,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("removes a registered entry after confirming, without deleting anything on disk", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({
                 ok: true,
@@ -1086,6 +1107,7 @@ describe("ProjectsPanel: Import Project", () => {
         const oldLocation = "/games/managed/blueprint.json";
         const newLocation = "/moved/managed/blueprint.json";
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({
                 ok: true,
@@ -1151,6 +1173,7 @@ describe("ProjectsPanel: Import Project", () => {
         const oldLocation = "/games/missing/slot.json";
         const newLocation = "/moved/not-a-game";
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({
                 ok: true,
@@ -1210,6 +1233,7 @@ describe("ProjectsPanel: Import Project", () => {
             status: index === 0 ? "missing" : "ok" as const,
         }));
         const {fetchImpl} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: entries}),
         });
         renderWithProviders(<ProjectsPanel />, {fetchImpl});
@@ -1231,6 +1255,7 @@ describe("ProjectsPanel: Import Project", () => {
 
     it("uses clear user-facing wording for how each project was added", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({
                 ok: true,
                 status: 200,
@@ -1265,6 +1290,7 @@ describe("ProjectsPanel: Import Project", () => {
     ] as const)("opens an available %s registry entry through the public Project workspace action", async (type, name, location) => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({
                 ok: true,
                 status: 200,
@@ -1298,6 +1324,7 @@ describe("ProjectsPanel: Import Project", () => {
         const user = userEvent.setup();
         const location = "/games/sheet.xlsx";
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({
                 ok: true,
@@ -1378,6 +1405,7 @@ describe("ProjectsPanel: Import Project", () => {
         let failOpen = true;
         let finishOpen: (() => void) | undefined;
         const routed = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: [
                 {location, name: "Imported design", type: "blueprint", capabilities: [], origin: "external", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "ok"},
                 {location: "/games/other", name: "Other game", type: "tsPackage", capabilities: [], origin: "external", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "ok"},
@@ -1430,6 +1458,7 @@ describe("ProjectsPanel: Import Project", () => {
         const location = "/games/Imported keyboard design.json";
         const resolvedRoot = "/games/keyboard runtime";
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: [
                 {location, name: "Imported design", type: "blueprint", capabilities: [], origin: "external", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "ok"},
@@ -1491,6 +1520,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("removes selected missing registrations together after confirmation", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
             ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({
                 ok: true,
@@ -1520,6 +1550,7 @@ describe("ProjectsPanel: Import Project", () => {
 
 function removalFocusRoutes() {
     return createRoutedFakeFetch({
+        "/api/context": () => ({ok: true, status: 200, body: {mode: "home"}}),
         "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
         "/api/home/projects/registry": () => ({ok: true, status: 200, body: [
             {

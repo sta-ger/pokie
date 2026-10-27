@@ -17,6 +17,7 @@ import {JobCard} from "../common/JobCard";
 import {JobObservationNotice} from "../common/JobObservationNotice";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {errorMessage} from "../../domain/errorMessage";
+import {HomeProjectJobs} from "./HomeProjectJobs";
 
 export type HomeTab = "design" | "projects";
 
@@ -183,6 +184,7 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
 
     return (
         <AppShellLayout
+            onHomeClick={() => navigate("/home/design")}
             navbar={<NavTabs items={HOME_TABS} active={activeTab} onSelect={(value) => {
                 // A selected section is already the live rendered state.  Do
                 // not manufacture a second history transition from a repeat
@@ -234,6 +236,8 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
                 </div>
 
                 {homeJobsPanel}
+
+                <HomeProjectJobs />
 
                 <DocumentationLinks />
             </Stack>
