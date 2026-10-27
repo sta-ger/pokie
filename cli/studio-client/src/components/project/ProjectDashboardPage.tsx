@@ -640,18 +640,18 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const simulationProjectRoot = header.status === "loaded" ? header.projectRoot : undefined;
     useEffect(() => {
         if (activeTab !== "simulation" || simulationProjectRoot === undefined) return undefined;
-        let stale = false;
+        const controller = new AbortController();
         setSimulationModesError(undefined);
-        getGameModel(fetchImpl).then(model => {
-            if (stale) return;
+        getGameModel(fetchImpl, undefined, controller.signal).then(model => {
+            if (controller.signal.aborted) return;
             const section = model.betsAndModes;
             const modes = section.status === "available" ? section.data.betModes.filter(mode => mode.runtimeType !== undefined).map(mode => mode.id) : [];
             setPackageSimulationModes({projectRoot: simulationProjectRoot, modes});
         }).catch((error: unknown) => {
-            if (!stale) setSimulationModesError(errorMessage(error));
+            if (!controller.signal.aborted) setSimulationModesError(errorMessage(error));
         });
         return () => {
-            stale = true;
+            controller.abort();
         };
     }, [activeTab, simulationProjectRoot, fetchImpl]);
     const simulationModes = outcomeLibraryModes ?? (packageSimulationModes?.projectRoot === simulationProjectRoot ? packageSimulationModes?.modes : undefined);

@@ -118,20 +118,24 @@ export function GameModelTab({
     // starts; otherwise an older response can land after Save and put View Mode back on its old
     // server projection.
     const refreshRequestIdRef = useRef(0);
+    const refreshControllerRef = useRef<AbortController | undefined>(undefined);
 
     const refresh = useCallback(() => {
         const requestId = ++refreshRequestIdRef.current;
+        refreshControllerRef.current?.abort();
+        const controller = new AbortController();
+        refreshControllerRef.current = controller;
         // Keep the owning editor mounted during projection refreshes. Replacing this subtree
         // discards its selected reel, bounded page and local unapplied draft while the request runs.
         setState((previous) => previous.status === "loaded" ? {...previous, refreshing: true, failure: undefined} : {status: "loading"});
-        getGameModel(fetchImpl, sharedWeightsSampleSeed)
+        getGameModel(fetchImpl, sharedWeightsSampleSeed, controller.signal)
             .then((projection) => {
-                if (requestId === refreshRequestIdRef.current) {
+                if (!controller.signal.aborted && requestId === refreshRequestIdRef.current) {
                     setState({status: "loaded", projection});
                 }
             })
             .catch((error: unknown) => {
-                if (requestId === refreshRequestIdRef.current) {
+                if (!controller.signal.aborted && requestId === refreshRequestIdRef.current) {
                     const failure = describeGameModelLoadFailure(errorMessage(error));
                     setState((previous) => previous.status === "loaded" ? {...previous, refreshing: false, failure} : {status: "error", failure});
                 }
@@ -140,6 +144,7 @@ export function GameModelTab({
 
     useEffect(() => {
         refresh();
+        return () => refreshControllerRef.current?.abort();
     }, [refresh]);
 
     // Advance the inspection seed instead of drawing one from Math.random(): the next sample is

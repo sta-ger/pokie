@@ -420,15 +420,15 @@ it("withholds successful actions when a completed read races requested cancellat
 });
 
 
-it("coalesces rapid extraction edits behind one executing plan and preserves unrelated ready cards", async () => {
+it("revokes obsolete extraction requests, coalesces edits and preserves unrelated ready cards", async () => {
     const requests: {target: string; outDir?: string}[] = [];
-    const pending: {resolve: (value: Awaited<ReturnType<FetchLike>>) => void; reject: (error: Error) => void}[] = [];
+    const pending: {resolve: (value: Awaited<ReturnType<FetchLike>>) => void; reject: (error: Error) => void; signal?: AbortSignal}[] = [];
     const base = transport((url, init) => {
         if (url.endsWith("/preview")) {
             const body = JSON.parse(String(init?.body)) as {target: string; outDir?: string};
             requests.push(body);
             if (body.outDir !== undefined) return new Promise((resolve, reject) => {
-                pending.push({resolve, reject});
+                pending.push({resolve, reject, signal: init?.signal});
             });
             return response(body.target === "blueprint" ? preview() : {
                 status: "ok", target: body.target, destination: "/games/package", destinationKind: "directory", plannedOutputs: ["package.json"], sourceType: "tsPackage",
@@ -458,17 +458,19 @@ it("coalesces rapid extraction edits behind one executing plan and preserves unr
         expect(build()).toBeDisabled();
         expect(siblingBuild).toBeEnabled();
     }
-    // Let the edit debounce expire while the old expensive plan still owns its slot.
+    expect(pending[0]!.signal?.aborted).toBe(true);
+    // The current request must start even if an obsolete transport ignores abort.
     await act(async () => {
         await new Promise(resolve => {
             setTimeout(resolve, 250);
         });
     });
-    expect(requests.filter(request => request.target === "blueprint")).toHaveLength(2);
+    expect(requests.filter(request => request.target === "blueprint")).toHaveLength(3);
     expect(requests.filter(request => request.target === "tsPackage")).toHaveLength(1);
+    await waitFor(() => expect(pending).toHaveLength(2));
+    expect(pending[1]!.signal?.aborted).toBe(false);
     await act(async () => pending[0]!.resolve(await response(preview("/games/first.json"))));
     expect(build()).toBeDisabled();
-    await waitFor(() => expect(pending).toHaveLength(2));
     expect(requests.at(-1)).toEqual({target: "blueprint", outDir: "/games/final.json"});
     await act(() => pending[1]!.reject(new Error("Current destination probe failed")));
     expect(await within(extractionCard).findByText(/couldn.t be completed/)).toBeInTheDocument();
@@ -545,5 +547,30 @@ it("drops a queued destination and late extraction result on navigation without 
     expect(await screen.findByText("Resolved absolute path: /games/current.json")).toBeInTheDocument();
     expect(screen.queryByText(/obsolete.json/)).not.toBeInTheDocument();
     expect(previews).toBe(2);
+    app.unmount();
+});
+
+
+it("cancels package Game Model extraction when navigating to Build and ignores its late response", async () => {
+    let settle!: (value: Awaited<ReturnType<FetchLike>>) => void;
+    let signal: AbortSignal | undefined;
+    const app = renderRoutedApp({initialEntries: ["/project/gameModel"], fetchImpl: transport((url, init) => {
+        if (url === "/api/project/gameModel") {
+            signal = init?.signal;
+            return new Promise(resolve => {
+                settle = resolve;
+            });
+        }
+        if (url.endsWith("/preview")) return response(preview());
+        return response({});
+    })});
+    await waitFor(() => expect(settle).toBeDefined());
+    expect(signal?.aborted).toBe(false);
+    await act(() => app.router.navigate("/project/exportDeploy"));
+    expect(signal?.aborted).toBe(true);
+    expect(await screen.findByRole("button", {name: "Save Blueprint"})).toBeEnabled();
+    await act(async () => settle(await response({manifest: {id: "obsolete"}})));
+    expect(screen.getByRole("button", {name: "Save Blueprint"})).toBeEnabled();
+    expect(screen.queryByText("obsolete")).not.toBeInTheDocument();
     app.unmount();
 });

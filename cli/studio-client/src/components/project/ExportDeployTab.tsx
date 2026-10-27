@@ -283,7 +283,7 @@ type ArtifactPreviewQueue = {
     key?: string;
     version: number;
     approved: boolean;
-    running: boolean;
+    controller?: AbortController;
     pending?: {version: number; outDir?: string; ready: boolean};
     timer?: ReturnType<typeof setTimeout>;
 };
@@ -1266,17 +1266,17 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     const artifactTargetsView = artifactDiscovery.owner === fetchImpl ? artifactDiscovery : {status: "pending" as const, owner: fetchImpl, targets: undefined};
     const [artifactTargetsRevision, setArtifactTargetsRevision] = useState(0);
     useEffect(() => {
-        let cancelled = false;
+        const controller = new AbortController();
         setArtifactTargetsView(current => ({status: "pending", owner: fetchImpl, targets: current.owner === fetchImpl ? current.targets : undefined}));
-        listArtifactTargets(fetchImpl)
+        listArtifactTargets(fetchImpl, controller.signal)
             .then((targets) => {
-                if (!cancelled) setArtifactTargetsView({status: "loaded", targets, owner: fetchImpl});
+                if (!controller.signal.aborted) setArtifactTargetsView({status: "loaded", targets, owner: fetchImpl});
             })
             .catch((error: unknown) => {
-                if (!cancelled) setArtifactTargetsView(current => ({status: "failed", owner: fetchImpl, targets: current.owner === fetchImpl ? current.targets : undefined, message: describeProjectActionError("The build artifact target list", errorMessage(error))}));
+                if (!controller.signal.aborted) setArtifactTargetsView(current => ({status: "failed", owner: fetchImpl, targets: current.owner === fetchImpl ? current.targets : undefined, message: describeProjectActionError("The build artifact target list", errorMessage(error))}));
             });
         return () => {
-            cancelled = true;
+            controller.abort();
         };
     }, [fetchImpl, artifactTargetsRevision]);
     const artifactTargets = artifactTargetsView.status === "loaded" ? artifactTargetsView.targets : undefined;
@@ -1310,7 +1310,10 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         setArtifactPreviews({});
         return () => {
             scope.active = false;
-            Object.values(scope.queues).forEach((queue) => clearTimeout(queue.timer));
+            Object.values(scope.queues).forEach((queue) => {
+                clearTimeout(queue.timer);
+                queue.controller?.abort();
+            });
         };
     }, [fetchImpl]);
 
@@ -1321,6 +1324,8 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             queue.approved = false;
             queue.key = undefined;
             queue.pending = undefined;
+            queue.controller?.abort();
+            queue.controller = undefined;
             clearTimeout(queue.timer);
         }
         setArtifactPreviews((previews) => ({...previews, [target]: {status: "loading"}}));
@@ -1378,7 +1383,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     }, [selectDeploymentTarget, deploymentTargetsView, recoveryRequest, revokeArtifactPreview]);
     function refreshArtifactPreviews(target?: StudioArtifactTargetType): void {
         // Revoke synchronously, including during an executing older plan. Its
-        // replacement uses the same queue rather than overlapping that work.
+        // replacement waits for its edit debounce while the obsolete owner drains.
         const targets = target === undefined ? Object.keys(artifactPreviewScope.current?.queues ?? {}) : [target];
         targets.forEach(revokeArtifactPreview);
         setArtifactPreviewRevision((revision) => revision + 1);
@@ -1401,13 +1406,15 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 queue.approved = false;
                 queue.key = undefined;
                 queue.pending = undefined;
+                queue.controller?.abort();
+                queue.controller = undefined;
                 clearTimeout(queue.timer);
             }
         });
         supportedTargets.forEach((target) => {
             const outDir = artifactDestinations[target]?.trim() || undefined;
             const key = JSON.stringify([outDir]);
-            const queue = scope.queues[target] ??= {version: 0, approved: false, running: false};
+            const queue = scope.queues[target] ??= {version: 0, approved: false};
             if (queue.key === key) return;
             const initial = queue.key === undefined && queue.version === 0;
             queue.key = key;
@@ -1416,14 +1423,15 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             queue.pending = request;
             clearTimeout(queue.timer);
             setArtifactPreviews((previews) => ({...previews, [target]: {status: "loading"}}));
-            // One executing request and one replaceable pending request per
-            // target. Aborting HTTP alone would not stop server-side planning.
+            // Revoke the old HTTP request and its server-owned inspection worker.
+            // A late transport completion cannot release the current request slot.
             function drain(): void {
                 const next = queue.pending;
-                if (!scope.active || queue.running || next === undefined || !next.ready) return;
+                if (!scope.active || queue.controller !== undefined || next === undefined || !next.ready) return;
                 queue.pending = undefined;
-                queue.running = true;
-                previewArtifact(fetchImpl, target, next.outDir)
+                const controller = new AbortController();
+                queue.controller = controller;
+                previewArtifact(fetchImpl, target, next.outDir, controller.signal)
                     .then((view) => {
                         if (!scope.active || queue.version !== next.version) return;
                         queue.approved = view.status === "ok";
@@ -1434,7 +1442,8 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                         setArtifactPreviews((previews) => ({...previews, [target]: {status: "error", message: describeProjectActionError("The build destination preview", errorMessage(error))}}));
                     })
                     .finally(() => {
-                        queue.running = false;
+                        if (queue.controller !== controller) return;
+                        queue.controller = undefined;
                         drain();
                     });
             }

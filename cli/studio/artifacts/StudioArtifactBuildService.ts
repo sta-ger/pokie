@@ -12,6 +12,8 @@ import {
     ManagedOutcomeProjectService,
     ManagedOutcomeProjectServicing,
     PokieProject,
+    PackageBlueprintExtraction,
+    type PackageBlueprintExtractionResult,
     ProjectResolving,
     ProjectTargetResolver,
     assertArtifactBuildNotCancelled,
@@ -27,6 +29,7 @@ import fs from "fs";
 import crypto from "crypto";
 import type {StudioArtifactBuildView} from "./StudioArtifactBuildView.js";
 import type {StudioArtifactBuildJobView, StudioArtifactBuildProgressView} from "./StudioArtifactBuildJobView.js";
+import type {StudioArtifactPreflighting, StudioPreparedArtifactPreview} from "./StudioArtifactPreflighting.js";
 import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
 import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
 import {createUnresolvedRuntimePlan} from "./createExternalArtifactConversionPlan.js";
@@ -112,6 +115,7 @@ export class StudioArtifactBuildService {
     private readonly preparedStakeOperations = new Map<string, PreparedStakeOperationRecord>();
     private nextPreparedStakeOperationId = 1;
     private readonly preparedExtractions = new Map<string, PreparedExtractionRecord>();
+    private readonly previewVersions = new Map<string, number>();
     private jobService: StudioJobService | undefined;
 
     constructor(
@@ -125,6 +129,7 @@ export class StudioArtifactBuildService {
         // Keep the inverse beside the writer so a later registration failure
         // cannot leave an earlier parallel registration behind.
         private readonly unregisterManagedProject: (projectRoot: string) => Promise<void> = () => Promise.resolve(),
+        private readonly preflight?: StudioArtifactPreflighting,
     ) {
         this.resolveProject = resolveProject ?? new ProjectTargetResolver();
         this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(this.resolveProject));
@@ -136,6 +141,12 @@ export class StudioArtifactBuildService {
         this.jobService = jobService;
     }
 
+    public extractPackageModel(projectRoot: string, signal?: AbortSignal): Promise<PackageBlueprintExtractionResult> {
+        return this.preflight === undefined
+            ? new PackageBlueprintExtraction().extract(projectRoot, {signal})
+            : this.preflight.extractPackage(projectRoot, signal);
+    }
+
     // Every target ArtifactBuilderRegistry knows about, alongside whether the active project (by its own
     // resolved ProjectType) actually supports building it -- the exact same registry-supported plan BuildCommand
     // itself runs, computed once here so ExportDeployTab never re-derives a ProjectType/capability rule of its own.
@@ -143,7 +154,9 @@ export class StudioArtifactBuildService {
     // preview() owns the chosen/default output's conflict diagnostic. In particular, a Stake export's default
     // sibling name is also its own root when a Stake export is reopened, which must not make its supported
     // republish edge disappear from the available-targets surface.
-    public async listTargets(projectRoot: string): Promise<readonly StudioArtifactTargetView[]> {
+    public async listTargets(projectRoot: string, signal?: AbortSignal): Promise<readonly StudioArtifactTargetView[]> {
+        if (this.preflight !== undefined) return this.preflight.listTargets(projectRoot, signal);
+        assertArtifactBuildNotCancelled({signal});
         const project = await resolveStudioProjectSource(this.resolveProject, projectRoot);
         return Promise.all(this.registry.listTargets().map(async (target) => {
             const descriptor = this.registry.describe(target);
@@ -175,54 +188,75 @@ export class StudioArtifactBuildService {
     // ArtifactBuilderRegistry.checkDestination's own doc comment for why this never needs to run the builder
     // to know whether its destination would be accepted), so Build/Export can show a real destination and
     // conflict/diagnostic before the user ever clicks Build. Never writes anything.
-    public async preview(projectRoot: string, target: ArtifactTargetType, outDir?: string): Promise<StudioArtifactPreviewView> {
+    public async preview(projectRoot: string, target: ArtifactTargetType, outDir?: string, signal?: AbortSignal): Promise<StudioArtifactPreviewView> {
+        const identity = canonicalStudioProjectIdentity(projectRoot);
+        const key = JSON.stringify([identity, target]);
+        const version = (this.previewVersions.get(key) ?? 0) + 1;
+        this.previewVersions.set(key, version);
+        // Destination edits retire only this target's retained publication authority.
+        if (target === "blueprint") for (const [id, record] of this.preparedExtractions) {
+            if (record.projectRoot === identity) this.preparedExtractions.delete(id);
+        }
+        if (target === "stakeAdapter") for (const [id, record] of this.preparedStakeOperations) {
+            if (canonicalStudioProjectIdentity(record.projectRoot) === identity) this.preparedStakeOperations.delete(id);
+        }
+        const prepared = this.preflight === undefined
+            ? await this.preparePreview(projectRoot, target, outDir, signal)
+            : await this.preflight.preparePreview(projectRoot, target, outDir, signal);
+        assertArtifactBuildNotCancelled({signal});
+        if (this.previewVersions.get(key) !== version) throw new Error("Artifact preflight superseded by a newer destination.");
+        const {view, extraction, stakeOperation} = prepared;
+        if (view.status !== "ok") return view;
+        let preparedOperationId: string | undefined;
+        if (stakeOperation !== undefined) preparedOperationId = this.retainPreparedStakeOperation(projectRoot, stakeOperation);
+        else if (extraction !== undefined) preparedOperationId = this.retainPreparedExtraction(projectRoot, extraction.project, extraction.destination, extraction.plan);
+        return {...view, ...(preparedOperationId === undefined ? {} : {preparedOperationId})};
+    }
+
+    /** Same planner in the request worker; only immutable data crosses back to the publication owner. */
+    public async preparePreview(projectRoot: string, target: ArtifactTargetType, outDir?: string, signal?: AbortSignal): Promise<StudioPreparedArtifactPreview> {
+        assertArtifactBuildNotCancelled({signal});
         const resolved = await this.resolveForTarget(projectRoot, target, outDir);
         if (resolved === undefined) {
-            return {
+            return {view: {
                 status: "error",
                 message: `"${projectRoot}" was not recognized as a POKIE project.`,
                 plan: createUnresolvedRuntimePlan(projectRoot, target, outDir),
-            };
+            }};
         }
         const {project, destination} = resolved;
         const destinationKind = destinationKindFor(target);
         const plannedOutputs = plannedOutputsFor(target);
 
         const operation = target === "stakeAdapter"
-            ? await this.stakeProjection.prepareOperation(project, destination)
+            ? await this.stakeProjection.prepareOperation(project, destination, {signal})
             : undefined;
-        const plan = operation?.plan ?? await this.plan(project, target, destination);
+        const plan = operation?.plan ?? await this.plan(project, target, destination, {signal});
         if (plan.status === "unavailable") {
-            return {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan};
+            return {view: {status: "unsupported", target, message: this.describePlanDiagnostic(plan), plan}};
         }
         if (plan.status === "conflict") {
-            return {status: "conflict", target, destination, destinationKind, plannedOutputs, message: plan.diagnostic!.message, plan};
+            return {view: {status: "conflict", target, destination, destinationKind, plannedOutputs, message: plan.diagnostic!.message, plan}};
         }
 
         if (target === "wasm") {
             try {
-                await this.registry.validate(target, project, plan);
+                await this.registry.validate(target, project, plan, {signal});
             } catch (error) {
-                return {status: "unsupported", target, message: error instanceof Error ? error.message : String(error), plan};
+                return {view: {status: "unsupported", target, message: error instanceof Error ? error.message : String(error), plan}};
             }
         }
 
-        const preparedOperationId = operation === undefined
-            ? undefined
-            : this.retainPreparedStakeOperation(projectRoot, operation);
-        const extractionOperationId = target === "blueprint" && project.type === "tsPackage"
-            ? this.retainPreparedExtraction(projectRoot, project, destination, plan)
-            : undefined;
+        assertArtifactBuildNotCancelled({signal});
+        // Resolver configuration provenance is non-enumerable. Preserve it explicitly across IPC.
+        const source = {...project, configurationProvenance: project.configurationProvenance};
         return {
-            status: "ok",
-            target,
-            destination,
-            destinationKind,
-            plannedOutputs,
-            sourceType: project.type,
-            plan,
-            ...((preparedOperationId ?? extractionOperationId) === undefined ? {} : {preparedOperationId: preparedOperationId ?? extractionOperationId}),
-            ...(operation === undefined ? {} : {stakePreflight: this.stakePreflightView(operation)}),
+            view: {
+                status: "ok", target, destination, destinationKind, plannedOutputs, sourceType: project.type, plan,
+                ...(operation === undefined ? {} : {stakePreflight: this.stakePreflightView(operation)}),
+            },
+            ...(operation === undefined ? {} : {stakeOperation: {...operation, source}}),
+            ...(target === "blueprint" && project.type === "tsPackage" ? {extraction: {project: source, destination, plan}} : {}),
         };
     }
 
@@ -512,6 +546,7 @@ export class StudioArtifactBuildService {
     }
 
     public cancelActiveForProject(projectRoot: string): void {
+        this.preflight?.cancelForProject(projectRoot);
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         for (const record of this.jobs.values()) {
             if (record.projectRoot === projectRoot && (record.status === "queued" || record.status === "running")) {
@@ -532,6 +567,7 @@ export class StudioArtifactBuildService {
                 this.executeRecord(record);
             }
         }
+        await this.preflight?.cancelAll();
         await Promise.allSettled([...this.pendingExecutions]);
         if (this.executionFailures.length > 0) throw this.executionFailures[0];
     }

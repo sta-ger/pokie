@@ -57,6 +57,7 @@ import crypto from "crypto";
 import fs from "fs";
 import http, {IncomingMessage, ServerResponse} from "http";
 import path from "path";
+import {StudioArtifactPreflightWorker} from "./artifacts/StudioArtifactPreflightWorker.js";
 import {StudioArtifactBuildService} from "./artifacts/StudioArtifactBuildService.js";
 import {validateArtifactBuildRequest, ArtifactBuildRequestInput} from "./artifacts/validateArtifactBuildRequest.js";
 import {buildProjectGameModel} from "./blueprint/buildProjectGameModel.js";
@@ -460,6 +461,7 @@ export class StudioServer implements StudioServerHandling {
                 }, undefined, (projectRoot) => this.projectRegistrationService.remove(projectRoot)),
                 options.pokiePackageRoot,
                 (projectRoot) => this.projectRegistrationService.remove(projectRoot),
+                options.pokiePackageRoot === undefined ? undefined : new StudioArtifactPreflightWorker(this.pokieVersion, options.pokiePackageRoot),
             );
         this.artifactBuildService.attachJobService(this.jobService);
         this.stakeEngineExportService =
@@ -1302,7 +1304,7 @@ export class StudioServer implements StudioServerHandling {
         }
 
         if (method === "GET" && url.pathname === "/api/project/gameModel") {
-            await this.handleGameModel(res, url);
+            await this.handleGameModel(req, res, url);
             return;
         }
 
@@ -1527,7 +1529,7 @@ export class StudioServer implements StudioServerHandling {
         }
 
         if (method === "GET" && url.pathname === "/api/project/artifacts/targets") {
-            await this.handleListArtifactTargets(res);
+            await this.handleListArtifactTargets(req, res);
             return;
         }
 
@@ -2448,7 +2450,7 @@ export class StudioServer implements StudioServerHandling {
     // their existing tsPackage-oriented behavior -- exactly as before this awareness existed -- instead
     // of turning a resolution failure into an Inspect/Validate failure of its own.
     private resolveOpenedProject(projectRoot: string): Promise<PokieProject | undefined> {
-        return new ProjectTargetResolver().resolve(projectRoot).catch(() => undefined);
+        return new ProjectTargetResolver().resolve(projectRoot, {readConfigurationProvenance: false}).catch(() => undefined);
     }
 
     // A `projectRoot` that's a plain file (not a directory) is always treated as "blueprint", even when
@@ -2621,7 +2623,7 @@ export class StudioServer implements StudioServerHandling {
 
     private async describeUnresolvedWasm(projectRoot: string): Promise<string> {
         try {
-            await new ProjectTargetResolver().resolve(projectRoot);
+            await new ProjectTargetResolver().resolve(projectRoot, {readConfigurationProvenance: false});
             return describeUnavailableWasmComponent();
         } catch (error) {
             return error instanceof Error ? error.message : String(error);
@@ -2633,10 +2635,12 @@ export class StudioServer implements StudioServerHandling {
     // project was opened. Resolve the current path for every request, before a
     // job/service can reserve a destination or reach a package loader.
     private async rejectCurrentWasmOperation(res: ServerResponse, operation: string): Promise<boolean> {
+        // This is recognition/capability checking, not executable provenance. Loading a package
+        // here imports a fresh installed runtime graph on every guarded request (including polls).
         if (this.currentContext.mode !== "project") return false;
         const projectRoot = this.currentContext.projectRoot;
         try {
-            const project = await new ProjectTargetResolver().resolve(projectRoot);
+            const project = await new ProjectTargetResolver().resolve(projectRoot, {readConfigurationProvenance: false});
             if (project?.type === "wasm") {
                 const manifest = await readWasmComponentManifest(project);
                 const diagnostic = describeUnsupportedProjectOperation(project, operation);
@@ -2668,19 +2672,20 @@ export class StudioServer implements StudioServerHandling {
     // "sharedWeightsSampleSeed" query param re-rolls a "symbolWeights"/"default" blueprint's own dynamic
     // inspection sample (see buildProjectGameModel's own doc comment) for the Game Model Reels view's own
     // "New sample" action -- a malformed/absent value just falls back to the default sample.
-    private async handleGameModel(res: ServerResponse, url: URL): Promise<void> {
+    private async handleGameModel(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        const projectRoot = this.currentContext.projectRoot;
+        const context = this.currentContext;
+        const projectRoot = context.projectRoot;
         // Preserve a stale component's exact resolver failure.  This endpoint
         // runs after an earlier open may already have accepted the component,
         // so a sidecar edit must not become a package-inspection fallback.
         let resolved: PokieProject | undefined;
         let unresolvedWasmReason: string | undefined;
         try {
-            resolved = await new ProjectTargetResolver().resolve(projectRoot);
+            resolved = await new ProjectTargetResolver().resolve(projectRoot, {readConfigurationProvenance: false});
         } catch (error) {
             if (this.isWasmPath(projectRoot)) {
                 unresolvedWasmReason = error instanceof Error ? error.message : String(error);
@@ -2688,20 +2693,23 @@ export class StudioServer implements StudioServerHandling {
         }
         const seedParam = url.searchParams.get("sharedWeightsSampleSeed");
         const seed = seedParam !== null && Number.isFinite(Number(seedParam)) ? Number(seedParam) : undefined;
-        const projection = await buildProjectGameModel(
-            projectRoot,
-            resolved,
-            this.isOpenedBlueprintProject(projectRoot, resolved),
-            {
-                loadBlueprint: (root) => this.blueprintService.load(root),
-                inspectPackage: (root) => this.gamePackageInspector.inspect(root),
-                importParWorkbook: (root) => new ParSheetImporter().importFromFile(root),
-                readWasmManifest: readWasmComponentManifest,
-            },
-            seed,
-            unresolvedWasmReason,
-        );
-        this.sendJson(res, 200, projection);
+        await this.withArtifactPreflight(req, res, async signal => {
+            const projection = await buildProjectGameModel(
+                projectRoot,
+                resolved,
+                this.isOpenedBlueprintProject(projectRoot, resolved),
+                {
+                    extractPackage: resolved?.type === "tsPackage" ? (root) => this.artifactBuildService.extractPackageModel(root, signal) : undefined,
+                    loadBlueprint: (root) => this.blueprintService.load(root),
+                    inspectPackage: (root) => this.gamePackageInspector.inspect(root),
+                    importParWorkbook: (root) => new ParSheetImporter().importFromFile(root),
+                    readWasmManifest: readWasmComponentManifest,
+                },
+                seed,
+                unresolvedWasmReason,
+            );
+            if (!res.destroyed && this.currentContext === context) this.sendJson(res, 200, projection);
+        });
     }
 
     // Inspect's own blueprint counterpart -- reuses StudioBlueprintService.load() (the same read/parse
@@ -3541,14 +3549,18 @@ export class StudioServer implements StudioServerHandling {
     }
 
     // GET /api/project/artifacts/targets -- see StudioArtifactBuildService.listTargets's own doc comment.
-    private async handleListArtifactTargets(res: ServerResponse): Promise<void> {
+    private async handleListArtifactTargets(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
 
         if (await this.rejectCurrentWasmOperation(res, BUILD_OPERATION)) return;
-        this.sendJson(res, 200, await this.artifactBuildService.listTargets(this.currentContext.projectRoot));
+        const context = this.currentContext;
+        await this.withArtifactPreflight(req, res, async signal => {
+            const result = await this.artifactBuildService.listTargets(context.projectRoot, signal);
+            if (!res.destroyed && this.currentContext === context) this.sendJson(res, 200, result);
+        });
     }
 
     // POST /api/project/artifacts/preview -- the pre-build counterpart to POST /api/project/artifacts/build
@@ -3571,8 +3583,28 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = await this.artifactBuildService.preview(this.currentContext.projectRoot, validated.target, validated.outDir);
-        this.sendJson(res, this.statusForArtifactPreview(result.status), result);
+        const context = this.currentContext;
+        await this.withArtifactPreflight(req, res, async signal => {
+            const result = await this.artifactBuildService.preview(context.projectRoot, validated.target, validated.outDir, signal);
+            if (!res.destroyed && this.currentContext === context) this.sendJson(res, this.statusForArtifactPreview(result.status), result);
+        });
+    }
+
+    private async withArtifactPreflight(req: IncomingMessage, res: ServerResponse, run: (signal: AbortSignal) => Promise<void>): Promise<void> {
+        if (this.stopping) throw new StudioHttpRequestError(409, "Studio is stopping.");
+        const controller = new AbortController();
+        const abort = (): void => controller.abort();
+        req.once("aborted", abort);
+        res.once("close", abort);
+        if (req.aborted || res.destroyed) controller.abort();
+        try {
+            await run(controller.signal);
+        } catch (error) {
+            if (!controller.signal.aborted) throw error;
+        } finally {
+            req.off("aborted", abort);
+            res.off("close", abort);
+        }
     }
 
     // Unlike statusForArtifactBuild below, "ok" here is always 200 -- a preview never creates anything, so
@@ -3604,7 +3636,7 @@ export class StudioServer implements StudioServerHandling {
 
         if (validated.target === "blueprint") {
             // Blueprint publication from a package must consume its reviewed extraction.
-            const source = await new ProjectTargetResolver().resolve(projectRoot);
+            const source = await new ProjectTargetResolver().resolve(projectRoot, {readConfigurationProvenance: false});
             if (this.currentContext.mode !== "project" || this.currentContext.projectRoot !== projectRoot) {
                 this.sendJson(res, 409, {error: "The active project changed. Refresh the preview before saving."});
                 return;
