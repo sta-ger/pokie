@@ -1346,10 +1346,15 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         };
     }, [fetchImpl]);
 
+    // A settled selection may have been declined by the dirty-route blocker,
+    // or followed by Back/Forward. Readiness then belongs to the mounted route,
+    // not the last requested tab. Keep genuine context refreshes pending.
+    const navigationStatus = navigationLifecycle.status === "rendered" || navigationLifecycle.tab === activeTab
+        ? navigationLifecycle.status : "loading";
     let navigationMessage = "Preparing the selected section…";
     if (navigationLifecycle.tab === activeTab && navigationLifecycle.status === "error") {
         navigationMessage = "Project navigation needs a retry";
-    } else if (navigationLifecycle.tab === activeTab && navigationLifecycle.status === "rendered") {
+    } else if (navigationStatus === "rendered") {
         navigationMessage = `${activeTabLabel} ready`;
     }
 
@@ -1441,7 +1446,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         data-pokie-lifecycle-route={activeTab}
                         data-pokie-lifecycle-result-control={`project-tab:${activeTab}`}
                         data-pokie-lifecycle-result-state="navigation"
-                        data-pokie-lifecycle-terminal={navigationLifecycle.tab === activeTab ? navigationLifecycle.status : "loading"}
+                        data-pokie-lifecycle-terminal={navigationStatus}
                         size="xs"
                         c="dimmed"
                     >

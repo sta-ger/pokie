@@ -7,6 +7,37 @@ import {jobFocusLayout} from "../../testUtils/jobFocusLayout";
 import type {StudioJobView} from "../../../../../../cli/studio-client/src/api/types";
 
 describe("JobProgressCard", () => {
+    it.each(["indeterminate", "46656"])("V35 candidate stage resets estimates across the retained count decrease with total %s", total => {
+        let now = 1_000;
+        const clock = jest.spyOn(Date, "now").mockImplementation(() => now);
+        const job: StudioJobView = {id: "candidate-count", projectId: "/project", operation: "optimization", request: {}, conflictKey: "opt", status: "running", createdAt: 1};
+        const sample = (candidate: number, current: string) => <MantineProvider><JobProgressCard job={{
+            ...job,
+            progress: {stage: `Materializing outcomes (candidate ${candidate} of 3)`, unit: "outcomes", current, total},
+        }} /></MantineProvider>;
+        const view = render(sample(1, "37343"));
+        try {
+            now = 2_000;
+            view.rerender(sample(1, "38343"));
+            if (total !== "indeterminate") expect(screen.getByText(/Throughput: 1000.00 outcomes\/s/)).toBeInTheDocument();
+            now = 3_000;
+            view.rerender(sample(2, "32733"));
+            expect(screen.getByText("Materializing outcomes (candidate 2 of 3)")).toBeVisible();
+            expect(screen.getByText(`32733 / ${total === "indeterminate" ? "unknown" : total} outcomes`)).toBeVisible();
+            expect(screen.queryByText(/Throughput:|ETA:/)).not.toBeInTheDocument();
+            now = 4_000;
+            view.rerender(sample(2, "33733"));
+            if (total !== "indeterminate") expect(screen.getByText(/Throughput: 1000.00 outcomes\/s/)).toBeInTheDocument();
+            else {
+                expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+                expect(screen.queryByText(/Throughput:|ETA:/)).not.toBeInTheDocument();
+            }
+        } finally {
+            view.unmount();
+            clock.mockRestore();
+        }
+    });
+
     it.each([
         {current: "650", total: "1", unit: "artifacts"},
         {current: [1] as unknown as string, total: [1] as unknown as string, unit: "files"},

@@ -184,7 +184,12 @@ export class StudioOptimizationService {
                             let total: string | number = assessing ? request.policy.sampling?.assessmentSamples ?? 0 : candidateTotal;
                             if (evidence.work) total = evidence.work.total ?? "indeterminate";
                             executor.progress({
-                                stage: evidence.work?.stage ?? evidence.phase ?? "Finite search",
+                                // Work counts restart for every measured candidate. A poll can
+                                // skip the intervening phases, so each stored stage must identify
+                                // its candidate even when the next observed count is smaller.
+                                stage: evidence.work
+                                    ? `${evidence.work.stage} (candidate ${evidence.consumedWork} of ${candidateTotal})`
+                                    : evidence.phase ?? "Finite search",
                                 current: evidence.work?.current ?? (assessing ? evidence.stochastic?.assessmentSamples ?? 0 : evidence.evaluated + evidence.rejected),
                                 total,
                                 unit: evidence.work?.unit ?? (assessing ? "held-out observations" : "candidates"),

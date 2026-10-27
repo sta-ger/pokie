@@ -1,5 +1,6 @@
 import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {modals} from "@mantine/modals";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -47,6 +48,72 @@ function openingRoutes() {
 }
 
 describe("ProjectDashboardPage durable jobs", () => {
+    it.each(["/project/gameModel", `/project/${encodeURIComponent(activeJob.projectId)}/gameModel`])("V35-DIRTY-STAY: one choice restores the rendered section after Play from %s", async initialEntry => {
+        const user = userEvent.setup();
+        const blueprint = {manifest: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"},
+            reels: 1, rows: 1, symbols: ["A"], reelStrips: [["A"]], paylines: [[0]], paytable: {A: {1: 1}}, availableBets: [1]};
+        const unavailable = {status: "unavailable", reason: "Not required for this edit"};
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...openingRoutes(),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: {
+                basics: {status: "available", data: blueprint.manifest}, layout: unavailable, symbols: unavailable,
+                reels: unavailable, paytable: unavailable, betsAndModes: unavailable, mechanics: unavailable, limits: unavailable,
+            }}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: activeJob.projectId, blueprint, blueprintHash: "h1"}}),
+        });
+        const opened = jest.spyOn(modals, "openConfirmModal");
+        const {router, unmount} = renderRoutedApp({fetchImpl, initialEntries: [initialEntry], strictMode: true});
+        try {
+            const basics = (await screen.findByText("Game basics", {selector: "span"})).closest("fieldset")!;
+            const editingPath = router.state.location.pathname;
+            await user.click(within(basics).getByRole("button", {name: "Edit"}));
+            fireEvent.change(await within(basics).findByLabelText("Description (optional)"), {target: {value: "Fresh dirty-navigation retest."}});
+            for (const keyboard of [false, true]) {
+                opened.mockClear();
+                await user.click(screen.getByRole("button", {name: "Play"}));
+                const stay = await screen.findByRole("button", {name: "Stay"});
+                expect(screen.getAllByRole("dialog")).toHaveLength(1);
+                // Play uses only the router guard. Project-action confirmation is
+                // reserved for Open/Retry's server side effect before navigation.
+                expect(opened).toHaveBeenCalledTimes(1);
+                expect(stay).toHaveAttribute("id", "game-model-unsaved-stay");
+                if (keyboard) {
+                    act(() => stay.focus());
+                    await user.keyboard("{Enter}");
+                } else await user.click(stay);
+                await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+                expect(router.state.location.pathname).toBe(editingPath);
+                expect(screen.getByLabelText("Description (optional)")).toHaveValue("Fresh dirty-navigation retest.");
+                expect(opened).toHaveBeenCalledTimes(1);
+                expect(document.querySelector('[data-pokie-lifecycle-result-control="project-tab:gameModel"]')).toHaveTextContent("Game Model ready");
+                expect(document.querySelector('[data-pokie-lifecycle-result-control="project-tab:gameModel"]')).toHaveAttribute("data-pokie-lifecycle-terminal", "rendered");
+                const unload = new Event("beforeunload", {cancelable: true});
+                window.dispatchEvent(unload);
+                expect(unload.defaultPrevented).toBe(true);
+            }
+            await user.click(screen.getByRole("button", {name: "Overview"}));
+            await user.click(await screen.findByRole("button", {name: "Leave"}));
+            await waitFor(() => expect(router.state.location.pathname).toMatch(/\/overview$/));
+            await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+            expect(screen.getByText("Overview ready")).toBeVisible();
+            await act(async () => {
+                await router.navigate(-1);
+            });
+            await waitFor(() => expect(router.state.location.pathname).toBe(editingPath));
+            expect(await screen.findByText("Game Model ready")).toBeVisible();
+            expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+            await act(async () => {
+                await router.navigate(1);
+            });
+            expect(await screen.findByText("Overview ready")).toBeVisible();
+            expect(calls.some(call => call.url === "/api/home/blueprints/save" || call.url === "/api/projects/close" || call.url.endsWith("/cancel") || call.url === "/api/home/projects/open")).toBe(false);
+        } finally {
+            unmount();
+            opened.mockRestore();
+        }
+    });
+
     it.each(["Your projects", "FromStan/POKIE Studio"])("V35-HOME-PROJECT-JOB: %s preserves active work through Home sections and scoped return", async launcher => {
         const user = userEvent.setup();
         let optimization = {...activeJob, operation: "optimization", status: "running"};

@@ -556,6 +556,49 @@ it("reports a committed apply with recovery information and fails lifecycle comp
     expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
 });
 
+it("V35 optimizer progress identifies each real candidate across resets and durable reload", async () => {
+    const observations: NonNullable<StudioJobView["progress"]>[] = [];
+    const progress = jobs.progress.bind(jobs);
+    const observer = jest.spyOn(jobs, "progress").mockImplementation((id, value) => {
+        const updated = progress(id, value);
+        observations.push(value);
+        expect(new FileStudioJobRepository(path.join(directory, "jobs")).get(id)?.progress).toEqual(value);
+        return updated;
+    });
+    const before = fs.readFileSync(source);
+    try {
+        for (const budget of [100, 1, 100]) {
+            observations.length = 0;
+            const request = optimizationRequest();
+            request.targets[0].value = 999;
+            request.policy.budget = budget;
+            const support = await preview(request);
+            const started = await routes.handle("POST", "start", {request, expectedProjectRoot: source, sourceRevision: support.sourceRevision}, context());
+            const {job} = started.body as {job: StudioJobView};
+            await routes.drain();
+            const total = Math.min(budget, 3);
+            expect(jobs.get(source, job.id)).toMatchObject({status: "completed", result: {detail: {status: "infeasible", evidence: {evaluated: total, consumedWork: total}}}});
+            const materializing = observations.filter(value => value.stage.startsWith("Materializing outcomes"));
+            expect([...new Set(materializing.map(value => value.stage))]).toEqual(
+                Array.from({length: total}, (_, index) => `Materializing outcomes (candidate ${index + 1} of ${total})`),
+            );
+            for (let candidate = 1; candidate <= total; candidate++) {
+                const stage = `Materializing outcomes (candidate ${candidate} of ${total})`;
+                const samples = materializing.filter(value => value.stage === stage);
+                expect(samples[0]).toMatchObject({current: "0", total: "indeterminate", unit: "outcomes"});
+                expect(samples[samples.length - 1]).toMatchObject({current: "2", total: "2", unit: "outcomes"});
+                expect(samples.every((value, index) => index === 0 || BigInt(value.current) >= BigInt(samples[index - 1].current))).toBe(true);
+                expect(observations).toContainEqual(expect.objectContaining({stage: `Enumerating reel stops (candidate ${candidate} of ${total})`, current: "4", total: "4", unit: "raw draws"}));
+            }
+            expect(fs.readFileSync(source)).toEqual(before);
+            expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+        }
+    } finally {
+        observer.mockRestore();
+        await routes.shutdown();
+    }
+});
+
 it("V35 optimizer progress persists the retained 46656-draw workload before cancellation and permits reviewed retry/apply", async () => {
     const fixture = fs.readFileSync(path.resolve("tests/v2/fixtures/Valera35FeralBlazingSafari.blueprint.json"));
     fs.writeFileSync(source, fixture);
@@ -571,7 +614,7 @@ it("V35 optimizer progress persists the retained 46656-draw workload before canc
     const observer = jest.spyOn(jobs, "progress").mockImplementation((id, value) => {
         const updated = progress(id, value);
         observations.push(value);
-        if (value.stage === "Materializing outcomes" && value.current === "1") {
+        if (value.stage === "Materializing outcomes (candidate 1 of 3)" && value.current === "1") {
             // Read the actual retained running record as a reload/reattach does.
             expect(new FileStudioJobRepository(path.join(directory, "jobs")).get(id)).toMatchObject({status: "running", progress: value});
             expect(value.total).toBe("indeterminate");
@@ -583,8 +626,8 @@ it("V35 optimizer progress persists the retained 46656-draw workload before canc
     const {job} = started.body as {job: StudioJobView};
     await routes.drain();
     observer.mockRestore();
-    expect(observations).toContainEqual(expect.objectContaining({stage: "Enumerating reel stops", current: "46656", total: "46656", unit: "raw draws"}));
-    expect(observations).toContainEqual(expect.objectContaining({stage: "Materializing outcomes", current: "1", total: "indeterminate", unit: "outcomes"}));
+    expect(observations).toContainEqual(expect.objectContaining({stage: "Enumerating reel stops (candidate 1 of 3)", current: "46656", total: "46656", unit: "raw draws"}));
+    expect(observations).toContainEqual(expect.objectContaining({stage: "Materializing outcomes (candidate 1 of 3)", current: "1", total: "indeterminate", unit: "outcomes"}));
     expect(jobs.get(source, job.id)).toMatchObject({status: "cancelled", result: {detail: {status: "cancelled", evidence: {evaluated: 0, consumedWork: 1}}}});
     expect(jobs.get(source, job.id)?.result?.detail?.candidate).toBeUndefined();
     expect(fs.readFileSync(source)).toEqual(fixture);

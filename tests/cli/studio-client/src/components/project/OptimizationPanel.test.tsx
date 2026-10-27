@@ -1,5 +1,5 @@
 import {MantineProvider} from "@mantine/core";
-import {act, fireEvent, render, screen, waitFor} from "@testing-library/react";
+import {act, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {OptimizationPanel} from "../../../../../../cli/studio-client/src/components/project/OptimizationPanel";
 import {StudioApiProvider, useStudioApi} from "../../../../../../cli/studio-client/src/context/StudioApiProvider";
@@ -247,6 +247,53 @@ it("keeps consumed authored preview actions hidden after reload while retaining 
     expect(screen.getByText(/Authored changes applied/)).toBeInTheDocument();
     expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
     expect(screen.queryByRole("button", {name: "Save reviewed candidate"})).not.toBeInTheDocument();
+});
+
+it("V35 candidate progress explains the retained 38343 to 32733 reset in both views and on reattachment", async () => {
+    const request = optimizationRequest();
+    let current: StudioJobView = {
+        id: "candidate-progress", projectId: "/project", operation: "optimization", conflictKey: "opt",
+        createdAt: 1, status: "running", request: {request},
+        progress: {current: "38343", total: "indeterminate", unit: "outcomes", stage: "Materializing outcomes (candidate 1 of 3)", message: "0 evaluated; 0 rejected; 0 search observations"},
+    };
+    let finishDetail: ((value: Awaited<ReturnType<FetchLike>>) => void) | undefined;
+    const fetchImpl: FetchLike = url => {
+        if (url === "/api/project/jobs") return response({jobs: [current]});
+        if (url === "/api/project/jobs/candidate-progress") return new Promise(resolve => {
+            finishDetail = resolve;
+        });
+        throw new Error(`Unexpected request: ${url}`);
+    };
+    const app = <MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><ObservedPanel projectRoot="/project" showOperations /></StudioApiProvider></MantineProvider>;
+    const first = render(app);
+    await screen.findByText(/running: 38343 \/ indeterminate outcomes Materializing outcomes \(candidate 1 of 3\)/);
+    await waitFor(() => expect(finishDetail).toBeDefined());
+    current = {...current, progress: {current: "32733", total: "indeterminate", unit: "outcomes", stage: "Materializing outcomes (candidate 2 of 3)", message: "1 evaluated; 0 rejected; 0 search observations"}};
+    await act(async () => {
+        finishDetail!(await response(current));
+    });
+    const assertCurrent = () => {
+        expect(screen.getByText(/running: 32733 \/ indeterminate outcomes Materializing outcomes \(candidate 2 of 3\)/)).toBeVisible();
+        const card = screen.getByRole("region", {name: "optimization job candidate-progress"});
+        expect(within(card).getByText("Materializing outcomes (candidate 2 of 3)")).toBeVisible();
+        expect(card).toHaveTextContent("32733 / unknown outcomes");
+        expect(card).toHaveTextContent("1 evaluated; 0 rejected");
+        expect(screen.queryByText(/candidate 1 of 3/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Throughput:|ETA:/)).not.toBeInTheDocument();
+        expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Cancel optimization"})).toBeEnabled();
+        expect(within(card).getByRole("button", {name: "Cancel"})).toBeEnabled();
+        expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
+    };
+    assertCurrent();
+    first.unmount();
+    const reattached = render(app);
+    try {
+        await screen.findByText(/running: 32733/);
+        assertCurrent();
+    } finally {
+        reattached.unmount();
+    }
 });
 
 it.each(["completed", "failed", "cancelled", "recovery-required"] as const)(
