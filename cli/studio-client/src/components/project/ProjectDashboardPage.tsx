@@ -1285,7 +1285,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     };
     // Visiting Home leaves server-owned work running. GameModelTab's router
     // blocker still guards unsaved edits; only explicit Close drains the project.
-    const returnToProjects = (): void => navigate("/home/projects");
+    const returnToProjects = (): void => {
+        navigate("/home/projects");
+    };
 
     function copyProjectPath(): void {
         if (projectKey === undefined || navigator.clipboard === undefined) {
