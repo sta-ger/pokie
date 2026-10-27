@@ -6,10 +6,45 @@ import {HomeProjectJobs} from "../../../../../../cli/studio-client/src/component
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {jobFocusLayout} from "../../testUtils/jobFocusLayout";
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
+import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
 const root = "/games/server-returned project";
 const active: StudioJobView = {id: "optimizer", projectId: root, operation: "optimization", request: {budget: 3}, conflictKey: "optimization",
     status: "running", createdAt: 1, progress: {stage: "Evaluating candidates", current: 1, total: 3, unit: "candidates"}};
+
+it("guards Return to project before leaving a dirty Home draft and keeps work running after Stay and Leave", async () => {
+    const user = userEvent.setup();
+    const {fetchImpl, calls} = createRoutedFakeFetch({
+        "/api/context": () => ({ok: true, status: 200, body: {mode: "project", projectRoot: root}}),
+        "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: root,
+            game: {id: "server-project", name: "Server project", version: "1.0.0"}, type: "blueprint", capabilities: []}}),
+        "/api/project/jobs": () => ({ok: true, status: 200, body: {projectRoot: root, jobs: [active]}}),
+        "/api/project/jobs/optimizer": () => ({ok: true, status: 200, body: active}),
+        "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+        "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+        "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+        "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+        "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+        "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+        "/api/project/validate": () => ({ok: true, status: 200, body: {valid: true, errors: [], warnings: []}}),
+    });
+    const {router, unmount} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+    await screen.findByRole("button", {name: "Return to project"});
+    fireEvent.change(screen.getByLabelText("Game name"), {target: {value: "Unsaved Home design"}});
+    fireEvent.blur(screen.getByLabelText("Game name"));
+    await user.click(screen.getByRole("button", {name: "Return to project"}));
+    await user.click(await screen.findByRole("button", {name: "Stay"}));
+    expect(router.state.location.pathname).toBe("/home/design");
+    expect(screen.getByLabelText("Game name")).toHaveValue("Unsaved Home design");
+    expect(calls.some(call => call.url === "/api/project/context")).toBe(false);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", {name: "Return to project"}));
+    await user.click(await screen.findByRole("button", {name: "Leave"}));
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(root)}/overview`));
+    expect(await screen.findByRole("region", {name: "optimization job optimizer"})).toHaveTextContent("Evaluating candidates");
+    expect(calls.some(call => call.url === "/api/home/projects/open" || call.url === "/api/projects/close" || call.url.endsWith("/cancel"))).toBe(false);
+    unmount();
+});
 
 it("rechecks current identity on reconnect and retires the old project's delayed observation", async () => {
     const user = userEvent.setup();
