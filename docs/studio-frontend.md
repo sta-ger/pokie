@@ -52,6 +52,12 @@ tabs never loses in-progress work):
   Recovery preserves the original source version, so **Save** reports a conflict if the file changed
   meanwhile. Recovery never writes the project or builds an artifact. Explicit section Cancel and
   successful Save clear that project's applied draft; pending recovery choices remain explicit.
+  In the dirty-navigation dialog, pointer or keyboard **Stay** keeps the edit and its recovery draft.
+  Explicit **Leave** discards that project's draft before navigation, including when browser history
+  later returns to Game Model. An undiscarded draft remains available after same-tab refresh; the
+  recovery notice offers a choice and does not claim the draft is already restored. Recovery actions
+  stay visible but disabled during Save. Discarding an older recovery offer preserves a separate
+  current edit as the next recoverable draft.
   Fresh browser launches and unapplied whole-sequence text are outside this refresh contract.
 
   The design fields are grouped into 6 named sections — Game basics, Layout, Symbols,

@@ -33,6 +33,21 @@ function projectDraftKey(projectRoot: string): string {
     return `pokie-studio:project-draft:v1:${projectRoot}`;
 }
 
+// A writer belongs to one edit lifetime. Explicit discard invalidates older writers before
+// removing the slot, so a queued persistence effect cannot resurrect a draft after Leave.
+// A fresh Edit/Restore gets a new writer; refresh itself never discards the persisted bytes.
+const projectDraftGenerations = new Map<string, number>();
+export type ProjectBlueprintDraftWriter = (draft: PersistedProjectBlueprintDraft) => void;
+
+export function createProjectBlueprintDraftWriter(projectRoot: string): ProjectBlueprintDraftWriter {
+    const generation = projectDraftGenerations.get(projectRoot) ?? 0;
+    return draft => {
+        if (generation === (projectDraftGenerations.get(projectRoot) ?? 0)) {
+            savePersistedProjectBlueprintDraft(projectRoot, draft);
+        }
+    };
+}
+
 export function loadPersistedProjectBlueprintDraft(projectRoot: string): PersistedProjectBlueprintDraft | undefined {
     return readDraft(projectDraftKey(projectRoot), validatePersistedProjectBlueprintDraft);
 }
@@ -42,6 +57,7 @@ export function savePersistedProjectBlueprintDraft(projectRoot: string, draft: P
 }
 
 export function clearPersistedProjectBlueprintDraft(projectRoot: string): void {
+    projectDraftGenerations.set(projectRoot, (projectDraftGenerations.get(projectRoot) ?? 0) + 1);
     clearDraft(projectDraftKey(projectRoot));
 }
 

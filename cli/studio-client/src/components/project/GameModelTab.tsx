@@ -6,7 +6,7 @@ import {getGameModel, loadBlueprint, saveBlueprint, validateBlueprint} from "../
 import type {GameModelProjection} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {setReelGenerationMode} from "../../domain/blueprintFormOps";
-import {clearPersistedProjectBlueprintDraft, loadPersistedProjectBlueprintDraft, savePersistedProjectBlueprintDraft} from "../../domain/blueprintDraftStorage";
+import {clearPersistedProjectBlueprintDraft, createProjectBlueprintDraftWriter, loadPersistedProjectBlueprintDraft, type ProjectBlueprintDraftWriter} from "../../domain/blueprintDraftStorage";
 import {describeValidation, type BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
 import {errorMessage} from "../../domain/errorMessage";
 import {describePathActionError} from "../../domain/pathActionError";
@@ -19,7 +19,7 @@ import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
 import {IssueList} from "../common/IssueList";
 import {QuickActions} from "../common/QuickActions";
-import {RecoveryNotice} from "../common/RecoveryNotice";
+import {DraftRecoveryNotice} from "../common/RecoveryNotice";
 import {GameModelSections, type GameModelSectionId} from "./GameModelSections";
 
 type GameModelFailure = {message: string; detail?: string};
@@ -98,6 +98,7 @@ export function GameModelTab({
     const [sequenceDraftDirty, setSequenceDraftDirty] = useState(false);
     const sequenceDirtyRef = useRef(false);
     const sourceHash = useRef<string | undefined>(undefined);
+    const draftWriter = useRef<ProjectBlueprintDraftWriter | undefined>(undefined);
     const [editState, setEditState] = useState<EditState>({status: "viewing"});
     const [validationView, setValidationView] = useState<BlueprintValidationView>({status: "idle"});
     const [editError, setEditError] = useState<GameModelFailure>();
@@ -154,22 +155,30 @@ export function GameModelTab({
     useEffect(() => {
         if (!retainedDraft && projectRoot !== undefined && (editState.status === "editing" || editState.status === "saving")
             && editor.state.revision !== editState.baselineRevision && sourceHash.current !== undefined) {
-            savePersistedProjectBlueprintDraft(projectRoot, {blueprint: editor.state.blueprint, section: editState.section, sourceHash: sourceHash.current});
+            draftWriter.current?.({blueprint: editor.state.blueprint, section: editState.section, sourceHash: sourceHash.current});
         }
     }, [projectRoot, editState, editor.state.revision, editor.state.blueprint, retainedDraft]);
 
     const handleRestoreDraft = (): void => {
-        if (!retainedDraft || editState.status === "saving") return;
+        if (!retainedDraft || projectRoot === undefined || editState.status === "saving") return;
         const restore = (): void => {
+            // Resolve the actual slot again after any replacement dialog, rather than applying a
+            // cached offer whose draft may already have been discarded by its owner.
+            const draft = loadPersistedProjectBlueprintDraft(projectRoot);
+            if (!draft) {
+                setRetainedDraft(undefined);
+                return;
+            }
             editRequestId.current += 1;
+            draftWriter.current = createProjectBlueprintDraftWriter(projectRoot);
             const baselineRevision = editor.getCurrentState().revision;
-            editor.loadFrom(retainedDraft.blueprint);
-            sourceHash.current = retainedDraft.sourceHash;
+            editor.loadFrom(draft.blueprint);
+            sourceHash.current = draft.sourceHash;
             sequenceDirtyRef.current = false;
             setSequenceDraftDirty(false);
             setEditError(undefined);
             setValidationView({status: "idle"});
-            setEditState({status: "editing", section: retainedDraft.section, baselineRevision});
+            setEditState({status: "editing", section: draft.section, baselineRevision});
             setRetainedDraft(undefined);
         };
         if (isDirty) confirm("Restore the retained draft? Unsaved section edits will be replaced.", restore);
@@ -179,6 +188,9 @@ export function GameModelTab({
     const handleDiscardDraft = (): void => {
         if (projectRoot === undefined || editState.status === "saving") return;
         clearPersistedProjectBlueprintDraft(projectRoot);
+        // Discard answers the older recovery offer. An independently edited current section can
+        // still become the next recoverable draft once that offer is gone.
+        draftWriter.current = createProjectBlueprintDraftWriter(projectRoot);
         setRetainedDraft(undefined);
     };
 
@@ -285,6 +297,7 @@ export function GameModelTab({
                     return;
                 }
                 const revisionBeforeLoad = editor.state.revision;
+                draftWriter.current = createProjectBlueprintDraftWriter(projectRoot);
                 setValidationView({status: "idle"});
                 sourceHash.current = result.blueprintHash;
                 setSequenceDraftDirty(false);
@@ -322,6 +335,7 @@ export function GameModelTab({
                     return;
                 }
                 const revisionBeforeLoad = editor.state.revision;
+                draftWriter.current = createProjectBlueprintDraftWriter(projectRoot);
                 setValidationView({status: "idle"});
                 sourceHash.current = result.blueprintHash;
                 setSequenceDraftDirty(false);
@@ -418,15 +432,13 @@ export function GameModelTab({
 
     return (
         <div>
-            {retainedDraft && editState.status !== "saving" && (
-                <RecoveryNotice
-                    message="An unsaved game model draft is available in this tab. Restore it to continue editing, or Discard it. Restoring does not save changes."
-                    actionLabel="Restore"
-                    onAction={handleRestoreDraft}
-                    secondaryActionLabel="Discard"
-                    onSecondaryAction={handleDiscardDraft}
-                />
-            )}
+            <DraftRecoveryNotice
+                available={retainedDraft !== undefined}
+                subject="game model"
+                disabled={editState.status === "saving"}
+                onRestore={handleRestoreDraft}
+                onDiscard={handleDiscardDraft}
+            />
             <MathDefinitionDiffPreview sourcePath={projectRoot} projectRoot={projectRoot} draft={editState.status === "editing" ? editor.state.blueprint : undefined} revision={editor.state.revision} />
             {editError && <ErrorState message={editError.message} detail={editError.detail} />}
             {validationView.status === "error" && <ErrorState message={describePathActionError("This game model save", validationView.message)} />}

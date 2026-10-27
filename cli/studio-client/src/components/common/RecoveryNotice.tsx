@@ -21,6 +21,7 @@ export function RecoveryNotice({
     actionVariant,
     secondaryActionLabel,
     onSecondaryAction,
+    actionsDisabled,
 }: {
     title?: string;
     message: ReactNode;
@@ -30,18 +31,39 @@ export function RecoveryNotice({
     actionVariant?: ButtonProps["variant"];
     secondaryActionLabel?: string;
     onSecondaryAction?: () => void;
+    actionsDisabled?: boolean;
 }) {
     return (
         <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} title={title} role="alert" mb="sm" style={{overflowWrap: "anywhere"}}>
             {message}
-            <Button size="xs" mt="sm" color={actionColor} variant={actionVariant} onClick={onAction}>
+            <Button size="xs" mt="sm" color={actionColor} variant={actionVariant} onClick={onAction} disabled={actionsDisabled}>
                 {actionLabel}
             </Button>
             {secondaryActionLabel && onSecondaryAction && (
-                <Button size="xs" mt="sm" ml="xs" variant="subtle" onClick={onSecondaryAction}>
+                <Button size="xs" mt="sm" ml="xs" variant="subtle" onClick={onSecondaryAction} disabled={actionsDisabled}>
                     {secondaryActionLabel}
                 </Button>
             )}
         </Alert>
     );
+}
+
+// Availability is not restoration: opening a route must neither apply nor save a retained draft.
+// Keep the choice visible but disabled while the owner is saving a different edit.
+export function DraftRecoveryNotice({available, subject, disabled, onRestore, onDiscard}: {
+    available: boolean;
+    subject: string;
+    disabled?: boolean;
+    onRestore: () => void;
+    onDiscard: () => void;
+}) {
+    if (!available) return null;
+    return <RecoveryNotice
+        message={`An unsaved ${subject} draft is available in this tab. Restore it to continue editing, or Discard it. Restoring does not save changes.`}
+        actionLabel="Restore"
+        onAction={onRestore}
+        secondaryActionLabel="Discard"
+        onSecondaryAction={onDiscard}
+        actionsDisabled={disabled}
+    />;
 }
