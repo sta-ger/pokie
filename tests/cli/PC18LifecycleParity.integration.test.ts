@@ -5,6 +5,8 @@ import {ProjectTargetResolver} from "@fromstan/pokie";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";
+import {FileStudioJobRepository} from "../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../cli/studio/jobs/StudioJobService.js";
 import {StudioServer} from "../../cli/studio/StudioServer.js";
 
 const POKIE_VERSION = "1.3.0";
@@ -36,15 +38,19 @@ describe("PC-18 CLI/Studio lifecycle parity", () => {
     let workDir: string;
     let studioRoot: string;
     let server: StudioServer;
+    let repository: FileStudioJobRepository;
 
     beforeEach(() => {
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc18-lifecycle-"));
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc18-studio-"));
         writeStudioAssets(studioRoot);
+        // Parallel Jest suites must not reconcile or drain this server's jobs.
+        repository = new FileStudioJobRepository(path.join(studioRoot, "jobs"));
     });
 
     afterEach(async () => {
         await server?.stop();
+        expect(repository.getProcessState()?.status).toBe("gracefully-stopped");
         fs.rmSync(workDir, {recursive: true, force: true});
         fs.rmSync(studioRoot, {recursive: true, force: true});
     });
@@ -65,6 +71,7 @@ describe("PC-18 CLI/Studio lifecycle parity", () => {
         const home = new StudioHomeService(POKIE_VERSION);
         server = new StudioServer({
             pokieVersion: POKIE_VERSION, host: "127.0.0.1", port: 0, studioRoot, homeService: home,
+            jobService: new StudioJobService(repository),
             blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, home), initialContext: {mode: "project", projectRoot: blueprint},
         });
         const address = await server.start();
@@ -94,5 +101,10 @@ describe("PC-18 CLI/Studio lifecycle parity", () => {
         const resolver = new ProjectTargetResolver();
         await expect(resolver.resolve(cliPackage)).resolves.toMatchObject({type: "tsPackage"});
         await expect(resolver.resolve(studioPackage)).resolves.toMatchObject({type: "tsPackage"});
+        expect(repository.list()).toEqual(expect.arrayContaining([
+            expect.objectContaining({operation: "artifact-build", status: "failed"}),
+            expect.objectContaining({operation: "artifact-build", status: "completed"}),
+        ]));
+        expect(repository.list()).toHaveLength(2);
     });
 });

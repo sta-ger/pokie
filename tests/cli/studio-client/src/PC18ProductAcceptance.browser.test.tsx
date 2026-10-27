@@ -8,6 +8,8 @@ import {passthroughRuntimePackageResolver} from "../../../../cli/materialize/mat
 import {StudioArtifactConversionPlanningService} from "../../../../cli/studio/artifacts/StudioArtifactConversionPlanningService.js";
 import {StudioBlueprintService} from "../../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../../../../cli/studio/home/StudioHomeService.js";
+import {FileStudioJobRepository} from "../../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js";
 import {StudioServer} from "../../../../cli/studio/StudioServer.js";
 import {computeGameBlueprintHash} from "../../../../src/generated/computeGameBlueprintHash.js";
 import type {FetchLike} from "../../../../cli/studio-client/src/api/apiClient.js";
@@ -52,9 +54,12 @@ describe("PC-18 Studio product acceptance", () => {
             id: project === first ? "first" : "second", name: project === first ? "First PC-18 Slot" : "Second PC-18 Slot", version: "1.0.0",
         })}) as never;
         const home = new StudioHomeService("1.0.0", undefined, loadGame, undefined, passthroughRuntimePackageResolver);
+        // Use a private durable profile even when another Jest worker starts Studio.
+        const repository = new FileStudioJobRepository(path.join(studioRoot, "jobs"));
         const server = new StudioServer({
             pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot, homeService: home,
             blueprintService: new StudioBlueprintService("1.0.0", studioRoot, home), loadGame,
+            jobService: new StudioJobService(repository),
             resolveRuntimePackageRoot: passthroughRuntimePackageResolver, initialContext: {mode: "project", projectRoot: first},
         });
         try {
@@ -70,6 +75,7 @@ describe("PC-18 Studio product acceptance", () => {
         } finally {
             cleanup();
             await server.stop();
+            expect(repository.getProcessState()?.status).toBe("gracefully-stopped");
             fs.rmSync(studioRoot, {recursive: true, force: true});
             fs.rmSync(workDir, {recursive: true, force: true});
         }
@@ -97,11 +103,13 @@ describe("PC-18 Studio product acceptance", () => {
             getConfigHash: () => computeGameBlueprintHash(source),
         }) as never);
         const prepare = jest.spyOn(StudioArtifactConversionPlanningService.prototype, "prepare");
+        const repository = new FileStudioJobRepository(path.join(studioRoot, "jobs"));
         const server = new StudioServer({
             pokieVersion: "1.0.0",
             host: "127.0.0.1",
             port: 0,
             studioRoot,
+            jobService: new StudioJobService(repository),
             homeService: new StudioHomeService("1.0.0", undefined, loadGame, undefined, passthroughRuntimePackageResolver),
             blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0", undefined, loadGame, undefined, passthroughRuntimePackageResolver)),
             loadGame,
@@ -126,6 +134,9 @@ describe("PC-18 Studio product acceptance", () => {
             await waitFor(() => expect(generate).toBeEnabled());
             await user.click(generate);
             expect(await screen.findByText(/Generated .* outcomes for mode "base" using exact/, {}, {timeout: 10000})).toBeInTheDocument();
+            expect(repository.list()).toEqual([
+                expect.objectContaining({operation: "outcome-library-generation", status: "completed"}),
+            ]);
 
             expect(prepare).toHaveBeenCalledWith(
                 blueprint,
@@ -144,6 +155,7 @@ describe("PC-18 Studio product acceptance", () => {
             cleanup();
             prepare.mockRestore();
             await server.stop();
+            expect(repository.getProcessState()?.status).toBe("gracefully-stopped");
             fs.rmSync(studioRoot, {recursive: true, force: true});
             fs.rmSync(projectRoot, {recursive: true, force: true});
         }
