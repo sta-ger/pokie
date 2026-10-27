@@ -577,7 +577,15 @@ it("V35 optimizer progress identifies each real candidate across resets and dura
             const {job} = started.body as {job: StudioJobView};
             await routes.drain();
             const total = Math.min(budget, 3);
-            expect(jobs.get(source, job.id)).toMatchObject({status: "completed", result: {detail: {status: "infeasible", evidence: {evaluated: total, consumedWork: total}}}});
+            expect(jobs.get(source, job.id)).toMatchObject({
+                status: "completed",
+                result: {
+                    detail: {
+                        status: budget < 3 ? "exhausted" : "infeasible",
+                        evidence: {evaluated: total, consumedWork: total},
+                    },
+                },
+            });
             const materializing = observations.filter(value => value.stage.startsWith("Materializing outcomes"));
             expect([...new Set(materializing.map(value => value.stage))]).toEqual(
                 Array.from({length: total}, (_, index) => `Materializing outcomes (candidate ${index + 1} of ${total})`),
