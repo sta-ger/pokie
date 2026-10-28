@@ -7,6 +7,8 @@ import {parse} from "postcss";
 import type {ComponentProps} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 import {AppShellLayout} from "../../../../../../cli/studio-client/src/components/layout/AppShellLayout";
+import {AdvancedValidationPanel} from "../../../../../../cli/studio-client/src/components/common/AdvancedValidationPanel";
+import {advancedUnknownReport} from "../../../../../v2/fixtures/AdvancedModelReport";
 import {SimulationTab} from "../../../../../../cli/studio-client/src/components/project/SimulationTab";
 import {featureAnalyticsReport} from "../../../../../v2/fixtures/FeatureAnalyticsFixture";
 import {SimulationSummaryCard} from "../../../../../../cli/studio-client/src/components/common/SimulationSummaryCard";
@@ -302,4 +304,34 @@ it.each([false, true])("uses grouped full reports for historical=%s review and b
     }
     await user.click(screen.getByRole("button", {name: "Hide full report"}));
     expect(screen.getByRole("table", {name: "Simulation summary"})).toBeVisible();
+});
+
+
+it("keeps the analysis verdict visible and preserves optional absence, replacement and keyboard disclosure", async () => {
+    const user = userEvent.setup();
+    const original = advancedUnknownReport();
+    const retained = JSON.stringify(original);
+    const show = (report?: typeof original) => <MantineProvider theme={theme}><AdvancedValidationPanel report={report} /></MantineProvider>;
+    const view = render(show(original));
+    expect(screen.getByText(/budget-exhausted — inconclusive/)).toBeVisible();
+    expect(screen.getByText("Declared initial state")).not.toBeVisible();
+    const toggle = screen.getByRole("button", {name: "Show model analysis details"});
+    const region = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+    expect(region).toHaveAttribute("hidden");
+    toggle.focus();
+    await user.keyboard(" ");
+    expect(region).not.toHaveAttribute("hidden");
+    expect(screen.getByText("Analysis assumptions")).toBeVisible();
+    expect(screen.getByText("Analysis limitations")).toBeVisible();
+    view.rerender(show({...original, status: "complete", verdict: "proved-within-assumptions", limitations: []}));
+    expect(screen.getByText(/complete — proved-within-assumptions/)).toBeVisible();
+    expect(screen.queryByText("Unfinished frontier")).not.toBeInTheDocument();
+    await user.keyboard(" ");
+    expect(region).toHaveAttribute("hidden");
+    view.rerender(show());
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Declared model analysis/)).not.toBeInTheDocument();
+    view.rerender(show(original));
+    expect(screen.getByRole("button", {name: "Show model analysis details"})).toHaveAttribute("aria-expanded", "false");
+    expect(JSON.stringify(original)).toBe(retained);
 });

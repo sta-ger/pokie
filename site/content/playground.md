@@ -1,8 +1,10 @@
 # Interactive playground
 
-[Choose an example](gallery.md) or edit a Blueprint below. Execution needs only this locally served build; there is no CDN, account, Studio API or remote calculator.
+[Choose an example](#pg-example) or edit a Blueprint below. Execution needs only this locally served build; there is no CDN, account, Studio API or remote calculator.
 
 POKIEPLAYGROUND
+
+The example chooser, Blueprint editor and runtime actions are included in this page. Controls stay disabled while the local runtime initializes; a startup failure offers a reload link. Reload discards drafts, jobs, results and previews. Choose a gallery card to open its example directly, or use the chooser here once initialization completes.
 
 ## Execution contract
 

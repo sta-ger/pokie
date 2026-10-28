@@ -81,3 +81,6 @@ footer { padding: 1.5rem 4vw; border-top: 1px solid #c7cec9; }
 .pg-grid span { display: grid; place-content: center; min-height: 3rem; background: #d9e8d8; border: 1px solid #89a78d; border-radius: .3rem; font-weight: 700; }
 .pg-grid .pg-win { background: #f4d384; border-color: #8b4b14; }
 @media (max-width: 720px) { #playground { margin-inline: -.3rem; } #playground button { min-height: 44px; } }
+
+#pg-controls { min-width: 0; margin: 0; padding: 0; border: 0; }
+#pg-controls > legend { font-weight: 700; margin-bottom: 1rem; }

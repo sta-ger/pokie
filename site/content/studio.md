@@ -10,6 +10,8 @@ In a Blueprint workspace, edit the design, inspect validation, then **Save game*
 
 For [extraction](extraction.md), choose Blueprint in Build/Export, preview, **Save Blueprint**, then **Open as Project**. For [whole-sequence editing](weighted-sequences.md#studio-editing), Apply changes the draft; Save game persists it. **Overview → Optimize math** reviews candidate changes before separate save or apply.
 
+Structural validation errors and warnings stay visible while you author. The compact declared-model analysis status is separate: open **Show model analysis details** to inspect checks, assumptions, limitations and work budgets. An inconclusive analysis does not prove the model's mathematical properties.
+
 ## Simulate, play and replay
 
 In Simulation, choose a supported mode, bounded rounds, worker count and explicit seed, then run and inspect the retained report. Export that report rather than assuming the current Play state is simulation evidence. Play owns a live in-process session; it does not start `serve`. Replay loads compatible replay evidence or runs the selected seed/round path. Unsupported operations remain visible with actionable diagnostics. [Validate, sim, report and replay](reproducibility.md) explains the evidence types.

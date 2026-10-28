@@ -1,6 +1,8 @@
 import {JSDOM} from "jsdom";
 import {readFileSync} from "node:fs";
 import path from "node:path";
+import {execFileSync} from "node:child_process";
+import {renderGallery, renderPlayground} from "../../site/playground/view.js";
 import postcss from "postcss";
 import {buildSimulationReportDownload} from "../../cli/studio/simulation/buildSimulationReportDownload.js";
 import {describeSimulationReport} from "../../cli/studio-client/src/domain/interpret/Simulation.js";
@@ -109,5 +111,131 @@ describe("V2C-36 compact metric composition", () => {
         expect(rules[".studio-simulation-metrics > tbody > tr > :is(th, td)"]).toMatchObject({"text-align": "start", "overflow-wrap": "anywhere"});
         expect(rules[".studio-simulation-metrics > tbody > tr > td"]).toMatchObject({"font-variant-numeric": "tabular-nums"});
         expect(rules[".studio-simulation-metrics > tbody > tr"].background).toContain("light-dark(");
+    });
+});
+
+
+describe("V2C-36 public interaction delivery", () => {
+    it.each(["/", "/help/"])("renders the real gallery and guarded controls before hydration at %s", base => {
+        // Invoke the actual Markdown/insertion owners, without running a site build.
+        const pages = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import fs from 'node:fs';
+            import {renderMarkdown} from './site/markdown.mjs';
+            import {renderInteractiveContent} from './site/interactive.mjs';
+            const {base, contracts} = JSON.parse(fs.readFileSync(0, 'utf8'));
+            const pages = ['gallery', 'playground'].map(kind => {
+                const markdown = fs.readFileSync('site/content/' + kind + '.md', 'utf8');
+                return renderInteractiveContent(renderMarkdown(markdown, url => url).html, '/' + kind + '/', base, contracts);
+            });
+            for (const invalid of [{html: '', contracts}, {html: '<p>POKIEPLAYGROUND</p>', contracts: {}}]) {
+                let rejected = false;
+                try { renderInteractiveContent(invalid.html, '/playground/', base, invalid.contracts); }
+                catch { rejected = true; }
+                if (!rejected) throw new Error('Missing controls must fail closed');
+            }
+            console.log(JSON.stringify(pages));
+        `], {encoding: "utf8", input: JSON.stringify({base, contracts: {
+            galleryHtml: renderGallery(base), playgroundHtml: renderPlayground(base),
+        }})})) as {html: string; script: string}[];
+        const dom = new JSDOM(pages.map(page => page.html).join(""));
+        try {
+            const document = dom.window.document;
+            const links = document.querySelectorAll<HTMLAnchorElement>("#gallery a");
+            expect(links).toHaveLength(7);
+            expect([...links].every(link => link.getAttribute("href")?.startsWith(`${base}playground/?example=`))).toBe(true);
+            expect(document.querySelector('a[href="#pg-example"]')?.textContent).toBe("Choose an example");
+            const chooser = document.querySelector<HTMLSelectElement>("#pg-example")!;
+            expect(chooser.options).toHaveLength(7);
+            const controls = document.querySelector<HTMLFieldSetElement>("#pg-controls")!;
+            expect(controls.disabled).toBe(true);
+            expect(document.querySelector("#pg-model")?.textContent).toContain('"gallery-lines"');
+            expect([...document.querySelectorAll("[data-action]")].map(button => button.getAttribute("data-action")))
+                .toEqual(["inspect", "validate", "play", "sim", "report", "replay", "optimize"]);
+            expect(document.querySelector("#pg-status")?.textContent).toContain("Loading interactive controls");
+            expect(document.querySelector("#pg-startup-help a")?.getAttribute("href")).toBe(`${base}playground/`);
+            expect(document.querySelector(".pg-optimizer")?.hasAttribute("open")).toBe(false);
+            expect(pages.every(page => page.script === `<script type="module" src="${base}assets/playground/playground.js"></script>`)).toBe(true);
+            expect(dom.window.document.querySelectorAll("#playground")).toHaveLength(1);
+        } finally {
+            dom.window.close();
+        }
+    });
+
+    it("keeps startup failure safe, then executes and recovers the real mounted actions through canonical WASM", () => {
+        const output = execFileSync(process.execPath, ["--no-warnings", "--experimental-vm-modules", "--loader", "./site/source-loader.mjs", "--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import fs from 'node:fs';
+            import vm from 'node:vm';
+            import ts from 'typescript';
+            import {JSDOM} from 'jsdom';
+            import {renderPlayground} from './site/playground/view.ts';
+            import {PokieWasmWorkerProtocol} from './src/wasm/worker.ts';
+            import {GameBlueprintValidator} from './src/generated/GameBlueprintValidator.ts';
+            import {PlaygroundController, validatePlaygroundDraft} from './site/playground/controller.ts';
+            const dom = new JSDOM('<div id="playground">' + renderPlayground('/help/') + '</div>', {url: 'http://localhost/help/playground/?example=lines'});
+            for (const name of ['document', 'window', 'location', 'history']) globalThis[name] = dom.window[name];
+            const source = ts.transpileModule(fs.readFileSync('site/playground/bootstrap.ts', 'utf8'), {compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022}}).outputText;
+            const bootstrap = new vm.SourceTextModule(source, {context: vm.createContext({document}), importModuleDynamically: () => Promise.reject(new Error('retained unavailable module'))});
+            await bootstrap.link(() => { throw new Error('unexpected static import'); });
+            await bootstrap.evaluate();
+            await new Promise(resolve => setImmediate(resolve));
+            assert.equal(document.querySelector('#pg-controls').disabled, true);
+            assert.equal(document.querySelector('#pg-status').dataset.status, 'failed');
+            assert.match(document.querySelector('#pg-status').textContent, /could not start/);
+            assert.equal(document.querySelector('#pg-startup-help').hidden, false);
+            let workers = 0;
+            globalThis.Worker = class {
+                listeners = new Map();
+                protocol = new PokieWasmWorkerProtocol();
+                constructor() { workers++; }
+                addEventListener(type, listener) { this.listeners.set(type, listener); }
+                removeEventListener(type) { this.listeners.delete(type); }
+                terminate() { workers--; this.protocol.handle({id:'dispose', type:'dispose'}); }
+                postMessage(value) { this.protocol.handle(value.request).then(response => this.listeners.get('message')?.({data: {...response, scope:value.scope, type:'response'}})); }
+            };
+            await import('./site/playground/app.ts');
+            assert.equal(document.querySelector('#pg-controls').disabled, false);
+            assert.equal(document.querySelector('#pg-startup-help').hidden, true);
+            const run = async (action, status) => {
+                document.querySelector('[data-action=' + action + ']').click();
+                const deadline = Date.now() + 10000;
+                while (!['completed', 'failed'].includes(document.querySelector('#pg-status').dataset.status)) {
+                    if (Date.now() > deadline) throw new Error('action did not terminate');
+                    await new Promise(resolve => setTimeout(resolve, 1));
+                }
+                assert.equal(document.querySelector('#pg-status').dataset.status, status, document.querySelector('#pg-status').textContent);
+                assert.equal(workers, 0);
+            };
+            await run('play', 'completed');
+            const original = document.querySelector('#pg-model').value;
+            const edit = text => { const e = document.querySelector('#pg-model'); e.value = text; e.dispatchEvent(new window.Event('input')); };
+            const malformed = JSON.parse(original); malformed.availableBets = [0];
+            const malformedDraft = {blueprint: malformed, settings: {seed: 'gallery-29', bet: 0.05, rounds: 256}};
+            assert.ok(new GameBlueprintValidator().validate(malformed).some(issue => issue.path?.includes('availableBets')));
+            assert.throws(() => validatePlaygroundDraft(malformedDraft), /availableBets/);
+            const boundary = new PlaygroundController(() => new Worker(), () => {});
+            await assert.rejects(boundary.prepare(malformedDraft), /availableBets/);
+            await assert.rejects(boundary.run(malformedDraft, 'validate'), /availableBets/);
+            assert.deepEqual(malformed.availableBets, [0]);
+            for (let reuse = 0; reuse < 2; reuse++) await boundary.run({...malformedDraft, blueprint: JSON.parse(original)}, 'play');
+            assert.deepEqual(boundary.diagnostics(), {workers: 0, timers: 0, pending: 0});
+            edit(JSON.stringify(malformed));
+            await run('validate', 'failed');
+            assert.match(document.querySelector('#pg-status').textContent, /availableBets/);
+            assert.equal(document.querySelector('#pg-model').value, JSON.stringify(malformed));
+            assert.equal(document.querySelectorAll('#pg-download-buttons button').length, 0);
+            document.querySelector('#pg-restore').click();
+            assert.equal(document.querySelector('#pg-model').value, original);
+            for (let reuse = 0; reuse < 2; reuse++) await run('play', 'completed');
+            const identity = JSON.parse(document.querySelector('#pg-identity').textContent);
+            assert.equal(identity.seed, 'gallery-29'); assert.equal(identity.bet, 0.05);
+            assert.equal(identity.action, 'play'); assert.match(identity.artifact, /^sha256:[a-f0-9]{64}$/);
+            window.dispatchEvent(new window.PageTransitionEvent('pagehide'));
+            assert.equal(document.querySelectorAll('#pg-download-buttons button').length, 0);
+            assert.equal(workers, 0);
+            dom.window.close();
+            console.log('PASS static startup failure; mounted play -> malformed validation -> restore -> play -> play; canonical WASM; no owned Workers');
+        `], {encoding: "utf8", timeout: 30000});
+        expect(output).toContain("PASS static startup failure; mounted play -> malformed validation -> restore -> play -> play; canonical WASM; no owned Workers");
     });
 });
