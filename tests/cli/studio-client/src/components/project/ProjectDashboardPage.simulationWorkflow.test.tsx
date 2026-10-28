@@ -271,7 +271,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
             ...BASE_ROUTES,
             "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [{
                 id: "retained-completed", projectId: "/games/a", operation: "simulation", request: {rounds: 10000},
-                conflictKey: "simulation:/games/a", status: "completed", createdAt: 1,
+                conflictKey: "simulation:/games/a", status: "completed", createdAt: 1, result: {summary: "Simulation completed."},
             }]}}),
             "/api/project/simulations/retained-completed": () => ({ok: true, status: 200, body: jobFor("retained-completed", {report: reportFor(), sourceCurrent})}),
             "/api/project/reports": () => ({ok: true, status: 200, body: []}),
