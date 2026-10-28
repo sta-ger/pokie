@@ -121,7 +121,7 @@ export function AppShellLayout({
                                             {crumb.label}
                                         </Anchor>
                                     ) : (
-                                        <Text className="studio-app-breadcrumb-current" key={index} size="sm" c="dimmed">
+                                        <Text className="studio-app-breadcrumb-current" key={index} size="sm">
                                             {crumb.label}
                                         </Text>
                                     ),

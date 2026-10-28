@@ -415,6 +415,13 @@ body,
     --burger-color: #fff9ed;
 }
 
+/* The default copper focus ring is too dark against the navy masthead. Keep
+   the ring outside each control, adjacent to the masthead on both sides. */
+.studio-app-masthead :focus-visible {
+    outline: 2px solid #fff9ed;
+    outline-offset: 3px;
+}
+
 #studio-navigation-panel {
     background: light-dark(#f7f5ee, var(--mantine-color-dark-8));
     border-color: light-dark(#d5d6cf, var(--mantine-color-dark-4));

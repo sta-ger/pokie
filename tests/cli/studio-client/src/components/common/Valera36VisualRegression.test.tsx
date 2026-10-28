@@ -1,13 +1,52 @@
-import {MantineProvider} from "@mantine/core";
+import {ActionIcon, Button, DEFAULT_THEME, MantineProvider, defaultCssVariablesResolver, mergeMantineTheme} from "@mantine/core";
 import {render, screen, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {readFileSync} from "fs";
 import {join} from "path";
+import {parse} from "postcss";
 import type {ComponentProps} from "react";
+import {renderToStaticMarkup} from "react-dom/server";
+import {AppShellLayout} from "../../../../../../cli/studio-client/src/components/layout/AppShellLayout";
 import {SimulationTab} from "../../../../../../cli/studio-client/src/components/project/SimulationTab";
 import {SimulationSummaryCard} from "../../../../../../cli/studio-client/src/components/common/SimulationSummaryCard";
 import {describeSimulationReport} from "../../../../../../cli/studio-client/src/domain/interpret/Simulation";
 import {theme} from "../../../../../../cli/studio-client/src/theme";
+
+// jsdom cannot resolve custom properties. Resolve the actual provider variables and
+// component inline variables, rather than substituting a hand-picked palette pair.
+const productionTheme = mergeMantineTheme(DEFAULT_THEME, theme);
+const providerVariables = defaultCssVariablesResolver(productionTheme);
+const mantineCss = parse(readFileSync(join(__dirname, "../../../../../../node_modules/@mantine/core/styles.css"), "utf8"));
+const studioCss = parse(readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8"));
+
+function resolveCss(value: string, scheme: "light" | "dark", element?: HTMLElement): string {
+    const variables = {...providerVariables.variables, ...providerVariables[scheme]};
+    let resolved = value;
+    // Resolve innermost fallbacks first, including the real Button/ActionIcon defaults.
+    while (resolved.includes("var(")) {
+        const next = resolved.replace(/var\((--[\w-]+)(?:,\s*([^()]+))?\)/g, (_, name: string, fallback?: string) =>
+            element?.style.getPropertyValue(name) || variables[name] || fallback || "",
+        );
+        if (next === resolved) throw new Error(`Unresolved production CSS: ${value}`);
+        resolved = next;
+    }
+    return resolved;
+}
+
+function contrast(foreground: string, background: string): number {
+    const luminance = (color: string): number => {
+        const expanded = (/^#[a-f\d]{3}$/i).test(color) ? "#" + [...color.slice(1)].map(channel => channel + channel).join("") : color;
+        const channels = expanded.startsWith("#") ? expanded.slice(1).match(/../g)!.map(value => parseInt(value, 16)) : color.match(/[\d.]+/g)!.map(Number);
+        expect(channels).toHaveLength(3);
+        const rgb = channels.map(channel => {
+            const value = channel / 255;
+            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        });
+        return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+    };
+    const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+    return (values[0] + 0.05) / (values[1] + 0.05);
+}
 
 // Implementation regressions, not an independent visual-quality assessment.
 const report = describeSimulationReport({
@@ -107,15 +146,128 @@ it("carries the public site's type and accessible brand palette into Studio", ()
     expect(publicCss).toContain(`${theme.headings?.fontFamily}`);
     expect(publicCss).toContain(`color: ${theme.colors?.copper[8]}`);
     expect(publicCss).toContain(`background: ${theme.colors?.gray[1]}`);
-    function luminance(hex: string): number {
-        const rgb = hex.slice(1).match(/../g)!.map(channel => {
-            const value = parseInt(channel, 16) / 255;
-            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    expect(readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/main.tsx"), "utf8")).toContain('defaultColorScheme="auto"');
+});
+
+it.each(["light", "dark"] as const)("resolves readable primary filled text and hover in %s mode through real controls", async scheme => {
+    const user = userEvent.setup();
+    const action = jest.fn();
+    const controls = (disabled: boolean) => <MantineProvider theme={theme} forceColorScheme={scheme}>
+        <Button disabled={disabled} onClick={action}>Default primary</Button>
+        <Button variant="filled" color={productionTheme.primaryColor} disabled={disabled} onClick={action}>Explicit primary</Button>
+        <ActionIcon variant="filled" disabled={disabled} onClick={action} aria-label="Primary icon">+</ActionIcon>
+    </MantineProvider>;
+    const result = render(controls(false));
+    for (const control of screen.getAllByRole("button")) {
+        const rootClass = control.classList.contains(Button.classes.root) ? Button.classes.root : ActionIcon.classes.root;
+        const declarations: Record<string, string> = {};
+        const hover: Record<string, string> = {};
+        let hoverSelector = "";
+        mantineCss.walkRules(rule => {
+            if (rule.selector === `.${rootClass}`) rule.walkDecls(declaration => {
+                declarations[declaration.prop] = declaration.value;
+            });
+            if (rule.selector.startsWith(`.${rootClass}:hover:`)) {
+                hoverSelector = rule.selector.replace(":hover", "");
+                rule.walkDecls(declaration => {
+                    hover[declaration.prop] = declaration.value;
+                });
+            }
         });
-        return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+        expect(control).toBeEnabled();
+        expect(hoverSelector).toContain(":where(:not([data-loading], :disabled, [data-disabled]))");
+        const color = resolveCss(declarations.color, scheme, control);
+        const background = resolveCss(declarations.background, scheme, control);
+        expect(contrast(color, background)).toBeGreaterThanOrEqual(4.5);
+        await user.hover(control);
+        expect(contrast(resolveCss(hover.color, scheme, control), resolveCss(hover["background-color"], scheme, control))).toBeGreaterThanOrEqual(4.5);
+        await user.click(control);
+        result.rerender(controls(true));
+        expect(control).toBeDisabled();
+        expect(control.matches(":disabled")).toBe(true);
+        await user.click(control);
+        result.rerender(controls(false));
+        expect(control).toBeEnabled();
     }
-    for (const [foreground, background] of [["#8b3214", "#ffffff"], ["#e5baa2", "#172d3b"], ["#52636a", "#f7f5ee"]]) {
-        const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
-        expect((values[0] + 0.05) / (values[1] + 0.05)).toBeGreaterThanOrEqual(4.5);
+    expect(action).toHaveBeenCalledTimes(3);
+    // The brand foreground correction must preserve semantic palette and light status styles.
+    const original = mergeMantineTheme(productionTheme, {primaryColor: "copper", autoContrast: false});
+    for (const color of ["red", "yellow", "green", "blue", "orange", "teal"]) {
+        expect(productionTheme.colors[color]).toEqual(DEFAULT_THEME.colors[color]);
+        for (const variant of ["light", "filled"]) {
+            const previous = original.variantColorResolver({theme: original, color, variant});
+            const current = productionTheme.variantColorResolver({theme: productionTheme, color, variant});
+            // Filled foregrounds may become dark for readability (e.g. yellow);
+            // the semantic hue/background and all light status styles stay intact.
+            if (variant === "light") expect(current).toEqual(previous);
+            else expect(current).toMatchObject({background: previous.background, hover: previous.hover, border: previous.border});
+        }
+    }
+});
+
+it.each([["light", "breadcrumb"], ["dark", "breadcrumb"], ["light", "focus"], ["dark", "focus"]] as const)("keeps production %s masthead %s contrast", async (scheme, check) => {
+    // Apply the real upstream focus rules followed by production masthead rules.
+    // Inline Text color remains inline, so c="dimmed" cannot be hidden by this test.
+    const style = document.createElement("style");
+    mantineCss.walkRules(rule => {
+        if (rule.selector.startsWith(".mantine-focus-")) style.textContent += resolveCss(rule.toString(), scheme);
+    });
+    studioCss.walkRules(rule => {
+        if (rule.selector.startsWith(".studio-app-masthead")) style.textContent += resolveCss(rule.toString(), scheme);
+    });
+    document.head.append(style);
+    try {
+        const user = userEvent.setup();
+        const navigate = jest.fn();
+        const home = jest.fn();
+        const layout = (guarded: boolean) => <MantineProvider theme={theme} forceColorScheme={scheme}>
+            <AppShellLayout navbar={<button>Section</button>} onHomeClick={guarded ? home : undefined}
+                breadcrumbs={[{label: "Your projects", onClick: navigate}, {label: "Starter Slot"}]}>
+                Workspace
+            </AppShellLayout>
+        </MantineProvider>;
+        const result = render(layout(false));
+        const masthead = document.querySelector<HTMLElement>(".studio-app-masthead")!;
+        const background = getComputedStyle(masthead).backgroundColor;
+        const breadcrumb = screen.getByText("Starter Slot");
+        if (check === "breadcrumb") {
+            // This jsdom drops inline var() colors. Retain the real server-rendered
+            // attribute before CSSStyleDeclaration parses it, then apply precedence.
+            const markup = document.createElement("div");
+            markup.innerHTML = renderToStaticMarkup(layout(false));
+            const inline = markup.querySelector(".studio-app-breadcrumb-current")!.getAttribute("style") || "";
+            let inlineColor = "";
+            parse(`current {${inline}}`).walkDecls("color", declaration => {
+                inlineColor = declaration.value;
+            });
+            const color = inlineColor || getComputedStyle(breadcrumb).color;
+            expect(contrast(resolveCss(color, scheme, breadcrumb), background)).toBeGreaterThanOrEqual(4.5);
+            return;
+        }
+        for (const guarded of [false, true]) {
+            result.rerender(layout(guarded));
+            const burger = screen.getByRole("button", {name: "Toggle navigation"});
+            burger.focus();
+            const brand = screen.getByRole(guarded ? "button" : "link", {name: "FromStan/POKIE Studio"});
+            for (const control of [burger, brand, screen.getByRole("button", {name: "Your projects"})]) {
+                expect(control).toHaveFocus();
+                expect(control).toHaveClass("mantine-focus-auto");
+                const outline = resolveCss(getComputedStyle(control).outline, scheme, control);
+                expect(outline).toMatch(/^2px solid /);
+                expect(getComputedStyle(control).outlineOffset).toMatch(/^(?:calc\(|[1-9])/);
+                expect(contrast(outline.replace(/^2px solid /, ""), background)).toBeGreaterThanOrEqual(3);
+                await user.tab();
+            }
+            screen.getByRole("button", {name: "Your projects"}).focus();
+            await user.keyboard("{Enter}");
+            if (guarded) {
+                brand.focus();
+                await user.keyboard("{Enter}");
+            } else expect(brand).toHaveAttribute("href", "#/");
+        }
+        expect(navigate).toHaveBeenCalledTimes(2);
+        expect(home).toHaveBeenCalledTimes(1);
+    } finally {
+        style.remove();
     }
 });

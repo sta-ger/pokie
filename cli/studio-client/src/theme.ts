@@ -1,11 +1,15 @@
-import {createTheme} from "@mantine/core";
+import {createTheme, virtualColor} from "@mantine/core";
 
 // Shared task, section and supporting-text scale for both Home and saved projects.
 export const theme = createTheme({
     // Match the built public docs/gallery/playground's navy, cream and copper identity.
-    primaryColor: "copper",
+    primaryColor: "primary",
     primaryShade: {light: 8, dark: 3},
+    autoContrast: true,
     colors: {
+        // A virtual color makes filled foregrounds follow the active scheme's
+        // contrast variable, including components with an explicit filled variant.
+        primary: virtualColor({name: "primary", light: "copper", dark: "copper"}),
         copper: ["#fff2eb", "#f9e1d2", "#f0bfa4", "#e69b78", "#dc7653", "#c75a34", "#ae4722", "#9d3c1c", "#8b3214", "#6e250e"],
         gray: ["#faf9f6", "#f7f5ee", "#e8e9df", "#d5d6cf", "#b9c1bc", "#869591", "#64736f", "#52636a", "#294552", "#172d3b"],
     },
