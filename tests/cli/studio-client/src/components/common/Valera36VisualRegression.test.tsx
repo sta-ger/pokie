@@ -87,7 +87,7 @@ it("keeps summary metrics and caveats primary while disclosing sampling on live 
     const toggle = screen.getByRole("button", {name: "Show sampling and precision"});
     const diagnostics = document.getElementById(toggle.getAttribute("aria-controls")!)!;
     expect(diagnostics).not.toBeVisible();
-    expect(screen.getByText(/Rare outcomes/)).toBeVisible();
+    expect(within(metrics.closest(".studio-simulation-summary")! as HTMLElement).getByText(/Rare outcomes/)).toBeVisible();
     toggle.focus();
     await user.keyboard("{Enter}");
     expect(diagnostics).toBeVisible();
@@ -95,7 +95,7 @@ it("keeps summary metrics and caveats primary while disclosing sampling on live 
     expect(metrics.compareDocumentPosition(diagnostics) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(metrics).getByText("96.00%")).toBeVisible();
     expect(within(diagnostics).getByText(/requested budget 1000/)).toBeVisible();
-    expect(screen.getByText(/neither establishes exact RTP/)).toBeVisible();
+    expect(within(metrics.closest(".studio-simulation-summary")! as HTMLElement).getByText(/neither establishes exact RTP/)).toBeVisible();
     const review = screen.getByRole("button", {name: /Review/});
     expect(review).toHaveAttribute("aria-current", "step");
     expect(review.closest(".studio-simulation-stepper")).not.toBeNull();
@@ -342,6 +342,7 @@ it.each([false, true])("uses grouped full reports for historical=%s review and b
     await user.click(screen.getByRole("button", {name: "Open full report"}));
     expect(screen.queryByRole("table", {name: "Simulation summary"})).not.toBeInTheDocument();
     expect(screen.getByRole("table", {name: "Simulation result metrics"})).toBeVisible();
+    await user.click(screen.getByRole("button", {name: "Show analytical tables and feature detail"}));
     expect(screen.getByRole("table", {name: "Payout attribution"})).toBeVisible();
     const toggle = screen.getByRole("button", {name: "Show canonical hits and components"});
     await user.click(toggle);
@@ -349,11 +350,14 @@ it.each([false, true])("uses grouped full reports for historical=%s review and b
     await user.click(screen.getByRole("button", {name: "Compare with another run"}));
     const comparison = screen.getByRole("group", {name: "Compare with another run"});
     expect(within(comparison).getAllByRole("table", {name: "Simulation result metrics"})).toHaveLength(2);
+    for (const control of within(comparison).getAllByRole("button", {name: "Show run identity and accounting"})) await user.click(control);
     expect(within(comparison).getByText(/comparison-source/)).toBeVisible();
     expect(within(comparison).getByText("7.50 – 8.00")).toBeVisible();
+    for (const control of within(comparison).getAllByRole("button", {name: "Show analytical tables and feature detail"})) await user.click(control);
     for (const control of within(comparison).getAllByRole("button", {name: "Show canonical hits and components"})) {
         expect(control).toHaveAttribute("aria-expanded", "false");
     }
+    await user.click(screen.getByRole("button", {name: "Compare with another run"}));
     await user.click(screen.getByRole("button", {name: "Hide full report"}));
     expect(screen.getByRole("table", {name: "Simulation summary"})).toBeVisible();
 });
@@ -404,8 +408,9 @@ it("shows one report or a comparison pair while retaining explicit detail and ex
     await user.click(screen.getByRole("button", {name: "Compare with another run"}));
     await waitFor(() => expect(screen.getAllByRole("table", {name: "Simulation result metrics"})).toHaveLength(2));
     expect(screen.queryByRole("table", {name: "Simulation summary"})).not.toBeInTheDocument();
-    expect(screen.getByText("75.00%")).toBeVisible();
-    expect(screen.getByText("96.00%")).toBeVisible();
+    const comparisonMetrics = screen.getAllByRole("table", {name: "Simulation result metrics"});
+    expect(within(comparisonMetrics[0]).getByText("96.00%")).toBeVisible();
+    expect(within(comparisonMetrics[1]).getByText("75.00%")).toBeVisible();
     await user.click(screen.getByRole("button", {name: "Open full report"}));
     await waitFor(() => expect(screen.getAllByRole("table", {name: "Simulation result metrics"})).toHaveLength(1));
     await user.click(screen.getByRole("button", {name: "Show run identity and accounting"}));
