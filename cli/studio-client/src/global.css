@@ -570,6 +570,91 @@ body,
     font-variant-numeric: tabular-nums;
 }
 
+/* Four outcomes lead the review. Runtime facts and interpretation use compact,
+   unboxed rows; they must not look like another set of equally important KPIs.
+   Container width also governs reopened/per-mode/comparison reports. */
+.studio-simulation-primary-metrics { container-type: inline-size; }
+
+.studio-simulation-primary-metrics > tbody {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@container (min-width: 40rem) {
+    .studio-simulation-primary-metrics > tbody { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@container (max-width: 20rem) {
+    .studio-simulation-primary-metrics > tbody { grid-template-columns: minmax(0, 1fr); }
+}
+
+.studio-simulation-primary-metrics > tbody > tr:first-child {
+    background: #172d3b;
+    color: #fff9ed;
+    border-color: #172d3b;
+}
+
+.studio-simulation-primary-metrics > tbody > tr > td {
+    font-size: var(--mantine-font-size-xl);
+    font-weight: 700;
+}
+
+.studio-simulation-facts,
+.studio-simulation-facts > tbody {
+    display: block;
+    width: 100%;
+}
+
+.studio-simulation-facts > tbody {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+    gap: var(--mantine-spacing-xs);
+}
+
+.studio-simulation-facts > tbody > tr {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.studio-simulation-facts :is(th, td) {
+    padding: 0;
+    font-size: var(--mantine-font-size-sm);
+    text-align: start;
+    overflow-wrap: anywhere;
+}
+
+.studio-simulation-facts th { font-weight: 500; }
+
+.studio-simulation-facts,
+.studio-simulation-run-facts { margin-top: var(--mantine-spacing-sm); }
+
+.studio-simulation-assessment {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+    gap: var(--mantine-spacing-md);
+    margin-top: var(--mantine-spacing-md);
+    padding-top: var(--mantine-spacing-sm);
+    border-top: 1px solid light-dark(#d5d6cf, var(--mantine-color-dark-4));
+}
+
+.studio-simulation-assessment > section { min-width: 0; overflow-wrap: anywhere; }
+.studio-simulation-assessment h3 { margin: 0 0 var(--mantine-spacing-xs); }
+.studio-simulation-notes[data-has-warnings] {
+    border-inline-start: 3px solid var(--mantine-color-yellow-8);
+    padding-inline-start: var(--mantine-spacing-sm);
+}
+
+.studio-simulation-intervals { margin-block: var(--mantine-spacing-xs); }
+.studio-simulation-intervals :is(th, td) {
+    padding: .2rem 0;
+    font-size: var(--mantine-font-size-sm);
+    text-align: start;
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+}
+.studio-simulation-intervals th { font-weight: 500; width: 50%; padding-inline-end: var(--mantine-spacing-xs); }
+.studio-simulation-intervals td { font-weight: 600; }
+
 /* Each authored line has an identity and a readable reel track, rather than a
    full-width stream of indistinguishable spinners. Keep large reel sets wrapped. */
 .studio-payline-grid {

@@ -1,11 +1,12 @@
 import {describeSimulationDiagnostics} from "../../../../../src/reporting/describeSimulationDiagnostics";
 import {describeWeightedBonusCoverage} from "../../../../../src/session/videoslot/authored/WeightedBonus";
 import {describeSequenceVariantCoverage} from "../../../../../src/session/videoslot/combinations/WeightedSequenceVariant";
-import {List, Table, Text} from "@mantine/core";
+import {Table, Text} from "@mantine/core";
 import type {SimulationReportView} from "../../domain/interpret/Simulation";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {PageSection} from "./PageSection";
 import {SimulationAnalyticsDisplay} from "./SimulationAnalyticsDisplay";
+import {SimulationAssessment} from "./SimulationAssessment";
 import {formatConfidenceInterval} from "../../domain/interpret/formatConfidenceInterval";
 
 export {formatConfidenceInterval};
@@ -19,25 +20,30 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
         <div className="studio-simulation-report">
             {view.betMode !== undefined && <Text>Bet mode: {view.betMode} · selected before each available entry</Text>}
             {view.targetRtp !== undefined && <Text>Target RTP: {(view.targetRtp * 100).toFixed(2)}% · deviation: {((view.rtpDeviation ?? 0) * 100).toFixed(2)} pp</Text>}
-            <PageSection legend="Result metrics">
-                <Table withRowBorders={false} role="table" className="studio-simulation-metrics" aria-label="Simulation result metrics">
+            <section aria-label="Result metrics" className="studio-simulation-primary">
+                <Text component="h3" size="sm" fw={600} mb="xs">Result metrics</Text>
+                <Table withRowBorders={false} role="table" className="studio-simulation-metrics studio-simulation-primary-metrics" aria-label="Simulation result metrics">
                     <Table.Tbody>
                         <Table.Tr>
-                            <Table.Th>RTP</Table.Th>
+                            <Table.Th scope="row">RTP</Table.Th>
                             <Table.Td>{(view.rtp * 100).toFixed(2)}%</Table.Td>
                         </Table.Tr>
                         <Table.Tr>
-                            <Table.Th>Hit frequency</Table.Th>
+                            <Table.Th scope="row">Hit frequency</Table.Th>
                             <Table.Td>{(view.hitFrequency * 100).toFixed(2)}%</Table.Td>
                         </Table.Tr>
                         <Table.Tr>
-                            <Table.Th>Volatility (std. deviation)</Table.Th>
+                            <Table.Th scope="row">Volatility (std. deviation)</Table.Th>
                             <Table.Td>{view.volatility === undefined ? "—" : view.volatility.toFixed(2)}</Table.Td>
                         </Table.Tr>
                         <Table.Tr>
-                            <Table.Th>Max win</Table.Th>
+                            <Table.Th scope="row">Max win</Table.Th>
                             <Table.Td>{view.maxWin.toFixed(2)}</Table.Td>
                         </Table.Tr>
+                    </Table.Tbody>
+                </Table>
+                <Table withRowBorders={false} aria-label="Additional result metrics" className="studio-simulation-facts">
+                    <Table.Tbody>
                         <Table.Tr>
                             <Table.Th>Max win frequency</Table.Th>
                             <Table.Td>{view.maxWinFrequency === undefined ? "—" : `${(view.maxWinFrequency * 100).toFixed(4)}%`}</Table.Td>
@@ -58,47 +64,13 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                         </Table.Tr>
                     </Table.Tbody>
                 </Table>
-            </PageSection>
+            </section>
 
-            {view.warnings.length > 0 && (
-                <PageSection legend="Warnings">
-                    <List size="sm">
-                        {view.warnings.map((warning, index) => (
-                            <List.Item key={index}>{warning}</List.Item>
-                        ))}
-                    </List>
-                </PageSection>
-            )}
-
-            <PageSection legend="Convergence">
-                <Table withRowBorders={false}>
-                    <Table.Tbody>
-                        <Table.Tr>
-                            <Table.Th>RTP 95% confidence interval</Table.Th>
-                            <Table.Td>{formatConfidenceInterval(view.rtpConfidenceInterval95)}</Table.Td>
-                        </Table.Tr>
-                        <Table.Tr>
-                            <Table.Th>Average payout 95% confidence interval</Table.Th>
-                            <Table.Td>{formatConfidenceInterval(view.averagePayoutConfidenceInterval95, "payout")}</Table.Td>
-                        </Table.Tr>
-                    </Table.Tbody>
-                </Table>
-                {view.recommendations.length > 0 && (
-                    <List size="sm" mt="sm">
-                        {view.recommendations.map((recommendation, index) => (
-                            <List.Item key={index}>{recommendation}</List.Item>
-                        ))}
-                    </List>
-                )}
-            </PageSection>
-
-            <Text size="sm">{view.rounds} usable samples · {view.sampling?.unit ?? "accepted-subround"} · {view.diagnostics?.precision ?? "Precision unavailable (legacy report)"}</Text>
-            <Text size="sm" c="dimmed">{describeSimulationDiagnostics(view, false)[2]}</Text>
-            {view.diagnostics?.coverageLimitations.map((line, index) => <Text size="sm" key={index}>{line}</Text>)}
+            <SimulationAssessment view={view} />
             <AdvancedDisclosure label="sampling and precision">
                 {view.convergence && <Text size="sm">Adaptive per-worker worst half-width is separate from the merged report interval.</Text>}
 
-                <Table aria-label="Sampling and precision" role="table" className="studio-simulation-metrics" withRowBorders={false}>
+                <Table aria-label="Sampling and precision" role="table" withRowBorders={false}>
                     <Table.Tbody>
                         <Table.Tr><Table.Th>Requested budget (accepted plays)</Table.Th><Table.Td>{view.requestedRounds}</Table.Td></Table.Tr>
                         <Table.Tr><Table.Th>Usable samples</Table.Th><Table.Td>{view.rounds} ({view.sampling?.unit ?? "accepted-subround"})</Table.Td></Table.Tr>
@@ -135,7 +107,6 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                 <div className="studio-simulation-diagnostics">
                     {describeSimulationDiagnostics(view, false).slice(1, 2).map(line => <Text size="sm" key={line}>{line}</Text>)}
                     {view.sampling && <Text size="sm">Independent session trajectory per worker. Monetary totals include every observed subround.</Text>}
-                    {!view.diagnostics && <Text size="sm">Persisted precision/support diagnostics unavailable (legacy report).</Text>}
                 </div>
             </AdvancedDisclosure>
 

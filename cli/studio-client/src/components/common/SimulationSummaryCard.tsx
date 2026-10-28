@@ -1,12 +1,12 @@
 import {describeSimulationDiagnostics} from "../../../../../src/reporting/describeSimulationDiagnostics";
-import {List, Table, Text} from "@mantine/core";
+import {Table, Text} from "@mantine/core";
 import {EmptyState} from "./EmptyState";
 import {ErrorState} from "./ErrorState";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
-import {formatConfidenceInterval} from "./SimulationReportDisplay";
+import {SimulationAssessment} from "./SimulationAssessment";
 import type {SimulationReportView} from "../../domain/interpret/Simulation";
 
-// Shared by the Run step's own live elapsed-time readout and this card's "Duration" row -- one
+// Shared by the Run step's live elapsed-time readout and this card's duration readout -- one
 // formatting implementation for both, same reasoning SimulationReportDisplay's own
 // formatConfidenceInterval already follows.
 export function formatElapsedMs(ms: number): string {
@@ -31,7 +31,7 @@ export type SimulationOutcome =
 // The compact "did it work" readout the Review step auto-shows the instant a job goes terminal --
 // before the user opts into SimulationReportDisplay's much longer full report. Deliberately headline
 // numbers first, then warnings and a labelled sampling/precision section. Keep the
-// diagnostic caveats visible without placing a prose wall before the result.
+// precision verdict and warnings visible, with supporting explanations disclosed.
 export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
     if (outcome.kind === "failed") {
         return <ErrorState message={`Simulation failed after ${formatElapsedMs(outcome.durationMs)}: ${outcome.error ?? "Unknown error."}`} />;
@@ -47,64 +47,33 @@ export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
 
     const {report} = outcome;
     if ("modes" in report) return <div><Text>All modes — independent results per mode</Text>{Object.entries(report.modes).map(([id, mode]) => <div key={id}><Text fw={600}>Mode: {id}</Text><SimulationSummaryCard outcome={{kind: "completed", report: mode}} /></div>)}</div>;
-    const mainRecommendation = report.recommendations[0];
     return (
         <div className="studio-simulation-summary">
             {report.betMode !== undefined && <Text>Bet mode: {report.betMode}</Text>}
-            <Table withRowBorders={false} role="table" className="studio-simulation-metrics" aria-label="Simulation summary">
+            <Table withRowBorders={false} role="table" className="studio-simulation-metrics studio-simulation-primary-metrics" aria-label="Simulation summary">
                 <Table.Tbody>
                     <Table.Tr>
-                        <Table.Th>RTP</Table.Th>
+                        <Table.Th scope="row">RTP</Table.Th>
                         <Table.Td>{(report.rtp * 100).toFixed(2)}%</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
-                        <Table.Th>Hit frequency</Table.Th>
+                        <Table.Th scope="row">Hit frequency</Table.Th>
                         <Table.Td>{(report.hitFrequency * 100).toFixed(2)}%</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
-                        <Table.Th>Volatility</Table.Th>
+                        <Table.Th scope="row">Volatility</Table.Th>
                         <Table.Td>{report.volatility === undefined ? "—" : report.volatility.toFixed(2)}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
-                        <Table.Th>Max win</Table.Th>
+                        <Table.Th scope="row">Max win</Table.Th>
                         <Table.Td>{report.maxWin.toFixed(2)}</Table.Td>
-                    </Table.Tr>
-                    <Table.Tr>
-                        <Table.Th>Duration</Table.Th>
-                        <Table.Td>{formatElapsedMs(report.durationMs)}</Table.Td>
-                    </Table.Tr>
-                    <Table.Tr>
-                        <Table.Th>Convergence</Table.Th>
-                        <Table.Td>RTP 95% CI: {formatConfidenceInterval(report.rtpConfidenceInterval95)}</Table.Td>
                     </Table.Tr>
                 </Table.Tbody>
             </Table>
 
-            {report.warnings.length > 0 && (
-                <div>
-                    <Text size="sm" fw={600} mt="sm">
-                        Warnings
-                    </Text>
-                    <List size="sm">
-                        {report.warnings.map((warning, index) => (
-                            <List.Item key={index}>{warning}</List.Item>
-                        ))}
-                    </List>
-                </div>
-            )}
+            <Text size="sm" className="studio-simulation-run-facts">Duration: {formatElapsedMs(report.durationMs)}</Text>
+            <SimulationAssessment view={report} compact />
 
-            {mainRecommendation && (
-                <Text size="sm" mt="sm">
-                    <Text span fw={600}>
-                        Recommendation:
-                    </Text>{" "}
-                    {mainRecommendation}
-                </Text>
-            )}
-
-            <Text size="sm" mt="sm">{report.rounds} usable samples · {report.diagnostics?.precision ?? "Precision unavailable (legacy report)"}</Text>
-            <Text size="sm" c="dimmed">{describeSimulationDiagnostics(report, false)[2]}</Text>
-            {report.diagnostics?.coverageLimitations.map((line, index) => <Text size="sm" key={index}>{line}</Text>)}
             <AdvancedDisclosure label="sampling and precision">
                 <div className="studio-simulation-diagnostics">
                     {describeSimulationDiagnostics(report, false).slice(0, 5).filter((_, index) => index !== 2).map((line, index) => <Text size="sm" key={index}>{line}</Text>)}

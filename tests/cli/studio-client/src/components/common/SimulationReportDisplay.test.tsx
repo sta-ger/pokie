@@ -7,6 +7,61 @@ import userEvent from "@testing-library/user-event";
 import {render, within} from "@testing-library/react";
 import {SimulationReportDisplay} from "../../../../../../cli/studio-client/src/components/common/SimulationReportDisplay";
 
+it.each(["summary", "full"] as const)("separates outcomes, precision and notes on %s with repeatable disclosure and report replacement", async surface => {
+    const user = userEvent.setup();
+    const source = {...featureAnalyticsReport(), warnings: ["No seed was provided", "Requested precision was not attained"],
+        recommendations: ["Choose a seed", "Increase the round budget"]};
+    const retained = JSON.stringify(source);
+    const show = (report: SimulationReport) => <MantineProvider>{surface === "summary"
+        ? <SimulationSummaryCard outcome={{kind: "completed", report: describeSimulationReport(report)}} />
+        : <SimulationReportDisplay view={describeSimulationReport(report)} />}</MantineProvider>;
+    const result = render(show(source));
+    const outcomes = result.getByRole("table", {name: surface === "summary" ? "Simulation summary" : "Simulation result metrics"});
+    expect(within(outcomes).getAllByRole("row")).toHaveLength(4);
+    expect(within(outcomes).getAllByRole("rowheader").map(cell => cell.textContent)).toEqual([
+        "RTP", "Hit frequency", surface === "summary" ? "Volatility" : "Volatility (std. deviation)", "Max win",
+    ]);
+    const precision = result.getByRole("region", {name: "Precision and convergence"});
+    const notes = result.getByRole("region", {name: "Report notes"});
+    expect(outcomes.compareDocumentPosition(precision) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(precision.parentElement).toBe(notes.parentElement);
+    expect(within(precision).getByText(/3 usable samples/)).toBeVisible();
+    expect(within(precision).getByText(/Empirical estimates/)).toBeVisible();
+    expect(notes).toHaveAttribute("data-has-warnings", "true");
+    for (const warning of source.warnings) expect(within(notes).getByText(warning)).toBeVisible();
+    for (const line of [...source.recommendations, ...source.diagnostics!.coverageLimitations]) {
+        expect(within(notes).getByText(line)).not.toBeVisible();
+    }
+    const toggle = within(notes).getByRole("button", {name: "Show recommendations and limits"});
+    const details = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+    for (let reuse = 0; reuse < 2; reuse++) {
+        toggle.focus();
+        await user.keyboard("{Enter}");
+        expect(toggle).toHaveFocus();
+        expect(details).toBeVisible();
+        for (const line of [...source.recommendations, ...source.diagnostics!.coverageLimitations]) {
+            expect(within(notes).getByText(line)).toBeVisible();
+        }
+        await user.keyboard(" ");
+        expect(details).not.toBeVisible();
+    }
+    await user.click(toggle);
+    result.rerender(show({...source, rtp: 0, warnings: [], recommendations: [], diagnostics: undefined,
+        rtpConfidenceInterval95: {low: 0, high: 0}, averagePayoutConfidenceInterval95: undefined}));
+    expect(within(outcomes).getByText("0.00%")).toBeVisible();
+    expect(notes).not.toHaveAttribute("data-has-warnings");
+    expect(within(notes).getByText("Coverage limitations: 0 · Recommendations: 0")).toBeVisible();
+    expect(within(notes).getByText(/Persisted precision\/support diagnostics unavailable/)).toBeVisible();
+    expect(within(precision).getByText(/Precision unavailable/)).toBeVisible();
+    expect(within(precision).getByText(surface === "summary" ? "RTP 95% CI: 0.00% – 0.00%" : "0.00% – 0.00%")).toBeVisible();
+    expect(result.queryByText("Choose a seed")).not.toBeInTheDocument();
+    expect(result.queryByText("No seed was provided")).not.toBeInTheDocument();
+    result.rerender(show(source));
+    expect(within(notes).getByText("Choose a seed")).toBeVisible();
+    expect(within(notes).getByRole("button", {name: "Hide recommendations and limits"})).toHaveAttribute("aria-controls", details.id);
+    expect(JSON.stringify(source)).toBe(retained);
+});
+
 it("separates reproduction bytes from accounting and keeps per-mode identity and optional absence truthful", async () => {
     const user = userEvent.setup();
     const original = featureAnalyticsReport();
@@ -184,12 +239,14 @@ it("renders analytics availability, zero denominators, unfinished features and p
     expect(within(feature).getAllByRole("cell").map(cell => cell.textContent)).toEqual(["14 / 24 = 0.5833333333333334", "14 / 30 = 0.4666666666666667"]);
 });
 
-it("keeps sample, attribution and noise limitations visible in the compact summary and full report", async () => {
+it("keeps precision visible and discloses complete attribution and noise limitations in both result views", async () => {
     const report = featureAnalyticsReport("empty");
     const view = describeSimulationReport(report);
     for (const surface of [<SimulationSummaryCard key="summary" outcome={{kind: "completed", report: view}} />, <SimulationReportDisplay key="report" view={view} />]) {
         const result = render(<MantineProvider>{surface}</MantineProvider>);
         expect(result.getByText(/0 usable samples/)).toBeVisible();
+        expect(result.getByText(/neither establishes exact RTP/)).not.toBeVisible();
+        await userEvent.click(result.getByRole("button", {name: "Show recommendations and limits"}));
         expect(result.getByText(/neither establishes exact RTP/)).toBeVisible();
         await userEvent.click(result.getByRole("button", {name: "Show sampling and precision"}));
         if (result.queryByRole("table", {name: "Sampling and precision"})) {
@@ -218,6 +275,8 @@ it("leads with grouped results and discloses real analytics without losing count
     const sampling = result.getByRole("table", {name: "Sampling and precision"});
     expect(metrics).toHaveClass("studio-simulation-metrics");
     expect(metrics.compareDocumentPosition(sampling) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(result.getByText(/neither establishes exact RTP/)).not.toBeVisible();
+    await user.click(result.getByRole("button", {name: "Show recommendations and limits"}));
     expect(result.getByText(/neither establishes exact RTP/)).toBeVisible();
     expect(result.container.textContent).not.toContain(JSON.stringify(report.payoutHistogram));
     for (const name of ["Canonical hit rates", "Component statistics", "freeGames distributions", "Analytics provenance"]) {
@@ -275,6 +334,8 @@ it("retains unavailable attribution and replaces disclosed observations without 
     expect(result.getByText("Canonical symbol/line/scatter hits unavailable.")).toBeVisible();
     expect(result.getByText(/Feature lifecycle unavailable:/)).toBeVisible();
     expect(result.queryByRole("table", {name: "Feature lifecycle summary"})).not.toBeInTheDocument();
+    expect(result.getByText("Precision unavailable (legacy report)", {exact: false})).toBeVisible();
+    await user.click(result.getByRole("button", {name: "Show recommendations and limits"}));
     expect(result.getByText(/Persisted precision\/support diagnostics unavailable/)).toBeVisible();
     expect(result.getByText(/3 \(accepted-subround\)/)).toBeVisible();
 });
@@ -291,6 +352,8 @@ it("keeps per-mode analytics, provenance and disclosure state separate", async (
     const buyMode = within(result.getByRole("group", {name: "Mode: buy"}));
     expect(baseMode.getByText("0.00 – 0.00")).toBeVisible();
     expect(buyMode.getByText("Average payout 95% confidence interval").closest("tr")).toHaveTextContent("—");
+    await user.click(baseMode.getByRole("button", {name: "Show recommendations and limits"}));
+    expect(buyMode.getByRole("button", {name: "Show recommendations and limits"})).toHaveAttribute("aria-expanded", "false");
     await user.click(baseMode.getByRole("button", {name: "Show analytical tables and feature detail"}));
     expect(buyMode.getByRole("button", {name: "Show analytical tables and feature detail"})).toHaveAttribute("aria-expanded", "false");
     await user.click(buyMode.getByRole("button", {name: "Show analytical tables and feature detail"}));

@@ -99,6 +99,30 @@ const report = describeSimulationReport({
         precision: "notRequested", coverageLimitations: ["Rare outcomes may remain unseen."]},
 });
 
+it.each(["light", "dark"] as const)("gives the leading RTP a readable visual emphasis in %s mode", scheme => {
+    const style = document.createElement("style");
+    studioCss.walkRules(rule => {
+        if (rule.selector.startsWith(".studio-simulation-metrics") || rule.selector.startsWith(".studio-simulation-primary-metrics")) {
+            style.textContent += resolveCss(rule.toString(), scheme);
+        }
+    });
+    document.head.append(style);
+    try {
+        render(<MantineProvider theme={theme} forceColorScheme={scheme}><SimulationSummaryCard outcome={{kind: "completed", report}} /></MantineProvider>);
+        const metrics = screen.getByRole("table", {name: "Simulation summary"});
+        expect(metrics).toHaveClass("studio-simulation-primary-metrics");
+        const rows = within(metrics).getAllByRole("row");
+        const leading = getComputedStyle(rows[0]);
+        expect(contrast(leading.color, leading.backgroundColor)).toBeGreaterThanOrEqual(4.5);
+        expect(leading.backgroundColor).not.toBe(getComputedStyle(rows[1]).backgroundColor);
+        const value = getComputedStyle(within(rows[0]).getByRole("cell"));
+        expect(value.fontWeight).toBe("700");
+        expect(value.fontVariantNumeric).toBe("tabular-nums");
+    } finally {
+        style.remove();
+    }
+});
+
 function props(): ComponentProps<typeof SimulationTab> {
     return {
         progress: undefined, error: undefined, cancellationRequested: false, operation: "simulation",
@@ -110,7 +134,7 @@ function props(): ComponentProps<typeof SimulationTab> {
     };
 }
 
-it("keeps summary metrics and caveats primary while disclosing sampling on live and reopened results", async () => {
+it("prioritizes summary outcomes and precision while disclosing supporting explanations on live and reopened results", async () => {
     const p = props();
     const user = userEvent.setup();
     const result = render(<MantineProvider theme={theme}><SimulationTab {...p}
@@ -121,7 +145,8 @@ it("keeps summary metrics and caveats primary while disclosing sampling on live 
     const toggle = screen.getByRole("button", {name: "Show sampling and precision"});
     const diagnostics = document.getElementById(toggle.getAttribute("aria-controls")!)!;
     expect(diagnostics).not.toBeVisible();
-    expect(within(metrics.closest(".studio-simulation-summary")! as HTMLElement).getByText(/Rare outcomes/)).toBeVisible();
+    expect(within(metrics.closest(".studio-simulation-summary")! as HTMLElement).getByText(/Rare outcomes/)).not.toBeVisible();
+    expect(within(metrics.closest(".studio-simulation-summary")! as HTMLElement).getByText("Coverage limitations: 1 · Recommendations: 0")).toBeVisible();
     toggle.focus();
     await user.keyboard("{Enter}");
     expect(diagnostics).toBeVisible();
@@ -129,6 +154,11 @@ it("keeps summary metrics and caveats primary while disclosing sampling on live 
     expect(metrics.compareDocumentPosition(diagnostics) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(metrics).getByText("96.00%")).toBeVisible();
     expect(within(diagnostics).getByText(/requested budget 1000/)).toBeVisible();
+    const notesToggle = screen.getByRole("button", {name: "Show recommendations and limits"});
+    notesToggle.focus();
+    await user.keyboard(" ");
+    expect(notesToggle).toHaveFocus();
+    expect(within(metrics.closest(".studio-simulation-summary")! as HTMLElement).getByText(/Rare outcomes/)).toBeVisible();
     expect(within(metrics.closest(".studio-simulation-summary")! as HTMLElement).getByText(/neither establishes exact RTP/)).toBeVisible();
     const review = screen.getByRole("button", {name: /Review/});
     expect(review).toHaveAttribute("aria-current", "step");
@@ -163,7 +193,8 @@ it("retains invalid-round feedback and disabled downstream steps before an expli
     expect(p.onRun).toHaveBeenCalledWith(1000, undefined, 1, undefined, undefined);
 });
 
-it("retains per-mode caveats and keeps failed/cancelled outcomes separate from completed metrics", () => {
+it("retains per-mode caveats and keeps failed/cancelled outcomes separate from completed metrics", async () => {
+    const user = userEvent.setup();
     const result = render(<MantineProvider theme={theme}><SimulationSummaryCard outcome={{kind: "completed", report: {
         game: report.game, requestedRounds: 1000, seed: "36", modes: {
             base: {...report, warnings: ["Low sample budget"], recommendations: ["Run more rounds"]},
@@ -177,7 +208,11 @@ it("retains per-mode caveats and keeps failed/cancelled outcomes separate from c
     expect(screen.getByText("96.00%")).toBeVisible();
     expect(screen.getByText("75.00%")).toBeVisible();
     expect(screen.getByText("Low sample budget")).toBeVisible();
+    expect(screen.getByText("Run more rounds")).not.toBeVisible();
+    const base = screen.getByText("Low sample budget").closest(".studio-simulation-summary")! as HTMLElement;
+    await user.click(within(base).getByRole("button", {name: "Show recommendations and limits"}));
     expect(screen.getByText("Run more rounds")).toBeVisible();
+    expect(screen.getByRole("button", {name: "Show recommendations and limits"})).toHaveAttribute("aria-expanded", "false");
     result.rerender(<MantineProvider theme={theme}><SimulationSummaryCard outcome={{kind: "failed", durationMs: 100, error: "Worker failed"}} /></MantineProvider>);
     expect(screen.getByText(/Worker failed/)).toBeVisible();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
@@ -384,6 +419,11 @@ it.each([false, true])("uses grouped full reports for historical=%s review and b
     await user.click(screen.getByRole("button", {name: "Compare with another run"}));
     const comparison = screen.getByRole("group", {name: "Compare with another run"});
     expect(within(comparison).getAllByRole("table", {name: "Simulation result metrics"})).toHaveLength(2);
+    const notes = within(comparison).getAllByRole("button", {name: "Show recommendations and limits"});
+    expect(notes).toHaveLength(2);
+    await user.click(notes[0]);
+    expect(notes[0]).toHaveAttribute("aria-expanded", "true");
+    expect(notes[1]).toHaveAttribute("aria-expanded", "false");
     for (const control of within(comparison).getAllByRole("button", {name: "Show run identity and accounting"})) await user.click(control);
     expect(within(comparison).getByText(/comparison-source/)).toBeVisible();
     expect(within(comparison).getByText("7.50 – 8.00")).toBeVisible();

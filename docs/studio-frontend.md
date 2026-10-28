@@ -335,8 +335,10 @@ each mode's bounds separate. Formatting does not recalculate the report statisti
   scroll within their own container rather than the page.
 - Simulation keeps Configure, Run, Review and Export in four ordered columns, switching to two
   columns at 576px and below. Unavailable steps remain disabled. Review puts headline metrics
-  first, then warnings and a **Show sampling and precision** disclosure. Precision/support
-  status and statistical caveats remain visible for both current and reopened reports, separately for each mode.
+  first, then grouped precision and warnings. The empirical-estimate caution and precision
+  status remain visible. **Show recommendations and limits** reveals the full interpretation,
+  coverage limitations and advice; **Show sampling and precision** reveals the sample accounting.
+  Current, reopened and per-mode results use the same presentation.
 - Every `Stepper.Step` across Studio (all 5 remaining interactive Steppers, see the audit below) carries an explicit
   `aria-current={activeStep === N ? "step" : undefined}` -- Mantine's own `Stepper` has no built-in
   current-step ARIA semantics (only a `data-progress` styling hook), so without this a screen reader had no
@@ -515,11 +517,15 @@ the Studio workspace. Closing a help tab leaves the authoring tab intact.
 
 ### Full simulation report
 
-**Open full report** replaces the compact summary with labeled result metrics,
-visible warnings and confidence intervals. Precision/support status and the empirical-estimate
-caveat stay visible. **Show sampling and precision** opens detailed counts, denominators,
-adaptive policy and interval diagnostics. Sampling units and
-empirical limitations stay visible. Feature lifecycle and additive payout
+**Open full report** replaces the compact summary with four primary metrics: RTP,
+hit frequency, volatility and maximum win. Average payout, maximum-win frequency,
+stop reason and duration use compact rows below. Precision and confidence intervals
+sit beside the warning group when space permits, stacking in narrow report columns.
+Warnings, the precision status and a concise empirical-estimate caution stay visible;
+**Show recommendations and limits** reveals the full statistical interpretation,
+coverage limitations and recommendations. **Show sampling and precision** opens
+counts, sampling units, denominators, adaptive policy and interval diagnostics.
+Feature lifecycle and additive payout
 attribution use comparison tables; bet mode attribution remains a separate
 dimension. **Show win and feature details**, **Show canonical hits and components**
 and **Show analytics provenance** reveal the detailed counts, distributions and

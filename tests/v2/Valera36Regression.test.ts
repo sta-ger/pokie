@@ -215,6 +215,41 @@ describe("V2C-36 compact metric composition", () => {
         expect(rules[".studio-simulation-metrics > tbody > tr > td"]).toMatchObject({"font-variant-numeric": "tabular-nums"});
         expect(rules[".studio-simulation-metrics > tbody > tr"].background).toContain("light-dark(");
     });
+
+    it("distinguishes primary outcomes from compact facts and lets assessment columns follow their container", () => {
+        const css = postcss.parse(readFileSync("cli/studio-client/src/global.css", "utf8"));
+        const declarations = (selector: string) => {
+            const values: Record<string, string> = {};
+            css.walkRules(rule => {
+                if (rule.selectors.includes(selector) && rule.parent?.type !== "atrule") {
+                    rule.walkDecls(d => {
+                        values[d.prop] = d.value;
+                    });
+                }
+            });
+            return values;
+        };
+        expect(declarations(".studio-simulation-primary-metrics > tbody")["grid-template-columns"])
+            .toBe("repeat(2, minmax(0, 1fr))");
+        expect(declarations(".studio-simulation-primary-metrics")["container-type"]).toBe("inline-size");
+        const containerColumns: Record<string, string> = {};
+        css.walkAtRules("container", query => {
+            query.walkRules(".studio-simulation-primary-metrics > tbody", rule => {
+                rule.walkDecls("grid-template-columns", d => {
+                    containerColumns[query.params] = d.value;
+                });
+            });
+        });
+        expect(containerColumns).toEqual({"(min-width: 40rem)": "repeat(4, minmax(0, 1fr))", "(max-width: 20rem)": "minmax(0, 1fr)"});
+        expect(declarations(".studio-simulation-assessment")).toMatchObject({display: "grid",
+            "grid-template-columns": "repeat(auto-fit, minmax(min(100%, 20rem), 1fr))"});
+        expect(declarations(".studio-simulation-assessment > section")).toMatchObject({"min-width": "0", "overflow-wrap": "anywhere"});
+        expect(declarations(".studio-simulation-facts :is(th, td)")).toMatchObject({padding: "0", "font-size": "var(--mantine-font-size-sm)"});
+        // Secondary sampling counts remain a table rather than another KPI grid.
+        const report = readFileSync("cli/studio-client/src/components/common/SimulationReportDisplay.tsx", "utf8");
+        expect(report).toMatch(/<Table aria-label="Sampling and precision"[^>]*>/);
+        expect(report).not.toMatch(/<Table aria-label="Sampling and precision"[^>]*studio-simulation-metrics/);
+    });
 });
 
 
