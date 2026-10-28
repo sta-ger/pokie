@@ -77,6 +77,7 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
         <Alert
             className="studio-job-card"
             color={presentation.color}
+            variant={job.status === "completed" ? "default" : "light"}
             title={title}
             role={job.status === "failed" ? "alert" : "status"}
             aria-live={job.status === "failed" ? undefined : "polite"}
@@ -86,28 +87,13 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
         >
             <Stack gap={4}>
                 <Text size="sm" data-job-detail>{job.result?.summary ?? job.error ?? job.recovery?.reason ?? presentation.fallback}</Text>
-                {job.durationMs !== undefined && <Text size="xs" c="dimmed">Duration: {job.durationMs}ms</Text>}
                 {job.result?.warnings?.map((warning) => <Text size="xs" c="orange" key={warning}>{warning}</Text>)}
                 {outcomeResult !== undefined && (
                     <Stack gap={2} aria-label="Published Outcome Library result">
                         {outcomeCount !== undefined && <Text size="xs">Published outcomes: {outcomeCount}</Text>}
                         <Text size="xs">Final size: {byteSize === undefined ? "unknown" : `${Number(byteSize).toLocaleString()} bytes`}</Text>
-                        {libraryHash !== undefined && <Text size="xs" style={{overflowWrap: "anywhere"}}>Library hash: {libraryHash}</Text>}
-                        {configurationHash !== undefined && <Text size="xs" style={{overflowWrap: "anywhere"}}>Configuration hash: {configurationHash}</Text>}
-                        {(generatorAlgorithm !== undefined || generatorStrategy !== undefined) && <Text size="xs">Generation provenance: {[generatorAlgorithm, generatorStrategy].filter((entry): entry is string => entry !== undefined).join(" · ")}</Text>}
-                        {generatorGame !== undefined && <Text size="xs">Source game: {generatorGame}</Text>}
-                        {generatedAt !== undefined && <Text size="xs">Generated: {generatedAt}</Text>}
-                        {selector !== undefined && <Text size="xs">Selector: {selectorLabel(selector)}</Text>}
                     </Stack>
                 )}
-                {job.result?.provenance !== undefined &&
-                    <details className="studio-job-details"><summary>Inspect provenance</summary><Text size="xs">{JSON.stringify(job.result.provenance)}</Text></details>}
-                {job.result?.detail !== undefined &&
-                    <details className="studio-job-details"><summary>Inspect operation result</summary><Text size="xs">{JSON.stringify(job.result.detail)}</Text></details>}
-                <details className="studio-job-details">
-                    <summary>Inspect retained request</summary>
-                    <Text size="xs">{JSON.stringify(job.request)}</Text>
-                </details>
                 {job.result?.outputs?.map((output) => {
                     const outputPath = job.operation === "outcome-library-generation" && outcomeResult !== undefined
                         ? resolvedOutcomeLibraryPath
@@ -140,6 +126,28 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
                             </Button>}
                     </Group>
                 )}
+                <details className="studio-job-receipt" key={job.id}>
+                    <summary>Operation details</summary>
+                    {job.durationMs !== undefined && <Text size="sm" c="dimmed">Duration: {job.durationMs}ms</Text>}
+                    {outcomeResult !== undefined && (
+                        <Stack gap={2}>
+                            {libraryHash !== undefined && <Text size="sm">Library hash: {libraryHash}</Text>}
+                            {configurationHash !== undefined && <Text size="sm">Configuration hash: {configurationHash}</Text>}
+                            {(generatorAlgorithm !== undefined || generatorStrategy !== undefined) && <Text size="sm">Generation provenance: {[generatorAlgorithm, generatorStrategy].filter((entry): entry is string => entry !== undefined).join(" · ")}</Text>}
+                            {generatorGame !== undefined && <Text size="sm">Source game: {generatorGame}</Text>}
+                            {generatedAt !== undefined && <Text size="sm">Generated: {generatedAt}</Text>}
+                            {selector !== undefined && <Text size="sm">Selector: {selectorLabel(selector)}</Text>}
+                        </Stack>
+                    )}
+                    {job.result?.provenance !== undefined &&
+                        <details className="studio-job-details"><summary>Inspect provenance</summary><Text size="xs">{JSON.stringify(job.result.provenance)}</Text></details>}
+                    {job.result?.detail !== undefined &&
+                        <details className="studio-job-details"><summary>Inspect operation result</summary><Text size="xs">{JSON.stringify(job.result.detail)}</Text></details>}
+                    <details className="studio-job-details">
+                        <summary>Inspect retained request</summary>
+                        <Text size="xs">{JSON.stringify(job.request)}</Text>
+                    </details>
+                </details>
             </Stack>
         </Alert>
     );

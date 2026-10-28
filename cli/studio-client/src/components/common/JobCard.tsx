@@ -61,7 +61,7 @@ export function JobCard(props: ComponentProps<typeof JobResultCard> & {
         keepFocusedControlVisible();
     });
     return (
-        <div ref={ref} className="studio-job-card" tabIndex={-1} role="region" aria-label={`${props.job.operation} job ${props.job.id}`}
+        <div ref={ref} className="studio-job-region" tabIndex={-1} role="region" aria-label={`${props.job.operation} job ${props.job.id}`}
             style={{scrollMarginTop: "calc(var(--app-shell-header-offset, 0px) + 8px)", scrollMarginBottom: 8, scrollMarginInline: 8}}
             onFocusCapture={(event) => {
                 focusedControl.current = event.target;

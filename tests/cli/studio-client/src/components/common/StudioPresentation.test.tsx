@@ -93,9 +93,15 @@ it("keeps disabled cancellation, keyboard terminal focus, full output paths and 
     const request = screen.getByText("Inspect retained request").closest("details")!;
     expect(request).not.toHaveAttribute("open");
     expect(request).toHaveTextContent('"rounds":500000');
-    expect(screen.getByText("Inspect operation result")).toBeVisible();
+    expect(screen.getByText("Inspect operation result")).not.toBeVisible();
+    expect(screen.getByText("Operation details")).toBeVisible();
     await user.tab();
     expect(screen.getByRole("link", {name: "Download JSON"})).toHaveFocus();
+    const details = screen.getByText("Operation details");
+    await user.tab();
+    expect(details).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByText("Inspect operation result")).toBeVisible();
 });
 
 it("keeps Home editor and Projects region focus after keyboard section activation", async () => {

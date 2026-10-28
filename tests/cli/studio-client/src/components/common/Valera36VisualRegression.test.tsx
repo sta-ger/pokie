@@ -1,4 +1,4 @@
-import {ActionIcon, Button, DEFAULT_THEME, MantineProvider, defaultCssVariablesResolver, mergeMantineTheme} from "@mantine/core";
+import {ActionIcon, Alert, Button, DEFAULT_THEME, MantineProvider, defaultCssVariablesResolver, mergeMantineTheme} from "@mantine/core";
 import {render, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {readFileSync} from "fs";
@@ -14,6 +14,8 @@ import {featureAnalyticsReport} from "../../../../../v2/fixtures/FeatureAnalytic
 import {SimulationSummaryCard} from "../../../../../../cli/studio-client/src/components/common/SimulationSummaryCard";
 import {describeSimulationReport} from "../../../../../../cli/studio-client/src/domain/interpret/Simulation";
 import {theme} from "../../../../../../cli/studio-client/src/theme";
+import {PathInput} from "../../../../../../cli/studio-client/src/components/common/PathInput";
+import {StudioApiProvider} from "../../../../../../cli/studio-client/src/context/StudioApiProvider";
 
 // jsdom cannot resolve custom properties. Resolve the actual provider variables and
 // component inline variables, rather than substituting a hand-picked palette pair.
@@ -54,6 +56,38 @@ function contrast(foreground: string, background: string): number {
 }
 
 // Implementation regressions, not an independent visual-quality assessment.
+it.each(["light", "dark"] as const)("keeps the actual path-validation callout readable and visually marked in %s mode", async scheme => {
+    const user = userEvent.setup();
+    const fetchImpl = () => Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "error", reason: "absent", resolvedPath: "/not/a/real/game", error: "ENOENT"})});
+    render(<MantineProvider theme={theme} forceColorScheme={scheme}><StudioApiProvider fetchImpl={fetchImpl}>
+        <PathInput label="Game location" value="/not/a/real/game" onPathSelected={() => undefined} />
+    </StudioApiProvider></MantineProvider>);
+    await user.click(screen.getByRole("textbox", {name: "Game location"}));
+    const alert = await screen.findByRole("alert", {name: "Location needs attention"});
+    expect(alert).toHaveClass("studio-path-issue", Alert.classes.root);
+    const declarations: Record<string, string> = {};
+    studioCss.walkRules(rule => {
+        if (rule.selector === ".studio-path-issue") rule.walkDecls(declaration => {
+            declarations[declaration.prop] = resolveCss(declaration.value, scheme, alert);
+        });
+    });
+    const background = declarations["background-color"];
+    expect(contrast(declarations.color, background)).toBeGreaterThanOrEqual(4.5);
+    expect(declarations["border-inline-start"]).toMatch(/^4px solid /);
+    expect(contrast(declarations["border-inline-start"].replace(/^4px solid /, ""), background)).toBeGreaterThanOrEqual(3);
+    // Mantine's message overrides inherited title/icon colour with the scheme's
+    // body colour. Resolve its actual upstream declaration as well.
+    let messageColor = "";
+    mantineCss.walkRules(rule => {
+        if (rule.selector === `:where([data-mantine-color-scheme='${scheme}']) .${Alert.classes.message}`) {
+            rule.walkDecls("color", declaration => {
+                messageColor = resolveCss(declaration.value, scheme, alert);
+            });
+        }
+    });
+    expect(contrast(messageColor, background)).toBeGreaterThanOrEqual(4.5);
+});
+
 const report = describeSimulationReport({
     game: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
     requestedRounds: 1000, rounds: 1000, seed: "36", totalBet: 50, totalWin: 48,

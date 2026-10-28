@@ -7,6 +7,37 @@ import userEvent from "@testing-library/user-event";
 import {render, within} from "@testing-library/react";
 import {SimulationReportDisplay} from "../../../../../../cli/studio-client/src/components/common/SimulationReportDisplay";
 
+it("separates reproduction bytes from accounting and keeps per-mode identity and optional absence truthful", async () => {
+    const user = userEvent.setup();
+    const original = featureAnalyticsReport();
+    const command = `pokie sim /games/${"long-path/".repeat(15)}blueprint.json --rounds 10000 --mode base`;
+    const base = {...original, reproducibility: {...original.reproducibility!, command, configHash: "sha256:base", pokieVersion: "2.0.0"}};
+    const buy = {...original, reproducibility: undefined};
+    const source = {game: original.game, requestedRounds: 10000, seed: null, modes: {base, buy}};
+    const retained = JSON.stringify(source);
+    const result = render(<MantineProvider><SimulationReportDisplay view={describeSimulationReport(source)} /></MantineProvider>);
+    const baseMode = within(result.getByRole("group", {name: "Mode: base"}));
+    const buyMode = within(result.getByRole("group", {name: "Mode: buy"}));
+    await user.click(baseMode.getByRole("button", {name: "Show run identity and accounting"}));
+    const accounting = baseMode.getByRole("table", {name: "Run identity and accounting"});
+    expect(accounting).toHaveTextContent(original.game.id);
+    expect(within(accounting).getByText("Total bet").closest("tr")).toHaveTextContent(original.totalBet.toFixed(2));
+    expect(baseMode.getByText(command)).not.toBeVisible();
+    const reproduce = baseMode.getByText("Reproduce this run");
+    reproduce.focus();
+    await user.keyboard("{Enter}");
+    expect(baseMode.getByText(command)).toBeVisible();
+    expect(baseMode.getByText("sha256:base")).toBeVisible();
+    expect(baseMode.getByText("2.0.0")).toBeVisible();
+    expect(buyMode.queryByText("Reproduce this run")).not.toBeInTheDocument();
+    expect(buyMode.queryByRole("table", {name: "Run identity and accounting"})).not.toBeInTheDocument();
+    await user.click(reproduce);
+    expect(baseMode.getByText(command)).not.toBeVisible();
+    await user.click(reproduce);
+    expect(baseMode.getByText(command)).toBeVisible();
+    expect(JSON.stringify(source)).toBe(retained);
+});
+
 it("shows payout confidence bounds in payout units while keeping RTP bounds in percent", () => {
     const report = featureAnalyticsReport();
     const view = describeSimulationReport({

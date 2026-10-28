@@ -8,6 +8,7 @@ import {useLocation} from "react-router-dom";
 import {ProjectsPanel} from "../../../../../../cli/studio-client/src/components/home/ProjectsPanel";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {StudioProjectRegistrationService} from "../../../../../../cli/studio/StudioProjectRegistrationService";
+import {StudioFsBrowseService} from "../../../../../../cli/studio/home/StudioFsBrowseService";
 import {InMemoryStudioProjectRegistry} from "../../../../../../cli/studio/InMemoryStudioProjectRegistry";
 import {createCanonicalWasmFixture} from "../../../../../fixtures/wasm/createCanonicalWasmFixture";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
@@ -163,6 +164,39 @@ describe("V2C-22-SIDECAR-DIAGNOSTICS: rendered Home recovery", () => {
         fireEvent.click(screen.getByRole("button", {name: "Check game"}));
         await screen.findByRole("button", {name: "Add to projects"});
     }
+
+    it("V36-R8 carries the frozen nonexistent path through the resolver and Check game, then reuses the real registration flow", async () => {
+        const missing = "/not/a/real/game";
+        const resolver = new StudioFsBrowseService(directory);
+        expect(resolver.browse(missing, undefined, "any")).toMatchObject({status: "error", reason: "absent", resolvedPath: missing});
+        expect(await service.previewImport(missing)).toEqual({status: "unrecognized", path: missing});
+        const observedFetch: FetchLike = (url, init) => {
+            if (!url.startsWith("/api/home/fs/browse?")) return fetchImpl(url, init);
+            const query = new URL(url, "http://studio").searchParams;
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(resolver.browse(query.get("path") ?? undefined, undefined, "any"))});
+        };
+        renderWithProviders(<ProjectsPanel />, {fetchImpl: observedFetch});
+        await screen.findByText("Preserved game");
+        const input = screen.getByRole("textbox", {name: "Game location"});
+        fireEvent.change(input, {target: {value: missing}});
+        const alert = await screen.findByRole("alert", {name: "Location needs attention"});
+        expect(alert).toHaveTextContent(`"${missing}" doesn't exist.`);
+        expect(input).toHaveAttribute("aria-errormessage", alert.id);
+        fireEvent.click(screen.getByRole("button", {name: "Check game"}));
+        await screen.findByText(`Studio couldn't identify "${missing}" as a game it can open. Choose another game folder or game-design file, then try again.`);
+        expect(await registry.list()).toHaveLength(1);
+        expect(calls).not.toContain("/api/home/projects/registry/register");
+        fireEvent.change(input, {target: {value: location}});
+        await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+        expect(input).not.toHaveAttribute("aria-invalid");
+        await checkGame();
+        await checkGame();
+        expect(await service.previewImport(location)).toMatchObject({status: "recognized", location});
+        expect(resolver.browse(location, undefined, "any")).toMatchObject({status: "ok", resolvedPath: location});
+        fireEvent.click(screen.getByRole("button", {name: "Add to projects"}));
+        await screen.findByText('Added "game" to Your projects. Select Open to continue working on it.');
+        expect(await registry.list()).toHaveLength(2);
+    });
 
     it.each(failures)("Check game preserves $category guidance and permits two corrected previews before registration", async (failure) => {
         failure.breakArtifact();

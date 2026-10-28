@@ -254,17 +254,15 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                         </Table.Tr>
                         <Table.Tr><Table.Th>Workers</Table.Th><Table.Td>{view.workers}</Table.Td></Table.Tr>
                     </Table.Tbody></Table>
-                    {view.reproducibilityCommand !== undefined && (
-                        <Text size="sm" c="dimmed" mt="sm" style={{overflowWrap: "anywhere"}}>
-                            {view.reproducibilityCommand}
-                        </Text>
-                    )}
-                    {(view.configHash !== undefined || view.pokieVersion !== undefined) && (
-                        <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
-                            {view.configHash !== undefined ? `Model/config hash: ${view.configHash}` : ""}
-                            {view.configHash !== undefined && view.pokieVersion !== undefined ? " · " : ""}
-                            {view.pokieVersion !== undefined ? `POKIE/runtime: ${view.pokieVersion}` : ""}
-                        </Text>
+                    {(view.reproducibilityCommand !== undefined || view.configHash !== undefined || view.pokieVersion !== undefined) && (
+                        <details className="studio-run-reproduction">
+                            <summary>Reproduce this run</summary>
+                            <dl>
+                                {view.reproducibilityCommand !== undefined && <><dt>Command</dt><dd><code>{view.reproducibilityCommand}</code></dd></>}
+                                {view.configHash !== undefined && <><dt>Model/config hash</dt><dd><code>{view.configHash}</code></dd></>}
+                                {view.pokieVersion !== undefined && <><dt>POKIE/runtime</dt><dd>{view.pokieVersion}</dd></>}
+                            </dl>
+                        </details>
                     )}
                 </PageSection>
             </AdvancedDisclosure>

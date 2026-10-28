@@ -20,7 +20,7 @@ function Harness({
     filePickerMode,
     pathPurpose,
 }: {
-    kind?: "directory" | "file";
+    kind?: "directory" | "file" | "any";
     initial?: string;
     browseId?: string;
     relevantDirectory?: string;
@@ -52,6 +52,52 @@ const UNAVAILABLE_ROUTE = {
 describe("PathInput", () => {
     afterEach(() => {
         localStorage.clear();
+    });
+
+    it.each(["directory", "file", "any"] as const)("announces an actionable %s path failure on the field and clears it on corrected reuse", async kind => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/fs/browse": ({url}) => {
+                const path = new URL(url, "http://studio").searchParams.get("path");
+                return {ok: true, status: 200, body: path === "/not/a/real/game"
+                    ? {status: "error", reason: "absent", resolvedPath: path, error: "ENOENT must not leak"}
+                    : {status: "ok", resolvedPath: "/existing/game", displayPath: "./game", entries: []}};
+            },
+        });
+        renderWithProviders(<Harness kind={kind} initial="/existing/game" />, {fetchImpl});
+        const input = screen.getByRole("textbox", {name: "Path"});
+        fireEvent.focus(input);
+        await screen.findByText("Resolves to: /existing/game");
+        fireEvent.change(input, {target: {value: "/not/a/real/game"}});
+        const alert = await screen.findByRole("alert", {name: "Location needs attention"});
+        expect(alert).toHaveClass("studio-path-issue");
+        expect(alert).toHaveTextContent('"/not/a/real/game" doesn\'t exist.');
+        expect(alert).toHaveTextContent("Check the path, or use Browse to pick an existing location.");
+        expect(alert).not.toHaveTextContent("ENOENT");
+        expect(input).toHaveAttribute("aria-invalid", "true");
+        expect(input).toHaveAttribute("aria-errormessage", alert.id);
+        for (const next of ["/corrected/game", "/corrected/again"]) {
+            fireEvent.change(input, {target: {value: next}});
+            await screen.findByText("Resolves to: /existing/game");
+            expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+            expect(input).not.toHaveAttribute("aria-invalid");
+            expect(input).not.toHaveAttribute("aria-errormessage");
+            expect(input).toHaveValue(next);
+        }
+    });
+
+    it("preserves caller validation, field identity and descriptions when the resolver also rejects", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "error", reason: "permission", resolvedPath: "/protected", error: "EACCES"}}),
+        });
+        renderWithProviders(<PathInput id="destination" label="Destination" description="Use a new or empty destination."
+            error="Existing files will not be overwritten." defaultValue="/protected" onPathSelected={() => undefined} />, {fetchImpl});
+        const input = screen.getByRole("textbox", {name: "Destination"});
+        fireEvent.focus(input);
+        const alert = await screen.findByRole("alert", {name: "Location needs attention"});
+        expect(input).toHaveAttribute("id", "destination");
+        expect(input).toHaveAttribute("aria-errormessage", alert.id);
+        expect(input).toHaveAccessibleDescription("Existing files will not be overwritten. Use a new or empty destination.");
+        expect(screen.getByText("Existing files will not be overwritten.")).toBeVisible();
     });
 
     it("places explicit input attributes on the editable field rather than its layout wrapper", () => {

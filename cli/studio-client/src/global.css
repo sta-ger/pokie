@@ -229,6 +229,47 @@ body,
     overflow-wrap: anywhere;
 }
 
+.studio-job-receipt,
+.studio-run-reproduction {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    margin-top: var(--mantine-spacing-xs);
+    font-size: var(--mantine-font-size-sm);
+}
+
+.studio-job-receipt > summary,
+.studio-run-reproduction > summary {
+    cursor: pointer;
+    padding-block: var(--mantine-spacing-xs);
+    color: var(--mantine-color-text);
+}
+
+.studio-job-receipt[open],
+.studio-run-reproduction[open] {
+    border-top: 1px solid var(--mantine-color-default-border);
+}
+
+.studio-run-reproduction dl {
+    margin-block: var(--mantine-spacing-xs);
+}
+
+.studio-run-reproduction dt {
+    font-weight: 600;
+    margin-top: var(--mantine-spacing-sm);
+}
+
+.studio-run-reproduction dd {
+    margin: 4px 0 0;
+    white-space: pre-wrap;
+}
+
+.studio-path-issue {
+    background-color: light-dark(var(--mantine-color-red-0), var(--mantine-color-dark-6));
+    color: light-dark(var(--mantine-color-red-9), var(--mantine-color-red-2));
+    border-inline-start: 4px solid light-dark(var(--mantine-color-red-8), var(--mantine-color-red-3));
+    overflow-wrap: anywhere;
+}
+
 .studio-job-card .mantine-Group-root,
 .studio-job-details {
     min-width: 0;
@@ -372,7 +413,7 @@ body,
 .studio-design-editor :focus,
 .studio-export-deploy :focus,
 .studio-projects :focus,
-.studio-job-card :focus {
+:is(.studio-job-card, .studio-job-region) :focus {
     scroll-margin-block-start: calc(var(--app-shell-header-offset, 0px) + 8px);
     scroll-margin-block-end: 8px;
     scroll-margin-inline: 8px;

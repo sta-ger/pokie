@@ -20,6 +20,8 @@ In Simulation, choose a supported mode, bounded rounds, worker count and explici
 
 Long-running operations have durable job IDs, project identity, phases and progress. Reload reattaches to server-owned work; it must not automatically submit another run. Cancel from the owning project; cross-project cancellation is rejected. **Cancelling** remains pending until workers, runtime resources and scratch candidates have drained. Cleanup failure requires recovery and cannot be presented as successful cancellation.
 
+Retained cards keep the outcome, warnings, output actions and any explicit recovery action visible. Open **Operation details** for timing, provenance, the operation result and the captured request. This disclosure does not submit or retry work.
+
 Server restart preserves durable evidence and operation-specific interrupted/retry states. It cannot recreate a live Play session, resume optimizer search or restore its process-local candidate save/apply authority. Rerun support and optimization to get a new review receipt. The generic recovery endpoint only resumes generation operations that explicitly support recovery. Do not assume every retained job can resume.
 
 ## Keep ownership distinct
@@ -35,6 +37,13 @@ replaces that summary; **Show sampling and precision**, **Show analytical tables
 feature detail** and **Show run identity and accounting** reveal supporting information.
 Each mode retains its own results. Comparison shows the selected pair, and Export
 keeps JSON, Markdown and HTML downloads tied to the original report.
+Within run identity and accounting, **Reproduce this run** reveals the original
+command, model/config hash and runtime version when the report includes them.
+
+Path checks show **Location needs attention** with the specific problem and a
+suggested correction. Edit the location or use Browse to choose another. A new
+artifact destination can be absent; its availability and overwrite policy are
+checked by the submitting action.
 
 In Layout, paylines have numbered path cards. Open **Edit reel rows** to edit a
 line's zero-based, evaluation-local row numbers. Leaving a field updates the draft;
