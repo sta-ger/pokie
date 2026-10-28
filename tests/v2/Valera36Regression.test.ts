@@ -1,4 +1,7 @@
 import {JSDOM} from "jsdom";
+import {readFileSync} from "node:fs";
+import path from "node:path";
+import postcss from "postcss";
 import {buildSimulationReportDownload} from "../../cli/studio/simulation/buildSimulationReportDownload.js";
 import {describeSimulationReport} from "../../cli/studio-client/src/domain/interpret/Simulation.js";
 import {formatConfidenceInterval} from "../../cli/studio-client/src/domain/interpret/formatConfidenceInterval.js";
@@ -47,5 +50,41 @@ describe("V2C-36 report confidence interval units", () => {
         });
         expect(formatConfidenceInterval(legacy.averagePayoutConfidenceInterval95, "payout")).toBe("0.00 – 0.00");
         expect(formatConfidenceInterval(legacy.rtpConfidenceInterval95)).toBe("0.00% – 0.00%");
+    });
+});
+
+describe("V2C-36 tablet review layout contract", () => {
+    const css = postcss.parse(readFileSync(path.resolve("cli/studio-client/src/global.css"), "utf8"));
+    const declarations = (selector: string, width: number): Record<string, string> => {
+        const values: Record<string, string> = {};
+        css.walkRules(selector, rule => {
+            const parent = rule.parent;
+            if (parent?.type === "atrule" && parent.name === "media") {
+                const maximum = parent.params.match(/^\(max-width: ([\d.]+)em\)$/);
+                if (!maximum || width > Number(maximum[1]) * 16) return;
+            }
+            rule.walkDecls(declaration => {
+                values[declaration.prop] = declaration.value;
+            });
+        });
+        return values;
+    };
+
+    it.each([390, 800, 991, 992, 1440])("reclaims the rail space below 992px and keeps ordered step tracks at %ipx", width => {
+        const main = declarations("#root .studio-app-main", width);
+        expect(main["--app-shell-navbar-offset"]).toBe(width < 992 ? "0px" : undefined);
+        expect(main["padding-inline"]).toBe(width < 992 ? "var(--mantine-spacing-md)" : undefined);
+        const steps = declarations(".studio-simulation-stepper .mantine-Stepper-steps", width);
+        expect(steps.display).toBe("grid");
+        expect(steps["grid-template-columns"]).toBe(`repeat(${width <= 576 ? 2 : 4}, minmax(0, 1fr))`);
+    });
+
+    it("uses the public masthead and cream workspace without changing semantic status colours", () => {
+        expect(declarations(".studio-app-masthead", 800)).toMatchObject({
+            background: "#172d3b", color: "#fff9ed", "border-bottom": "4px solid #dc7653",
+        });
+        expect(declarations(".studio-app-main", 800).background).toContain("#f7f5ee");
+        expect(declarations(".studio-page", 800)["--mantine-color-dimmed"]).toContain("#52636a");
+        expect(declarations('.studio-output-status:is([data-status="Needs attention"], [data-status="Destination conflict"])', 800).color).toContain("--mantine-color-red-8");
     });
 });

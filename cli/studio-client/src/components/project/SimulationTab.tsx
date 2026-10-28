@@ -267,7 +267,7 @@ export function SimulationTab({
                     Export becomes available after a completed simulation report is ready.
                 </Text>
             )}
-            <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
+            <Stepper className="studio-simulation-stepper" active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
                 <Stepper.Step
                     id="simulation-configure"
                     data-pokie-lifecycle-step="simulation-configure"

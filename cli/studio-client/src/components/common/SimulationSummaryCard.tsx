@@ -2,6 +2,7 @@ import {describeSimulationDiagnostics} from "../../../../../src/reporting/descri
 import {List, Table, Text} from "@mantine/core";
 import {EmptyState} from "./EmptyState";
 import {ErrorState} from "./ErrorState";
+import {PageSection} from "./PageSection";
 import {formatConfidenceInterval} from "./SimulationReportDisplay";
 import type {SimulationReportView} from "../../domain/interpret/Simulation";
 
@@ -29,8 +30,8 @@ export type SimulationOutcome =
 
 // The compact "did it work" readout the Review step auto-shows the instant a job goes terminal --
 // before the user opts into SimulationReportDisplay's much longer full report. Deliberately headline
-// numbers only (no breakdown, no full warning text, no reproducibility command) so "auto-opened
-// summary" never reads as a wall of text.
+// numbers first, then warnings and a labelled sampling/precision section. Keep the
+// diagnostic caveats visible without placing a prose wall before the result.
 export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
     if (outcome.kind === "failed") {
         return <ErrorState message={`Simulation failed after ${formatElapsedMs(outcome.durationMs)}: ${outcome.error ?? "Unknown error."}`} />;
@@ -48,10 +49,9 @@ export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
     if ("modes" in report) return <div><Text>All modes — independent results per mode</Text>{Object.entries(report.modes).map(([id, mode]) => <div key={id}><Text fw={600}>Mode: {id}</Text><SimulationSummaryCard outcome={{kind: "completed", report: mode}} /></div>)}</div>;
     const mainRecommendation = report.recommendations[0];
     return (
-        <div>
-            {describeSimulationDiagnostics(report, false).slice(0, report.diagnostics ? 5 + report.diagnostics.coverageLimitations.length : 4).map((line, index) => <Text size="sm" key={index}>{line}</Text>)}
+        <div className="studio-simulation-summary">
             {report.betMode !== undefined && <Text>Bet mode: {report.betMode}</Text>}
-            <Table withRowBorders={false}>
+            <Table withRowBorders={false} aria-label="Simulation summary">
                 <Table.Tbody>
                     <Table.Tr>
                         <Table.Th>RTP</Table.Th>
@@ -101,6 +101,12 @@ export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
                     {mainRecommendation}
                 </Text>
             )}
+
+            <PageSection legend="Sampling and precision">
+                <div className="studio-simulation-diagnostics">
+                    {describeSimulationDiagnostics(report, false).slice(0, report.diagnostics ? 5 + report.diagnostics.coverageLimitations.length : 4).map((line, index) => <Text size="sm" key={index}>{line}</Text>)}
+                </div>
+            </PageSection>
         </div>
     );
 }

@@ -327,8 +327,16 @@ each mode's bounds separate. Formatting does not recalculate the report statisti
   active tab (Mantine `NavLink`/`SegmentedControl`).
 - Dynamic-list row actions (Duplicate/Remove/Move) keep their original `aria-label` text (e.g. "Move symbol 2
   up"); nav tabs render as real `<button>`s (not an `href`-less `<a>`, which isn't keyboard-focusable).
-- `AppShell`'s navbar collapses behind a `Burger` below Mantine's `sm` breakpoint; wide tables (Paytable,
-  simulation breakdown) scroll within their own container rather than the page.
+- Studio shares the public documentation's navy masthead, copper accent, cream workspace and
+  system-body/serif-heading typography. Status colours retain their separate meanings.
+- `AppShell`'s navbar collapses behind **Toggle navigation** below Mantine's `md` breakpoint
+  (992 CSS pixels), including tablet widths such as 800px. Selecting a section or pressing Escape
+  closes the drawer and returns focus to its toggle. Wide tables (Paytable, simulation breakdown)
+  scroll within their own container rather than the page.
+- Simulation keeps Configure, Run, Review and Export in four ordered columns, switching to two
+  columns at 576px and below. Unavailable steps remain disabled. Review puts headline metrics
+  first, then warnings and a labelled **Sampling and precision** section; its statistical caveats
+  remain visible for both current and reopened reports, separately for each mode.
 - Every `Stepper.Step` across Studio (all 5 remaining interactive Steppers, see the audit below) carries an explicit
   `aria-current={activeStep === N ? "step" : undefined}` -- Mantine's own `Stepper` has no built-in
   current-step ARIA semantics (only a `data-progress` styling hook), so without this a screen reader had no

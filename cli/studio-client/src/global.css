@@ -14,7 +14,7 @@ body,
    letting individual tables and code blocks own their local scrolling. */
 .studio-app-main {
     min-width: 0;
-    background: light-dark(#f4f6fa, var(--mantine-color-dark-8));
+    background: light-dark(#f7f5ee, var(--mantine-color-dark-8));
     /* Resize the content column immediately: interpolating the desktop rail padding
        leaves phone controls narrower than their labels during the transition. */
     transition-property: none;
@@ -51,7 +51,7 @@ body,
 }
 
 .studio-page {
-    --mantine-color-dimmed: light-dark(#64748b, #adb5bd);
+    --mantine-color-dimmed: light-dark(#52636a, #adb5bd);
     width: min(100%, 76rem);
     min-width: 0;
     margin-inline: auto;
@@ -76,8 +76,8 @@ body,
 .studio-section {
     padding: var(--mantine-spacing-md);
     background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7));
-    border-color: light-dark(#e4e9f1, var(--mantine-color-dark-4));
-    box-shadow: 0 2px 5px light-dark(#24304408, #00000020);
+    border-color: light-dark(#d5d6cf, var(--mantine-color-dark-4));
+    box-shadow: 0 2px 5px light-dark(#172d3b08, #00000020);
 }
 
 .studio-section .mantine-Fieldset-legend {
@@ -87,13 +87,13 @@ body,
 }
 
 .studio-page .mantine-Button-root[data-variant="default"]:not(:disabled):not([data-disabled]) {
-    background: light-dark(#edf1f7, var(--mantine-color-dark-6));
+    background: light-dark(#e8e9df, var(--mantine-color-dark-6));
     border-color: transparent;
     color: var(--mantine-color-text);
 }
 
 .studio-page .mantine-Button-root[data-variant="default"]:hover:not(:disabled) {
-    background: light-dark(#e0e7f1, var(--mantine-color-dark-5));
+    background: light-dark(#d5d6cf, var(--mantine-color-dark-5));
 }
 
 .studio-page .mantine-Tabs-list {
@@ -102,7 +102,7 @@ body,
 }
 
 .studio-page .mantine-Tabs-tab[data-active] {
-    background: light-dark(var(--mantine-color-indigo-0), var(--mantine-color-dark-6));
+    background: light-dark(var(--mantine-color-copper-0), var(--mantine-color-dark-6));
 }
 
 /* Region focus without keyboard visibility must not frame a whole editor.
@@ -122,7 +122,7 @@ body,
     min-width: 0;
     margin-bottom: var(--mantine-spacing-sm);
     padding: var(--mantine-spacing-sm);
-    background: light-dark(#f4f6fa, var(--mantine-color-dark-8));
+    background: light-dark(#f7f5ee, var(--mantine-color-dark-8));
     border-radius: var(--mantine-radius-md);
 }
 
@@ -151,8 +151,8 @@ body,
     margin-block: var(--mantine-spacing-xs);
     padding: var(--mantine-spacing-xs) var(--mantine-spacing-sm);
     border-radius: var(--mantine-radius-sm);
-    background: light-dark(#edf1f7, var(--mantine-color-dark-6));
-    color: light-dark(#475569, var(--mantine-color-gray-4));
+    background: light-dark(#e8e9df, var(--mantine-color-dark-6));
+    color: light-dark(#52636a, var(--mantine-color-gray-4));
     font-family: var(--mantine-font-family-monospace);
     font-size: var(--mantine-font-size-xs);
     line-height: 1.6;
@@ -219,7 +219,7 @@ body,
 
 .studio-job-details .mantine-Text-root {
     padding: var(--mantine-spacing-xs);
-    background: light-dark(#edf1f7, var(--mantine-color-dark-6));
+    background: light-dark(#e8e9df, var(--mantine-color-dark-6));
     border-radius: var(--mantine-radius-sm);
     font-family: var(--mantine-font-family-monospace);
 }
@@ -328,12 +328,11 @@ body,
     }
 }
 
-/* At phone width, a label/value split leaves the project name, path, and action controls with too
-   little usable width. Keep each card's hierarchy, but stack its labels above full-width content so
-   long project locations remain scannable and the controls stay practical to use. */
-@media (max-width: 48em) {
+/* Collapse the desktop rail before it compromises the authoring/review column.
+   Keep this boundary aligned with AppShell's md breakpoint (992px minus 0.1px). */
+@media (max-width: 61.99375em) {
     /* AppShell calculates main padding from its inherited desktop navbar offset. Override that input
-       on the main area itself at phone widths, so a stale 260px offset cannot shrink any Home surface
+       on the main area itself at tablet and phone widths, so a stale 260px offset cannot shrink any Home surface
        (including the initially rendered Design Game editor) to a thin right-hand column. */
     #root .studio-app-main {
         --app-shell-navbar-offset: 0px !important;
@@ -342,6 +341,12 @@ body,
         padding-inline: var(--mantine-spacing-md) !important;
     }
 
+}
+
+/* At phone width, a label/value split leaves the project name, path, and action controls with too
+   little usable width. Keep each card's hierarchy, but stack its labels above full-width content so
+   long project locations remain scannable and the controls stay practical to use. */
+@media (max-width: 48em) {
     /* The header's retained breadcrumb still exposes the guarded navigation
        actions. On a phone the duplicate secondary action competes with that
        path for the same single-line header width. */
@@ -386,4 +391,81 @@ body,
     /* Mantine supplies its enter/exit transforms and transition inline. */
     transform: translate(-50%, -50%) !important;
     transition-property: opacity !important;
+}
+
+/* The public site's dark masthead, copper rule and cream workspace carry through
+   to Studio. Semantic status colours remain separate from the brand accent. */
+.studio-app-masthead {
+    background: #172d3b;
+    color: #fff9ed;
+    border-bottom: 4px solid #dc7653;
+}
+
+.studio-app-masthead .mantine-Anchor-root,
+.studio-app-masthead .mantine-Breadcrumbs-separator {
+    color: #e5baa2;
+}
+
+.studio-app-masthead .mantine-Anchor-root:hover,
+.studio-app-masthead .studio-app-breadcrumb-current {
+    color: #fff9ed;
+}
+
+.studio-app-masthead .mantine-Burger-root {
+    --burger-color: #fff9ed;
+}
+
+#studio-navigation-panel {
+    background: light-dark(#f7f5ee, var(--mantine-color-dark-8));
+    border-color: light-dark(#d5d6cf, var(--mantine-color-dark-4));
+}
+
+#studio-navigation-panel .mantine-NavLink-root[data-active] {
+    background: #172d3b;
+    color: #fff9ed;
+}
+
+.studio-simulation-stepper .mantine-Stepper-steps {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--mantine-spacing-sm);
+}
+
+.studio-simulation-stepper .mantine-Stepper-separator {
+    display: none;
+}
+
+.studio-simulation-stepper .mantine-Stepper-step {
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--mantine-spacing-xs);
+    text-align: start;
+}
+
+.studio-simulation-stepper .mantine-Stepper-stepBody {
+    margin: 0;
+}
+
+.studio-simulation-stepper .mantine-Stepper-step[aria-current="step"] {
+    border-bottom: 3px solid var(--mantine-primary-color-filled);
+    padding-bottom: var(--mantine-spacing-xs);
+}
+
+@media (max-width: 36em) {
+    .studio-simulation-stepper .mantine-Stepper-steps {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.studio-simulation-diagnostics p + p {
+    margin-top: var(--mantine-spacing-xs);
+}
+
+.studio-simulation-summary > .studio-section {
+    margin-top: var(--mantine-spacing-md);
+}
+
+.studio-app-masthead .mantine-Title-root {
+    font-family: var(--mantine-font-family);
 }
