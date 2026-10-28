@@ -15,6 +15,14 @@ export function renderPlayground(siteBase: string, ready = false): string {
 <section class="pg-downloads"><h3>Reproduce this revision</h3><p>Downloads contain the validated current draft and actual observed output. A public round is an observation, not an audit recording. Only the separately labelled runtime state can be restored.</p><div id="pg-download-buttons"></div><p id="pg-download-status" role="status"></p><a href="${siteBase}playground/#reproduce-downloads-locally">Local reproduction and support boundaries →</a></section></fieldset><p id="pg-startup-help"${ready ? ' hidden' : ''}>If controls remain unavailable, <a href="${siteBase}playground/">reload the playground</a>. Reload resets drafts and results.</p><noscript>Interactive controls require JavaScript. Enable it and reload this local page.</noscript>`;
 }
 
+// A schematic of authored topology, not a sampled screen or a win claim.
+function modelSketch(blueprint: typeof galleryModels[number]["blueprint"]): string {
+    const cells = Array.from({length: blueprint.reels}, (_, reel) =>
+        Array.from({length: blueprint.rows}, (_, row) => `<rect x="${12 + reel * 40}" y="${12 + row * 24}" width="32" height="18" rx="3"/>`).join("")).join("");
+    const paths = (blueprint.paylines ?? []).map(line => `<polyline points="${line.map((row, reel) => `${28 + reel * 40},${21 + row * 24}`).join(" ")}"/>`).join("");
+    return `<svg class="gallery-sketch" aria-hidden="true" focusable="false" viewBox="0 0 ${blueprint.reels * 40 + 16} ${blueprint.rows * 24 + 16}">${cells}${paths}</svg>`;
+}
+
 export function renderGallery(siteBase: string): string {
-    return galleryModels.map(item => `<a href="${siteBase}playground/?example=${escapeHtml(item.id)}"><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.description)}</p><span>Open example →</span></a>`).join("");
+    return galleryModels.map((item, index) => `<a href="${siteBase}playground/?example=${escapeHtml(item.id)}"><div class="gallery-art">${modelSketch(item.blueprint)}<span class="eyebrow">${String(index + 1).padStart(2, "0")} / MODEL SKETCH</span></div><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.description)}</p><span class="gallery-action">Open example →</span></a>`).join("");
 }

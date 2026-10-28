@@ -27,3 +27,15 @@ Server restart preserves durable evidence and operation-specific interrupted/ret
 Saved Blueprint drafts are authored files. Simulation reports and audit exports are evidence. Runtime sessions are process state. Optimizer candidates are detached owned workspaces until explicitly published or applied. A saved report does not save a design, restore a session or grant mutation authority. Project switch/close and shutdown cancel and drain owned jobs before releasing resources.
 
 If the connection fails, reconnect and inspect the retained job before retrying. After a destination conflict, choose a new path. After source/policy drift, obtain fresh support and review. See [job recovery source guide](../../docs/studio-long-running-jobs.md) and [Studio source guide](../../docs/studio-frontend.md).
+
+## Read a simulation result
+
+Review starts with result metrics, warnings and precision status. **Open full report**
+replaces that summary; **Show sampling and precision**, **Show analytical tables and
+feature detail** and **Show run identity and accounting** reveal supporting information.
+Each mode retains its own results. Comparison shows the selected pair, and Export
+keeps JSON, Markdown and HTML downloads tied to the original report.
+
+In Layout, paylines have numbered path cards. Open **Edit reel rows** to edit a
+line's zero-based, evaluation-local row numbers. Leaving a field updates the draft;
+Save/Apply or Create game remains explicit.

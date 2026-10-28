@@ -23,7 +23,7 @@ export function renderMarkdown(source, link) {
                 used.set(base, count + 1);
                 const id = count ? `${base}-${count}` : base;
                 headings.push({title, id, depth: node.depth});
-                return `<h${node.depth} id="${id}" tabindex="-1">${children()} <a class="permalink" aria-label="Link to ${escapeHtml(title)}" href="#${id}">#</a></h${node.depth}>`;
+                return `<h${node.depth} id="${id}" tabindex="-1">${children()} <a class="permalink" aria-label="Link to ${escapeHtml(title)}" href="#${id}"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2"/></svg></a></h${node.depth}>`;
             }
             case 'link': return `<a href="${escapeHtml(link(node.url))}">${children()}</a>`;
             case 'inlineCode': return `<code>${escapeHtml(node.value)}</code>`;

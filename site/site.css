@@ -93,3 +93,20 @@ footer { padding: 1.5rem 4vw; border-top: 1px solid light-dark(#c7cec9, #64736f)
 
 #pg-controls { min-width: 0; margin: 0; padding: 0; border: 0; }
 #pg-controls > legend { font-weight: 700; margin-bottom: 1rem; }
+
+/* Section links retain keyboard access without exposing authoring markers. */
+.permalink { display: inline-flex; vertical-align: middle; padding: .2rem; opacity: 0; }
+.permalink svg { width: .75em; height: .75em; min-width: 1rem; min-height: 1rem; }
+:is(h1, h2, h3, h4, h5, h6):hover .permalink, .permalink:focus-visible { opacity: 1; }
+.docs-index > ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: .8rem; padding: 0; list-style: none; }
+.docs-index > ul > li { padding: 1rem; border: 1px solid light-dark(#c7cec9, #52636a); border-top: 3px solid #dc7653; border-radius: .3rem; background: light-dark(#fffdf7, #202f38); }
+.docs-index > ul strong { display: block; margin-bottom: .4rem; }
+.docs-index > h2 { padding-top: 1rem; border-top: 1px solid light-dark(#c7cec9, #52636a); }
+#gallery .gallery-art { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: -.3rem 0 1.2rem; padding-bottom: 1rem; border-bottom: 1px solid light-dark(#c7cec9, #64736f); }
+#gallery .gallery-sketch { width: 7rem; height: 4.5rem; flex-shrink: 0; }
+.gallery-sketch rect { fill: light-dark(#e8e9df, #294552); stroke: light-dark(#52636a, #a9b9af); }
+.gallery-sketch polyline { fill: none; stroke: light-dark(#8b3214, #e69b78); stroke-width: 3; }
+#gallery .eyebrow { margin: 0; font-size: .7rem; }
+#gallery p { color: light-dark(#172d3b, #fff9ed); font-size: .95rem; }
+#gallery .gallery-action { margin-top: auto; padding-top: .5rem; }
+#gallery > a:hover { border-color: light-dark(#8b3214, #e69b78); }

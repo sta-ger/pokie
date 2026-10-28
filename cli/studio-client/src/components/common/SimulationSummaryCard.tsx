@@ -2,7 +2,7 @@ import {describeSimulationDiagnostics} from "../../../../../src/reporting/descri
 import {List, Table, Text} from "@mantine/core";
 import {EmptyState} from "./EmptyState";
 import {ErrorState} from "./ErrorState";
-import {PageSection} from "./PageSection";
+import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {formatConfidenceInterval} from "./SimulationReportDisplay";
 import type {SimulationReportView} from "../../domain/interpret/Simulation";
 
@@ -102,11 +102,14 @@ export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
                 </Text>
             )}
 
-            <PageSection legend="Sampling and precision">
+            <Text size="sm" mt="sm">{report.rounds} usable samples · {report.diagnostics?.precision ?? "Precision unavailable (legacy report)"}</Text>
+            <Text size="sm" c="dimmed">{describeSimulationDiagnostics(report, false)[2]}</Text>
+            {report.diagnostics?.coverageLimitations.map((line, index) => <Text size="sm" key={index}>{line}</Text>)}
+            <AdvancedDisclosure label="sampling and precision">
                 <div className="studio-simulation-diagnostics">
-                    {describeSimulationDiagnostics(report, false).slice(0, report.diagnostics ? 5 + report.diagnostics.coverageLimitations.length : 4).map((line, index) => <Text size="sm" key={index}>{line}</Text>)}
+                    {describeSimulationDiagnostics(report, false).slice(0, 5).filter((_, index) => index !== 2).map((line, index) => <Text size="sm" key={index}>{line}</Text>)}
                 </div>
-            </PageSection>
+            </AdvancedDisclosure>
         </div>
     );
 }

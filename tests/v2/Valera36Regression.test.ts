@@ -342,3 +342,68 @@ describe("V2C-36 public interaction delivery", () => {
         expect(output).toContain("PASS static startup failure; mounted play -> malformed validation -> restore -> play -> play; canonical WASM; no owned Workers");
     });
 });
+
+describe("V2C-36 public visual landmarks", () => {
+    it.each(["/", "/help/"])("retains accessible fragment links and grouped real guide destinations at %s", base => {
+        const pages = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import fs from 'node:fs';
+            import {renderMarkdown} from './site/markdown.mjs';
+            const source = fs.readFileSync('site/content/docs.md', 'utf8');
+            const render = source => renderMarkdown(source, url => ${JSON.stringify(base)} + url);
+            console.log(JSON.stringify([render(source), render('# Same title\\n\\n## Same title\\n\\n### A & B')]));
+        `], {encoding: "utf8"})) as {html: string; headings: {id: string}[]}[];
+        for (const page of pages) {
+            const dom = new JSDOM(page.html);
+            try {
+                const document = dom.window.document;
+                const links = [...document.querySelectorAll<HTMLAnchorElement>(".permalink")];
+                expect(links).toHaveLength(page.headings.length);
+                expect(new Set(page.headings.map(heading => heading.id)).size).toBe(page.headings.length);
+                for (const [index, link] of links.entries()) {
+                    expect(link.textContent?.trim()).toBe("");
+                    expect(link.getAttribute("href")).toBe(`#${page.headings[index].id}`);
+                    expect(document.getElementById(page.headings[index].id)).toBe(link.parentElement);
+                    expect(link.getAttribute("aria-label")).toMatch(/^Link to .+/);
+                    expect(link.tabIndex).toBe(0);
+                    expect(link.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+                }
+                if (page === pages[0]) {
+                    expect(document.querySelectorAll("ul > li")).toHaveLength(11);
+                    for (const guide of ["getting-started", "studio", "mechanics", "cli-api", "reproducibility", "optimization", "interop", "extraction", "weighted-sequences", "architecture", "server"]) {
+                        expect(document.querySelector(`li strong a[href="${base}${guide}.md"]`)).not.toBeNull();
+                    }
+                }
+            } finally {
+                dom.window.close(); 
+            }
+        }
+        const css = postcss.parse(readFileSync("site/site.css", "utf8"));
+        const rules: Record<string, Record<string, string>> = {};
+        css.walkRules(rule => {
+            rules[rule.selector] ??= {};
+            rule.walkDecls(declaration => {
+                rules[rule.selector][declaration.prop] = declaration.value; 
+            });
+        });
+        expect(rules[".permalink"].opacity).toBe("0");
+        expect(rules[":is(h1, h2, h3, h4, h5, h6):hover .permalink, .permalink:focus-visible"].opacity).toBe("1");
+        expect(rules[".docs-index > ul"]["grid-template-columns"]).toBe("repeat(auto-fit, minmax(min(100%, 16rem), 1fr))");
+    });
+
+    it.each(["/", "/help/"])("pairs every Gallery deep link with authored topology and a readable description at %s", base => {
+        const dom = new JSDOM(`<div id="gallery">${renderGallery(base)}</div>`);
+        try {
+            const cards = [...dom.window.document.querySelectorAll<HTMLAnchorElement>("#gallery > a")];
+            expect(cards.map(card => card.getAttribute("href"))).toEqual(["lines", "ways", "clusters", "free-games", "weighted", "projection", "optimize"].map(id => `${base}playground/?example=${id}`));
+            expect(cards.map(card => card.querySelectorAll("svg rect").length)).toEqual([2, 6, 4, 2, 2, 2, 2]);
+            for (const card of cards) {
+                expect(card.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+                expect(card.querySelector("h2")?.textContent).toBeTruthy();
+                expect(card.querySelector("p")?.textContent).toBeTruthy();
+                expect(card.querySelector(".gallery-action")?.textContent).toBe("Open example →");
+            }
+        } finally {
+            dom.window.close(); 
+        }
+    });
+});

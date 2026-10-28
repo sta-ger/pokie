@@ -2,7 +2,9 @@ import {screen, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {useState} from "react";
 import {PaylinesEditor} from "../../../../../../cli/studio-client/src/components/blueprintEditor/PaylinesEditor";
-import type {BlueprintMutate} from "../../../../../../cli/studio-client/src/hooks/useBlueprintEditor";
+import {createRecommendedBlueprint} from "../../../../../../cli/studio-client/src/domain/blueprintEditorState";
+import {GameBlueprintValidator} from "../../../../../../src/generated/GameBlueprintValidator";
+import {useBlueprintEditor, type BlueprintMutate} from "../../../../../../cli/studio-client/src/hooks/useBlueprintEditor";
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
 
 function Harness({initialBlueprint}: {initialBlueprint: Record<string, unknown>}) {
@@ -151,4 +153,78 @@ describe("PaylinesEditor presets", () => {
 
         expect(screen.getByRole("button", {name: "Save current paylines as custom set"})).toBeDisabled();
     });
+});
+
+// The production editor owns the draft; a grouped presentation must not change
+// commit-on-blur or turn editing/reordering into an implicit save.
+function DraftHarness({initial, save}: {initial: Record<string, unknown>; save: (blueprint: Record<string, unknown>) => void}) {
+    const editor = useBlueprintEditor(initial);
+    return <>
+        <PaylinesEditor blueprint={editor.state.blueprint} mutate={editor.mutate} />
+        <button onClick={() => save(editor.getCurrentState().blueprint)}>Save draft</button>
+    </>;
+}
+
+it("groups authored paths and keeps blur edits, duplicate/reorder/remove and explicit save coherent", async () => {
+    const user = userEvent.setup();
+    const initial = createRecommendedBlueprint();
+    const original = JSON.stringify(initial);
+    const save = jest.fn();
+    renderWithProviders(<DraftHarness initial={initial} save={save} />);
+    expect(screen.getByText(/3 authored lines/)).toBeVisible();
+    const line = screen.getByRole("group", {name: "Payline 1"});
+    expect(within(line).getByText("Rows: 0 → 0 → 0 → 0 → 0")).toBeVisible();
+    expect(line.querySelector("svg.studio-payline-sketch")).toHaveAttribute("aria-hidden", "true");
+    expect(line.querySelector("details")).not.toHaveAttribute("open");
+    expect(within(line).getByLabelText("Payline 1 reel 1 row")).not.toBeVisible();
+    await user.click(within(line).getByText("Edit reel rows"));
+    expect(within(line).getAllByRole("textbox")).toHaveLength(5);
+    expect(within(line).queryByRole("button", {name: /increment|decrement/i})).not.toBeInTheDocument();
+    const cell = within(line).getByLabelText("Payline 1 reel 2 row");
+    await user.clear(cell);
+    await user.type(cell, "2");
+    // Clicking the real next control commits the cell before copying the line.
+    await user.click(within(line).getByRole("button", {name: "Duplicate payline 1"}));
+    expect(screen.getByText(/4 authored lines/)).toBeVisible();
+    expect(screen.getByLabelText("Payline 2 reel 2 row")).toHaveValue("2");
+    await user.click(screen.getByRole("button", {name: "Move payline 2 down"}));
+    expect(screen.getByLabelText("Payline 2 reel 2 row")).toHaveValue("1");
+    await user.click(screen.getByRole("button", {name: "Move payline 3 up"}));
+    await user.click(screen.getByRole("button", {name: "Remove payline 1"}));
+    expect(screen.getByLabelText("Payline 1 reel 2 row")).toHaveValue("2");
+    await user.click(screen.getByRole("button", {name: "Add payline"}));
+    expect(screen.getByLabelText("Payline 4 reel 2 row")).toHaveValue("0");
+    expect(save).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", {name: "Save draft"}));
+    expect(save).toHaveBeenLastCalledWith({...initial, paylines: [[0, 2, 0, 0, 0], [1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [0, 0, 0, 0, 0]]});
+    expect(JSON.stringify(initial)).toBe(original);
+});
+
+it("preserves omitted paylines and geometry, and leaves invalid authored cells to the canonical validator", async () => {
+    const user = userEvent.setup();
+    const initial = createRecommendedBlueprint();
+    Reflect.deleteProperty(initial, "paylines");
+    const save = jest.fn();
+    const result = renderWithProviders(<DraftHarness initial={initial} save={save} />);
+    expect(screen.getByText(/0 authored lines/)).toBeVisible();
+    await user.click(screen.getByRole("button", {name: "Save draft"}));
+    expect(save.mock.calls[0][0]).not.toHaveProperty("paylines");
+    result.unmount();
+    const geometry = {generated: {reels: 5, rows: 4}, evaluated: {rowOffset: 1, rows: 3}, visible: {rowOffset: 1, rows: 3}, paylineSpace: "evaluated"};
+    renderWithProviders(<DraftHarness initial={{...initial, paylines: [[0, 1, 2, 1, 0]], screenGeometry: geometry}} save={save} />);
+    await user.click(within(screen.getByRole("group", {name: "Payline 1"})).getByText("Edit reel rows"));
+    const cell = screen.getByLabelText("Payline 1 reel 2 row");
+    await user.clear(cell);
+    await user.type(cell, "9");
+    await user.click(screen.getByRole("button", {name: "Save draft"}));
+    const authored = save.mock.calls.at(-1)![0];
+    expect(authored.paylines).toEqual([[0, 9, 2, 1, 0]]);
+    expect(authored.screenGeometry).toEqual(geometry);
+    expect(new GameBlueprintValidator().validate(authored)).toEqual(expect.arrayContaining([
+        expect.objectContaining({code: "blueprint-payline-invalid", severity: "error"}),
+    ]));
+    await user.clear(cell);
+    await user.type(cell, "1");
+    await user.click(screen.getByRole("button", {name: "Save draft"}));
+    expect(new GameBlueprintValidator().validate(save.mock.calls.at(-1)![0]).filter(issue => issue.severity === "error")).toEqual([]);
 });

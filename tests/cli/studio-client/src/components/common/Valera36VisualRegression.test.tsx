@@ -1,5 +1,5 @@
 import {ActionIcon, Button, DEFAULT_THEME, MantineProvider, defaultCssVariablesResolver, mergeMantineTheme} from "@mantine/core";
-import {render, screen, within} from "@testing-library/react";
+import {render, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {readFileSync} from "fs";
 import {join} from "path";
@@ -76,7 +76,7 @@ function props(): ComponentProps<typeof SimulationTab> {
     };
 }
 
-it("keeps summary metrics before labelled, visible sampling diagnostics on live and reopened results", async () => {
+it("keeps summary metrics and caveats primary while disclosing sampling on live and reopened results", async () => {
     const p = props();
     const user = userEvent.setup();
     const result = render(<MantineProvider theme={theme}><SimulationTab {...p}
@@ -84,12 +84,18 @@ it("keeps summary metrics before labelled, visible sampling diagnostics on live 
         downloadUrls={{json: "/report.json", markdown: "/report.md", html: "/report.html"}} /></MantineProvider>);
     expect(screen.getByText(/Historical simulation result/)).toBeVisible();
     const metrics = screen.getByRole("table", {name: "Simulation summary"});
-    const diagnostics = screen.getByRole("group", {name: "Sampling and precision"});
+    const toggle = screen.getByRole("button", {name: "Show sampling and precision"});
+    const diagnostics = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+    expect(diagnostics).not.toBeVisible();
+    expect(screen.getByText(/Rare outcomes/)).toBeVisible();
+    toggle.focus();
+    await user.keyboard("{Enter}");
+    expect(diagnostics).toBeVisible();
+    expect(toggle).toHaveFocus();
     expect(metrics.compareDocumentPosition(diagnostics) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(metrics).getByText("96.00%")).toBeVisible();
     expect(within(diagnostics).getByText(/requested budget 1000/)).toBeVisible();
-    expect(within(diagnostics).getByText(/neither establishes exact RTP/)).toBeVisible();
-    expect(within(diagnostics).getByText(/Rare outcomes/)).toBeVisible();
+    expect(screen.getByText(/neither establishes exact RTP/)).toBeVisible();
     const review = screen.getByRole("button", {name: /Review/});
     expect(review).toHaveAttribute("aria-current", "step");
     expect(review.closest(".studio-simulation-stepper")).not.toBeNull();
@@ -101,7 +107,7 @@ it("keeps summary metrics before labelled, visible sampling diagnostics on live 
     // Same production summary is used for a newly completed result.
     result.rerender(<MantineProvider theme={theme}><SimulationSummaryCard outcome={{kind: "completed", report}} /></MantineProvider>);
     expect(screen.getByRole("table", {name: "Simulation summary"})).toBeVisible();
-    expect(screen.getByRole("group", {name: "Sampling and precision"})).toBeVisible();
+    expect(screen.getByRole("button", {name: "Show sampling and precision"})).toHaveAttribute("aria-expanded", "false");
 });
 
 it("retains invalid-round feedback and disabled downstream steps before an explicit corrected run", async () => {
@@ -131,7 +137,9 @@ it("retains per-mode caveats and keeps failed/cancelled outcomes separate from c
         },
     }}} /></MantineProvider>);
     expect(screen.getAllByRole("table", {name: "Simulation summary"})).toHaveLength(2);
-    expect(screen.getAllByRole("group", {name: "Sampling and precision"})).toHaveLength(2);
+    for (const toggle of screen.getAllByRole("button", {name: "Show sampling and precision"})) {
+        expect(toggle).toHaveAttribute("aria-expanded", "false");
+    }
     expect(screen.getByText("96.00%")).toBeVisible();
     expect(screen.getByText("75.00%")).toBeVisible();
     expect(screen.getByText("Low sample budget")).toBeVisible();
@@ -173,6 +181,8 @@ it.each(["light", "dark"] as const)("keeps public navigation, docs, gallery and 
         declarations(":root", "#docs-navigation > summary:hover"),
         declarations(":root", "a"), declarations(":root", "a", "a:hover"),
         declarations(":root", "th"), declarations(":root", "p code"),
+        declarations(":root", ".docs-index > ul > li"),
+        declarations(":root", "#gallery > a", "#gallery p"),
         declarations(":root", "a", "#gallery > a"), declarations(":root", "a", "#gallery > a", "a:hover"),
         declarations(":root", "#playground"), declarations(":root", "#playground", ".eyebrow"),
         declarations(":root", "#playground input"), declarations(":root", "#playground select"),
@@ -376,4 +386,30 @@ it("keeps the analysis verdict visible and preserves optional absence, replaceme
     view.rerender(show(original));
     expect(screen.getByRole("button", {name: "Show model analysis details"})).toHaveAttribute("aria-expanded", "false");
     expect(JSON.stringify(original)).toBe(retained);
+});
+
+it("shows one report or a comparison pair while retaining explicit detail and export controls", async () => {
+    const user = userEvent.setup();
+    render(<MantineProvider theme={theme}><SimulationTab {...props()}
+        reviewedDetail={{status: "loaded", report}}
+        compareDetail={{status: "loaded", report: {...report, rtp: 0.75}}}
+        downloadUrls={{json: "/report.json", markdown: "/report.md", html: "/report.html"}} /></MantineProvider>);
+    expect(screen.getAllByRole("table", {name: "Simulation summary"})).toHaveLength(1);
+    await user.click(screen.getByRole("button", {name: "Open full report"}));
+    expect(screen.queryByRole("table", {name: "Simulation summary"})).not.toBeInTheDocument();
+    expect(screen.getAllByRole("table", {name: "Simulation result metrics"})).toHaveLength(1);
+    for (const label of ["sampling and precision", "analytical tables and feature detail", "run identity and accounting"]) {
+        expect(screen.getByRole("button", {name: `Show ${label}`})).toHaveAttribute("aria-expanded", "false");
+    }
+    await user.click(screen.getByRole("button", {name: "Compare with another run"}));
+    await waitFor(() => expect(screen.getAllByRole("table", {name: "Simulation result metrics"})).toHaveLength(2));
+    expect(screen.queryByRole("table", {name: "Simulation summary"})).not.toBeInTheDocument();
+    expect(screen.getByText("75.00%")).toBeVisible();
+    expect(screen.getByText("96.00%")).toBeVisible();
+    await user.click(screen.getByRole("button", {name: "Open full report"}));
+    await waitFor(() => expect(screen.getAllByRole("table", {name: "Simulation result metrics"})).toHaveLength(1));
+    await user.click(screen.getByRole("button", {name: "Show run identity and accounting"}));
+    expect(screen.getByRole("table", {name: "Run identity and accounting"})).toBeVisible();
+    await user.click(screen.getByRole("button", {name: /Export.*Download report/}));
+    expect(screen.getByRole("link", {name: "Download HTML"})).toHaveAttribute("href", "/report.html");
 });

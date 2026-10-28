@@ -335,8 +335,8 @@ each mode's bounds separate. Formatting does not recalculate the report statisti
   scroll within their own container rather than the page.
 - Simulation keeps Configure, Run, Review and Export in four ordered columns, switching to two
   columns at 576px and below. Unavailable steps remain disabled. Review puts headline metrics
-  first, then warnings and a labelled **Sampling and precision** section; its statistical caveats
-  remain visible for both current and reopened reports, separately for each mode.
+  first, then warnings and a **Show sampling and precision** disclosure. Precision/support
+  status and statistical caveats remain visible for both current and reopened reports, separately for each mode.
 - Every `Stepper.Step` across Studio (all 5 remaining interactive Steppers, see the audit below) carries an explicit
   `aria-current={activeStep === N ? "step" : undefined}` -- Mantine's own `Stepper` has no built-in
   current-step ARIA semantics (only a `data-progress` styling hook), so without this a screen reader had no
@@ -516,15 +516,29 @@ the Studio workspace. Closing a help tab leaves the authoring tab intact.
 ### Full simulation report
 
 **Open full report** replaces the compact summary with labeled result metrics,
-visible warnings, sampling/precision and confidence intervals. Sampling units and
+visible warnings and confidence intervals. Precision/support status and the empirical-estimate
+caveat stay visible. **Show sampling and precision** opens detailed counts, denominators,
+adaptive policy and interval diagnostics. Sampling units and
 empirical limitations stay visible. Feature lifecycle and additive payout
 attribution use comparison tables; bet mode attribution remains a separate
 dimension. **Show win and feature details**, **Show canonical hits and components**
 and **Show analytics provenance** reveal the detailed counts, distributions and
 source identity. The payout histogram is a table behind its own disclosure, with
 currency buckets and the sample population identified. Wide analytical tables
-scroll within the report on narrow screens and in side-by-side comparisons.
+scroll within the report on narrow screens and in side-by-side comparisons. Open
+**Show analytical tables and feature detail** to inspect those tables and
+**Show run identity and accounting** for seed, game, command, workers and monetary totals.
+Comparison shows the two selected reports without repeating a standalone report above them.
 
 The same presentation serves completed, reopened, comparison and per-mode reports.
 **Hide full report** returns to the summary. Disclosure changes only what is
 visible; persisted report values and JSON/Markdown/HTML downloads are unchanged.
+
+### Grouped payline authoring
+
+Layout groups authored paylines into numbered cards with decorative path sketches and
+row sequences. Open **Edit reel rows** for a line's labelled reel inputs; type a row
+number and leave the field to commit it to the draft. Row numbers remain evaluation-local
+and start at zero. Duplicate, move, remove, Add payline and Apply preset retain their
+existing behavior. Draft edits still require explicit Save/Apply or Create game.
+Sketches do not validate the design or represent an executed winning screen.

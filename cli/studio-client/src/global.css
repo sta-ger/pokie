@@ -528,3 +528,28 @@ body,
     overflow-wrap: anywhere;
     font-variant-numeric: tabular-nums;
 }
+
+/* Each authored line has an identity and a readable reel track, rather than a
+   full-width stream of indistinguishable spinners. Keep large reel sets wrapped. */
+.studio-payline-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+    gap: var(--mantine-spacing-md);
+}
+.studio-payline-card {
+    min-width: 0;
+    margin: 0;
+    padding: var(--mantine-spacing-sm);
+    border: 1px solid light-dark(#c7cec9, #52636a);
+    border-radius: var(--mantine-radius-sm);
+    background: light-dark(#f7f5ee, #202f38);
+}
+.studio-payline-card legend { font-weight: 700; padding-inline: .4rem; }
+.studio-payline-cells {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(4.5rem, 1fr));
+    gap: var(--mantine-spacing-xs);
+}
+.studio-payline-sketch { width: 7rem; height: 3rem; color: light-dark(#8b3214, #e69b78); fill: currentColor; }
+.studio-payline-edit > summary { cursor: pointer; font-weight: 600; font-size: var(--mantine-font-size-sm); padding-block: .4rem; }
+.studio-payline-edit[open] > summary { margin-bottom: .4rem; }
