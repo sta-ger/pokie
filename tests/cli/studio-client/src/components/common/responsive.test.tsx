@@ -220,8 +220,10 @@ describe("Stepper wraps onto multiple lines instead of overflowing on a narrow v
         ];
         for (const relativePath of filesWithSteppers) {
             const source = readFileSync(join(componentsRoot, relativePath), "utf8");
-            expect(source).toContain("<Stepper active=");
-            expect(source).not.toMatch(/<Stepper\b[^>]*\bwrap={false}/);
+            // Styling props may precede active (as on the simulation stepper).
+            // Guard the wrap contract independently of prop order and spacing.
+            expect(source).toMatch(/<Stepper\b[^>]*\bactive\s*=/);
+            expect(source).not.toMatch(/<Stepper\b[^>]*\bwrap\s*=\s*{\s*false\s*}/);
         }
     });
 });
