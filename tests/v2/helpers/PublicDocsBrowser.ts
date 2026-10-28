@@ -166,7 +166,15 @@ export class PublicDocsBrowser {
     }
 
     public async key(key: string, code = key, virtualKey = 0): Promise<void> {
-        await this.send("Input.dispatchKeyEvent", {type: "keyDown", key, code, windowsVirtualKeyCode: virtualKey});
+        // Chromium needs Enter's text to generate the trusted keypress used by
+        // native summary activation; keyDown/keyUp alone do not represent Enter.
+        await this.send("Input.dispatchKeyEvent", {
+            type: "keyDown",
+            key,
+            code,
+            windowsVirtualKeyCode: virtualKey,
+            ...(key === "Enter" ? {text: "\r", unmodifiedText: "\r"} : {}),
+        });
         await this.send("Input.dispatchKeyEvent", {type: "keyUp", key, code, windowsVirtualKeyCode: virtualKey});
     }
 

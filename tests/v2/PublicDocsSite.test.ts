@@ -714,7 +714,20 @@ describe("documented production preview in real Chromium", () => {
                     await browser!.key("Tab", "Tab", 9);
                     await browser!.key("Tab", "Tab", 9);
                     expect(await browser!.evaluate("document.activeElement.matches('#docs-navigation > summary')")).toBe(true);
+                    await browser!.evaluate(`(() => {
+                        window.navigationKeyEvents = [];
+                        for (const type of ['keydown', 'keypress', 'keyup']) {
+                            document.activeElement.addEventListener(type, event => {
+                                window.navigationKeyEvents.push({type: event.type, key: event.key, trusted: event.isTrusted});
+                            }, {once: true});
+                        }
+                    })()`);
                     await browser!.key("Enter", "Enter", 13);
+                    expect(await browser!.evaluate("window.navigationKeyEvents")).toEqual([
+                        {type: "keydown", key: "Enter", trusted: true},
+                        {type: "keypress", key: "Enter", trusted: true},
+                        {type: "keyup", key: "Enter", trusted: true},
+                    ]);
                     expect(await browser!.evaluate("document.querySelector('#docs-navigation').open")).toBe(true);
                     await browser!.key("Tab", "Tab", 9);
                     expect(await browser!.evaluate(`(() => {
