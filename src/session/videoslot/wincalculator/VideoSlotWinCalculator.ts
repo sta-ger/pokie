@@ -47,10 +47,11 @@ import {WinEvaluationPipeline} from "../winevaluation/WinEvaluationPipeline.js";
 import {WinEvaluationResult} from "../winevaluation/WinEvaluationResult.js";
 import {WinEvaluator} from "../winevaluation/WinEvaluator.js";
 import {VideoSlotWinCalculatorOptions} from "./VideoSlotWinCalculatorOptions.js";
+import {SharedSlotMathPool, type OwnedSharedSlotMath} from "../../../wasm/math/internal/SharedSlotMathPool.js";
 
 export class VideoSlotWinCalculator<T extends string | number | symbol = string> implements VideoSlotWinCalculating<T> {
-    private readonly sharedMath?: SharedSlotMath;
-    private readonly configuredSharedMath = new Map<number, {key: string; math: SharedSlotMath}>();
+    private readonly sharedMath?: OwnedSharedSlotMath;
+    private readonly configuredSharedMath = new Map<number, {key: string; math: OwnedSharedSlotMath}>();
     private readonly config: VideoSlotConfigDescribing<T>;
     private readonly lineWinCalculator: LineWinCalculating<T>;
     private readonly scatterWinCalculator: ScatterWinCalculating<T>;
@@ -83,6 +84,11 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
         this.valueWinCalculator = valueWinCalculator;
         this.waysWinCalculator = waysWinCalculator;
         this.options = {...options};
+        const pool = options.sharedMathPool;
+        if (pool !== undefined && (!options.sharedMathModel || !(pool instanceof SharedSlotMathPool) ||
+            pool.constructor !== SharedSlotMathPool || pool.create !== SharedSlotMathPool.prototype.create)) {
+            throw new Error("sharedMathPool requires a concrete SharedSlotMathPool and sharedMathModel; custom math factories cannot be lowered.");
+        }
         if (options.sharedMathModel) {
             if (!(conf instanceof VideoSlotConfig || conf instanceof VideoSlotWithFreeGamesConfig) || !conf.isResolvedForSessionRestoration() || !(lineWinCalculator instanceof LineWinCalculator) || lineWinCalculator.constructor !== LineWinCalculator || !lineWinCalculator.usesConfig(conf) || !(scatterWinCalculator instanceof ScatterWinCalculator) || scatterWinCalculator.constructor !== ScatterWinCalculator || !scatterWinCalculator.usesConfig(conf) || clusterWinCalculator || waysWinCalculator || valueWinCalculator || options.aggregationPolicy || options.multiplierResolver) {
                 throw new Error("Shared math cannot lower custom evaluators or aggregation policies.");
@@ -92,7 +98,7 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
                 options.minimumClusterSize !== (options.sharedMathModel.winModel.minimumClusterSize ?? 5))) {
                 throw new Error("Shared math minimumClusterSize does not match the declared win model.");
             }
-            this.sharedMath = new SharedSlotMath(options.sharedMathModel);
+            this.sharedMath = options.sharedMathPool?.create(options.sharedMathModel) ?? new SharedSlotMath(options.sharedMathModel);
         }
     }
 
@@ -253,12 +259,12 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
         );
     }
 
-    private getConfiguredSharedMath(bet: number): SharedSlotMath {
+    private getConfiguredSharedMath(bet: number): OwnedSharedSlotMath {
         const model = resolveConfiguredSharedSlotMath(this.config, this.sharedMath!.model.winModel, bet);
         const key = stableSlotMathJson(model);
         const cached = this.configuredSharedMath.get(bet);
         if (cached?.key === key) return cached.math;
-        const math = new SharedSlotMath(model);
+        const math = this.options.sharedMathPool?.create(model) ?? new SharedSlotMath(model);
         // Keep only current bet entries; a mutable config must not accumulate old models.
         for (const previous of this.configuredSharedMath.keys()) if (!this.config.getAvailableBets().includes(previous)) {
             this.configuredSharedMath.get(previous)!.math.dispose();

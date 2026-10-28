@@ -17,6 +17,7 @@ import {JobCard} from "../common/JobCard";
 import {JobObservationNotice} from "../common/JobObservationNotice";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {errorMessage} from "../../domain/errorMessage";
+import {HomeProjectJobs} from "./HomeProjectJobs";
 
 export type HomeTab = "design" | "projects";
 
@@ -154,11 +155,11 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
         }
     };
 
-    const homeJobsPanel = homeJobs.jobs.length === 0 && homeJobs.connectionError === undefined && homeJobs.actionError === undefined ? undefined : (
+    const homeJobsPanel = homeJobs.discoveryStatus !== "pending" && homeJobs.jobs.length === 0 && homeJobs.connectionError === undefined && homeJobs.actionError === undefined ? undefined : (
         <Stack gap="xs" mt="lg" aria-label="Home jobs">
             <Title order={3}>Home jobs</Title>
             <Text size="sm" c="dimmed">Retained Design and project-opening work stays visible on every Home section after a reload. Cancel active work or reconstruct a server-supported recovery.</Text>
-            <JobObservationNotice connectionError={homeJobs.connectionError} actionError={homeJobs.actionError} onReattach={homeJobs.refresh} />
+            <JobObservationNotice discoveryStatus={homeJobs.discoveryStatus} connectionError={homeJobs.connectionError} actionError={homeJobs.actionError} onReattach={homeJobs.refresh} />
             {recoveryOpeningError !== undefined && <Alert role="alert" color="red">{recoveryOpeningError}</Alert>}
             {homeJobs.jobs.map((job) =>
                 <JobCard key={job.id} job={job} cancellationPending={homeJobs.pendingIds.includes(job.id)} onCancel={homeJobs.cancel} onRecover={homeJobs.recover} onRecoveryAction={handleHomeRecoveryAction} onOpenOutput={(outputPath) => {
@@ -183,6 +184,7 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
 
     return (
         <AppShellLayout
+            onHomeClick={() => navigate("/home/design")}
             navbar={<NavTabs items={HOME_TABS} active={activeTab} onSelect={(value) => {
                 // A selected section is already the live rendered state.  Do
                 // not manufacture a second history transition from a repeat
@@ -234,6 +236,8 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
                 </div>
 
                 {homeJobsPanel}
+
+                <HomeProjectJobs />
 
                 <DocumentationLinks />
             </Stack>

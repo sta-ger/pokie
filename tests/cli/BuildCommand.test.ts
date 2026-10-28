@@ -1,4 +1,4 @@
-import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
 import {
     ArtifactBuildCancelledError,
     ArtifactBuilder,
@@ -86,6 +86,14 @@ describe("BuildCommand", () => {
     let logSpy: jest.SpyInstance;
     let errorSpy: jest.SpyInstance;
 
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     beforeEach(() => {
         logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
         errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
@@ -102,14 +110,22 @@ describe("BuildCommand", () => {
         const snapshots = runtimeSnapshotNames(fixture.source);
         const input = fs.readFileSync(path.join(fixture.source, "index.js"));
         const listeners = process.listenerCount("SIGINT");
+        let readsBeforeExtraction: number | undefined;
+        let running: Promise<number> | undefined;
         logSpy.mockImplementation(message => {
-            if (message === "Build running: Extracting public package model into Blueprint") fixture.arm();
+            if (message === "Build running: Extracting public package model into Blueprint") {
+                readsBeforeExtraction = fixture.readCount;
+                fixture.arm();
+            }
         });
         try {
-            const checked = expect(new BuildCommand("1.3.0").run([fixture.source, "--target", target, "--out", path.join(root, "output")]))
-                .rejects.toBeInstanceOf(ArtifactBuildCancelledError);
-            await fixture.readStarted;
+            running = new BuildCommand("1.3.0").run([fixture.source, "--target", target, "--out", path.join(root, "output")]);
+            const checked = expect(running).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+            await fixture.waitForRead(checked);
+            expect(readsBeforeExtraction).toBeGreaterThan(0);
+            expect(fixture.readCount).toBe(readsBeforeExtraction! + 1);
             expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
+            expect(fs.existsSync(path.join(root, "output"))).toBe(false);
             expect(process.listenerCount("SIGINT")).toBe(listeners + 1);
             process.emit("SIGINT");
             fixture.settle();
@@ -124,10 +140,16 @@ describe("BuildCommand", () => {
             expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
             expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
         } finally {
+            // Drain the real command before restoring its read spy or removing inputs,
+            // including when an assertion fails while the descriptor is still leased.
+            fixture.settle();
+            await running?.catch(() => undefined);
             fixture.restore();
             fs.rmSync(root, {recursive: true, force: true});
         }
-    });
+    // Like the registry/Studio regressions, this runs several real runtime graph
+    // snapshots before reaching the paused final read. Allow their shared bound.
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     describe.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)("package %s dry-run validation", target => {
         it.each([true, false])("settles the second descriptor read with cancellation=%s before any preview", async cancel => {
@@ -142,7 +164,7 @@ describe("BuildCommand", () => {
             try {
                 const running = command.run([fixture.source, "--target", target, "--out", path.join(root, "output"), "--dry-run"]);
                 const checked = cancel ? expect(running).rejects.toBeInstanceOf(ArtifactBuildCancelledError) : expect(running).resolves.toBe(0);
-                await fixture.readStarted;
+                await fixture.waitForRead(checked);
                 expect(fixture.readCount).toBe(2);
                 expect(validate).toHaveBeenCalledTimes(1);
                 expect(validate.mock.calls[0][2]?.packageExtraction?.status).toBe("complete");
@@ -184,7 +206,7 @@ describe("BuildCommand", () => {
             try {
                 const checked = expect(new BuildCommand("1.3.0").run([fixture.source, "--target", target, "--out", path.join(root, "output"), "--dry-run"]))
                     .rejects.toThrow(/Package extraction malformed:.*manifest/);
-                await fixture.readStarted;
+                await fixture.waitForRead(checked);
                 fixture.settle();
                 await checked;
                 expect(logSpy.mock.calls.flat().join("\n")).not.toContain("Dry run -- would build");
@@ -240,7 +262,7 @@ describe("BuildCommand", () => {
         expect(printed).toContain("Build running: Writing bundle (1/8)");
     });
 
-    it("emits a usable rebuild handoff that chooses a new output and preserves the saved design", async () => {
+    it.each(["local", "registry"] as const)("emits a usable %s runtime rebuild handoff that chooses a new output and preserves the saved design", async runtime => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-producer-build-docs-"));
         const source = path.join(root, "design.blueprint.json");
         const output = path.join(root, "first-package");
@@ -248,7 +270,8 @@ describe("BuildCommand", () => {
         const original = JSON.stringify(fullBlueprint);
         fs.writeFileSync(source, original);
         try {
-            const command = new BuildCommand("1.3.0");
+            const runtimeRoot = runtime === "local" ? path.resolve(__dirname, "../..") : undefined;
+            const command = new BuildCommand("1.3.0", undefined, undefined, undefined, undefined, undefined, runtimeRoot);
             await expect(command.run([source, "--target", "tsPackage", "--out", output])).resolves.toBe(0);
             const readme = fs.readFileSync(path.join(output, "README.md"), "utf8");
             const handoff = readme.match(/`pokie build <config.json> ([^`]+)`/);
@@ -258,8 +281,25 @@ describe("BuildCommand", () => {
             expect(fs.existsSync(path.join(nextOutput, "dist/index.js"))).toBe(true);
             expect(fs.readFileSync(source, "utf8")).toBe(original);
             expect(fs.readFileSync(path.join(output, "README.md"), "utf8")).toBe(readme);
-            expect(readme).toContain("the local link is not portable");
+            for (const packageRoot of [output, nextOutput]) {
+                const dependency = runtimeRoot === undefined ? "^1.3.0" : `file:${runtimeRoot}`;
+                expect(JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8")).dependencies["@fromstan/pokie"]).toBe(dependency);
+                expect(JSON.parse(fs.readFileSync(path.join(packageRoot, "package-lock.json"), "utf8")).packages[""].dependencies["@fromstan/pokie"]).toBe(dependency);
+                const runtimeLink = path.join(packageRoot, "node_modules/@fromstan/pokie");
+                if (runtimeRoot === undefined) expect(fs.existsSync(runtimeLink)).toBe(false);
+                else expect(fs.realpathSync(runtimeLink)).toBe(fs.realpathSync(runtimeRoot));
+            }
+            expect(readme).toContain(runtime === "local"
+                ? "declares that same installation as a `file:` dependency"
+                : "Install that version from an available registry or explicitly select your local POKIE installation before use.");
+            expect(readme).toContain("A local `file:` dependency requires the original POKIE installation to remain at its recorded location.");
+            expect(readme).toContain("When moving to another machine, explicitly select an available runtime");
+            expect(readme).toContain("No registry publication of this candidate is assumed.");
+            expect(readme).toContain("npx --no-install pokie inspect .");
             expect(readme).not.toContain("--target .");
+            await expect(command.run([source, "--target", "tsPackage", "--out", output])).rejects.toThrow(/not empty/);
+            expect(fs.readFileSync(source, "utf8")).toBe(original);
+            expect(fs.readFileSync(path.join(output, "README.md"), "utf8")).toBe(readme);
         } finally {
             fs.rmSync(root, {recursive: true, force: true});
         }

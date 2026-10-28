@@ -25,6 +25,7 @@ import type {
     OptimizationRequest,
     OptimizationResult,
     OptimizationScalar,
+    OptimizationWorkProgress,
     ProjectOptimizing,
 } from "./OptimizationPolicy.js";
 import {
@@ -195,6 +196,10 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                     } else {
                         const directory = path.join(workspace, `candidate-${evidence.consumedWork}`);
                         fs.mkdirSync(directory);
+                        evidence.phase = "preparing";
+                        options.onProgress?.(structuredClone(evidence));
+                        assertCurrent();
+                        if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled before candidate materialization.");
                         const file = await adapter.materialize(model, directory, options.signal);
                         if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled during candidate materialization.");
                         const resolved = await new ProjectTargetResolver().resolve(file, {readConfigurationProvenance: false});
@@ -212,13 +217,34 @@ export class ProjectOptimizationService implements ProjectOptimizing, Optimizati
                                 {metric: "maxWin" as const, unit: maxConstraint.unit, value: maxConstraint.value},
                             ]
                             : request.targets;
+                        evidence.phase = "search";
+                        options.onProgress?.(structuredClone(evidence));
+                        let publishedAt = 0;
+                        const measuringEvidence = evidence;
+                        const measurementProgress = (work: OptimizationWorkProgress): void => {
+                            assertCurrent();
+                            if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled during candidate measurement.");
+                            const previous = measuringEvidence.work;
+                            measuringEvidence.work = work;
+                            const now = Date.now();
+                            // Artifact callbacks run per outcome. Persist bounded updates, while
+                            // always publishing stage transitions and known population completion.
+                            if (previous?.stage !== work.stage || previous.current === "0" || now - publishedAt >= 100 || work.current === work.total) {
+                                options.onProgress?.(structuredClone(measuringEvidence));
+                                publishedAt = now;
+                            }
+                            assertCurrent();
+                            if (options.signal?.aborted) throw new OptimizationCancelledError("Cancelled during candidate measurement.");
+                        };
                         const measured = await adapter.measure(
                             file,
                             readback,
                             evaluatedTargets,
                             request.policy,
                             options.signal,
+                            measurementProgress,
                         );
+                        Reflect.deleteProperty(evidence, "work");
                         assertCurrent();
                         if (projectRevision(resolved) !== serializedRevision) throw new Error("Executable evaluation changed candidate bytes.");
                         if (measured.some((value) => !Number.isFinite(value))) throw new Error("Metric authority returned a nonfinite result.");

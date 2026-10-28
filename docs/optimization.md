@@ -170,6 +170,17 @@ within its process. After server restart, durable evidence remains available;
 rerun optimization to obtain a new save receipt. Closing/switching Project or
 cancelling a job discards an unfinished candidate and drains the executor.
 
+Exact evaluation reports progress inside each candidate: raw reel-stop draws,
+then materialized outcomes, and executable checks where applicable. These are
+separate stages and units. The deduplicated outcome total is indeterminate until
+materialization finishes; completed raw draws do not mean the candidate is ready.
+Studio displays these live counts, and library `onProgress` / CLI `--progress`
+evidence includes optional `work` with decimal-string counts and an optional total.
+The candidate counter counts evaluated or rejected candidates. Updates are bounded
+to roughly ten per second plus stage changes, first work and population completion;
+this observation cadence never limits execution. Supported tuning can still end
+infeasible; cancellation discards unfinished work and cannot expose an Apply preview.
+
 CLI JSON is always structured; `--progress` emits progress JSON to stderr.
 Exit codes: exact success or sampled attained **0**, operational failure **1**, infeasible **2**, invalid
 **3**, unsupported **4**, exhausted **5**, cancelled **6**, sampled inconclusive **7**. Ctrl-C requests
@@ -185,6 +196,12 @@ Studio support, start and save requests include the expected Project root, along
 source revisions; changing Projects invalidates the request even for identical files.
 Terminal evidence is shown alongside diagnostics, job errors, recovery guidance and
 connection/cancellation failures.
+
+Exact evaluation lets Studio answer status, reattachment and cancellation requests
+between batches of round artifacts, including while a single candidate is being
+measured. Cancellation waits for the current synchronous round and owned cleanup;
+it does not publish the unfinished candidate. Reattachment observes the same job
+and does not start another optimization.
 
 ## Seeded search and held-out assessment
 

@@ -253,7 +253,7 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
 
             totalWeight += outcome.weight;
             processed++;
-            options?.onProgress?.({completed: completedBefore + processed, message: `Writing Outcome mode ${modeName}`});
+            options?.onProgress?.({completed: completedBefore + processed, unit: "outcome records", message: `Writing Outcome mode ${modeName}`});
             assertNotCancelled(options);
             // Sync filesystem writes otherwise starve an AbortController driven by a UI/timer. Yield in bounded
             // batches without weakening the one-pass streaming contract.

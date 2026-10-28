@@ -51,6 +51,9 @@ function transport(handler: FetchLike, sourcePlan = plan()): FetchLike {
         if (url.endsWith("/activate")) return response({});
         const request = url.split("?")[0];
         if (request === "/api/project/jobs") return response({jobs: []});
+        if (request === "/api/project/deployment/build-modes") return response({status: "ok", modeIds: ["base"]});
+        if (request === "/api/project/outcome-libraries/generate/jobs") return response({jobs: []});
+        if (request === "/api/project/outcome-libraries/registry") return response({status: "ok", buildStatus: "missing"});
         if (request === "/api/home/fs/browse") return response({status: "error", reason: "absent", error: "Path does not exist", resolvedPath: "/games"});
         if (request === "/api/home/fs/native-browse/availability") return response({status: "unavailable", reason: "Fixture has no native picker"});
         if (request === "/api/project/context") return response({
@@ -207,7 +210,8 @@ it("suppresses a stale extraction preview after changing the destination", async
     let resolveFirst: ((value: Awaited<ReturnType<FetchLike>>) => void) | undefined;
     let reads = 0;
     const section = await open(
-        transport((_url, init) => {
+        transport((url, init) => {
+            if (!url.endsWith("/preview")) return response({});
             reads++;
             if (reads === 1) return new Promise((resolve) => {
                 resolveFirst = resolve;
@@ -220,7 +224,8 @@ it("suppresses a stale extraction preview after changing the destination", async
     fireEvent.change(within(section).getByLabelText("Output file (optional)"), {
         target: {value: "/games/current.json"},
     });
-    expect(await within(section).findByText("Resolved absolute path: /games/current.json")).toBeInTheDocument();
+    expect(within(section).getByRole("button", {name: "Build"})).toBeDisabled();
+    expect(reads).toBe(1);
     await act(() =>
         resolveFirst!({
             ok: true,
@@ -234,6 +239,8 @@ it("suppresses a stale extraction preview after changing the destination", async
                 }),
         }),
     );
+    expect(await within(section).findByText("Resolved absolute path: /games/current.json")).toBeInTheDocument();
+    expect(reads).toBe(2);
     expect(within(section).queryByText(/stale opaque diagnosis/)).not.toBeInTheDocument();
     expect(within(section).getByText("Package model: complete (custom)")).toBeInTheDocument();
 });
@@ -307,6 +314,12 @@ it("retains cancellation while startup is pending and locks the destination unti
     fireEvent.click(save);
     expect(destination).toBeDisabled();
     expect(within(section).getByRole("button", {name: "Browse…"})).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", {name: "Refresh artifact targets"}));
+    expect(destination).toBeDisabled();
+    expect(within(section).getByRole("button", {name: "Cancel"})).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole("button", {name: "Refresh artifact targets"})).toBeEnabled());
+    expect(within(section).getByLabelText("Output file (optional)")).toBe(destination);
+    expect(destination).toBeDisabled();
     fireEvent.change(destination, {target: {value: "/games/overlap.json"}});
     expect(destination).toHaveValue("");
     fireEvent.click(save);
@@ -404,4 +417,160 @@ it("withholds successful actions when a completed read races requested cancellat
     }
     expect(within(section).queryByText("Build completed")).not.toBeInTheDocument();
     expect(within(section).getByLabelText("Output file (optional)")).toBeEnabled();
+});
+
+
+it("revokes obsolete extraction requests, coalesces edits and preserves unrelated ready cards", async () => {
+    const requests: {target: string; outDir?: string}[] = [];
+    const pending: {resolve: (value: Awaited<ReturnType<FetchLike>>) => void; reject: (error: Error) => void; signal?: AbortSignal}[] = [];
+    const base = transport((url, init) => {
+        if (url.endsWith("/preview")) {
+            const body = JSON.parse(String(init?.body)) as {target: string; outDir?: string};
+            requests.push(body);
+            if (body.outDir !== undefined) return new Promise((resolve, reject) => {
+                pending.push({resolve, reject, signal: init?.signal});
+            });
+            return response(body.target === "blueprint" ? preview() : {
+                status: "ok", target: body.target, destination: "/games/package", destinationKind: "directory", plannedOutputs: ["package.json"], sourceType: "tsPackage",
+            });
+        }
+        return response({});
+    });
+    const section = await open((url, init) => url.endsWith("/artifacts/targets")
+        ? response([
+            {target: "blueprint", supported: true, unsupportedNotes: [], plan: plan()},
+            {target: "tsPackage", supported: true, unsupportedNotes: []},
+        ]) : base(url, init));
+    await within(section).findByText("Package model: complete (custom)");
+    fireEvent.click(within(section).getByRole("button", {name: "Configure TypeScript Game Package"}));
+    const sibling = within(section).getByText("TypeScript Game Package", {selector: "p"}).closest('[data-pokie-lifecycle-form]') as HTMLElement;
+    const siblingBuild = within(sibling).getByRole("button", {name: "Build"});
+    await waitFor(() => expect(siblingBuild).toBeEnabled());
+    const extractionCard = within(section).getByText("Game Blueprint", {selector: "p"}).closest('[data-pokie-lifecycle-form]') as HTMLElement;
+    const input = within(extractionCard).getByLabelText("Output file (optional)");
+    const build = () => within(extractionCard).getByRole("button", {name: /^(Build|Save Blueprint)$/});
+    fireEvent.change(input, {target: {value: "/games/first.json"}});
+    expect(build()).toBeDisabled();
+    expect(siblingBuild).toBeEnabled();
+    await waitFor(() => expect(pending).toHaveLength(1));
+    for (const value of ["/games/second.json", "/games/third.json", "/games/final.json"]) {
+        fireEvent.change(input, {target: {value}});
+        expect(build()).toBeDisabled();
+        expect(siblingBuild).toBeEnabled();
+    }
+    expect(pending[0]!.signal?.aborted).toBe(true);
+    // The current request must start even if an obsolete transport ignores abort.
+    await act(async () => {
+        await new Promise(resolve => {
+            setTimeout(resolve, 250);
+        });
+    });
+    expect(requests.filter(request => request.target === "blueprint")).toHaveLength(3);
+    expect(requests.filter(request => request.target === "tsPackage")).toHaveLength(1);
+    await waitFor(() => expect(pending).toHaveLength(2));
+    expect(pending[1]!.signal?.aborted).toBe(false);
+    await act(async () => pending[0]!.resolve(await response(preview("/games/first.json"))));
+    expect(build()).toBeDisabled();
+    expect(requests.at(-1)).toEqual({target: "blueprint", outDir: "/games/final.json"});
+    await act(() => pending[1]!.reject(new Error("Current destination probe failed")));
+    expect(await within(extractionCard).findByText(/couldn.t be completed/)).toBeInTheDocument();
+    expect(build()).toBeDisabled();
+    expect(siblingBuild).toBeEnabled();
+    // Corrected input recovers the same queue, including repeated successful reuse.
+    for (const value of ["/games/repaired.json", "/games/next.json"]) {
+        fireEvent.change(input, {target: {value}});
+        const count = pending.length;
+        await waitFor(() => expect(pending).toHaveLength(count + 1));
+        await act(async () => pending.at(-1)!.resolve(await response(preview(value))));
+        expect(await within(extractionCard).findByText(`Resolved absolute path: ${value}`)).toBeInTheDocument();
+        expect(build()).toBeEnabled();
+        expect(siblingBuild).toBeEnabled();
+    }
+    expect(requests.filter(request => request.target === "tsPackage")).toHaveLength(1);
+});
+
+it("revokes an executing extraction plan through discovery refresh and does not revive it after failure", async () => {
+    let settle!: (value: Awaited<ReturnType<FetchLike>>) => void;
+    let discoveries = 0;
+    const previews: (string | undefined)[] = [];
+    const base = transport((_url, init) => {
+        const body = JSON.parse(String(init?.body)) as {outDir?: string};
+        previews.push(body.outDir);
+        if (previews.length === 1) return new Promise(resolve => {
+            settle = resolve;
+        });
+        return response(preview(body.outDir));
+    });
+    const section = await open((url, init) => {
+        if (url.endsWith("/artifacts/targets")) {
+            discoveries++;
+            if (discoveries === 2) return Promise.reject(new Error("Discovery offline"));
+        }
+        return base(url, init);
+    });
+    await waitFor(() => expect(settle).toBeDefined());
+    fireEvent.click(screen.getByRole("button", {name: "Refresh artifact targets"}));
+    await screen.findByRole("button", {name: "Retry artifact discovery"});
+    await act(async () => settle(await response(preview("/games/obsolete.json"))));
+    expect(within(section).queryByText(/obsolete.json/)).not.toBeInTheDocument();
+    expect(within(section).queryByRole("button", {name: "Save Blueprint"})).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", {name: "Retry artifact discovery"}));
+    expect(await within(section).findByText("Package model: complete (custom)")).toBeInTheDocument();
+    expect(within(section).getByRole("button", {name: "Save Blueprint"})).toBeEnabled();
+    expect(previews).toEqual([undefined, undefined]);
+});
+
+it("drops a queued destination and late extraction result on navigation without submitting obsolete work", async () => {
+    let settle!: (value: Awaited<ReturnType<FetchLike>>) => void;
+    let previews = 0;
+    const fetchImpl = transport(url => {
+        if (!url.endsWith("/preview")) return response({});
+        previews++;
+        if (previews === 1) return new Promise(resolve => {
+            settle = resolve;
+        });
+        return response(preview("/games/current.json"));
+    });
+    const app = renderRoutedApp({fetchImpl, initialEntries: ["/project/exportDeploy"]});
+    const section = (await screen.findByText("Build artifact")).closest("fieldset")!;
+    await waitFor(() => expect(settle).toBeDefined());
+    fireEvent.change(await within(section).findByLabelText("Output file (optional)"), {target: {value: "/games/queued.json"}});
+    await act(() => app.router.navigate("/project/overview"));
+    await act(async () => settle(await response(preview("/games/obsolete.json"))));
+    await act(async () => {
+        await new Promise(resolve => {
+            setTimeout(resolve, 250);
+        });
+    });
+    expect(previews).toBe(1);
+    await act(() => app.router.navigate("/project/exportDeploy"));
+    expect(await screen.findByText("Resolved absolute path: /games/current.json")).toBeInTheDocument();
+    expect(screen.queryByText(/obsolete.json/)).not.toBeInTheDocument();
+    expect(previews).toBe(2);
+    app.unmount();
+});
+
+
+it("cancels package Game Model extraction when navigating to Build and ignores its late response", async () => {
+    let settle!: (value: Awaited<ReturnType<FetchLike>>) => void;
+    let signal: AbortSignal | undefined;
+    const app = renderRoutedApp({initialEntries: ["/project/gameModel"], fetchImpl: transport((url, init) => {
+        if (url === "/api/project/gameModel") {
+            signal = init?.signal;
+            return new Promise(resolve => {
+                settle = resolve;
+            });
+        }
+        if (url.endsWith("/preview")) return response(preview());
+        return response({});
+    })});
+    await waitFor(() => expect(settle).toBeDefined());
+    expect(signal?.aborted).toBe(false);
+    await act(() => app.router.navigate("/project/exportDeploy"));
+    expect(signal?.aborted).toBe(true);
+    expect(await screen.findByRole("button", {name: "Save Blueprint"})).toBeEnabled();
+    await act(async () => settle(await response({manifest: {id: "obsolete"}})));
+    expect(screen.getByRole("button", {name: "Save Blueprint"})).toBeEnabled();
+    expect(screen.queryByText("obsolete")).not.toBeInTheDocument();
+    app.unmount();
 });

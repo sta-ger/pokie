@@ -1,6 +1,7 @@
+import {JobObservationNotice} from "../common/JobObservationNotice";
 import {OptimizationPreview} from "./OptimizationPreview";
 import {Alert, Button, Code, Stack, Text, Textarea, TextInput, Title} from "@mantine/core";
-import {useEffect, useRef, useState} from "react";
+import {useEffect, useLayoutEffect, useRef, useState} from "react";
 import {optimizationAction} from "../../api/apiClient";
 import type {
     StudioJobView,
@@ -9,7 +10,7 @@ import type {
     StudioOptimizationSupport,
 } from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
-import {useProjectJobs} from "../../hooks/useProjectJobs";
+import type {useProjectJobs} from "../../hooks/useProjectJobs";
 import {validateOptimizationRequest} from "../../../../../src/optimization/validateOptimizationRequest";
 
 const initialRequest: StudioOptimizationRequest = {
@@ -26,11 +27,18 @@ const initialRequest: StudioOptimizationRequest = {
         locks: [],
     },
 };
-/** One shared policy form, available in runtime, native outcome and artifact dashboards. */
-export function OptimizationPanel({projectRoot, onApplied}: {projectRoot: string; onApplied?: () => void}) {
+/** Policy form and operation cards consume the dashboard's same durable observations. */
+export function OptimizationPanel({projectRoot, jobs, sourceChange, onStarted, onApplied}: {
+    projectRoot: string;
+    jobs: ReturnType<typeof useProjectJobs>;
+    sourceChange?: {sourceRevision?: string};
+    onStarted?: (sourceRevision: string) => void;
+    onApplied?: () => void;
+}) {
     const fetchImpl = useStudioApi();
     const [text, setText] = useState(JSON.stringify(initialRequest, null, 2));
-    const [support, setSupport] = useState<StudioOptimizationSupport>();
+    const [supportSnapshot, setSupportSnapshot] = useState<{value: StudioOptimizationSupport; sourceChange: typeof sourceChange}>();
+    const support = supportSnapshot?.sourceChange === sourceChange ? supportSnapshot?.value : undefined;
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string>();
     const [destination, setDestination] = useState("");
@@ -40,11 +48,10 @@ export function OptimizationPanel({projectRoot, onApplied}: {projectRoot: string
     const generation = useRef(0);
     const edited = useRef(false);
     const controller = useRef<AbortController | undefined>(undefined);
-    const jobs = useProjectJobs(fetchImpl, projectRoot, 0);
     useEffect(
         () => {
             setApplied(false);
-            setSupport(undefined);
+            setSupportSnapshot(undefined);
             setStarted(undefined);
             setSaved(undefined);
             setError(undefined);
@@ -58,6 +65,16 @@ export function OptimizationPanel({projectRoot, onApplied}: {projectRoot: string
         },
         [projectRoot],
     );
+    // Retire an old support/action response even when this panel stays mounted during Apply.
+    // The dashboard owns this boundary so leaving Game Model cannot forget an accepted Save.
+    useLayoutEffect(() => {
+        generation.current++;
+        controller.current?.abort();
+        setSupportSnapshot(previous => sourceChange?.sourceRevision !== undefined && previous?.value.sourceRevision === sourceChange.sourceRevision
+            ? {...previous, sourceChange} : undefined);
+        setSaved(undefined);
+        setBusy(false);
+    }, [sourceChange]);
     const projectJobs = jobs.jobs;
     const job =
         projectJobs.find((item) => item.id === started?.id) ??
@@ -76,9 +93,20 @@ export function OptimizationPanel({projectRoot, onApplied}: {projectRoot: string
     } catch {
         /* Editable invalid input remains visible. */
     }
-    const result = matchesRequest ? (job?.result?.detail as StudioOptimizationResult | undefined) : undefined;
+    const retainedResult = job?.result?.detail as StudioOptimizationResult | undefined;
     const active = job !== undefined && ["queued", "running", "cancelling"].includes(job.status);
+    const currentRevision = support?.sourceRevision ?? sourceChange?.sourceRevision;
+    const resultRevisions = [job?.request.sourceRevision, retainedResult?.evidence?.sourceRevision, retainedResult?.candidate?.sourceRevision]
+        .filter((revision): revision is string => typeof revision === "string");
+    const stale = !active && job !== undefined && (
+        (currentRevision !== undefined && resultRevisions.some(revision => revision !== currentRevision)) ||
+        (sourceChange !== undefined && (currentRevision === undefined || resultRevisions.length === 0))
+    );
+    const result = matchesRequest && !stale ? retainedResult : undefined;
+    const discoveryUnresolved = started === undefined && (jobs.discoveryStatus === "pending" || jobs.discoveryStatus === "failed");
     const action = async (kind: "support" | "start" | "save" | "apply"): Promise<void> => {
+        if (kind === "start" && (discoveryUnresolved || !support?.supported)) return;
+        if ((kind === "save" || kind === "apply") && stale) return;
         const current = ++generation.current;
         controller.current?.abort();
         controller.current = new AbortController();
@@ -94,7 +122,7 @@ export function OptimizationPanel({projectRoot, onApplied}: {projectRoot: string
                     {request, expectedProjectRoot: projectRoot},
                     controller.current.signal,
                 );
-                if (current === generation.current) setSupport(value);
+                if (current === generation.current) setSupportSnapshot({value, sourceChange});
             } else if (kind === "start") {
                 const value = await optimizationAction<{job: StudioJobView}>(
                     fetchImpl,
@@ -106,6 +134,7 @@ export function OptimizationPanel({projectRoot, onApplied}: {projectRoot: string
                     setApplied(false);
                     setStarted(value.job);
                     jobs.refresh();
+                    if (support?.sourceRevision !== undefined) onStarted?.(support.sourceRevision);
                 }
             } else {
                 const value = await optimizationAction<{outputPath: string; warning?: string}>(
@@ -119,7 +148,7 @@ export function OptimizationPanel({projectRoot, onApplied}: {projectRoot: string
                     if (value.warning) setError(value.warning);
                     if (kind === "apply") {
                         setApplied(true);
-                        setSupport(undefined);
+                        setSupportSnapshot(undefined);
                         onApplied?.();
                     }
                 }
@@ -130,6 +159,7 @@ export function OptimizationPanel({projectRoot, onApplied}: {projectRoot: string
             if (current === generation.current) setBusy(false);
         }
     };
+    const unreportedProgress = active ? "Preparing optimization; waiting for execution progress." : "No execution progress recorded.";
     return (
         <Stack mt="lg">
             <Title order={3}>Optimize math</Title>
@@ -147,7 +177,7 @@ export function OptimizationPanel({projectRoot, onApplied}: {projectRoot: string
                     controller.current?.abort();
                     setBusy(false);
                     setText(event.currentTarget.value);
-                    setSupport(undefined);
+                    setSupportSnapshot(undefined);
                     setStarted(undefined);
                 }}
             />
@@ -166,7 +196,7 @@ export function OptimizationPanel({projectRoot, onApplied}: {projectRoot: string
                 </Alert>
             )}
             <Button
-                disabled={busy || active || !support?.supported}
+                disabled={busy || active || discoveryUnresolved || !support?.supported}
                 onClick={() => {
                     action("start");
                 }}
@@ -185,10 +215,16 @@ export function OptimizationPanel({projectRoot, onApplied}: {projectRoot: string
             )}
             {job && (
                 <Text role="status">
-                    {job.status}: {job.progress?.current ?? 0} / {job.progress?.total ?? "unknown"}{" "}
-                    {job.progress?.unit ?? "work"} {job.progress?.stage}
+                    {stale && "Historical optimization — "}{job.status}: {job.progress ? <>
+                        {job.progress.current} / {job.progress.total} {job.progress.unit} {job.progress.stage}
+                        {job.progress.message && ` · ${job.progress.message}`}
+                    </> : unreportedProgress}
                 </Text>
             )}
+            {stale && <Alert color="yellow" role="alert">
+                Stale optimization result — the saved design changed. Check tuning support and run a new optimization for the current design. Retained evidence remains available as history.
+                {retainedResult && <details><summary>Historical optimization evidence</summary><Code block>{JSON.stringify(retainedResult, null, 2)}</Code></details>}
+            </Alert>}
             {result && (
                 <>
                     <Text>Verdict: {result.status}</Text>
@@ -202,8 +238,7 @@ export function OptimizationPanel({projectRoot, onApplied}: {projectRoot: string
             )}
             {job?.error && <Alert color="red" role="alert">{job.error}</Alert>}
             {job?.recovery && <Alert color="yellow" role="alert">Recovery ({job.recovery.action}): {job.recovery.reason}</Alert>}
-            {jobs.connectionError && <Alert color="red" role="alert">{jobs.connectionError}</Alert>}
-            {jobs.actionError && <Alert color="red" role="alert">{jobs.actionError}</Alert>}
+            <JobObservationNotice discoveryStatus={jobs.discoveryStatus} connectionError={jobs.connectionError} actionError={jobs.actionError} onReattach={jobs.refresh} />
             {!applied && !job?.result?.provenance?.authoredApply && result?.candidate && ["success", "attained", "inconclusive", "exhausted"].includes(result.status) && job?.status === "completed" && (
                 <>
                     { ["blueprint", "parWorkbook", "tsPackage"].includes(result.candidate.type) && <Button disabled={busy} onClick={() => {

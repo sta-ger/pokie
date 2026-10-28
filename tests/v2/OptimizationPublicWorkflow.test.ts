@@ -208,6 +208,9 @@ it.each(["blueprint", "parWorkbook", "tsPackage", "outcomeLibrary", "stakeAdapte
     expect((await resolve(output)).type).toBe(type);
 }, 180000);
 
+// The TS case repeats real isolated runtime acquisition for optimization, apply,
+// reread and executable identity. Match the adjacent serial workflow's bounded
+// budget so concurrent gate workers can finish before fixture cleanup.
 it.each(["blueprint", "parWorkbook", "tsPackage"] as const)("explicit authored %s apply reopens measured source and consumes the preview", async type => {
     const {file, request} = await fixture(type);
     const before = type === "tsPackage" ? fs.readFileSync(path.join(file, "index.cjs")) : undefined;
@@ -235,7 +238,7 @@ it.each(["blueprint", "parWorkbook", "tsPackage"] as const)("explicit authored %
         expect(after).toEqual(parBefore);
     }
     await service.discard(result.candidate!);
-});
+}, 180000);
 
 it.each(["locks", "candidate", "source", "deleted", "authority"])("refuses %s drift before authored writes", async drift => {
     const {file, request} = await fixture("blueprint");

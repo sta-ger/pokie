@@ -1,4 +1,4 @@
-import type {SharedSlotMath} from "../../../wasm/math/SharedSlotMath.js";
+import type {SharedSlotMathCalculating} from "../../../wasm/math/SharedSlotMath.js";
 import type {WinComponent} from "../winevaluation/WinComponent.js";
 import type {WinEvaluationContext} from "../winevaluation/WinEvaluationContext.js";
 import type {WinEvaluator} from "../winevaluation/WinEvaluator.js";
@@ -7,9 +7,9 @@ import {assertSharedSlotMathConfig} from "./internal/resolveConfiguredSharedSlot
 
 /** Adapts executable-selected components to the existing public pipeline contract. */
 export class SharedSlotMathWinEvaluator<T extends string | number | symbol = string> implements WinEvaluator<T> {
-    private readonly math: SharedSlotMath;
-    private readonly resolveConfiguredMath?: (context: WinEvaluationContext<T>) => SharedSlotMath;
-    public constructor(math: SharedSlotMath, resolveConfiguredMath?: (context: WinEvaluationContext<T>) => SharedSlotMath) {
+    private readonly math: SharedSlotMathCalculating;
+    private readonly resolveConfiguredMath?: (context: WinEvaluationContext<T>) => SharedSlotMathCalculating;
+    public constructor(math: SharedSlotMathCalculating, resolveConfiguredMath?: (context: WinEvaluationContext<T>) => SharedSlotMathCalculating) {
         this.math = math;
         this.resolveConfiguredMath = resolveConfiguredMath;
     }

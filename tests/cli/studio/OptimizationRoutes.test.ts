@@ -555,3 +555,111 @@ it("reports a committed apply with recovery information and fails lifecycle comp
     await expect(owned.shutdown()).rejects.toThrow(/runtime release refused/);
     expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
 });
+
+it("V35 optimizer progress identifies each real candidate across resets and durable reload", async () => {
+    const observations: NonNullable<StudioJobView["progress"]>[] = [];
+    const progress = jobs.progress.bind(jobs);
+    const observer = jest.spyOn(jobs, "progress").mockImplementation((id, value) => {
+        const updated = progress(id, value);
+        observations.push(value);
+        expect(new FileStudioJobRepository(path.join(directory, "jobs")).get(id)?.progress).toEqual(value);
+        return updated;
+    });
+    const before = fs.readFileSync(source);
+    try {
+        for (const budget of [100, 1, 100]) {
+            observations.length = 0;
+            const request = optimizationRequest();
+            request.targets[0].value = 999;
+            request.policy.budget = budget;
+            const support = await preview(request);
+            const started = await routes.handle("POST", "start", {request, expectedProjectRoot: source, sourceRevision: support.sourceRevision}, context());
+            const {job} = started.body as {job: StudioJobView};
+            await routes.drain();
+            const total = Math.min(budget, 3);
+            expect(jobs.get(source, job.id)).toMatchObject({
+                status: "completed",
+                result: {
+                    detail: {
+                        status: budget < 3 ? "exhausted" : "infeasible",
+                        evidence: {evaluated: total, consumedWork: total},
+                    },
+                },
+            });
+            const materializing = observations.filter(value => value.stage.startsWith("Materializing outcomes"));
+            expect([...new Set(materializing.map(value => value.stage))]).toEqual(
+                Array.from({length: total}, (_, index) => `Materializing outcomes (candidate ${index + 1} of ${total})`),
+            );
+            for (let candidate = 1; candidate <= total; candidate++) {
+                const stage = `Materializing outcomes (candidate ${candidate} of ${total})`;
+                const samples = materializing.filter(value => value.stage === stage);
+                expect(samples[0]).toMatchObject({current: "0", total: "indeterminate", unit: "outcomes"});
+                expect(samples[samples.length - 1]).toMatchObject({current: "2", total: "2", unit: "outcomes"});
+                expect(samples.every((value, index) => index === 0 || BigInt(value.current) >= BigInt(samples[index - 1].current))).toBe(true);
+                expect(observations).toContainEqual(expect.objectContaining({stage: `Enumerating reel stops (candidate ${candidate} of ${total})`, current: "4", total: "4", unit: "raw draws"}));
+            }
+            expect(fs.readFileSync(source)).toEqual(before);
+            expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+        }
+    } finally {
+        observer.mockRestore();
+        await routes.shutdown();
+    }
+});
+
+it("V35 optimizer progress persists the retained 46656-draw workload before cancellation and permits reviewed retry/apply", async () => {
+    const fixture = fs.readFileSync(path.resolve("tests/v2/fixtures/Valera35FeralBlazingSafari.blueprint.json"));
+    fs.writeFileSync(source, fixture);
+    const request = {
+        targets: [{metric: "rtp", unit: "ratio", value: 0.95, tolerance: {kind: "absolute", value: 0.001}}],
+        policy: {strategy: "exact-finite-v1", seed: "optimization-1", budget: 100, maxOutcomes: 100000,
+            mode: "base", stake: 1, scope: "paid-entry", tunables: [{path: "/paytable/A/3", values: [1, 2, 3]}], locks: []},
+    } as ReturnType<typeof optimizationRequest>;
+    const support = await preview(request);
+    expect(support.supported).toBe(true);
+    const observations: NonNullable<StudioJobView["progress"]>[] = [];
+    const progress = jobs.progress.bind(jobs);
+    const observer = jest.spyOn(jobs, "progress").mockImplementation((id, value) => {
+        const updated = progress(id, value);
+        observations.push(value);
+        if (value.stage === "Materializing outcomes (candidate 1 of 3)" && value.current === "1") {
+            // Read the actual retained running record as a reload/reattach does.
+            expect(new FileStudioJobRepository(path.join(directory, "jobs")).get(id)).toMatchObject({status: "running", progress: value});
+            expect(value.total).toBe("indeterminate");
+            jobs.cancel(source, id);
+        }
+        return updated;
+    });
+    const started = await routes.handle("POST", "start", {request, expectedProjectRoot: source, sourceRevision: support.sourceRevision}, context());
+    const {job} = started.body as {job: StudioJobView};
+    await routes.drain();
+    observer.mockRestore();
+    expect(observations).toContainEqual(expect.objectContaining({stage: "Enumerating reel stops (candidate 1 of 3)", current: "46656", total: "46656", unit: "raw draws"}));
+    expect(observations).toContainEqual(expect.objectContaining({stage: "Materializing outcomes (candidate 1 of 3)", current: "1", total: "indeterminate", unit: "outcomes"}));
+    expect(jobs.get(source, job.id)).toMatchObject({status: "cancelled", result: {detail: {status: "cancelled", evidence: {evaluated: 0, consumedWork: 1}}}});
+    expect(jobs.get(source, job.id)?.result?.detail?.candidate).toBeUndefined();
+    expect(fs.readFileSync(source)).toEqual(fixture);
+    expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+    expect((await routes.handle("POST", "apply", {request, expectedProjectRoot: source, jobId: job.id}, context())).status).toBe(409);
+    // Independent Apply acceptance remains pending. This bounded recovery uses
+    // the small known-answer fixture through the same real service and authority.
+    fs.writeFileSync(source, JSON.stringify(optimizationBlueprint()));
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const retry = optimizationRequest();
+        const supported = await preview(retry);
+        const next = await routes.handle("POST", "start", {request: retry, expectedProjectRoot: source, sourceRevision: supported.sourceRevision}, context());
+        await routes.drain();
+        const id = (next.body as {job: StudioJobView}).job.id;
+        expect(id).not.toBe(job.id);
+        expect(jobs.get(source, id)).toMatchObject({status: "completed", result: {detail: {status: "success", evidence: {measured: [0.75]}}}});
+        if (attempt === 1) {
+            const body = {request: retry, expectedProjectRoot: source, jobId: id};
+            expect((await routes.handle("POST", "apply", body, context())).status).toBe(200);
+            expect(JSON.parse(fs.readFileSync(source, "utf8")).paytable.A[2]).toBe(3);
+            expect(new FileStudioJobRepository(path.join(directory, "jobs")).get(id)?.result?.provenance?.authoredApply).toEqual({path: source});
+            expect((await routes.handle("POST", "apply", body, context())).status).toBe(409);
+        }
+    }
+    await routes.shutdown();
+    expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+}, 60000);

@@ -1,6 +1,7 @@
-import {ActionIcon, Button, NumberInput, Select, Table} from "@mantine/core";
+import {ActionIcon, Button, NumberInput, Select, Table, Text} from "@mantine/core";
 import {IconTrash} from "@tabler/icons-react";
-import {useState} from "react";
+import {useEffect, useState} from "react";
+import {GameBlueprintValidator} from "../../../../../src/generated/GameBlueprintValidator";
 import {asStringList} from "../../domain/asStringList";
 import {removeSymbolWeight, setSymbolWeight} from "../../domain/blueprintFormOps";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
@@ -20,11 +21,37 @@ function asSymbolWeights(value: unknown): Record<string, number> {
     return result;
 }
 
+const validator = new GameBlueprintValidator();
+function weightError(blueprint: Record<string, unknown>, symbol: string, weight: number | string): string | undefined {
+    const issues = validator.validate({...blueprint, symbolWeights: {[symbol]: weight}});
+    return issues.some(issue => issue.code === "blueprint-symbolweights-invalid-weight") ? "Weight must be a positive integer." : undefined;
+}
+
+function ExistingWeight({blueprint, symbol, weight, mutate}: {
+    blueprint: Record<string, unknown>; symbol: string; weight: number; mutate: BlueprintMutate;
+}) {
+    const [draft, setDraft] = useState<number | string>(weight);
+    const [error, setError] = useState<string>();
+    useEffect(() => {
+        setDraft(weight);
+        setError(undefined);
+    }, [weight]);
+    return <NumberInput aria-label={`${symbol} weight`} min={1} step={1} clampBehavior="none" value={draft}
+        error={error} onChange={setDraft} onBlur={() => {
+            const message = weightError(blueprint, symbol, draft);
+            setError(message);
+            if (message === undefined) mutate(b => setSymbolWeight(b, symbol, draft as number));
+        }} />;
+}
+
 export function SymbolWeightsEditor({blueprint, mutate}: {blueprint: Record<string, unknown>; mutate: BlueprintMutate}) {
     const weights = asSymbolWeights(blueprint.symbolWeights);
     const symbols = asStringList(blueprint.symbols);
     const [newSymbol, setNewSymbol] = useState<string | null>(null);
     const [newWeight, setNewWeight] = useState<number | string>("");
+    const [symbolError, setSymbolError] = useState<string>();
+    const [newWeightError, setNewWeightError] = useState<string>();
+    const [outcome, setOutcome] = useState<string>();
 
     return (
         <PageSection legend="Symbol weights">
@@ -42,18 +69,7 @@ export function SymbolWeightsEditor({blueprint, mutate}: {blueprint: Record<stri
                             <Table.Tr key={symbolId}>
                                 <Table.Td>{symbolId}</Table.Td>
                                 <Table.Td>
-                                    <NumberInput
-                                        aria-label={`${symbolId} weight`}
-                                        min={1}
-                                        step={1}
-                                        defaultValue={weight}
-                                        onBlur={(event) => {
-                                            const value = Number(event.currentTarget.value);
-                                            if (Number.isFinite(value)) {
-                                                mutate((b) => setSymbolWeight(b, symbolId, value));
-                                            }
-                                        }}
-                                    />
+                                    <ExistingWeight blueprint={blueprint} symbol={symbolId} weight={weight} mutate={mutate} />
                                 </Table.Td>
                                 <Table.Td>
                                     <ActionIcon variant="subtle" color="red" aria-label={`Remove ${symbolId} weight`} onClick={() => mutate((b) => removeSymbolWeight(b, symbolId))}>
@@ -66,21 +82,31 @@ export function SymbolWeightsEditor({blueprint, mutate}: {blueprint: Record<stri
                 </Table>
             </Table.ScrollContainer>
             <QuickActions>
-                <Select aria-label="Symbol" placeholder="Symbol" data={symbols} value={newSymbol} onChange={setNewSymbol} />
-                <NumberInput aria-label="Weight" placeholder="Weight" min={1} step={1} value={newWeight} onChange={setNewWeight} />
+                <Select aria-label="Symbol" placeholder="Symbol" data={symbols} value={newSymbol} error={symbolError} onChange={value => {
+                    setNewSymbol(value);
+                    setOutcome(undefined);
+                }} />
+                <NumberInput aria-label="Weight" placeholder="Weight" min={1} step={1} clampBehavior="none" value={newWeight} error={newWeightError} onChange={value => {
+                    setNewWeight(value);
+                    setOutcome(undefined);
+                }} />
                 <Button
                     variant="default"
                     onClick={() => {
-                        const value = Number(newWeight);
-                        if (newSymbol === null || newSymbol.length === 0 || !Number.isFinite(value)) {
-                            return;
-                        }
-                        mutate((b) => setSymbolWeight(b, newSymbol, value));
+                        const selectionError = newSymbol === null || !symbols.includes(newSymbol) ? "Choose a symbol before adding a weight." : undefined;
+                        const valueError = weightError(blueprint, newSymbol ?? "", newWeight);
+                        setSymbolError(selectionError);
+                        setNewWeightError(valueError);
+                        setOutcome(undefined);
+                        if (selectionError !== undefined || valueError !== undefined || newSymbol === null) return;
+                        mutate((b) => setSymbolWeight(b, newSymbol, newWeight as number));
+                        setOutcome(`${newSymbol} weight ${weights[newSymbol] === undefined ? "added to" : "updated in"} the draft.`);
                     }}
                 >
                     Add weight
                 </Button>
             </QuickActions>
+            {outcome !== undefined && <Text role="status" size="sm">{outcome}</Text>}
         </PageSection>
     );
 }

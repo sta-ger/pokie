@@ -46,6 +46,7 @@ import http, {type IncomingMessage} from "http";
 import {request} from "undici";
 import os from "os";
 import path from "path";
+import {projectRevision} from "../../../src/optimization/internal/optimizationData.js";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
 import {OutcomeLibraryCommand} from "../../../cli/commands/OutcomeLibraryCommand.js";
@@ -2929,7 +2930,12 @@ describe("StudioServer", () => {
                 });
 
                 expect(status).toBe(201);
-                expect(body).toEqual({status: "ok", path: filePath, blueprintHash: computeGameBlueprintHash(buildBlueprint())});
+                expect(body).toEqual({
+                    status: "ok",
+                    path: filePath,
+                    blueprintHash: computeGameBlueprintHash(buildBlueprint()),
+                    sourceRevision: projectRevision({type: "blueprint", rootPath: filePath}),
+                });
                 const written = fs.readFileSync(filePath, "utf-8");
                 expect(written.endsWith("\n")).toBe(true);
                 expect(Object.keys(JSON.parse(written))).toEqual(["manifest", "reels", "rows", "symbols", "paytable"]);
@@ -2955,6 +2961,7 @@ describe("StudioServer", () => {
                 const first = await post(`${homeBaseUrl}/api/home/blueprints/save`, {path: filePath, blueprint: buildBlueprint()});
                 expect(first.status).toBe(201);
                 const firstBytes = fs.readFileSync(filePath);
+                const firstRevision = projectRevision({type: "blueprint", rootPath: filePath});
 
                 const second = await post(`${homeBaseUrl}/api/home/blueprints/save`, {
                     path: filePath,
@@ -2963,7 +2970,25 @@ describe("StudioServer", () => {
                 });
 
                 expect(second.status).toBe(201);
+                expect(second.body).toEqual(first.body);
                 expect(fs.readFileSync(filePath).equals(firstBytes)).toBe(true);
+
+                const changed = buildBlueprint({paytable: {A: {3: 6}, B: {3: 2}}});
+                const third = await post(`${homeBaseUrl}/api/home/blueprints/save`, {
+                    path: filePath,
+                    blueprint: changed,
+                    overwrite: true,
+                });
+
+                expect(third.status).toBe(201);
+                expect(JSON.parse(fs.readFileSync(filePath, "utf-8"))).toEqual(changed);
+                expect(third.body).toEqual({
+                    status: "ok",
+                    path: filePath,
+                    blueprintHash: computeGameBlueprintHash(changed),
+                    sourceRevision: projectRevision({type: "blueprint", rootPath: filePath}),
+                });
+                expect(third.body).not.toMatchObject({sourceRevision: firstRevision});
             });
         });
 

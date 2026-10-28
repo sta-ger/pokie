@@ -399,3 +399,96 @@ describe("useProjectJobs control response ownership", () => {
         }
     });
 });
+
+
+describe("V35 discovery state ownership", () => {
+    const response = (body: unknown) => ({ok: true, status: 200, json: () => Promise.resolve(body)});
+
+    it("distinguishes delayed discovery, failure, reconnect to empty, and ordinary refresh without resetting readiness", async () => {
+        let resolveList: ((value: ReturnType<typeof response>) => void) | undefined;
+        let rejectList: ((error: Error) => void) | undefined;
+        const fetchImpl: FetchLike = () => new Promise((resolve, reject) => {
+            resolveList = resolve;
+            rejectList = reject;
+        });
+        const {result, unmount} = renderHook(() => useProjectJobs(fetchImpl, "/a", 0));
+        expect(result.current.discoveryStatus).toBe("pending");
+        expect(result.current.jobs).toEqual([]);
+        await act(async () => {
+            rejectList?.(new Error("offline list"));
+            await Promise.resolve();
+        });
+        expect(result.current.discoveryStatus).toBe("failed");
+        expect(result.current.connectionError).toContain("offline list");
+        act(() => {
+            result.current.refresh();
+        });
+        expect(result.current.discoveryStatus).toBe("failed");
+        await act(async () => {
+            resolveList?.(response({jobs: []}));
+            await Promise.resolve();
+        });
+        expect(result.current.discoveryStatus).toBe("empty");
+        expect(result.current.connectionError).toBeUndefined();
+        act(() => {
+            result.current.refresh();
+        });
+        expect(result.current.discoveryStatus).toBe("empty");
+        await act(async () => {
+            rejectList?.(new Error("ordinary refresh offline"));
+            await Promise.resolve();
+        });
+        expect(result.current.discoveryStatus).toBe("empty");
+        act(() => {
+            result.current.refresh();
+        });
+        await act(async () => {
+            resolveList?.(response({jobs: [job("a", "/a", "completed")]}));
+            await Promise.resolve();
+        });
+        expect(result.current.discoveryStatus).toBe("retained");
+        act(() => {
+            result.current.refresh();
+        });
+        expect(result.current.discoveryStatus).toBe("retained");
+        await act(async () => {
+            resolveList?.(response({jobs: []}));
+            await Promise.resolve();
+        });
+        expect(result.current.discoveryStatus).toBe("retained");
+        expect(result.current.jobs[0].id).toBe("a");
+        unmount();
+    });
+
+    it.each(["scope", "generation"] as const)("does not settle a new %s with a superseded list success or failure", async change => {
+        const lists: {resolve: (value: ReturnType<typeof response>) => void; reject: (error: Error) => void}[] = [];
+        const fetchImpl: FetchLike = () => new Promise((resolve, reject) => {
+            lists.push({resolve, reject});
+        });
+        const {result, rerender, unmount} = renderHook(({scope, generation}) => useProjectJobs(fetchImpl, scope, generation), {
+            initialProps: {scope: "/a", generation: 0},
+        });
+        rerender({scope: change === "scope" ? "/b" : "/a", generation: 1});
+        await act(async () => {
+            lists[0].resolve(response({jobs: [job("old", "/a")]}));
+            await Promise.resolve();
+        });
+        expect(result.current.discoveryStatus).toBe("pending");
+        expect(result.current.jobs).toEqual([]);
+        act(() => {
+            result.current.refresh();
+        });
+        await act(async () => {
+            lists[1].reject(new Error("superseded failure"));
+            await Promise.resolve();
+        });
+        expect(result.current.discoveryStatus).toBe("pending");
+        expect(result.current.connectionError).toBeUndefined();
+        await act(async () => {
+            lists[2].resolve(response({jobs: []}));
+            await Promise.resolve();
+        });
+        expect(result.current.discoveryStatus).toBe("empty");
+        unmount();
+    });
+});

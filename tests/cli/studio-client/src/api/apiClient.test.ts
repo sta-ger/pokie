@@ -252,6 +252,17 @@ describe("studio-client apiClient", () => {
     });
 
     describe("getContext", () => {
+        it("forwards Home discovery's abort owner without changing the ordinary launch read", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {mode: "home"}}));
+            const controller = new AbortController();
+            await getContext(fetchImpl, controller.signal);
+            await getContext(fetchImpl);
+            expect(calls).toEqual([
+                {url: "/api/context", init: {signal: controller.signal, cache: "no-store"}},
+                {url: "/api/context", init: undefined},
+            ]);
+        });
+
         it("GETs /api/context", async () => {
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {mode: "home"}}));
 

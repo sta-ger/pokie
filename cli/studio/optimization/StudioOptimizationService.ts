@@ -178,14 +178,24 @@ export class StudioOptimizationService {
                     const result = await this.optimizer.optimize(project, request, {
                         signal: executor.signal,
                         isCurrent: context.isCurrent,
-                        onProgress: (evidence) =>
+                        onProgress: (evidence) => {
+                            const assessing = evidence.phase === "assessment";
+                            const candidateTotal = String(BigInt(request.policy.budget) < BigInt(evidence.domainSize) ? request.policy.budget : evidence.domainSize);
+                            let total: string | number = assessing ? request.policy.sampling?.assessmentSamples ?? 0 : candidateTotal;
+                            if (evidence.work) total = evidence.work.total ?? "indeterminate";
                             executor.progress({
-                                stage: evidence.phase ?? "Finite search",
-                                current: evidence.phase === "assessment" ? evidence.stochastic?.assessmentSamples ?? 0 : evidence.consumedWork,
-                                total: evidence.phase === "assessment" ? request.policy.sampling?.assessmentSamples ?? 0 : request.policy.budget,
-                                unit: evidence.phase === "assessment" ? "held-out observations" : "candidates",
+                                // Work counts restart for every measured candidate. A poll can
+                                // skip the intervening phases, so each stored stage must identify
+                                // its candidate even when the next observed count is smaller.
+                                stage: evidence.work
+                                    ? `${evidence.work.stage} (candidate ${evidence.consumedWork} of ${candidateTotal})`
+                                    : evidence.phase ?? "Finite search",
+                                current: evidence.work?.current ?? (assessing ? evidence.stochastic?.assessmentSamples ?? 0 : evidence.evaluated + evidence.rejected),
+                                total,
+                                unit: evidence.work?.unit ?? (assessing ? "held-out observations" : "candidates"),
                                 message: `${evidence.evaluated} evaluated; ${evidence.rejected} rejected; ${evidence.stochastic?.searchSamples ?? 0} search observations`,
-                            }),
+                            });
+                        },
                     });
                     if (result.candidate && (!context.isCurrent() || executor.signal.aborted)) {
                         await this.optimizer.discard(result.candidate);

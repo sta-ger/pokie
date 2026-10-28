@@ -66,22 +66,23 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
     }
 
     // 28^4 is the independently accepted 614,656-outcome exact workload.
-    // Each stop has its own symbol. A visible grid retains a separate cell
-    // for every reel, so four copies of this strip still produce 28^4 distinct
-    // canonical grids (and hence real round artifacts), rather than merely
-    // exercising the raw sweep while collapsing its output to a tiny library.
+    // Encode each stop with a distinct three-cell window over four symbols.
+    // This keeps every canonical grid/round artifact distinct without making
+    // the streaming regression also lower a 28-symbol substitution matrix for
+    // each fresh session. The fixture's window cardinality is checked below;
+    // repeated symbols must never collapse this into a tiny output library.
     function acceptedExactWorkloadBlueprint(id: string): GameBlueprint {
-        const reel = Array.from({length: 28}, (_unused, stop) => `S${stop}`);
+        const reel = Array.from("ADCDDABAACACBDCCDBDACDCAADBB");
         return {
             manifest: {id, name: "Accepted Exact Workload Slot", version: "1.0.0"},
             reels: 4,
-            rows: 1,
-            symbols: reel,
-            // A public Blueprint permits symbols without payouts. Keep one
-            // reachable payout so this remains a real game workload, while
-            // avoiding an unrelated 28-way paytable scan for each of the
-            // 614,656 distinct outcome artifacts.
-            paytable: {S0: {4: 1}},
+            rows: 3,
+            symbols: ["A", "B", "C", "D"],
+            availableBets: [1],
+            paylines: [[0, 0, 0, 0]],
+            // One reachable payout and one evaluated line, as in the original
+            // fixture. All 614,656 artifacts still use the real game runtime.
+            paytable: {A: {4: 1}},
             reelStrips: [reel, reel, reel, reel],
         };
     }
@@ -152,6 +153,13 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
 
     it("streams 614,656 distinct canonical outcomes through public build and generate commands", async () => {
         const blueprint = acceptedExactWorkloadBlueprint("accepted-exact-workload-slot");
+        for (const reel of blueprint.reelStrips!) {
+            const windows = reel.map((_symbol, stop) => JSON.stringify(
+                Array.from({length: blueprint.rows}, (_unused, row) => reel[(stop + row) % reel.length]),
+            ));
+            expect(reel).toHaveLength(28);
+            expect(new Set(windows).size).toBe(28);
+        }
         const blueprintPath = path.join(workDir, "accepted-exact.blueprint.json");
         fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
 
@@ -209,6 +217,10 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         const packageRoot = await buildPackage(finiteBlueprint("raw-publication-cancel-slot"), "raw-publication-package");
         const rawLibrary = path.join(workDir, "cancelled-raw.json");
         const fakeProcess = new EventEmitter() as unknown as NodeJS.Process;
+        const command = new OutcomeLibraryCommand(
+            "1.3.0", undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, fakeProcess,
+        );
         const originalOpen = fs.openSync;
         let cancelled = false;
         const openSync = jest.spyOn(fs, "openSync").mockImplementation(((...args: Parameters<typeof fs.openSync>) => {
@@ -220,24 +232,29 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
             return descriptor;
         }) as typeof fs.openSync);
         try {
-            const command = new OutcomeLibraryCommand(
-                "1.3.0", undefined, undefined, undefined, undefined, undefined,
-                undefined, undefined, undefined, undefined, undefined, fakeProcess,
-            );
             expect(await command.run(["generate", packageRoot, "--exact", "--out", rawLibrary])).toBe(130);
             expect(cancelled).toBe(true);
+            expect(fakeProcess.listenerCount("SIGINT")).toBe(0);
             expect(fs.existsSync(rawLibrary)).toBe(false);
             expect(fs.readdirSync(workDir).some((entry) => entry.includes(".cancelled-raw.json.pokie-"))).toBe(false);
-
-            // Cancellation has no durable checkpoint or hidden staging to
-            // resume, so the public retry starts cleanly and owns the exact
-            // destination it publishes.
-            expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", rawLibrary])).toBe(0);
-            expect(readLibrary(rawLibrary).outcomes).toHaveLength(4);
         } finally {
             openSync.mockRestore();
         }
-    });
+
+        // Retry through the same public command after removing the cancellation
+        // probe; it must not keep intercepting the retry's runtime snapshot and
+        // source-binding reads. No checkpoint or hidden staging authorizes reuse.
+        expect(await command.run(["generate", packageRoot, "--exact", "--out", rawLibrary])).toBe(0);
+        expect(fakeProcess.listenerCount("SIGINT")).toBe(0);
+        const library = readLibrary(rawLibrary);
+        expect(library.outcomes).toHaveLength(4);
+        expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(6);
+        expect(new WeightedOutcomeLibraryValidator().validate(library).filter((issue) => issue.severity === "error")).toEqual([]);
+        expect(fs.readdirSync(workDir).some((entry) => entry.includes(".cancelled-raw.json.pokie-"))).toBe(false);
+        // Both invocations acquire and drain real isolated runtime snapshots.
+        // Budget the cancellation plus complete retry together, including when
+        // direct Jest follows the 614,656-outcome workload with bounded memory.
+    }, 120_000);
 
     it("package -> generate -> validate -> analyze -> bundle: exact weights match the hand-computable fixture", async () => {
         const packageRoot = await buildPackage(finiteBlueprint("exact-cli-slot"), "pkg");

@@ -42,6 +42,7 @@ export function useSimulationPoll() {
     const [progress, setProgress] = useState<SimulationProgressView | undefined>(undefined);
     const [job, setJob] = useState<StudioSimulationJobView>();
     const [error, setError] = useState<string>();
+    const [restoringJobId, setRestoringJobId] = useState<string>();
     const [connectionError, setConnectionError] = useState<string>();
     const [cancellationRequested, setCancellationRequested] = useState(false);
     // The terminal receipt belongs to the public control that created this
@@ -59,7 +60,7 @@ export function useSimulationPoll() {
     const currentJobId = useRef<string | undefined>(undefined);
     // Discovery may attach only before this workflow has an owner. An explicit
     // submission retains ownership even if acceptance fails without a job id.
-    const attachmentRef = useRef<"initial" | "restored" | "submitted">("initial");
+    const attachmentRef = useRef<"initial" | "restored" | "configured" | "submitted">("initial");
     // A terminal view can outlive the in-memory job snapshot while a reload
     // or recovery reconciliation settles. Keep the real request that created
     // it so Retry remains a public operation, never a visible no-op.
@@ -125,6 +126,7 @@ export function useSimulationPoll() {
                     setError(`The simulation response did not match durable job "${id}".`);
                     return;
                 }
+                setRestoringJobId(undefined);
                 setJob(polledJob);
                 setConnectionError(undefined);
                 lastRequestRef.current = {rounds: polledJob.requestedRounds ?? polledJob.rounds, seed: polledJob.seed, workers: polledJob.workers, modeName: polledJob.modeName, convergence: polledJob.convergence};
@@ -171,6 +173,7 @@ export function useSimulationPoll() {
         stopCancelRequest();
         runGuardGenerationRef.current = generation;
         attachmentRef.current = "submitted";
+        setRestoringJobId(undefined);
         currentJobId.current = undefined;
         setJob(undefined);
         setResultCurrent(false);
@@ -234,6 +237,8 @@ export function useSimulationPoll() {
             return;
         }
         attachmentRef.current = "restored";
+        setRestoringJobId(id);
+        setConnectionError(undefined);
         const generation = generationRef.current + 1;
         generationRef.current = generation;
         currentJobId.current = id;
@@ -243,6 +248,25 @@ export function useSimulationPoll() {
         setError(undefined);
         setCancellationRequested(false);
         poll(id, generation);
+    }
+
+    /** An explicit terminal Configure handoff supersedes a pending history read.
+     * The dashboard checks durable discovery for active work before calling this.
+     * It never submits or reconstructs a simulation detail from a generic card.
+     */
+    function releaseRestoration(): void {
+        if (restoringJobId === undefined) return;
+        generationRef.current++;
+        stopPollRequest();
+        if (timeoutRef.current !== undefined) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = undefined;
+        }
+        attachmentRef.current = "configured";
+        currentJobId.current = undefined;
+        setRestoringJobId(undefined);
+        setConnectionError(undefined);
+        setError(undefined);
     }
 
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
@@ -262,6 +286,7 @@ export function useSimulationPoll() {
         cancelGuard.end();
         currentJobId.current = undefined;
         attachmentRef.current = "initial";
+        setRestoringJobId(undefined);
         lastRequestRef.current = undefined;
         if (timeoutRef.current !== undefined) {
             clearTimeout(timeoutRef.current);
@@ -319,6 +344,7 @@ export function useSimulationPoll() {
                     setError(`The simulation response did not match durable job "${id}".`);
                     return;
                 }
+                setRestoringJobId(undefined);
                 setConnectionError(undefined);
                 setJob(polledJob);
                 setProgress(describeSimulationProgress(polledJob));
@@ -354,5 +380,5 @@ export function useSimulationPoll() {
         }
     }
 
-    return {progress, job, error, connectionError, cancellationRequested, operation, terminalReceipt, resultCurrent, invalidateResult, run, retry, restore, cancel, resetForProjectSwitch, canRestore: attachmentRef.current === "initial", currentJobId: currentJobId.current};
+    return {progress, job, error, connectionError, restoringJobId, cancellationRequested, operation, terminalReceipt, resultCurrent, invalidateResult, run, retry, restore, releaseRestoration, cancel, resetForProjectSwitch, canRestore: attachmentRef.current === "initial", currentJobId: currentJobId.current};
 }

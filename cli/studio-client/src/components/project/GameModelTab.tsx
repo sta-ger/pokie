@@ -6,7 +6,7 @@ import {getGameModel, loadBlueprint, saveBlueprint, validateBlueprint} from "../
 import type {GameModelProjection} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {setReelGenerationMode} from "../../domain/blueprintFormOps";
-import {clearPersistedProjectBlueprintDraft, loadPersistedProjectBlueprintDraft, savePersistedProjectBlueprintDraft} from "../../domain/blueprintDraftStorage";
+import {clearPersistedProjectBlueprintDraft, createProjectBlueprintDraftWriter, loadPersistedProjectBlueprintDraft, type ProjectBlueprintDraftWriter} from "../../domain/blueprintDraftStorage";
 import {describeValidation, type BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
 import {errorMessage} from "../../domain/errorMessage";
 import {describePathActionError} from "../../domain/pathActionError";
@@ -19,7 +19,7 @@ import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
 import {IssueList} from "../common/IssueList";
 import {QuickActions} from "../common/QuickActions";
-import {RecoveryNotice} from "../common/RecoveryNotice";
+import {DraftRecoveryNotice} from "../common/RecoveryNotice";
 import {GameModelSections, type GameModelSectionId} from "./GameModelSections";
 
 type GameModelFailure = {message: string; detail?: string};
@@ -88,7 +88,7 @@ export function GameModelTab({
     editable?: boolean;
     projectRoot?: string;
     onDirtyChange?: (dirty: boolean) => void;
-    onBlueprintSaved?: () => void;
+    onBlueprintSaved?: (sourceRevision?: string) => void;
     projectActionGuardRef?: MutableRefObject<GuardedAction | undefined>;
 } = {}) {
     const fetchImpl = useStudioApi();
@@ -98,6 +98,7 @@ export function GameModelTab({
     const [sequenceDraftDirty, setSequenceDraftDirty] = useState(false);
     const sequenceDirtyRef = useRef(false);
     const sourceHash = useRef<string | undefined>(undefined);
+    const draftWriter = useRef<ProjectBlueprintDraftWriter | undefined>(undefined);
     const [editState, setEditState] = useState<EditState>({status: "viewing"});
     const [validationView, setValidationView] = useState<BlueprintValidationView>({status: "idle"});
     const [editError, setEditError] = useState<GameModelFailure>();
@@ -117,20 +118,24 @@ export function GameModelTab({
     // starts; otherwise an older response can land after Save and put View Mode back on its old
     // server projection.
     const refreshRequestIdRef = useRef(0);
+    const refreshControllerRef = useRef<AbortController | undefined>(undefined);
 
     const refresh = useCallback(() => {
         const requestId = ++refreshRequestIdRef.current;
+        refreshControllerRef.current?.abort();
+        const controller = new AbortController();
+        refreshControllerRef.current = controller;
         // Keep the owning editor mounted during projection refreshes. Replacing this subtree
         // discards its selected reel, bounded page and local unapplied draft while the request runs.
         setState((previous) => previous.status === "loaded" ? {...previous, refreshing: true, failure: undefined} : {status: "loading"});
-        getGameModel(fetchImpl, sharedWeightsSampleSeed)
+        getGameModel(fetchImpl, sharedWeightsSampleSeed, controller.signal)
             .then((projection) => {
-                if (requestId === refreshRequestIdRef.current) {
+                if (!controller.signal.aborted && requestId === refreshRequestIdRef.current) {
                     setState({status: "loaded", projection});
                 }
             })
             .catch((error: unknown) => {
-                if (requestId === refreshRequestIdRef.current) {
+                if (!controller.signal.aborted && requestId === refreshRequestIdRef.current) {
                     const failure = describeGameModelLoadFailure(errorMessage(error));
                     setState((previous) => previous.status === "loaded" ? {...previous, refreshing: false, failure} : {status: "error", failure});
                 }
@@ -139,6 +144,7 @@ export function GameModelTab({
 
     useEffect(() => {
         refresh();
+        return () => refreshControllerRef.current?.abort();
     }, [refresh]);
 
     // Advance the inspection seed instead of drawing one from Math.random(): the next sample is
@@ -154,22 +160,30 @@ export function GameModelTab({
     useEffect(() => {
         if (!retainedDraft && projectRoot !== undefined && (editState.status === "editing" || editState.status === "saving")
             && editor.state.revision !== editState.baselineRevision && sourceHash.current !== undefined) {
-            savePersistedProjectBlueprintDraft(projectRoot, {blueprint: editor.state.blueprint, section: editState.section, sourceHash: sourceHash.current});
+            draftWriter.current?.({blueprint: editor.state.blueprint, section: editState.section, sourceHash: sourceHash.current});
         }
     }, [projectRoot, editState, editor.state.revision, editor.state.blueprint, retainedDraft]);
 
     const handleRestoreDraft = (): void => {
-        if (!retainedDraft || editState.status === "saving") return;
+        if (!retainedDraft || projectRoot === undefined || editState.status === "saving") return;
         const restore = (): void => {
+            // Resolve the actual slot again after any replacement dialog, rather than applying a
+            // cached offer whose draft may already have been discarded by its owner.
+            const draft = loadPersistedProjectBlueprintDraft(projectRoot);
+            if (!draft) {
+                setRetainedDraft(undefined);
+                return;
+            }
             editRequestId.current += 1;
+            draftWriter.current = createProjectBlueprintDraftWriter(projectRoot);
             const baselineRevision = editor.getCurrentState().revision;
-            editor.loadFrom(retainedDraft.blueprint);
-            sourceHash.current = retainedDraft.sourceHash;
+            editor.loadFrom(draft.blueprint);
+            sourceHash.current = draft.sourceHash;
             sequenceDirtyRef.current = false;
             setSequenceDraftDirty(false);
             setEditError(undefined);
             setValidationView({status: "idle"});
-            setEditState({status: "editing", section: retainedDraft.section, baselineRevision});
+            setEditState({status: "editing", section: draft.section, baselineRevision});
             setRetainedDraft(undefined);
         };
         if (isDirty) confirm("Restore the retained draft? Unsaved section edits will be replaced.", restore);
@@ -179,12 +193,27 @@ export function GameModelTab({
     const handleDiscardDraft = (): void => {
         if (projectRoot === undefined || editState.status === "saving") return;
         clearPersistedProjectBlueprintDraft(projectRoot);
+        // Discard answers the older recovery offer. An independently edited current section can
+        // still become the next recoverable draft once that offer is gone.
+        draftWriter.current = createProjectBlueprintDraftWriter(projectRoot);
         setRetainedDraft(undefined);
     };
 
     useEffect(() => {
         onDirtyChange?.(isDirty);
     }, [isDirty, onDirtyChange]);
+
+    // An accepted Leave retires both the mounted edit and its tab-local recovery slot before
+    // history can remount this project. Ordinary unmount/refresh never calls this: it must keep
+    // an undiscarded draft available for an explicit Restore after F5.
+    const leaveGameModel = useCallback((): void => {
+        if (projectRoot !== undefined) clearPersistedProjectBlueprintDraft(projectRoot);
+        editRequestId.current += 1;
+        setRetainedDraft(undefined);
+        sequenceDirtyRef.current = false;
+        setSequenceDraftDirty(false);
+        setEditState({status: "viewing"});
+    }, [projectRoot]);
 
     // A project Open has a server side effect before navigation. Confirm against this live
     // edit state first, then allow only its navigation; rejection retains the dirty draft.
@@ -219,14 +248,18 @@ export function GameModelTab({
     // shared hook (predicate-driven useBlocker + an undismissable confirm modal) useDesignNavigationGuard
     // uses for a dirty Home Design Game draft. `currentLocation` is only ever this tab's own route while
     // this component is mounted at all (ProjectDashboardPage only renders GameModelTab for
-    // activeTab === "gameModel"), so the predicate only needs to check where the transition is *going*.
+    // activeTab === "gameModel"). Compare the mounted pathname so scoped and legacy routes have
+    // the same ownership; a same-path transition does not leave the editor.
     useNavigationBlockerConfirm(
-        ({nextLocation}) => {
+        ({currentLocation, nextLocation}) => {
             if (confirmedProjectActionRef.current) {
                 confirmedProjectActionRef.current = false;
+                // Open/Retry has succeeded and is committing its one authorized navigation.
+                // Rejected actions never reach this boundary and retain their recovery data.
+                leaveGameModel();
                 return false;
             }
-            return isDirty && nextLocation.pathname !== "/project/gameModel";
+            return isDirty && nextLocation.pathname !== currentLocation.pathname;
         },
         {
             title: "Unsaved changes",
@@ -234,7 +267,7 @@ export function GameModelTab({
             labels: {confirm: "Leave", cancel: "Stay"},
             controlIds: {confirm: "game-model-unsaved-leave", cancel: "game-model-unsaved-stay"},
         },
-        () => setEditState({status: "viewing"}),
+        leaveGameModel,
     );
 
     // Covers the one exit a router transition can never see -- an actual tab/browser close or refresh.
@@ -269,6 +302,7 @@ export function GameModelTab({
                     return;
                 }
                 const revisionBeforeLoad = editor.state.revision;
+                draftWriter.current = createProjectBlueprintDraftWriter(projectRoot);
                 setValidationView({status: "idle"});
                 sourceHash.current = result.blueprintHash;
                 setSequenceDraftDirty(false);
@@ -306,6 +340,7 @@ export function GameModelTab({
                     return;
                 }
                 const revisionBeforeLoad = editor.state.revision;
+                draftWriter.current = createProjectBlueprintDraftWriter(projectRoot);
                 setValidationView({status: "idle"});
                 sourceHash.current = result.blueprintHash;
                 setSequenceDraftDirty(false);
@@ -390,7 +425,7 @@ export function GameModelTab({
                     // View Mode must show exactly the saved truth, straight off the server -- never the
                     // in-editor draft this component happens to still be holding.
                     refresh();
-                    onBlueprintSaved?.();
+                    onBlueprintSaved?.(saveResult.sourceRevision);
                 });
             })
             .catch((error: unknown) => {
@@ -402,15 +437,13 @@ export function GameModelTab({
 
     return (
         <div>
-            {retainedDraft && editState.status !== "saving" && (
-                <RecoveryNotice
-                    message="Recovered an unsaved game model draft from your last session in this tab."
-                    actionLabel="Restore"
-                    onAction={handleRestoreDraft}
-                    secondaryActionLabel="Discard"
-                    onSecondaryAction={handleDiscardDraft}
-                />
-            )}
+            <DraftRecoveryNotice
+                available={retainedDraft !== undefined}
+                subject="game model"
+                disabled={editState.status === "saving"}
+                onRestore={handleRestoreDraft}
+                onDiscard={handleDiscardDraft}
+            />
             <MathDefinitionDiffPreview sourcePath={projectRoot} projectRoot={projectRoot} draft={editState.status === "editing" ? editor.state.blueprint : undefined} revision={editor.state.revision} />
             {editError && <ErrorState message={editError.message} detail={editError.detail} />}
             {validationView.status === "error" && <ErrorState message={describePathActionError("This game model save", validationView.message)} />}

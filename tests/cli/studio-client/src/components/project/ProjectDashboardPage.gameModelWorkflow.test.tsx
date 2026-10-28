@@ -1,5 +1,6 @@
 import {act, cleanup, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {loadPersistedProjectBlueprintDraft} from "../../../../../../cli/studio-client/src/domain/blueprintDraftStorage";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {GameModelProjection} from "../../../../../../cli/studio-client/src/api/types";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
@@ -1068,16 +1069,16 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         expect(within(symbols).getByText("A · wild")).toBeInTheDocument();
     });
 
-    it("blocks navigating away from the Game Model tab while a section edit is dirty, same as any other unsaved-changes guard", async () => {
+    it("preserves pointer/keyboard Stay, then discards on Leave before history Back remounts Game Model", async () => {
         const user = userEvent.setup();
         const consoleError = jest.spyOn(console, "error").mockImplementation(() => undefined);
-        const {fetchImpl} = createRoutedFakeFetch({
+        const {fetchImpl, calls} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
             "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: RAW_BLUEPRINT, blueprintHash: "h1"}}),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToGameModelTab(user);
 
         const symbols = sectionFieldset("Symbols");
@@ -1086,24 +1087,47 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         await user.type(within(symbols).getByLabelText("New symbol id"), "B");
         await user.click(within(symbols).getByRole("button", {name: "Add symbol"}));
 
-        await user.click(screen.getByRole("button", {name: "Overview"}));
-
-        expect(await screen.findByText("You have unsaved changes to this game model section. Leave and lose them?")).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Stay"})).toHaveAttribute("id", "game-model-unsaved-stay");
-        expect(screen.getByRole("button", {name: "Stay"})).toHaveAttribute("data-pokie-confirmation-operation", "navigation-blocker");
-        expect(screen.getByRole("button", {name: "Leave"})).toHaveAttribute("id", "game-model-unsaved-leave");
-        expect(screen.getByRole("dialog")).not.toHaveAttribute("controlIds");
-        expect(screen.getByRole("dialog")).not.toHaveAttribute("operation");
-        await user.click(screen.getByRole("button", {name: "Stay"}));
-
-        await waitFor(() => expect(screen.queryByText("You have unsaved changes to this game model section. Leave and lose them?")).not.toBeInTheDocument());
-        expect(within(symbols).getByDisplayValue("B")).toBeInTheDocument();
+        const retained = loadPersistedProjectBlueprintDraft("/games/a");
+        expect(retained?.blueprint.symbols).toContain("B");
+        for (const keyboard of [false, true]) {
+            await user.click(screen.getByRole("button", {name: "Overview"}));
+            expect(await screen.findByText("You have unsaved changes to this game model section. Leave and lose them?")).toBeInTheDocument();
+            const stay = screen.getByRole("button", {name: "Stay"});
+            expect(stay).toHaveAttribute("id", "game-model-unsaved-stay");
+            expect(stay).toHaveAttribute("data-pokie-confirmation-operation", "navigation-blocker");
+            expect(screen.getByRole("button", {name: "Leave"})).toHaveAttribute("id", "game-model-unsaved-leave");
+            expect(screen.getByRole("dialog")).not.toHaveAttribute("controlIds");
+            expect(screen.getByRole("dialog")).not.toHaveAttribute("operation");
+            if (keyboard) {
+                act(() => stay.focus());
+                await user.keyboard("{Enter}");
+            } else await user.click(stay);
+            await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+            expect(within(symbols).getByDisplayValue("B")).toBeInTheDocument();
+            expect(loadPersistedProjectBlueprintDraft("/games/a")).toEqual(retained);
+            expect(screen.getByText("Game Model ready")).toBeVisible();
+        }
 
         await user.click(screen.getByRole("button", {name: "Overview"}));
         await screen.findByText("You have unsaved changes to this game model section. Leave and lose them?");
         await user.click(screen.getByRole("button", {name: "Leave"}));
 
-        expect(await screen.findByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        await screen.findByText("Overview ready");
+        expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        expect(loadPersistedProjectBlueprintDraft("/games/a")).toBeUndefined();
+        await act(async () => {
+            await router.navigate(-1);
+        });
+        await screen.findByText("Game Model ready");
+        expect(screen.queryByText(/unsaved game model draft/)).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Restore", exact: true})).not.toBeInTheDocument();
+        const returnedSymbols = sectionFieldset("Symbols");
+        await user.click(within(returnedSymbols).getByRole("button", {name: "Edit"}));
+        await within(returnedSymbols).findByLabelText("New symbol id");
+        expect(within(returnedSymbols).queryByDisplayValue("B")).not.toBeInTheDocument();
+        expect(loadPersistedProjectBlueprintDraft("/games/a")).toBeUndefined();
+        expect(calls.some(call => call.url === "/api/home/blueprints/save")).toBe(false);
+        expect(RAW_BLUEPRINT.symbols).toEqual(["A"]);
         expect(consoleError.mock.calls.flat().join(" ")).not.toMatch(/controlIds|operation/);
         consoleError.mockRestore();
     });

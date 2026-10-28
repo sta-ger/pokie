@@ -143,8 +143,8 @@ export class ProjectTransitionConflict extends Error {
     }
 }
 
-export async function getContext(fetchImpl: FetchLike): Promise<StudioContext> {
-    const response = await fetchImpl("/api/context");
+export async function getContext(fetchImpl: FetchLike, signal?: AbortSignal): Promise<StudioContext> {
+    const response = await fetchImpl("/api/context", signal === undefined ? undefined : {signal, cache: "no-store"});
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to determine the Studio launch context"));
     }
@@ -662,9 +662,9 @@ export async function validateProject(fetchImpl: FetchLike, signal?: AbortSignal
 // "unavailable" section -- only a genuinely failed request throws. `sharedWeightsSampleSeed` backs the
 // Game Model Reels view's own "New sample" action for a "symbolWeights"/"default" blueprint (see
 // GameModelSharedWeightsSample's own doc comment) -- omitted for the default, reproducible sample.
-export async function getGameModel(fetchImpl: FetchLike, sharedWeightsSampleSeed?: number): Promise<GameModelProjection> {
+export async function getGameModel(fetchImpl: FetchLike, sharedWeightsSampleSeed?: number, signal?: AbortSignal): Promise<GameModelProjection> {
     const query = sharedWeightsSampleSeed !== undefined ? `?sharedWeightsSampleSeed=${sharedWeightsSampleSeed}` : "";
-    const response = await fetchImpl(`/api/project/gameModel${query}`);
+    const response = await fetchImpl(`/api/project/gameModel${query}`, {signal});
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to load the game model"));
     }
@@ -1397,8 +1397,8 @@ export async function exportStakeEngine(
 // The Build/Export tab's own "Build artifact" group -- every ArtifactBuilderRegistry target, each already
 // marked `supported` against the active project's own resolved ProjectType (see
 // StudioArtifactBuildService.listTargets's own doc comment).
-export async function listArtifactTargets(fetchImpl: FetchLike): Promise<StudioArtifactTargetView[]> {
-    const response = await fetchImpl("/api/project/artifacts/targets");
+export async function listArtifactTargets(fetchImpl: FetchLike, signal?: AbortSignal): Promise<StudioArtifactTargetView[]> {
+    const response = await fetchImpl("/api/project/artifacts/targets", {signal});
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to load the build artifact target list"));
     }
@@ -1409,8 +1409,9 @@ export async function listArtifactTargets(fetchImpl: FetchLike): Promise<StudioA
 // destination/capability/conflict diagnostics buildArtifact() below would report, without ever writing
 // anything. "unsupported" and "conflict" are both normal parsed results (never thrown), same convention as
 // buildArtifact below.
-export async function previewArtifact(fetchImpl: FetchLike, target: StudioArtifactTargetType, outDir?: string): Promise<StudioArtifactPreviewView> {
+export async function previewArtifact(fetchImpl: FetchLike, target: StudioArtifactTargetType, outDir?: string, signal?: AbortSignal): Promise<StudioArtifactPreviewView> {
     const response = await fetchImpl("/api/project/artifacts/preview", {
+        signal,
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({target, outDir}),

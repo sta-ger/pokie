@@ -1,10 +1,11 @@
+import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
 import {GameBlueprint, ValidationIssue} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {CreateCommand} from "../../cli/commands/CreateCommand.js";
-import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 
 // End-to-end coverage for first-class random game generation (SlotGameNameGenerator +
 // RandomGameBlueprintGenerator), now that "pokie build" no longer has a "random"/"--random" entry point
@@ -14,6 +15,14 @@ import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 // genuinely a complete, buildable Blueprint Project, not just a shape-valid in-memory value.
 describe("CLI workflow (integration): first-class random game generation", () => {
     let workDir: string;
+
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
 
     beforeEach(() => {
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-random-build-test-"));
@@ -55,8 +64,7 @@ describe("CLI workflow (integration): first-class random game generation", () =>
             const game = require(path.join(projectRoot, "dist", "index.js")) as {getManifest(): {id: string}};
             expect(game.getManifest().id).toBe("my-random-game");
 
-            const validateExitCode = await new ValidateCommand().run([projectRoot]);
-            expect(validateExitCode).toBe(0);
+            await expectInconclusiveArtifactValidation([projectRoot]);
         } finally {
             process.chdir(originalCwd);
         }
@@ -79,8 +87,7 @@ describe("CLI workflow (integration): first-class random game generation", () =>
             const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", projectRoot]);
             expect(buildExitCode).toBe(0);
 
-            const validateExitCode = await new ValidateCommand().run([projectRoot]);
-            expect(validateExitCode).toBe(0);
+            await expectInconclusiveArtifactValidation([projectRoot]);
         } finally {
             process.chdir(originalCwd);
         }

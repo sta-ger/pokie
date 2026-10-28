@@ -9,8 +9,10 @@
 // computeGameBlueprintHash) — a caller tracking whether this same path's persisted source later changes
 // externally (see StudioBlueprintCheckView) uses it as its own next "known-good" snapshot, the same way
 // it would use StudioBlueprintLoadView.blueprintHash after a Load.
+// "sourceRevision" identifies the committed authored bytes for optimizer freshness. It is absent
+// when that path cannot be inventoried by the optimizer; a successful write still invalidates results.
 export type StudioBlueprintSaveView =
-    | {status: "ok"; path: string; blueprintHash: string}
+    | {status: "ok"; path: string; blueprintHash: string; sourceRevision?: string}
     | {
           status: "conflict";
           reason: "existing" | "stale";

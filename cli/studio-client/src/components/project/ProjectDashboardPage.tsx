@@ -525,6 +525,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setProjectGeneration((previous) => previous + 1);
     }, [projectKey]);
     const commonJobs = useProjectJobs(fetchImpl, projectKey, projectGeneration);
+    const simulation = useSimulationPoll();
+    const releaseSimulationRestoration = simulation.releaseRestoration;
     const refreshJobs = commonJobs.refresh;
     useEffect(() => {
         refreshJobs();
@@ -566,7 +568,13 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const handleFeatureOwnedOutcomeLibraryJobChange = useCallback((jobId: string | undefined): void => {
         setFeatureOwnedOutcomeLibraryJobId(jobId);
     }, []);
-    const [recoveryJob, setRecoveryJob] = useState<StudioJobView | undefined>();
+    const [recoveryJob, setRecoveryJob] = useState<Pick<StudioJobView, "operation" | "request"> | undefined>();
+    // Simulation recovery is a pending Configure handoff, not durable view
+    // authority. A newer submission or report selection consumes it; tab
+    // remounts must then derive their view from that newer result instead.
+    const consumeSimulationRecovery = useCallback(() => {
+        setRecoveryJob(job => job?.operation.includes("simulation") ? undefined : job);
+    }, []);
     const [newSessionRecoveryRequested, setNewSessionRecoveryRequested] = useState(false);
     const [jobProjectOpeningError, setJobProjectOpeningError] = useState<string>();
     const openAndNavigate = useOpenProject();
@@ -587,7 +595,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         // Never replay durable work in the background.  The destination form
         // receives this immutable request and reconstructs it for an explicit
         // new submission, rather than opening an empty unrelated workflow.
-        setRecoveryJob(job);
+        // Each explicit simulation Retry must notify an already mounted form,
+        // including selecting the same retained job after editing its settings.
+        if (job.operation === "simulation" && !commonJobs.jobs.some(item => item.operation === "simulation" && ["queued", "running", "cancelling"].includes(item.status))) {
+            releaseSimulationRestoration();
+        }
+        setRecoveryJob(job.operation === "simulation" ? {...job, request: {...job.request}} : job);
         if (job.recovery?.action === "new-session" || job.operation === "browser-play" || job.operation.startsWith("play-")) {
             setNewSessionRecoveryRequested(true);
             setActiveTab("play");
@@ -600,7 +613,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         } else {
             setActiveTab("exportDeploy");
         }
-    }, [reopenJobProject, setActiveTab]);
+    }, [commonJobs.jobs, releaseSimulationRestoration, reopenJobProject, setActiveTab]);
     const handleFeatureOutcomeLibraryRecoveryAction = useCallback((jobId: string): void => {
         const job = commonJobs.jobs.find((candidate) => candidate.id === jobId);
         if (job === undefined || job.recovery === undefined) return;
@@ -627,18 +640,18 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const simulationProjectRoot = header.status === "loaded" ? header.projectRoot : undefined;
     useEffect(() => {
         if (activeTab !== "simulation" || simulationProjectRoot === undefined) return undefined;
-        let stale = false;
+        const controller = new AbortController();
         setSimulationModesError(undefined);
-        getGameModel(fetchImpl).then(model => {
-            if (stale) return;
+        getGameModel(fetchImpl, undefined, controller.signal).then(model => {
+            if (controller.signal.aborted) return;
             const section = model.betsAndModes;
             const modes = section.status === "available" ? section.data.betModes.filter(mode => mode.runtimeType !== undefined).map(mode => mode.id) : [];
             setPackageSimulationModes({projectRoot: simulationProjectRoot, modes});
         }).catch((error: unknown) => {
-            if (!stale) setSimulationModesError(errorMessage(error));
+            if (!controller.signal.aborted) setSimulationModesError(errorMessage(error));
         });
         return () => {
-            stale = true;
+            controller.abort();
         };
     }, [activeTab, simulationProjectRoot, fetchImpl]);
     const simulationModes = outcomeLibraryModes ?? (packageSimulationModes?.projectRoot === simulationProjectRoot ? packageSimulationModes?.modes : undefined);
@@ -669,7 +682,15 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             });
     }, [fetchImpl]);
 
-    const simulation = useSimulationPoll();
+    const restorableSimulation = commonJobs.jobs.find((job) => job.operation === "simulation");
+    let simulationRestorationMessage: string | undefined;
+    if (simulation.restoringJobId !== undefined || (simulation.canRestore && restorableSimulation !== undefined)) {
+        simulationRestorationMessage = "Reattaching to retained simulation; waiting for its details…";
+    } else if (simulation.canRestore && commonJobs.discoveryStatus === "pending") {
+        simulationRestorationMessage = "Checking for retained simulations…";
+    } else if (simulation.canRestore && commonJobs.discoveryStatus === "failed") {
+        simulationRestorationMessage = "Cannot check retained simulations. Reconnect to Studio before starting another run.";
+    }
 
     // A reload recreates the hook, but the server-owned project-job list
     // remains authoritative. Reattach to an active simulation or its
@@ -679,12 +700,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // executor must be represented as recovery-required, never as completed.
     useEffect(() => {
         if (projectKey === undefined || !simulation.canRestore) return;
-        const restorableSimulation = commonJobs.jobs.find((job) => job.operation === "simulation");
         if (restorableSimulation !== undefined) {
             if (restorableSimulation.status === "recovery-required") setRecoveryJob(restorableSimulation);
             simulation.restore(restorableSimulation.id);
         }
-    }, [commonJobs.jobs, projectKey, simulation]);
+    }, [restorableSimulation, projectKey, simulation]);
 
     const [reportsView, setReportsView] = useState<ReportListView>({status: "empty"});
     const [reportsError, setReportsError] = useState<string>();
@@ -731,6 +751,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // ever meaningful against *this* report (requirement 7).
     const selectReport = useCallback(
         (id: string, openTab = true) => {
+            consumeSimulationRecovery();
             if (openTab) setActiveTab("simulation");
             setSelectedReportId(id);
             setReportDetail({status: "loading"});
@@ -749,7 +770,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     }
                 });
         },
-        [fetchImpl, setActiveTab],
+        [consumeSimulationRecovery, fetchImpl, setActiveTab],
     );
 
     // Auto-opens the report the instant a *live* job this session started completes -- requirement 5's
@@ -768,17 +789,19 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [simulation.job, selectReport]);
 
-    // Configure and Recent Runs "Run again" share this report/compare reset.
+    // Explicit Configure submissions own this report/compare reset.
     // Validate before clearing a retained result or invalidating its in-flight
     // reads. Only an accepted configuration clears the previous run-again notice.
     // Retry uses the hook's retained request and its same rounds preflight.
     const startRun = useCallback(
         (rounds: number, seed: string | undefined, workers: number, modeName?: string, convergence?: StudioSimulationReportListEntry["convergence"]) => {
+            if (simulationRestorationMessage !== undefined) return;
             const roundsError = getSimulationRoundsError(rounds);
             if (roundsError !== null) {
                 setRunAgainNotice(roundsError);
                 return;
             }
+            consumeSimulationRecovery();
             reportRequestIdRef.current++;
             compareRequestIdRef.current++;
             setReportDetail({status: "empty"});
@@ -788,7 +811,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             simulation.run(rounds, seed, workers, modeName, "simulation", convergence);
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [simulation.run],
+        [consumeSimulationRecovery, simulation.run, simulationRestorationMessage],
     );
 
     // Also clears once the *previous* blocking simulation reaches a terminal state on its own (completes,
@@ -840,10 +863,22 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 setRunAgainNotice("A simulation is already running for this project. Cancel it from the Run step before starting a different configuration.");
                 return;
             }
-            // No explicit clear here -- startRun() itself always clears runAgainNotice.
-            startRun(entry.requestedRounds, entry.seed, entry.workers, entry.modeName, entry.convergence);
+            if (commonJobs.discoveryStatus !== "pending" && commonJobs.discoveryStatus !== "failed" && !commonJobs.jobs.some(item => item.operation === "simulation" && ["queued", "running", "cancelling"].includes(item.status))) {
+                releaseSimulationRestoration();
+            }
+            // A completed report uses the same configuration-only handoff as
+            // common-card Retry. Only an explicit Configure submission may
+            // clear the retained result and create replacement durable work.
+            setRecoveryJob({operation: "simulation", request: {
+                rounds: entry.requestedRounds,
+                workers: entry.workers,
+                ...(entry.seed === undefined ? {} : {seed: entry.seed}),
+                ...(entry.modeName === undefined ? {} : {modeName: entry.modeName}),
+                ...(entry.convergence === undefined ? {} : {convergence: entry.convergence}),
+            }});
+            setRunAgainNotice(undefined);
         },
-        [simulation.job, startRun],
+        [simulation.job, releaseSimulationRestoration, commonJobs.jobs, commonJobs.discoveryStatus],
     );
 
     const [replayListView, setReplayListView] = useState<ReplayListView>({status: "empty"});
@@ -1105,10 +1140,13 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // letting a Close silently discard an unsaved Game Model edit.
     const [gameModelDirty, setGameModelDirty] = useState(false);
 
-    // Both in-place authoring surfaces change the source used by simulation.
+    const [optimizerSourceChange, setOptimizerSourceChange] = useState<{projectRoot: string; sourceRevision?: string}>();
+
+    // Both in-place authoring surfaces change the source used by simulation and optimization.
     // Retire pending reads as well as the visible report, while leaving owned
     // jobs attached so saving during a run never removes its Cancel control.
-    const handleBlueprintSaved = (): void => {
+    const handleBlueprintSaved = (sourceRevision?: string): void => {
+        if (projectKey !== undefined) setOptimizerSourceChange({projectRoot: projectKey, sourceRevision});
         simulation.invalidateResult();
         reportRequestIdRef.current++;
         compareRequestIdRef.current++;
@@ -1138,6 +1176,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setReportsView({status: "empty"});
         setReportsError(undefined);
         setRunAgainNotice(undefined);
+        setOptimizerSourceChange(undefined);
         expectedReplayRequestIdRef.current++;
         setExpectedReplay({status: "empty"});
         recentSpinsRequestIdRef.current++;
@@ -1244,6 +1283,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         ].filter((reason): reason is string => reason !== undefined);
         confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, closeProjectAndReturnToProjects);
     };
+    // Visiting Home leaves server-owned work running. GameModelTab's router
+    // blocker still guards unsaved edits; only explicit Close drains the project.
+    const returnToProjects = (): void => {
+        navigate("/home/projects");
+    };
 
     function copyProjectPath(): void {
         if (projectKey === undefined || navigator.clipboard === undefined) {
@@ -1302,11 +1346,20 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         };
     }, [fetchImpl]);
 
+    // A settled selection may have been declined by the dirty-route blocker,
+    // or followed by Back/Forward. Readiness then belongs to the mounted route,
+    // not the last requested tab. Keep genuine context refreshes pending.
+    const navigationStatus = navigationLifecycle.status === "rendered" || navigationLifecycle.tab === activeTab
+        ? navigationLifecycle.status : "loading";
     let navigationMessage = "Preparing the selected section…";
     if (navigationLifecycle.tab === activeTab && navigationLifecycle.status === "error") {
         navigationMessage = "Project navigation needs a retry";
-    } else if (navigationLifecycle.tab === activeTab && navigationLifecycle.status === "rendered") {
+    } else if (navigationStatus === "rendered") {
         navigationMessage = `${activeTabLabel} ready`;
+    }
+
+    if (activeTab === "simulation" && simulationRestorationMessage !== undefined) {
+        navigationMessage = simulationRestorationMessage;
     }
 
     if (header.status === "empty") {
@@ -1324,15 +1377,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         <AppShellLayout
             navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}
             breadcrumbs={[
-                {label: "Your projects", id: "project-breadcrumb-projects", onClick: handleClose},
+                {label: "Your projects", id: "project-breadcrumb-projects", onClick: returnToProjects},
                 {label: projectName, onClick: () => setActiveTab("overview")},
                 {label: activeTabLabel},
             ]}
-            // Same warn-then-close-then-navigate path as the "Close project" button below (see
-            // handleClose) -- without this, the brand link's default `href="#/"` would silently bounce
-            // back to this same still-active project (see AppShellLayout's own onHomeClick doc comment),
-            // discarding an unapplied Mechanics Editor draft or an active operation with no warning at all.
-            onHomeClick={handleClose}
+            onHomeClick={returnToProjects}
         >
             <div className="studio-page">
                 <Title id="project-dashboard-heading" order={2}>{describeProjectName(header)}</Title>
@@ -1397,7 +1446,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         data-pokie-lifecycle-route={activeTab}
                         data-pokie-lifecycle-result-control={`project-tab:${activeTab}`}
                         data-pokie-lifecycle-result-state="navigation"
-                        data-pokie-lifecycle-terminal={navigationLifecycle.tab === activeTab ? navigationLifecycle.status : "loading"}
+                        data-pokie-lifecycle-terminal={navigationStatus}
                         size="xs"
                         c="dimmed"
                     >
@@ -1435,7 +1484,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     ? <WasmManifestInspection projectRoot={header.projectRoot} summary={header.wasmPresentation.inspectionSummary} />
                                     : <Text>This {describeProjectType(header.type).toLowerCase()} can be republished from Build/Export.</Text>
                             )}
-                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} onApplied={handleBlueprintSaved} />}
+                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} jobs={commonJobs} sourceChange={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange : undefined} onStarted={(sourceRevision) => setOptimizerSourceChange(previous => previous?.projectRoot === header.projectRoot && previous.sourceRevision === sourceRevision ? previous : {projectRoot: header.projectRoot, sourceRevision})} onApplied={handleBlueprintSaved} />}
                             {activeTab === "gameModel" && (
                                 // GameModelTab owns all of its own fetch state locally (no page-level hook),
                                 // so a genuine project switch needs a full remount, not just a re-render of a
@@ -1472,6 +1521,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     key={projectKey ?? "no-project"}
                                     progress={simulation.progress}
                                     error={simulation.error}
+                                    restorationMessage={simulationRestorationMessage}
                                     connectionError={simulation.connectionError}
                                     cancellationRequested={simulation.cancellationRequested}
                                     operation={simulation.operation}
@@ -1489,7 +1539,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                         setRunAgainNotice(undefined);
                                         simulation.cancel();
                                     }}
-                                    onRetry={simulation.retry}
+                                    onRetry={() => {
+                                        consumeSimulationRecovery();
+                                        simulation.retry();
+                                    }}
                                     recentRuns={reportsView}
                                     recentRunsError={reportsError}
                                     onRefreshRecentRuns={refreshReports}
@@ -1580,7 +1633,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     {/* Polling job details belong after the active workflow so
                         progress, throughput and retained terminals cannot move
                         its controls while a user presses them. */}
-                    <JobObservationNotice connectionError={commonJobs.connectionError} actionError={commonJobs.actionError ?? (activeTab !== "simulation" && simulation.error !== undefined ? `Simulation control failed. Try again or reattach to retained work. ${simulation.error}` : undefined)} onReattach={commonJobs.refresh} />
+                    <JobObservationNotice discoveryStatus={commonJobs.discoveryStatus} connectionError={commonJobs.connectionError} actionError={commonJobs.actionError ?? (activeTab !== "simulation" && simulation.error !== undefined ? `Simulation control failed. Try again or reattach to retained work. ${simulation.error}` : undefined)} onReattach={commonJobs.refresh} />
                     {visibleCommonJobs.length > 0 && (
                         <Stack gap="xs" mb="md" aria-labelledby="studio-operations-heading">
                             <Title id="studio-operations-heading" order={3}>Studio operations</Title>

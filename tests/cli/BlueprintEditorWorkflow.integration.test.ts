@@ -2,6 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {computeGameBlueprintHash, GameBlueprint} from "@fromstan/pokie";
+import {projectRevision} from "../../src/optimization/internal/optimizationData.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import {InMemoryRecentProjectsRepository} from "../../cli/studio/InMemoryRecentProjectsRepository.js";
@@ -33,6 +34,7 @@ describe("Blueprint Editor workflow (integration): validate -> save -> load -> b
     let repository: InMemoryRecentProjectsRepository;
     let homeService: StudioHomeService;
     let service: StudioBlueprintService;
+    let retainWorkDir: boolean;
 
     beforeEach(() => {
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-blueprint-editor-workflow-test-"));
@@ -40,16 +42,18 @@ describe("Blueprint Editor workflow (integration): validate -> save -> load -> b
         repository = new InMemoryRecentProjectsRepository();
         homeService = new StudioHomeService("1.3.0", repository);
         service = new StudioBlueprintService("1.3.0", studioRoot, homeService);
+        retainWorkDir = false;
         jest.spyOn(console, "log").mockImplementation(() => undefined);
     });
 
     afterEach(() => {
-        fs.rmSync(workDir, {recursive: true, force: true});
+        if (retainWorkDir) console.error(`Blueprint workflow diagnostics retained at ${workDir}`);
+        else fs.rmSync(workDir, {recursive: true, force: true});
         fs.rmSync(studioRoot, {recursive: true, force: true});
         (console.log as jest.Mock).mockRestore();
     });
 
-    it("round-trips save->load losslessly, builds a real package, and passes the real CLI validate/sim pipeline", async () => {
+    it("round-trips save->load losslessly, builds a real package, reports CLI validation limits and runs a real simulation", async () => {
         const blueprintPath = path.join(workDir, "blueprint.json");
         const outDir = path.join(workDir, "built-game");
         const blueprint = buildBlueprint();
@@ -57,7 +61,12 @@ describe("Blueprint Editor workflow (integration): validate -> save -> load -> b
         expect(service.validate(blueprint)).toEqual({status: "ok", warnings: []});
 
         const saved = service.save(blueprintPath, blueprint, false);
-        expect(saved).toEqual({status: "ok", path: blueprintPath, blueprintHash: computeGameBlueprintHash(blueprint)});
+        expect(saved).toEqual({
+            status: "ok",
+            path: blueprintPath,
+            blueprintHash: computeGameBlueprintHash(blueprint),
+            sourceRevision: projectRevision({type: "blueprint", rootPath: blueprintPath}),
+        });
         expect(fs.readFileSync(blueprintPath, "utf-8").endsWith("\n")).toBe(true);
 
         const loaded = service.load(blueprintPath);
@@ -78,7 +87,7 @@ describe("Blueprint Editor workflow (integration): validate -> save -> load -> b
         // Re-saving unchanged content is byte-identical (deterministic formatting, no timestamps).
         const firstSaveBytes = fs.readFileSync(blueprintPath);
         const resaved = service.save(blueprintPath, blueprint, true);
-        expect(resaved.status).toBe("ok");
+        expect(resaved).toEqual(saved);
         expect(fs.readFileSync(blueprintPath).equals(firstSaveBytes)).toBe(true);
 
         // Rebuilding into the same, now-populated outDir is refused -- a build only ever writes into a
@@ -88,14 +97,39 @@ describe("Blueprint Editor workflow (integration): validate -> save -> load -> b
         expect(rebuilt.status).toBe("error");
 
         // The generated package is indistinguishable from one produced by "pokie build <config.json>".
-        const validateExitCode = await new ValidateCommand().run([outDir]);
-        expect(validateExitCode).toBe(0);
+        const validationFile = path.join(workDir, "validation.json");
+        retainWorkDir = true;
+        const validateExitCode = await new ValidateCommand().run([outDir, "--format", "json", "--out", validationFile]);
+        const validation = JSON.parse(fs.readFileSync(validationFile, "utf-8"));
+        // Structural validity does not prove arbitrary package code. The default reel model
+        // exceeds the bounded analysis, so the public CLI must report inconclusive (exit 2).
+        expect(validation).toMatchObject({
+            valid: true,
+            errors: [],
+            warnings: [],
+            game: blueprint.manifest,
+            advanced: {
+                status: "budget-exhausted",
+                structuralValid: true,
+                verdict: "inconclusive",
+                executableFidelity: "unverified",
+                adapter: "tsPackage-declaration-v1",
+                limits: {outcomes: 1000},
+                work: {outcomes: 1000},
+                checks: expect.arrayContaining([
+                    expect.objectContaining({id: "analysis.completion", status: "unknown", message: "Analysis outcomes limit exhausted."}),
+                    expect.objectContaining({id: "source.executable-fidelity", status: "unknown"}),
+                ]),
+            },
+        });
+        expect(validateExitCode).toBe(2);
 
         const simFile = path.join(workDir, "sim.json");
         await new SimCommand().run([outDir, "--rounds", "200", "--seed", "demo", "--out", simFile]);
         const report = JSON.parse(fs.readFileSync(simFile, "utf-8"));
         expect(report.game).toEqual({id: "editor-slot", name: "Editor Slot", version: "0.1.0"});
         expect(report.rounds).toBe(200);
+        retainWorkDir = false;
     });
 
     it("rejects an invalid blueprint at validate/build-preview/build without writing anything", async () => {

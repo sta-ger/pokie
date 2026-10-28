@@ -4,6 +4,11 @@ Studio owns the lifecycle of work that can outlive a browser request. The common
 
 A job has an immutable project identity, operation, request summary and conflict key. Its progress is a named `stage`, semantic `unit`, `current`, and `total`, rather than a percentage. Terminal records retain timestamps, duration, safe result/provenance/output references and an explicit recovery instruction. IDs cannot be read or cancelled from another project.
 
+Before the first progress sample, a running job shows **Running** with indeterminate
+progress. Throughput and ETA require two advancing observations of the same execution,
+stage, unit and known total. They reset when the execution changes or cancellation is
+requested; a work ETA does not estimate how long cancellation cleanup will take.
+
 Home's completed project-opening card opens the project in Studio, including
 Blueprint files. Reveal opens its containing folder on the server's machine
 when local host access is available. Completion records an earlier operation;
@@ -70,7 +75,18 @@ executor.
 Potentially noticeable rows above are all common-job operations; they are not excused merely because the current implementation awaits I/O. Their existing endpoints remain compatibility
 projections while their domain services remain executors.
 
-When leaving a project, Studio asks the server for the complete active job set. The browser names those operations and must confirm the transition; the server rejects an unconfirmed close, Home navigation, or opening/switching to another project with the affected operation names. A new project generation invalidates stale list/start/poll/cancel responses so no response from project A is rendered in project B.
+The **Your projects** breadcrumb and Studio brand visit Home without closing the
+current project. Home shows that project's durable operations on both sections,
+including progress, Cancel, checkpoint Resume and retained terminal records.
+**Return to project** opens its scoped dashboard for result review and explicit
+Retry configuration. Dirty Game Model and Home Design edits still require a
+Leave/Stay choice. Browser-owned work retains its documented tab/Worker lifetime.
+
+Explicit **Close project** and opening a different project remain cleanup
+transitions. Studio asks the server for the complete active job set, names those
+operations and requires confirmation before cancelling them. A new project
+generation invalidates stale list/start/poll/cancel responses so no response from
+project A is rendered in project B.
 
 Logical composite delivery commits each subround through the existing runtime
 boundary. Cancellation stops subsequent subrounds and publication, and preserves
@@ -96,6 +112,8 @@ saved report; see [simulation analytics](simulation.md#feature-analytics-aggrega
 Simulation exposes real preparation, simulation, finalization/cleanup and terminal phases through both durable jobs and compatibility polling. Counts are accepted plays; all-mode totals cover each independent mode. A 100% counter can still be finalizing. Cancellation stays pending until worker/session/runtime release settles; a release error is failed and actionable, including when cancellation was requested. Staged mode results are unavailable to report/history/download consumers until the entire job succeeds and cleanup completes.
 
 Reload/remount reattaches to the same active job and retains its identity through transient observation errors. A server restart cannot resume an interrupted simulation executor: it becomes recovery-required with captured retry settings. Completed saved reports survive repository reconstruction. The saved report's metrics take precedence over supplementary statistics.
+
+Simulation job-card Retry and Recent runs “Run again” open Configure with the captured settings. Review or change those settings, then choose Run Simulation to create a new operation. Selecting either control again restores the captured settings without submitting work. Explicit Run or selecting a saved report consumes that configuration handoff, so later tab navigation preserves the newer result.
 
 The simulation API accepts an optional coherent `convergence` object (`minRounds`, `rtpTolerance` in RTP units, `checkIntervalRounds`, optional `stableChecks`). It is validated, forwarded to package workers and retained with the durable request and retry identity. Different adaptive settings conflict with an active request. Native outcome-library and WASM samplers explicitly reject adaptive settings; their budgets are fixed. The Configure form defaults to fixed budgets. A captured adaptive recovery request shows its retained settings and offers an explicit switch back to a fixed budget; Retry and Recent runs “Run again” preserve adaptive parameters. All-mode retries retain the per-mode budget rather than multiplying the displayed total again.
 

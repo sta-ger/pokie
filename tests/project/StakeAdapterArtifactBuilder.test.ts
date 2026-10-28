@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import {
     ArtifactBuildCancelledError,
+    type ArtifactBuildProgress,
     ArtifactBuildConflictError,
     OutcomeLibraryBundleWriter,
     PokieProject,
@@ -42,14 +43,38 @@ describe("StakeAdapterArtifactBuilder", () => {
         fs.rmSync(destinationDir, {recursive: true, force: true});
     });
 
-    it("republishes an already-exported Stake Engine directory to a new location, byte-identically", async () => {
+    it("republishes a numeric Stake directory with file progress and unchanged exchange files", async () => {
         const builder = new StakeAdapterArtifactBuilder("1.3.0");
 
-        const result = await builder.build(stakeAdapterProjectOf(sourceDir), destinationDir);
+        const progress: ArtifactBuildProgress[] = [];
+        const result = await builder.build(stakeAdapterProjectOf(sourceDir), destinationDir, {onProgress: event => progress.push(event)});
+        const files = progress.filter(event => event.phase === "Publishing Stake files");
+        expect(files.length).toBe(fs.readdirSync(destinationDir).length);
+        expect(files.map(event => event.completed)).toEqual(files.map((_, index) => BigInt(index + 1)));
+        expect(files.every(event => event.unit === "files" && event.total === BigInt(files.length))).toBe(true);
 
         expect(result.outputPath).toBe(destinationDir);
         expect(new Set(fs.readdirSync(destinationDir))).toEqual(new Set(fs.readdirSync(sourceDir)));
-        expect(fs.readFileSync(path.join(destinationDir, "index.json"), "utf-8")).toBe(fs.readFileSync(path.join(sourceDir, "index.json"), "utf-8"));
+        for (const name of fs.readdirSync(sourceDir).filter(file => file !== "pokie-manifest.json")) {
+            expect(fs.readFileSync(path.join(destinationDir, name))).toEqual(fs.readFileSync(path.join(sourceDir, name)));
+        }
+    });
+
+    it("preserves exact UInt64 Stake bytes and file-local progress", async () => {
+        const index = JSON.parse(fs.readFileSync(path.join(sourceDir, "index.json"), "utf8")) as {modes: {weights: string}[]};
+        for (const mode of index.modes) {
+            const weights = path.join(sourceDir, mode.weights);
+            fs.writeFileSync(weights, fs.readFileSync(weights, "utf8").replace(/^(\d+),\d+/gm, "$1,9007199254740992"));
+        }
+        const progress: ArtifactBuildProgress[] = [];
+        const result = await new StakeAdapterArtifactBuilder("1.3.0").build(stakeAdapterProjectOf(sourceDir), destinationDir, {onProgress: event => progress.push(event)});
+        const files = fs.readdirSync(sourceDir);
+        expect(result.outputPath).toBe(destinationDir);
+        expect(fs.readdirSync(destinationDir)).toEqual(files);
+        for (const file of files) expect(fs.readFileSync(path.join(destinationDir, file))).toEqual(fs.readFileSync(path.join(sourceDir, file)));
+        const samples = progress.filter(event => event.phase === "Publishing exact Stake files");
+        expect(samples.map(event => event.completed)).toEqual(files.map((_, index) => BigInt(index + 1)));
+        expect(samples.every(event => event.unit === "files" && event.total === BigInt(files.length))).toBe(true);
     });
 
     it("validates a readable Stake source without creating a destination", async () => {
@@ -59,11 +84,12 @@ describe("StakeAdapterArtifactBuilder", () => {
         expect(fs.existsSync(destinationDir)).toBe(false);
     });
 
-    it("builds Stake output from the registered canonical Outcome Library prerequisite", async () => {
+    it("builds Stake output with record and file progress from the canonical Outcome Library prerequisite", async () => {
         const outcomeDir = `${sourceDir}-outcome-library`;
         const stakeDir = `${sourceDir}-stake-output`;
         await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], outcomeDir);
 
+        const progress: ArtifactBuildProgress[] = [];
         const result = await new StakeAdapterArtifactBuilder("1.3.0").build(
             {
                 type: "outcomeLibrary",
@@ -72,7 +98,11 @@ describe("StakeAdapterArtifactBuilder", () => {
                 provenance: "canonical prerequisite",
             },
             stakeDir,
+            {onProgress: event => progress.push(event)},
         );
+        expect(progress).toContainEqual(expect.objectContaining({phase: "Building Stake books", unit: "outcome records", total: expect.any(BigInt)}));
+        expect(progress).toContainEqual(expect.objectContaining({phase: "Publishing Stake files", unit: "files", total: BigInt(4), completed: BigInt(4)}));
+        expect(progress.find(event => event.phase === "Preparing Stake publication")?.completed).toBeUndefined();
 
         expect(result.outputPath).toBe(stakeDir);
         expect(fs.existsSync(path.join(stakeDir, "index.json"))).toBe(true);

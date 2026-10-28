@@ -4,7 +4,7 @@ import {GamePackageGenerator, loadPokieGameRuntime, type GameBlueprint} from "@f
 import http from "http";
 import os from "os";
 import path from "path";
-import {screen, waitFor, within} from "@testing-library/react";
+import {fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {StudioServer} from "../../../../../../cli/studio/StudioServer.js";
 import {StudioHomeService} from "../../../../../../cli/studio/home/StudioHomeService.js";
@@ -83,6 +83,16 @@ it("submits the original Blueprint refreshed Stake operation once and borrows it
         await waitFor(() => expect(within(card("Stake Engine export")).getByRole("button", {name: "Build"})).toBeEnabled());
         const initialOperation = stakePreviews.at(-1)?.preparedOperationId;
         expect(stakePreviews.at(-1)?.stakePreflight?.route).toBe("generate");
+        const initialStakePreviewCount = stakePreviews.length;
+        const packageCard = card("TypeScript Game Package");
+        const configurePackage = document.getElementById("export-configure-artifact-tsPackage")!;
+        if (configurePackage.getAttribute("aria-expanded") === "false") await user.click(configurePackage);
+        fireEvent.change(within(packageCard).getByLabelText("Output directory (optional)"), {target: {value: path.join(directory, "edited-package")}});
+        expect(within(packageCard).getByRole("button", {name: "Build"})).toBeDisabled();
+        expect(within(card("Stake Engine export")).getByRole("button", {name: "Build"})).toBeEnabled();
+        await within(packageCard).findByText(`Resolved absolute path: ${path.join(directory, "edited-package")}`);
+        expect(stakePreviews).toHaveLength(initialStakePreviewCount);
+        expect(stakePreviews.at(-1)?.preparedOperationId).toBe(initialOperation);
         expect(document.getElementById("artifact-build-outcomeLibrary")).toBeNull();
         const generator = card("Outcome library generator");
         expect(generator).toHaveAttribute("data-pokie-lifecycle-form", "outcome-library");

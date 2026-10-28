@@ -41,6 +41,7 @@ export function SimulationTab({
     progress,
     error,
     connectionError,
+    restorationMessage,
     cancellationRequested,
     operation,
     terminalReceipt,
@@ -68,6 +69,8 @@ export function SimulationTab({
     progress: SimulationProgressView | undefined;
     error: string | undefined;
     connectionError?: string;
+    /** Discovery and first-detail restoration must settle before explicit Run. */
+    restorationMessage?: string;
     /** A cancel request accepted locally before the next durable poll catches up. */
     cancellationRequested: boolean;
     /** The rendered public control that started the current durable job. */
@@ -95,7 +98,7 @@ export function SimulationTab({
     availableModes?: string[];
     packageModes?: boolean;
     modeDiscoveryError?: string;
-    /** Immutable request retained by a terminal common job, restored for an explicit Run. */
+    /** Captured terminal-job or report settings, restored for an explicit Run. */
     recoveryRequest?: Readonly<Record<string, unknown>>;
 }) {
     const confirm = useConfirm();
@@ -108,23 +111,6 @@ export function SimulationTab({
         validateInputOnBlur: ["rounds"],
     });
 
-    useEffect(() => {
-        if (recoveryRequest === undefined) return;
-        const rounds = typeof recoveryRequest.rounds === "number" ? recoveryRequest.rounds : undefined;
-        const seed = typeof recoveryRequest.seed === "string" ? recoveryRequest.seed : undefined;
-        const workers = typeof recoveryRequest.workers === "number" ? recoveryRequest.workers : undefined;
-        const modeName = typeof recoveryRequest.modeName === "string" ? recoveryRequest.modeName : undefined;
-        form.setValues({
-            ...(rounds === undefined ? {} : {rounds}),
-            ...(seed === undefined ? {} : {seed}),
-            ...(workers === undefined ? {} : {workers}),
-            ...(modeName === undefined ? {} : {modeName}),
-        });
-        setCapturedConvergence(recoveryRequest.convergence as StudioSimulationReportListEntry["convergence"]);
-        form.validateField("rounds");
-        // Mantine's uncontrolled form object is intentionally stable.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [recoveryRequest]);
 
     // Defaults the picker to the first real mode the moment the list becomes available -- SimulationTab
     // can mount before the project header's own outcome-source report necessarily has (see PlayTab's own
@@ -155,10 +141,33 @@ export function SimulationTab({
             return 2;
         }
         if (progress !== undefined && progress.status !== "recovery-required") {
-            return 1;
+            return progress.status === "queued" || progress.status === "running" || progress.status === "cancelling" ? 1 : 2;
         }
         return 0;
     });
+
+    useEffect(() => {
+        if (recoveryRequest === undefined) return;
+        const rounds = typeof recoveryRequest.rounds === "number" ? recoveryRequest.rounds : undefined;
+        const seed = typeof recoveryRequest.seed === "string" ? recoveryRequest.seed : undefined;
+        const workers = typeof recoveryRequest.workers === "number" ? recoveryRequest.workers : undefined;
+        const modeName = typeof recoveryRequest.modeName === "string" ? recoveryRequest.modeName : undefined;
+        form.setValues({
+            rounds: rounds ?? DEFAULT_ROUNDS,
+            seed: seed ?? "",
+            workers: workers ?? 1,
+            modeName: modeName ?? "",
+        });
+        setCapturedConvergence(recoveryRequest.convergence as StudioSimulationReportListEntry["convergence"]);
+        form.validateField("rounds");
+        // A retained-job action can arrive while this tab is still on Review.
+        // Reconstructing hidden fields leaves that visible Retry without an
+        // outcome. Show its explicit submission step instead of replaying work.
+        setActiveStep(0);
+        // Mantine's uncontrolled form object is intentionally stable.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [recoveryRequest]);
+
 
     const active = progress !== undefined && (progress.status === "queued" || progress.status === "running" || progress.status === "cancelling");
     const cancellationPending = cancellationRequested || progress?.status === "cancelling";
@@ -170,8 +179,8 @@ export function SimulationTab({
     const resultJobId = terminalReceipt?.jobId ?? progress?.jobId;
     const resultStatus = terminalReceipt?.status ?? progress?.status;
 
-    // Auto-advances to Run the moment a fresh run starts (Configure submit or a Recent Runs "Run
-    // again", either way progress.status transitions to "queued"), and to Review the moment a run
+    // Auto-advances to Run the moment an explicit submission starts (progress.status transitions
+    // to "queued"), and to Review the moment a run
     // that was actually active goes terminal -- requirement 5's "auto-open summary". Keyed only on
     // the status *value*, not the progress object identity, so re-renders while already terminal
     // (e.g. the user manually flips back to Configure to look at defaults) never yank them back.
@@ -197,7 +206,9 @@ export function SimulationTab({
         // configuration visible and editable beside its actionable error.
         if (status === undefined && wasActive) setActiveStep(0);
         const nowTerminal = status === "completed" || status === "failed" || status === "cancelled" || status === "recovery-required";
-        if (nowTerminal && (wasActive || (prevStatusRef.current === undefined && status === "completed"))) {
+        // On a tab remount an explicit card handoff takes precedence over
+        // the previously completed job; a new execution's terminal still wins.
+        if (nowTerminal && (wasActive || (prevStatusRef.current === undefined && status === "completed" && recoveryRequest === undefined))) {
             setActiveStep(2);
             closeFullReport();
             setCompareOpened(false);
@@ -247,6 +258,7 @@ export function SimulationTab({
                 focusedControlRef.current = undefined;
             }
         }}>
+            {restorationMessage !== undefined && <Text role="status" aria-live="polite">{restorationMessage}</Text>}
             {connectionError !== undefined && <ErrorState message={connectionError} />}
             {error !== undefined && <ErrorState message={describeProjectActionError("This simulation request", error)} />}
             {historicalResult && <WarningState message="Historical simulation result — this report is not validated against the current saved design. Run a new simulation before using results for the current design. Downloads retain the original run's data." />}
@@ -288,10 +300,15 @@ export function SimulationTab({
             {activeStep === 0 && (
                 <form
                     data-pokie-lifecycle-form="simulation"
-                    onSubmit={form.onSubmit((values) =>
-                        onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined, capturedConvergence),
-                    )}
+                    onSubmit={form.onSubmit((values) => {
+                        if (restorationMessage === undefined) onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined, capturedConvergence);
+                    })}
                 >
+                    {recoveryRequest !== undefined && (
+                        <Text role="status" aria-live="polite" size="sm" mb="sm">
+                            Captured simulation settings restored. Review them and choose Run Simulation to retry.
+                        </Text>
+                    )}
                     <Text size="sm" c="dimmed" mb="sm">
                         Simulation plays many rounds of this game to estimate RTP, win frequency, and the largest win.
                         When it finishes, review the summary here or export the full report.
@@ -309,7 +326,7 @@ export function SimulationTab({
                             {...form.getInputProps("rounds")}
                             key={form.key("rounds")}
                         />
-                        <Button id="simulation-run" type="submit" data-pokie-lifecycle="operation" data-pokie-transaction-state="editable-submission" data-pokie-lifecycle-operation="simulation" loading={progress?.status === "queued"} disabled={active || !form.isValid()}>
+                        <Button id="simulation-run" type="submit" data-pokie-lifecycle="operation" data-pokie-transaction-state="editable-submission" data-pokie-lifecycle-operation="simulation" loading={progress?.status === "queued"} disabled={restorationMessage !== undefined || active || !form.isValid()}>
                             Run Simulation
                         </Button>
                     </QuickActions>

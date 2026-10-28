@@ -1,3 +1,4 @@
+import {projectRevision} from "../../../src/optimization/internal/optimizationData.js";
 import {AdvancedModelSourceValidator} from "../../../src/validation/AdvancedModelSourceValidator.js";
 import {
     ArtifactConversionPlanner,
@@ -194,6 +195,7 @@ export class StudioBlueprintService {
     private readonly loadBlueprint: (filePath: string) => unknown;
     private readonly blueprintValidator: GameBlueprintValidating;
     private readonly gamePackageGenerator: GamePackageGenerating;
+    private runtimePackageRoot: string | undefined;
     private readonly resolveReelStripGeneration: typeof resolveReelStripGeneration;
     private readonly parSheetImporter: ParSheetImporting;
     private readonly parSheetExporter: ParSheetExporting;
@@ -437,7 +439,16 @@ export class StudioBlueprintService {
             fs.mkdirSync(path.dirname(resolved), {recursive: true});
             this.materializeSymbolArtwork(resolved, blueprint);
             writeBlueprintAtomically(resolved, blueprint);
-            return {status: "ok", path: resolved, blueprintHash: editedHash};
+            // A model hash and an optimizer authored-byte revision are different identities.
+            // Unsupported optimizer paths (for example aliases) must not turn a committed Save
+            // into an error; the client then invalidates retained results conservatively.
+            let sourceRevision: string | undefined;
+            try {
+                sourceRevision = projectRevision({type: "blueprint", rootPath: resolved});
+            } catch {
+                // The Blueprint write succeeded even when no optimizer identity is available.
+            }
+            return {status: "ok", path: resolved, blueprintHash: editedHash, sourceRevision};
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }
@@ -949,7 +960,13 @@ export class StudioBlueprintService {
         }
     }
 
+    public withRuntimePackageRoot(runtimePackageRoot: string): this {
+        this.runtimePackageRoot = path.resolve(runtimePackageRoot);
+        return this;
+    }
+
     public async build(blueprint: unknown, outDir?: string, sourcePath?: string, signal?: AbortSignal): Promise<StudioBuildResult> {
+        const runtimePackageRoot = this.runtimePackageRoot;
         const validated = this.validate(blueprint);
         if (validated.status === "invalid") {
             return validated;
@@ -992,7 +1009,7 @@ export class StudioBlueprintService {
                 // the package directory.
                 read: () => blueprint as GameBlueprint,
                 canPublish: () => true,
-                publish: () => this.gamePackageGenerator.generate(blueprint as GameBlueprint, process.cwd(), outDir, undefined, {signal}),
+                publish: () => this.gamePackageGenerator.generate(blueprint as GameBlueprint, process.cwd(), outDir, undefined, {signal, runtimePackageRoot}),
                 register: (generated) => this.homeService.rememberRecentProject(generated.projectRoot, generated.manifest.name),
                 // Ownership starts after generation returns. Rollback releases
                 // that publication while retaining caller-owned directories.

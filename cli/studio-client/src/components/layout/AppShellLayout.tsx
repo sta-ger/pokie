@@ -58,8 +58,8 @@ export function AppShellLayout({
     // along the way (e.g. a Mechanics Editor draft) with no warning, since a raw anchor click is an
     // untracked history transition useNavigationBlockerConfirm's useBlocker can't intercept -- the same
     // gap useDesignNavigationGuard's own doc comment describes for Home. ProjectDashboardPage passes its
-    // own `handleClose` here so the brand link goes through the exact same warn-then-close-then-navigate
-    // path as its "Close project" button, instead of a second, unguarded way to leave.
+    // own router navigation here so the dirty-edit blocker can guard the transition.
+    // Visiting Home preserves the project; explicit Close owns server cleanup.
     onHomeClick?: () => void;
     children: ReactNode;
 }) {

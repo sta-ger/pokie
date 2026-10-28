@@ -86,7 +86,7 @@ export class StudioCommand implements CliCommandHandling {
             );
         this.studioRoot = dependencies.studioRoot ?? "";
         this.blueprintService =
-            dependencies.blueprintService ?? new StudioBlueprintService(pokieVersion, this.studioRoot, this.homeService);
+            dependencies.blueprintService ?? new StudioBlueprintService(pokieVersion, this.studioRoot, this.homeService).withRuntimePackageRoot(pokiePackageRoot);
         this.process = dependencies.process ?? process;
     }
 

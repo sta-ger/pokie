@@ -10,24 +10,30 @@ function statusLabel(status: StudioJobView["status"]): string {
     return "Running";
 }
 
-function percentFor(current: number | string | undefined, total: number | string | undefined): number | undefined {
-    if (current === undefined || total === undefined) return undefined;
-    try {
-        // Decimal strings are bigint-safe durable values. Never coerce a
-        // large outcome count through Number just to draw a progress bar.
-        const completed = BigInt(current);
-        const all = BigInt(total);
-        if (completed < BigInt(0) || all <= BigInt(0)) return undefined;
-        return Math.min(100, Number((completed * BigInt(10_000)) / all) / 100);
-    } catch {
-        return undefined;
-    }
+// Persisted/extension samples are not guaranteed to be measured work. Validate
+// the pair together and never clamp an incompatible sample into completion.
+function measuredProgress(progress: StudioJobView["progress"]): {current: bigint; total: bigint} | undefined {
+    if (progress === undefined || typeof progress.unit !== "string" || !progress.unit.trim()) return undefined;
+    const count = (value: number | string): bigint | undefined => {
+        if ((typeof value !== "number" && typeof value !== "string") || (typeof value === "number" ? !Number.isSafeInteger(value) : !(/^[0-9]+$/).test(value))) return undefined;
+        try {
+            const parsed = BigInt(value);
+            return parsed < BigInt(0) ? undefined : parsed;
+        } catch {
+            return undefined;
+        }
+    };
+    const current = count(progress.current);
+    const total = count(progress.total);
+    if (current === undefined || total === undefined || total <= BigInt(0) || current > total) return undefined;
+    return {current, total};
 }
 
 export function JobProgressCard({job, onCancel, cancellationPending = false}: {job: StudioJobView; onCancel?: (id: string) => void; cancellationPending?: boolean}) {
     const [observedAt, setObservedAt] = useState<number | undefined>(undefined);
-    const previousProgress = useRef<{stage: string; unit: string; current: bigint; total: bigint; at: number} | undefined>(undefined);
-    const [rate, setRate] = useState<{perSecond: number; etaMs: number} | undefined>();
+    const previousProgress = useRef<{id: string; projectId: string; startedAt?: number; stage: string; unit: string; current: bigint; total: bigint; at: number} | undefined>(undefined);
+    const [rate, setRate] = useState<(Pick<StudioJobView, "id" | "projectId" | "startedAt" | "progress"> & {stage: string; unit: string; current: bigint; total: bigint; perSecond: number; etaMs: number}) | undefined>();
+    const progressCurrent = job.progress?.current;
     useEffect(() => {
         let timer: number | undefined;
         if (job.startedAt !== undefined && job.completedAt === undefined) {
@@ -38,30 +44,32 @@ export function JobProgressCard({job, onCancel, cancellationPending = false}: {j
         return () => {
             if (timer !== undefined) window.clearInterval(timer);
         };
-    }, [job.startedAt, job.completedAt]);
+    }, [job.id, job.projectId, job.startedAt, job.completedAt]);
     useEffect(() => {
         const progress = job.progress;
-        if (progress === undefined) {
+        if (progress === undefined || job.status !== "running" || cancellationPending) {
             previousProgress.current = undefined;
             setRate(undefined);
             return;
         }
         try {
-            const current = BigInt(progress.current);
-            const total = BigInt(progress.total);
-            if (current < BigInt(0) || total <= BigInt(0)) throw new Error("indeterminate progress");
+            const measured = measuredProgress(progress);
+            if (measured === undefined) throw new Error("indeterminate progress");
+            const {current, total} = measured;
             const now = Date.now();
             const previous = previousProgress.current;
-            previousProgress.current = {stage: progress.stage, unit: progress.unit, current, total, at: now};
-            if (previous === undefined || previous.stage !== progress.stage || previous.unit !== progress.unit || previous.total !== total || current <= previous.current || now <= previous.at) {
+            previousProgress.current = {id: job.id, projectId: job.projectId, startedAt: job.startedAt, stage: progress.stage, unit: progress.unit, current, total, at: now};
+            // A rate belongs to one owned execution. Its work samples cannot
+            // estimate another run or the unmeasured cancellation cleanup.
+            if (previous === undefined || previous.id !== job.id || previous.projectId !== job.projectId || previous.startedAt !== job.startedAt || previous.stage !== progress.stage || previous.unit !== progress.unit || previous.total !== total || current <= previous.current || now <= previous.at) {
                 setRate(undefined);
                 return;
             }
             const advanced = current - previous.current;
-            const remaining = total > current ? total - current : BigInt(0);
+            const remaining = total - current;
             // A numeric rate is presentation-only. Refuse a lossy conversion
             // for very large bigint deltas rather than fabricating an ETA.
-            if (advanced > BigInt(Number.MAX_SAFE_INTEGER) || remaining > BigInt(Number.MAX_SAFE_INTEGER)) {
+            if (remaining === BigInt(0) || advanced > BigInt(Number.MAX_SAFE_INTEGER) || remaining > BigInt(Number.MAX_SAFE_INTEGER)) {
                 setRate(undefined);
                 return;
             }
@@ -70,17 +78,21 @@ export function JobProgressCard({job, onCancel, cancellationPending = false}: {j
                 setRate(undefined);
                 return;
             }
-            setRate({perSecond, etaMs: Number(remaining) / perSecond * 1000});
+            setRate({id: job.id, projectId: job.projectId, startedAt: job.startedAt, progress, stage: progress.stage, unit: progress.unit, current, total, perSecond, etaMs: Number(remaining) / perSecond * 1000});
         } catch {
             previousProgress.current = undefined;
             setRate(undefined);
         }
-    }, [job.progress]);
+    }, [job.id, job.projectId, job.startedAt, job.status, job.progress, job.progress?.stage, job.progress?.unit, progressCurrent, job.progress?.total, cancellationPending]);
     if (!active(job.status)) return null;
     const progress = job.progress;
-    const percent = percentFor(progress?.current, progress?.total);
+    // Effects reset the sampling baseline, but the first committed render
+    // already has to exclude another execution, snapshot or cleanup phase.
+    const measured = measuredProgress(progress);
+    const visibleRate = measured !== undefined && measured.current < measured.total && job.status === "running" && !cancellationPending && rate?.id === job.id && rate.projectId === job.projectId && rate.startedAt === job.startedAt && rate.progress === progress && rate.stage === progress?.stage && rate.unit === progress?.unit && rate.current === measured.current && rate.total === measured.total ? rate : undefined;
+    const percent = measured === undefined ? undefined : Number((measured.current * BigInt(10_000)) / measured.total) / 100;
     const elapsedMs = job.startedAt === undefined ? undefined : (job.completedAt ?? observedAt ?? job.startedAt) - job.startedAt;
-    let description = progress?.stage ?? "Queued";
+    let description = progress?.stage ?? statusLabel(job.status);
     if (job.status === "cancelling") description = "Cancellation requested; waiting for cleanup.";
     else if (cancellationPending) description = "Sending cancellation request…";
     return (
@@ -88,10 +100,10 @@ export function JobProgressCard({job, onCancel, cancellationPending = false}: {j
             <Group justify="space-between" align="start" wrap="wrap">
                 <div style={{flex: "1 1 12rem", minWidth: 0}}>
                     <Text size="sm" data-job-detail>{description}</Text>
-                    {progress !== undefined && <Text size="xs" data-job-detail>{progress.current} / {progress.total} {progress.unit}{progress.message === undefined ? "" : ` · ${progress.message}`}</Text>}
-                    {progress === undefined && job.status !== "queued" && <Text size="xs" data-job-detail>Progress is indeterminate while this operation prepares its next safe boundary.</Text>}
+                    {progress !== undefined && <Text size="xs" data-job-detail>{progress.current}{measured === undefined ? " / unknown" : ` / ${progress.total}`} {progress.unit}{progress.message === undefined ? "" : ` · ${progress.message}`}</Text>}
+                    {measured === undefined && job.status !== "queued" && <Text size="xs" data-job-detail>Progress is indeterminate; the current phase has no compatible measured total.</Text>}
                     {elapsedMs !== undefined && <Text size="xs" c="dimmed">Elapsed: {elapsedMs}ms</Text>}
-                    {rate !== undefined && <Text size="xs" c="dimmed">Throughput: {rate.perSecond.toFixed(2)} {progress?.unit}/s · ETA: {Math.ceil(rate.etaMs)}ms</Text>}
+                    {visibleRate !== undefined && <Text size="xs" c="dimmed">Throughput: {visibleRate.perSecond.toFixed(2)} {progress?.unit}/s · ETA: {Math.ceil(visibleRate.etaMs)}ms</Text>}
                 </div>
                 {onCancel !== undefined && <Button size="xs" variant="light" color="red" disabled={cancellationPending || job.status === "cancelling"} onClick={() => onCancel(job.id)}>Cancel</Button>}
             </Group>

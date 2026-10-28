@@ -4,6 +4,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import {buildPackageJsonPatch} from "../gamepackage/buildPackageJsonPatch.js";
+import {withLocalPokieDependency} from "../gamepackage/withLocalPokieDependency.js";
 import {renderTsconfig} from "../gamepackage/renderTsconfig.js";
 import {BUILT_PACKAGE_FILES} from "./buildGameBuildInfo.js";
 import type {GameBlueprint} from "./GameBlueprint.js";
@@ -93,7 +94,8 @@ export class GamePackageGenerator implements GamePackageGenerating {
         // caller-supplied one.
         const materializedBlueprint = materializeReelStrips(blueprint, resolvedReelStripGeneration);
 
-        const packageJson = buildPackageJsonPatch(
+        const runtimePackageRoot = options?.runtimePackageRoot === undefined ? undefined : path.resolve(options.runtimePackageRoot);
+        const basePackageJson = buildPackageJsonPatch(
             {
                 name: id,
                 version: blueprint.manifest.version,
@@ -105,17 +107,22 @@ export class GamePackageGenerator implements GamePackageGenerating {
             },
             this.pokieVersion,
         );
+        const packageJson = runtimePackageRoot === undefined ? basePackageJson : withLocalPokieDependency(basePackageJson, runtimePackageRoot);
 
         this.publish(projectRoot, {
             "package.json": `${JSON.stringify(packageJson, null, 4)}\n`,
             "package-lock.json": renderBuiltPackageLock(packageJson),
             "tsconfig.json": renderTsconfig(),
-            "README.md": renderBuiltPackageReadme(blueprint.manifest),
+            "README.md": renderBuiltPackageReadme(blueprint.manifest, runtimePackageRoot !== undefined),
             "src/index.ts": renderBuiltGameModuleSource(materializedBlueprint, this.pokieVersion),
             "dist/index.js": renderBuiltGameModule(materializedBlueprint, this.pokieVersion),
-        }, options);
+        }, options, runtimePackageRoot);
 
-        return {projectRoot, manifest: blueprint.manifest, createdFiles: [...BUILT_PACKAGE_FILES]};
+        return {
+            projectRoot,
+            manifest: blueprint.manifest,
+            createdFiles: [...BUILT_PACKAGE_FILES, ...(runtimePackageRoot === undefined ? [] : ["node_modules/@fromstan/pokie"])],
+        };
     }
 
     // Stages every file into a fresh temp sibling directory first (touching nothing under projectRoot),
@@ -124,7 +131,7 @@ export class GamePackageGenerator implements GamePackageGenerating {
     // absent or an empty directory, both of which a directory rename can safely replace), so a reader
     // can only ever observe projectRoot missing, or fully populated with every file — never a partial
     // write.
-    private publish(projectRoot: string, contentsByRelativePath: Record<string, string>, options?: GamePackageGenerateOptions): void {
+    private publish(projectRoot: string, contentsByRelativePath: Record<string, string>, options?: GamePackageGenerateOptions, runtimePackageRoot?: string): void {
         const tempDir = `${projectRoot}.tmp-${crypto.randomBytes(6).toString("hex")}`;
         const entries = Object.entries(contentsByRelativePath);
 
@@ -139,6 +146,12 @@ export class GamePackageGenerator implements GamePackageGenerating {
             }
             // The final file callback is a cancellation boundary: do not rename the complete temp
             // directory into its user-visible destination after it asks us to stop.
+            assertNotCancelled(options);
+            if (runtimePackageRoot !== undefined) {
+                const runtimeLink = path.join(tempDir, "node_modules", "@fromstan", "pokie");
+                fs.mkdirSync(path.dirname(runtimeLink), {recursive: true});
+                fs.symlinkSync(runtimePackageRoot, runtimeLink, "junction");
+            }
             assertNotCancelled(options);
             fs.renameSync(tempDir, projectRoot);
         } catch (error) {

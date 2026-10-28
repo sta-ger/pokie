@@ -98,13 +98,17 @@ shipped declarations. The `/browser`, `/wasm` and `/client/player` exports are E
 metadata and private deep imports are not public exports. See the [WASM boundary](wasm-compatibility-boundary.md)
 for portable execution and independent format versions.
 
-Preparation can temporarily resolve an unpublished POKIE dependency against the running installation.
-Its persisted manifest and lockfile retain portable authored dependency settings after completion or
-failure. A generated package can also contain a convenience runtime link to that installation; this
-is local preparation, not a replacement for dependency installation on another machine. When copying
-without `node_modules`, install the declared dependency again before building or executing. Candidate
-verification selects the same local archive with `npm install --no-save --package-lock=false /path/to/candidate.tgz`;
-it must not bind the consumer to repository source or rewrite the generated imports.
+Code-first preparation can temporarily resolve an unpublished POKIE dependency against the running
+installation, restoring its authored manifest and lockfile afterwards. Artifact builds through the
+CLI and Studio instead persist that installation as a `file:` dependency in both generated manifests,
+alongside the immediate runtime link. Thus their documented `npm install` reuses the same runtime
+without assuming a registry release exists. Keep that installation at its recorded location.
+When moving to another machine, explicitly select the same candidate archive with
+`npm install /absolute/path/to/fromstan-pokie.tgz`, or select an available installed runtime directory,
+then install the remaining developer dependencies. The local dependency is not portable by itself.
+Direct `GamePackageGenerator` callers can opt into this behavior with
+`{runtimePackageRoot}` in the generate options; omitting it retains the registry version range and
+requires the caller to install an available runtime. Generated imports remain `@fromstan/pokie`.
 
 ### Retrying a failed preparation
 

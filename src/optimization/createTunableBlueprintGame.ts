@@ -4,6 +4,7 @@ import {createAuthoredSession} from "../generated/createAuthoredSession.js";
 import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
 import {SeededRandomNumberGenerator} from "../session/videoslot/combinations/SeededRandomNumberGenerator.js";
+import {SharedSlotMathPool} from "../wasm/math/internal/SharedSlotMathPool.js";
 
 /** Executable data-backed package contract. Custom packages can implement the same contract themselves. */
 export function createTunableBlueprintGame(blueprint: GameBlueprint): PokieGame {
@@ -16,21 +17,16 @@ export function createTunableBlueprintGame(blueprint: GameBlueprint): PokieGame 
     ) throw new Error(
         "Data-backed exact tuning requires finite authored base reels and simple spins or free-game paid entries.",
     );
-    const disposers: (() => void)[] = [];
-    const create: typeof createAuthoredSession = (...args) => {
-        const owned = createAuthoredSession(...args);
-        disposers.push(owned.dispose);
-        return owned;
-    };
+    const sharedMathPool = new SharedSlotMathPool();
     return {
         release: () => {
-            for (const dispose of disposers.splice(0)) dispose();
+            sharedMathPool.dispose();
             return Promise.resolve();
         },
         getManifest: () => blueprint.manifest,
         getConfigHash: () => computeGameBlueprintHash(blueprint),
-        createSession: (context) => create(blueprint, new SeededRandomNumberGenerator(context?.seed ?? 0)).session,
+        createSession: (context) => createAuthoredSession(blueprint, new SeededRandomNumberGenerator(context?.seed ?? 0), undefined, sharedMathPool).session,
         createExactEnumerationSession: (forced) =>
-            create(blueprint, new SeededRandomNumberGenerator(0), forced).session,
+            createAuthoredSession(blueprint, new SeededRandomNumberGenerator(0), forced, sharedMathPool).session,
     };
 }

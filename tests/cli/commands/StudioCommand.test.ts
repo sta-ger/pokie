@@ -1,7 +1,13 @@
 import {PokieDevServerAddress} from "@fromstan/pokie";
+import fs from "fs";
+import os from "os";
 import path from "path";
+import {InternalStudioCommand, INTERNAL_STUDIO_COMMAND_NAME} from "../../../cli/commands/InternalStudioCommand.js";
 import {StudioCommand} from "../../../cli/commands/StudioCommand.js";
+import {dispatch} from "../../../cli/dispatch.js";
+import {resolveCliInvocation} from "../../../cli/resolveCliInvocation.js";
 import {StudioServerOptions} from "../../../cli/studio/StudioServerOptions.js";
+import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 
 function createStubServer(
     address: PokieDevServerAddress,
@@ -47,6 +53,17 @@ describe("StudioCommand", () => {
 
         expect(command.getName()).toBe("studio");
         expect(command.getDescription().length).toBeGreaterThan(0);
+    });
+
+    it("supplies its installed runtime to the sibling editor package builder", () => {
+        const configure = jest.spyOn(StudioBlueprintService.prototype, "withRuntimePackageRoot");
+        try {
+            const command = new StudioCommand("2.0.0", "/installed/pokie");
+            expect(command.getName()).toBe("studio");
+            expect(configure).toHaveBeenCalledWith("/installed/pokie");
+        } finally {
+            configure.mockRestore();
+        }
     });
 
     it("renders the implicit entry as `pokie`, never as a public studio verb", () => {
@@ -96,6 +113,9 @@ describe("StudioCommand", () => {
         logSpy.mockRestore();
     });
 
+    // This real loader snapshots its host installation, including this source
+    // checkout when run here. Allow that filesystem work to finish before Jest
+    // tears down the VM used by the entry loader; retain the real load/assertion.
     it("opens a registered package through Studio's bundled POKIE runtime when the package has no node_modules", async () => {
         const server = createStubServer({host: "127.0.0.1", port: 3200});
         let receivedOptions: StudioServerOptions | undefined;
@@ -120,7 +140,7 @@ describe("StudioCommand", () => {
         });
 
         logSpy.mockRestore();
-    });
+    }, 180000);
 
     it("resolves a project context when a projectRoot argument is given", async () => {
         const server = createStubServer({host: "127.0.0.1", port: 3200});
@@ -144,6 +164,65 @@ describe("StudioCommand", () => {
         );
 
         logSpy.mockRestore();
+    });
+
+    it("routes an existing writable Blueprint through public dispatch after an absent-output rejection, without retaining that rejection", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-public-copy-"));
+        const destination = path.join(directory, "reviewed-candidate.blueprint.json");
+        const fixture = path.resolve(__dirname, "../../v2/fixtures/Valera35FeralBlazingSafari.blueprint.json");
+        const bytes = fs.readFileSync(fixture);
+        const contexts: StudioServerOptions["initialContext"][] = [];
+        const server = createStubServer({host: "127.0.0.1", port: 3200});
+        const open = jest.fn();
+        const command = new InternalStudioCommand(new StudioCommand("2.0.0", "/fake/pokie/root", {
+            createServer: (options) => {
+                contexts.push(options.initialContext);
+                return server;
+            },
+            openBrowser: open,
+            process: new FakeProcess() as unknown as NodeJS.Process,
+        }));
+        const argv = ["node", "pokie", destination, "--no-open"];
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            // A proposed destination is not a published artifact. Neither the
+            // shared resolver nor public dispatch should invent one on disk.
+            expect(resolveCliInvocation(argv, [command.getName()])).toBeUndefined();
+            expect(await dispatch([command], argv)).toBe(1);
+            expect(errorSpy).toHaveBeenLastCalledWith(`Unknown command ${JSON.stringify(destination)}. Run \`pokie --help\` to list commands.`);
+            expect(server.startCalls).toBe(0);
+            expect(fs.existsSync(destination)).toBe(false);
+
+            // Model the handoff only after a writable copy actually exists.
+            // Reuse the same command after rejection and after later removal.
+            for (let cycle = 0; cycle < 2; cycle++) {
+                fs.writeFileSync(destination, bytes, {flag: "wx"});
+                fs.accessSync(destination, fs.constants.R_OK | fs.constants.W_OK);
+                expect(resolveCliInvocation(argv, [command.getName()])).toEqual({
+                    commandName: INTERNAL_STUDIO_COMMAND_NAME,
+                    args: [destination, "--no-open"],
+                });
+                for (let launch = 0; launch < 2; launch++) {
+                    errorSpy.mockClear();
+                    expect(await dispatch([command], argv)).toBe(0);
+                    expect(contexts[contexts.length - 1]).toEqual({mode: "project", projectRoot: destination});
+                    expect(errorSpy).not.toHaveBeenCalled();
+                    expect(fs.readFileSync(destination)).toEqual(bytes);
+                }
+                fs.unlinkSync(destination);
+                const starts = server.startCalls;
+                expect(await dispatch([command], argv)).toBe(1);
+                expect(server.startCalls).toBe(starts);
+            }
+            expect(server.startCalls).toBe(4);
+            expect(open).not.toHaveBeenCalled();
+            expect(fs.readFileSync(fixture)).toEqual(bytes);
+        } finally {
+            logSpy.mockRestore();
+            errorSpy.mockRestore();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
     });
 
     it("does not open the browser when --no-open is given", async () => {

@@ -5,7 +5,7 @@ import {ModalsProvider} from "@mantine/modals";
 import {createMemoryRouter, MemoryRouter, RouterProvider} from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import {BlueprintEditorPage} from "../../../../../../cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage";
-import {loadPersistedProjectBlueprintDraft, savePersistedProjectBlueprintDraft, validatePersistedProjectBlueprintDraft, clearPersistedBlueprintDraft, loadPersistedBlueprintDraft, savePersistedBlueprintDraft, validatePersistedBlueprintDraft} from "../../../../../../cli/studio-client/src/domain/blueprintDraftStorage";
+import {clearPersistedProjectBlueprintDraft, createProjectBlueprintDraftWriter, loadPersistedProjectBlueprintDraft, savePersistedProjectBlueprintDraft, validatePersistedProjectBlueprintDraft, clearPersistedBlueprintDraft, loadPersistedBlueprintDraft, savePersistedBlueprintDraft, validatePersistedBlueprintDraft} from "../../../../../../cli/studio-client/src/domain/blueprintDraftStorage";
 import {createRecommendedBlueprint} from "../../../../../../cli/studio-client/src/domain/blueprintEditorState";
 import {StudioApiProvider} from "../../../../../../cli/studio-client/src/context/StudioApiProvider";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
@@ -310,7 +310,7 @@ describe("Design recovery in the same browser tab", () => {
 
 
 const projectRoot = "/games/explicit.json";
-const projectRecoveryMessage = "Recovered an unsaved game model draft from your last session in this tab.";
+const projectRecoveryMessage = "An unsaved game model draft is available in this tab. Restore it to continue editing, or Discard it. Restoring does not save changes.";
 const projectDraftKey = `pokie-studio:project-draft:v1:${projectRoot}`;
 
 function projectApi(blueprint: typeof retained & Record<string, unknown> = retained) {
@@ -332,9 +332,12 @@ function projectApi(blueprint: typeof retained & Record<string, unknown> = retai
 
 function renderProject(fetchImpl: FetchLike, root = projectRoot, editable = true) {
     const dirty = jest.fn();
-    const router = createMemoryRouter([{path: "*", element: <GameModelTab editable={editable} projectRoot={root} onDirtyChange={dirty} />}], {initialEntries: ["/project/gameModel"]});
+    const router = createMemoryRouter([
+        {path: "/project/gameModel", element: <GameModelTab editable={editable} projectRoot={root} onDirtyChange={dirty} />},
+        {path: "/project/overview", element: <p>Project overview</p>},
+    ], {initialEntries: ["/project/overview", "/project/gameModel"]});
     const view = render(<MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><ModalsProvider><RouterProvider router={router} /></ModalsProvider></StudioApiProvider></MantineProvider>);
-    return {...view, dirty};
+    return {...view, dirty, router};
 }
 
 function gameModelAction(action: "edit" | "save" | "cancel"): HTMLElement {
@@ -352,6 +355,81 @@ const malformedProject = [
 describe("Project Game Model tab-local recovery", () => {
     beforeEach(() => window.sessionStorage.clear());
     afterEach(() => window.sessionStorage.clear());
+
+    it("retires pre-discard writers without preventing a fresh edit or another project's recovery", () => {
+        const draft = {blueprint: retained, section: "basics" as const, sourceHash: "original"};
+        const oldWriter = createProjectBlueprintDraftWriter(projectRoot);
+        const otherWriter = createProjectBlueprintDraftWriter("/games/other.json");
+        oldWriter(draft);
+        expect(loadPersistedProjectBlueprintDraft(projectRoot)).toEqual(draft);
+        clearPersistedProjectBlueprintDraft(projectRoot);
+        oldWriter(draft);
+        expect(window.sessionStorage.getItem(projectDraftKey)).toBeNull();
+        otherWriter(draft);
+        expect(loadPersistedProjectBlueprintDraft("/games/other.json")).toEqual(draft);
+        const nextWriter = createProjectBlueprintDraftWriter(projectRoot);
+        const nextDraft = {...draft, sourceHash: "next-edit"};
+        nextWriter(nextDraft);
+        oldWriter(draft);
+        expect(loadPersistedProjectBlueprintDraft(projectRoot)).toEqual(nextDraft);
+    });
+
+    it("keeps the recovery offer visible but disabled during Save, then preserves the current edit after Discard", async () => {
+        const user = userEvent.setup();
+        savePersistedProjectBlueprintDraft(projectRoot, {blueprint: {...retained, manifest: {...retained.manifest, name: "Older recovery"}}, section: "basics", sourceHash: "original"});
+        const api = projectApi();
+        let release: ((response: Awaited<ReturnType<FetchLike>>) => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => url.endsWith("/validate") ? new Promise(resolve => {
+            release = resolve;
+        }) : api.fetchImpl(url, init);
+        const mounted = renderProject(fetchImpl);
+        await screen.findByText(projectRecoveryMessage);
+        fireEvent.click(gameModelAction("edit"));
+        await screen.findByLabelText("Game name");
+        editName("Current unsaved edit");
+        fireEvent.click(gameModelAction("save"));
+        expect(release).toBeDefined();
+        expect(screen.getByText(projectRecoveryMessage)).toBeVisible();
+        for (const name of ["Restore", "Discard"]) {
+            const action = screen.getByRole("button", {name, exact: true});
+            expect(action).toBeDisabled();
+            await user.click(action);
+        }
+        expect(screen.getByLabelText("Game name")).toHaveValue("Current unsaved edit");
+        expect(loadPersistedProjectBlueprintDraft(projectRoot)?.blueprint.manifest).toMatchObject({name: "Older recovery"});
+        await act(() => Promise.resolve(release!({ok: true, status: 200, json: () => Promise.resolve({status: "invalid", errors: [{code: "name", severity: "error", message: "Repair name"}], warnings: []})})));
+        await screen.findByText("Save blocked — correct these errors before saving");
+        expect(screen.getByRole("button", {name: "Restore", exact: true})).toBeEnabled();
+        await user.click(screen.getByRole("button", {name: "Discard", exact: true}));
+        expect(screen.queryByText(projectRecoveryMessage)).not.toBeInTheDocument();
+        expect(loadPersistedProjectBlueprintDraft(projectRoot)?.blueprint.manifest).toMatchObject({name: "Current unsaved edit"});
+        mounted.unmount();
+        renderProject(api.fetchImpl);
+        await screen.findByText(projectRecoveryMessage);
+        await user.click(screen.getByRole("button", {name: "Restore", exact: true}));
+        expect(screen.getByLabelText("Game name")).toHaveValue("Current unsaved edit");
+        expect(api.calls.some(call => call.url.endsWith("/save"))).toBe(false);
+        expect(api.server.blueprint).toEqual(retained);
+    });
+
+    it("does not restore a cached offer after its persisted draft has been discarded", async () => {
+        const user = userEvent.setup();
+        savePersistedProjectBlueprintDraft(projectRoot, {blueprint: {...retained, manifest: {...retained.manifest, name: "Discarded recovery"}}, section: "basics", sourceHash: "original"});
+        const api = projectApi();
+        renderProject(api.fetchImpl);
+        await screen.findByText(projectRecoveryMessage);
+        clearPersistedProjectBlueprintDraft(projectRoot);
+        await user.click(screen.getByRole("button", {name: "Restore", exact: true}));
+        expect(screen.queryByText(projectRecoveryMessage)).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Game name")).not.toBeInTheDocument();
+        expect(screen.getByText("Name: Tab Draft")).toBeVisible();
+        expect(loadPersistedProjectBlueprintDraft(projectRoot)).toBeUndefined();
+        fireEvent.click(gameModelAction("edit"));
+        await screen.findByLabelText("Game name");
+        editName("Fresh recoverable edit");
+        expect(loadPersistedProjectBlueprintDraft(projectRoot)?.blueprint.manifest).toMatchObject({name: "Fresh recoverable edit"});
+        expect(api.calls.some(call => call.url.endsWith("/save"))).toBe(false);
+    });
 
     it("retains an applied Save, then a focused unsaved edit across remount, explicit Restore, Save and Discard", async () => {
         const api = projectApi();
@@ -399,6 +477,87 @@ describe("Project Game Model tab-local recovery", () => {
         renderProject(api.fetchImpl);
         await screen.findByText("Name: Tab Draft");
         expect(screen.queryByText(projectRecoveryMessage)).not.toBeInTheDocument();
+    });
+
+    it.each(["history Leave", "refresh"])("distinguishes %s from recovery, then recovers a subsequent undiscarded edit", async (exit) => {
+        const user = userEvent.setup();
+        const api = projectApi();
+        savePersistedBlueprintDraft(retained);
+        savePersistedProjectBlueprintDraft("/games/other.json", {blueprint: retained, section: "basics", sourceHash: "other"});
+        const first = renderProject(api.fetchImpl);
+        await screen.findByText("Name: Tab Draft");
+        fireEvent.click(gameModelAction("edit"));
+        const description = await screen.findByLabelText("Description (optional)");
+        description.focus();
+        fireEvent.input(description, {target: {value: "Fresh affected navigation draft"}});
+        const saved = window.sessionStorage.getItem(projectDraftKey);
+        expect(loadPersistedProjectBlueprintDraft(projectRoot)?.blueprint.manifest).toMatchObject({description: "Fresh affected navigation draft"});
+        const unload = new Event("beforeunload", {cancelable: true});
+        window.dispatchEvent(unload);
+        expect(unload.defaultPrevented).toBe(true);
+        expect(window.sessionStorage.getItem(projectDraftKey)).toBe(saved);
+
+        if (exit === "history Leave") {
+            for (const keyboard of [false, true]) {
+                await act(async () => {
+                    await first.router.navigate(-1);
+                });
+                const stay = await screen.findByRole("button", {name: "Stay"});
+                if (keyboard) {
+                    act(() => stay.focus());
+                    await user.keyboard("{Enter}");
+                } else await user.click(stay);
+                await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+                await waitFor(() => expect(description).toHaveFocus());
+                expect(description).toHaveValue("Fresh affected navigation draft");
+                expect(window.sessionStorage.getItem(projectDraftKey)).toBe(saved);
+            }
+            await act(async () => {
+                await first.router.navigate(-1);
+            });
+            await user.click(await screen.findByRole("button", {name: "Leave"}));
+            await screen.findByText("Project overview");
+            expect(loadPersistedProjectBlueprintDraft(projectRoot)).toBeUndefined();
+            await act(async () => {
+                await first.router.navigate(1);
+            });
+            await screen.findByText("Name: Tab Draft");
+            expect(screen.queryByText(projectRecoveryMessage)).not.toBeInTheDocument();
+            expect(screen.queryByRole("button", {name: "Restore", exact: true})).not.toBeInTheDocument();
+            const cleanUnload = new Event("beforeunload", {cancelable: true});
+            window.dispatchEvent(cleanUnload);
+            expect(cleanUnload.defaultPrevented).toBe(false);
+        }
+        first.unmount();
+        // Same sessionStorage + a new mount models the client lifetime across F5. A real browser
+        // F5 and installed asset identity remain the controller's independent workflow evidence.
+        const next = renderProject(api.fetchImpl);
+        await screen.findByText("Name: Tab Draft");
+        if (exit === "refresh") {
+            expect(screen.getByText(projectRecoveryMessage)).toBeVisible();
+            expect(window.sessionStorage.getItem(projectDraftKey)).toBe(saved);
+            const restore = screen.getByRole("button", {name: "Restore", exact: true});
+            act(() => restore.focus());
+            await user.keyboard("{Enter}");
+            expect(screen.getByLabelText("Description (optional)")).toHaveValue("Fresh affected navigation draft");
+            expect(next.dirty).toHaveBeenLastCalledWith(true);
+            expect(screen.queryByText(projectRecoveryMessage)).not.toBeInTheDocument();
+        } else {
+            expect(screen.queryByText(projectRecoveryMessage)).not.toBeInTheDocument();
+            fireEvent.click(gameModelAction("edit"));
+            await screen.findByLabelText("Description (optional)");
+        }
+        fireEvent.input(screen.getByLabelText("Description (optional)"), {target: {value: "Subsequent recoverable edit"}});
+        expect(loadPersistedProjectBlueprintDraft(projectRoot)?.blueprint.manifest).toMatchObject({description: "Subsequent recoverable edit"});
+        next.unmount();
+        renderProject(api.fetchImpl);
+        await screen.findByText(projectRecoveryMessage);
+        await user.click(screen.getByRole("button", {name: "Restore", exact: true}));
+        expect(screen.getByLabelText("Description (optional)")).toHaveValue("Subsequent recoverable edit");
+        expect(loadPersistedBlueprintDraft()).toEqual({blueprint: retained});
+        expect(loadPersistedProjectBlueprintDraft("/games/other.json")?.sourceHash).toBe("other");
+        expect(api.calls.some(call => (/\/(save|validate|build)$/).test(call.url))).toBe(false);
+        expect(api.server.blueprint).toEqual(retained);
     });
 
     it("preserves Design and other-project drafts, and never exposes recovery in read-only projects", async () => {

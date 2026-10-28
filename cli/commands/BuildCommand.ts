@@ -494,7 +494,7 @@ export class BuildCommand implements CliCommandHandling {
                         lastMessage = progress.message;
                         console.log(
                             `Build ${progress.status}: ${progress.message}` +
-                                `${progress.completed !== undefined ? ` (${progress.completed}${progress.total !== undefined ? `/${progress.total}` : ""})` : ""}`,
+                                `${progress.completed !== undefined ? ` (${progress.completed}${progress.total !== undefined ? `/${progress.total}` : ""}${progress.unit === undefined ? "" : ` ${progress.unit}`})` : ""}`,
                         );
                     }
                     if (progress.status === "cancelled") console.log("Artifact build cancelled.");

@@ -120,7 +120,9 @@ it("Project Game Model edits and validates the shared draft, saves explicitly an
     await user.clear(field);
     await user.type(field, "-1");
     await waitFor(() => expect(within(section).getByRole("button", {name: "Save"})).toBeDisabled());
-    expect(within(section).getByText(/mechanics.weightedBonus.outcomes.0.weight/)).toBeVisible();
+    expect(field).toHaveValue("-1");
+    expect(within(section).getByText("weighted-bonus-weight: mechanics.weightedBonus.outcomes.0.weight: expected a nonnegative integer no larger than 2^32.")).toBeVisible();
+    expect(within(section).getByText("Path: mechanics.weightedBonus.outcomes.0.weight")).toBeVisible();
     expect(saved.mechanics!.weightedBonus!.outcomes[0].weight).toBe(1);
     await user.clear(field);
     await user.type(field, "2");

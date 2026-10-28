@@ -89,10 +89,11 @@ export function publishExactStakeSource(source: StakeEngineExactSource, outDir: 
         outDir, ownership,
         beforeCommit: cancelled,
         writeFilesIntoTempDir: directory => {
+            let completed = BigInt(0);
             for (const name of files) {
                 cancelled();
                 fs.writeFileSync(path.join(directory, name), Buffer.from(source.files[name], "base64"));
-                options?.onProgress?.({completed: BigInt(0), message: `Publishing exact Stake file ${name}`});
+                options?.onProgress?.({phase: "Publishing exact Stake files", unit: "files", completed: ++completed, total: BigInt(files.length), message: `Publishing exact Stake file ${name}`});
                 cancelled();
             }
         },

@@ -16,7 +16,7 @@ import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";
 import {FileStudioProjectRegistry} from "../../cli/studio/FileStudioProjectRegistry.js";
 import {StudioProjectRegistrationService} from "../../cli/studio/StudioProjectRegistrationService.js";
 import {fractionalBetBlueprint} from "../fixtures/math/FractionalBetFixture.js";
-import {writeRunnableCodeFirstPackage} from "./fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, writeRunnableCodeFirstPackage} from "./fixtures/PackageExtractionFixture.js";
 
 function inventory(directory: string): Record<string, string> {
     return Object.fromEntries(fs.readdirSync(directory, {recursive: true, withFileTypes: true})
@@ -57,6 +57,14 @@ async function compareSeeded(source: string, regenerated: string, model: GameBlu
 
 describe("package to editable Blueprint public journey (controller-owned)", () => {
     let directory: string;
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     beforeEach(() => {
         directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-extraction-workflow-"));
     });
@@ -129,9 +137,10 @@ describe("package to editable Blueprint public journey (controller-owned)", () =
             const started = service.startPreparedExtraction(source, preview.preparedOperationId!, path.join(directory, "studio.json"));
             if (started.status !== "created") throw new Error(started.status);
             let terminal = service.getStatusForProject(source, started.job.id)!;
-            for (let read = 0; read < 1000 && ["queued", "running", "cancelling"].includes(terminal.status); read++) {
+            const deadline = Date.now() + PACKAGE_EXTRACTION_TEST_TIMEOUT;
+            while (Date.now() < deadline && ["queued", "running", "cancelling"].includes(terminal.status)) {
                 await new Promise<void>(resolve => {
-                    setImmediate(resolve);
+                    setTimeout(resolve, 10);
                 });
                 terminal = service.getStatusForProject(source, started.job.id)!;
             }
@@ -167,5 +176,5 @@ describe("package to editable Blueprint public journey (controller-owned)", () =
         expect(computeGameBlueprintHash(JSON.parse(fs.readFileSync(authoringPath, "utf8")))).not.toBe(extraction.blueprintHash);
         expect(fs.readFileSync(`${authoringPath}.conversion-evidence.json`)).toEqual(evidenceBytes);
         expect(inventory(source)).toEqual(before);
-    });
+    }, 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
 });

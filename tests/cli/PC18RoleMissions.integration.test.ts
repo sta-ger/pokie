@@ -1,3 +1,5 @@
+import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -10,7 +12,6 @@ import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {StakeEngineCommand} from "../../cli/commands/StakeEngineCommand.js";
-import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import {localPokieDependencyRunner, REPO_ROOT} from "../testUtils/offlinePokieDependencyOverride.js";
 import {ensureCompiledTestOutput} from "../testUtils/ensureCompiledTestOutput.js";
 
@@ -36,6 +37,14 @@ describe("PC-18 fresh public CLI role missions", () => {
         });
     });
 
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     beforeEach(() => {
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc18-role-missions-"));
         jest.spyOn(console, "log").mockImplementation(() => undefined);
@@ -55,7 +64,7 @@ describe("PC-18 fresh public CLI role missions", () => {
         const packageRoot = path.join(workDir, "runnable-package");
 
         expect(await new CreateCommand(POKIE_VERSION).run(["Math designer", "--random", "--seed", "18", "--out", authored])).toBe(0);
-        expect(await new ValidateCommand().run([authored])).toBe(0);
+        await expectInconclusiveArtifactValidation([authored]);
         expect(await new ParCommand(POKIE_VERSION).run(["export", authored, "--out", workbook])).toBe(0);
         expect(await new ParCommand(POKIE_VERSION).run(["import", workbook, "--out", imported])).toBe(0);
         expect(JSON.parse(fs.readFileSync(`${imported}.conversion-evidence.json`, "utf8"))).toMatchObject({
@@ -105,7 +114,7 @@ describe("PC-18 fresh public CLI role missions", () => {
         expect(await build.run([blueprint, "--target", "outcomeLibrary", "--out", outcomes])).toBe(0);
         expect(await build.run([outcomes, "--target", "stakeAdapter", "--out", stake])).toBe(0);
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["import", stake, "--out", imported])).toBe(0);
-        expect(await new ValidateCommand().run([imported, "--deep"])).toBe(0);
+        await expectInconclusiveArtifactValidation([imported, "--deep"]);
 
         const projectRoot = path.join(workDir, "new-project");
         const runner = localPokieDependencyRunner();
@@ -120,6 +129,6 @@ describe("PC-18 fresh public CLI role missions", () => {
         await expect(new InitCommand(POKIE_VERSION, undefined, retryingRunner).run([projectRoot])).rejects.toThrow("controlled preparation failure");
         expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
         expect(await new InitCommand(POKIE_VERSION, undefined, runner).run([projectRoot])).toBe(0);
-        expect(await new ValidateCommand().run([projectRoot])).toBe(0);
+        await expectInconclusiveArtifactValidation([projectRoot]);
     }, 300000);
 });

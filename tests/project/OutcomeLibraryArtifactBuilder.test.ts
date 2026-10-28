@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import {
     ArtifactBuildCancelledError,
+    type ArtifactBuildProgress,
     ArtifactBuildConflictError,
     OutcomeLibraryArtifactBuilder,
     OutcomeLibraryBundleWriter,
@@ -52,10 +53,17 @@ describe("OutcomeLibraryArtifactBuilder", () => {
         fs.rmSync(destinationDir, {recursive: true, force: true});
     });
 
-    it("republishes every mode of an already-built bundle to a new directory, byte-identically", async () => {
+    it("republishes every mode with phase-local progress and byte-identical output", async () => {
         const builder = new OutcomeLibraryArtifactBuilder("1.3.0");
 
-        const result = await builder.build(outcomeLibraryProjectOf(sourceDir), destinationDir);
+        const progress: ArtifactBuildProgress[] = [];
+        const result = await builder.build(outcomeLibraryProjectOf(sourceDir), destinationDir, {onProgress: event => progress.push(event)});
+        expect(progress).toContainEqual(expect.objectContaining({unit: "outcome records", message: "Writing Outcome mode base", total: undefined}));
+        expect(progress).toContainEqual(expect.objectContaining({unit: "outcome records", message: "Analyzing Outcome mode base (pass 1 of 2)", total: expect.any(BigInt)}));
+        expect(progress).toContainEqual(expect.objectContaining({unit: "bytes", phase: "Building Outcome Library index base", total: expect.any(BigInt)}));
+        expect(progress).toContainEqual(expect.objectContaining({unit: "bundle files", phase: "Publishing Outcome files", total: expect.any(BigInt)}));
+        expect(progress.find(event => event.phase === "Preparing outcome-library publication")?.completed).toBeUndefined();
+        expect(progress.find(event => event.phase === "validation")?.total).toBeUndefined();
 
         expect(result.outputPath).toBe(destinationDir);
         expect(new Set(fs.readdirSync(destinationDir))).toEqual(new Set(fs.readdirSync(sourceDir)));

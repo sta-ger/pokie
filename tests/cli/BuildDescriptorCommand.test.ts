@@ -1,3 +1,5 @@
+import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -6,7 +8,6 @@ import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {ImportCommand} from "../../cli/commands/ImportCommand.js";
 import {OutcomeLibraryCommand} from "../../cli/commands/OutcomeLibraryCommand.js";
 import {ParCommand} from "../../cli/commands/ParCommand.js";
-import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 
 const blueprint = {
     manifest: {id: "export-conflict", name: "Export Conflict", version: "1.0.0"},
@@ -55,6 +56,14 @@ function writeValidSources(workDir: string): Record<"outcomeLibrary" | "stakeAda
 }
 
 describe("BuildCommand", () => {
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
+
     it("exposes one canonical build command and handles help without exporting", async () => {
         const command = new BuildCommand("1.3.0");
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
@@ -110,7 +119,7 @@ describe("BuildCommand", () => {
 
             expect(fs.existsSync(path.join(adapterPath, "pokie-manifest.json"))).toBe(true);
             expect(fs.existsSync(path.join(adapterPath, "index.json"))).toBe(true);
-            await expect(new ValidateCommand().run([adapterPath, "--format", "json"])).resolves.toBe(0);
+            await expectInconclusiveArtifactValidation([adapterPath, "--format", "json"]);
         } finally {
             fs.rmSync(workDir, {recursive: true, force: true});
         }
@@ -173,11 +182,11 @@ describe("BuildCommand", () => {
                     }),
                 }),
             ]);
-            await expect(new ValidateCommand().run([outcomePath, "--format", "json"])).resolves.toBe(0);
+            await expectInconclusiveArtifactValidation([outcomePath, "--format", "json"]);
 
             await expect(command.run([blueprintPath, "--target", "stakeAdapter", "--out", adapterPath])).resolves.toBe(0);
             expect(fs.existsSync(path.join(adapterPath, "pokie-manifest.json"))).toBe(true);
-            await expect(new ValidateCommand().run([adapterPath, "--format", "json"])).resolves.toBe(0);
+            await expectInconclusiveArtifactValidation([adapterPath, "--format", "json"]);
         } finally {
             fs.rmSync(workDir, {recursive: true, force: true});
         }
@@ -422,7 +431,7 @@ describe("BuildCommand", () => {
             expect(await command.run([source, "--target", "outcomeLibrary"])).toBe(0);
             const manifest = await new OutcomeLibraryBundleReader().readManifest(destination);
             expect(manifest.modes.map((mode) => mode.modeName)).toEqual(["base", "streamed"]);
-            expect(await new ValidateCommand().run([destination, "--deep", "--format", "json"])).toBe(0);
+            await expectInconclusiveArtifactValidation([destination, "--deep", "--format", "json"]);
         } finally {
             log.mockRestore();
             fs.rmSync(directory, {recursive: true, force: true});

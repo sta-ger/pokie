@@ -57,6 +57,10 @@ const EXTERNAL_YIELD_EVERY = BigInt(5000);
 // every raw reel-stop tuple. At most one buffer per digest partition is live,
 // so even a sweep that touches all partitions retains only a few megabytes.
 const EXTERNAL_WRITE_BUFFER_BYTES = 16 * 1024;
+// Session/artifact construction is much more expensive than raw stop accumulation.
+// Async-generator yields alone only drain microtasks, starving HTTP observation
+// and cancellation for an entire candidate. Bound that phase by elapsed host time.
+const ARTIFACT_OBSERVATION_INTERVAL_MS = 25;
 
 function defaultHeapUsedLimitBytes(): number {
     return v8.getHeapStatistics().heap_size_limit * HEAP_SAFETY_FRACTION;
@@ -461,6 +465,16 @@ async function *streamExactWeightedOutcomesInternal(
         return {id, weight: prepared.weightDenominator ? bigintProbability(entry.weight, prepared.weightDenominator) : toSafeWeightNumber(entry.weight, id), artifact};
     };
 
+    let nextObservation = performance.now() + ARTIFACT_OBSERVATION_INTERVAL_MS;
+    const observe = async (): Promise<void> => {
+        const now = performance.now();
+        if (now < nextObservation) return;
+        nextObservation = now + ARTIFACT_OBSERVATION_INTERVAL_MS;
+        await new Promise<void>(resolve => {
+            setTimeout(resolve, 0);
+        });
+    };
+
     let processedRawCount: bigint;
     // Streaming publication always partitions distinct grids on disk. A
     // resumable public adapter persists those partitions behind an
@@ -478,15 +492,22 @@ async function *streamExactWeightedOutcomesInternal(
             ...(prepared.initialProcessedRawCount === undefined ? {} : {initialProcessedRawCount: prepared.initialProcessedRawCount}),
             ...((options.durableCheckpointOnCancellation && options.recoveryAuthority !== undefined) || prepared.recoveryAuthority !== undefined ? {retainStagingOnCancellation: true} : {}),
         });
-        let step = await external.next();
-        options.onPostEnumeration?.();
-        let emittedOutcomes = BigInt(0);
-        while (!step.done) {
-            yield createOutcome(step.value.id, step.value.entry);
-            options.onPostEnumerationProgress?.(++emittedOutcomes);
-            step = await external.next();
+        try {
+            let step = await external.next();
+            options.onPostEnumeration?.();
+            let emittedOutcomes = BigInt(0);
+            while (!step.done) {
+                yield createOutcome(step.value.id, step.value.entry);
+                options.onPostEnumerationProgress?.(++emittedOutcomes);
+                await observe();
+                step = await external.next();
+            }
+            processedRawCount = step.value;
+        } finally {
+            // A publisher can stop consumption or artifact construction can
+            // reject. Close the nested producer so its staging owner drains too.
+            await external.return(BigInt(0));
         }
-        processedRawCount = step.value;
     } else {
         const {grids, processedRawCount: accumulatedRawCount} = await accumulateUniqueGridWeights<string>(prepared.reelWindows, prepared.tuples, prepared.progressTotal, {
             signal: options.signal,
@@ -503,10 +524,24 @@ async function *streamExactWeightedOutcomesInternal(
         grids.clear();
         options.onPostEnumeration?.();
         let emittedOutcomes = BigInt(0);
+        const checkCancellation = (): void => {
+            if (!options.signal?.aborted) return;
+            // Raw enumeration is complete; the complete accumulated population
+            // is still authoritative. Resume replays artifact construction,
+            // never a partial published library or an empty accumulation prefix.
+            throw new WeightedOutcomeLibraryGenerationCancelledError(
+                accumulatedRawCount, prepared.progressTotal,
+                new Map(sortedUniqueGrids.map(({entry}) => [JSON.stringify(entry.grid), entry])),
+                prepared.sourceEnumerationId,
+            );
+        };
         for (const {id, entry} of sortedUniqueGrids) {
+            checkCancellation();
             yield createOutcome(id, entry);
             options.onPostEnumerationProgress?.(++emittedOutcomes);
+            await observe();
         }
+        checkCancellation();
         processedRawCount = accumulatedRawCount;
     }
 
@@ -664,8 +699,12 @@ async function *externallyAccumulateExactGridWeights(
                 .map(([gridKey, entry]) => ({id: outcomeIdForGrid(gridKey), entry}))
                 .sort((left, right) => compareIds(left.id, right.id));
             weights.clear();
-            for (const item of sorted) yield item;
+            for (const item of sorted) {
+                if (options.signal?.aborted) throw checkpoint(processedRawCount, !options.retainStagingOnCancellation);
+                yield item;
+            }
         }
+        if (options.signal?.aborted) throw checkpoint(processedRawCount, !options.retainStagingOnCancellation);
         return processedRawCount;
     } finally {
         for (const descriptor of descriptors.values()) fs.closeSync(descriptor);
@@ -693,13 +732,8 @@ export function createStreamingExactWeightedOutcomes(
     const source = streamExactWeightedOutcomes(options);
     let diagnostics: OutcomeLibraryGeneratorDiagnostics | undefined;
     async function *captureDiagnostics(): AsyncGenerator<WeightedOutcomeInput> {
-        let step = await source.next();
-        while (!step.done) {
-            yield step.value;
-            step = await source.next();
-        }
-        diagnostics = step.value;
-        return step.value;
+        diagnostics = yield* source;
+        return diagnostics;
     }
     return {outcomes: captureDiagnostics(), getDiagnostics: () => diagnostics};
 }

@@ -18,6 +18,7 @@ import {describeProjectActionError} from "../../domain/projectActionError";
 import {describeWasmProjectPathError, describeWasmProjectRegistrationError} from "../../domain/wasmProjectActionError";
 import {describeProjectType, PROJECT_TYPE_LABEL} from "../../domain/interpret/ProjectDashboard";
 import {useConfirm} from "../../hooks/useConfirm";
+import {useDesignFocusVisibility} from "../../hooks/useDesignFocusVisibility";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {EmptyState} from "../common/EmptyState";
@@ -110,6 +111,8 @@ export function ProjectsPanel({
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
     const confirm = useConfirm();
+    const controlsRegion = useRef<HTMLDivElement>(null);
+    useDesignFocusVisibility(controlsRegion, isVisible);
     const openAndNavigate = useOpenProject();
     const [listView, setListView] = useState<ListView>({status: "loading"});
     const [refreshVersion, setRefreshVersion] = useState(0);
@@ -443,7 +446,7 @@ export function ProjectsPanel({
     );
 
     return (
-        <div>
+        <div ref={controlsRegion} className="studio-projects">
             <PageSection legend="Your projects">
                 {listView.status === "loading" && <LoadingState label="Loading your projects…" />}
                 {listView.status === "error" && (

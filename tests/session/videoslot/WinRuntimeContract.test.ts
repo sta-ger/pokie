@@ -1,3 +1,4 @@
+import {SharedSlotMathPool} from "../../../src/wasm/math/internal/SharedSlotMathPool.js";
 import {evaluatorValidationCases} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {
     WinEvaluationPipeline, WinEvaluationContext, ValueWinComponent,
@@ -65,6 +66,32 @@ describe("shared calculator configuration authority", () => {
         return {config, model, create};
     }
 
+    test("requires a concrete pool owner and preserves shared-model validation before pooled execution", () => {
+        class DerivedPool extends SharedSlotMathPool {}
+        const callback = jest.fn(() => {
+            throw new Error("Unvalidated math factory executed");
+        });
+        const altered = new SharedSlotMathPool();
+        altered.create = callback;
+        for (const pool of [null, {create: callback}, new DerivedPool(), altered]) {
+            const {create} = fixture({type: "lines"}, {sharedMathPool: pool as SharedSlotMathPool});
+            expect(() => create()).toThrow(/sharedMathPool/);
+        }
+        expect(callback).not.toHaveBeenCalled();
+        const pool = new SharedSlotMathPool();
+        try {
+            const {config, model, create} = fixture({type: "lines"}, {sharedMathPool: pool});
+            expect(() => new VideoSlotWinCalculator(config, undefined, undefined, undefined, undefined, undefined,
+                {sharedMathPool: pool})).toThrow(/sharedMathPool/);
+            expect(() => create({...model, paytable: {A: {3: 99}}})).toThrow(/does not match/);
+            const calculator = create();
+            calculator.calculateWin(0.05, new SymbolsCombination().fromMatrix([["A"], ["A"], ["A"]]));
+            expect(calculator.getWinAmount()).toBe(0.1);
+        } finally {
+            pool.dispose();
+        }
+    });
+
     test.each(["lines", "ways", "clusters"] as const)("%s executes current public payouts, including exact bet-specific amounts and replacement configs", type => {
         const {config, create} = fixture({type, ...(type === "clusters" ? {minimumClusterSize: 3} : {})});
         const calculator = create();
@@ -88,6 +115,11 @@ describe("shared calculator configuration authority", () => {
         calculator.calculateWin(0.05, screen);
         expect(calculator.getWinAmount()).toBe(0);
         expect(calculator.isStatelessForSessionRestoration()).toBe(true);
+        calculator.calculateWin(0.05, screen);
+        expect(calculator.getWinAmount()).toBe(0);
+        replacement.setPayoutForSymbol("A", 3, 5);
+        calculator.calculateWin(0.05, screen);
+        expect(calculator.getWinAmount()).toBe(0.25);
     });
 
     test.each(["paytable", "paylines", "reels", "wilds", "bets", "strips"])("rejects initially mismatched %s declarations", field => {
@@ -103,19 +135,37 @@ describe("shared calculator configuration authority", () => {
         expect(() => create(mismatch)).toThrow(/does not match/);
     });
 
-    test.each(["right-to-left", "scattered", "custom-minimum", "mutated-pattern", "wild-substitution", "modifiers", "custom-pattern-strategy"])("rejects unsupported %s at construction and after mutation, including restoration", rule => {
+    test.each(["right-to-left", "scattered", "custom-minimum", "mutated-pattern", "custom-pattern-strategy"])("rejects unsupported %s at construction and after mutation, including restoration", rule => {
         const {config, create} = fixture();
         const calculator = create();
         if (rule === "right-to-left") config.setLinesPatterns(new RightToLeftLinesPatterns(3));
         if (rule === "scattered") config.setLinesPatterns(new ScatteredLinesPatterns(3));
         if (rule === "custom-minimum") config.setLinesPatterns(new LeftToRightLinesPatterns(3, 3));
         if (rule === "mutated-pattern") config.getLinesPatterns().toArray()[0][0] = 0;
-        if (rule === "wild-substitution") config.setWildSubstitutions({W: ["B"]});
-        if (rule === "modifiers") config.setScreenModifiers({wilds: [{symbol: "W", factor: 2}], rules: []});
         if (rule === "custom-pattern-strategy") config.setLinesPatterns({toArray: () => new LeftToRightLinesPatterns(3).toArray()});
         expect(() => create()).toThrow(/cannot lower/);
         expect(() => calculator.calculateWin(0.05, new SymbolsCombination().fromMatrix([["A"], ["A"], ["A"]]))).toThrow(/cannot lower/);
         expect(calculator.isStatelessForSessionRestoration()).toBe(false);
+    });
+
+    test.each(["wild-substitution", "modifiers"] as const)("relowers supported %s while rejecting a stale declaration", rule => {
+        const {config, model, create} = fixture();
+        const calculator = create();
+        const screen = new SymbolsCombination().fromMatrix([["W"], ["A"], ["A"]]);
+        calculator.calculateWin(0.05, screen);
+        expect(calculator.getWinAmount()).toBe(0.1);
+        if (rule === "wild-substitution") config.setWildSubstitutions({W: ["B"]});
+        else config.setScreenModifiers({wilds: [{symbol: "W", factor: 2}], rules: []});
+        expect(() => create()).toThrow(/does not match/);
+        const expected = rule === "wild-substitution" ? 0 : 0.2;
+        for (let round = 0; round < 2; round++) {
+            calculator.calculateWin(0.05, screen);
+            expect(calculator.getWinAmount()).toBe(expected);
+        }
+        expect(calculator.isStatelessForSessionRestoration()).toBe(true);
+        const declared = create({...model, wildSubstitutions: rule === "wild-substitution" ? {W: ["B"]} : {}});
+        declared.calculateWin(0.05, screen);
+        expect(declared.getWinAmount()).toBe(expected);
     });
 
     test("relowers supported paylines and wild updates and preserves public line identifiers", () => {

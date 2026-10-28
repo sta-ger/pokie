@@ -18,12 +18,13 @@ export function JobCard(props: ComponentProps<typeof JobResultCard> & {
         if (visibilityFrame.current !== undefined) cancelAnimationFrame(visibilityFrame.current);
         visibilityFrame.current = undefined;
     }, []);
-    const keepFocusedRegionVisible = () => {
+    const keepFocusedControlVisible = useCallback(() => {
         const region = ref.current;
         // A later report/history response may arrive after the reader has
         // moved to another control, job or dialog. Never scroll on its behalf.
-        if (region === null || !region.isConnected || document.activeElement !== region) return;
-        const bounds = region.getBoundingClientRect();
+        const control = document.activeElement;
+        if (region === null || !region.isConnected || !(control instanceof HTMLElement) || !region.contains(control)) return;
+        const bounds = control.getBoundingClientRect();
         if (bounds.width === 0 || bounds.height === 0) return;
         const top = Math.max(0, document.querySelector(".mantine-AppShell-header")?.getBoundingClientRect().bottom ?? 0) + 8;
         const bottom = window.innerHeight - 8;
@@ -33,33 +34,43 @@ export function JobCard(props: ComponentProps<typeof JobResultCard> & {
             ? bounds.top >= top && bounds.top < bottom
             : bounds.top >= top && bounds.bottom <= bottom;
         if (!verticallyVisible || bounds.left < 8 || bounds.right > window.innerWidth - 8) {
-            region.scrollIntoView({block: bounds.height > bottom - top ? "start" : "nearest", inline: "nearest", behavior: "instant"});
+            control.scrollIntoView({block: bounds.height > bottom - top ? "start" : "nearest", inline: "nearest", behavior: "instant"});
         }
-    };
-    useLayoutEffect(() => stopObserving, [stopObserving]);
+    }, []);
+    const scheduleVisibility = useCallback(() => {
+        if (!ref.current?.contains(document.activeElement) || visibilityFrame.current !== undefined) return;
+        visibilityFrame.current = requestAnimationFrame(() => {
+            visibilityFrame.current = undefined;
+            keepFocusedControlVisible();
+        });
+    }, [keepFocusedControlVisible]);
+    useLayoutEffect(() => {
+        // A height-only viewport change need not resize the card or ancestors.
+        window.addEventListener("resize", scheduleVisibility);
+        window.visualViewport?.addEventListener("resize", scheduleVisibility);
+        return () => {
+            window.removeEventListener("resize", scheduleVisibility);
+            window.visualViewport?.removeEventListener("resize", scheduleVisibility);
+            stopObserving();
+        };
+    }, [scheduleVisibility, stopObserving]);
     useLayoutEffect(() => {
         if (focusedControl.current !== undefined && !focusedControl.current.isConnected && document.activeElement === document.body) {
             ref.current?.focus({preventScroll: true});
         }
-        keepFocusedRegionVisible();
+        keepFocusedControlVisible();
     });
     return (
-        <div ref={ref} tabIndex={-1} role="region" aria-label={`${props.job.operation} job ${props.job.id}`}
+        <div ref={ref} className="studio-job-card" tabIndex={-1} role="region" aria-label={`${props.job.operation} job ${props.job.id}`}
             style={{scrollMarginTop: "calc(var(--app-shell-header-offset, 0px) + 8px)", scrollMarginBottom: 8, scrollMarginInline: 8}}
             onFocusCapture={(event) => {
                 focusedControl.current = event.target;
                 stopObserving();
-                if (event.target !== event.currentTarget) return;
-                keepFocusedRegionVisible();
+                if (!event.currentTarget.contains(event.target)) return;
+                keepFocusedControlVisible();
                 // Observe the containing layout as well as the card: Review,
                 // report and Recent runs can expand above an unchanged card.
-                const observer = new ResizeObserver(() => {
-                    if (visibilityFrame.current !== undefined) return;
-                    visibilityFrame.current = requestAnimationFrame(() => {
-                        visibilityFrame.current = undefined;
-                        keepFocusedRegionVisible();
-                    });
-                });
+                const observer = new ResizeObserver(scheduleVisibility);
                 layoutObserver.current = observer;
                 for (let ancestor: HTMLElement | null = event.currentTarget; ancestor !== null; ancestor = ancestor.parentElement) {
                     observer.observe(ancestor);

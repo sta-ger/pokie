@@ -5,6 +5,7 @@ import {execFileSync} from "node:child_process";
 import {pathToFileURL} from "node:url";
 import {GameBlueprintValidator, PackageBlueprintExtraction} from "@fromstan/pokie";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
+import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
 import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 
 describe("canonical package extraction CLI", () => {
@@ -31,6 +32,49 @@ describe("canonical package extraction CLI", () => {
     });
     const command = () => new BuildCommand("1.3.0");
     const output = () => log.mock.calls.flat().join("\n");
+
+    it("keeps an unpublished CLI runtime installable and recognized by Studio before package-to-Blueprint review", async () => {
+        const source = path.join(root, "source.json");
+        const model = {
+            manifest: {id: "local-runtime", name: "Local runtime", version: "1.0.0"}, reels: 3, rows: 1,
+            symbols: ["A"], paytable: {A: {3: 1}}, reelStrips: [["A"], ["A"], ["A"]], availableBets: [0.05],
+        };
+        fs.writeFileSync(source, JSON.stringify(model));
+        const runtimeRoot = process.cwd();
+        const building = new BuildCommand("2.0.0", undefined, undefined, undefined, undefined, undefined, runtimeRoot);
+        const destination = path.join(root, "package");
+        expect(await building.run([source, "--target", "tsPackage", "--out", destination])).toBe(0);
+        for (const [file, dependency] of [["package.json", "dependencies"], ["package-lock.json", "packages"]]) {
+            const metadata = JSON.parse(fs.readFileSync(path.join(destination, file), "utf8"));
+            const dependencies = dependency === "packages" ? metadata.packages[""].dependencies : metadata.dependencies;
+            expect(dependencies["@fromstan/pokie"]).toBe(`file:${runtimeRoot}`);
+        }
+        const projects = new StudioProjectRegistrationService();
+        expect(await projects.previewImport(destination)).toMatchObject({status: "recognized", type: "tsPackage"});
+        expect(await projects.list()).toEqual([]);
+        const extraction = await new PackageBlueprintExtraction().extract(destination);
+        expect(extraction.status).toBe("complete");
+        expect(extraction.blueprint?.availableBets).toEqual([0.05]);
+        expect(await building.run([destination, "--target", "blueprint", "--out", path.join(root, "reviewed.json"), "--dry-run"])).toBe(0);
+        expect(fs.existsSync(path.join(root, "reviewed.json"))).toBe(false);
+        expect(fs.readFileSync(source, "utf8")).toBe(JSON.stringify(model));
+    }, 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
+
+    it("prints producer progress units and absent totals through automatic Stake and package builds", async () => {
+        const source = path.join(root, "game.json");
+        fs.writeFileSync(source, JSON.stringify({
+            manifest: {id: "progress", name: "Progress", version: "1.0.0"}, reels: 3, rows: 1,
+            symbols: ["A"], paytable: {A: {3: 1}}, reelStrips: [["A", "A"], ["A", "A"], ["A", "A"]], availableBets: [1],
+        }));
+        const input = fs.readFileSync(source);
+        expect(await command().run([source, "--target", "stakeAdapter", "--out", path.join(root, "stake")])).toBe(0);
+        expect(output()).toMatch(/Writing Outcome mode base \(1 outcome records\)/);
+        expect(output()).toMatch(/Publishing Stake file .*\(\d+\/4 files\)/);
+        expect(output()).not.toMatch(/Writing Outcome mode base \(1\//);
+        expect(await command().run([source, "--target", "tsPackage", "--out", path.join(root, "package")])).toBe(0);
+        expect(output()).toMatch(/Publishing TypeScript package file .*\(\d+\/\d+ files\)/);
+        expect(fs.readFileSync(source)).toEqual(input);
+    });
 
     // Library extraction, CLI preview and CLI publication each acquire real runtime snapshots.
     it("previews every supplied field and saves the same library extraction plus evidence explicitly", async () => {

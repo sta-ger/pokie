@@ -1,3 +1,4 @@
+import {projectRevision} from "../../../../src/optimization/internal/optimizationData.js";
 import {weightedBlueprint} from "../../../v2/fixtures/WeightedWholeSequenceGame.js";
 import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../../../fixtures/math/AuthoritativePaytableFixture.js";
 import {
@@ -1008,7 +1009,7 @@ describe("StudioBlueprintService", () => {
 
             const result = service.save(filePath, buildBlueprint(), false);
 
-            expect(result).toEqual({status: "ok", path: filePath, blueprintHash: computeGameBlueprintHash(buildBlueprint())});
+            expect(result).toEqual({status: "ok", path: filePath, blueprintHash: computeGameBlueprintHash(buildBlueprint()), sourceRevision: projectRevision({type: "blueprint", rootPath: filePath})});
             expect(fs.existsSync(filePath)).toBe(true);
         });
 
@@ -1030,7 +1031,7 @@ describe("StudioBlueprintService", () => {
 
             const result = service.save(filePath, buildBlueprint(), true);
 
-            expect(result).toEqual({status: "ok", path: filePath, blueprintHash: computeGameBlueprintHash(buildBlueprint())});
+            expect(result).toEqual({status: "ok", path: filePath, blueprintHash: computeGameBlueprintHash(buildBlueprint()), sourceRevision: projectRevision({type: "blueprint", rootPath: filePath})});
             expect(fs.readFileSync(filePath, "utf-8")).toContain('"sample-slot"');
         });
 
@@ -1560,6 +1561,28 @@ describe("StudioBlueprintService", () => {
                 expect(fs.existsSync(output)).toBe(existed);
                 if (existed) expect(fs.readdirSync(output)).toEqual([]);
                 expect(await repository.list()).toEqual([]);
+            } finally {
+                registration.mockRestore();
+            }
+        });
+
+        it.each([false, true])("rolls back local runtime publication and supports repeated explicit reuse (existed=%s)", async existed => {
+            const output = path.join(tmpDir, "local-runtime");
+            if (existed) fs.mkdirSync(output);
+            const runtimeRoot = process.cwd();
+            const service = createService().withRuntimePackageRoot(runtimeRoot);
+            const registration = jest.spyOn(homeService, "rememberRecentProject").mockRejectedValueOnce(new Error("registration failed"));
+            try {
+                expect(await service.build(buildBlueprint(), output)).toMatchObject({status: "error", error: expect.stringContaining("registration failed")});
+                expect(fs.existsSync(output)).toBe(existed);
+                if (existed) expect(fs.readdirSync(output)).toEqual([]);
+                for (const destination of [output, path.join(tmpDir, "local-runtime-again")]) {
+                    const result = await service.build(buildBlueprint(), destination);
+                    expect(result).toMatchObject({status: "ok", createdFiles: expect.arrayContaining(["node_modules/@fromstan/pokie"])});
+                    expect(JSON.parse(fs.readFileSync(path.join(destination, "package.json"), "utf8")).dependencies["@fromstan/pokie"]).toBe(`file:${runtimeRoot}`);
+                    expect(JSON.parse(fs.readFileSync(path.join(destination, "package-lock.json"), "utf8")).packages[""].dependencies["@fromstan/pokie"]).toBe(`file:${runtimeRoot}`);
+                    expect(fs.readlinkSync(path.join(destination, "node_modules/@fromstan/pokie"))).toBe(runtimeRoot);
+                }
             } finally {
                 registration.mockRestore();
             }

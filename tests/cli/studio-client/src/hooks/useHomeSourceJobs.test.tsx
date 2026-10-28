@@ -401,3 +401,25 @@ describe("useHomeSourceJobs control response ownership", () => {
         }
     });
 });
+
+it("V35 keeps a new source unresolved when the old source's delayed discovery succeeds", async () => {
+    const lists: ((body: {ok: boolean; status: number; json: () => Promise<unknown>}) => void)[] = [];
+    const fetchImpl: FetchLike = () => new Promise(resolve => {
+        lists.push(resolve);
+    });
+    const {result, rerender, unmount} = renderHook(({source}) => useHomeSourceJobs(fetchImpl, source), {initialProps: {source: "/a.json"}});
+    expect(result.current.discoveryStatus).toBe("pending");
+    rerender({source: "/b.json"});
+    await act(async () => {
+        lists[0]({ok: true, status: 200, json: () => Promise.resolve({jobs: [designJob()]})});
+        await Promise.resolve();
+    });
+    expect(result.current.jobs).toEqual([]);
+    expect(result.current.discoveryStatus).toBe("pending");
+    await act(async () => {
+        lists[1]({ok: true, status: 200, json: () => Promise.resolve({jobs: []})});
+        await Promise.resolve();
+    });
+    expect(result.current.discoveryStatus).toBe("empty");
+    unmount();
+});

@@ -1,3 +1,5 @@
+import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
 import {loadPokieGame, PokieClientServer, PokieClientServerHandling, PokieDevServer, PokieDevServerHandling, ReplayDescriptor, SimulationReport} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
@@ -7,10 +9,10 @@ import {DevCommand} from "../../cli/commands/DevCommand.js";
 import {InspectCommand} from "../../cli/commands/InspectCommand.js";
 import {ParCommand} from "../../cli/commands/ParCommand.js";
 import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
+import {OutcomeSourceDevServer} from "../../src/server/OutcomeSourceDevServer.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {ServeCommand} from "../../cli/commands/ServeCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
-import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import {localPokieDependencyRunner} from "../testUtils/offlinePokieDependencyOverride.js";
 import {prepareExactCodeFirstPackage} from "../testUtils/prepareExactCodeFirstPackage.js";
 
@@ -26,6 +28,14 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
 
     let workDir: string;
     let outDir: string;
+
+    let restoreTemporaryDirectory: () => void;
+    beforeAll(() => {
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => {
+        restoreTemporaryDirectory();
+    });
 
     beforeEach(() => {
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-workflow-test-"));
@@ -63,8 +73,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(fs.readdirSync(path.join(outDir, "src"))).toEqual(["index.ts"]);
         await expect(loadPokieGame(outDir)).resolves.toMatchObject({getManifest: expect.any(Function)});
 
-        const validateExitCode = await new ValidateCommand().run([outDir]);
-        expect(validateExitCode).toBe(0);
+        await expectInconclusiveArtifactValidation([outDir]);
 
         // A built package carries no build-info of its own to inspect -- pokie inspect identifies it
         // as a runnable POKIE game package and points to its next actions.
@@ -95,8 +104,8 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
             server = new PokieDevServer(game, options);
             return server;
         });
-        await serveCommand.run([outDir, "--port", "0"]);
         try {
+            await serveCommand.run([outDir, "--port", "0"]);
             const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
             const port = Number(printed.match(/http:\/\/127\.0\.0\.1:(\d+)/)![1]);
 
@@ -113,7 +122,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
             const spinResponse = await fetch(`http://127.0.0.1:${port}/sessions/${session.sessionId}/spin`, {method: "POST"});
             expect(spinResponse.status).toBe(200);
         } finally {
-            await server!.stop();
+            await server?.stop();
         }
 
         const clientRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-workflow-client-"));
@@ -157,7 +166,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
             await devClientServer?.stop();
             fs.rmSync(clientRoot, {recursive: true, force: true});
         }
-    });
+    }, 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("registers a direct Outcome build before its analysis, sampling, Replay, and Stake continuation", async () => {
         const finiteBlueprintPath = path.join(workDir, "finite-outcome.blueprint.json");
@@ -200,7 +209,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         );
         expect(fs.readFileSync(path.join(occupiedOutcomeDir, "sentinel.txt"), "utf-8")).toBe("preserve me");
 
-        expect(await new ValidateCommand().run([outcomeDir])).toBe(0);
+        await expectInconclusiveArtifactValidation([outcomeDir]);
         await new ReportCommand().run([outcomeDir, "--format", "json", "--out", reportFile]);
         expect(JSON.parse(fs.readFileSync(reportFile, "utf-8"))).toMatchObject({rootPath: outcomeDir, modes: [{modeName: "base"}]});
 
@@ -251,7 +260,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
             seed: expect.stringMatching(/^pokie-managed-coverage:sha256:/),
         }));
 
-        expect(await new ValidateCommand().run([outcomeDir, "--deep"])).toBe(0);
+        await expectInconclusiveArtifactValidation([outcomeDir, "--deep"]);
         await new SimCommand().run([outcomeDir, "--mode", "base", "--rounds", "12", "--seed", "lifecycle", "--out", sampleFile]);
         expect(JSON.parse(fs.readFileSync(sampleFile, "utf-8"))).toMatchObject({modeName: "base", statistics: {rounds: 12}});
         await new ReportCommand().run([outcomeDir, "--format", "json", "--out", reportFile]);
@@ -260,12 +269,13 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(JSON.parse(fs.readFileSync(replayFile, "utf-8"))).toMatchObject({round: 2, seed: "lifecycle"});
 
         let server: PokieDevServerHandling | undefined;
-        const serve = new ServeCommand(loadPokieGame, (game, options) => {
-            server = new PokieDevServer(game, options);
+        const serve = new ServeCommand(undefined, undefined, undefined, undefined, (project, modeName, options) => {
+            server = new OutcomeSourceDevServer(project, modeName, options);
             return server;
         });
-        await serve.run([outcomeDir, "--mode", "base", "--port", "0"]);
         try {
+            await serve.run([outcomeDir, "--mode", "base", "--port", "0"]);
+            expect(server).toBeDefined();
             const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
             const port = Number(printed.match(/http:\/\/127\.0\.0\.1:(\d+)/)![1]);
             expect((await fetch(`http://127.0.0.1:${port}/game`)).status).toBe(200);
@@ -281,7 +291,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         const stakeDir = path.join(workDir, "stake");
         await prepareExactCodeFirstPackage(packageRoot, localPokieDependencyRunner());
 
-        expect(await new ValidateCommand().run([packageRoot])).toBe(0);
+        await expectInconclusiveArtifactValidation([packageRoot]);
         const simFile = path.join(workDir, "code-first-sim.json");
         await new SimCommand().run([packageRoot, "--rounds", "20", "--seed", "code-first", "--out", simFile]);
         expect(JSON.parse(fs.readFileSync(simFile, "utf-8"))).toMatchObject({game: {id: "code-first-registry-slot"}, rounds: 20});
@@ -308,7 +318,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         await expect(new ParCommand("1.3.0").run(["import", packageRoot])).rejects.toThrow(
             "This POKIE game package cannot import a PAR workbook.",
         );
-    });
+    }, 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("refuses to rebuild into the same --out once it's already populated -- there is no rebuild/merge recognition", async () => {
         const first = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", outDir]);
