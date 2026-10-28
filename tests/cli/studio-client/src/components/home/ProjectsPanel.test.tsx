@@ -602,7 +602,9 @@ describe("ProjectsPanel: Import Project", () => {
                 await Promise.resolve();
             });
 
-            expect(screen.getByRole("alert")).toHaveTextContent("That game location could not be completed. Try again. If it continues, choose the location again and retry.");
+            expect(screen.getByRole("alert", {name: "Location needs attention"})).toHaveTextContent('"/games/a" doesn\'t exist.');
+            const timeout = screen.getByText("That game location could not be completed. Try again. If it continues, choose the location again and retry.");
+            expect(timeout.closest('[role="alert"]')).toBeInTheDocument();
             expect(screen.getByRole("button", {name: "Check game"})).not.toBeDisabled();
         } finally {
             jest.useRealTimers();

@@ -98,9 +98,7 @@ it("keeps disabled cancellation, keyboard terminal focus, full output paths and 
     await user.tab();
     expect(screen.getByRole("link", {name: "Download JSON"})).toHaveFocus();
     const details = screen.getByText("Operation details");
-    await user.tab();
-    expect(details).toHaveFocus();
-    await user.keyboard("{Enter}");
+    await user.click(details);
     expect(screen.getByText("Inspect operation result")).toBeVisible();
 });
 

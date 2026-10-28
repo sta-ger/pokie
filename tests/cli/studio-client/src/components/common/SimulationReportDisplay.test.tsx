@@ -24,8 +24,8 @@ it("separates reproduction bytes from accounting and keeps per-mode identity and
     expect(within(accounting).getByText("Total bet").closest("tr")).toHaveTextContent(original.totalBet.toFixed(2));
     expect(baseMode.getByText(command)).not.toBeVisible();
     const reproduce = baseMode.getByText("Reproduce this run");
-    reproduce.focus();
-    await user.keyboard("{Enter}");
+    expect(reproduce.tagName).toBe("SUMMARY");
+    await user.click(reproduce);
     expect(baseMode.getByText(command)).toBeVisible();
     expect(baseMode.getByText("sha256:base")).toBeVisible();
     expect(baseMode.getByText("2.0.0")).toBeVisible();

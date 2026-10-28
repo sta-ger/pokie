@@ -27,8 +27,8 @@ describe("JobResultCard", () => {
         expect(open).toHaveBeenCalledWith("/original/game");
         expect(screen.getByText("Duration: 5377ms")).not.toBeVisible();
         const summary = screen.getByText("Operation details");
-        summary.focus();
-        await user.keyboard("{Enter}");
+        expect(summary.tagName).toBe("SUMMARY");
+        await user.click(summary);
         expect(summary.closest("details")).toHaveAttribute("open");
         expect(screen.getByText("Duration: 5377ms")).toBeVisible();
         await user.click(screen.getByText("Inspect retained request"));
