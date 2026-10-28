@@ -1,3 +1,20 @@
+const navigation = document.querySelector('#docs-navigation');
+const closeNavigation = document.querySelector('#close-navigation');
+if (navigation && closeNavigation) {
+    const dismiss = () => {
+        navigation.open = false;
+        navigation.querySelector('summary').focus();
+    };
+    closeNavigation.hidden = false;
+    closeNavigation.addEventListener('click', dismiss);
+    navigation.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && navigation.open && !event.defaultPrevented) {
+            event.preventDefault();
+            dismiss();
+        }
+    });
+}
+
 const input = document.querySelector('#docs-search');
 const results = document.querySelector('#search-results');
 const status = document.querySelector('#search-status');

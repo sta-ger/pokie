@@ -2,12 +2,115 @@ import {JSDOM} from "jsdom";
 import {readFileSync} from "node:fs";
 import path from "node:path";
 import {execFileSync} from "node:child_process";
+import {runInNewContext} from "node:vm";
 import {renderGallery, renderPlayground} from "../../site/playground/view.js";
 import postcss from "postcss";
 import {buildSimulationReportDownload} from "../../cli/studio/simulation/buildSimulationReportDownload.js";
 import {describeSimulationReport} from "../../cli/studio-client/src/domain/interpret/Simulation.js";
 import {formatConfidenceInterval} from "../../cli/studio-client/src/domain/interpret/formatConfidenceInterval.js";
 import {featureAnalyticsReport} from "./fixtures/FeatureAnalyticsFixture.js";
+
+describe("V2C-36 public navigation disclosure", () => {
+    it.each(["/", "/help/"])("keeps native navigation, dismissal focus and unrelated drafts intact at %s", base => {
+        const markup = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import fs from 'node:fs';
+            import {renderNavigation} from './site/navigation.mjs';
+            const pages = JSON.parse(fs.readFileSync('site/content.json', 'utf8')).pages;
+            console.log(JSON.stringify(['/', '/docs/', '/gallery/', '/playground/', '/404.html'].map(route =>
+                renderNavigation(pages, route, ${JSON.stringify(base)}))));
+        `], {encoding: "utf8"})) as string[];
+        for (const [index, html] of markup.entries()) {
+            const dom = new JSDOM(`${html}<main id="main" tabindex="-1">
+                <input id="docs-search"><button id="clear-search">Clear</button>
+                <p id="search-status"></p><ul id="search-results"></ul>
+                <textarea id="pg-model">unsaved draft</textarea><p id="pg-status">Completed run</p></main>`);
+            try {
+                const {document, KeyboardEvent} = dom.window;
+                const details = document.querySelector<HTMLDetailsElement>("#docs-navigation")!;
+                const summary = details.querySelector("summary")!;
+                const close = document.querySelector<HTMLButtonElement>("#close-navigation")!;
+                const links = [...details.querySelectorAll<HTMLAnchorElement>("nav a")];
+                expect(details.open).toBe(false);
+                expect(summary.textContent).toBe("Browse guides");
+                expect(details.querySelector("nav")?.getAttribute("aria-label")).toBe("Documentation");
+                expect(links.length).toBeGreaterThan(10);
+                expect(links.every(link => link.getAttribute("href")?.startsWith(base))).toBe(true);
+                expect(links.some(link => link.getAttribute("href")?.includes("404.html"))).toBe(false);
+                expect(details.querySelectorAll('[aria-current="page"]')).toHaveLength(index === 4 ? 0 : 1);
+                expect(close.hidden).toBe(true);
+                // Native activation works before script startup or when JS is unavailable.
+                summary.click();
+                expect(details.open).toBe(true);
+                summary.click();
+                expect(details.open).toBe(false);
+
+                runInNewContext(readFileSync("site/site.js", "utf8").replace("import.meta.url", JSON.stringify(`https://local.test${base}assets/site.js`)),
+                    {document, URL});
+                expect(close.hidden).toBe(false);
+                const escape = () => new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true});
+                const noop = escape();
+                summary.dispatchEvent(noop);
+                expect(noop.defaultPrevented).toBe(false);
+                summary.click();
+                links[0].focus();
+                const handled = escape();
+                handled.preventDefault();
+                links[0].dispatchEvent(handled);
+                expect(details.open).toBe(true);
+                expect(document.activeElement).toBe(links[0]);
+                summary.click();
+                // Repeated open -> dismiss -> reuse exercises the same used element.
+                for (let reuse = 0; reuse < 2; reuse++) {
+                    summary.click();
+                    links[0].focus();
+                    const event = escape();
+                    links[0].dispatchEvent(event);
+                    expect(event.defaultPrevented).toBe(true);
+                    expect(details.open).toBe(false);
+                    expect(document.activeElement).toBe(summary);
+                    summary.click();
+                    close.focus();
+                    close.click();
+                    expect(details.open).toBe(false);
+                    expect(document.activeElement).toBe(summary);
+                }
+                summary.click();
+                const search = document.querySelector<HTMLInputElement>("#docs-search")!;
+                search.focus();
+                search.value = "unsubmitted query";
+                search.dispatchEvent(escape());
+                expect(search.value).toBe("");
+                expect(details.open).toBe(true);
+                expect(document.activeElement).toBe(search);
+                expect(document.querySelector<HTMLTextAreaElement>("#pg-model")!.value).toBe("unsaved draft");
+                expect(document.querySelector("#pg-status")!.textContent).toBe("Completed run");
+            } finally {
+                dom.window.close();
+            }
+        }
+    });
+
+    it("uses a rail only for an explicitly open desktop disclosure, leaving the 800px content full width", () => {
+        const css = postcss.parse(readFileSync("site/site.css", "utf8"));
+        const layout: {selector: string; media?: string; columns: string}[] = [];
+        css.walkRules(rule => {
+            if (!rule.selector.startsWith(".layout")) return;
+            rule.walkDecls("grid-template-columns", declaration => {
+                const parent = rule.parent;
+                layout.push({selector: rule.selector, media: parent?.type === "atrule" ? parent.params : undefined,
+                    columns: declaration.value});
+            });
+        });
+        expect(layout).toEqual([
+            {selector: ".layout", columns: "minmax(0, 1fr)"},
+            {selector: ".layout:has(#docs-navigation[open])", media: "(min-width: 992px)",
+                columns: "minmax(13rem, 17rem) minmax(0, 1fr)"},
+        ]);
+        const build = readFileSync("site/build.mjs", "utf8");
+        expect(build).toContain("renderNavigation(renderedPages, page.route, base)");
+        expect(build).toContain("'site/navigation.mjs'");
+    });
+});
 
 // Source-aware V36-S1 regression. Independent first contact and fresh installed
 // rechecks are controller-owned; this does not establish visual acceptance.

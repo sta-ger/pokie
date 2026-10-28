@@ -647,6 +647,8 @@ describe("documented production preview in real Chromium", () => {
                 "Math.abs(document.querySelector('#wallet-and-settlement').getBoundingClientRect().top)",
             ),
         ).toBeLessThan(60);
+        await browser!.evaluate("document.querySelector('#docs-navigation > summary').click()");
+        expect(await browser!.evaluate("document.querySelector('#docs-navigation').open")).toBe(true);
         await browser!.evaluate("document.querySelector('aside a[href=\"/docs/optimization/\"]').click()");
         await browser!.until("location.pathname === '/docs/optimization/' && document.title.startsWith('Optimizer')");
         await browser!.evaluate("history.back()");
@@ -660,7 +662,7 @@ describe("documented production preview in real Chromium", () => {
     });
 
     it("keeps every rendered page readable and controls reachable at desktop and narrow mobile widths without viewport overflow", async () => {
-        for (const width of [1280, 390]) {
+        for (const width of [1280, 800, 390]) {
             await browser!.send("Emulation.setDeviceMetricsOverride", {
                 width,
                 height: 844,
@@ -669,6 +671,7 @@ describe("documented production preview in real Chromium", () => {
             });
             for (const page of inventory.pages) {
                 await browser!.navigate(`${origin}${page.route}`);
+                await browser!.evaluate("document.querySelector('#docs-navigation > summary').click()");
                 const layout = await browser!.evaluate<{
                     overflow: boolean;
                     controls: boolean;
@@ -694,6 +697,51 @@ describe("documented production preview in real Chromium", () => {
             }
         }
     }, 60000);
+
+    it("opens and dismisses public guides with native keys and visible focus in both system colour schemes", async () => {
+        try {
+            for (const scheme of ["light", "dark"]) {
+                await browser!.send("Emulation.setEmulatedMedia", {features: [{name: "prefers-color-scheme", value: scheme}]});
+                for (const [width, route] of [[1280, "/docs/"], [800, "/playground/"]] as const) {
+                    await browser!.send("Emulation.setDeviceMetricsOverride", {width, height: 800, deviceScaleFactor: 1, mobile: false});
+                    await browser!.navigate(`${origin}${route}`);
+                    await browser!.until("!document.querySelector('#close-navigation').hidden");
+                    expect(await browser!.evaluate("document.querySelector('#docs-navigation').open")).toBe(false);
+                    expect(await browser!.evaluate("getComputedStyle(document.documentElement).colorScheme")).toBe("light dark");
+                    expect(await browser!.evaluate("getComputedStyle(document.documentElement).backgroundColor"))
+                        .toBe(scheme === "light" ? "rgb(247, 245, 238)" : "rgb(23, 33, 38)");
+                    await browser!.evaluate("document.querySelector('.skip').focus()");
+                    await browser!.key("Tab", "Tab", 9);
+                    await browser!.key("Tab", "Tab", 9);
+                    expect(await browser!.evaluate("document.activeElement.matches('#docs-navigation > summary')")).toBe(true);
+                    await browser!.key("Enter", "Enter", 13);
+                    expect(await browser!.evaluate("document.querySelector('#docs-navigation').open")).toBe(true);
+                    await browser!.key("Tab", "Tab", 9);
+                    expect(await browser!.evaluate(`(() => {
+                        const e = document.activeElement, r = e.getBoundingClientRect(), s = getComputedStyle(e);
+                        return e.matches('aside nav a') && r.width > 20 && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight
+                            && e.matches(':focus-visible') && s.outlineStyle === 'solid' && parseFloat(s.outlineWidth) >= 3;
+                    })()`)).toBe(true);
+                    if (width === 800) expect(await browser!.evaluate("document.querySelector('main').getBoundingClientRect().left")).toBe(0);
+                    await browser!.key("Escape", "Escape", 27);
+                    expect(await browser!.evaluate("!document.querySelector('#docs-navigation').open && document.activeElement.matches('#docs-navigation > summary')")).toBe(true);
+                    await browser!.key(" ", "Space", 32);
+                    expect(await browser!.evaluate("document.querySelector('#docs-navigation').open")).toBe(true);
+                    await browser!.evaluate("document.querySelector('#close-navigation').focus()");
+                    await browser!.key("Enter", "Enter", 13);
+                    expect(await browser!.evaluate("!document.querySelector('#docs-navigation').open && document.activeElement.matches('#docs-navigation > summary')")).toBe(true);
+                    await browser!.key("Enter", "Enter", 13);
+                    await browser!.evaluate("document.querySelector('aside a[href=\"/docs/optimization/\"]').focus()");
+                    await browser!.key("Enter", "Enter", 13);
+                    await browser!.until("location.pathname === '/docs/optimization/' && document.readyState === 'complete' && !!document.querySelector('#docs-navigation') && !document.querySelector('#docs-navigation').open");
+                    expect(await browser!.evaluate("document.querySelector('aside [aria-current]').getAttribute('href')")).toBe("/docs/optimization/");
+                }
+            }
+        } finally {
+            await browser!.send("Emulation.setEmulatedMedia", {features: []});
+            await browser!.send("Emulation.clearDeviceMetricsOverride");
+        }
+    }, 40000);
 
     it("supports keyboard-only main access, links, labelled search, Enter activation, Space clearing and Escape without hidden focus", async () => {
         await browser!.navigate(`${origin}/docs/`);
@@ -778,6 +826,8 @@ describe("documented production preview in real Chromium", () => {
                 await browser!.until(
                     "document.querySelector('#search-status').textContent.startsWith('Search is unavailable')",
                 );
+                await browser!.evaluate("document.querySelector('#docs-navigation > summary').click()");
+                expect(await browser!.evaluate("document.querySelector('#docs-navigation').open")).toBe(true);
                 expect(
                     await browser!.evaluate(
                         "document.querySelector('aside a[href=\"/docs/reproducibility/\"]').getAttribute('href')",
@@ -839,6 +889,8 @@ describe("documented production preview in real Chromium", () => {
                 if (target.startsWith("/")) expect(target).toMatch(/^\/help\//);
             }
             expect(document.querySelector(".source a")?.getAttribute("href")).toBe(`/help/sources/${page.source}`);
+            expect(document.querySelector("#docs-navigation > summary")?.textContent).toBe("Browse guides");
+            expect(document.querySelector("#docs-navigation")?.hasAttribute("open")).toBe(false);
             expect(fs.readFileSync(path.join(output, "sources", page.source), "utf8")).toBe(fs.readFileSync(path.join(root, page.source), "utf8"));
         }
         expect(html("/")).toContain('href="/help/sources/"');

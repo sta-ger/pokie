@@ -33,11 +33,13 @@ function resolveCss(value: string, scheme: "light" | "dark", element?: HTMLEleme
         if (next === resolved) throw new Error(`Unresolved production CSS: ${value}`);
         resolved = next;
     }
-    return resolved;
+    return resolved.replace(/light-dark\(([^,()]+),\s*([^()]+)\)/g, (_, light: string, dark: string) =>
+        (scheme === "light" ? light : dark).trim());
 }
 
 function contrast(foreground: string, background: string): number {
     const luminance = (color: string): number => {
+        if (color === "white") color = "#ffffff";
         const expanded = (/^#[a-f\d]{3}$/i).test(color) ? "#" + [...color.slice(1)].map(channel => channel + channel).join("") : color;
         const channels = expanded.startsWith("#") ? expanded.slice(1).match(/../g)!.map(value => parseInt(value, 16)) : color.match(/[\d.]+/g)!.map(Number);
         expect(channels).toHaveLength(3);
@@ -145,11 +147,51 @@ it("retains per-mode caveats and keeps failed/cancelled outcomes separate from c
 it("carries the public site's type and accessible brand palette into Studio", () => {
     const publicCss = readFileSync(join(__dirname, "../../../../../../site/site.css"), "utf8");
     expect(publicCss).toContain(`font-family: ${theme.fontFamily}`);
-    expect(publicCss).toContain(`color: ${theme.black}`);
+    expect(publicCss).toContain(`color: light-dark(${theme.black},`);
     expect(publicCss).toContain(`${theme.headings?.fontFamily}`);
-    expect(publicCss).toContain(`color: ${theme.colors?.copper[8]}`);
-    expect(publicCss).toContain(`background: ${theme.colors?.gray[1]}`);
+    expect(publicCss).toContain(`color: light-dark(${theme.colors?.copper[8]},`);
+    expect(publicCss).toContain(`background: light-dark(${theme.colors?.gray[1]},`);
     expect(readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/main.tsx"), "utf8")).toContain('defaultColorScheme="auto"');
+});
+
+it.each(["light", "dark"] as const)("keeps public navigation, docs, gallery and playground readable in %s mode", scheme => {
+    const css = parse(readFileSync(join(__dirname, "../../../../../../site/site.css"), "utf8"));
+    const declarations = (...selectors: string[]): Record<string, string> => {
+        const values: Record<string, string> = {};
+        for (const selector of selectors) css.walkRules(rule => {
+            if (!rule.selectors.includes(selector) || rule.parent?.type === "atrule") return;
+            rule.walkDecls(declaration => {
+                if (declaration.value !== "inherit") values[declaration.prop] = resolveCss(declaration.value, scheme);
+            });
+        });
+        return values;
+    };
+    const root = declarations(":root");
+    expect(root["color-scheme"]).toBe("light dark");
+    const surfaces = [root,
+        declarations(":root", "aside a"), declarations(":root", "aside a", "aside a[aria-current]"),
+        declarations(":root", "#docs-navigation > summary:hover"),
+        declarations(":root", "a"), declarations(":root", "a", "a:hover"),
+        declarations(":root", "th"), declarations(":root", "p code"),
+        declarations(":root", "a", "#gallery > a"), declarations(":root", "a", "#gallery > a", "a:hover"),
+        declarations(":root", "#playground"), declarations(":root", "#playground", ".eyebrow"),
+        declarations(":root", "#playground input"), declarations(":root", "#playground select"),
+        declarations(":root", "#playground textarea"), declarations(":root", "#playground pre"),
+        declarations(":root", "button"), declarations(":root", "button", "button:hover:enabled"),
+        declarations(":root", "#playground button"), declarations(":root", "#playground button", "#playground button:hover:enabled"),
+        declarations(":root", "#pg-status"), declarations(":root", "#pg-status", '#pg-status[data-status="failed"]'),
+        declarations(":root", "#pg-status", '#pg-status[data-status="running"]'),
+        declarations(":root", ".pg-grid span"), declarations(":root", ".pg-grid span", ".pg-grid .pg-win"),
+    ];
+    for (const surface of surfaces) expect(contrast(surface.color, surface.background)).toBeGreaterThanOrEqual(4.5);
+    const ring = (selector: string) => declarations(selector).outline.split(" ").at(-1)!;
+    for (const background of [root.background, declarations(":root", "button:hover:enabled").background]) {
+        expect(contrast(ring(":focus-visible"), background)).toBeGreaterThanOrEqual(3);
+    }
+    for (const background of [declarations("#playground").background, declarations("#gallery > a").background]) {
+        expect(contrast(ring("#playground :focus-visible"), background)).toBeGreaterThanOrEqual(3);
+    }
+    expect(contrast(declarations("header :focus-visible")["outline-color"], declarations("header").background)).toBeGreaterThanOrEqual(3);
 });
 
 it.each(["light", "dark"] as const)("resolves readable primary filled text and hover in %s mode through real controls", async scheme => {

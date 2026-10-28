@@ -4,6 +4,8 @@
 
 Follow the [bounded first journey](getting-started.md#first-journey), or choose the task you need. All guides are readable without JavaScript; local search adds section-level discovery.
 
+Open **Browse guides** to navigate between guides; Enter or Space toggles the disclosure. With JavaScript, **Close navigation** or Escape inside the navigation closes it and returns focus to **Browse guides**. **Skip to main content** moves directly to the page and search. At smaller widths the open guides sit above the content. The site follows your system's light or dark colour preference, including gallery and playground controls.
+
 | Task | Guide |
 | --- | --- |
 | create an editable Blueprint / init a code-first package | [Getting started](getting-started.md) |
