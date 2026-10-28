@@ -1,4 +1,4 @@
-import {act, fireEvent, screen, waitFor} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -247,8 +247,8 @@ it("discloses advanced checks while keeping structural errors and warnings visib
     renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
     expect((await screen.findAllByText(/Retained alongside errors/)).length).toBeGreaterThan(0);
     expect(screen.getByText(/budget-exhausted — inconclusive/)).toBeInTheDocument();
-    expect(screen.getByText(/Invalid declaration/)).toBeVisible();
-    expect(screen.getByText(/Retained alongside errors/)).toBeVisible();
+    expect(within(screen.getByRole("group", {name: "Validation"})).getByText(/Invalid declaration/)).toBeVisible();
+    expect(within(screen.getByRole("group", {name: "Validation"})).getByText(/Retained alongside errors/)).toBeVisible();
     expect(screen.getByText(/Path: mechanics.respins/)).not.toBeVisible();
     const user = userEvent.setup();
     const toggle = screen.getByRole("button", {name: "Show model analysis details"});
@@ -256,12 +256,16 @@ it("discloses advanced checks while keeping structural errors and warnings visib
     toggle.focus();
     await user.keyboard("{Enter}");
     expect(screen.getByText(/Path: mechanics.respins/)).toBeVisible();
-    expect(screen.getByText(/respin-2/)).toBeVisible();
+    const evidence = screen.getByText(/respin-2/);
+    expect(evidence).not.toBeVisible();
+    await user.click(evidence.closest("details")!.querySelector("summary")!);
+    expect(evidence).toBeVisible();
     expect(screen.getByText("Analysis assumptions")).toBeVisible();
     expect(screen.getByText("Analysis limitations")).toBeVisible();
+    toggle.focus();
     await user.keyboard("{Enter}");
     expect(screen.getByText(/Path: mechanics.respins/)).not.toBeVisible();
-    expect(screen.getByText(/Invalid declaration/)).toBeVisible();
+    expect(within(screen.getByRole("group", {name: "Validation"})).getByText(/Invalid declaration/)).toBeVisible();
 });
 
 it("keeps structurally inconclusive reports distinct from valid reports and disables creation", async () => {

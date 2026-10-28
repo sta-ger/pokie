@@ -211,7 +211,7 @@ describe("V2C-36 public interaction delivery", () => {
             const edit = text => { const e = document.querySelector('#pg-model'); e.value = text; e.dispatchEvent(new window.Event('input')); };
             const malformed = JSON.parse(original); malformed.availableBets = [0];
             const malformedDraft = {blueprint: malformed, settings: {seed: 'gallery-29', bet: 0.05, rounds: 256}};
-            assert.ok(new GameBlueprintValidator().validate(malformed).some(issue => issue.path?.includes('availableBets')));
+            assert.ok(new GameBlueprintValidator().validate(malformed).some(issue => issue.code === 'blueprint-availablebets-invalid' && issue.message.includes('availableBets')));
             assert.throws(() => validatePlaygroundDraft(malformedDraft), /availableBets/);
             const boundary = new PlaygroundController(() => new Worker(), () => {});
             await assert.rejects(boundary.prepare(malformedDraft), /availableBets/);

@@ -134,7 +134,10 @@ it("renders advanced unknown checks, source paths and witnesses alongside struct
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", {name: "Show model analysis details"}));
     expect(screen.getByText(/termination.unresolved: unknown/)).toBeVisible();
-    expect(screen.getByText(/respin-2/)).toBeVisible();
+    const evidence = screen.getByText(/respin-2/);
+    expect(evidence).not.toBeVisible();
+    await user.click(evidence.closest("details")!.querySelector("summary")!);
+    expect(evidence).toBeVisible();
     await user.click(screen.getByRole("button", {name: "Hide model analysis details"}));
     expect(screen.getByText(/termination.unresolved: unknown/)).not.toBeVisible();
     expect(screen.getByText(/Invalid target/)).toBeVisible();

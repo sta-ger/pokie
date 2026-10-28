@@ -191,7 +191,7 @@ it("discloses each comparison side's analysis independently without hiding its s
         calls.push(url);
         return respond(diff);
     };
-    render(<StudioApiProvider fetchImpl={fetchImpl}><MathDefinitionDiffPreview sourcePath="/a" draft={{}} /></StudioApiProvider>);
+    renderWithProviders(<MathDefinitionDiffPreview sourcePath="/a" draft={{}} />, {fetchImpl});
     fireEvent.click(screen.getByText("Compare saved versus draft"));
     expect(await screen.findByText("Definition comparison: partial")).toBeVisible();
     expect(screen.getByText("Limit: custom declaration only")).toBeVisible();
