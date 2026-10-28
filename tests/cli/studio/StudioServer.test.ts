@@ -3673,9 +3673,14 @@ describe("StudioServer", () => {
             try {
                 const started = await post(`${test.url}/api/project/simulations`, {rounds: 100, workers: 1});
                 const id = (started.body as {id: string}).id;
+                expect(started).toMatchObject({status: 202, body: {id, sourceCurrent: true}});
                 await flushMacrotask();
                 expect(test.simulation.getStatus(id)).toMatchObject({status: "running", roundsCompleted: 50});
                 const request = test.jobs.get(test.root, id)!.request;
+                expect(request.sourceRevision).toEqual(expect.stringMatching(/^sha256:[a-f0-9]{64}$/));
+                expect(await post(`${test.url}/api/project/simulations`, {rounds: 100, workers: 1})).toMatchObject({
+                    status: 200, body: {id, sourceCurrent: true},
+                });
                 const preparations = test.runtimeResolver.mock.calls.length;
                 const edited = {...test.blueprint, manifest: {id: "edited-slot", name: "Edited Slot", version: "2.0.0"}, paytable: {A: {3: 11}}};
                 const describe = test.registration.describeLocation.bind(test.registration);
@@ -3703,17 +3708,28 @@ describe("StudioServer", () => {
                 expect(test.runtimeResolver).toHaveBeenCalledTimes(preparations);
                 expect(test.simulation.getStatus(id)?.status).toBe("running");
                 expect(test.jobs.get(test.root, id)!.request).toEqual(request);
-                const attached = await post(`${test.url}/api/project/simulations`, {rounds: 100, workers: 1});
-                expect(attached).toMatchObject({status: 200, body: {id}});
+                // The saved design is a different request; observe the accepted execution by id.
+                expect(await post(`${test.url}/api/project/simulations`, {rounds: 100, workers: 1})).toEqual({
+                    status: 409, body: {error: "A simulation is already running for this project.", activeJobId: id},
+                });
+                expect(await get(`${test.url}/api/project/simulations/${id}`)).toMatchObject({
+                    status: 200, body: {id, status: "running", roundsCompleted: 50, sourceCurrent: false},
+                });
                 expect(test.jobs.list(test.root).map(job => job.id)).toEqual([id]);
+                expect(test.jobs.get(test.root, id)!.request).toEqual(request);
                 expect((await get(`${test.url}/api/project/gameModel`)).body).toMatchObject({paytable: {data: [{symbolId: "A", matchCount: 3, payout: 11}]}});
                 test.release();
-                await pollUntilTerminal(`${test.url}/api/project/simulations/${id}`);
+                expect(await pollUntilTerminal(`${test.url}/api/project/simulations/${id}`)).toMatchObject({
+                    status: 200, body: {id, status: "completed", sourceCurrent: false, report: {rtp: 10}},
+                });
                 expect(test.simulation.getReport(test.root, id)).toMatchObject({status: "ok", report: {rtp: 10}});
                 const next = await post(`${test.url}/api/project/simulations`, {rounds: 100, workers: 1});
                 const nextId = (next.body as {id: string}).id;
+                expect(next).toMatchObject({status: 202, body: {sourceCurrent: true}});
                 expect(nextId).not.toBe(id);
-                await pollUntilTerminal(`${test.url}/api/project/simulations/${nextId}`);
+                expect(await pollUntilTerminal(`${test.url}/api/project/simulations/${nextId}`)).toMatchObject({
+                    status: 200, body: {id: nextId, status: "completed", sourceCurrent: true, report: {rtp: 11}},
+                });
                 expect(test.simulation.getReport(test.root, nextId)).toMatchObject({status: "ok", report: {rtp: 11}});
                 expect(test.simulation.getReport(test.root, id)).toMatchObject({status: "ok", report: {rtp: 10}});
             } finally {
