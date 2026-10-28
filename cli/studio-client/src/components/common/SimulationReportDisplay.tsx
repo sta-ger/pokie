@@ -6,13 +6,9 @@ import {List, Table, Text} from "@mantine/core";
 import type {SimulationReportView} from "../../domain/interpret/Simulation";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {PageSection} from "./PageSection";
+import {formatConfidenceInterval} from "../../domain/interpret/formatConfidenceInterval";
 
-export function formatConfidenceInterval(interval: {low: number; high: number} | undefined): string {
-    if (!interval) {
-        return "—";
-    }
-    return `${(interval.low * 100).toFixed(2)}% – ${(interval.high * 100).toFixed(2)}%`;
-}
+export {formatConfidenceInterval};
 
 // Used by both the Simulation tab's own inline "just completed" block and the Reports tab's detail
 // view -- one formatting implementation, not duplicated, same reasoning as the old dom.ts's
@@ -123,7 +119,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                         </Table.Tr>
                         <Table.Tr>
                             <Table.Th>Average payout 95% confidence interval</Table.Th>
-                            <Table.Td>{formatConfidenceInterval(view.averagePayoutConfidenceInterval95)}</Table.Td>
+                            <Table.Td>{formatConfidenceInterval(view.averagePayoutConfidenceInterval95, "payout")}</Table.Td>
                         </Table.Tr>
                         {view.convergence && (
                             <>

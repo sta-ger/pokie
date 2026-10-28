@@ -314,6 +314,13 @@ npm test                                          # both projects
 npx jest --selectProjects studio-client-components  # just the React component tests
 ```
 
+## Simulation report units
+
+Studio displays RTP confidence bounds as percentages and average-payout confidence
+bounds in payout units, matching downloaded reports. An unavailable interval is
+shown as `—`; measured zero payout bounds are `0.00 – 0.00`. All-mode reports keep
+each mode's bounds separate. Formatting does not recalculate the report statistics.
+
 ## Accessibility & responsiveness
 
 - Every Home/Project tab and the Blueprint Editor's Form/JSON toggle preserve `aria-current="page"` on the

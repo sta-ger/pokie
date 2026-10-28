@@ -6,6 +6,51 @@ import {MantineProvider} from "@mantine/core";
 import {render, within} from "@testing-library/react";
 import {SimulationReportDisplay} from "../../../../../../cli/studio-client/src/components/common/SimulationReportDisplay";
 
+it("shows payout confidence bounds in payout units while keeping RTP bounds in percent", () => {
+    const report = featureAnalyticsReport();
+    const view = describeSimulationReport({
+        ...report,
+        rtpConfidenceInterval95: {low: 0.91, high: 0.99},
+        averagePayoutConfidenceInterval95: {low: 0.9, high: 1.1},
+    });
+    const result = render(<MantineProvider><SimulationReportDisplay view={view} /></MantineProvider>);
+    const payout = result.getByText("Average payout 95% confidence interval").closest("tr")!;
+    expect(within(payout).getByRole("cell")).toHaveTextContent(/^0\.90 – 1\.10$/);
+    const rtp = result.getByText("RTP 95% confidence interval").closest("tr")!;
+    expect(within(rtp).getByRole("cell")).toHaveTextContent(/^91\.00% – 99\.00%$/);
+    result.unmount();
+
+    const summary = render(<MantineProvider><SimulationSummaryCard outcome={{kind: "completed", report: view}} /></MantineProvider>);
+    expect(summary.getByText("RTP 95% CI: 91.00% – 99.00%")).toBeVisible();
+});
+
+it("keeps zero, unavailable and per-mode payout confidence bounds distinct after report replacement", () => {
+    const report = featureAnalyticsReport();
+    const result = render(<MantineProvider><SimulationReportDisplay view={describeSimulationReport({
+        ...report, averagePayoutConfidenceInterval95: {low: 0, high: 0},
+    })} /></MantineProvider>);
+    const payoutCell = () => within(result.getByText("Average payout 95% confidence interval").closest("tr")!).getByRole("cell");
+    expect(payoutCell()).toHaveTextContent(/^0\.00 – 0\.00$/);
+    result.rerender(<MantineProvider><SimulationReportDisplay view={describeSimulationReport({
+        ...report, averagePayoutConfidenceInterval95: undefined,
+    })} /></MantineProvider>);
+    expect(payoutCell()).toHaveTextContent(/^—$/);
+    result.rerender(<MantineProvider><SimulationReportDisplay view={describeSimulationReport({
+        game: report.game,
+        requestedRounds: report.requestedRounds,
+        seed: report.seed,
+        modes: {
+            base: {...report, averagePayoutConfidenceInterval95: {low: 0.9, high: 1.1}},
+            buy: {...report, averagePayoutConfidenceInterval95: {low: 7.5, high: 8}},
+        },
+    })} /></MantineProvider>);
+    for (const [mode, bounds] of [["base", "0.90 – 1.10"], ["buy", "7.50 – 8.00"]]) {
+        const section = result.getByRole("group", {name: `Mode: ${mode}`});
+        const row = within(section).getByText("Average payout 95% confidence interval").closest("tr")!;
+        expect(within(row).getByRole("cell").textContent).toBe(bounds);
+    }
+});
+
 it("renders weighted configuration, actual counts and distinct uncovered/zero-weight states", () => {
     const view: SimulationReportView = {
         game: {id: "tiny", name: "Tiny", version: "1"}, rounds: 1, requestedRounds: 1, seed: "1", totalBet: 1, totalWin: 4,
