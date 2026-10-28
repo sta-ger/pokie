@@ -51,7 +51,7 @@ export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
     return (
         <div className="studio-simulation-summary">
             {report.betMode !== undefined && <Text>Bet mode: {report.betMode}</Text>}
-            <Table withRowBorders={false} aria-label="Simulation summary">
+            <Table withRowBorders={false} role="table" className="studio-simulation-metrics" aria-label="Simulation summary">
                 <Table.Tbody>
                     <Table.Tr>
                         <Table.Th>RTP</Table.Th>

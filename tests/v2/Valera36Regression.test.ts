@@ -88,3 +88,26 @@ describe("V2C-36 tablet review layout contract", () => {
         expect(declarations('.studio-output-status:is([data-status="Needs attention"], [data-status="Destination conflict"])', 800).color).toContain("--mantine-color-red-8");
     });
 });
+
+
+describe("V2C-36 compact metric composition", () => {
+    it("fits metric groups to each report column and contains long values without changing other table surfaces", () => {
+        const css = postcss.parse(readFileSync(path.resolve("cli/studio-client/src/global.css"), "utf8"));
+        const rules: Record<string, Record<string, string>> = {};
+        css.walkRules(rule => {
+            if (!rule.selector.startsWith(".studio-simulation-metrics")) return;
+            const declarations: Record<string, string> = {};
+            rule.walkDecls(declaration => {
+                declarations[declaration.prop] = declaration.value;
+            });
+            rules[rule.selector] = declarations;
+        });
+        expect(rules[".studio-simulation-metrics"]).toMatchObject({display: "block", width: "100%"});
+        expect(rules[".studio-simulation-metrics > tbody"]).toMatchObject({display: "grid",
+            "grid-template-columns": "repeat(auto-fit, minmax(min(100%, 13rem), 1fr))", gap: "var(--mantine-spacing-sm)"});
+        expect(rules[".studio-simulation-metrics > tbody > tr"]).toMatchObject({display: "flex", "flex-direction": "column", "min-width": "0"});
+        expect(rules[".studio-simulation-metrics > tbody > tr > :is(th, td)"]).toMatchObject({"text-align": "start", "overflow-wrap": "anywhere"});
+        expect(rules[".studio-simulation-metrics > tbody > tr > td"]).toMatchObject({"font-variant-numeric": "tabular-nums"});
+        expect(rules[".studio-simulation-metrics > tbody > tr"].background).toContain("light-dark(");
+    });
+});

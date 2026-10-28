@@ -8,6 +8,7 @@ import type {ComponentProps} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 import {AppShellLayout} from "../../../../../../cli/studio-client/src/components/layout/AppShellLayout";
 import {SimulationTab} from "../../../../../../cli/studio-client/src/components/project/SimulationTab";
+import {featureAnalyticsReport} from "../../../../../v2/fixtures/FeatureAnalyticsFixture";
 import {SimulationSummaryCard} from "../../../../../../cli/studio-client/src/components/common/SimulationSummaryCard";
 import {describeSimulationReport} from "../../../../../../cli/studio-client/src/domain/interpret/Simulation";
 import {theme} from "../../../../../../cli/studio-client/src/theme";
@@ -270,4 +271,35 @@ it.each([["light", "breadcrumb"], ["dark", "breadcrumb"], ["light", "focus"], ["
     } finally {
         style.remove();
     }
+});
+
+
+it.each([false, true])("uses grouped full reports for historical=%s review and both comparisons, then restores the summary", async historicalResult => {
+    const p = props();
+    const user = userEvent.setup();
+    const source = featureAnalyticsReport();
+    const current = describeSimulationReport(source);
+    const other = describeSimulationReport({...source, game: {...source.game, id: "comparison-source"},
+        averagePayoutConfidenceInterval95: {low: 7.5, high: 8}});
+    render(<MantineProvider theme={theme}><SimulationTab {...p} historicalResult={historicalResult}
+        reviewedDetail={{status: "loaded", report: current}} compareDetail={{status: "loaded", report: other}} /></MantineProvider>);
+    const summary = screen.getByRole("table", {name: "Simulation summary"});
+    expect(summary).toHaveClass("studio-simulation-metrics");
+    await user.click(screen.getByRole("button", {name: "Open full report"}));
+    expect(screen.queryByRole("table", {name: "Simulation summary"})).not.toBeInTheDocument();
+    expect(screen.getByRole("table", {name: "Simulation result metrics"})).toBeVisible();
+    expect(screen.getByRole("table", {name: "Payout attribution"})).toBeVisible();
+    const toggle = screen.getByRole("button", {name: "Show canonical hits and components"});
+    await user.click(toggle);
+    expect(screen.getByRole("table", {name: "Component statistics"})).toBeVisible();
+    await user.click(screen.getByRole("button", {name: "Compare with another run"}));
+    const comparison = screen.getByRole("group", {name: "Compare with another run"});
+    expect(within(comparison).getAllByRole("table", {name: "Simulation result metrics"})).toHaveLength(2);
+    expect(within(comparison).getByText(/comparison-source/)).toBeVisible();
+    expect(within(comparison).getByText("7.50 – 8.00")).toBeVisible();
+    for (const control of within(comparison).getAllByRole("button", {name: "Show canonical hits and components"})) {
+        expect(control).toHaveAttribute("aria-expanded", "false");
+    }
+    await user.click(screen.getByRole("button", {name: "Hide full report"}));
+    expect(screen.getByRole("table", {name: "Simulation summary"})).toBeVisible();
 });

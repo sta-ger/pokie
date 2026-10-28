@@ -476,3 +476,55 @@ body,
 .studio-app-masthead .mantine-Title-root {
     font-family: var(--mantine-font-family);
 }
+
+/* Keep each metric's value next to its label at every report/comparison width.
+   Auto-fit follows the available column, including tablet and per-mode reports. */
+.studio-simulation-metrics {
+    display: block;
+    width: 100%;
+}
+
+.studio-simulation-metrics > tbody {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+    gap: var(--mantine-spacing-sm);
+}
+
+.studio-simulation-metrics > tbody > tr {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+    padding: var(--mantine-spacing-sm);
+    border: 1px solid light-dark(#d5d6cf, var(--mantine-color-dark-4));
+    border-radius: var(--mantine-radius-sm);
+    background: light-dark(#f7f5ee, var(--mantine-color-dark-7));
+}
+
+.studio-simulation-metrics > tbody > tr > :is(th, td) {
+    padding: 0;
+    text-align: start;
+    overflow-wrap: anywhere;
+}
+
+.studio-simulation-metrics > tbody > tr > th {
+    font-size: var(--mantine-font-size-sm);
+    font-weight: 500;
+}
+
+.studio-simulation-metrics > tbody > tr > td {
+    margin-top: var(--mantine-spacing-xs);
+    font-size: var(--mantine-font-size-lg);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.studio-simulation-report {
+    min-width: 0;
+    margin-top: var(--mantine-spacing-md);
+}
+
+.studio-simulation-report :is(th, td) {
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+}

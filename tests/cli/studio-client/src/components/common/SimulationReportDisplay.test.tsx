@@ -3,6 +3,7 @@ import {featureAnalyticsReport} from "../../../../../v2/fixtures/FeatureAnalytic
 import {describeSimulationReport, type SimulationReportView} from "../../../../../../cli/studio-client/src/domain/interpret/Simulation";
 import type {SimulationReport} from "../../../../../../cli/studio-client/src/api/types";
 import {MantineProvider} from "@mantine/core";
+import userEvent from "@testing-library/user-event";
 import {render, within} from "@testing-library/react";
 import {SimulationReportDisplay} from "../../../../../../cli/studio-client/src/components/common/SimulationReportDisplay";
 
@@ -98,7 +99,11 @@ it("displays completed logical rounds separately from accepted and unfinished su
     const report: SimulationReport = {game: {id: "bounded", name: "Bounded", version: "1"}, rounds: 2, requestedRounds: 9, seed: "1", totalBet: 0.15, totalWin: 1, rtp: 1 / 0.15, hitFrequency: 1, maxWin: 0.5, durationMs: 1, spinsPerSecond: 9, sampling: {unit: "completed-logical-round", acceptedSubrounds: 9, carriedSubrounds: 1, excludedSubrounds: 1, trajectories: "independent-session-per-worker"}, logicalRounds: {rounds: 2, steps: 8, totalStake: 0.1, totalWin: 1}};
     const view = describeSimulationReport(report);
     const result = render(<MantineProvider><SimulationReportDisplay view={view} /></MantineProvider>);
-    expect(result.getByText(/Completed logical rounds: 2; accepted subrounds: 9; carried subrounds: 1; excluded unfinished\/restored subrounds: 1/)).toBeInTheDocument();
+    const table = result.getByRole("table", {name: "Sampling and precision"});
+    for (const [label, value] of [["Usable samples", "2 (completed-logical-round)"], ["Accepted subrounds", "9"],
+        ["Carried subrounds", "1"], ["Excluded unfinished/restored subrounds", "1"]]) {
+        expect(within(within(table).getByText(label).closest("tr")!).getByRole("cell")).toHaveTextContent(value);
+    }
 });
 
 it("forwards real bonus selection statistics through the API view and rendered report", async () => {
@@ -125,13 +130,19 @@ it("renders analytics availability, zero denominators, unfinished features and p
     const result = render(<MantineProvider><SimulationReportDisplay view={describeSimulationReport({...zero, analytics: undefined})} /></MantineProvider>);
     expect(result.getByText(/Feature analytics unavailable/)).toBeVisible();
     result.rerender(<MantineProvider><SimulationReportDisplay view={describeSimulationReport(zero)} /></MantineProvider>);
-    expect(result.getAllByText(/bonus win \/ completions: 0 \/ 0 = 0/)).toHaveLength(7);
+    const lifecycle = () => result.getByRole("table", {name: "Feature lifecycle summary"});
+    expect(within(lifecycle()).getAllByRole("row")).toHaveLength(8);
+    expect(within(lifecycle()).getAllByText("0 / 0 = 0")).toHaveLength(21);
     expect(result.container.textContent).not.toContain("NaN");
     result.rerender(<MantineProvider><SimulationReportDisplay view={describeSimulationReport(featureAnalyticsReport("incomplete"))} /></MantineProvider>);
-    expect(result.getByText(/freeGames: entries \/ paid rounds: 1 \/ 1 = 1/)).toHaveTextContent("incomplete: 1");
+    const incomplete = within(lifecycle()).getByRole("row", {name: /^freeGames /});
+    expect(within(incomplete).getAllByRole("cell").map(cell => cell.textContent)).toEqual(["1 / 1 = 1", "0", "1", "0 / 0 = 0", "0 / 0 = 0"]);
     result.rerender(<MantineProvider><SimulationReportDisplay view={describeSimulationReport(featureAnalyticsReport())} /></MantineProvider>);
-    expect(result.getByText(/freeGames: duration/)).toHaveTextContent("bonus win / completions: 4 / 1 = 4");
-    expect(result.getByText(/feature: RTP contribution \/ actual charged stake/)).toHaveTextContent("payout share / total win");
+    const populated = within(lifecycle()).getByRole("row", {name: /^freeGames /});
+    expect(within(populated).getByText("4 / 1 = 4")).toBeVisible();
+    const attribution = result.getByRole("table", {name: "Payout attribution"});
+    const feature = within(attribution).getByRole("row", {name: /^feature /});
+    expect(within(feature).getAllByRole("cell").map(cell => cell.textContent)).toEqual(["14 / 24 = 0.5833333333333334", "14 / 30 = 0.4666666666666667"]);
 });
 
 it("keeps sample, attribution and noise limitations visible in the compact summary and full report", () => {
@@ -139,10 +150,101 @@ it("keeps sample, attribution and noise limitations visible in the compact summa
     const view = describeSimulationReport(report);
     for (const surface of [<SimulationSummaryCard key="summary" outcome={{kind: "completed", report: view}} />, <SimulationReportDisplay key="report" view={view} />]) {
         const result = render(<MantineProvider>{surface}</MantineProvider>);
-        expect(result.container.textContent).toContain("usable samples 0");
+        if (result.queryByRole("table", {name: "Sampling and precision"})) {
+            expect(result.getByText("Diagnostic usable samples").closest("tr")).toHaveTextContent("0 (completed-logical-round)");
+        } else expect(result.container.textContent).toContain("usable samples 0");
         expect(result.container.textContent).toContain("insufficientSamples");
         expect(result.container.textContent).toContain("neither establishes exact RTP");
         expect(result.container.textContent).toContain("supported but no entries observed");
         result.unmount();
     }
+});
+
+
+it("leads with grouped results and discloses real analytics without losing counts, units or caveats", async () => {
+    const user = userEvent.setup();
+    const report = featureAnalyticsReport();
+    const original = JSON.stringify(report);
+    const view = describeSimulationReport(report);
+    const result = render(<MantineProvider><SimulationReportDisplay view={view} /></MantineProvider>);
+    const metrics = result.getByRole("table", {name: "Simulation result metrics"});
+    const sampling = result.getByRole("table", {name: "Sampling and precision"});
+    expect(metrics).toHaveClass("studio-simulation-metrics");
+    expect(metrics.compareDocumentPosition(sampling) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(result.getByText(/neither establishes exact RTP/)).toBeVisible();
+    expect(result.container.textContent).not.toContain(JSON.stringify(report.payoutHistogram));
+    for (const name of ["Canonical hit rates", "Component statistics", "freeGames distributions", "Analytics provenance"]) {
+        expect(result.queryByRole("table", {name})).not.toBeInTheDocument();
+    }
+    const componentToggle = result.getByRole("button", {name: "Show canonical hits and components"});
+    componentToggle.focus();
+    await user.keyboard("{Enter}");
+    expect(componentToggle).toHaveFocus();
+    expect(componentToggle).toHaveAttribute("aria-expanded", "true");
+    const components = result.getByRole("table", {name: "Component statistics"});
+    expect(components.closest(".mantine-ScrollArea-root")).not.toBeNull();
+    expect(within(components).getAllByRole("row").slice(1).map(row => row.textContent)).toEqual(
+        Object.values(report.analytics!.components).map(c => `${c.type}${c.id}${c.symbol ?? "none"}${c.samples}${c.occurrences}${c.amount}`),
+    );
+    const hits = result.getByRole("table", {name: "Canonical hit rates"});
+    for (const [kind, group] of Object.entries(report.analytics!.hitRates)) {
+        for (const [id, r] of Object.entries(group)) {
+            expect(within(hits).getByRole("row", {name: `${kind} ${id} ${r.numerator} / ${r.denominator} = ${r.value}`})).toBeVisible();
+        }
+    }
+    await user.click(componentToggle);
+    expect(components).not.toBeVisible();
+    await user.click(componentToggle);
+    expect(result.getByRole("table", {name: "Component statistics"})).toBe(components);
+    await user.click(result.getByRole("button", {name: "Show win and feature details"}));
+    const distribution = result.getByRole("table", {name: "freeGames distributions"});
+    expect(within(distribution).getAllByRole("row").slice(1).map(row => within(row).getAllByRole("cell").map(cell => cell.textContent))).toEqual(
+        report.analytics!.features.freeGames.durationHistogram.map((count, i) => [String(count), String(report.analytics!.features.freeGames.winHistogram[i])]),
+    );
+    expect(result.getByRole("table", {name: "Bet mode attribution"})).toBeVisible();
+    await user.click(result.getByRole("button", {name: "Show analytics provenance"}));
+    expect(within(result.getByRole("table", {name: "Analytics provenance"})).getByText("known-answer")).toBeVisible();
+    await user.click(result.getByRole("button", {name: "Show advanced details (payout histogram)"}));
+    expect(result.getByText("Payout bucket (currency)")).toBeVisible();
+    expect(result.getByText(/legacy keys: 0, 1-9/)).toBeVisible();
+    expect(JSON.stringify(report)).toBe(original);
+});
+
+it("retains unavailable attribution and replaces disclosed observations without stale statistics", async () => {
+    const user = userEvent.setup();
+    const report = featureAnalyticsReport();
+    const view = (reportView: SimulationReportView) => <MantineProvider><SimulationReportDisplay view={reportView} /></MantineProvider>;
+    const result = render(view(describeSimulationReport(report)));
+    await user.click(result.getByRole("button", {name: "Show canonical hits and components"}));
+    result.rerender(view(describeSimulationReport(featureAnalyticsReport("empty"))));
+    expect(result.getByText("No canonical components observed.")).toBeVisible();
+    expect(result.getByRole("table", {name: "Component statistics"})).not.toHaveTextContent("mini");
+    const legacy = {...report, sampling: undefined, diagnostics: undefined, analytics: {
+        ...report.analytics!, envelope: {...report.analytics!.envelope, components: false, lifecycle: false},
+    }};
+    result.rerender(view(describeSimulationReport(legacy)));
+    expect(result.getByText("Canonical symbol/line/scatter hits unavailable.")).toBeVisible();
+    expect(result.getByText(/Feature lifecycle unavailable:/)).toBeVisible();
+    expect(result.queryByRole("table", {name: "Feature lifecycle summary"})).not.toBeInTheDocument();
+    expect(result.getByText(/Persisted precision\/support diagnostics unavailable/)).toBeVisible();
+    expect(result.getByText(/3 \(accepted-subround\)/)).toBeVisible();
+});
+
+
+it("keeps per-mode analytics, provenance and disclosure state separate", async () => {
+    const user = userEvent.setup();
+    const report = featureAnalyticsReport();
+    const base = {...report, betMode: "base", averagePayoutConfidenceInterval95: {low: 0, high: 0}};
+    const buy = {...featureAnalyticsReport("empty"), betMode: "buy", averagePayoutConfidenceInterval95: undefined};
+    const result = render(<MantineProvider><SimulationReportDisplay view={describeSimulationReport({game: report.game,
+        requestedRounds: 5, seed: null, modes: {base, buy}})} /></MantineProvider>);
+    const baseMode = within(result.getByRole("group", {name: "Mode: base"}));
+    const buyMode = within(result.getByRole("group", {name: "Mode: buy"}));
+    expect(baseMode.getByText("0.00 – 0.00")).toBeVisible();
+    expect(buyMode.getByText("Average payout 95% confidence interval").closest("tr")).toHaveTextContent("—");
+    await user.click(baseMode.getByRole("button", {name: "Show canonical hits and components"}));
+    expect(baseMode.getByRole("table", {name: "Component statistics"})).toHaveTextContent("mini");
+    expect(buyMode.queryByRole("table", {name: "Component statistics"})).not.toBeInTheDocument();
+    expect(buyMode.getByRole("button", {name: "Show canonical hits and components"})).toHaveAttribute("aria-expanded", "false");
+    expect(buyMode.getAllByText(/supported but no entries observed/)).toHaveLength(7);
 });

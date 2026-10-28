@@ -512,3 +512,19 @@ locally with the installed candidate; a hosted site or GitHub is not required.
 The normal Studio build includes these public assets. A missing help route
 returns an explicit 404 with `/help/docs/` recovery guidance rather than opening
 the Studio workspace. Closing a help tab leaves the authoring tab intact.
+
+### Full simulation report
+
+**Open full report** replaces the compact summary with labeled result metrics,
+visible warnings, sampling/precision and confidence intervals. Sampling units and
+empirical limitations stay visible. Feature lifecycle and additive payout
+attribution use comparison tables; bet mode attribution remains a separate
+dimension. **Show win and feature details**, **Show canonical hits and components**
+and **Show analytics provenance** reveal the detailed counts, distributions and
+source identity. The payout histogram is a table behind its own disclosure, with
+currency buckets and the sample population identified. Wide analytical tables
+scroll within the report on narrow screens and in side-by-side comparisons.
+
+The same presentation serves completed, reopened, comparison and per-mode reports.
+**Hide full report** returns to the summary. Disclosure changes only what is
+visible; persisted report values and JSON/Markdown/HTML downloads are unchanged.

@@ -394,7 +394,7 @@ export function SimulationTab({
                     )}
                     {outcome !== undefined && (
                         <div>
-                            <SimulationSummaryCard outcome={outcome} />
+                            {(outcome.kind !== "completed" || !fullReportOpened) && <SimulationSummaryCard outcome={outcome} />}
                             <QuickActions>
                                 {outcome.kind === "completed" && (
                                     <Button data-pokie-lifecycle-artifact="simulation-report" variant="default" onClick={toggleFullReport}>
