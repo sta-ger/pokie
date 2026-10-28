@@ -71,6 +71,12 @@ describe("CanonicalPlayerView", () => {
 
         const player = container.querySelector('[data-pokie-player="canonical-v1"]') as HTMLElement;
         expect(player).toHaveAttribute("aria-label", "Game player");
+        expect(player).toHaveClass("pokie-player-card");
+        const overview = player.querySelector(".player-round-overview") as HTMLElement;
+        expect(overview.querySelector(".player-grid")).not.toBeNull();
+        expect(overview.querySelector(".player-round-totals")).not.toBeNull();
+        expect(getComputedStyle(overview).display).toBe("flex");
+        expect(getComputedStyle(overview).flexWrap).toBe("wrap");
         expect(player.querySelector('[data-cell="0:0"]')?.textContent).toBe("cherry");
         expect(within(player).getByText("Total win").nextElementSibling).toHaveTextContent("10.00");
         expect(within(player).getByText("Free games").nextElementSibling).toHaveTextContent("3");
@@ -98,6 +104,8 @@ describe("CanonicalPlayerView", () => {
         rerender(<MantineProvider><CanonicalPlayerView reelsSymbols={[["B"]]} /></MantineProvider>);
 
         const player = container.querySelector('[data-pokie-player="canonical-v1"]') as HTMLElement;
+        expect(player).toHaveClass("pokie-player-card");
+        expect(player.querySelectorAll(".player-round-overview")).toHaveLength(1);
         expect(within(player).getByText("B")).toHaveAttribute("data-cell", "0:0");
         expect(player.querySelector(".player-wins")).toHaveProperty("hidden", true);
         expect(player.querySelector(".player-features")).toHaveProperty("hidden", true);

@@ -258,14 +258,17 @@ describe("renderPlayerRound", () => {
         expect(Array.from(root.children).map((element) => element.className)).toEqual([
             "player-bet-info",
             "player-mode-info",
-            "pokie-player-grid-scroll",
-            "player-round-totals",
+            "player-round-overview",
             "player-features",
             "player-wins",
             "player-lines-details",
             "player-paytable-details",
         ]);
         expect(elements.gridContainer.closest(".pokie-player-grid-scroll")).not.toBeNull();
+        expect(Array.from(root.querySelector(".player-round-overview")!.children).map(element => element.className)).toEqual([
+            "pokie-player-grid-scroll", "player-round-totals",
+        ]);
+        expect(root.classList.contains("pokie-player-card")).toBe(false);
         expect(elements.paytableBody.closest(".player-paytable-details")).not.toBeNull();
         expect(root.querySelector("p")).toBeNull();
     });
@@ -286,6 +289,47 @@ describe("renderPlayerRound", () => {
             paytableBody: document.createElement("tbody"),
         };
     }
+
+    it("composes Studio reels and metrics in wrapping tracks without changing the standalone host or round data", () => {
+        const standalone = document.createElement("div");
+        const studio = document.createElement("div");
+        studio.className = "pokie-player-card";
+        document.body.append(standalone, studio);
+        try {
+            for (const root of [standalone, studio]) {
+                const elements = createPlayerRoundElements(root);
+                renderPlayerRound(elements, {
+                    reelsSymbols: [["A", "K"], ["Q"]], highlights: [],
+                    credits: 0, totalWin: 7.5, payoutMultiplier: 1.5,
+                });
+            }
+            // Same canonical nodes and values; only the host-selected presentation differs.
+            expect(studio.innerHTML).toBe(standalone.innerHTML);
+            const overview = studio.querySelector<HTMLElement>(".player-round-overview")!;
+            const grid = studio.querySelector<HTMLElement>(".pokie-player-grid-scroll")!;
+            const totals = studio.querySelector<HTMLElement>(".player-round-totals")!;
+            expect(getComputedStyle(overview).display).toBe("flex");
+            expect(getComputedStyle(overview).flexWrap).toBe("wrap");
+            expect(getComputedStyle(overview).gap).toBe("1.5rem");
+            expect(getComputedStyle(grid).flex).toBe("2 1 22rem");
+            expect(getComputedStyle(totals).flex).toBe("1 1 14rem");
+            expect(getComputedStyle(grid).minWidth).toBe("0");
+            expect(getComputedStyle(grid).overflowX).toBe("auto");
+            expect(getComputedStyle(studio.querySelector(".player-grid")!).margin).toBe("0px auto");
+            expect(getComputedStyle(standalone.querySelector(".player-round-overview")!).display).toBe("block");
+            expect(getComputedStyle(standalone.querySelector(".player-round-totals")!).display).toBe("block");
+
+            // Hiding unavailable totals must still work despite the card's flex styling.
+            renderPlayerRound(createPlayerRoundElements(studio), {reelsSymbols: [["B"]], highlights: []});
+            const missingTotals = studio.querySelector<HTMLElement>(".player-round-totals")!;
+            expect(missingTotals.hidden).toBe(true);
+            expect(getComputedStyle(missingTotals).display).toBe("none");
+            expect(missingTotals.textContent).toBe("CreditsTotal winPayout multiplier");
+        } finally {
+            standalone.remove();
+            studio.remove();
+        }
+    });
 
     it("renders the complete computed round through one entrypoint and clears disabled sections on the next round", () => {
         const elements = createElements();

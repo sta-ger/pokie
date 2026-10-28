@@ -115,6 +115,45 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
         return captured.session;
     }
 
+    it("keeps the captured terminal card composition, values and recovery actions through loading and failure", () => {
+        const captured = loadFixtureSession();
+        const onSpin = jest.fn();
+        const onNewSession = jest.fn();
+        const page = (session: PlaySessionView) => <MantineProvider><PlayTab
+            session={session} sessionId={captured.sessionId}
+            onSpin={onSpin} onNewSession={onNewSession} onFindAnyWin={() => undefined}
+            onFindSymbolWin={() => undefined} onFindFreeGames={() => undefined}
+        /></MantineProvider>;
+        const {container, rerender} = render(page({status: "ok", session: captured}));
+        for (const state of [
+            {status: "ok" as const, session: captured},
+            {status: "loading" as const, previousSession: captured},
+            {status: "error" as const, message: "connection lost", subject: "This spin", previousSession: captured},
+        ]) {
+            rerender(page(state));
+            const player = container.querySelector(".pokie-player-card") as HTMLElement;
+            expect(player).not.toBeNull();
+            const overview = player.querySelector(".player-round-overview") as HTMLElement;
+            expect(getComputedStyle(overview).flexWrap).toBe("wrap");
+            expect(overview.querySelectorAll("[data-cell]")).toHaveLength(9);
+            expect(overview.querySelector(".player-round-totals")).toHaveTextContent("Credits1004Total win5.00Payout multiplier5.00");
+            expect(screen.getByRole("button", {name: "Line: 1, win: 5"})).toBeVisible();
+            expect(screen.getByText("Inspect round artifact")).toBeVisible();
+            if (state.status === "loading") {
+                expect(screen.getByRole("button", {name: "Spin"})).toBeDisabled();
+                expect(screen.getByRole("button", {name: "Reset Play session"})).toBeDisabled();
+            } else {
+                expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
+                expect(screen.getByRole("button", {name: "Reset Play session"})).toBeEnabled();
+            }
+        }
+        expect(screen.getByText("This spin couldn't be completed. Try again. If it continues, start a new session and retry.")).toBeVisible();
+        fireEvent.click(screen.getByRole("button", {name: "Spin"}));
+        expect(onSpin).toHaveBeenCalledWith(captured.bet, undefined, "stepwise");
+        fireEvent.click(screen.getByRole("button", {name: "Reset Play session"}));
+        expect(onNewSession).toHaveBeenCalledWith(undefined, undefined);
+    });
+
     it("shows the 3x3 grid, the top-row line-1 win highlighted at [[0,0],[1,0],[2,0]], and the A/5 win detail", () => {
         const fixtureSession = loadFixtureSession();
         const session: PlaySessionView = {status: "ok", session: fixtureSession};
