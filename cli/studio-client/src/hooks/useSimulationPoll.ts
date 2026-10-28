@@ -52,10 +52,11 @@ export function useSimulationPoll() {
     // This receipt is not: it is written only from a durable terminal job so
     // a replaced Retry control cannot be mistaken for a status-only result.
     const [terminalReceipt, setTerminalReceipt] = useState<SimulationTerminalReceipt>();
-    // Freshness belongs to an accepted creation after the last authored save,
-    // never to an attachment, restored history, or matching game metadata.
+    // Live freshness belongs to accepted creation after the last authored save.
+    // Restoration requires independent server proof of unchanged accepted source.
     const sourceRevisionRef = useRef(0);
     const [resultCurrent, setResultCurrent] = useState(false);
+    const restoredSourceRevisionRef = useRef(0);
     const operationRef = useRef<SimulationOperation>("simulation");
     const currentJobId = useRef<string | undefined>(undefined);
     // Discovery may attach only before this workflow has an owner. An explicit
@@ -120,6 +121,7 @@ export function useSimulationPoll() {
                 // the captured submission from its recovery-required state.
                 if (polledJob.id !== id) {
                     setJob(undefined);
+                    setResultCurrent(false);
                     setProgress(undefined);
                     setTerminalReceipt(undefined);
                     setCancellationRequested(false);
@@ -127,6 +129,7 @@ export function useSimulationPoll() {
                     return;
                 }
                 setRestoringJobId(undefined);
+                reconcileSourceFreshness(polledJob);
                 setJob(polledJob);
                 setConnectionError(undefined);
                 lastRequestRef.current = {rounds: polledJob.requestedRounds ?? polledJob.rounds, seed: polledJob.seed, workers: polledJob.workers, modeName: polledJob.modeName, convergence: polledJob.convergence};
@@ -148,6 +151,14 @@ export function useSimulationPoll() {
                 clearTimeout(request.timer);
                 if (pollRequestRef.current === request) pollRequestRef.current = undefined;
             });
+    }
+
+    function reconcileSourceFreshness(polledJob: StudioSimulationJobView): void {
+        if (attachmentRef.current === "restored") {
+            setResultCurrent(polledJob.sourceCurrent === true && restoredSourceRevisionRef.current === sourceRevisionRef.current);
+        } else if (polledJob.sourceCurrent === false) {
+            setResultCurrent(false);
+        }
     }
 
     function stopCancelRequest(): void {
@@ -196,7 +207,7 @@ export function useSimulationPoll() {
                 }
                 const id = result.status === "conflict" ? result.activeJobId : result.job.id;
                 currentJobId.current = id;
-                setResultCurrent(result.status === "created" && sourceRevision === sourceRevisionRef.current);
+                setResultCurrent(result.status === "created" && result.job.sourceCurrent !== false && sourceRevision === sourceRevisionRef.current);
                 if (result.status !== "conflict") {
                     setJob(result.job);
                     setProgress(describeSimulationProgress(result.job));
@@ -212,6 +223,7 @@ export function useSimulationPoll() {
                     // disabled after an actionable server diagnostic.
                     currentJobId.current = undefined;
                     setJob(undefined);
+                    setResultCurrent(false);
                     setProgress(undefined);
                     setTerminalReceipt(undefined);
                     setError(errorMessage(err));
@@ -237,6 +249,7 @@ export function useSimulationPoll() {
             return;
         }
         attachmentRef.current = "restored";
+        restoredSourceRevisionRef.current = sourceRevisionRef.current;
         setRestoringJobId(id);
         setConnectionError(undefined);
         const generation = generationRef.current + 1;
@@ -338,6 +351,7 @@ export function useSimulationPoll() {
                 }
                 if (polledJob.id !== id) {
                     setJob(undefined);
+                    setResultCurrent(false);
                     setProgress(undefined);
                     setTerminalReceipt(undefined);
                     setCancellationRequested(false);
@@ -346,6 +360,7 @@ export function useSimulationPoll() {
                 }
                 setRestoringJobId(undefined);
                 setConnectionError(undefined);
+                reconcileSourceFreshness(polledJob);
                 setJob(polledJob);
                 setProgress(describeSimulationProgress(polledJob));
                 if (!isSimulationActive(polledJob)) {
