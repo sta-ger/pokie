@@ -1624,28 +1624,40 @@ it.each(["cancelled", "failed"] as const)("persists %s analytics prefixes throug
 
 it("retains adaptive request identity, phase and completed report through reattachment and repository reconstruction", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-v2c17-adaptive-"));
+    const projectRoot = path.join(directory, "project");
+    const jobsDirectory = path.join(directory, "jobs");
     const manifest: PokieGameManifest = {id: "adaptive", name: "Adaptive", version: "1"};
+    fs.mkdirSync(projectRoot);
+    const source = path.join(projectRoot, "pokie-game.json");
+    fs.writeFileSync(source, JSON.stringify(manifest));
     const gate = createControlledYield();
-    const jobs = new StudioJobService(new FileStudioJobRepository(directory));
+    // Match Studio's separate application-data store: progress writes are not authored source.
+    const jobs = new StudioJobService(new FileStudioJobRepository(jobsDirectory));
     const service = new StudioSimulationService(undefined, () => Promise.resolve(createFakeGame(manifest)), undefined, 5, undefined, gate.yieldToEventLoop);
     service.attachJobService(jobs);
     const request = validateSimulationRequest({rounds: 100, seed: "adaptive", convergence: {minRounds: 10, rtpTolerance: 10, checkIntervalRounds: 5, stableChecks: 1}});
-    const started = service.start(directory, request);
+    const started = service.start(projectRoot, request);
     if (started.status !== "created") throw new Error("Expected simulation");
     try {
         while (!gate.pendingCount()) await flushMacrotask();
-        expect(service.getStatusForProject(directory, started.job.id)).toMatchObject({status: "running", roundsCompleted: 5, progress: {stage: "simulation", current: 5, total: 100}});
-        const attached = service.start(directory, request);
-        expect(attached).toMatchObject({status: "reattached", job: {id: started.job.id}});
-        expect(service.start(directory, {...request, convergence: {...request.convergence!, rtpTolerance: 1}})).toEqual({status: "conflict", activeJobId: started.job.id});
-        expect(jobs.get(directory, started.job.id)?.request.convergence).toEqual(request.convergence);
+        expect(service.getStatusForProject(projectRoot, started.job.id)).toMatchObject({status: "running", sourceCurrent: true, roundsCompleted: 5, progress: {stage: "simulation", current: 5, total: 100}});
+        const attached = service.start(projectRoot, request);
+        expect(attached).toMatchObject({status: "reattached", job: {id: started.job.id, sourceCurrent: true}});
+        expect(service.start(projectRoot, {...request, convergence: {...request.convergence!, rtpTolerance: 1}})).toEqual({status: "conflict", activeJobId: started.job.id});
+        expect(jobs.get(projectRoot, started.job.id)?.request).toMatchObject({convergence: request.convergence, sourceRevision: expect.stringMatching(/^sha256:[a-f0-9]{64}$/)});
+        // A real source edit must still conflict, even with identical simulation parameters.
+        fs.writeFileSync(source, JSON.stringify({...manifest, version: "2"}));
+        expect(service.getStatusForProject(projectRoot, started.job.id)?.sourceCurrent).toBe(false);
+        expect(service.start(projectRoot, request)).toEqual({status: "conflict", activeJobId: started.job.id});
+        fs.writeFileSync(source, JSON.stringify(manifest));
+        expect(service.start(projectRoot, request)).toMatchObject({status: "reattached", job: {id: started.job.id, sourceCurrent: true}});
         gate.release();
         const terminal = await waitForTerminal(service, started.job.id);
-        expect(terminal).toMatchObject({status: "completed", roundsCompleted: 10, progress: {stage: "completed"}, report: {stopReason: "converged", convergence: request.convergence, diagnostics: {precision: "empiricalPrecision"}}});
+        expect(terminal).toMatchObject({status: "completed", sourceCurrent: true, roundsCompleted: 10, progress: {stage: "completed"}, report: {stopReason: "converged", convergence: request.convergence, diagnostics: {precision: "empiricalPrecision"}}});
         const restarted = new StudioSimulationService();
-        restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(directory)));
-        expect(restarted.getReport(directory, started.job.id)).toEqual(service.getReport(directory, started.job.id));
-        expect(restarted.getStatusForProject(directory, started.job.id)?.convergence).toEqual(request.convergence);
+        restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(jobsDirectory)));
+        expect(restarted.getReport(projectRoot, started.job.id)).toEqual(service.getReport(projectRoot, started.job.id));
+        expect(restarted.getStatusForProject(projectRoot, started.job.id)).toMatchObject({sourceCurrent: true, convergence: request.convergence});
     } finally {
         gate.release();
         await service.cancelAll();
