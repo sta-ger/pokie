@@ -327,6 +327,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             let stdout: string;
             try {
                 stdout = (await waitP911Child(packChild)).stdout;
+            } catch (error) {
+                const result = (error as Error & {pc20Result?: {stdout: string; stderr: string}}).pc20Result;
+                if (result) console.error("Candidate prepack failed:\n" + result.stdout + result.stderr);
+                throw error;
             } finally {
                 await stopChild(packChild);
             }
