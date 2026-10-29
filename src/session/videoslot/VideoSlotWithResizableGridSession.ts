@@ -1,3 +1,4 @@
+import type {StakeAmountDetermining} from "../StakeAmountDetermining.js";
 import {AbstractVideoSlotSessionDecorator} from "./AbstractVideoSlotSessionDecorator.js";
 import type {GridResizeHandling} from "./GridResizeHandling.js";
 import {ResizableSymbolsCombinationsGenerator} from "./combinations/ResizableSymbolsCombinationsGenerator.js";
@@ -54,6 +55,10 @@ export class VideoSlotWithResizableGridSession<
             this.payoutAmount = undefined;
             this.generator.setReelsHeights(heights);
         };
+    }
+
+    public getStakeAmount(): number {
+        return (this.baseSession as Partial<StakeAmountDetermining>).getStakeAmount?.() ?? this.getBet();
     }
 
     public getPayoutAmount(): number | undefined {

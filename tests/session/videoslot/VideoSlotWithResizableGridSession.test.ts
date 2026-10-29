@@ -49,6 +49,25 @@ describe("VideoSlotWithResizableGridSession", () => {
             expect(session.getReelsHeights()).toEqual([5, 5, 5, 5, 5]);
         });
 
+    test("resizing forwards the wrapped session's actual stake before canonicalizing payout", () => {
+        const config = new VideoSlotConfig();
+        config.setAvailableBets([1e-7]);
+        config.setBet(1e-7);
+        config.setWildSymbols([]);
+        config.setScatterSymbols([]);
+        config.setPaytable(new Paytable([1e-7]));
+        const generator = new ResizableSymbolsCombinationsGenerator(config, [3, 3, 3, 3, 3], {getRandomInt: () => 0});
+        const base = new VideoSlotWithBetModesSession(new VideoSlotSession(config, generator), new BetModesConfig([
+            new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2}),
+        ]));
+        base.setBetMode("ante");
+        const session = new VideoSlotWithResizableGridSession(base, generator, {getNextReelsHeights: (_base, heights) => heights});
+        session.setCreditsAmount(1000);
+        expect(new SessionRuntime(session).execute({kind: "spin", roundId: "ante", delivery: "composite"})).toMatchObject({
+            status: "played", credits: 1000 - 2e-7, stake: 2e-7, payout: 0, logicalRound: {totalStake: 2e-7, totalPayout: 0},
+        });
+    });
+
     test.each([-17, 17])("resize handler adjustment %s survives exact base payout and rollback", adjustment => {
         const config = new VideoSlotConfig();
         config.setAvailableBets([1]);

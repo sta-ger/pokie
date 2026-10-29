@@ -13,8 +13,8 @@ export type LogicalSubround = {
     readonly command: SessionCommand;
     readonly stake: number;
     readonly win: number;
-    /** Actual wallet award, including a released free-game bank; never added to win. */
-    /** Signed settlement adjustment after the declared stake, including custom accounting. */
+    /** Signed settlement after the declared stake, including released banks and custom
+     * adjustments; never added to mathematical win. */
     readonly payout: number;
     readonly credits: number;
     readonly screen?: unknown[][];
