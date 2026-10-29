@@ -6,6 +6,8 @@ const {createRequire} = require('node:module');
 const {pathToFileURL} = require('node:url');
 const ts = require('typescript');
 const directory = process.argv[2];
+const batch = process.argv[3];
+assert.ok(['catalogue', 'modifiers', 'features'].includes(batch), 'expected a named bounded feature batch');
 const native = createRequire(path.join(directory, 'consumer.cjs'));
 const exitListeners = process.listenerCount('exit');
 const api = native('@fromstan/pokie');
@@ -340,8 +342,8 @@ async function longSessions(fixtures, portable) {
 const rejectionIds = new Set();
 async function conversionRoutes(fixtures, portable) {
     const routes=[];
-    for (const id of ['modes','weighted-dyadic']) {
-        const fixture=fixtures.find(row=>row.id===id);
+    for (const fixture of fixtures.filter(row=>['modes','weighted-dyadic'].includes(row.id))) {
+        const id=fixture.id;
         const registry=new api.ArtifactBuilderRegistry('1.3.0');
         const source=await new api.ProjectTargetResolver().resolve(fixture.packageDir);
         assert.equal(source.type,'tsPackage');
@@ -482,7 +484,11 @@ async function main() {
         weightFirstReel(blueprint,seed);
         extras.push({id:'weighted-cascade-refill',kind:'edge',blueprint,seed,weightedLifecycle:true,count:3,known:{wins:[0.1,0,0],stakes:[0.05,0,0.05],drawCounts:[11,11,15]}});
     }
-    for (const input of [...inputs, ...extras]) {
+    // Keep the full matrix, but release compiler/module/runtime state between
+    // bounded native processes instead of putting every cell under one deadline.
+    const modifierExtras = extras.filter(row=>row.id.startsWith('modifier-') || row.id.startsWith('composition-'));
+    const selected = batch === 'catalogue' ? inputs : batch === 'modifiers' ? modifierExtras : extras.filter(row=>!modifierExtras.includes(row));
+    for (const input of selected) {
         input.seed ??= 'feature-parity-31';
         if (input.kind === 'existing') existingFixture(input);
         if (input.kind === 'bounded' && !input.weightedLifecycle) {input.blueprint.reelStrips = [['C'],['C'],['C']]; input.blueprint.paytable = {};}
@@ -495,7 +501,9 @@ async function main() {
         try {receipts.push(await compare(fixture, portable));} catch (error) {error.message = `${fixture.id}: ${error.message}`; throw error;}
     }
     const routes = await conversionRoutes(fixtures,portable);
-    const compact = await longSessions([...fixtures.slice(0,36),...['weighted-hold-flat','weighted-bounded-cascade-respins-collection-lines','weighted-bonus-lines','weighted-cascade-refill'].map(id=>fixtures.find(fixture=>fixture.id===id))], portable);
-    process.stdout.write(JSON.stringify({compact, routes, rejectionIds:[...rejectionIds].sort(), catalogueIds: inputs.map(fixture => fixture.id), crossProducts: extras.map(fixture => fixture.id), publicExports: ['cjs','esm','browser','wasm'], receipts}));
+    const compactIds = new Set([...inputs.map(row=>row.id),'weighted-hold-flat','weighted-bounded-cascade-respins-collection-lines','weighted-bonus-lines','weighted-cascade-refill']);
+    const compact = await longSessions(fixtures.filter(row=>compactIds.has(row.id)), portable);
+    const selectedIds = new Set(selected.map(row=>row.id));
+    process.stdout.write(JSON.stringify({batch, compact, routes, rejectionIds:[...rejectionIds].sort(), catalogueIds: inputs.filter(row=>selectedIds.has(row.id)).map(row=>row.id), crossProducts: extras.filter(row=>selectedIds.has(row.id)).map(row=>row.id), publicExports: ['cjs','esm','browser','wasm'], receipts}));
 }
 main().catch(error => {console.error(error.stack); process.exitCode = 1;});

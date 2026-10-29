@@ -59,10 +59,26 @@ it("covers the frozen 36 launch rows through fresh public CJS/TypeScript/browser
             {id: "weighted-bonus", kind: "bonus", blueprint: weightedBonusBlueprint()},
         ];
         fs.writeFileSync(path.join(candidate.directory, "feature-fixtures.json"), JSON.stringify(fixtures));
-        const result = spawnSync(process.execPath, [path.resolve("tests/fixtures/wasm/verifyDeliveredFeatures.cjs"), candidate.directory], {encoding: "utf8", timeout: 180000, maxBuffer: 4 * 1024 * 1024});
-        if (result.stdout) console.log(result.stdout.trim());
-        expect({status: result.status, error: result.error?.message, stderr: result.stderr}).toEqual({status: 0, error: undefined, stderr: ""});
-        const report = JSON.parse(result.stdout.trim());
+        // One emitted public runtime, with sequential native batches that each
+        // retain the original deadline and release their compiler/module state.
+        const reports = ["catalogue", "modifiers", "features"].map(batch => {
+            const started = Date.now();
+            const result = spawnSync(process.execPath, [path.resolve("tests/fixtures/wasm/verifyDeliveredFeatures.cjs"), candidate.directory, batch], {encoding: "utf8", timeout: 180000, maxBuffer: 4 * 1024 * 1024});
+            expect({batch, status: result.status, error: result.error?.message, stderr: result.stderr}).toEqual({batch, status: 0, error: undefined, stderr: ""});
+            const report = JSON.parse(result.stdout.trim());
+            expect(report.batch).toBe(batch);
+            expect(report.receipts.map((row: {id: string}) => row.id)).toEqual([...report.catalogueIds, ...report.crossProducts]);
+            expect(report.publicExports).toEqual(["cjs", "esm", "browser", "wasm"]);
+            console.log(`Native feature parity ${batch}: ${report.receipts.length} cells, ${report.compact.length} compact continuations, ${Date.now() - started}ms`);
+            return report;
+        });
+        const report = {
+            catalogueIds: reports.flatMap(row => row.catalogueIds),
+            crossProducts: reports.flatMap(row => row.crossProducts),
+            routes: reports.flatMap(row => row.routes),
+            compact: reports.flatMap(row => row.compact),
+            rejectionIds: [...new Set(reports.flatMap(row => row.rejectionIds))].sort(),
+        };
         expect(report.catalogueIds).toHaveLength(36);
         expect(report.catalogueIds.join(",")).toBe("free-games,modes,hold-flat,hold-flat-modes,hold-bet,hold-bet-modes,fixed-base,fixed-base-modes,fixed-freeGames,fixed-freeGames-modes,fixed-holdAndWin,fixed-holdAndWin-modes,fixed-holdAndWin-bet,fixed-holdAndWin-bet-modes,accumulating-base,accumulating-base-modes,accumulating-freeGames,accumulating-freeGames-modes,accumulating-holdAndWin,accumulating-holdAndWin-modes,accumulating-holdAndWin-bet,accumulating-holdAndWin-bet-modes,modifier-expanding,modifier-sticky,modifier-restricted,modifier-multiplier,modifier-transform,modifier-reel,bounded-cascade,bounded-respins,bounded-collection,bounded-cascade-collection,bounded-respins-collection,bounded-cascade-respins,bounded-cascade-respins-collection,weighted-bonus");
         expect(report.catalogueIds).toEqual(AUTHORED_WORKFLOW_SUPPORT_CATALOG.map(row => row.id));
@@ -79,11 +95,10 @@ it("covers the frozen 36 launch rows through fresh public CJS/TypeScript/browser
         expect(report.crossProducts).toEqual(crossProducts);
         expect(report.rejectionIds).toEqual(["bonus-counts", "collection", "free-bank", "free-counters", "hold-lock", "jackpot-pool", "jackpot-stats", "modifier-model", "respins", "weighted-counts"]);
         expect(report.compact.map((row: {id: string; iterations: number}) => [row.id, row.iterations])).toEqual([...AUTHORED_WORKFLOW_SUPPORT_CATALOG.map(row => row.id), "weighted-hold-flat", "weighted-bounded-cascade-respins-collection-lines", "weighted-bonus-lines", "weighted-cascade-refill"].map(id => [id, 128]));
-        expect(report.publicExports).toEqual(["cjs", "esm", "browser", "wasm"]);
     } finally {
         candidate.dispose();
     }
-}, 240000);
+}, 600000);
 
 it("preserves a committed composite prefix through a failing successor, JSON restore and original-request retry", async () => {
     const {createCanonicalWasmFixture} = await import("../fixtures/wasm/createCanonicalWasmFixture.js");
