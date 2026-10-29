@@ -1,3 +1,4 @@
+import ts from "typescript";
 import {ChildProcessWithoutNullStreams, execFileSync, spawnSync, type SpawnSyncReturns} from "child_process";
 import {createHash} from "crypto";
 import fs from "fs";
@@ -584,6 +585,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             expect(fs.readFileSync(markdown, "utf8")).toContain("RTP");
             return {statistics, recorded};
         };
+        const finalContract = path.join(installDir!, "final-delivery-contracts.mjs");
+        fs.writeFileSync(finalContract, ts.transpileModule(fs.readFileSync(path.join(REPO_ROOT, "tests/fixtures/math/FinalDeliveryContracts.ts"), "utf8"), {
+            compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022},
+        }).outputText);
         const originalWorkflow = runGeneratedWorkflow("original-cjs");
         fs.writeFileSync(path.join(root, "dist/direct.cjs"), direct);
         execFileSync("npm", ["run", "build"], {cwd: root, encoding: "utf8", timeout: 120000});
@@ -604,6 +609,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             import {createRequire} from 'node:module';
             import * as api from '@fromstan/pokie';
             import * as portable from '@fromstan/pokie/wasm';
+            import {verifyFinalDelivery} from './final-delivery-contracts.mjs';
             const require = createRequire(import.meta.url);
             const packageRoot = ${JSON.stringify(root)};
             const consumer = createRequire(packageRoot + '/package.json');
@@ -732,9 +738,51 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 for (const [field, expected] of [['hitFrequency', 2 ** -64], ['maxWinProbability', 2 ** -64], ['rtp', 2 ** -63], ['variance', 2 ** -62]]) {
                     assert.ok(analysis[field] > 0 && Math.abs(analysis[field] / expected - 1) <= 1e-12, field);
                 }
+                let finalIndex = 0;
+                for (const host of [api, consumer('@fromstan/pokie')]) {
+                    const completed = await verifyFinalDelivery(host, blueprint => {
+                        const file = packageRoot + '/dist/final-' + finalIndex++ + '.cjs';
+                        fs.writeFileSync(file, host.renderBuiltGameModule(blueprint, '2.0.0'));
+                        return consumer(file);
+                    }, packageRoot + '/final-' + finalIndex + '.sqlite');
+                    assert.equal(completed.length, 4);
+                }
                 console.log('INSTALLED_NUMERIC_AND_COMPACT_CONTRACTS_OK');
             } finally { await loaded.release(); }
         `)).toContain("INSTALLED_NUMERIC_AND_COMPACT_CONTRACTS_OK");
+    });
+
+    smokeIt("bounds installed continuation in a real Node Worker and awaits its exit", () => {
+        const fixture = path.join(installDir!, "final-worker-continuation.mjs");
+        fs.writeFileSync(fixture, ts.transpileModule(fs.readFileSync(path.join(REPO_ROOT, "tests/fixtures/math/FinalWorkerContinuation.ts"), "utf8"), {
+            compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022},
+        }).outputText);
+        const entry = path.join(installDir!, "final-node-worker.mjs");
+        fs.writeFileSync(entry, `
+            import {parentPort} from 'node:worker_threads';
+            import * as api from '@fromstan/pokie/wasm';
+            import {measureFinalWorkerContinuation} from './final-worker-continuation.mjs';
+            try {parentPort.postMessage(await measureFinalWorkerContinuation(api, 100000, () => process.memoryUsage().heapUsed));}
+            finally {parentPort.close();}
+        `);
+        const output = installedProbe("final-node-worker-parent", `
+            import assert from 'node:assert/strict';
+            import {Worker} from 'node:worker_threads';
+            const worker = new Worker(new URL('./final-node-worker.mjs', import.meta.url));
+            let result;
+            const timer = setTimeout(() => worker.terminate(), 45000);
+            try {
+                await new Promise((resolve, reject) => {
+                    worker.once('message', value => {result = value});
+                    worker.once('error', reject);
+                    worker.once('exit', code => code === 0 && result ? resolve() : reject(new Error('Worker failed or timed out: ' + code)));
+                });
+                assert.equal(result.rounds, 100000);
+                assert.deepEqual(result.snapshots.map(sample => sample.rounds), [0, 10000, 100000]);
+                console.log('INSTALLED_FINAL_WORKER_OK ' + JSON.stringify(result));
+            } finally {clearTimeout(timer); await worker.terminate();}
+        `);
+        expect(output).toContain("INSTALLED_FINAL_WORKER_OK");
     });
 
     smokeIt("executes delivered portable exports and executable WASM through a real browser and module Worker", async () => {
@@ -743,6 +791,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const imports = Object.fromEntries(["browser", "wasm", "client/player"].map(name => [
             `@fromstan/pokie/${name}`, `/installed/${metadata.exports[`./${name}`].import.default.slice(2)}`,
         ]));
+        const continuationFixture = ts.transpileModule(fs.readFileSync(path.join(REPO_ROOT, "tests/fixtures/math/FinalWorkerContinuation.ts"), "utf8"), {
+            compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022},
+        }).outputText;
         const profile = path.join(installDir!, "browser profile");
         let finish!: (value: unknown) => void;
         const completed = new Promise<unknown>(resolve => {
@@ -755,6 +806,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             const check = (condition, message) => {if (!condition) throw new Error(message)};
             let worker;
             let runtime;
+            let continuation;
             try {
                 check(typeof player.renderPlayerRound === 'function', 'player export');
                 check(new browser.VideoSlotConfig().getAvailableBets().length > 0, 'browser runtime');
@@ -774,10 +826,27 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 await worker.request({type: 'dispose'});
                 worker.dispose();
                 check(worker.getDiagnostics().disposed && worker.getDiagnostics().pending === 0, 'Worker drained');
-                await fetch('/result', {method: 'POST', body: JSON.stringify({ok: true, abi: artifact.manifest.artifact.abiVersion, api: wasm.POKIE_WASM_RUNTIME_API_VERSION, worker: true})});
+                continuation = new Worker('/continuation-worker.mjs', {type: 'module'});
+                const measured = await new Promise((resolve, reject) => {
+                    continuation.onmessage = event => event.data.error ? reject(new Error(event.data.error)) : resolve(event.data);
+                    continuation.onerror = event => reject(new Error(event.message));
+                });
+                continuation.terminate(); continuation = undefined;
+                check(measured.rounds === 100000 && JSON.stringify(measured.snapshots.map(sample => sample.rounds)) === '[0,10000,100000]', 'long-lived module Worker checkpoints');
+                worker = new wasm.PokieWasmWorkerClient(() => new Worker('/worker.mjs', {type: 'module'}), {project: 'installed', generation: '2', artifact: artifact.manifest.artifact.sha256, job: 'cancel'});
+                await worker.request({type: 'instantiate', bytes: artifact.bytes, manifest: artifact.manifest, seed: '0'});
+                let observedProgress = false;
+                const cancelled = worker.request({type: 'simulate', rounds: 1000000, seed: '0', bet: 0.05}, progress => {
+                    if (progress.completed >= 128) {observedProgress = true; worker.dispose();}
+                }).then(() => false, () => true);
+                check(await cancelled && observedProgress && worker.getDiagnostics().pending === 0 && worker.getDiagnostics().disposed, 'active Worker cancellation drained pending requests');
+                worker = new wasm.PokieWasmWorkerClient(() => new Worker('/failed-worker.mjs', {type: 'module'}), {project: 'installed', generation: '3', artifact: artifact.manifest.artifact.sha256, job: 'failure'});
+                check(await worker.request({type: 'view'}).then(() => false, () => true), 'Worker load failure rejected pending request');
+                check(worker.getDiagnostics().pending === 0 && worker.getDiagnostics().disposed, 'failed Worker drained');
+                await fetch('/result', {method: 'POST', body: JSON.stringify({ok: true, abi: artifact.manifest.artifact.abiVersion, api: wasm.POKIE_WASM_RUNTIME_API_VERSION, worker: true, continuation: measured})});
             } catch (error) {
                 await fetch('/result', {method: 'POST', body: JSON.stringify({ok: false, error: String(error), stack: error.stack})});
-            } finally {worker?.dispose(); runtime?.dispose();}
+            } finally {continuation?.terminate(); worker?.dispose(); runtime?.dispose();}
         `;
         const server = createServer((request, response) => {
             const url = new URL(request.url!, "http://localhost");
@@ -795,6 +864,24 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             response.setHeader("Content-Type", "text/javascript");
             if (url.pathname === "/probe.mjs") {
                 response.end(script);
+                return;
+            }
+            if (url.pathname === "/continuation-fixture.mjs") {
+                response.end(continuationFixture);
+                return;
+            }
+            if (url.pathname === "/continuation-worker.mjs") {
+                response.end(`
+                    import * as api from '/installed/dist/esm/wasm/browser.js';
+                    import {measureFinalWorkerContinuation} from '/continuation-fixture.mjs';
+                    try {self.postMessage(await measureFinalWorkerContinuation(api, 100000));}
+                    catch (error) {self.postMessage({error: String(error)});}
+                    finally {self.close();}
+                `);
+                return;
+            }
+            if (url.pathname === "/failed-worker.mjs") {
+                response.end("throw new Error('deliberate verifier Worker failure');");
                 return;
             }
             if (url.pathname === "/worker.mjs") {
@@ -833,7 +920,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                     reject(new Error("Installed browser consumer did not finish within 60 seconds"));
                 }, 60000);
             });
-            expect(await Promise.race([completed, failure])).toEqual({ok: true, abi: "3.0.0", api: "2.1.0", worker: true});
+            expect(await Promise.race([completed, failure])).toMatchObject({ok: true, abi: "3.0.0", api: "2.1.0", worker: true, continuation: {rounds: 100000}});
         } finally {
             clearTimeout(timeout);
             try {

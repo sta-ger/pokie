@@ -1,3 +1,4 @@
+import type {PayoutAmountDetermining} from "../../PayoutAmountDetermining.js";
 import {isSessionStateRestorable, resolveSessionStateSchema, type SessionStateSchema, type SessionStateRestoring} from "../../SessionStateRestoring.js";
 import type {BuildableFromSessionState} from "../../BuildableFromSessionState.js";
 import type {ConvertableToSessionState} from "../../ConvertableToSessionState.js";
@@ -103,6 +104,11 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     // The amount the *next* play() will actually charge, including any ante/buy-feature multiplier --
     // consulted by SpinCommandHandler via determineStakeAmount() for real wallet debits, so a bet mode
     // affects money at the server boundary too, not only this session's own internal credits.
+    public getPayoutAmount(): number | undefined {
+        if (!this.stepResultValid) return 0;
+        return (this.baseSession as Partial<PayoutAmountDetermining>).getPayoutAmount?.();
+    }
+
     public getStakeAmount(): number {
         return this.computeBaseStakeAmount() * this.resolveActiveBetMode().getStakeMultiplier();
     }

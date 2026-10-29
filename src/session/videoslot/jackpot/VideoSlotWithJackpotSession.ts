@@ -1,3 +1,4 @@
+import type {PayoutAmountDetermining} from "../../PayoutAmountDetermining.js";
 import {captureWinEvaluation, restoreWinEvaluation, type WinEvaluationSnapshot} from "../winevaluation/WinEvaluationSnapshot.js";
 import {isSessionStateRestorable, resolveSessionStateSchema, type SessionStateRestoring, type SessionStateSchema} from "../../SessionStateRestoring.js";
 import {validateExecutableState} from "../../../runtime/validateExecutableState.js";
@@ -243,6 +244,12 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
     // Standard result API stabilization, mirroring VideoSlotWithHoldAndWinSession's own: "ordinary" forwards
     // straight to the wrapped session; "awarded" reports baseWinAmount + amount — both components genuinely
     // applied to credits this round (see JackpotRoundHandler.afterRoundPlayed()).
+    public getPayoutAmount(): number | undefined {
+        if (!this.stepResultValid) return 0;
+        const base = (this.baseSession as Partial<PayoutAmountDetermining>).getPayoutAmount?.();
+        return base === undefined ? undefined : base + (this.lastRoundOutcome.kind === "awarded" ? this.lastRoundOutcome.amount : 0);
+    }
+
     public override getWinAmount(): number {
         if (!this.stepResultValid) return 0;
         const outcome = this.lastRoundOutcome;

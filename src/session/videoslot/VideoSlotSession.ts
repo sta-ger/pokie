@@ -172,6 +172,10 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         this.baseSession.setCreditsAmount(creditsAmount);
     }
 
+    public getPayoutAmount(): number {
+        return this.getWinAmount();
+    }
+
     public getWinAmount(): number {
         if (!this.resultValid) return 0;
         return this.supportsWinEvaluationResult()

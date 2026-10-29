@@ -1,3 +1,4 @@
+import {resolveSessionPayout} from "../../runtime/internal/resolveSessionPayout.js";
 import {determineChargedBetMode} from "../../session/determineChargedBetMode.js";
 import {updateAuditDisposition} from "../../replay/updateAuditDisposition.js";
 import {auditBoundaryFromState, buildAuditRoundRecording, captureAuditDelivery, validateAuditRoundRecording} from "../../replay/AuditRoundReplay.js";
@@ -66,8 +67,9 @@ import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js
 // the wallet to the session's own final credits — i.e. balanceBeforePlay - stakeDebited +
 // winCredited === session.getCreditsAmount() after play(). That reconciliation is what keeps this
 // correct even for a session with its own internal accounting quirks (e.g. a free-games round that
-// banks a win across several spins instead of paying it out immediately): whatever delta the
-// session actually produced beyond the stake we charged is exactly what gets credited.
+// banks a win across several spins instead of paying it out immediately). Built-in sessions
+// expose exact domain payout via PayoutAmountDetermining; custom sessions without that
+// capability retain their signed balance-delta reconciliation.
 //
 // Every wallet transaction for an attempt gets its own id, `{roundId}:{attemptId}:debit`/`:credit`
 // — `roundId` is the requestId (or a fresh id when none was given), stable across every retry of
@@ -456,7 +458,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         const credit = ledger.credit.bind(ledger);
         ledger.credit = (sessionId, transactionId, amount) => {
             payout = {kind: "credit", amount};
-            // Preserve the canonical handler's exact delta calculation, including tiny stakes.
+            // Preserve the canonical handler's exact domain settlement, including tiny stakes.
             return credit(sessionId, transactionId, amount);
         };
         const inner = new SpinCommandHandler(this.game, {
@@ -904,8 +906,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             const executed = executeCommand();
             const win = executed.win;
             if (!Number.isFinite(win) || win < 0 || !Number.isFinite(session.getCreditsAmount()) || session.getCreditsAmount() < 0) throw new Error("Domain result contains invalid win or credits.");
-            const delta = session.getCreditsAmount() - balanceBeforePlay;
-            const creditAmount = delta + stakeAmount;
+            const creditAmount = resolveSessionPayout(session, balanceBeforePlay, stakeAmount);
 
             failureCode = "settlement-error";
             uncertainTransactionId = creditTransactionId;

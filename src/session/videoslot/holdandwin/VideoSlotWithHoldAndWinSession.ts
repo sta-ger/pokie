@@ -1,3 +1,4 @@
+import type {PayoutAmountDetermining} from "../../PayoutAmountDetermining.js";
 import {captureWinEvaluation, restoreWinEvaluation} from "../winevaluation/WinEvaluationSnapshot.js";
 import {isSessionStateRestorable, resolveSessionStateSchema, type SessionStateRestoring, type SessionStateSchema} from "../../SessionStateRestoring.js";
 import {validateExecutableState} from "../../../runtime/validateExecutableState.js";
@@ -270,6 +271,13 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     // reports 0 (a respin's own wrapped-paytable win was collected then discarded, never actually paid);
     // "completed" reports baseWinAmount + payout — both components genuinely applied to credits this round
     // (see HoldAndWinRoundHandler.complete()).
+    public getPayoutAmount(): number | undefined {
+        if (!this.stepResultValid) return 0;
+        return this.lastRoundOutcome.kind === "ordinary"
+            ? (this.baseSession as Partial<PayoutAmountDetermining>).getPayoutAmount?.()
+            : this.getWinAmount();
+    }
+
     public override getWinAmount(): number {
         if (!this.stepResultValid) return 0;
         const outcome = this.lastRoundOutcome;

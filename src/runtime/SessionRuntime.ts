@@ -1,3 +1,4 @@
+import {resolveSessionPayout} from "./internal/resolveSessionPayout.js";
 import {validateWeightedBonusObservation} from "../session/videoslot/authored/WeightedBonus.js";
 import {determineChargedBetMode} from "../session/determineChargedBetMode.js";
 import {isSessionStateRestorable, resolveSessionStateSchema} from "../session/SessionStateRestoring.js";
@@ -313,7 +314,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         session.play();
         const win = session.getWinAmount(),
             credits = session.getCreditsAmount();
-        const payout = Math.max(0, credits - creditsBefore + stake);
+        const payout = Math.max(0, resolveSessionPayout(session, creditsBefore, stake));
         if (command.delivery === undefined && command.continuation === undefined) {
             // Successful plain execution supersedes completed executable progress. Historical
             // retry receipts remain in their own ledger and must not become live progress.

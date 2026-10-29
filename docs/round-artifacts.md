@@ -319,7 +319,8 @@ unkeyed calls execute separately. A retry returns its immutable original descrip
 digest; changed commands, construction context, disposition or model are rejected before
 execution. Composite subdeliveries share their owning request and retain distinct logical
 cursors. `walletPayout` records the actual signed post-stake wallet adjustment (credit or
-debit), including floating-point residue; mathematical stakes and wins remain unchanged.
+debit). Built-in sessions retain exact domain payouts; legacy custom accounting can
+include floating-point residue. Mathematical stakes and wins remain unchanged.
 Captured evidence survives compensation with a compensated disposition. Recovery validates
 the original digest and owning operation identity before publishing a new disposition.
 When a successor calculation fails, the thrown error retains the immutable accepted prefix in
@@ -412,3 +413,11 @@ can expose its latest mathematical subround and logical totals without inventing
 missing history. Generated/visible/evaluated coordinates and selected variant IDs
 remain bound to their original artifact. Mathematical win and wallet payout are
 separate; delivery-only cascade frames add neither a stake nor another sample.
+
+Built-in sessions expose the exact wallet award separately from their mathematical
+win through the optional `PayoutAmountDetermining` capability. Logical delivery,
+settlement and audit replay use that amount, including exact zero and fractional
+awards. Free-game wins remain banked until release. Custom sessions that do not
+provide this capability keep signed balance-delta settlement. Audit validation
+checks the credit equation in settlement order; it does not recover small awards
+by subtracting large balances. Offline replay checks the actual executed payout.

@@ -13,6 +13,8 @@ export interface VideoSlotSessionHandling<T extends string | number | symbol = s
     /** Capture a synchronous step rollback, including nested executable state and result invalidation.
      * Optional for existing custom sessions; it does not certify persistence or custom collaborators. */
     createStepRollback?(): () => void;
+    /** Exact last wallet award; undefined retains a custom session's balance accounting. */
+    getPayoutAmount?(): number | undefined;
     getModifierObservation?(): import("./modifiers/ScreenModifiers.js").ScreenModifierObservation<T> | undefined;
     setSelectionContext?(context: string): void;
     getSequenceSelections?(): ReelSequenceSelection[];

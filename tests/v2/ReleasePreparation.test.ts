@@ -296,6 +296,36 @@ describe("V2C-30 release preparation", () => {
         expect(plan.externalActions.every((action: {owner: string; authorization: string}) => action.owner === "unresolved" && action.authorization === "pending separate explicit authorization")).toBe(true);
     });
 
+    it("keeps every public launch action pending after campaign acceptance and internal publication", () => {
+        const report = JSON.parse(read("docs/v2-completion/V2C-37.md").match(/```json\n([\s\S]*?)\n```/)![1]);
+        // Assertions on the inert final report, not an execution/receipt validator.
+        const assertPublicBoundary = (value: typeof report): void => {
+            expect(value.step).toBe("V2C-37");
+            expect(value.publicLaunch.state).toBe("pending-separate-authorization-and-access");
+            expect(value.publicLaunch.externalActions).toEqual(plan.externalActions.map((action: object) => ({...action, state: "pending", execution: null, receipt: null})));
+        };
+        assertPublicBoundary(report);
+        expect(report.engineeringDelivery).toEqual({state: "pending-controller-acceptance", sourceSha: null, independentAcceptance: null});
+        expect(report.internalPublication).toEqual({state: "pending-controller-execution", integrationSha: null, developPush: null, statusReceipt: null, driveReadback: null});
+        const accepted = structuredClone(report);
+        // Synthetic internal success cannot create any public receipt or authority.
+        accepted.engineeringDelivery.state = "accepted";
+        accepted.internalPublication.state = "published";
+        assertPublicBoundary(accepted);
+        for (const action of actions) {
+            for (const patch of [
+                {state: "published"},
+                {authorization: "", access: ""},
+                {execution: {exitCode: 1}, state: "published"},
+                {execution: {exitCode: 0, sourceSha: "historical receipt"}, receipt: "historical receipt"},
+            ]) {
+                const invalid = structuredClone(accepted);
+                Object.assign(invalid.publicLaunch.externalActions.find((row: {id: string}) => row.id === action), patch);
+                expect(() => assertPublicBoundary(invalid)).toThrow();
+            }
+        }
+    });
+
     it("traces all lifecycle/script dependencies, generated scripts and tracked workflows without external mutation", () => {
         const visited = inspectHooks(metadata.scripts, read);
         expect(visited.has("scripts/pc-20-release-completion.mjs")).toBe(true);

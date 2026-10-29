@@ -199,6 +199,13 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     // stake — see FreeGamesRoundHandler, which restores credits to their pre-play value for exactly
     // that case. Same condition canPlayNextGame() uses to let such a spin through regardless of
     // balance, kept as one source of truth.
+    public getPayoutAmount(): number | undefined {
+        if (!this.stepResultValid) return 0;
+        if (this.freeGamesRoundHandler.constructor !== FreeGamesRoundHandler) return undefined;
+        if (this.getFreeGamesNum() === 0) return this.getWinAmount();
+        return this.getFreeGamesNum() === this.getFreeGamesSum() ? this.getFreeGamesBank() : 0;
+    }
+
     public getStakeAmount(): number {
         return this.hasUnfinishedFreeGames() ? 0 : this.getBet();
     }

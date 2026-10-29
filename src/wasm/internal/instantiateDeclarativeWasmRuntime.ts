@@ -1,3 +1,4 @@
+import {resolveSessionPayout} from "../../runtime/internal/resolveSessionPayout.js";
 import {validateCheckpointFeasibility} from "./validateCheckpointFeasibility.js";
 import {captureDeclarativeTransitionBalances, restoreDeclarativeObservation} from "./restoreDeclarativeObservation.js";
 import {buildRoundArtifactFromSession} from "../../artifact/buildRoundArtifactFromSession.js";
@@ -387,7 +388,7 @@ export function instantiateDeclarativeWasmRuntime(model: DeclarativeWasmModel, m
                     componentAmounts = {ways: result.getWaysWins().map(c => c.getWinningWay().getWinAmount()), clusters: result.getClusterWins().map(c => c.getWinningCluster().getWinAmount())};
                 }
             }
-            const payout = result.payout ?? Math.max(0, native!.getCreditsAmount() - creditsBefore + result.stake);
+            const payout = result.payout ?? Math.max(0, resolveSessionPayout(native!, creditsBefore, result.stake));
             const round: PokieWasmRound = {sequence: state.sequence + 1, draw: currentDraws[0] ?? 0, stops: result.deliveryOnly && state.feature.lastRound ? state.feature.lastRound.stops : built.generator.getLastStopPositions(), screen: network.reelsSymbols,
                 winMultiplier: result.win / native!.getBet(), win: result.win, stake: result.stake, payout, creditsBefore, credits: native!.getCreditsAmount(), command,
                 network, ...(!result.deliveryOnly ? {analytics: observer.afterPlay(before, result.win, result.mode)} : {}), ...(result.logicalRound ? {logicalRound: result.logicalRound} : {}), ...(result.deliveryOnly ? {deliveryOnly: true} : {}),

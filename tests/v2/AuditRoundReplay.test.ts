@@ -119,7 +119,8 @@ console.log(JSON.stringify({rtp: new WeightedOutcomeLibraryAnalyzer().analyze(li
             expect(result).toMatchObject({win: 0, stake: bet, credits: 25 - bet});
             const delivery = result.audit!.deliveries[0];
             expect(delivery.result.stake).toBe(bet);
-            expect(delivery.disposition.walletPayout).toBe(delivery.after.credits - delivery.before.credits + bet);
+            expect(delivery.disposition.walletPayout).toBe(0);
+            expect(delivery.after.credits).toBe(delivery.before.credits - bet);
             expect(new api.AuditRoundReplay().replay(game, JSON.parse(JSON.stringify(result.audit))).verification).toBe("verified");
         } finally {
             await store?.close();
