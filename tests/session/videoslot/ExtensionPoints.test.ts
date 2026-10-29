@@ -585,6 +585,7 @@ describe("V2C-37-PAYOUT-CUSTOM accounting capability", () => {
     });
 
     test.each(Object.keys(accountingWrappers))("%s preserves signed wallet settlement, retry and offline audit replay", async wrapper => {
+        const initialFeature = (accountingWrappers[wrapper](accountingFixture()) as api.ConvertableToSessionState).toSessionState();
         const game: api.PokieGame = {
             getManifest: () => ({id: "double-debit", name: "Double debit", version: "1"}),
             getConfigHash: () => `sha256:${"a".repeat(64)}`,
@@ -592,19 +593,30 @@ describe("V2C-37-PAYOUT-CUSTOM accounting capability", () => {
             getSessionStateSchema: () => ({kind: "custom"}),
             getSessionCommandCapabilities: () => ({bets: [1], ...(["bet", "nested"].includes(wrapper) ? {modes: ["base"]} : {})}),
             validateSessionState: state => {
-                if (JSON.stringify(state) !== "{}") throw new Error("Invalid deterministic fixture state");
+                const normalize = (value: unknown): unknown => {
+                    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+                    const {chargedBetModeId, ...rest} = value as Record<string, unknown>;
+                    if (chargedBetModeId !== undefined && chargedBetModeId !== "base") throw new Error("Invalid charged fixture mode");
+                    return Object.fromEntries(Object.entries(rest).map(([key, item]) => [key, normalize(item)]));
+                };
+                if (JSON.stringify(api.toCanonicalJson(normalize(state))) !== JSON.stringify(api.toCanonicalJson(initialFeature))) throw new Error("Invalid deterministic fixture state");
             },
             createSession: () => {
                 const session = accountingWrappers[wrapper](accountingFixture());
+                const restore = Reflect.get(session, "fromSessionState") as (state: unknown) => unknown;
                 // This fixture has constant strips, no grants/pools/triggers or retained RNG.
                 // Its explicit codec owns the complete deterministic continuation, unlike an
                 // inherited built-in codec on an arbitrary custom extension.
                 return Object.assign(session, {
                     getSessionStateSchema: () => ({kind: "custom" as const}),
                     isSessionStateRestorable: () => true,
-                    toSessionState: () => ({}),
                     validateSessionState: (state: unknown) => game.validateSessionState!(state),
-                    fromSessionState: () => session,
+                    fromSessionState: (state: unknown) => {
+                        // Keep wrapper bookkeeping (including charged mode); the constant leaf
+                        // has no RNG/feature continuation to restore.
+                        if (wrapper !== "direct") Reflect.apply(restore, session, [state]);
+                        return session;
+                    },
                 });
             },
         };
@@ -614,8 +626,8 @@ describe("V2C-37-PAYOUT-CUSTOM accounting capability", () => {
         const handler = new api.SpinCommandHandler(game, repository, wallet);
         const command: api.RepositoryCommand = {kind: "spin", sessionId: "custom", requestId: "once", roundId: "signed", delivery: "composite"};
         const result = await handler.execute(command);
+        if (result.status !== "played") throw new Error(JSON.stringify(result));
         expect(result).toMatchObject({status: "played", credits: 998, state: {logicalRound: {totalPayout: -1}}});
-        if (result.status !== "played") throw new Error(result.status);
         expect(result.audit!.deliveries[0].disposition.walletPayout).toBe(-1);
         expect(new api.AuditRoundReplay().replay(game, JSON.parse(JSON.stringify(result.audit))).verification).toBe("verified");
         expect(await handler.execute(command)).toEqual(result);
@@ -626,6 +638,8 @@ describe("V2C-37-PAYOUT-CUSTOM accounting capability", () => {
     test.each(["free", "bet", "hold", "jackpot"])("%s handler credit changes survive and rejection rolls back", kind => {
         for (const doubleDebit of [false, true]) {
             const {base, config, generator, calculator} = accountingFixture(doubleDebit);
+            config.setLinesDefinitions(new CustomLinesDefinitions().setLineDefinition("line", [0, 0, 0, 0, 0]));
+            config.getPaytable().setPayoutForSymbol("A", 5, 3);
             let reject = false;
             const adjust = (session: VideoSlotSessionHandling) => {
                 session.setCreditsAmount(session.getCreditsAmount() + 17);
@@ -643,8 +657,10 @@ describe("V2C-37-PAYOUT-CUSTOM accounting capability", () => {
             else session = new VideoSlotWithBetModesSession(base, modes, {canForceFeatureEntry: () => true, forceFeatureEntry: adjust});
             if (session instanceof VideoSlotWithBetModesSession) session.setBetMode("buy");
             session.play();
-            const expected = doubleDebit ? 1015 : 1016;
+            const expected = doubleDebit ? 1018 : 1019;
             expect(session.getCreditsAmount()).toBe(expected);
+            expect(session.getWinAmount()).toBe(3);
+            expect(session.getWinEvaluationResult().getWinComponents()).toHaveLength(1);
             expect(session.getPayoutAmount?.()).toBeUndefined();
             reject = true;
             if (session instanceof VideoSlotWithBetModesSession) session.setBetMode("buy");
