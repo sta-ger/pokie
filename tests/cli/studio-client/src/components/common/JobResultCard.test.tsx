@@ -6,6 +6,41 @@ import {JobResultCard} from "../../../../../../cli/studio-client/src/components/
 import {jobFocusLayout} from "../../testUtils/jobFocusLayout";
 
 describe("JobResultCard", () => {
+    it.each(["retry", "resume"] as const)("V2C-37 retains disabled %s/output controls and releases them without changing the receipt", action => {
+        const onRecover = jest.fn();
+        const onRecoveryAction = jest.fn();
+        const onOpenOutput = jest.fn();
+        const onRevealOutput = jest.fn();
+        const onInspectOutput = jest.fn();
+        const job = {id: "busy-result", projectId: "/project", operation: "outcome-library-generation",
+            request: {sourcePath: "/project"}, conflictKey: "source", status: "cancelled" as const, createdAt: 1,
+            recovery: {action, reason: "Review the captured request."},
+            result: {summary: "Retained result", outputs: [{label: "Output", path: "/result", downloadPath: "/download"}]}};
+        const original = JSON.stringify(job);
+        const show = (actionsDisabledReason?: string) => <MantineProvider><JobCard job={job}
+            {...{actionsDisabledReason, onRecover, onRecoveryAction, onOpenOutput, onRevealOutput, onInspectOutput}} /></MantineProvider>;
+        const view = render(show("Wait for the pending opening."));
+        const buttons = screen.getAllByRole("button");
+        expect(buttons).toHaveLength(4);
+        for (const button of buttons) {
+            expect(button).toBeDisabled();
+            fireEvent.click(button);
+        }
+        expect(screen.getByRole("link", {name: "Download Output"})).toHaveAttribute("href", "/download");
+        for (const callback of [onRecover, onRecoveryAction, onOpenOutput, onRevealOutput, onInspectOutput]) expect(callback).not.toHaveBeenCalled();
+        view.rerender(show());
+        for (const button of screen.getAllByRole("button")) {
+            expect(button).toBeEnabled();
+            fireEvent.click(button);
+        }
+        expect(onOpenOutput).toHaveBeenCalledWith("/result");
+        expect(onRevealOutput).toHaveBeenCalledWith("/result");
+        expect(onInspectOutput).toHaveBeenCalledWith("/result");
+        if (action === "resume") expect(onRecover).toHaveBeenCalledWith(job.id);
+        else expect(onRecoveryAction).toHaveBeenCalledWith(job);
+        expect(JSON.stringify(job)).toBe(original);
+    });
+
     it.each(["project-open-materialization", "simulation", "design-build", "certification-build"])("keeps %s results and actions ahead of its inspectable receipt", async operation => {
         const user = userEvent.setup();
         const open = jest.fn();

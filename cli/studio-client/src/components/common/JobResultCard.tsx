@@ -42,7 +42,7 @@ function terminalPresentation(status: Exclude<StudioJobView["status"], "queued" 
     return {color: "red", label: "Failed", fallback: "This operation failed before it could complete."};
 }
 
-export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, onRevealOutput, onInspectOutput, outputActionsUnavailableReason}: {
+export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, onRevealOutput, onInspectOutput, outputActionsUnavailableReason, actionsDisabledReason}: {
     job: StudioJobView;
     onRecover?: (id: string) => void;
     onRecoveryAction?: (job: StudioJobView) => void;
@@ -51,6 +51,8 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
     onInspectOutput?: (path: string) => void;
     /** Omit host-only controls until this Studio session can truthfully use them. */
     outputActionsUnavailableReason?: string;
+    /** Retain historical controls while their owning workflow is busy. */
+    actionsDisabledReason?: string;
 }) {
     if (job.status === "queued" || job.status === "running" || job.status === "cancelling") return null;
     const presentation = terminalPresentation(job.status);
@@ -102,12 +104,12 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
                         <Group gap="xs" key={output.label} wrap="wrap" data-pokie-lifecycle-artifact={output.label}>
                             {output.downloadPath !== undefined && <Anchor size="xs" href={output.downloadPath}>Download {output.label}</Anchor>}
                             {job.operation === "outcome-library-generation" && outputPath !== undefined && onInspectOutput !== undefined &&
-                                <Button size="xs" variant="subtle" onClick={() => onInspectOutput(outputPath)}>Inspect {output.label}</Button>}
+                                <Button size="xs" variant="subtle" disabled={actionsDisabledReason !== undefined} onClick={() => onInspectOutput(outputPath)}>Inspect {output.label}</Button>}
                             {output.unavailableReason !== undefined && <Text size="xs" data-job-detail>{output.unavailableReason}</Text>}
                             {outputPath !== undefined && output.unavailableReason === undefined && outputActionsUnavailableReason === undefined && onOpenOutput !== undefined &&
-                                <Button size="xs" variant="subtle" onClick={() => onOpenOutput(outputPath)}>Open {output.label}</Button>}
+                                <Button size="xs" variant="subtle" disabled={actionsDisabledReason !== undefined} onClick={() => onOpenOutput(outputPath)}>Open {output.label}</Button>}
                             {outputPath !== undefined && output.unavailableReason === undefined && outputActionsUnavailableReason === undefined && onRevealOutput !== undefined &&
-                                <Button size="xs" variant="subtle" onClick={() => onRevealOutput(outputPath)}>Reveal {output.label}</Button>}
+                                <Button size="xs" variant="subtle" disabled={actionsDisabledReason !== undefined} onClick={() => onRevealOutput(outputPath)}>Reveal {output.label}</Button>}
                             {outputPath !== undefined && outputActionsUnavailableReason !== undefined &&
                                 <Text size="xs" data-job-detail>Open and reveal are unavailable: {outputActionsUnavailableReason}</Text>}
                             {output.downloadPath === undefined && (outputPath === undefined || (onOpenOutput === undefined && onRevealOutput === undefined && onInspectOutput === undefined)) &&
@@ -116,12 +118,13 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
                     );
                 })}
                 {job.recovery !== undefined && <Text size="xs" data-job-detail>Next: {job.recovery.action} — {job.recovery.reason}</Text>}
+                {actionsDisabledReason !== undefined && <Text size="xs" data-job-detail>{actionsDisabledReason}</Text>}
                 {job.recovery !== undefined && (
                     <Group gap="xs" wrap="wrap">
                         {job.recovery.action === "resume" && onRecover !== undefined &&
-                            <Button size="xs" variant="light" onClick={() => onRecover(job.id)}>Resume</Button>}
+                            <Button size="xs" variant="light" disabled={actionsDisabledReason !== undefined} onClick={() => onRecover(job.id)}>Resume</Button>}
                         {job.recovery.action !== "resume" && onRecoveryAction !== undefined &&
-                            <Button size="xs" variant="light" onClick={() => onRecoveryAction(job)}>
+                            <Button size="xs" variant="light" disabled={actionsDisabledReason !== undefined} onClick={() => onRecoveryAction(job)}>
                                 {recoveryActionLabel(job.recovery.action)}
                             </Button>}
                     </Group>

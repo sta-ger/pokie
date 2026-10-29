@@ -18,6 +18,7 @@ import {JobObservationNotice} from "../common/JobObservationNotice";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {errorMessage} from "../../domain/errorMessage";
 import {HomeProjectJobs} from "./HomeProjectJobs";
+import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 
 export type HomeTab = "design" | "projects";
 
@@ -109,16 +110,34 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
     const [projectRegistryVersion, setProjectRegistryVersion] = useState(0);
     const [justSavedManagedProject, setJustSavedManagedProject] = useState<StudioProjectRegistryView | undefined>(undefined);
     const openAndNavigate = useOpenProject();
+    const openingGuard = useDoubleSubmitGuard();
+    const [openingProject, setOpeningProject] = useState(false);
     const [recoveryOpeningError, setRecoveryOpeningError] = useState<string>();
     const [jobOutputNotice, setJobOutputNotice] = useState<string>();
     const [jobOutputActionsUnavailableReason, setJobOutputActionsUnavailableReason] = useState<string>();
     // Home does not have a current project identity.  The server therefore returns only Design and
     // project-opening records here, including retained terminal records after a reload.
     const homeJobs = useHomeSourceJobs(fetchImpl);
-    const reopenProject = (sourcePath: string): void => {
+    const openingDisabledReason = (job: StudioJobView): string | undefined => {
+        if (job.operation !== "project-open-materialization") return undefined;
+        if (openingProject) return "Project opening is pending. Finish any confirmation, or wait for its result.";
+        // A retained terminal is history, not permission to race a later opening. This also
+        // covers a reload, where the original browser promise no longer exists.
+        if (homeJobs.jobs.some(candidate => candidate.conflictKey === job.conflictKey &&
+            (candidate.status === "queued" || candidate.status === "running" || candidate.status === "cancelling"))) {
+            return "Project opening is active for this source. Wait for its result or cancel the active job before retrying.";
+        }
+        return undefined;
+    };
+    const reopenProject = (sourcePath: string, job: StudioJobView): void => {
+        if (openingDisabledReason(job) !== undefined || !openingGuard.begin()) return;
+        setOpeningProject(true);
         setRecoveryOpeningError(undefined);
         openAndNavigate(sourcePath).catch((error: unknown) => {
             setRecoveryOpeningError(`Couldn't reopen the retained project "${sourcePath}". ${errorMessage(error)} Retry if the source is available, or use Projects to Relocate it to its current location or add the game again.`);
+        }).finally(() => {
+            openingGuard.end();
+            setOpeningProject(false);
         });
     };
     useEffect(() => {
@@ -139,7 +158,7 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
         // owning workflow with its captured source so the user can inspect
         // the reconstructed operation and explicitly submit it again.
         if (job.operation === "project-open-materialization" && typeof job.request.sourcePath === "string") {
-            reopenProject(job.request.sourcePath);
+            reopenProject(job.request.sourcePath, job);
             return;
         }
         if (job.operation === "design-par-import" && typeof job.request.path === "string") {
@@ -164,7 +183,7 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
             {homeJobs.jobs.map((job) =>
                 <JobCard key={job.id} job={job} cancellationPending={homeJobs.pendingIds.includes(job.id)} onCancel={homeJobs.cancel} onRecover={homeJobs.recover} onRecoveryAction={handleHomeRecoveryAction} onOpenOutput={(outputPath) => {
                     if (job.operation === "project-open-materialization") {
-                        reopenProject(outputPath);
+                        reopenProject(outputPath, job);
                         return;
                     }
                     openOutputFolder(fetchImpl, outputPath).then((result) => {
@@ -174,7 +193,8 @@ function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => vo
                     revealOutputPath(fetchImpl, outputPath).then((result) => {
                         setJobOutputNotice(describeJobOutputAction(result, "Revealed job output."));
                     }).catch(() => setJobOutputNotice("Couldn't reveal the job output."));
-                }} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason} />,
+                }} outputActionsUnavailableReason={job.operation === "project-open-materialization" ? undefined : jobOutputActionsUnavailableReason}
+                actionsDisabledReason={openingDisabledReason(job)} />,
             )}
             {(recoveryOpeningError !== undefined || homeJobs.jobs.some((job) => job.result?.outputs?.some((output) => output.unavailableReason !== undefined))) &&
                 <Button variant="default" onClick={() => navigate("/home/projects")}>Find retained project in Projects</Button>}
