@@ -20,6 +20,7 @@ export async function measureFinalWorkerContinuation(api: typeof Wasm, rounds: n
         await send({id: "start", type: "instantiate", bytes: artifact.bytes, manifest: artifact.manifest, seed: "0", credits: 100000});
         const baseline = memory?.();
         for (let index = 0; index <= rounds; index++) {
+            let expectedNext: Wasm.PokieWasmRound | undefined;
             if (index === 0 || index === Math.floor(rounds / 10) || index === rounds) {
                 const state = JSON.parse(JSON.stringify(await send({id: "state", type: "serialize"}))) as Wasm.PokieWasmSessionState;
                 const size = JSON.stringify(state).length;
@@ -31,11 +32,7 @@ export async function measureFinalWorkerContinuation(api: typeof Wasm, rounds: n
                 try {
                     const restored = fresh.restoreSession(state);
                     check(fresh.getDiagnostics().generatedDraws === 0, "restore consumed RNG");
-                    const expected = await restored.play({bet: 0.05});
-                    const actual = await send({id: "next", type: "play", command: {bet: 0.05}});
-                    check(JSON.stringify(actual) === JSON.stringify(expected), "fresh restore next draw differs");
-                    // Put the exact checkpoint back; the measurement counts only ordinary plays.
-                    await send({id: "restore", type: "restore", state});
+                    expectedNext = await restored.play({bet: 0.05});
                 } finally {
                     fresh.dispose(); 
                 }
@@ -44,15 +41,20 @@ export async function measureFinalWorkerContinuation(api: typeof Wasm, rounds: n
                 check(!rejected.ok, "tampered identity accepted");
                 check(JSON.stringify(await send({id: "after", type: "serialize"})) === JSON.stringify(before), "rejected restore replaced state");
             }
-            if (index < rounds) await send({id: "play", type: "play", command: {bet: 0.05}});
+            // Check the next accepted live draw without ever restoring/rewinding
+            // that live stream. The final checkpoint has one explicit successor.
+            if (index < rounds || expectedNext) {
+                const actual = await send({id: "play", type: "play", command: {bet: 0.05}});
+                if (expectedNext) check(JSON.stringify(actual) === JSON.stringify(expectedNext), "fresh restore next draw differs");
+            }
         }
         const diagnostics = protocol.getDiagnostics() as Wasm.PokieWasmRuntimeDiagnostics & {inputTapeLength: number};
         check(diagnostics.inputTapeLength === 0, "ordinary continuation retained input tape");
-        check(diagnostics.generatedDraws === 3 + 3 * (rounds + snapshots.length), "RNG draw consumption changed");
+        check(diagnostics.generatedDraws === 3 + 3 * (rounds + 1), "RNG draw consumption changed");
         check(diagnostics.hostPayloadBytes <= 32 * (rounds + 10), "continuation copy work grew with history");
         check(diagnostics.snapshotPayloadBytes <= 512 * 32, "checkpoint copy budget exceeded");
         check(await send({id: "trace", type: "trace"}) === null, "ordinary execution retained trace");
-        return {rounds, snapshots, diagnostics};
+        return {rounds, acceptedRounds: rounds + 1, snapshots, diagnostics};
     } finally {
         const disposed = await protocol.handle({id: "dispose", type: "dispose"});
         check(disposed.ok, "protocol disposal failed");
