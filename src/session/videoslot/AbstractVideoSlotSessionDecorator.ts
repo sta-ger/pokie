@@ -214,7 +214,10 @@ implements VideoSlotSessionHandling<T> {
             if (action() === false) this.stepResultValid = resultValid;
             else {
                 const payout: number | undefined = payoutProvider ? Reflect.apply(payoutProvider, this, []) : undefined;
+                // Only an explicit, composition-aware payout contract may canonicalize credits.
+                // Undefined leaves successful extension accounting exactly as executed.
                 if (payout !== undefined) {
+                    if (!Number.isFinite(payout)) throw new Error("Domain payout must be finite.");
                     const settled = credits - stake + payout;
                     if (!Number.isFinite(settled) || settled < 0) throw new Error("Payout or balance overflow.");
                     this.setCreditsAmount(settled);

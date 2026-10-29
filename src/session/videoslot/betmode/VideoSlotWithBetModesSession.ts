@@ -61,6 +61,7 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     private readonly forcedFeatureEntryHandler: ForcedFeatureEntryHandling<T>;
     private currentBetModeId: string;
     private chargedBetModeId?: string;
+    private entryPreservedCredits = true;
 
     constructor(
         baseSession: VideoSlotSessionHandling<T>,
@@ -105,6 +106,7 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     // consulted by SpinCommandHandler via determineStakeAmount() for real wallet debits, so a bet mode
     // affects money at the server boundary too, not only this session's own internal credits.
     public getPayoutAmount(): number | undefined {
+        if (this.constructor !== VideoSlotWithBetModesSession || !this.entryPreservedCredits) return undefined;
         if (!this.stepResultValid) return 0;
         return (this.baseSession as Partial<PayoutAmountDetermining>).getPayoutAmount?.();
     }
@@ -151,6 +153,7 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
             // granting extra free spins on top.
             const totalIntendedCharge = this.getStakeAmount();
 
+            const creditsBeforeEntry = this.getCreditsAmount();
             this.validateEntryAction();
             if (totalIntendedCharge > 0) this.chargedBetModeId = mode.getId();
 
@@ -176,6 +179,9 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
             // charging for) is topped up to exactly totalIntendedCharge -- never assumed to already equal
             // the base bet, which is what let a buy-bonus's first (forced, free) spin silently go
             // undercharged by a full base bet before this fix.
+            // Forced entry strategies receive the live base. Their additional accounting must
+            // survive even when the base itself has an exact payout contract.
+            this.entryPreservedCredits = this.getCreditsAmount() === creditsBeforeEntry;
             const extraCost = totalIntendedCharge - this.computeBaseStakeAmount();
             if (extraCost !== 0) {
                 this.baseSession.setCreditsAmount(this.baseSession.getCreditsAmount() - extraCost);

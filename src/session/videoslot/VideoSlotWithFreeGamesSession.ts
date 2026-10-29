@@ -200,9 +200,11 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     // that case. Same condition canPlayNextGame() uses to let such a spin through regardless of
     // balance, kept as one source of truth.
     public getPayoutAmount(): number | undefined {
+        if (this.constructor !== VideoSlotWithFreeGamesSession || this.freeGamesRoundHandler.constructor !== FreeGamesRoundHandler) return undefined;
         if (!this.stepResultValid) return 0;
-        if (this.freeGamesRoundHandler.constructor !== FreeGamesRoundHandler) return undefined;
-        if (this.getFreeGamesNum() === 0) return this.getWinAmount();
+        const base = this.baseSession.getPayoutAmount?.();
+        if (base === undefined) return undefined;
+        if (this.getFreeGamesNum() === 0) return base;
         return this.getFreeGamesNum() === this.getFreeGamesSum() ? this.getFreeGamesBank() : 0;
     }
 

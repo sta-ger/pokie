@@ -272,10 +272,12 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     // "completed" reports baseWinAmount + payout — both components genuinely applied to credits this round
     // (see HoldAndWinRoundHandler.complete()).
     public getPayoutAmount(): number | undefined {
+        if (this.constructor !== VideoSlotWithHoldAndWinSession || this.roundHandler.constructor !== HoldAndWinRoundHandler) return undefined;
         if (!this.stepResultValid) return 0;
-        return this.lastRoundOutcome.kind === "ordinary"
-            ? (this.baseSession as Partial<PayoutAmountDetermining>).getPayoutAmount?.()
-            : this.getWinAmount();
+        const base = (this.baseSession as Partial<PayoutAmountDetermining>).getPayoutAmount?.();
+        if (this.lastRoundOutcome.kind === "ordinary") return base;
+        // Feature suppression/release owns the built-in paytable accounting only.
+        return base === this.baseSession.getWinAmount() ? this.getWinAmount() : undefined;
     }
 
     public override getWinAmount(): number {

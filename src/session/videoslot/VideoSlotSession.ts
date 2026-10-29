@@ -9,6 +9,7 @@ import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
 import {SymbolsSequence} from "./combinations/SymbolsSequence.js";
 import {validateExecutableState} from "../../runtime/validateExecutableState.js";
 import type {SessionStateRestoring, SessionStateSchema} from "../SessionStateRestoring.js";
+import type {PayoutAmountDetermining} from "../PayoutAmountDetermining.js";
 import {GameSession} from "../GameSession.js";
 import type {GameSessionHandling} from "../GameSessionHandling.js";
 import type {LinesDefinitionsDescribing} from "./linesdefinitions/LinesDefinitionsDescribing.js";
@@ -172,8 +173,13 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         this.baseSession.setCreditsAmount(creditsAmount);
     }
 
-    public getPayoutAmount(): number {
-        return this.getWinAmount();
+    public getPayoutAmount(): number | undefined {
+        // Inherited mathematical wins do not certify a subclass's or injected base's accounting.
+        // A custom implementation can explicitly override this contract with its signed settlement.
+        if (this.constructor !== VideoSlotSession) return undefined;
+        const base = this.baseSession.constructor === GameSession ? 0
+            : (this.baseSession as Partial<PayoutAmountDetermining>).getPayoutAmount?.();
+        return base === undefined ? undefined : base + this.getWinAmount();
     }
 
     public getWinAmount(): number {

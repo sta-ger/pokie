@@ -18,6 +18,64 @@ import {
 } from "@fromstan/pokie";
 
 describe("VideoSlotWithResizableGridSession", () => {
+    test.each([0.05, 7.5, 1e-7].flatMap(stake => [0, 2.5].map(multiplier => ({stake, multiplier}))))(
+        "V2C-37-PAYOUT-RESIZABLE preserves exact payout at $stake x $multiplier", ({stake, multiplier}) => {
+            const config = new VideoSlotConfig();
+            config.setAvailableBets([stake]);
+            config.setBet(stake);
+            config.setWildSymbols([]);
+            config.setScatterSymbols([]);
+            config.setSymbolsSequences(Array.from({length: 5}, () => new SymbolsSequence().fromArray(["A"])));
+            config.setLinesDefinitions(new CustomLinesDefinitions().setLineDefinition("line", [0, 0, 0, 0, 0]));
+            const paytable = new Paytable<string>([stake]);
+            paytable.setPayoutForSymbol("A", 5, multiplier);
+            config.setPaytable(paytable);
+            const generator = new ResizableSymbolsCombinationsGenerator(config, [3, 3, 3, 3, 3], {getRandomInt: () => 0});
+            const session = new VideoSlotWithResizableGridSession(new VideoSlotSession(config, generator), generator, {
+                getNextReelsHeights: (_session, heights) => heights.map(height => height + 1),
+            });
+            session.setCreditsAmount(1000);
+            const runtime = new SessionRuntime(new VideoSlotWithBetModesSession(session));
+            for (const roundId of ["first", "later"]) {
+                const result = runtime.execute({kind: "spin", delivery: "composite", roundId});
+                const expected = stake * multiplier;
+                expect(result).toMatchObject({status: "played", payout: expected, logicalRound: {totalPayout: expected}});
+                expect(session.getPayoutAmount()).toBe(expected);
+                if (expected > 0) {
+                    expect(session.getPayoutAmount()).toBeGreaterThan(0);
+                    expect(Math.abs(session.getPayoutAmount()! - expected)).toBeLessThanOrEqual(32 * Number.EPSILON * expected);
+                }
+            }
+            expect(session.getReelsHeights()).toEqual([5, 5, 5, 5, 5]);
+        });
+
+    test.each([-17, 17])("resize handler adjustment %s survives exact base payout and rollback", adjustment => {
+        const config = new VideoSlotConfig();
+        config.setAvailableBets([1]);
+        config.setBet(1);
+        config.setWildSymbols([]);
+        config.setScatterSymbols([]);
+        config.setPaytable(new Paytable([1]));
+        const generator = new ResizableSymbolsCombinationsGenerator(config, [3, 3, 3, 3, 3], {getRandomInt: () => 0});
+        let reject = false;
+        const session = new VideoSlotWithResizableGridSession(new VideoSlotSession(config, generator), generator, {
+            getNextReelsHeights: (base, heights) => {
+                base.setCreditsAmount(base.getCreditsAmount() + adjustment);
+                if (reject) throw new Error("resize accounting rejected");
+                return heights;
+            },
+        });
+        session.setCreditsAmount(1000);
+        const runtime = new SessionRuntime(new VideoSlotWithBetModesSession(session));
+        expect(runtime.execute({kind: "spin", roundId: "adjusted", delivery: "composite"})).toMatchObject({status: "played", credits: 999 + adjustment, payout: adjustment});
+        expect(session.getPayoutAmount()).toBeUndefined();
+        reject = true;
+        expect(() => session.play()).toThrow("resize accounting rejected");
+        expect(session.getCreditsAmount()).toBe(999 + adjustment);
+        expect(session.getPayoutAmount()).toBe(0);
+        expect(session.getWinAmount()).toBe(0);
+    });
+
     test.each(["resizable", "variable"])("authored rows above configured height settle on ordinary %s grids", kind => {
         const config = new VideoSlotConfig();
         config.setAvailableBets([1]);

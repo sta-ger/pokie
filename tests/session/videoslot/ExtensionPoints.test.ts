@@ -36,6 +36,8 @@ import {
     WinningWayDescribing,
 } from "@fromstan/pokie";
 
+import * as api from "@fromstan/pokie";
+
 import {legacyComposedGame, legacyCompositions} from "../../v2/fixtures/LegacyComposedGame.js";
 
 describe("ExtensionPoints", () => {
@@ -532,13 +534,152 @@ describe("ExtensionPoints", () => {
 
 test("finite settlement preserves the debit semantics of an injected base session", () => {
     const config = new VideoSlotConfig();
-    class DoubleDebitSession extends GameSession {
-        public override play(): void {
-            this.setCreditsAmount(this.getCreditsAmount() - 2 * this.getBet());
-        }
-    }
     const session = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(7)), new VideoSlotWinCalculator(config), new DoubleDebitSession(config));
     const credits = session.getCreditsAmount();
     session.play();
     expect(session.getCreditsAmount()).toBe(credits - 2 * session.getBet() + session.getWinAmount());
+});
+
+// The existing injected debit extension is deliberately not an exact-payout provider.
+class DoubleDebitSession extends GameSession {
+    public override play(): void {
+        this.setCreditsAmount(this.getCreditsAmount() - 2 * this.getBet());
+    }
+}
+
+function accountingFixture(doubleDebit = true) {
+    const config = new VideoSlotWithFreeGamesConfig();
+    config.setAvailableBets([1]);
+    config.setBet(1);
+    config.setCreditsAmount(1000);
+    config.setWildSymbols([]);
+    config.setScatterSymbols([]);
+    config.setSymbolsSequences(Array.from({length: 5}, () => new SymbolsSequence().fromArray(["A"])));
+    config.setPaytable(new Paytable([1]));
+    const generator = new SymbolsCombinationsGenerator(config, {getRandomInt: () => 0});
+    const calculator = new VideoSlotWinCalculator(config);
+    const base = new VideoSlotSession(config, generator, calculator, doubleDebit ? new DoubleDebitSession(config) : new GameSession(config));
+    return {config, generator, calculator, base};
+}
+
+const accountingWrappers: Record<string, (fixture: ReturnType<typeof accountingFixture>) => VideoSlotSessionHandling> = {
+    direct: ({base}) => base,
+    free: ({base, config, generator, calculator}) => new VideoSlotWithFreeGamesSession(config, generator, calculator, base),
+    bet: ({base}) => new VideoSlotWithBetModesSession(base),
+    hold: ({base}) => new api.VideoSlotWithHoldAndWinSession(base),
+    jackpot: ({base}) => new api.VideoSlotWithJackpotSession(base),
+    nested: fixture => new api.VideoSlotWithJackpotSession(new VideoSlotWithBetModesSession(
+        new VideoSlotWithFreeGamesSession(fixture.config, fixture.generator, fixture.calculator, fixture.base))),
+};
+
+describe("V2C-37-PAYOUT-CUSTOM accounting capability", () => {
+    test.each(Object.keys(accountingWrappers))("%s retains injected debit and signed logical settlement", wrapper => {
+        const session = accountingWrappers[wrapper](accountingFixture());
+        expect(session.getPayoutAmount?.()).toBeUndefined();
+        const result = new SessionRuntime(session).execute({kind: "spin", roundId: "custom", delivery: "composite"});
+        expect(result).toMatchObject({status: "played", credits: 998, win: 0, payout: -1, logicalRound: {totalPayout: -1}});
+        if (result.status !== "played") throw new Error(result.reason);
+        expect(api.validateLogicalRound(result.logicalRound)).toBeUndefined();
+        expect(api.validateLogicalRound({...result.logicalRound, retention: "latest"})).toBeUndefined();
+        expect(session.getPayoutAmount?.()).toBeUndefined();
+    });
+
+    test.each(Object.keys(accountingWrappers))("%s preserves signed wallet settlement, retry and offline audit replay", async wrapper => {
+        const game: api.PokieGame = {
+            getManifest: () => ({id: "double-debit", name: "Double debit", version: "1"}),
+            getConfigHash: () => `sha256:${"a".repeat(64)}`,
+            supportsLogicalRoundDelivery: () => true,
+            getSessionStateSchema: () => ({kind: "custom"}),
+            getSessionCommandCapabilities: () => ({bets: [1]}),
+            validateSessionState: state => {
+                if (JSON.stringify(state) !== "{}") throw new Error("Invalid deterministic fixture state");
+            },
+            createSession: () => {
+                const session = accountingWrappers[wrapper](accountingFixture());
+                // This fixture has constant strips, no grants/pools/triggers or retained RNG.
+                // Its explicit codec owns the complete deterministic continuation, unlike an
+                // inherited built-in codec on an arbitrary custom extension.
+                return Object.assign(session, {
+                    getSessionStateSchema: () => ({kind: "custom" as const}),
+                    isSessionStateRestorable: () => true,
+                    toSessionState: () => ({}),
+                    validateSessionState: (state: unknown) => game.validateSessionState!(state),
+                    fromSessionState: () => session,
+                });
+            },
+        };
+        const repository = new api.InMemorySessionRepository();
+        await repository.save("custom", captureInitialPokieSessionState(undefined, game.createSession(), undefined, false, game));
+        const wallet = new api.InMemoryWallet(1000);
+        const handler = new api.SpinCommandHandler(game, repository, wallet);
+        const command: api.RepositoryCommand = {kind: "spin", sessionId: "custom", requestId: "once", roundId: "signed", delivery: "composite"};
+        const result = await handler.execute(command);
+        expect(result).toMatchObject({status: "played", credits: 998, logicalRound: {totalPayout: -1}});
+        if (result.status !== "played") throw new Error(result.status);
+        expect(result.audit!.deliveries[0].disposition.walletPayout).toBe(-1);
+        expect(new api.AuditRoundReplay().replay(game, JSON.parse(JSON.stringify(result.audit))).verification).toBe("verified");
+        expect(await handler.execute(command)).toEqual(result);
+        expect(await wallet.getBalance("custom")).toBe(998);
+        expect((await repository.load("custom"))!.credits).toBe(998);
+    });
+
+    test.each(["free", "bet", "hold", "jackpot"])("%s handler credit changes survive and rejection rolls back", kind => {
+        for (const doubleDebit of [false, true]) {
+            const {base, config, generator, calculator} = accountingFixture(doubleDebit);
+            let reject = false;
+            const adjust = (session: VideoSlotSessionHandling) => {
+                session.setCreditsAmount(session.getCreditsAmount() + 17);
+                if (reject) throw new Error("custom handler rejected");
+            };
+            const modes = new api.BetModesConfig([new api.BetModeDefinition("base"), new api.BetModeDefinition("buy", {forcesFeatureEntry: true})]);
+            let session: VideoSlotSessionHandling;
+            if (kind === "free") session = new VideoSlotWithFreeGamesSession(config, generator, calculator, base, {
+                beforeRoundPlayed: () => undefined, afterRoundPlayed: adjust,
+            });
+            else if (kind === "hold") session = new api.VideoSlotWithHoldAndWinSession(base, 3, undefined, undefined, undefined, {
+                beforeRoundPlayed: () => undefined, afterRoundPlayed: adjust,
+            });
+            else if (kind === "jackpot") session = new api.VideoSlotWithJackpotSession(base, [], undefined, undefined, undefined, {afterRoundPlayed: adjust});
+            else session = new VideoSlotWithBetModesSession(base, modes, {canForceFeatureEntry: () => true, forceFeatureEntry: adjust});
+            if (session instanceof VideoSlotWithBetModesSession) session.setBetMode("buy");
+            session.play();
+            const expected = doubleDebit ? 1015 : 1016;
+            expect(session.getCreditsAmount()).toBe(expected);
+            expect(session.getPayoutAmount?.()).toBeUndefined();
+            reject = true;
+            if (session instanceof VideoSlotWithBetModesSession) session.setBetMode("buy");
+            expect(() => session.play()).toThrow("custom handler rejected");
+            expect(session.getCreditsAmount()).toBe(expected);
+            expect(session.getWinAmount()).toBe(0);
+            expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+        }
+    });
+
+    test("inherited session payout does not certify subclass accounting; explicit contracts compose", () => {
+        const {config, generator, calculator} = accountingFixture(false);
+        class AdjustedVideoSession extends VideoSlotSession {
+            public override play(): void {
+                super.play();
+                this.setCreditsAmount(this.getCreditsAmount() + 17);
+            }
+        }
+        const session = new api.VideoSlotWithJackpotSession(new AdjustedVideoSession(config, generator, calculator));
+        expect(new SessionRuntime(session).execute({kind: "spin", delivery: "composite", roundId: "subclass"})).toMatchObject({credits: 1016, payout: 17});
+        class AdjustedJackpot extends api.VideoSlotWithJackpotSession {
+            public override play(): void {
+                super.play();
+                this.setCreditsAmount(this.getCreditsAmount() + 17);
+            }
+        }
+        const adjustedWrapper = new VideoSlotWithBetModesSession(new AdjustedJackpot(accountingFixture(false).base));
+        expect(new SessionRuntime(adjustedWrapper).execute({kind: "spin", delivery: "composite", roundId: "wrapper-subclass"})).toMatchObject({credits: 1016, payout: 17});
+        class ExactDoubleDebit extends DoubleDebitSession {
+            public getPayoutAmount(): number {
+                return -this.getBet();
+            }
+        }
+        const exact = new VideoSlotWithBetModesSession(new VideoSlotSession(config, generator, calculator, new ExactDoubleDebit(config)));
+        expect(new SessionRuntime(exact).execute({kind: "spin", delivery: "composite", roundId: "explicit"})).toMatchObject({credits: 998, payout: -1});
+        expect(exact.getPayoutAmount()).toBe(-1);
+    });
 });

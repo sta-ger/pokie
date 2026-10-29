@@ -245,6 +245,7 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
     // straight to the wrapped session; "awarded" reports baseWinAmount + amount — both components genuinely
     // applied to credits this round (see JackpotRoundHandler.afterRoundPlayed()).
     public getPayoutAmount(): number | undefined {
+        if (this.constructor !== VideoSlotWithJackpotSession || this.roundHandler.constructor !== JackpotRoundHandler) return undefined;
         if (!this.stepResultValid) return 0;
         const base = (this.baseSession as Partial<PayoutAmountDetermining>).getPayoutAmount?.();
         return base === undefined ? undefined : base + (this.lastRoundOutcome.kind === "awarded" ? this.lastRoundOutcome.amount : 0);

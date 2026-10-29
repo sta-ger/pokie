@@ -84,7 +84,8 @@ export class BoundedVideoSlotSession extends AbstractVideoSlotSessionDecorator i
     public override getWinEvaluationResult(): WinEvaluationResult {
         return this.stepResultValid ? this.evaluation : new WinEvaluationResult();
     }
-    public getPayoutAmount(): number {
+    public getPayoutAmount(): number | undefined {
+        if (this.constructor !== BoundedVideoSlotSession) return undefined;
         return this.getWinAmount();
     }
 
