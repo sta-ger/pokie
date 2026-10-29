@@ -156,7 +156,7 @@ export async function verifyFinalDelivery(api: Api, makeGame: MakeGame, database
         for (const [index, bet] of finalStakes.entries()) {
             const sessionId = `final-${index}`;
             const session = storageGame.createSession({seed: "0"});
-            session.setCreditsAmount(1);
+            session.setCreditsAmount(100);
             await store.initialize(sessionId, api.captureInitialPokieSessionState({seed: "0"}, session, storageGame.getSessionSerializer?.(), false, storageGame), storageGame);
             const command = {kind: "spin" as const, sessionId, requestId: "lost-response", bet};
             const settled = await new api.SpinCommandHandler(storageGame, store).execute(command);
@@ -166,7 +166,7 @@ export async function verifyFinalDelivery(api: Api, makeGame: MakeGame, database
             assert.equal(new api.AuditRoundReplay().replay(storageGame, json(settled.audit!)).verification, "verified");
             const balance = await store.getBalance(sessionId), 
                 state = await store.readSession(sessionId);
-            assert.equal(balance, 1 - bet + 2 * bet);
+            assert.equal(balance, 100 - bet + 2 * bet);
             await store.close();
             store = await api.SqliteTransactionalRoundStore.open(database);
             assert.deepEqual(await new api.SpinCommandHandler(storageGame, store).execute(command), settled);
@@ -176,7 +176,14 @@ export async function verifyFinalDelivery(api: Api, makeGame: MakeGame, database
             abort.abort();
             assert.notEqual((await new api.SpinCommandHandler(storageGame, store).execute({...command, requestId: "cancelled"}, abort.signal)).status, "played");
             assert.notEqual((await new api.SpinCommandHandler(storageGame, store).execute({...command, requestId: "invalid", bet: 99})).status, "played");
-            assert.notEqual((await new api.SpinCommandHandler(storageGame, store).execute({...command, requestId: "unfunded", bet: 7.5})).status, "played");
+            const empty = storageGame.createSession({seed: "0"});
+            empty.setCreditsAmount(0);
+            const emptyId = `${sessionId}-empty`;
+            await store.initialize(emptyId, api.captureInitialPokieSessionState({seed: "0"}, empty, storageGame.getSessionSerializer?.(), false, storageGame), storageGame);
+            const emptyState = await store.readSession(emptyId);
+            assert.notEqual((await new api.SpinCommandHandler(storageGame, store).execute({...command, sessionId: emptyId, requestId: "unfunded"})).status, "played");
+            assert.equal(await store.getBalance(emptyId), 0);
+            assert.deepEqual(await store.readSession(emptyId), emptyState);
             assert.equal(await store.getBalance(sessionId), balance);
             assert.deepEqual(await store.readSession(sessionId), state);
         }

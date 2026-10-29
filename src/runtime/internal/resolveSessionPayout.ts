@@ -5,5 +5,6 @@ import type {PayoutAmountDetermining} from "../../session/PayoutAmountDeterminin
  * sessions retain their balance-delta settlement, including negative adjustments. */
 export function resolveSessionPayout(session: GameSessionHandling, creditsBefore: number, stake: number): number {
     const exact = (session as Partial<PayoutAmountDetermining>).getPayoutAmount?.();
+    if (exact !== undefined && !Number.isFinite(exact)) throw new Error("Domain payout must be finite.");
     return exact ?? session.getCreditsAmount() - creditsBefore + stake;
 }

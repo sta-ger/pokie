@@ -1,4 +1,4 @@
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
 import {REQUIRED_SHEETS} from "../../parsheet/ParSheetImporter.js";
 
 export type ParWorkbookRecognition =
@@ -18,6 +18,7 @@ export type ParWorkbookRecognition =
 export async function recognizeParWorkbookFile(filePath: string): Promise<ParWorkbookRecognition> {
     let workbook: ExcelJS.Workbook;
     try {
+        const ExcelJS = (await import("exceljs")).default;
         workbook = new ExcelJS.Workbook();
         await workbook.xlsx.readFile(filePath);
     } catch {

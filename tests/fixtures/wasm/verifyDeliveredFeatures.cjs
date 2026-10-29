@@ -7,7 +7,9 @@ const {pathToFileURL} = require('node:url');
 const ts = require('typescript');
 const directory = process.argv[2];
 const native = createRequire(path.join(directory, 'consumer.cjs'));
+const exitListeners = process.listenerCount('exit');
 const api = native('@fromstan/pokie');
+assert.equal(process.listenerCount('exit'), exitListeners, 'root import must not install workbook dependency exit listeners');
 const clone = value => JSON.parse(JSON.stringify(value));
 const near = (actual, expected, label) => assert.ok(Math.abs(actual - expected) <= 1e-10 * Math.max(1, Math.abs(expected)), `${label}: ${actual} != ${expected}`);
 // Independent FNV-1a/mulberry32 oracle for authored stop scripts and next-draw checks.
