@@ -562,7 +562,7 @@ function accountingFixture(doubleDebit = true) {
     return {config, generator, calculator, base};
 }
 
-const accountingWrappers: Record<string, (fixture: ReturnType<typeof accountingFixture>) => VideoSlotSessionHandling> = {
+const accountingWrappers: Record<string, (fixture: ReturnType<typeof accountingFixture>) => VideoSlotSessionHandling & api.ConvertableToSessionState> = {
     direct: ({base}) => base,
     free: ({base, config, generator, calculator}) => new VideoSlotWithFreeGamesSession(config, generator, calculator, base),
     bet: ({base}) => new VideoSlotWithBetModesSession(base),
@@ -585,7 +585,7 @@ describe("V2C-37-PAYOUT-CUSTOM accounting capability", () => {
     });
 
     test.each(Object.keys(accountingWrappers))("%s preserves signed wallet settlement, retry and offline audit replay", async wrapper => {
-        const initialFeature = (accountingWrappers[wrapper](accountingFixture()) as api.ConvertableToSessionState).toSessionState();
+        const initialFeature = accountingWrappers[wrapper](accountingFixture()).toSessionState();
         const game: api.PokieGame = {
             getManifest: () => ({id: "double-debit", name: "Double debit", version: "1"}),
             getConfigHash: () => `sha256:${"a".repeat(64)}`,
