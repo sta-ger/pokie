@@ -590,7 +590,7 @@ describe("V2C-37-PAYOUT-CUSTOM accounting capability", () => {
             getConfigHash: () => `sha256:${"a".repeat(64)}`,
             supportsLogicalRoundDelivery: () => true,
             getSessionStateSchema: () => ({kind: "custom"}),
-            getSessionCommandCapabilities: () => ({bets: [1]}),
+            getSessionCommandCapabilities: () => ({bets: [1], ...(["bet", "nested"].includes(wrapper) ? {modes: ["base"]} : {})}),
             validateSessionState: state => {
                 if (JSON.stringify(state) !== "{}") throw new Error("Invalid deterministic fixture state");
             },
@@ -614,7 +614,7 @@ describe("V2C-37-PAYOUT-CUSTOM accounting capability", () => {
         const handler = new api.SpinCommandHandler(game, repository, wallet);
         const command: api.RepositoryCommand = {kind: "spin", sessionId: "custom", requestId: "once", roundId: "signed", delivery: "composite"};
         const result = await handler.execute(command);
-        expect(result).toMatchObject({status: "played", credits: 998, logicalRound: {totalPayout: -1}});
+        expect(result).toMatchObject({status: "played", credits: 998, state: {logicalRound: {totalPayout: -1}}});
         if (result.status !== "played") throw new Error(result.status);
         expect(result.audit!.deliveries[0].disposition.walletPayout).toBe(-1);
         expect(new api.AuditRoundReplay().replay(game, JSON.parse(JSON.stringify(result.audit))).verification).toBe("verified");
@@ -665,13 +665,13 @@ describe("V2C-37-PAYOUT-CUSTOM accounting capability", () => {
         }
         const session = new api.VideoSlotWithJackpotSession(new AdjustedVideoSession(config, generator, calculator));
         expect(new SessionRuntime(session).execute({kind: "spin", delivery: "composite", roundId: "subclass"})).toMatchObject({credits: 1016, payout: 17});
-        class AdjustedJackpot extends api.VideoSlotWithJackpotSession {
+        class AdjustedBetMode extends VideoSlotWithBetModesSession {
             public override play(): void {
                 super.play();
                 this.setCreditsAmount(this.getCreditsAmount() + 17);
             }
         }
-        const adjustedWrapper = new VideoSlotWithBetModesSession(new AdjustedJackpot(accountingFixture(false).base));
+        const adjustedWrapper = new api.VideoSlotWithJackpotSession(new AdjustedBetMode(accountingFixture(false).base));
         expect(new SessionRuntime(adjustedWrapper).execute({kind: "spin", delivery: "composite", roundId: "wrapper-subclass"})).toMatchObject({credits: 1016, payout: 17});
         class ExactDoubleDebit extends DoubleDebitSession {
             public getPayoutAmount(): number {
