@@ -21,9 +21,10 @@ import {localPokieDependencyRunner, REPO_ROOT} from "../../testUtils/offlinePoki
 import {prepareExactCodeFirstPackage} from "../../testUtils/prepareExactCodeFirstPackage.js";
 import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
 
-// Compile only the worker's CLI module closure. It resolves the already prepared real runtime
-// through ordinary package exports, without a Jest import hook or a full CLI/package build.
-function emitPreflightWorker(parent: string): string {
+// Compile only the worker's CLI module closure. Install the real CJS runtime it consumes,
+// rather than making every isolated snapshot copy the checkout's tests, docs and evidence.
+// Native exports and the complete declared dependency graph still use the production loader.
+function emitPreflightWorker(parent: string): {entry: string; runtimePackageRoot: string} {
     const root = path.join(parent, "preflight-host");
     const emitted = new Set<string>();
     const emit = (relative: string): void => {
@@ -39,10 +40,12 @@ function emitPreflightWorker(parent: string): string {
     };
     emit("cli/studio/artifacts/artifactPreflightWorkerEntry.ts");
     fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({type: "commonjs"}));
-    const link = path.join(root, "node_modules/@fromstan/pokie");
-    fs.mkdirSync(path.dirname(link), {recursive: true});
-    fs.symlinkSync(REPO_ROOT, link, "dir");
-    return path.join(root, "cli/studio/artifacts/artifactPreflightWorkerEntry.js");
+    const runtimePackageRoot = path.join(root, "node_modules/@fromstan/pokie");
+    fs.mkdirSync(path.join(runtimePackageRoot, "dist"), {recursive: true});
+    fs.copyFileSync(path.join(REPO_ROOT, "package.json"), path.join(runtimePackageRoot, "package.json"));
+    fs.cpSync(path.join(REPO_ROOT, "dist/cjs"), path.join(runtimePackageRoot, "dist/cjs"), {recursive: true});
+    fs.symlinkSync(path.join(REPO_ROOT, "node_modules"), path.join(runtimePackageRoot, "node_modules"), "junction");
+    return {entry: path.join(root, "cli/studio/artifacts/artifactPreflightWorkerEntry.js"), runtimePackageRoot};
 }
 
 async function until<T>(read: () => T | undefined): Promise<T> {
@@ -267,11 +270,11 @@ describe("StudioArtifactBuildService (integration)", () => {
         }));
     });
     it("drains installed-runtime preflights before retaining reviewed extraction provenance for Build", async () => {
-        const entry = emitPreflightWorker(workDir);
-        const preflight = new StudioArtifactPreflightWorker("2.0.0", REPO_ROOT, entry);
-        service = new StudioArtifactBuildService("2.0.0", undefined, undefined, undefined, undefined, REPO_ROOT, undefined, preflight);
+        const {entry, runtimePackageRoot} = emitPreflightWorker(workDir);
+        const preflight = new StudioArtifactPreflightWorker("2.0.0", runtimePackageRoot, entry);
+        service = new StudioArtifactBuildService("2.0.0", undefined, undefined, undefined, undefined, runtimePackageRoot, undefined, preflight);
         const blueprint = {...optimizationBlueprint(), manifest: {id: "preflight-slot", name: "Preflight slot", version: "1"}};
-        const source = new GamePackageGenerator("2.0.0").generate(blueprint, workDir, undefined, undefined, {runtimePackageRoot: REPO_ROOT}).projectRoot;
+        const source = new GamePackageGenerator("2.0.0").generate(blueprint, workDir, undefined, undefined, {runtimePackageRoot}).projectRoot;
         const sourceEntry = fs.readFileSync(path.join(source, "dist/index.js"));
         const listeners = process.listenerCount("exit");
         const snapshots = () => fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-preflight-"));
@@ -347,9 +350,9 @@ describe("StudioArtifactBuildService (integration)", () => {
     }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("cancels executing and queued preflights, drains snapshots and lets the current destination finish", async () => {
-        const entry = emitPreflightWorker(workDir);
-        const preflight = new StudioArtifactPreflightWorker("2.0.0", REPO_ROOT, entry);
-        service = new StudioArtifactBuildService("2.0.0", undefined, undefined, undefined, undefined, REPO_ROOT, undefined, preflight);
+        const {entry, runtimePackageRoot} = emitPreflightWorker(workDir);
+        const preflight = new StudioArtifactPreflightWorker("2.0.0", runtimePackageRoot, entry);
+        service = new StudioArtifactBuildService("2.0.0", undefined, undefined, undefined, undefined, runtimePackageRoot, undefined, preflight);
         const startedPath = path.join(workDir, "descriptor-started");
         const source = writeDescriptorPackage(workDir, {descriptorBody: `require("fs").writeFileSync(${JSON.stringify(startedPath)}, "started"); return new Promise(() => {});`});
         const controller = new AbortController();
@@ -384,9 +387,9 @@ describe("StudioArtifactBuildService (integration)", () => {
     }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("keeps HTTP recognition guards free of runtime imports and aborts the owning preview on disconnect", async () => {
-        const entry = emitPreflightWorker(workDir);
-        const preflight = new StudioArtifactPreflightWorker("2.0.0", REPO_ROOT, entry);
-        service = new StudioArtifactBuildService("2.0.0", undefined, undefined, undefined, undefined, REPO_ROOT, undefined, preflight);
+        const {entry, runtimePackageRoot} = emitPreflightWorker(workDir);
+        const preflight = new StudioArtifactPreflightWorker("2.0.0", runtimePackageRoot, entry);
+        service = new StudioArtifactBuildService("2.0.0", undefined, undefined, undefined, undefined, runtimePackageRoot, undefined, preflight);
         const startedPath = path.join(workDir, "http-descriptor-started");
         const imports = path.join(workDir, "runtime-imports");
         const source = writeDescriptorPackage(workDir);
