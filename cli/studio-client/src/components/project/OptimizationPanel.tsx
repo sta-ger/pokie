@@ -28,9 +28,10 @@ const initialRequest: StudioOptimizationRequest = {
     },
 };
 /** Policy form and operation cards consume the dashboard's same durable observations. */
-export function OptimizationPanel({projectRoot, jobs, sourceChange, onStarted, onApplied}: {
+export function OptimizationPanel({projectRoot, jobs, recoveryJob, sourceChange, onStarted, onApplied}: {
     projectRoot: string;
     jobs: ReturnType<typeof useProjectJobs>;
+    recoveryJob?: {id?: string; request: StudioJobView["request"]};
     sourceChange?: {sourceRevision?: string};
     onStarted?: (sourceRevision: string) => void;
     onApplied?: () => void;
@@ -79,7 +80,18 @@ export function OptimizationPanel({projectRoot, jobs, sourceChange, onStarted, o
     const job =
         projectJobs.find((item) => item.id === started?.id) ??
         started ??
+        projectJobs.find((item) => item.id === recoveryJob?.id) ??
         projectJobs.find((item) => item.operation === "optimization");
+    useEffect(() => {
+        if (recoveryJob === undefined) return;
+        generation.current++;
+        controller.current?.abort();
+        edited.current = true;
+        setText(JSON.stringify(recoveryJob.request.request, null, 2) ?? "");
+        setBusy(false);
+        setSupportSnapshot(undefined);
+        setStarted(undefined);
+    }, [recoveryJob]);
     useEffect(() => {
         if (!edited.current && job?.request.request) {
             setText(JSON.stringify(job.request.request, null, 2));
