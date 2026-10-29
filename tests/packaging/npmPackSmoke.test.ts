@@ -317,12 +317,18 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         } else {
             packDir = createExternalSmokeDirectory("pokie-npm-pack-output-");
             const {spawnP911Child, waitP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
-                spawnP911Child: (command: string, args: string[], options: {cwd: string; timeoutMs: number}) => ChildProcessWithoutNullStreams;
+                spawnP911Child: (command: string, args: string[], options: {cwd: string; timeoutMs: number; env: NodeJS.ProcessEnv}) => ChildProcessWithoutNullStreams;
                 waitP911Child: (child: ChildProcessWithoutNullStreams) => Promise<{stdout: string}>;
             };
             // Preserve normal prepack, with launch-time ownership of its build
             // descendants and awaited cleanup even when it fails or times out.
-            const packChild = spawnP911Child("npm", ["pack", "--silent", "--pack-destination", packDir], {cwd: REPO_ROOT, timeoutMs: 180000});
+            // Normal prepack includes lint, all compilers and the installed help
+            // build. Give that composite its own bounded deadline; individual
+            // installed commands retain the shorter default. Match the normal
+            // producer's production context under both npm and direct Jest.
+            const packEnvironment = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("npm_") && name !== "NODE_OPTIONS"));
+            Object.assign(packEnvironment, {NODE_ENV: "production", INIT_CWD: REPO_ROOT, PWD: REPO_ROOT});
+            const packChild = spawnP911Child("npm", ["pack", "--silent", "--pack-destination", packDir], {cwd: REPO_ROOT, timeoutMs: 300000, env: packEnvironment});
             spawnedSmokeChildren.add(packChild);
             let stdout: string;
             try {

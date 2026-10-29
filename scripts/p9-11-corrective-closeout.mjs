@@ -123,7 +123,7 @@ function awaitP911Closure(closed, graceMs) {
 
 export function spawnP911Child(command, args, {cwd, env = process.env, timeoutMs = 180_000, graceMs = 1_000, signal, resourceRegistryPath, spawnCommand = spawn} = {}) {
     if (!Number.isSafeInteger(graceMs) || graceMs < 1 || graceMs > 10_000) fail("invalid packaging cleanup deadline");
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 180_000) fail("invalid packaging execution deadline");
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 300_000) fail("invalid packaging execution deadline");
     if (signal?.aborted) fail("packaging child cancelled before launch");
     const directory = resourceRegistryPath ? undefined : mkdtempSync(path.join(os.tmpdir(), "p911-packaging-child-"));
     const controller = new AbortController();
