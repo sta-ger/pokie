@@ -1505,7 +1505,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     ? <WasmManifestInspection projectRoot={header.projectRoot} summary={header.wasmPresentation.inspectionSummary} />
                                     : <Text>This {describeProjectType(header.type).toLowerCase()} can be republished from Build/Export.</Text>
                             )}
-                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} jobs={commonJobs} recoveryJob={recoveryJob?.operation === "optimization" ? recoveryJob : undefined} sourceChange={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange : undefined} onStarted={(sourceRevision) => setOptimizerSourceChange(previous => previous?.projectRoot === header.projectRoot && previous.sourceRevision === sourceRevision ? previous : {projectRoot: header.projectRoot, sourceRevision})} onApplied={handleBlueprintSaved} />}
+                            {activeTab === "overview" && (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") && <OptimizationPanel key={header.projectRoot} projectRoot={header.projectRoot} jobs={commonJobs} recoveryJob={recoveryJob?.operation === "optimization" ? recoveryJob : undefined} sourceChange={optimizerSourceChange?.projectRoot === header.projectRoot ? optimizerSourceChange : undefined} onStarted={(sourceRevision) => {
+                                // Retry owns only the pending form handoff. Once the server
+                                // accepts its replacement, remounts must follow current work.
+                                setRecoveryJob(job => job?.operation === "optimization" ? undefined : job);
+                                setOptimizerSourceChange(previous => previous?.projectRoot === header.projectRoot && previous.sourceRevision === sourceRevision ? previous : {projectRoot: header.projectRoot, sourceRevision});
+                            }} onApplied={handleBlueprintSaved} />}
                             {activeTab === "gameModel" && (
                                 // GameModelTab owns all of its own fetch state locally (no page-level hook),
                                 // so a genuine project switch needs a full remount, not just a re-render of a

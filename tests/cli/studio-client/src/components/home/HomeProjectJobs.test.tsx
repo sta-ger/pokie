@@ -388,34 +388,116 @@ it("V37 keeps Home output availability honest while retaining its download", asy
     rendered.unmount();
 });
 
-it("V37 Home optimization Retry selects its owning policy form and exact retained job instead of a newer sibling", async () => {
+it.each(["Home", "dashboard"])("V37 %s optimization Retry is consumed only by acceptance and stays superseded across Overview remounts", async entry => {
     const user = userEvent.setup();
     const request = optimizationRequest();
     const older: StudioJobView = {...active, id: "older", status: "cancelled", request: {request},
         recovery: {action: "retry", reason: "Check support and submit explicitly."}};
     const newer = {...older, id: "newer", createdAt: 2, request: {request: {...request, policy: {...request.policy, seed: "newer-policy"}}}};
+    let jobs: StudioJobView[] = [newer, older];
+    let attempts = 0;
+    let replacement: StudioJobView;
     const {fetchImpl, calls} = createRoutedFakeFetch({
         ...recoveryRoutes,
-        "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [newer, older]}}),
+        "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs}}),
+        "/api/project/jobs/explicit-2": () => ({ok: true, status: 200, body: replacement}),
+        "/api/project/jobs/explicit-3": () => ({ok: true, status: 200, body: replacement}),
+        "/api/project/jobs/explicit-3/cancel": () => {
+            replacement = {...replacement, status: "cancelling"};
+            jobs = [replacement, newer, older];
+            return {ok: true, status: 200, body: replacement};
+        },
         "/api/project/optimization/support": () => ({ok: true, status: 200, body: {supported: true, reason: "Policy supported", sourceRevision: "sha256:source"}}),
-        "/api/project/optimization/start": () => ({ok: true, status: 200, body: {job: {...older, id: "explicit-new", status: "running",
-            progress: {stage: "New policy execution", current: 1, total: 3, unit: "candidates"}}}}),
+        "/api/project/optimization/start": call => {
+            attempts++;
+            if (attempts === 1) return {ok: false, status: 409, body: {error: "Execution rejected; review settings"}};
+            const submitted = JSON.parse(call.init!.body!);
+            replacement = {...older, id: `explicit-${attempts}`, createdAt: attempts + 1, status: "running", recovery: undefined,
+                request: {request: submitted.request, sourceRevision: submitted.sourceRevision},
+                progress: {stage: "Replacement execution", current: 1, total: 3, unit: "candidates"}};
+            jobs = [replacement, newer, older];
+            return {ok: true, status: 202, body: {job: replacement}};
+        },
+        "/api/project/optimization/save": () => ({ok: true, status: 200, body: {outputPath: "/outputs/replacement.json"}}),
+        "/api/project/optimization/apply": () => ({ok: true, status: 200, body: {outputPath: root}}),
     });
-    const {router, unmount} = renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
+    const {router, unmount} = renderRoutedApp({fetchImpl, initialEntries: [entry === "Home" ? "/home/projects" : `/project/${encodeURIComponent(root)}/overview`]});
     const card = await screen.findByRole("region", {name: "optimization job older"});
     await user.click(within(card).getByRole("button", {name: "Retry"}));
-    const policy = await screen.findByLabelText("Math targets and optimization policy (JSON)");
-    await waitFor(() => expect(JSON.parse((policy as HTMLTextAreaElement).value)).toEqual(request));
+    const policyLabel = "Math targets and optimization policy (JSON)";
+    const leaveOverview = async () => {
+        await user.click(screen.getByRole("button", {name: "Replay"}));
+        await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(root)}/replay`));
+        await waitFor(() => expect(screen.queryByLabelText(policyLabel)).not.toBeInTheDocument());
+    };
+    await waitFor(() => expect(JSON.parse((screen.getByLabelText(policyLabel) as HTMLTextAreaElement).value)).toEqual(request));
     await waitFor(() => expect(router.state.location.search).toBe(""));
     expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(root)}/overview`);
     expect(screen.getByRole("button", {name: "Run optimization"})).toBeDisabled();
     expect(calls.filter(call => call.init?.method === "POST")).toEqual([]);
+    const rejectedRequest = {...request, policy: {...request.policy, seed: "edited-before-rejection"}};
+    fireEvent.change(screen.getByLabelText(policyLabel), {target: {value: JSON.stringify(rejectedRequest)}});
     await user.click(screen.getByRole("button", {name: "Check tuning support"}));
     await screen.findByText("Policy supported");
     await user.click(screen.getByRole("button", {name: "Run optimization"}));
-    await screen.findByText(/New policy execution/);
-    expect(JSON.parse(calls.find(call => call.url === "/api/project/optimization/start")!.init!.body!)).toEqual({request, sourceRevision: "sha256:source", expectedProjectRoot: root});
-    expect(screen.getByRole("button", {name: "Cancel optimization"})).toBeEnabled();
+    await screen.findByText("Execution rejected; review settings");
+    expect(JSON.parse((screen.getByLabelText(policyLabel) as HTMLTextAreaElement).value)).toEqual(rejectedRequest);
+    expect(screen.getByLabelText(policyLabel)).toBeEnabled();
+    // Rejection must retain the handoff even when the panel itself remounts.
+    await leaveOverview();
+    await user.click(await screen.findByRole("button", {name: "Overview"}));
+    await waitFor(() => expect(JSON.parse((screen.getByLabelText(policyLabel) as HTMLTextAreaElement).value)).toEqual(request));
+    const replacementRequest = {...request, policy: {...request.policy, seed: "replacement-policy", budget: 4}};
+    fireEvent.change(screen.getByLabelText(policyLabel), {target: {value: JSON.stringify(replacementRequest)}});
+    await user.click(screen.getByRole("button", {name: "Check tuning support"}));
+    await screen.findByText("Policy supported");
+    await user.click(screen.getByRole("button", {name: "Run optimization"}));
+    await screen.findByRole("region", {name: "optimization job explicit-2"});
+    const assertActiveReplacement = () => {
+        expect(JSON.parse((screen.getByLabelText(policyLabel) as HTMLTextAreaElement).value)).toEqual(replacementRequest);
+        expect(screen.getByLabelText(policyLabel)).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Cancel optimization"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Run optimization"})).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Check tuning support"})).toBeDisabled();
+        expect(screen.queryByRole("button", {name: "Apply reviewed changes to source"})).not.toBeInTheDocument();
+    };
+    assertActiveReplacement();
+    await leaveOverview();
+    expect(screen.queryByLabelText(policyLabel)).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", {name: "Overview"}));
+    await screen.findByLabelText(policyLabel);
+    assertActiveReplacement();
+    expect(JSON.parse(calls.filter(call => call.url === "/api/project/optimization/start")[1].init!.body!)).toEqual({request: replacementRequest, sourceRevision: "sha256:source", expectedProjectRoot: root});
+    await leaveOverview();
+    replacement = {...replacement!, status: "completed", result: {summary: "Replacement proposal", detail: {
+        status: "attained", diagnostics: [], evidence: {sourceRevision: "sha256:source"}, candidate: {type: "blueprint", sourceRevision: "sha256:source"},
+    }}};
+    jobs = [replacement, newer, older];
+    await user.click(await screen.findByRole("button", {name: "Overview"}));
+    await screen.findByText("Verdict: attained");
+    expect(JSON.parse((screen.getByLabelText(policyLabel) as HTMLTextAreaElement).value)).toEqual(replacementRequest);
+    expect(screen.getByLabelText(policyLabel)).toBeEnabled();
+    expect(screen.queryByRole("button", {name: "Cancel optimization"})).not.toBeInTheDocument();
+    expect(screen.queryByText(/Stale optimization result/)).not.toBeInTheDocument();
+    expect(screen.getByRole("region", {name: "optimization job explicit-2"})).toHaveTextContent("Replacement proposal");
+    fireEvent.change(screen.getByLabelText("Candidate destination"), {target: {value: "/outputs/replacement.json"}});
+    await user.click(screen.getByRole("button", {name: "Save reviewed candidate"}));
+    await screen.findByText("Candidate saved: /outputs/replacement.json");
+    await user.click(screen.getByRole("button", {name: "Apply reviewed changes to source"}));
+    await screen.findByText(/Authored changes applied/);
+    for (const action of ["save", "apply"]) expect(JSON.parse(calls.find(call => call.url === `/api/project/optimization/${action}`)!.init!.body!)).toMatchObject({jobId: "explicit-2", request: replacementRequest});
+    // A subsequent accepted run also owns its controls, without reviving Retry.
+    await user.click(screen.getByRole("button", {name: "Check tuning support"}));
+    await screen.findByText("Policy supported");
+    await user.click(screen.getByRole("button", {name: "Run optimization"}));
+    await screen.findByRole("region", {name: "optimization job explicit-3"});
+    await leaveOverview();
+    await user.click(await screen.findByRole("button", {name: "Overview"}));
+    await screen.findByLabelText(policyLabel);
+    assertActiveReplacement();
+    await user.click(screen.getByRole("button", {name: "Cancel optimization"}));
+    await waitFor(() => expect(calls.some(call => call.url === "/api/project/jobs/explicit-3/cancel")).toBe(true));
+    expect(calls.some(call => call.url === "/api/project/jobs/older/cancel" || call.url === "/api/project/jobs/newer/cancel")).toBe(false);
     unmount();
 });
 
