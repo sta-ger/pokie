@@ -429,10 +429,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         retainP911PackagingReceipt(spawnedSmokeChildren, () => retainReleaseSmokeReceipt(suitePassed, cleanup));
     });
 
-    function installedProbe(name: string, script: string): string {
+    function installedProbe(name: string, script: string, nodeOptions: string[] = []): string {
         const file = path.join(installDir!, `${name}.mjs`);
         fs.writeFileSync(file, script);
-        const result = spawnSync(process.execPath, [file], {cwd: installDir, encoding: "utf8", timeout: 120000});
+        const result = spawnSync(process.execPath, [...nodeOptions, file], {cwd: installDir, encoding: "utf8", timeout: 120000});
         expect({status: result.status, error: result.error?.message, stderr: result.stderr}).toEqual({status: 0, error: undefined, stderr: ""});
         return result.stdout;
     }
@@ -701,10 +701,13 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                     assert.equal(session.getWinAmount(), 0);
                     assert.deepEqual(game.getModelDescriptor().model.paytable, model.paytable);
                 }
-                for (const awards of [{}, {3: 0}]) {
+                // Keep the authored map valid while omitting the observed three-scatter count.
+                for (const awards of [{2: 0}, {3: 0}]) {
                     const freeModel = {...model, symbols: ['A','S'], scatters: ['S'], reelStrips: [['S'],['S'],['S']], paytable: {A: {3: 5}, S: {3: 2}}, mechanics: {freeGames: {scatterSymbol: 'S', awardsByCount: awards}}};
-                    const output = new api.GamePackageGenerator('2.0.0').generate(freeModel, process.cwd(), process.cwd() + '/free-' + Object.keys(awards).length);
-                    const session = require(output.projectRoot + '/dist/index.js').createSession({seed: '0'});
+                    const output = new api.GamePackageGenerator('2.0.0').generate(freeModel, process.cwd(), process.cwd() + '/free-' + Object.keys(awards)[0]);
+                    const game = require(output.projectRoot + '/dist/index.js');
+                    assert.deepEqual(game.getModelDescriptor().model.mechanics.freeGames.awardsByCount, awards);
+                    const session = game.createSession({seed: '0'});
                     session.setBet(0.05); session.play();
                     assert.equal(session.getWinAmount(), 0.1);
                     assert.equal(session.getFreeGamesNum(), 0);
@@ -762,7 +765,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             import {parentPort} from 'node:worker_threads';
             import * as api from '@fromstan/pokie/wasm';
             import {measureFinalWorkerContinuation} from './final-worker-continuation.mjs';
-            try {parentPort.postMessage(await measureFinalWorkerContinuation(api, 100000, () => process.memoryUsage().heapUsed));}
+            // Measure retained heap at every checkpoint, independently of V8's
+            // allocation-driven collection schedule and the Jest launch flags.
+            if (typeof globalThis.gc !== 'function') throw new Error('Worker requires explicit GC for retained-heap samples');
+            try {parentPort.postMessage(await measureFinalWorkerContinuation(api, 100000, () => {globalThis.gc(); return process.memoryUsage().heapUsed;}));}
             finally {parentPort.close();}
         `);
         const output = installedProbe("final-node-worker-parent", `
@@ -781,7 +787,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 assert.deepEqual(result.snapshots.map(sample => sample.rounds), [0, 10000, 100000]);
                 console.log('INSTALLED_FINAL_WORKER_OK ' + JSON.stringify(result));
             } finally {clearTimeout(timer); await worker.terminate();}
-        `);
+        `, ["--expose-gc"]);
         expect(output).toContain("INSTALLED_FINAL_WORKER_OK");
     });
 
@@ -1165,7 +1171,22 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             const child = await spawnSmokeChild(args, cwd, {...process.env, BROWSER: "true"});
             try {
                 const port = await waitForListeningPort(child);
-                return await (await fetch(`http://127.0.0.1:${port}/api/context`)).json();
+                const base = `http://127.0.0.1:${port}`;
+                const options = {headers: {Connection: "close"}};
+                const context = await (await fetch(`${base}/api/context`, options)).json() as {mode: string};
+                if (context.mode === "project") {
+                    // Listening/context precedes asynchronous package preparation.
+                    // Observe the actual dashboard before ending this startup workflow.
+                    let dashboard: {status: string} = {status: "loading"};
+                    for (let attempt = 0; attempt < 1200 && dashboard.status === "loading"; attempt++) {
+                        dashboard = await (await fetch(`${base}/api/project/context`, options)).json() as typeof dashboard;
+                        if (dashboard.status === "loading") await new Promise(resolve => {
+                            setTimeout(resolve, 50);
+                        });
+                    }
+                    expect(dashboard.status).toBe("loaded");
+                }
+                return context;
             } finally {
                 await stopChild(child);
             }
@@ -1302,7 +1323,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 const output = path.join(directory, `unsupported-${type}.json`);
                 const rejected = spawnSync(pokieBinPath, ["build", sources[type], "--target", "blueprint", "--out", output], {cwd: directory, encoding: "utf8", timeout: 60000});
                 expect(rejected.status).toBe(1);
-                expect(rejected.stderr).toMatch(/cannot|unavailable|does not preserve|unsupported|no conversion/i);
+                expect(rejected.stderr).toMatch(type === "wasm"
+                    ? /finished artifact, not a source for another POKIE conversion/
+                    : /cannot|unavailable|does not preserve|unsupported|no conversion/i);
+                if (type === "wasm") expect(rejected.stderr).toContain("use its original Blueprint or PAR workbook to build another target");
                 expect(fs.existsSync(output)).toBe(false);
             }
             for (const [source, target, name] of [["parWorkbook", "wasm", "from-par.wasm"], ["tsPackage", "blueprint", "extracted.json"], ["outcomeLibrary", "outcomeLibrary", "republished-outcome"], ["stakeAdapter", "stakeAdapter", "republished-stake"]]) {
