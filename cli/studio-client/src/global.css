@@ -291,6 +291,22 @@ body,
    leaves the main panel narrower than a table's six columns, the same rows become labelled cards:
    project identity, availability, each metadata value, and every action stay in one readable vertical
    unit instead of placing the reopen action beyond the viewport. */
+.project-registry-identity {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-align: start;
+}
+
+/* Keep locations secondary on both table rows and cards. Full paths remain available on hover,
+   keyboard focus and touch, without allowing a machine-specific prefix to set the row height. */
+.project-registry-location {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
 .project-registry-status {
     display: none;
 }

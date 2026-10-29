@@ -6,6 +6,7 @@ import {join} from "node:path";
 import {useState} from "react";
 import {useLocation} from "react-router-dom";
 import {ProjectsPanel} from "../../../../../../cli/studio-client/src/components/home/ProjectsPanel";
+import type {StudioProjectRegistryView} from "../../../../../../cli/studio-client/src/api/types";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {StudioProjectRegistrationService} from "../../../../../../cli/studio/StudioProjectRegistrationService";
 import {StudioFsBrowseService} from "../../../../../../cli/studio/home/StudioFsBrowseService";
@@ -1774,4 +1775,132 @@ describe("V35 Home project removal focus", () => {
         }
     });
 
+});
+
+
+describe("V2C-36 projects-path-presentation", () => {
+    // Exact locations from the retained populated Projects transcript / 1-observation.png,
+    // run-2026-10-29T00-54-08-240Z. Keep this regression independent of external evidence files.
+    const prefix = "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-36-44b807505b46534f/run-2026-10-29T00-33-24-451Z/application-BRYW4Y/Documents/POKIE Projects";
+    const available: StudioProjectRegistryView = {
+        location: `${prefix}/royal-grand-stampede/blueprint.json`, name: "Royal Grand Stampede",
+        type: "blueprint", capabilities: ["blueprint.build"], origin: "managed",
+        lastOpenedAt: "2026-10-29T00:38:36.000Z", status: "ok",
+    };
+    const missing: StudioProjectRegistryView = {
+        ...available, location: `${prefix}/starter-slot/blueprint.json`, name: "Starter Slot", status: "missing",
+    };
+    const registryRoute = {
+        "/api/home/projects/registry": () => ({ok: true, status: 200, body: [available, missing]}),
+    };
+
+    it("keeps long absolute locations secondary and bounded, with full keyboard disclosure and path search", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch(registryRoute);
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+        const name = await screen.findByRole("button", {name: available.name});
+        const identity = name.closest(".project-registry-identity")!;
+        const row = within(name.closest("tr")!);
+        expect(identity).toHaveTextContent(available.name);
+        expect(identity).toContainElement(row.getByText("Available"));
+        const location = row.getByLabelText(`Project location: ${available.location}`);
+        expect(location).toHaveTextContent(available.location);
+        expect(location).toHaveClass("project-registry-location");
+        expect(identity).toContainElement(location);
+        expect(screen.getByRole("columnheader", {name: "Name"})).toHaveStyle({width: "30%"});
+        expect(screen.getByRole("columnheader", {name: "Actions"})).toHaveStyle({width: "11rem"});
+        expect(screen.getAllByRole("columnheader")[0]).toHaveStyle({width: "2.5rem"});
+        expect(row.getByRole("button", {name: "Open"})).toBeEnabled();
+        expect(row.getByRole("button", {name: "Remove"})).toBeEnabled();
+        expect(row.queryByRole("button", {name: "Relocate"})).not.toBeInTheDocument();
+        const missingRow = within(screen.getByText("Starter Slot (missing)").closest("tr")!);
+        expect(missingRow.getByText("Needs attention")).toBeInTheDocument();
+        expect(missingRow.getByRole("button", {name: "Relocate"})).toBeEnabled();
+        expect(missingRow.getByRole("button", {name: "Remove"})).toBeEnabled();
+        expect(missingRow.queryByRole("button", {name: "Open"})).not.toBeInTheDocument();
+
+        await act(() => location.focus());
+        expect(location).toHaveFocus();
+        expect(await screen.findByRole("tooltip")).toHaveTextContent(available.location);
+        await user.tab();
+        await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
+        await user.type(screen.getByLabelText("Search projects"), "application-BRYW4Y");
+        expect(screen.getByText("Showing 1–2 of 2 projects")).toBeInTheDocument();
+        await user.type(screen.getByLabelText("Search projects"), "/Documents/POKIE Projects/royal");
+        expect(screen.getByText("Showing 1–1 of 1 projects")).toBeInTheDocument();
+        expect(screen.queryByText("Starter Slot (missing)")).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: available.name})).toBeInTheDocument();
+
+        // jsdom cannot prove rendered geometry; assert the real production CSS contract for both
+        // table and 800px card layouts. Independent installed screenshots remain controller-owned.
+        const stylesheet = readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8");
+        const locationRule = stylesheet.match(/\.project-registry-location \{([^}]+)\}/)![1];
+        for (const declaration of ["display: block;", "max-width: 100%;", "overflow: hidden;", "white-space: nowrap;", "text-overflow: ellipsis;"]) {
+            expect(locationRule).toContain(declaration);
+        }
+        expect(stylesheet).toMatch(/\.project-registry-identity \{[^}]*min-width: 0;/);
+        expect(stylesheet.match(/\.project-registry-location \{/g)).toHaveLength(1);
+    });
+
+    it("opens the full registered location and retains the compact row for retry after a failure", async () => {
+        const user = userEvent.setup();
+        let fail = true;
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...registryRoute,
+            "/api/home/projects/open": () => fail
+                ? {ok: false, status: 500, body: {error: "Materialization failed"}}
+                : {ok: true, status: 200, body: {context: {mode: "project", projectRoot: "/games/runtime"}}},
+        });
+        renderWithProviders(<><ProjectsPanel /><LocationProbe /></>, {fetchImpl});
+        const open = await screen.findByRole("button", {name: "Open"});
+        await user.click(open);
+        expect(await screen.findByRole("alert")).toHaveTextContent("The game design could not be completed. Try again. If it continues, choose the location again and retry.");
+        await waitFor(() => expect(open).toBeEnabled());
+        expect(screen.getByRole("button", {name: available.name})).toBeInTheDocument();
+        fail = false;
+        await user.click(open);
+        await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/project/%2Fgames%2Fruntime/overview"));
+        expect(calls.filter(call => call.url === "/api/home/projects/open").map(call => JSON.parse(call.init!.body!))).toEqual([
+            {projectRoot: available.location}, {projectRoot: available.location},
+        ]);
+    });
+
+    it("relocates and removes the full long-path entry with recovery and confirmation intact", async () => {
+        const user = userEvent.setup();
+        const newLocation = "/moved/starter-slot/blueprint.json";
+        let recognized = false;
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...registryRoute,
+            "/api/home/projects/registry/relocate": () => ({ok: true, status: 200, body: recognized
+                ? {status: "ok", entry: {...missing, location: newLocation, status: "ok"}}
+                : {status: "unrecognized", path: newLocation}}),
+            "/api/home/projects/registry/remove": () => ({ok: true, status: 200, body: {status: "ok"}}),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+        await user.click(await screen.findByRole("button", {name: "Relocate"}));
+        fireEvent.change(screen.getByLabelText("New location"), {target: {value: newLocation}});
+        await user.click(screen.getAllByRole("button", {name: "Relocate"})[1]);
+        expect(await screen.findByText(`"${newLocation}" isn't a recognized game location. Choose another location or retry.`)).toBeInTheDocument();
+        expect(screen.getByText("Starter Slot (missing)")).toBeInTheDocument();
+        recognized = true;
+        await user.click(screen.getAllByRole("button", {name: "Relocate"})[1]);
+        const relocated = await screen.findByRole("button", {name: missing.name});
+        const row = within(relocated.closest("tr")!);
+        expect(row.getByLabelText(`Project location: ${newLocation}`)).toHaveClass("project-registry-location");
+        expect(row.getByRole("button", {name: "Open"})).toBeEnabled();
+        expect(screen.queryByText("Starter Slot (missing)")).not.toBeInTheDocument();
+        expect(calls.filter(call => call.url.endsWith("/registry/relocate")).map(call => JSON.parse(call.init!.body!))).toEqual([
+            {location: missing.location, newLocation}, {location: missing.location, newLocation},
+        ]);
+        const availableRow = within(screen.getByRole("button", {name: available.name}).closest("tr")!);
+        await user.click(availableRow.getByRole("button", {name: "Remove"}));
+        await user.click(await screen.findByRole("button", {name: "Cancel"}));
+        expect(calls.filter(call => call.url.endsWith("/registry/remove"))).toHaveLength(0);
+        expect(screen.getByRole("button", {name: available.name})).toBeInTheDocument();
+        await user.click(availableRow.getByRole("button", {name: "Remove"}));
+        await user.click(await screen.findByRole("button", {name: "Confirm"}));
+        await waitFor(() => expect(screen.queryByRole("button", {name: available.name})).not.toBeInTheDocument());
+        expect(screen.getByRole("button", {name: missing.name})).toBeInTheDocument();
+        expect(calls.filter(call => call.url.endsWith("/registry/remove")).map(call => JSON.parse(call.init!.body!))).toEqual([{location: available.location}]);
+    });
 });
