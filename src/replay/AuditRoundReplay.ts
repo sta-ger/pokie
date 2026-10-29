@@ -196,7 +196,14 @@ function validateAuditStructure(value: unknown, game?: PokieGame): void {
             if (artifact.provenance.game.id !== r.game.id || artifact.provenance.configHash !== r.identity.modelHash) throw new AuditReplayError("audit-identity", `${path}.artifact.provenance`, "Artifact model differs from audit model.");
         }
         if (delivery.result.credits !== delivery.after.credits || (delivery.result.logicalRound && canonical(delivery.result.logicalRound) !== canonical(delivery.after.logicalRound))) throw new AuditReplayError("audit-state", `${path}.result`, "Result and executable boundary disagree.");
-        if (delivery.disposition.walletPayout !== undefined && delivery.after.credits !== delivery.before.credits - delivery.result.stake + delivery.disposition.walletPayout) throw new AuditReplayError("audit-state", `${path}.disposition.walletPayout`, "Wallet payout differs from actual balance delta and stake.");
+        if (delivery.disposition.walletPayout !== undefined) {
+            const payout = delivery.disposition.walletPayout;
+            // Legacy subtraction is not the inverse of exact domain credit addition in
+            // floating-point arithmetic. Either representation is structurally consistent;
+            // reproduced execution below selects the session's actual settlement contract.
+            if (payout !== delivery.after.credits - delivery.before.credits + delivery.result.stake &&
+                delivery.after.credits !== delivery.before.credits - delivery.result.stake + payout) throw new AuditReplayError("audit-state", `${path}.disposition.walletPayout`, "Wallet payout differs from actual balance delta and stake.");
+        }
         if (delivery.disposition.walletCredits !== undefined && delivery.disposition.walletCredits !== delivery.result.credits) throw new AuditReplayError("audit-state", `${path}.disposition.walletCredits`, "Settlement and result disagree.");
     }
 }
@@ -236,6 +243,8 @@ export class AuditRoundReplay implements AuditRoundReplaying {
                 } else result = runtime.execute(delivery.command, signal);
                 if (result.status !== "played") throw new AuditReplayError("audit-execution-mismatch", `deliveries[${index}].command`, result.reason);
                 if (delivery.disposition.walletPayout !== undefined) {
+                    // Keep exact comparison to the executed authority: a forward-equation
+                    // payout is not interchangeable with a legacy balance-delta payout.
                     let payout = resolveSessionPayout(session, delivery.before.credits, result.stake);
                     if (delivery.execution !== "accepted-boundary") payout = result.payout ?? payout;
                     if (result.deliveryOnly) payout = 0;

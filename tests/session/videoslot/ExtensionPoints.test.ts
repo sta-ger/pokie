@@ -39,6 +39,7 @@ import {
 import * as api from "@fromstan/pokie";
 
 import {legacyComposedGame, legacyCompositions} from "../../v2/fixtures/LegacyComposedGame.js";
+import {legacyFractionalGame} from "../../v2/fixtures/LegacyFractionalGame.js";
 
 describe("ExtensionPoints", () => {
     test.each(legacyCompositions)("preserves custom decorator execution and live-only capture in %s", composition => {
@@ -573,6 +574,35 @@ const accountingWrappers: Record<string, (fixture: ReturnType<typeof accountingF
 };
 
 describe("V2C-37-PAYOUT-CUSTOM accounting capability", () => {
+    test("a complete legacy codec preserves fractional balances through rejection, restore and subsequent play", () => {
+        const game = legacyFractionalGame(0.1, 2),
+            session = game.createSession(),
+            runtime = new SessionRuntime(session);
+        expect((session as Partial<api.PayoutAmountDetermining>).getPayoutAmount).toBeUndefined();
+        const first = runtime.execute({kind: "spin"});
+        expect(first).toMatchObject({status: "played", credits: 1.1, win: 0.1, stake: 1});
+        const saved = api.captureAuditBoundary(session);
+        expect(saved.state).toEqual({rounds: 1});
+        expect(runtime.execute({kind: "spin", bet: 99})).toMatchObject({status: "invalid-command"});
+        expect(api.captureAuditBoundary(session)).toEqual(saved);
+        const second = runtime.execute({kind: "spin"});
+        expect(second).toMatchObject({status: "played", credits: 0.2000000000000001, win: 0.1, stake: 1});
+        const usedState = api.captureAuditBoundary(session);
+        expect(usedState.state).toEqual({rounds: 2});
+        expect(runtime.execute({kind: "spin"})).toMatchObject({status: "blocked"});
+        expect(api.captureAuditBoundary(session)).toEqual(usedState);
+        for (const restored of [session, game.createSession()]) {
+            (restored as api.GameSession).fromSessionState(JSON.parse(JSON.stringify(saved.state)));
+            restored.setCreditsAmount(saved.credits);
+            restored.setBet(saved.bet);
+            const resumed = new SessionRuntime(restored);
+            expect(resumed.execute({kind: "spin"})).toEqual(second);
+            expect(api.captureAuditBoundary(restored)).toEqual(usedState);
+            resumed.release();
+        }
+        runtime.release();
+    });
+
     test.each(Object.keys(accountingWrappers))("%s retains injected debit and signed logical settlement", wrapper => {
         const session = accountingWrappers[wrapper](accountingFixture());
         expect(session.getPayoutAmount?.()).toBeUndefined();
