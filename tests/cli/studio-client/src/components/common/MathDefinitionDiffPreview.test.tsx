@@ -179,3 +179,29 @@ it("is reachable in editor preview and project Game Model with no implicit save 
     await waitFor(() => expect(calls.filter((url) => url === "/api/math-definition-diff/preview")).toHaveLength(2));
     expect(calls.some((url) => (/\/(save|save-managed|build|build-preview)$/).test(url.split("?")[0]))).toBe(false);
 });
+
+
+it("discloses each comparison side's analysis independently without hiding its support or diagnostic", async () => {
+    const {advancedUnknownReport} = await import("../../../../../v2/fixtures/AdvancedModelReport");
+    const diff = result("partial");
+    diff.left.advanced = advancedUnknownReport();
+    diff.right.advanced = {...advancedUnknownReport(), limitations: ["Right-only unfinished frontier"]};
+    const calls: string[] = [];
+    const fetchImpl: FetchLike = url => {
+        calls.push(url);
+        return respond(diff);
+    };
+    renderWithProviders(<MathDefinitionDiffPreview sourcePath="/a" draft={{}} />, {fetchImpl});
+    fireEvent.click(screen.getByText("Compare saved versus draft"));
+    expect(await screen.findByText("Definition comparison: partial")).toBeVisible();
+    expect(screen.getByText("Limit: custom declaration only")).toBeVisible();
+    expect(screen.getByText("Right-only unfinished frontier")).not.toBeVisible();
+    const toggles = screen.getAllByRole("button", {name: "Show model analysis details"});
+    expect(toggles).toHaveLength(2);
+    fireEvent.click(toggles[1]);
+    expect(screen.getByText("Right-only unfinished frontier")).toBeVisible();
+    expect(toggles[0]).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(screen.getByRole("button", {name: "Hide model analysis details"}));
+    expect(screen.getByText("Right-only unfinished frontier")).not.toBeVisible();
+    expect(calls).toEqual(["/api/math-definition-diff/preview"]);
+});

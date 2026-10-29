@@ -117,7 +117,7 @@ export function CanonicalPlayerView({
         );
     }, [artwork, availableBets, availableModeIds, credits, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, displayedMultiplier, displayedScreen, displayedWin, displayedCoverage, displayedWins, logicalRound?.currentStep]);
 
-    return <><div ref={playerRootRef} />{sequenceSelections?.length || sequenceStatistics?.length ? <section aria-label="Reel sequence selections">
+    return <><div className="pokie-player-card" ref={playerRootRef} />{sequenceSelections?.length || sequenceStatistics?.length ? <section aria-label="Reel sequence selections">
         <h4>Reel sequences</h4>
         <ul>{sequenceSelections?.map(selection => <li key={selection.reelIndex}>Reel {selection.reelIndex + 1}: {selection.variantId} ({selection.context})</li>)}</ul>
         {sequenceStatistics?.map(reel => <div key={reel.reelIndex}>Reel {reel.reelIndex + 1}, {reel.selections} selections<ul>{reel.variants.map(variant => <li key={variant.id}>{variant.id}: configured {variant.probability}, observed {variant.frequency} ({variant.count})</li>)}</ul></div>)}

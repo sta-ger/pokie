@@ -729,3 +729,67 @@ describe("V2C-34 simulation freshness authority", () => {
         expect(second.result.current.job).toEqual(first.result.current.job);
     });
 });
+
+
+describe("V2C-36 restored source freshness", () => {
+    it.each([true, false, undefined, "true"])("requires strict server source proof (%s) in fresh and reused hooks", async sourceCurrent => {
+        const retained = {...job("completed", 10), sourceCurrent};
+        const fetchImpl: FetchLike = () => Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(retained)});
+        const first = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+        act(() => first.result.current.restore("job-1"));
+        await waitFor(() => expect(first.result.current.progress?.status).toBe("completed"));
+        expect(first.result.current.resultCurrent).toBe(sourceCurrent === true);
+        act(() => first.result.current.invalidateResult());
+        expect(first.result.current.resultCurrent).toBe(false);
+        // No-op restore in a used workflow cannot override an authored save.
+        act(() => first.result.current.restore("job-1"));
+        expect(first.result.current.resultCurrent).toBe(false);
+        act(() => first.result.current.resetForProjectSwitch());
+        act(() => first.result.current.restore("job-1"));
+        await waitFor(() => expect(first.result.current.progress?.status).toBe("completed"));
+        expect(first.result.current.resultCurrent).toBe(sourceCurrent === true);
+        first.unmount();
+        const reopened = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+        act(() => reopened.result.current.restore("job-1"));
+        await waitFor(() => expect(reopened.result.current.progress?.status).toBe("completed"));
+        expect(reopened.result.current.resultCurrent).toBe(sourceCurrent === true);
+        reopened.unmount();
+    });
+
+    it.each(["poll", "cancel"])("cannot undo a save when a restored %s response settles with old true proof", async pending => {
+        let finish: (() => void) | undefined;
+        const fetchImpl: FetchLike = (_url, init) => {
+            const cancelling = init?.method === "DELETE";
+            const response = {ok: true, status: 200, json: () => Promise.resolve({...job(cancelling ? "cancelled" : "running", 5), sourceCurrent: true})};
+            if (cancelling === (pending === "cancel")) return new Promise(resolve => {
+                finish = () => resolve(response);
+            });
+            return Promise.resolve(response);
+        };
+        const {result, unmount} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+        act(() => result.current.restore("job-1"));
+        if (pending === "cancel") {
+            await waitFor(() => expect(result.current.resultCurrent).toBe(true));
+            act(() => result.current.cancel());
+        }
+        await waitFor(() => expect(finish).toBeDefined());
+        act(() => result.current.invalidateResult());
+        await act(async () => {
+            finish!();
+            await Promise.resolve();
+        });
+        await waitFor(() => expect(result.current.job?.status).toBe(pending === "cancel" ? "cancelled" : "running"));
+        expect(result.current.resultCurrent).toBe(false);
+        expect(result.current.currentJobId).toBe("job-1");
+        unmount();
+    });
+
+    it("cannot establish freshness from a different durable job even with true source proof", async () => {
+        const fetchImpl: FetchLike = () => Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({...job("completed", 10), id: "other", sourceCurrent: true})});
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+        act(() => result.current.restore("job-1"));
+        await waitFor(() => expect(result.current.error).toContain('did not match durable job "job-1"'));
+        expect(result.current.resultCurrent).toBe(false);
+        expect(result.current.job).toBeUndefined();
+    });
+});

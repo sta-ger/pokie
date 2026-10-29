@@ -40,10 +40,44 @@ function renderLayout() {
 }
 
 describe("AppShellLayout - mobile navigation", () => {
+    it.each([390, 800, 991, 992, 1440])("uses one accessible drawer below desktop width (%ipx)", async (width) => {
+        const previous = Reflect.getOwnPropertyDescriptor(window, "matchMedia");
+        Reflect.defineProperty(window, "matchMedia", {configurable: true, value: (query: string) => ({
+            matches: query === "(max-width: 61.99375em)" && width < 992, media: query,
+            addEventListener: jest.fn(), removeEventListener: jest.fn(),
+        })});
+        try {
+            const {burger, onSelect} = renderLayout();
+            const panel = document.getElementById("studio-navigation-panel");
+            expect(burger).toHaveClass("mantine-hidden-from-md");
+            // Mantine's real shell emits the same tablet boundary as the disclosure.
+            expect(document.querySelector(".mantine-AppShell-root")?.previousElementSibling?.textContent).toContain("61.99375em");
+            expect(panel?.hasAttribute("inert")).toBe(width < 992);
+            expect(document.querySelector<HTMLElement>(".studio-app-main")?.style.paddingInline).toBe(width < 992 ? "var(--mantine-spacing-md)" : "");
+            if (width < 992) {
+                const user = userEvent.setup();
+                await user.click(burger);
+                expect(panel).not.toHaveAttribute("inert");
+                screen.getByRole("button", {name: "Section A"}).focus();
+                await user.keyboard("{Escape}");
+                expect(panel).toHaveAttribute("inert");
+                expect(burger).toHaveFocus();
+                await user.keyboard("[Space]");
+                await user.click(screen.getByRole("button", {name: "Section B"}));
+                expect(onSelect).toHaveBeenCalledWith("b");
+                expect(panel).toHaveAttribute("inert");
+                expect(burger).toHaveFocus();
+            }
+        } finally {
+            if (previous) Reflect.defineProperty(window, "matchMedia", previous);
+            else Reflect.deleteProperty(window, "matchMedia");
+        }
+    });
+
     it.each([true, false])("keeps Replay Artifact recovery and its drawer navigation responsive (phone: %s)", async (phone) => {
         const previous = Reflect.getOwnPropertyDescriptor(window, "matchMedia");
         Reflect.defineProperty(window, "matchMedia", {configurable: true, value: (query: string) => ({
-            matches: phone && query === "(max-width: 48em)", media: query,
+            matches: phone && ["(max-width: 48em)", "(max-width: 61.99375em)"].includes(query), media: query,
             addEventListener: jest.fn(), removeEventListener: jest.fn(),
         })});
         const submissions = jest.fn();
@@ -107,7 +141,7 @@ describe("AppShellLayout - mobile navigation", () => {
     it("reopens the closed phone panel for Projects after editing the compound workflow's retained Home Design draft", async () => {
         const previous = Reflect.getOwnPropertyDescriptor(window, "matchMedia");
         Reflect.defineProperty(window, "matchMedia", {configurable: true, value: (query: string) => ({
-            matches: query === "(max-width: 48em)", media: query,
+            matches: ["(max-width: 48em)", "(max-width: 61.99375em)"].includes(query), media: query,
             addEventListener: jest.fn(), removeEventListener: jest.fn(),
         })});
         const selections = jest.fn();
@@ -201,7 +235,7 @@ describe("AppShellLayout - mobile navigation", () => {
         }
     });
 
-    it("clears the inherited desktop navbar offset at phone width", () => {
+    it("clears the inherited desktop navbar offset at tablet and phone widths", () => {
         renderLayout();
 
         expect(document.querySelector(".studio-app-main")).toHaveTextContent("content");
@@ -209,7 +243,7 @@ describe("AppShellLayout - mobile navigation", () => {
         expect(document.getElementById("studio-navigation-panel")?.style.overscrollBehavior).toBe("contain");
         const stylesheet = readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8");
         expect(stylesheet).toMatch(
-            /@media \(max-width: 48em\)[\s\S]*?#root \.studio-app-main \{[\s\S]*?--app-shell-navbar-offset: 0px !important;[\s\S]*?padding-inline: var\(--mantine-spacing-md\) !important;/,
+            /@media \(max-width: 61\.99375em\)[\s\S]*?#root \.studio-app-main \{[\s\S]*?--app-shell-navbar-offset: 0px !important;[\s\S]*?padding-inline: var\(--mantine-spacing-md\) !important;/,
         );
     });
 

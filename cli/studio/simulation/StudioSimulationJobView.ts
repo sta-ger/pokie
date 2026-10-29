@@ -23,6 +23,8 @@ export type StudioSimulationStatisticsView = {
 // never a runtime session/game/AbortController object (see StudioSimulationJobRecord, which is the
 // internal record this is derived from via toStudioSimulationJobView).
 export type StudioSimulationJobView = {
+    /** Server-checked accepted source inventory; absent for unvalidated legacy jobs. */
+    sourceCurrent?: boolean;
     requestedRounds?: number;
     progress?: import("../jobs/StudioJobView.js").StudioJobProgressView;
     convergence?: import("../../../src/simulation/SimulationConvergenceOptions.js").SimulationConvergenceOptions;

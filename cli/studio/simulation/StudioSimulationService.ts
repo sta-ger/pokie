@@ -1,3 +1,4 @@
+import {projectRevision} from "../../../src/optimization/internal/optimizationData.js";
 import {releaseSimulationGame} from "../../../src/simulation/parallel/internal/releaseSimulationGame.js";
 import {collectPokieWasmSimulation} from "../../../src/wasm/PokieWasmCommands.js";
 import {artifactAnalyticsObservation} from "../../../src/simulation/artifactAnalyticsObservation.js";
@@ -172,10 +173,11 @@ export class StudioSimulationService {
         if (request.convergence && (outcomeSourceProject !== undefined || isWasmComponentFile(projectRoot))) {
             return {status: "unsupported", message: "Adaptive stopping is supported only for executable package simulations; outcome-library and WASM samplers use fixed budgets."};
         }
+        const sourceRevision = this.readSourceRevision(projectRoot);
         const common = this.jobService?.start({
             projectId: projectRoot,
             operation: "simulation",
-            request: {rounds: request.rounds, ...(request.seed === undefined ? {} : {seed: request.seed}), workers: request.workers ?? 1, ...(request.convergence ? {convergence: request.convergence} : {}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
+            request: {...(sourceRevision === undefined ? {} : {sourceRevision}), rounds: request.rounds, ...(request.seed === undefined ? {} : {seed: request.seed}), workers: request.workers ?? 1, ...(request.convergence ? {convergence: request.convergence} : {}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
             conflictKey: `simulation:${projectRoot}`,
             recoveryOnRestart: {action: "retry", reason: "A simulation cannot safely resume after Studio restarts. Run it again with these captured parameters."},
         });
@@ -193,6 +195,7 @@ export class StudioSimulationService {
         const record: StudioSimulationJobRecord = {
             id: common?.status === "created" ? common.job.id : this.createId(),
             projectRoot,
+            sourceRevision,
             status: "queued",
             rounds: request.rounds,
             seed: request.seed,
@@ -809,10 +812,25 @@ export class StudioSimulationService {
         this.jobService?.progress(record.id, {stage, unit: "accepted plays", current: record.roundsCompleted, total: record.rounds * (record.modeCount ?? 1)});
     }
 
+    // Freshness is optional: inventory failure must neither reject supported work
+    // nor turn an unavailable source into a verified current result.
+    private readSourceRevision(projectRoot: string): string | undefined {
+        try {
+            return projectRevision({rootPath: projectRoot, type: isWasmComponentFile(projectRoot) ? "wasm" : "tsPackage"});
+        } catch {
+            return undefined;
+        }
+    }
+
+    private sourceFreshness(projectRoot: string, acceptedRevision: unknown): {sourceCurrent?: boolean} {
+        if (typeof acceptedRevision !== "string" || !(/^sha256:[a-f0-9]{64}$/).test(acceptedRevision)) return {};
+        return {sourceCurrent: this.readSourceRevision(projectRoot) === acceptedRevision};
+    }
+
     /** Compatibility DTO projection of the durable lifecycle authority. */
     private toJobView(record: StudioSimulationJobRecord): StudioSimulationJobView {
         if (record.completedAt === undefined) record.durationMs = this.now() - record.startedAt;
-        const view = toStudioSimulationJobView(record);
+        const view = {...toStudioSimulationJobView(record), ...this.sourceFreshness(record.projectRoot, record.sourceRevision)};
         const common = this.jobService?.get(record.projectRoot, record.id);
         if (common?.operation !== "simulation") return view;
         return {
@@ -829,6 +847,7 @@ export class StudioSimulationService {
     private projectDurableJob(job: StudioJobView): StudioSimulationJobView {
         return {
             id: job.id,
+            ...this.sourceFreshness(job.projectId, job.request.sourceRevision),
             status: job.status,
             progress: job.progress,
             ...(job.request.convergence ? {convergence: job.request.convergence as StudioSimulationJobView["convergence"]} : {}),

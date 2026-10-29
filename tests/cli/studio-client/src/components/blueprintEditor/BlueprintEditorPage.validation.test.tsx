@@ -1,4 +1,4 @@
-import {act, fireEvent, screen, waitFor} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -239,7 +239,7 @@ describe("Guided Design Game: automatic validation freshness", () => {
     }, 60000);
 });
 
-it("renders warnings and advanced unknown paths even when structural validation is invalid", async () => {
+it("discloses advanced checks while keeping structural errors and warnings visible in the real Design route", async () => {
     const {advancedUnknownReport} = await import("../../../../../v2/fixtures/AdvancedModelReport");
     const fetchImpl: FetchLike = (url, init) => url.split("?")[0] === "/api/home/blueprints/validate" && init?.method === "POST"
         ? respond({status: "invalid", errors: [{code: "invalid", severity: "error", message: "Invalid declaration"}], warnings: [{code: "retained", severity: "warning", message: "Retained alongside errors", path: "paytable.A"}], advanced: advancedUnknownReport()})
@@ -247,8 +247,25 @@ it("renders warnings and advanced unknown paths even when structural validation 
     renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
     expect((await screen.findAllByText(/Retained alongside errors/)).length).toBeGreaterThan(0);
     expect(screen.getByText(/budget-exhausted — inconclusive/)).toBeInTheDocument();
-    expect(screen.getByText(/Path: mechanics.respins/)).toBeInTheDocument();
-    expect(screen.getByText(/respin-2/)).toBeInTheDocument();
+    expect(within(screen.getByRole("group", {name: "Validation"})).getByText(/Invalid declaration/)).toBeVisible();
+    expect(within(screen.getByRole("group", {name: "Validation"})).getByText(/Retained alongside errors/)).toBeVisible();
+    expect(screen.getByText(/Path: mechanics.respins/)).not.toBeVisible();
+    const user = userEvent.setup();
+    const toggle = screen.getByRole("button", {name: "Show model analysis details"});
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    toggle.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByText(/Path: mechanics.respins/)).toBeVisible();
+    const evidence = screen.getByText(/respin-2/);
+    expect(evidence).not.toBeVisible();
+    await user.click(evidence.closest("details")!.querySelector("summary")!);
+    expect(evidence).toBeVisible();
+    expect(screen.getByText("Analysis assumptions")).toBeVisible();
+    expect(screen.getByText("Analysis limitations")).toBeVisible();
+    toggle.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByText(/Path: mechanics.respins/)).not.toBeVisible();
+    expect(within(screen.getByRole("group", {name: "Validation"})).getByText(/Invalid declaration/)).toBeVisible();
 });
 
 it("keeps structurally inconclusive reports distinct from valid reports and disables creation", async () => {

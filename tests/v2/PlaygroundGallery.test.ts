@@ -474,7 +474,35 @@ describe("locally built public gallery rendered actions", () => {
         });
     }, 180000);
     const ev = <T>(s: string) => browser!.evaluate<T>(s);
+    async function visibleEnabled(selector: string): Promise<{x: number; y: number}> {
+        const control = await ev<{visible: boolean; enabled: boolean; x: number; y: number}>(`(() => {
+            const e = document.querySelector(${JSON.stringify(selector)});
+            e.scrollIntoView({block: 'center'});
+            const r = e.getBoundingClientRect(), style = getComputedStyle(e);
+            const closed = e.closest('details:not([open])');
+            return {
+                visible: r.width > 0 && r.height > 0 && style.visibility === 'visible' && style.display !== 'none'
+                    && (!closed || closed.querySelector('summary') === e) && r.top >= 0 && r.bottom <= innerHeight,
+                enabled: !e.matches(':disabled'), x: r.x + r.width / 2, y: r.y + r.height / 2
+            };
+        })()`);
+        expect(control).toMatchObject({visible: true, enabled: true});
+        return {x: control.x, y: control.y};
+    }
+    async function press(selector: string): Promise<void> {
+        const position = await visibleEnabled(selector);
+        await browser!.send("Input.dispatchMouseEvent", {type: "mousePressed", ...position, button: "left", clickCount: 1});
+        await browser!.send("Input.dispatchMouseEvent", {type: "mouseReleased", ...position, button: "left", clickCount: 1});
+    }
+    async function openOptimization(): Promise<void> {
+        expect(await ev("document.querySelector('.pg-optimizer').open")).toBe(false);
+        await press(".pg-optimizer > summary");
+        await browser!.until("document.querySelector('.pg-optimizer').open");
+        await visibleEnabled("#pg-policy");
+        await visibleEnabled("[data-action=optimize]");
+    }
     async function set(id: string, value: string): Promise<void> {
+        if (id === "policy") await visibleEnabled("#pg-policy");
         await ev(
             `(() => { const e = document.querySelector('#pg-${id}'); e.value = ${JSON.stringify(
                 value,
@@ -482,13 +510,41 @@ describe("locally built public gallery rendered actions", () => {
         );
     }
     async function click(action: string): Promise<void> {
-        await ev(`document.querySelector('[data-action="${action}"]').click()`);
+        await press(`[data-action="${action}"]`);
         await browser!.until("['completed','failed'].includes(document.querySelector('#pg-status').dataset.status)");
         expect(await ev("document.querySelector('#pg-status').textContent")).not.toMatch(/failed|invalid|unsupported/i);
     }
+    function readiness(id: string): string {
+        const item = galleryModels.find((model) => model.id === id)!;
+        return `(() => {
+            const status = document.querySelector('#pg-status');
+            if (status?.dataset.status === 'failed') throw new Error(status.textContent);
+            const controls = document.querySelector('#pg-controls');
+            return !!controls && !controls.disabled && status?.dataset.status === 'idle'
+                && document.querySelector('#pg-startup-help').hidden
+                && document.querySelector('#pg-example').value === ${JSON.stringify(id)}
+                && document.querySelector('#pg-model').value === ${JSON.stringify(JSON.stringify(item.blueprint, null, 2))}
+                && document.querySelector('#pg-seed').value === 'gallery-29'
+                && document.querySelector('#pg-bet').value === '0.05'
+                && document.querySelector('#pg-mode').value === ''
+                && document.querySelector('#pg-rounds').value === '256'
+                && document.querySelector('#pg-summary').textContent === ${JSON.stringify(item.description)}
+                && [...controls.querySelectorAll('#pg-example, #pg-model, .pg-inputs input, .pg-actions [data-action]')]
+                    .every(e => e.matches(':enabled'));
+        })()`;
+    }
     async function example(id: string): Promise<void> {
         await browser!.navigate(`${origin}/playground/?example=${id}`);
-        await browser!.until("!!document.querySelector('#pg-example')");
+        await browser!.until(readiness(id));
+    }
+    async function interceptRuntime(): Promise<void> {
+        const bootstrap = fs.readFileSync(path.join(output, "assets/playground/playground.js"), "utf8");
+        const runtime = bootstrap.match(/import\(\s*["'](\.\/app[^"']*\.js)["']\s*\)/);
+        expect(runtime).not.toBeNull();
+        await browser!.send("Network.setCacheDisabled", {cacheDisabled: true});
+        await browser!.send("Fetch.enable", {
+            patterns: [{urlPattern: new URL(runtime![1], `${origin}/assets/playground/playground.js`).href, requestStage: "Request"}],
+        });
     }
     async function download(name: string): Promise<unknown> {
         await ev(
@@ -511,6 +567,66 @@ describe("locally built public gallery rendered actions", () => {
         fs.writeFileSync(path.join(directory, "model.wasm"), new Uint8Array(run.wasm));
         fs.writeFileSync(path.join(directory, "reproduce.mjs"), await (await fetch(`${origin}/downloads/reproduce.mjs`)).text());
     }
+
+    it("waits through delayed runtime initialization before acting on the requested example and draft", async () => {
+        await interceptRuntime();
+        const paused = browser!.waitForEvent<{requestId: string}>("Fetch.requestPaused");
+        let actionStarted = false;
+        // Queue a real user action through the same helper used by every browser path.
+        const attempted = example("free-games").then(async () => {
+            actionStarted = true;
+            await set("seed", "after-delayed-startup");
+            await click("play");
+        }).then(() => undefined, (error: unknown) => error);
+        try {
+            const request = await paused;
+            await browser!.until("!!document.querySelector('#pg-example') && document.readyState === 'complete'");
+            expect(await ev("document.querySelector('#pg-controls').disabled")).toBe(true);
+            expect(await ev("document.querySelector('[data-action=play]').matches(':disabled')")).toBe(true);
+            expect(await ev("document.querySelector('#pg-example').value")).toBe("lines");
+            expect(await ev(readiness("free-games"))).toBe(false);
+            expect(await ev(readiness("lines"))).toBe(false);
+            expect(actionStarted).toBe(false);
+            expect(await ev("window.ownedWorkers.size")).toBe(0);
+            await browser!.send("Fetch.continueRequest", {requestId: request.requestId});
+            expect(await attempted).toBeUndefined();
+            expect(actionStarted).toBe(true);
+            expect(await ev("JSON.parse(document.querySelector('#pg-identity').textContent)"))
+                .toMatchObject({example: "free-games", seed: "after-delayed-startup", action: "play"});
+            expect(await download("model.blueprint.json")).toEqual(galleryModels.find((model) => model.id === "free-games")!.blueprint);
+            expect(await ev("window.ownedWorkers.size")).toBe(0);
+        } finally {
+            await browser!.send("Fetch.disable");
+            await attempted;
+            await browser!.send("Network.setCacheDisabled", {cacheDisabled: false});
+        }
+    }, 30000);
+
+    it("rejects readiness with the startup diagnostic when runtime loading fails, then permits an explicit reload retry", async () => {
+        await interceptRuntime();
+        const paused = browser!.waitForEvent<{requestId: string}>("Fetch.requestPaused");
+        const attempted = example("projection").then(() => undefined, (error: unknown) => error);
+        try {
+            const request = await paused;
+            await browser!.send("Fetch.failRequest", {requestId: request.requestId, errorReason: "Failed"});
+            const failure = await attempted;
+            expect(failure).toBeInstanceOf(Error);
+            expect((failure as Error).message).toContain("Interactive controls could not start. Reload the playground to retry; no work has run.");
+            expect((failure as Error).message).not.toContain("condition timed out");
+            expect(await ev("document.querySelector('#pg-controls').disabled")).toBe(true);
+            expect(await ev("document.querySelector('#pg-status').dataset.status")).toBe("failed");
+            expect(await ev("document.querySelector('#pg-startup-help').hidden")).toBe(false);
+            expect(await ev("window.ownedWorkers.size")).toBe(0);
+        } finally {
+            await browser!.send("Fetch.disable");
+            await attempted;
+            await browser!.send("Network.setCacheDisabled", {cacheDisabled: false});
+        }
+        await example("projection");
+        await click("play");
+        await click("play");
+        expect(await ev("window.ownedWorkers.size")).toBe(0);
+    }, 30000);
 
     it("discovers gallery deep links and runs every model in real Workers with no nonlocal runtime", async () => {
         await browser!.navigate(`${origin}/gallery/`);
@@ -617,6 +733,7 @@ describe("locally built public gallery rendered actions", () => {
         await click("play");
         expect(await ev("document.querySelectorAll('#pg-screen .pg-win').length")).toBe(2);
         await example("optimize");
+        await openOptimization();
         await set("seed", "changed-seed");
         expect(await ev("JSON.parse(document.querySelector('#pg-policy').value).policy.seed")).toBe("changed-seed");
         await set("seed", "gallery-29");
@@ -634,11 +751,7 @@ describe("locally built public gallery rendered actions", () => {
         await saveReproduction(original);
         fs.writeFileSync(path.join(original, "optimization.json"), JSON.stringify(evidence));
         expect(JSON.parse(runDownloadedRunner(original)).optimization).toEqual(evidence);
-        const applyPosition = await ev<{x: number; y: number}>(
-            "(() => { const button = document.querySelector('#pg-apply'); button.scrollIntoView({block: 'center'}); const r = button.getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; })()",
-        );
-        await browser!.send("Input.dispatchMouseEvent", {type: "mousePressed", ...applyPosition, button: "left", clickCount: 1});
-        await browser!.send("Input.dispatchMouseEvent", {type: "mouseReleased", ...applyPosition, button: "left", clickCount: 1});
+        await press("#pg-apply");
         await browser!.until("document.querySelector('#pg-status').textContent.startsWith('Applied')");
         expect(await ev("document.activeElement.dataset.action")).toBe("inspect");
         expect(
@@ -688,6 +801,7 @@ describe("locally built public gallery rendered actions", () => {
     it("V2C-29-ACCEPTANCE executes public stale-preview rejection after edits, reversion and coordinated changes", async () => {
         for (const field of ["seed", "bet", "mode", "rounds", "model", "policy", "coordinated"]) {
             await example("optimize");
+            await openOptimization();
             await click("optimize");
             await download("optimization.json");
             const original = await ev<string>("document.querySelector('#pg-model').value");
@@ -719,6 +833,7 @@ describe("locally built public gallery rendered actions", () => {
             expect(await ev("document.querySelector('#pg-download-status').textContent")).toBe("");
             expect(await ev("document.querySelectorAll('#pg-download-buttons button').length")).toBe(0);
             const edited = await ev("document.querySelector('#pg-model').value");
+            await visibleEnabled("#pg-apply");
             await ev("document.querySelector('#pg-apply').focus()");
             await browser!.key(" ", "Space", 32);
             await browser!.until("document.querySelector('#pg-status').dataset.status === 'failed'");
@@ -734,7 +849,7 @@ describe("locally built public gallery rendered actions", () => {
         for (let reuse = 0; reuse < 2; reuse++) {
             await click("optimize");
             const next = await download("candidate.blueprint.json");
-            await ev("document.querySelector('#pg-apply').click()");
+            await press("#pg-apply");
             await browser!.until("document.querySelector('#pg-status').textContent.startsWith('Applied')");
             await click("inspect");
             expect(await download("model.blueprint.json")).toEqual(next);
@@ -744,8 +859,10 @@ describe("locally built public gallery rendered actions", () => {
 
     it("protects edited inputs and replacement results from a delayed Apply callback", async () => {
         await example("optimize");
+        await openOptimization();
         await click("optimize");
         const original = await ev("document.querySelector('#pg-model').value");
+        await visibleEnabled("#pg-apply");
         const immediate = await ev("(() => { document.querySelector('#pg-apply').click(); const disabled = document.querySelector('#pg-apply').disabled; const seed = document.querySelector('#pg-seed'); seed.value = 'edited-during-apply'; seed.dispatchEvent(new Event('input')); return disabled; })()");
         expect(immediate).toBe(true);
         await click("inspect");
@@ -774,14 +891,15 @@ describe("locally built public gallery rendered actions", () => {
         expect(await ev("window.ownedWorkers.size")).toBe(0);
 
         await example("optimize");
+        await openOptimization();
         await click("optimize");
         expect(await ev("document.querySelector('#pg-summary').textContent")).toContain("Optimization");
         await download("optimization.json");
-        await ev("document.querySelector('#pg-discard').click()");
+        await press("#pg-discard");
         await expectCleared();
         await click("optimize");
         await download("optimization.json");
-        await ev("document.querySelector('#pg-apply').click()");
+        await press("#pg-apply");
         await browser!.until("document.querySelector('#pg-status').textContent.startsWith('Applied')");
         await expectCleared();
 
@@ -811,7 +929,8 @@ describe("locally built public gallery rendered actions", () => {
         await ev("document.querySelector('[data-action=play]').click()");
         await browser!.until("document.querySelector('#pg-status').dataset.status === 'failed'");
         await example("optimize");
-        await ev("document.querySelector('[data-action=optimize]').click()");
+        await openOptimization();
+        await press("[data-action=optimize]");
         await browser!.until("window.ownedWorkers.size === 1");
         await ev("document.querySelector('#pg-cancel').click()");
         expect(await ev("document.querySelector('#pg-apply').disabled")).toBe(true);

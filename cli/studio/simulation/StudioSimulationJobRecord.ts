@@ -10,6 +10,8 @@ import type {StudioSimulationStatus} from "./StudioSimulationStatus.js";
 export type StudioSimulationJobRecord = {
     id: string;
     projectRoot: string;
+    /** Actual authored source inventory captured when this execution was accepted. */
+    sourceRevision?: string;
     status: StudioSimulationStatus;
     rounds: number;
     modeCount?: number;

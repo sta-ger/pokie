@@ -760,6 +760,8 @@ export type StudioSimulationReportDetail = {
 export type StudioSimulationStatus = "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
 
 export type StudioSimulationJobView = {
+    /** Server-checked accepted source inventory; absent for unvalidated legacy jobs. */
+    sourceCurrent?: boolean;
     requestedRounds?: number;
     convergence?: import("../../../../src/simulation/SimulationConvergenceOptions.js").SimulationConvergenceOptions;
     progress?: StudioJobView["progress"];

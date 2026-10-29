@@ -1,4 +1,4 @@
-import {Anchor, Badge, Button, Checkbox, Group, Select, Table, Text, TextInput} from "@mantine/core";
+import {Anchor, Badge, Button, Checkbox, Group, Select, Table, Text, TextInput, Tooltip} from "@mantine/core";
 import {useCallback, useEffect, useRef, useState, type ReactNode} from "react";
 import {useNavigate} from "react-router-dom";
 import {
@@ -332,16 +332,16 @@ export function ProjectsPanel({
     // Design Game route for the guided Import -> Diagnose & map -> Preview -> Apply flow.
     const renderEntryName = (entry: StudioProjectRegistryView): ReactNode => {
         if (entry.status === "missing") {
-            return <Text c="dimmed">{entry.name} (missing)</Text>;
+            return <Text c="dimmed" fw={600}>{entry.name} (missing)</Text>;
         }
         if (entry.status === "ok" && isOpenable(entry)) {
             return (
-                <Anchor component="button" type="button" onClick={() => handleOpen(entry)}>
+                <Anchor component="button" type="button" fw={600} onClick={() => handleOpen(entry)}>
                     {entry.name}
                 </Anchor>
             );
         }
-        return entry.name;
+        return <Text fw={600}>{entry.name}</Text>;
     };
 
     const handleGoToDesignGame = (path: string): void => {
@@ -408,11 +408,23 @@ export function ProjectsPanel({
                 )}
             </Table.Td>
             <Table.Td data-label="Project">
-                {renderEntryName(entry)}
-                <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>{entry.location}</Text>
-                <Text className="project-registry-status" size="sm" c={entry.status === "ok" ? "teal" : "orange"}>
-                    {describeAvailability(entry)}
-                </Text>
+                <div className="project-registry-identity">
+                    {renderEntryName(entry)}
+                    <Tooltip
+                        label={entry.location}
+                        multiline
+                        w="min(32rem, calc(100vw - 2rem))"
+                        styles={{tooltip: {overflowWrap: "anywhere"}}}
+                        events={{hover: true, focus: true, touch: true}}
+                    >
+                        <Text className="project-registry-location" size="sm" c="dimmed" tabIndex={0} aria-label={`Project location: ${entry.location}`}>
+                            {entry.location}
+                        </Text>
+                    </Tooltip>
+                    <Text className="project-registry-status" size="sm" c={entry.status === "ok" ? "teal" : "orange"}>
+                        {describeAvailability(entry)}
+                    </Text>
+                </div>
             </Table.Td>
             <Table.Td data-label="Type">{entry.type === "wasm" ? describeProjectType(entry.type, entry.wasmPresentation) : describeProjectType(entry.type)}</Table.Td>
             <Table.Td data-label="Added to Studio">
@@ -514,7 +526,7 @@ export function ProjectsPanel({
                                 <Table className="project-registry" style={{tableLayout: "fixed", width: "100%"}}>
                                     <Table.Thead>
                                         <Table.Tr>
-                                            <Table.Th>
+                                            <Table.Th style={{width: "2.5rem"}}>
                                                 {missingPageEntries.length > 0 && (
                                                     <Checkbox
                                                         aria-label="Select missing projects on this page"
@@ -524,11 +536,11 @@ export function ProjectsPanel({
                                                     />
                                                 )}
                                             </Table.Th>
-                                            <Table.Th>Name</Table.Th>
+                                            <Table.Th style={{width: "30%"}}>Name</Table.Th>
                                             <Table.Th>Type</Table.Th>
                                             <Table.Th>Added to Studio</Table.Th>
                                             <Table.Th>Last opened</Table.Th>
-                                            <Table.Th>Actions</Table.Th>
+                                            <Table.Th style={{width: "11rem"}}>Actions</Table.Th>
                                         </Table.Tr>
                                     </Table.Thead>
                                     <Table.Tbody>

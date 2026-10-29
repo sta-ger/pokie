@@ -314,14 +314,31 @@ npm test                                          # both projects
 npx jest --selectProjects studio-client-components  # just the React component tests
 ```
 
+## Simulation report units
+
+Studio displays RTP confidence bounds as percentages and average-payout confidence
+bounds in payout units, matching downloaded reports. An unavailable interval is
+shown as `—`; measured zero payout bounds are `0.00 – 0.00`. All-mode reports keep
+each mode's bounds separate. Formatting does not recalculate the report statistics.
+
 ## Accessibility & responsiveness
 
 - Every Home/Project tab and the Blueprint Editor's Form/JSON toggle preserve `aria-current="page"` on the
   active tab (Mantine `NavLink`/`SegmentedControl`).
 - Dynamic-list row actions (Duplicate/Remove/Move) keep their original `aria-label` text (e.g. "Move symbol 2
   up"); nav tabs render as real `<button>`s (not an `href`-less `<a>`, which isn't keyboard-focusable).
-- `AppShell`'s navbar collapses behind a `Burger` below Mantine's `sm` breakpoint; wide tables (Paytable,
-  simulation breakdown) scroll within their own container rather than the page.
+- Studio shares the public documentation's navy masthead, copper accent, cream workspace and
+  system-body/serif-heading typography. Status colours retain their separate meanings.
+- `AppShell`'s navbar collapses behind **Toggle navigation** below Mantine's `md` breakpoint
+  (992 CSS pixels), including tablet widths such as 800px. Selecting a section or pressing Escape
+  closes the drawer and returns focus to its toggle. Wide tables (Paytable, simulation breakdown)
+  scroll within their own container rather than the page.
+- Simulation keeps Configure, Run, Review and Export in four ordered columns, switching to two
+  columns at 576px and below. Unavailable steps remain disabled. Review puts headline metrics
+  first, then grouped precision and warnings. The empirical-estimate caution and precision
+  status remain visible. **Show recommendations and limits** reveals the full interpretation,
+  coverage limitations and advice; **Show sampling and precision** reveals the sample accounting.
+  Current, reopened and per-mode results use the same presentation.
 - Every `Stepper.Step` across Studio (all 5 remaining interactive Steppers, see the audit below) carries an explicit
   `aria-current={activeStep === N ? "step" : undefined}` -- Mantine's own `Stepper` has no built-in
   current-step ARIA semantics (only a `data-progress` styling hook), so without this a screen reader had no
@@ -497,3 +514,37 @@ locally with the installed candidate; a hosted site or GitHub is not required.
 The normal Studio build includes these public assets. A missing help route
 returns an explicit 404 with `/help/docs/` recovery guidance rather than opening
 the Studio workspace. Closing a help tab leaves the authoring tab intact.
+
+### Full simulation report
+
+**Open full report** replaces the compact summary with four primary metrics: RTP,
+hit frequency, volatility and maximum win. Average payout, maximum-win frequency,
+stop reason and duration use compact rows below. Precision and confidence intervals
+sit beside the warning group when space permits, stacking in narrow report columns.
+Warnings, the precision status and a concise empirical-estimate caution stay visible;
+**Show recommendations and limits** reveals the full statistical interpretation,
+coverage limitations and recommendations. **Show sampling and precision** opens
+counts, sampling units, denominators, adaptive policy and interval diagnostics.
+Feature lifecycle and additive payout
+attribution use comparison tables; bet mode attribution remains a separate
+dimension. **Show win and feature details**, **Show canonical hits and components**
+and **Show analytics provenance** reveal the detailed counts, distributions and
+source identity. The payout histogram is a table behind its own disclosure, with
+currency buckets and the sample population identified. Wide analytical tables
+scroll within the report on narrow screens and in side-by-side comparisons. Open
+**Show analytical tables and feature detail** to inspect those tables and
+**Show run identity and accounting** for seed, game, command, workers and monetary totals.
+Comparison shows the two selected reports without repeating a standalone report above them.
+
+The same presentation serves completed, reopened, comparison and per-mode reports.
+**Hide full report** returns to the summary. Disclosure changes only what is
+visible; persisted report values and JSON/Markdown/HTML downloads are unchanged.
+
+### Grouped payline authoring
+
+Layout groups authored paylines into numbered cards with decorative path sketches and
+row sequences. Open **Edit reel rows** for a line's labelled reel inputs; type a row
+number and leave the field to commit it to the draft. Row numbers remain evaluation-local
+and start at zero. Duplicate, move, remove, Add payline and Apply preset retain their
+existing behavior. Draft edits still require explicit Save/Apply or Create game.
+Sketches do not validate the design or represent an executed winning screen.

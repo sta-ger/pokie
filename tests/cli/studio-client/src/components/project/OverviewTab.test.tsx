@@ -130,6 +130,16 @@ it("renders advanced unknown checks, source paths and witnesses alongside struct
     expect(screen.getByText(/Preserved warning/)).toBeInTheDocument();
     expect(screen.getByText(/Path: mechanics.weightedBonus.outcomes.0.targetId/)).toBeInTheDocument();
     expect(screen.getByText(/budget-exhausted — inconclusive/)).toBeInTheDocument();
-    expect(screen.getByText(/termination.unresolved: unknown/)).toBeInTheDocument();
-    expect(screen.getByText(/respin-2/)).toBeInTheDocument();
+    expect(screen.getByText(/termination.unresolved: unknown/)).not.toBeVisible();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", {name: "Show model analysis details"}));
+    expect(screen.getByText(/termination.unresolved: unknown/)).toBeVisible();
+    const evidence = screen.getByText(/respin-2/);
+    expect(evidence).not.toBeVisible();
+    await user.click(evidence.closest("details")!.querySelector("summary")!);
+    expect(evidence).toBeVisible();
+    await user.click(screen.getByRole("button", {name: "Hide model analysis details"}));
+    expect(screen.getByText(/termination.unresolved: unknown/)).not.toBeVisible();
+    expect(screen.getByText(/Invalid target/)).toBeVisible();
+    expect(screen.getByRole("button", {name: "Re-check project"})).toBeEnabled();
 });

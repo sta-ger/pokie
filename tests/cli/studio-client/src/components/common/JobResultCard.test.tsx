@@ -1,10 +1,49 @@
 import {MantineProvider} from "@mantine/core";
 import {act, fireEvent, render, screen, within} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {JobCard} from "../../../../../../cli/studio-client/src/components/common/JobCard";
 import {JobResultCard} from "../../../../../../cli/studio-client/src/components/common/JobResultCard";
 import {jobFocusLayout} from "../../testUtils/jobFocusLayout";
 
 describe("JobResultCard", () => {
+    it.each(["project-open-materialization", "simulation", "design-build", "certification-build"])("keeps %s results and actions ahead of its inspectable receipt", async operation => {
+        const user = userEvent.setup();
+        const open = jest.fn();
+        const recover = jest.fn();
+        const job = {id: "receipt-36", projectId: "/project", operation, conflictKey: operation,
+            request: {sourcePath: "/original/input"}, status: "completed" as const, createdAt: 1, durationMs: 5377,
+            result: {summary: "Completed saved work.", provenance: {sourcePath: "/original/game"}, detail: {accepted: true},
+                warnings: ["Retain the sampling limitation."], outputs: [{label: "Output", path: "/original/game", downloadPath: "/report.json"}]}};
+        const original = JSON.stringify(job);
+        const show = (value: typeof job) => <MantineProvider><JobCard job={value} onOpenOutput={open} onRecoveryAction={recover} /></MantineProvider>;
+        const view = render(show(job));
+        expect(screen.getByText("Completed saved work.")).toBeVisible();
+        expect(screen.getByText("Retain the sampling limitation.")).toBeVisible();
+        expect(screen.getByRole("status")).toHaveAttribute("data-variant", "default");
+        // The focus-owning region must not add a second padded/bordered card.
+        expect(screen.getByRole("region")).not.toHaveClass("studio-job-card");
+        expect(screen.getByRole("link", {name: "Download Output"})).toHaveAttribute("href", "/report.json");
+        await user.click(screen.getByRole("button", {name: "Open Output"}));
+        expect(open).toHaveBeenCalledWith("/original/game");
+        expect(screen.getByText("Duration: 5377ms")).not.toBeVisible();
+        const summary = screen.getByText("Operation details");
+        expect(summary.tagName).toBe("SUMMARY");
+        await user.click(summary);
+        expect(summary.closest("details")).toHaveAttribute("open");
+        expect(screen.getByText("Duration: 5377ms")).toBeVisible();
+        await user.click(screen.getByText("Inspect retained request"));
+        expect(screen.getByText('{"sourcePath":"/original/input"}')).toBeVisible();
+        await user.click(summary);
+        expect(screen.getByText('{"sourcePath":"/original/input"}')).not.toBeVisible();
+        await user.click(summary);
+        expect(screen.getByText('{"sourcePath":"/original/input"}')).toBeVisible();
+        view.rerender(show({...job, id: "replacement-36", request: {sourcePath: "/replacement"}}));
+        expect(screen.getByText("Operation details").closest("details")).not.toHaveAttribute("open");
+        expect(screen.queryByText('{"sourcePath":"/original/input"}')).not.toBeInTheDocument();
+        expect(JSON.stringify(job)).toBe(original);
+        expect(recover).not.toHaveBeenCalled();
+    });
+
     it.each(["simulation", "design-build"])("V35-RETRY-FOCUS-REFLOW keeps the actual %s Retry visible through layout and viewport changes", async operation => {
         const layout = jobFocusLayout();
         const width = window.innerWidth;
@@ -105,6 +144,7 @@ describe("JobResultCard", () => {
         expect(screen.getByText(/Use Projects to Relocate/)).toBeVisible();
         expect(screen.queryByRole("button", {name: "Open Opened project"})).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Reveal Opened project"})).not.toBeInTheDocument();
+        fireEvent.click(screen.getByText("Operation details"));
         fireEvent.click(screen.getByText("Inspect provenance"));
         expect(screen.getAllByText(/\/old\/blueprint.json/).length).toBeGreaterThan(0);
         expect(open).not.toHaveBeenCalled();
@@ -171,6 +211,7 @@ describe("JobResultCard", () => {
             recovery: {action: "rebuild", reason: "Rebuild from the retained source and destination."},
         }} /></MantineProvider>);
 
+        fireEvent.click(screen.getByText("Operation details"));
         fireEvent.click(screen.getByText("Inspect operation result"));
         fireEvent.click(screen.getByText("Inspect retained request"));
         expect(screen.getByText(/staging removed/)).toBeInTheDocument();
@@ -198,9 +239,11 @@ describe("JobResultCard", () => {
 
         expect(screen.getByText("Duration: 321ms")).toBeInTheDocument();
         expect(screen.getByText("Final size: 4,096 bytes")).toBeInTheDocument();
-        expect(screen.getByText("Library hash: sha256:library")).toBeInTheDocument();
-        expect(screen.getByText("Configuration hash: sha256:config")).toBeInTheDocument();
-        expect(screen.getByText("Selector: Bundle outcomelibrary, mode base")).toBeInTheDocument();
+        expect(screen.getByText("Library hash: sha256:library")).not.toBeVisible();
+        fireEvent.click(screen.getByText("Operation details"));
+        expect(screen.getByText("Library hash: sha256:library")).toBeVisible();
+        expect(screen.getByText("Configuration hash: sha256:config")).toBeVisible();
+        expect(screen.getByText("Selector: Bundle outcomelibrary, mode base")).toBeVisible();
         expect(screen.getByText("retained-warning: The retained warning.")).toBeInTheDocument();
         expect(screen.getByText(/Open and reveal are unavailable: This is a remote Studio session/)).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Open Outcome Library bundle"})).not.toBeInTheDocument();

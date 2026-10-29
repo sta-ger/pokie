@@ -121,8 +121,9 @@ export function SimulationTab({
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [availableModes]);
-    const [fullReportOpened, {toggle: toggleFullReport, close: closeFullReport}] = useDisclosure(false);
+    const [fullReportOpened, {toggle: toggleFullReport, close: closeFullReport, open: openFullReport}] = useDisclosure(false);
     const [compareOpened, setCompareOpened] = useState(false);
+    const comparisonVisible = compareOpened && compareDetail.status === "loaded";
     const [recentRunsPage, setRecentRunsPage] = useState(0);
     const recentRunEntries = recentRuns.status === "loaded" ? recentRuns.entries : [];
     const visibleRecentRunEntries = recentRunEntries.slice(recentRunsPage * RECENT_RUNS_PAGE_SIZE, (recentRunsPage + 1) * RECENT_RUNS_PAGE_SIZE);
@@ -267,7 +268,7 @@ export function SimulationTab({
                     Export becomes available after a completed simulation report is ready.
                 </Text>
             )}
-            <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
+            <Stepper className="studio-simulation-stepper" active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
                 <Stepper.Step
                     id="simulation-configure"
                     data-pokie-lifecycle-step="simulation-configure"
@@ -394,11 +395,15 @@ export function SimulationTab({
                     )}
                     {outcome !== undefined && (
                         <div>
-                            <SimulationSummaryCard outcome={outcome} />
+                            {(outcome.kind !== "completed" || (!fullReportOpened && !comparisonVisible)) && <SimulationSummaryCard outcome={outcome} />}
                             <QuickActions>
                                 {outcome.kind === "completed" && (
-                                    <Button data-pokie-lifecycle-artifact="simulation-report" variant="default" onClick={toggleFullReport}>
-                                        {fullReportOpened ? "Hide full report" : "Open full report"}
+                                    <Button data-pokie-lifecycle-artifact="simulation-report" variant="default" onClick={() => {
+                                        if (comparisonVisible) openFullReport();
+                                        else toggleFullReport();
+                                        setCompareOpened(false);
+                                    }}>
+                                        {fullReportOpened && !comparisonVisible ? "Hide full report" : "Open full report"}
                                     </Button>
                                 )}
                                 {outcome.kind === "completed" && (
@@ -424,7 +429,7 @@ export function SimulationTab({
                             </QuickActions>
 
                             {outcome.kind === "completed" && (
-                                <Collapse expanded={fullReportOpened}>
+                                <Collapse expanded={fullReportOpened && !comparisonVisible}>
                                     <SimulationReportDisplay view={outcome.report} />
                                 </Collapse>
                             )}

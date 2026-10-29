@@ -66,8 +66,9 @@ export function AppShellLayout({
     const [opened, {toggle, close}] = useDisclosure();
     // Mantine calculates the AppShell main area's desktop navbar offset into its padding. Its own
     // mobile CSS normally zeroes that offset, but keep the content width explicit at this boundary:
-    // a closed 260px drawer must never leave phone users only a narrow reading column.
-    const isPhoneWidth = useMediaQuery("(max-width: 48em)");
+    // a closed 260px drawer must never leave tablet and phone users only a narrow reading column. The md breakpoint also
+    // covers the observed 800px review surface; match Mantine's breakpoint minus 0.1px.
+    const isCompactWidth = useMediaQuery("(max-width: 61.99375em)");
     const burgerRef = useRef<HTMLButtonElement>(null);
 
     const closeAndFocusBurger = (): void => {
@@ -90,8 +91,8 @@ export function AppShellLayout({
     }, [opened]);
 
     return (
-        <AppShell header={{height: 60}} navbar={{width: 260, breakpoint: "sm", collapsed: {mobile: !opened}}} padding="md">
-            <AppShell.Header>
+        <AppShell header={{height: 60}} navbar={{width: 260, breakpoint: "md", collapsed: {mobile: !opened}}} padding="md">
+            <AppShell.Header className="studio-app-masthead">
                 <Group className="studio-app-header" h="100%" px="md" justify="space-between" wrap="nowrap">
                     <Group className="studio-app-header-primary" wrap="nowrap">
                         <Burger
@@ -99,7 +100,7 @@ export function AppShellLayout({
                             ref={burgerRef}
                             opened={opened}
                             onClick={toggle}
-                            hiddenFrom="sm"
+                            hiddenFrom="md"
                             size="sm"
                             aria-label="Toggle navigation"
                             aria-controls="studio-navigation-panel"
@@ -120,7 +121,7 @@ export function AppShellLayout({
                                             {crumb.label}
                                         </Anchor>
                                     ) : (
-                                        <Text className="studio-app-breadcrumb-current" key={index} size="sm" c="dimmed">
+                                        <Text className="studio-app-breadcrumb-current" key={index} size="sm">
                                             {crumb.label}
                                         </Text>
                                     ),
@@ -134,10 +135,10 @@ export function AppShellLayout({
             {/* Mobile layout can expand its percentage containing block when Home mounts retained
                 editor content. Bound the drawer itself to the viewport, including its border, so
                 opening it never puts its native tab targets beyond the phone's visible edge. */}
-            <AppShell.Navbar id="studio-navigation-panel" aria-labelledby="studio-navigation-toggle" inert={isPhoneWidth && !opened} p="md" style={{maxWidth: isPhoneWidth ? "100vw" : undefined, overflowY: "auto", overscrollBehavior: "contain"}}>
+            <AppShell.Navbar id="studio-navigation-panel" aria-labelledby="studio-navigation-toggle" inert={isCompactWidth && !opened} p="md" style={{maxWidth: isCompactWidth ? "100vw" : undefined, overflowY: "auto", overscrollBehavior: "contain"}}>
                 <NavbarCloseContext.Provider value={closeAndFocusBurger}>{navbar}</NavbarCloseContext.Provider>
             </AppShell.Navbar>
-            <AppShell.Main className="studio-app-main" style={isPhoneWidth ? {paddingInline: "var(--mantine-spacing-md)"} : undefined}>
+            <AppShell.Main className="studio-app-main" style={isCompactWidth ? {paddingInline: "var(--mantine-spacing-md)"} : undefined}>
                 {children}
             </AppShell.Main>
         </AppShell>

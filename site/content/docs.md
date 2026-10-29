@@ -2,21 +2,31 @@
 
 [Run the examples gallery](gallery.md) · [Open the interactive playground](playground.md)
 
-Follow the [bounded first journey](getting-started.md#first-journey), or choose the task you need. All guides are readable without JavaScript; local search adds section-level discovery.
+Follow the [bounded first journey](getting-started.md#first-journey), or choose a task below. Guides work without JavaScript; search finds individual sections.
 
-| Task | Guide |
-| --- | --- |
-| create an editable Blueprint / init a code-first package | [Getting started](getting-started.md) |
-| build artifacts and use public imports | [CLI and API](cli-api.md) |
-| Studio editing, Play, jobs and cancellation | [Studio](studio.md) |
-| extraction of a complete declared package model | [Package extraction](extraction.md) |
-| weighted-sequence editing and execution | [Weighted whole-sequence reels](weighted-sequences.md) |
-| authored mechanics and actual support limits | [Mechanics](mechanics.md) |
-| validate / sim / report / replay | [Reproducibility](reproducibility.md) |
-| optimizer policy, review, save and authored apply | [Optimization](optimization.md) |
-| PAR / Stake / canonical WASM | [Interop](interop.md) |
-| domain, calculation, state and wallet extensions | [Architecture](architecture.md) |
-| local HTTP adapters and compliance limits | [Server](server.md) |
+## Create and play
+
+- **[Getting started](getting-started.md)** — Create an editable Blueprint or init a code-first package.
+- **[Studio](studio.md)** — Edit a design, play it, and follow simulation jobs through completion or cancellation.
+- **[Mechanics](mechanics.md)** — Explore authored features and their actual support limits.
+
+## Build and measure
+
+- **[CLI and API](cli-api.md)** — Build artifacts and use public imports.
+- **[Reproducibility](reproducibility.md)** — Validate, simulate, report and replay with explicit inputs.
+- **[Optimization](optimization.md)** — Set a policy, review a candidate, then explicitly save or apply it.
+- **[Interop](interop.md)** — Work with PAR, Stake and canonical WASM.
+
+## Extend the model
+
+- **[Package extraction](extraction.md)** — Extract a complete declared package model.
+- **[Weighted whole-sequence reels](weighted-sequences.md)** — Author and execute weighted sequences.
+- **[Architecture](architecture.md)** — Extend domain, calculation, state and wallet interfaces.
+- **[Server](server.md)** — Understand local HTTP adapters and compliance limits.
+
+## Find your way
+
+**Browse guides** opens the navigation (Enter or Space). **Close navigation** or Escape inside it returns focus to **Browse guides** when JavaScript is available. **Skip to main content** moves to the page and search. On smaller screens, open guides sit above the content. Documentation, Gallery and playground follow your system's light or dark colour preference.
 
 ## Examples you can inspect
 

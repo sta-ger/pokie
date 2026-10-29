@@ -14,6 +14,7 @@ export class PublicDocsBrowser {
     private readonly closed: Promise<void>;
     private closing?: Promise<void>;
     private readonly pending = new Map<number, PendingCommand>();
+    private readonly events = new Map<string, number>();
     private buffer = "";
     private sequence = 0;
     private stderr = "";
@@ -59,12 +60,14 @@ export class PublicDocsBrowser {
             while ((boundary = this.buffer.indexOf("\0")) >= 0) {
                 const message = JSON.parse(this.buffer.slice(0, boundary));
                 this.buffer = this.buffer.slice(boundary + 1);
-                const pending = this.pending.get(message.id);
+                const id = message.id ?? (message.sessionId === this.session ? this.events.get(message.method) : undefined);
+                const pending = this.pending.get(id);
                 if (!pending) continue;
                 clearTimeout(pending.timer);
-                this.pending.delete(message.id);
+                this.pending.delete(id);
+                if (message.method) this.events.delete(message.method);
                 if (message.error) pending.reject(new Error(message.error.message));
-                else pending.resolve(message.result);
+                else pending.resolve(message.method ? message.params : message.result);
             }
         });
         const rejectAll = (error: Error): void => {
@@ -73,6 +76,7 @@ export class PublicDocsBrowser {
                 pending.reject(error);
             }
             this.pending.clear();
+            this.events.clear();
         };
         this.process.on("error", (error) => rejectAll(error));
         this.process.on("exit", () => rejectAll(new Error(`Chromium exited: ${this.stderr}`)));
@@ -126,6 +130,21 @@ export class PublicDocsBrowser {
         return response.result.value;
     }
 
+    /** Observe one session event without replacing the real browser response. */
+    public waitForEvent<T>(method: string): Promise<T> {
+        if (this.events.has(method)) throw new Error(`Already waiting for ${method}`);
+        return new Promise((resolve, reject) => {
+            const id = ++this.sequence;
+            const timer = setTimeout(() => {
+                this.pending.delete(id);
+                this.events.delete(method);
+                reject(new Error(`CDP event timed out: ${method}`));
+            }, 10000);
+            this.events.set(method, id);
+            this.pending.set(id, {resolve: (value) => resolve(value as T), reject, timer});
+        });
+    }
+
     public async until(expression: string): Promise<void> {
         const deadline = Date.now() + 10000;
         while (Date.now() < deadline) {
@@ -147,7 +166,15 @@ export class PublicDocsBrowser {
     }
 
     public async key(key: string, code = key, virtualKey = 0): Promise<void> {
-        await this.send("Input.dispatchKeyEvent", {type: "keyDown", key, code, windowsVirtualKeyCode: virtualKey});
+        // Chromium needs Enter's text to generate the trusted keypress used by
+        // native summary activation; keyDown/keyUp alone do not represent Enter.
+        await this.send("Input.dispatchKeyEvent", {
+            type: "keyDown",
+            key,
+            code,
+            windowsVirtualKeyCode: virtualKey,
+            ...(key === "Enter" ? {text: "\r", unmodifiedText: "\r"} : {}),
+        });
         await this.send("Input.dispatchKeyEvent", {type: "keyUp", key, code, windowsVirtualKeyCode: virtualKey});
     }
 
@@ -162,6 +189,7 @@ export class PublicDocsBrowser {
             pending.reject(new Error("Browser closing"));
         }
         this.pending.clear();
+        this.events.clear();
         if (this.process.exitCode !== null || this.process.signalCode !== null) {
             await this.closed;
             return;

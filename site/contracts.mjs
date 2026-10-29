@@ -1,3 +1,4 @@
+import {renderGallery, renderPlayground} from './playground/view.ts';
 import {galleryModels} from './playground/models.ts';
 import {createBlueprintWasmArtifact} from '../src/wasm/createBlueprintWasmArtifact.ts';
 import fs from 'node:fs';
@@ -33,4 +34,4 @@ const gallery = await Promise.all(galleryModels.map(async example => {
     const artifact = await createBlueprintWasmArtifact(example.blueprint);
     return {id: example.id, blueprint: example.blueprint, manifest: artifact.manifest, bytes: Array.from(artifact.bytes)};
 }));
-process.stdout.write(JSON.stringify({gallery, commands, exports: metadata.exports, examples: inventory.examples.map(example => path.basename(example.source))}));
+process.stdout.write(JSON.stringify({gallery, playgroundHtml: renderPlayground(process.argv[3]), galleryHtml: renderGallery(process.argv[3]), commands, exports: metadata.exports, examples: inventory.examples.map(example => path.basename(example.source))}));

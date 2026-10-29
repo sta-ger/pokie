@@ -1,5 +1,6 @@
-import {Button, Group, Stack, Text, TextInput, type TextInputProps} from "@mantine/core";
-import {forwardRef, useEffect, useRef, useState} from "react";
+import {Alert, Button, Group, Stack, Text, TextInput, type TextInputProps} from "@mantine/core";
+import {IconAlertCircle} from "@tabler/icons-react";
+import {forwardRef, useEffect, useId, useRef, useState} from "react";
 import {browseFilesystem, checkNativePickerAvailability, pickNativePath} from "../../api/apiClient";
 import type {StudioFsBrowseErrorReason, StudioNativePickerFileFilter} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -135,6 +136,7 @@ export const PathInput = forwardRef<HTMLInputElement, PathInputProps>(({
     ...rest
 }: PathInputProps, ref) => {
     const fetchImpl = useStudioApi();
+    const issueId = useId();
     const [modalOpened, setModalOpened] = useState(false);
     const [modalInitialPath, setModalInitialPath] = useState("");
     const [modalKind, setModalKind] = useState<PathBrowseKind>(kind);
@@ -281,6 +283,7 @@ export const PathInput = forwardRef<HTMLInputElement, PathInputProps>(({
         }
     };
 
+    const issue = hint.status === "error" ? describePathIssue(hint.reason, hint.path, kind) : undefined;
     return (
         <Stack gap={4}>
             <Group align="flex-end" gap="xs" wrap="wrap">
@@ -297,6 +300,8 @@ export const PathInput = forwardRef<HTMLInputElement, PathInputProps>(({
                         resolveHint(event.currentTarget.value);
                     }}
                     {...rest}
+                    error={rest.error || issue !== undefined}
+                    aria-errormessage={issue === undefined ? rest["aria-errormessage"] : issueId}
                     value={nativeSelection?.path ?? value}
                     defaultValue={defaultValue}
                 />
@@ -319,20 +324,13 @@ export const PathInput = forwardRef<HTMLInputElement, PathInputProps>(({
                     {hint.auto ? "Auto resolved destination" : "Resolves to"}: {hint.text}
                 </Text>
             )}
-            {hint.status === "error" &&
-                (() => {
-                    const issue = describePathIssue(hint.reason, hint.path, kind);
-                    return (
-                        <Stack gap={0}>
-                            <Text size="xs" c="red">
-                                {issue.status}
-                            </Text>
-                            <Text size="xs" c="dimmed">
-                                {issue.remediation}
-                            </Text>
-                        </Stack>
-                    );
-                })()}
+            {issue !== undefined && (
+                <Alert id={issueId} className="studio-path-issue" color="red" variant="light" role="alert"
+                    title="Location needs attention" icon={<IconAlertCircle size={20} />}>
+                    <Text size="sm" fw={600}>{issue.status}</Text>
+                    <Text size="sm">{issue.remediation}</Text>
+                </Alert>
+            )}
             <PathBrowseModal
                 opened={modalOpened}
                 onClose={() => setModalOpened(false)}

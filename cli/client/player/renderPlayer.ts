@@ -7,10 +7,8 @@ import {
     type WinHighlight,
 } from "./videoSlotRoundView.js";
 
-// Thin DOM-manipulation layer, deliberately not unit-tested -- same rationale as cli/client/dom.ts's
-// own comment (no DOM globals in this repo's fast Jest environment). Every function here is a direct,
-// manually-verified translation of an already-derived view (see videoSlotRoundView.ts) into markup; no
-// decision-making about what a response means lives here.
+// DOM presentation of an already-derived view (see videoSlotRoundView.ts). No decision-making about
+// what a response means lives here; renderPlayer.test.ts covers the shared DOM and layout contract.
 
 type CellElement = HTMLElement & {baseColor: string};
 
@@ -42,6 +40,18 @@ const PLAYER_PRESENTATION_CSS = `
 .player-paytable { border-collapse: collapse; width: 100%; }
 .player-paytable th, .player-paytable td { border: 1px solid currentColor; padding: .35rem .6rem; text-align: center; }
 @media (max-width: 480px) { .pokie-player { --player-cell-size: 2.25rem; } .player-cell { font-size: .75rem; } }
+
+/* Studio opts into a card composition; standalone/package hosts retain their intrinsic layout.
+   Wrapping follows the available card width, including nested inspectors and the tablet drawer. */
+.pokie-player-card { --player-cell-size: 3.5rem; width: 100%; max-width: 72rem; margin-inline: auto; color: var(--mantine-color-text, #212529); }
+.pokie-player-card .player-round-overview { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: stretch; margin-bottom: 1rem; }
+.pokie-player-card .pokie-player-grid-scroll { flex: 2 1 22rem; min-width: 0; box-sizing: border-box; padding: 1.5rem; background: var(--mantine-color-default-hover, #f8f5ed); border: 1px solid var(--mantine-color-default-border, #d7d0c2); border-radius: .5rem; align-content: center; }
+.pokie-player-card .player-grid { margin: 0 auto; }
+.pokie-player-card .player-round-totals:not([hidden]) { flex: 1 1 14rem; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1rem; margin: 0; }
+.pokie-player-card .player-round-total:not([hidden]) { padding-bottom: .75rem; border-bottom: 1px solid var(--mantine-color-default-border, #d7d0c2); }
+.pokie-player-card .player-round-total dt { font-size: .875rem; font-weight: 500; }
+.pokie-player-card .player-round-total dd { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+@media (max-width: 480px) { .pokie-player-card { --player-cell-size: 2.25rem; } .pokie-player-card .pokie-player-grid-scroll { padding: 1rem; } }
 `;
 
 /** Installs the canonical, scoped player CSS once for DOM hosts outside the dev client. */
@@ -123,6 +133,8 @@ export function createPlayerRoundElements(root: HTMLElement): PlayerRoundElement
     const credits = appendValue(totals, "Credits");
     const totalWin = appendValue(totals, "Total win");
     const payoutMultiplier = appendValue(totals, "Payout multiplier");
+    const overview = create("div", "player-round-overview");
+    overview.append(gridScroll, totals);
 
     const features = create("dl", "player-features");
     const winsSection = create("section", "player-wins");
@@ -150,7 +162,7 @@ export function createPlayerRoundElements(root: HTMLElement): PlayerRoundElement
     paytableScroll.appendChild(paytable);
     paytableDetails.append(paytableSummary, paytableScroll);
 
-    root.append(betInfo, modeInfo, gridScroll, totals, features, winsSection, linesDetails, paytableDetails);
+    root.append(betInfo, modeInfo, overview, features, winsSection, linesDetails, paytableDetails);
     return {
         totals,
         creditsRow: credits.row,

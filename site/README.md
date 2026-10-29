@@ -42,3 +42,11 @@ the public site's existing implementations and support limits. Maintained guide
 sources linked from this included edition are shipped as local readable files.
 `npm run site:build` retains the standalone site's `/` base and deployment target;
 no hosting or DNS change is performed by either build.
+
+The build renders gallery cards and the playground's shared control template into
+both editions before JavaScript runs. The lightweight startup module loads the
+existing runtime UI; execution stays disabled until initialization succeeds.
+A failed runtime import retains the controls with an explicit error and reload
+link. The build rejects missing interactive markers or control markup. All runs,
+validation, replay, optimization and downloads still use the existing bounded
+playground controller and canonical WASM; static HTML grants no result authority.

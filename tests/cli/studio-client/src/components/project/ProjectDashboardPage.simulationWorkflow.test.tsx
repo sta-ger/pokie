@@ -264,16 +264,16 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         expect(screen.queryByText("Rounds must be a positive integer between 1 and 2,000,000.", {selector: ".mantine-Alert-message"})).not.toBeInTheDocument();
     });
 
-    it("restores completed results on reopening but keeps a rejected new Run's error and attempted configuration", async () => {
+    it.each([true, false, undefined])("restores completed results with source proof %s on reload/reopening and preserves rejected Run configuration", async sourceCurrent => {
         const user = userEvent.setup();
         const attempted = {rounds: 123, seed: "attempted-seed", workers: 2};
         const {fetchImpl, calls} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [{
                 id: "retained-completed", projectId: "/games/a", operation: "simulation", request: {rounds: 10000},
-                conflictKey: "simulation:/games/a", status: "completed", createdAt: 1,
+                conflictKey: "simulation:/games/a", status: "completed", createdAt: 1, result: {summary: "Simulation completed."},
             }]}}),
-            "/api/project/simulations/retained-completed": () => ({ok: true, status: 200, body: jobFor("retained-completed", {report: reportFor()})}),
+            "/api/project/simulations/retained-completed": () => ({ok: true, status: 200, body: jobFor("retained-completed", {report: reportFor(), sourceCurrent})}),
             "/api/project/reports": () => ({ok: true, status: 200, body: []}),
             "/api/project/reports/retained-completed": () => ({ok: true, status: 200, body: reportDetailFor()}),
             "/api/project/simulations": () => ({ok: false, status: 400, body: {error: "Rounds must be a positive integer."}}),
@@ -281,12 +281,25 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         const first = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await user.click(await screen.findByRole("button", {name: "Simulation"}));
         expect(await screen.findByText(/^Simulation completed —/)).toBeInTheDocument();
+        await screen.findByRole("button", {name: "Open full report"});
+        expect(screen.queryAllByText(/Historical simulation result/).length > 0).toBe(sourceCurrent !== true);
+        // A new routed application models F5; another mount models reopening
+        // the same project. Both must consume the same server-owned proof.
         first.unmount();
+        const reloaded = renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
+        await screen.findByRole("button", {name: "Open full report"});
+        expect(screen.queryAllByText(/Historical simulation result/).length > 0).toBe(sourceCurrent !== true);
+        reloaded.unmount();
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await user.click(await screen.findByRole("button", {name: "Simulation"}));
         expect(await screen.findByText(/^Simulation completed —/)).toBeInTheDocument();
         expect(await screen.findByRole("button", {name: "Open full report"})).toBeInTheDocument();
         expect(screen.getByText("96.00%")).toBeInTheDocument();
+        const commonCard = screen.getByRole("region", {name: "simulation job retained-completed"});
+        expect(within(commonCard).queryByText(/Historical simulation result/) !== null).toBe(sourceCurrent !== true);
+        expect(screen.queryAllByText(/Historical simulation result/).length > 0).toBe(sourceCurrent !== true);
+        await user.click(screen.getByRole("button", {name: "Open full report"}));
+        expect(screen.queryAllByText(/Historical simulation result/).length > 0).toBe(sourceCurrent !== true);
         await user.click(screen.getByRole("button", {name: stepperStep("Configure", "Set rounds")}));
         await user.clear(screen.getByLabelText(/^Rounds/));
         await user.type(screen.getByLabelText(/^Rounds/), String(attempted.rounds));

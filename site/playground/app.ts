@@ -1,3 +1,4 @@
+import {renderGallery, renderPlayground} from "./view.js";
 import {galleryModels, galleryPolicy} from "./models.js";
 import {PlaygroundController, type PlaygroundDraft, type PlaygroundEvent} from "./controller.js";
 import {
@@ -12,30 +13,12 @@ import {ScreenProjection} from "../../src/session/videoslot/coordinates/ScreenPr
 
 const siteBase = new URL(/* @vite-ignore */ "../../", import.meta.url).pathname;
 const gallery = document.querySelector<HTMLElement>("#gallery");
-if (gallery) for (const item of galleryModels) {
-    const card = document.createElement("a");
-    card.href = `${siteBase}playground/?example=${item.id}`;
-    const title = document.createElement("h2"),
-        text = document.createElement("p"),
-        arrow = document.createElement("span");
-    title.textContent = item.name;
-    text.textContent = item.description;
-    arrow.textContent = "Open example →";
-    card.append(title, text, arrow);
-    gallery.append(card);
-}
+if (gallery) gallery.innerHTML = renderGallery(siteBase);
 const host = document.querySelector<HTMLElement>("#playground");
 if (host) mount(host);
 
 function mount(root: HTMLElement): void {
-    root.innerHTML = `<div class="pg-heading"><span class="eyebrow">LOCAL WORKER / CANONICAL WASM</span><h2>Make the math observable.</h2><p>Choose a model, set the seed and run. Every result carries its inputs. Nothing is saved automatically.</p></div>
-<div class="pg-inputs"><label>Example<select id="pg-example"></select></label><label>Seed<input id="pg-seed" value="gallery-29" maxlength="256"></label><label>Denomination<input id="pg-bet" type="number" step="any" value="0.05" list="pg-bets"><datalist id="pg-bets"><option value="0.05"></option><option value="7.5"></option><option value="1e-7"></option></datalist></label><label>Mode<input id="pg-mode" placeholder="default / declared ID / all"></label><label>Accepted steps<input id="pg-rounds" type="number" value="256" min="1" max="8192"></label></div>
-<details class="pg-editor"><summary>Edit the Blueprint</summary><label for="pg-model">Authored JSON · maximum 64 KiB</label><textarea id="pg-model" rows="16" spellcheck="false"></textarea><button id="pg-restore" type="button">Restore last valid draft</button></details>
-<div class="pg-actions" aria-label="Runtime actions"><button data-action="inspect">Inspect</button><button data-action="validate">Validate</button><button data-action="play">Play seeded entry</button><button data-action="sim">Simulate</button><button data-action="report">Build report</button><button data-action="replay">Replay sample</button><button id="pg-replay-play" disabled>Replay displayed entry</button><button id="pg-cancel" disabled>Cancel</button><button id="pg-reset">Reset</button></div>
-<p id="pg-status" role="status" aria-live="polite" data-status="idle">Idle. Reload resets all work, results and previews.</p><progress aria-label="Completed work" aria-describedby="pg-status" id="pg-progress" max="1" value="0" hidden></progress>
-<section class="pg-result" aria-label="Results"><h3>Run identity</h3><pre tabindex="0" id="pg-identity">No validated run yet.</pre><div id="pg-screen" aria-label="Visible screen"></div><p id="pg-summary">Use Inspect to check executable support before running.</p><details><summary>Complete observed output</summary><pre tabindex="0" id="pg-output">No output.</pre></details></section>
-<details class="pg-optimizer" open><summary>Optimization · preview then apply</summary><p>Simple base line paytables only. One Worker, at most 16 candidates and 8192 search / assessment observations. Sampled estimates can be inconclusive; they do not prove configured RTP.</p><label for="pg-policy">Optimization request · seed and stake stay synchronized above</label><textarea id="pg-policy" rows="10" spellcheck="false"></textarea><button data-action="optimize">Generate candidate preview</button><button id="pg-apply" disabled>Apply reviewed candidate</button><button id="pg-discard" disabled>Discard preview</button><pre tabindex="0" id="pg-preview">No candidate.</pre></details>
-<section class="pg-downloads"><h3>Reproduce this revision</h3><p>Downloads contain the validated current draft and actual observed output. A public round is an observation, not an audit recording. Only the separately labelled runtime state can be restored.</p><div id="pg-download-buttons"></div><p id="pg-download-status" role="status"></p><a href="${siteBase}playground/#reproduce-downloads-locally">Local reproduction and support boundaries →</a></section>`;
+    root.innerHTML = renderPlayground(siteBase, true);
     const element = <T extends HTMLElement>(id: string): T => root.querySelector<T>(`#pg-${id}`)!;
     const model = element<HTMLTextAreaElement>("model"),
         policy = element<HTMLTextAreaElement>("policy"),
@@ -106,12 +89,6 @@ function mount(root: HTMLElement): void {
         policy.value = JSON.stringify(galleryPolicy, null, 2);
         element("summary").textContent = item.description;
         if (updateUrl) history.replaceState(null, "", `?example=${item.id}`);
-    }
-    for (const item of galleryModels) {
-        const option = document.createElement("option");
-        option.value = item.id;
-        option.textContent = item.name;
-        select.append(option);
     }
     replace(new URL(location.href).searchParams.get("example") ?? "lines", false);
     update({status: "idle", message: "Idle / reset. Reload never restores a running job, result or applicable candidate."});
