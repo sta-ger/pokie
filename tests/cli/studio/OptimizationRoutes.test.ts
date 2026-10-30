@@ -93,11 +93,37 @@ it("rejects stale source and conflicting requests while cancellation drains a re
     ).toBe(409);
     jobs.cancel(source, job.id);
     await routes.drain();
-    expect(jobs.get(source, job.id)?.status).toBe("cancelled");
+    const cancelled = jobs.get(source, job.id)!;
+    expect(cancelled).toMatchObject({
+        status: "cancelled",
+        request: {request, sourceRevision: support.sourceRevision},
+        recovery: {action: "retry", reason: expect.stringContaining("explicitly start")},
+        result: {detail: {status: "cancelled"}},
+    });
+    expect(cancelled.result?.detail?.candidate).toBeUndefined();
+    expect(new FileStudioJobRepository(path.join(directory, "jobs")).get(job.id)).toEqual(cancelled);
+    expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
     fs.appendFileSync(source, " ");
     expect(
         (await routes.handle("POST", "start", {request, expectedProjectRoot: source, sourceRevision: support.sourceRevision}, context())).status,
     ).toBe(409);
+    // Retry is configuration, not replay of the stale revision. A fresh
+    // support decision admits a distinct execution, including subsequent reuse.
+    expect(jobs.list()).toHaveLength(1);
+    const refreshed = await preview(request);
+    const ids = new Set([job.id]);
+    for (const attempt of [1, 2]) {
+        const replacement = await routes.handle("POST", "start", {request, expectedProjectRoot: source, sourceRevision: refreshed.sourceRevision}, context());
+        expect(replacement.status).toBe(202);
+        const accepted = (replacement.body as {job: StudioJobView}).job;
+        expect(ids.has(accepted.id)).toBe(false);
+        ids.add(accepted.id);
+        await routes.drain();
+        expect(jobs.get(source, accepted.id)).toMatchObject({status: "completed", result: {detail: {status: "success"}}});
+        expect(jobs.get(source, accepted.id)?.recovery).toBeUndefined();
+        expect(jobs.list()).toHaveLength(attempt + 1);
+        expect(jobs.get(source, job.id)).toEqual(cancelled);
+    }
 });
 it.each([0, -1, 0.5, "2", null, undefined, 1e20, "NaN", "Infinity", true])(
     "validates budget %p before starting jobs, retains submitted input, then accepts correction",

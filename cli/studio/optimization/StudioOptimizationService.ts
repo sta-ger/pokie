@@ -233,7 +233,11 @@ export class StudioOptimizationService {
                         result: retained,
                     };
                     return result.status === "cancelled"
-                        ? {status: "cancelled", result: retained}
+                        ? {
+                            status: "cancelled",
+                            result: retained,
+                            recovery: {action: "retry", reason: "Review the captured optimization policy, refresh support and explicitly start a new optimization."},
+                        }
                         : {status: "completed", result: retained};
                 },
             );

@@ -12,7 +12,6 @@ import {
     inspectProject,
     inspectReplayArtifact,
     checkNativePickerAvailability,
-    openOutputFolder,
     revealOutputPath,
     listRecentSpins,
     listReplays,
@@ -1323,7 +1322,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
 
     function openJobOutput(resolvedOutputPath: string): void {
         setJobOutputNotice(undefined);
-        openOutputFolder(fetchImpl, resolvedOutputPath)
+        // Common durable outputs can be files as well as directories.
+        revealOutputPath(fetchImpl, resolvedOutputPath)
             .then((result) => {
                 if (result.status === "ok") {
                     setJobOutputNotice("Opened job output.");

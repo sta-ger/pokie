@@ -63,6 +63,7 @@ import {StudioFairnessService} from "../../../cli/studio/fairness/StudioFairness
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {InMemoryRecentProjectsRepository} from "../../../cli/studio/InMemoryRecentProjectsRepository.js";
 import {StudioNativePickerService} from "../../../cli/studio/home/StudioNativePickerService.js";
+import {validateOpenFolderRequest} from "../../../cli/studio/home/validateOpenFolderRequest.js";
 import {isLoopbackRequest} from "../../../cli/studio/isLoopbackRequest.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
 import {FileStudioProjectRegistry} from "../../../cli/studio/FileStudioProjectRegistry.js";
@@ -2481,6 +2482,80 @@ describe("StudioServer", () => {
             expect(status).toBe(200);
             expect(body).toEqual({status: "ok"});
             expect(openFolder).toHaveBeenCalledWith(folderWorkDir);
+        });
+
+        it("opens an authenticated completed Blueprint producer output through the file-or-directory boundary", async () => {
+            const openFolder = jest.fn();
+            const folderBaseUrl = await startServerWithOpenFolder(openFolder);
+            const source = writeDescriptorPackage(folderWorkDir);
+            const destination = path.join(folderWorkDir, "blueprint.json");
+            const repository = new FileStudioJobRepository(path.join(folderWorkDir, "producer"));
+            const jobs = new StudioJobService(repository);
+            const producer = new StudioArtifactBuildService("1.0.0");
+            producer.attachJobService(jobs);
+            let settle!: () => void;
+            const completed = new Promise<void>(resolve => {
+                settle = resolve;
+            });
+            const persist = repository.save.bind(repository);
+            const save = jest.spyOn(repository, "save").mockImplementation(job => {
+                persist(job);
+                if (["completed", "failed", "cancelled", "recovery-required"].includes(job.status)) settle();
+            });
+            try {
+                const preview = await producer.preview(source, "blueprint", destination);
+                if (preview.status !== "ok") throw new Error(JSON.stringify(preview));
+                const start = producer.startPreparedExtraction(source, preview.preparedOperationId!, destination);
+                if (start.status !== "created") throw new Error(JSON.stringify(start));
+                await completed;
+                const job = jobs.get(source, start.job.id)!;
+                expect(job).toMatchObject({status: "completed", result: {
+                    outputs: [{label: "Built artifact", path: destination}],
+                    detail: {target: "blueprint", outputKind: "file", result: {outputPath: destination}},
+                }});
+                expect(fs.statSync(destination).isFile()).toBe(true);
+                expect(JSON.parse(fs.readFileSync(destination, "utf8"))).toHaveProperty("manifest");
+                const outputPath = job.result!.outputs![0].path!;
+                // The old route still truthfully rejects files; common cards
+                // must use the existing file-aware route for this exact receipt.
+                expect((await post(`${folderBaseUrl}/api/home/fs/open-folder`, {path: outputPath})).body).toMatchObject({status: "error"});
+                expect(openFolder).not.toHaveBeenCalled();
+                expect((await post(`${folderBaseUrl}/api/home/fs/reveal-path`, {path: outputPath})).body).toEqual({status: "ok"});
+                expect(openFolder).toHaveBeenLastCalledWith(folderWorkDir);
+                expect(fs.statSync(outputPath).isFile()).toBe(true);
+            } finally {
+                await producer.cancelAll();
+                save.mockRestore();
+            }
+        });
+
+        it.each([undefined, null, 1, [], {}, "", "   "])("rejects malformed path %p at the shared validator and both host callers, then reuses valid outputs", async invalidPath => {
+            const openFolder = jest.fn();
+            const folderBaseUrl = await startServerWithOpenFolder(openFolder);
+            const malformed = {path: invalidPath};
+            expect(() => validateOpenFolderRequest(malformed)).toThrow('"path" is required.');
+            for (const route of ["open-folder", "reveal-path"]) {
+                expect(await post(`${folderBaseUrl}/api/home/fs/${route}`, malformed)).toMatchObject({status: 400, body: {error: '"path" is required.'}});
+            }
+            expect(openFolder).not.toHaveBeenCalled();
+            for (const route of ["open-folder", "reveal-path"]) {
+                expect(validateOpenFolderRequest({path: folderWorkDir})).toEqual({path: folderWorkDir});
+                expect((await post(`${folderBaseUrl}/api/home/fs/${route}`, {path: folderWorkDir})).body).toEqual({status: "ok"});
+            }
+            expect(openFolder.mock.calls).toEqual([[folderWorkDir], [folderWorkDir]]);
+        });
+
+        it("retains a missing-output diagnostic, then opens the repaired file and subsequent directory on the same server", async () => {
+            const openFolder = jest.fn();
+            const folderBaseUrl = await startServerWithOpenFolder(openFolder);
+            const outputPath = path.join(folderWorkDir, "blueprint.json");
+            expect((await post(`${folderBaseUrl}/api/home/fs/reveal-path`, {path: folderWorkDir})).body).toEqual({status: "ok"});
+            expect((await post(`${folderBaseUrl}/api/home/fs/reveal-path`, {path: outputPath})).body).toEqual({status: "error", message: `"${outputPath}" does not exist.`});
+            fs.writeFileSync(outputPath, "{}");
+            for (const currentPath of [outputPath, folderWorkDir]) {
+                expect((await post(`${folderBaseUrl}/api/home/fs/reveal-path`, {path: currentPath})).body).toEqual({status: "ok"});
+            }
+            expect(openFolder.mock.calls).toEqual([[folderWorkDir], [folderWorkDir], [folderWorkDir]]);
         });
 
         it("reports reveal as unavailable for a remote caller and does not invoke the host action", async () => {

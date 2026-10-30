@@ -501,9 +501,12 @@ it.each(["Home", "dashboard"])("V37 %s optimization Retry is consumed only by ac
     unmount();
 });
 
-it("V37 Home completed outputs retain downloads, pending controls and host errors before successful Open and Reveal", async () => {
+it.each([
+    "/outputs/server returned artifact",
+    // Exact regular-file output retained by the independent observer.
+    "/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-37-9efe90de82cb1713/run-2026-10-30T00-50-08-535Z/application-KI62X7/Documents/project-input-ohZzDm/blueprint.json",
+])("V37 Home completed output %s retains downloads, pending controls and host errors before successful Open and Reveal", async outputPath => {
     const user = userEvent.setup();
-    const outputPath = "/outputs/server returned artifact";
     const complete: StudioJobView = {...active, id: "completed", operation: "artifact-build", status: "completed", result: {
         summary: "Build completed.", outputs: [{label: "Artifact", path: outputPath, downloadPath: "/retained/download"}],
     }};
@@ -515,9 +518,10 @@ it("V37 Home completed outputs retain downloads, pending controls and host error
     });
     const opens: unknown[] = [];
     const fetchImpl: FetchLike = (url, init) => {
-        if (url === "/api/home/fs/open-folder") {
+        if (url === "/api/home/fs/reveal-path") {
             opens.push(JSON.parse(init!.body!));
             if (opens.length === 1) return Promise.reject(new Error("Host temporarily disconnected"));
+            if (opens.length > 2) return base.fetchImpl(url, init);
             return new Promise(resolve => {
                 finish = resolve;
             });
@@ -541,6 +545,8 @@ it("V37 Home completed outputs retain downloads, pending controls and host error
     await screen.findByText("Opened job output.");
     await user.click(within(card).getByRole("button", {name: "Reveal Artifact"}));
     await screen.findByText("Revealed job output.");
+    expect(opens).toEqual(Array.from({length: 3}, () => ({path: outputPath})));
+    expect(base.calls.some(call => call.url === "/api/home/fs/open-folder")).toBe(false);
     expect(base.calls.find(call => call.url === "/api/home/fs/reveal-path")?.init?.body).toBe(JSON.stringify({path: outputPath}));
     rendered.unmount();
 });

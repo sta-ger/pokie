@@ -348,22 +348,23 @@ describe("ProjectDashboardPage durable jobs", () => {
         expect(calls.some(call => call.url === "/api/home/projects/open" || call.url === "/api/home/fs/open-folder")).toBe(false);
     });
 
-    it("keeps artifact folder actions and Outcome Library inspection on their existing paths", async () => {
+    it.each(["/output/artifact", "/output/blueprint.json"])("opens generic output %s through the file-or-directory host boundary and retains Outcome Library inspection", async outputPath => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
             ...openingRoutes(),
             "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "available"}}),
             "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [
-                {...completedOpening, id: "artifact", operation: "artifact-build", result: {outputs: [{label: "Artifact", path: "/output/artifact"}]}},
+                {...completedOpening, id: "artifact", operation: "artifact-build", result: {outputs: [{label: "Artifact", path: outputPath}]}},
                 {...completedOpening, id: "outcomes", operation: "outcome-library-generation", result: {outputs: [{label: "Library", path: "/output/library"}]}},
             ]}}),
-            "/api/home/fs/open-folder": () => ({ok: true, status: 200, body: {status: "ok"}}),
+            "/api/home/fs/reveal-path": () => ({ok: true, status: 200, body: {status: "ok"}}),
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await user.click(await screen.findByRole("button", {name: "Open Artifact"}));
         await user.click(screen.getByRole("button", {name: "Open Library"}));
         expect(screen.getByRole("button", {name: "Inspect Library"})).toBeEnabled();
-        expect(calls.filter(call => call.url === "/api/home/fs/open-folder").map(call => JSON.parse(call.init!.body!))).toEqual([{path: "/output/artifact"}, {path: "/output/library"}]);
+        expect(calls.filter(call => call.url === "/api/home/fs/reveal-path").map(call => JSON.parse(call.init!.body!))).toEqual([{path: outputPath}, {path: "/output/library"}]);
+        expect(calls.some(call => call.url === "/api/home/fs/open-folder")).toBe(false);
         expect(calls.some(call => call.url === "/api/home/projects/open")).toBe(false);
     });
 

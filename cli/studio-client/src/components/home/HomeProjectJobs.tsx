@@ -1,7 +1,7 @@
 import {Alert, Button, Stack, Text, Title} from "@mantine/core";
 import {useEffect, useState} from "react";
 import {useNavigate} from "react-router-dom";
-import {checkNativePickerAvailability, getContext, openOutputFolder, revealOutputPath} from "../../api/apiClient";
+import {checkNativePickerAvailability, getContext, revealOutputPath} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {useProjectJobs} from "../../hooks/useProjectJobs";
@@ -75,7 +75,9 @@ function CurrentProjectJobs({projectRoot, onRefreshContext}: {projectRoot: strin
         });
     };
     const hostOutput = (path: string, reveal: boolean): void => runOutput(async () => {
-        const result = await (reveal ? revealOutputPath : openOutputFolder)(fetchImpl, path);
+        // Generic outputs include files. The host resolves their containing
+        // folder, while directory outputs open directly through the same route.
+        const result = await revealOutputPath(fetchImpl, path);
         if (result.status === "ok") setOutputNotice(reveal ? "Revealed job output." : "Opened job output.");
         else setOutputNotice(result.status === "unavailable" ? result.reason : result.message);
     });
