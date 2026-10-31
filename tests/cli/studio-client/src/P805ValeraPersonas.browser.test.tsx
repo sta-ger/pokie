@@ -242,6 +242,55 @@ describe("P8-05 rendered Valera persona evidence", () => {
             missingContextRejected: true, duplicateRejected: true, lateDuplicateRejected: true, unrelatedRouteRejected: true, unrelatedResponseRejected: true});
     });
 
+    it("waits for imported Open response bytes before starting the dashboard deadline", () => {
+        const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import {setTimeout as delay} from 'node:timers/promises';
+            import {observeP805ImportedProjectOpen} from './scripts/p8-05-valera-browser-audit.mjs';
+            const projectRoot = '/resolved library';
+            const expectedRoute = '#/project/' + encodeURIComponent(projectRoot) + '/overview';
+            const cdp = {events:[
+                {method:'Network.requestWillBeSent', params:{requestId:'open', request:{
+                    method:'POST', url:'http://localhost/api/home/projects/open', postData:JSON.stringify({projectRoot:'/library'})
+                }}},
+                {method:'Network.responseReceived', params:{requestId:'open', response:{status:200}}},
+            ], send:async () => { throw Error('must use the scoped response-body reader'); }};
+            let releaseBody, entered;
+            const bodyGate = new Promise(resolve => { releaseBody = resolve; });
+            const reading = new Promise(resolve => { entered = resolve; });
+            let routeReads = 0, settled = false;
+            const evaluate = async expression => {
+                assert.equal(expression, 'location.hash');
+                routeReads++;
+                return expectedRoute;
+            };
+            const opened = observeP805ImportedProjectOpen(cdp, evaluate, '#/', 0, async (id, label) => {
+                assert.equal(id, 'open'); assert.equal(label, 'imported-project Open');
+                entered();
+                await bodyGate;
+                return {body:JSON.stringify({context:{projectRoot}})};
+            }, {responseTimeout:50, dashboardTimeout:50});
+            opened.then(() => { settled = true; }, () => { settled = true; });
+            try {
+                await reading;
+                // DevTools has response headers but has not exposed its bytes yet.
+                // This wait exceeds the dashboard budget without consuming it.
+                await delay(100);
+                assert.equal(settled, false);
+                assert.equal(routeReads, 0);
+            } finally { releaseBody(); }
+            assert.equal((await opened).route, expectedRoute);
+            assert.equal(routeReads, 1);
+            routeReads = 0;
+            await assert.rejects(observeP805ImportedProjectOpen(cdp, evaluate, '#/', 0, async () => {
+                throw Error('imported-project Open browser response body was unavailable: captured request open');
+            }), /browser response body was unavailable: captured request open/);
+            assert.equal(routeReads, 0);
+            console.log(JSON.stringify({delayedBody:true, dashboardBudgetPreserved:true, unavailableBodyRejected:true}));
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000}));
+        expect(result).toEqual({delayedBody: true, dashboardBudgetPreserved: true, unavailableBodyRejected: true});
+    });
+
     it("authenticates nested Worker owners and keeps unbound or unauthenticated resources fail-closed", () => {
         const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
             import assert from 'node:assert/strict';
