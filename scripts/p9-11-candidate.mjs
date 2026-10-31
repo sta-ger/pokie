@@ -13,6 +13,29 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sha = (value, length = 64) => typeof value === "string" && new RegExp(`^[a-f0-9]{${length}}$`).test(value);
 const fail = (message) => { throw new Error(`P9-11 candidate: ${message}`); };
 const tooling = new Set([
+    // V2C-37 exact bounded regression delta; product/build and driver pins stay protected.
+    "tests/PackageJsonScripts.test.ts",
+    "tests/cli/commands/DevCommand.test.ts",
+    "tests/cli/commands/ServeCommand.test.ts",
+    "tests/cli/materialize/BlueprintProjectMaterializer.offline.integration.test.ts",
+    "tests/cli/packageOnlyCommandInputs.contract.test.ts",
+    "tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx",
+    "tests/cli/studio-client/src/components/blueprintEditor/BlueprintBuildPanel.test.tsx",
+    "tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.guidedProgress.test.tsx",
+    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.libraryDurability.test.tsx",
+    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.outcomeStakeHandoff.test.tsx",
+    "tests/cli/studio-client/src/domain/interpret/ExportDeployTargets.test.ts",
+    "tests/cli/studio/StudioLongRunningOperationInventory.contract.test.ts",
+    "tests/project/BuildProductMatrix.contract.test.ts",
+    "tests/project/PC05ProductModel.contract.test.ts",
+    "tests/project/PC17CapabilityMatrix.contract.test.ts",
+    "tests/server/session/captureRoundPokieSessionState.test.ts",
+    "tests/stakeengine/StakeEngineRoundEventsImporter.test.ts",
+    "tests/v2/OptimizationContractsAdapters.test.ts",
+    "tests/cli/fixtures/packageOnlyCommandInputs.ts",
+    "tests/cli/studio-client/src/jestPolyfills.ts",
+    "docs/v2-completion/V2C-37.md",
+
     "docs/audit-corrections/README.md", "docs/audit-corrections/p9-11-closeout.md",
     "scripts/p9-11-candidate.mjs", "scripts/p9-11-corrective-closeout.mjs", "scripts/p9-11-corrective-scenarios.mjs",
     "scripts/p9-11-produce-candidate.mjs", "tests/scripts/p9-11-produce-candidate.test.mjs",

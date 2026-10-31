@@ -81,7 +81,7 @@ function createStubServer(
     };
 }
 
-type SignalHandler = () => void;
+type SignalHandler = () => void | Promise<void>;
 
 class FakeProcess {
     public readonly exitCalls: number[] = [];
@@ -96,8 +96,8 @@ class FakeProcess {
         this.exitCalls.push(code);
     }
 
-    public trigger(event: string): void {
-        this.handlers.get(event)?.();
+    public async trigger(event: string): Promise<void> {
+        await this.handlers.get(event)?.();
     }
 }
 
@@ -135,6 +135,10 @@ describe("ServeCommand", () => {
         });
         fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: packageName, version: "1.0.0", pokie: {entry: "./index.js"}}));
         const server = createStubServer({host: "127.0.0.1", port: 0});
+        const readOnlyAssets = path.join(packageRoot, "read-only-assets");
+        fs.mkdirSync(readOnlyAssets);
+        fs.writeFileSync(path.join(readOnlyAssets, "asset.txt"), "immutable installed asset");
+        fs.chmodSync(readOnlyAssets, 0o555);
         const fakeProcess = new FakeProcess();
         const command = new ServeCommand(loadPokieGame, () => server, passthroughRuntimePackageResolver, new ProjectTargetResolver(), undefined, fakeProcess as unknown as NodeJS.Process);
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
@@ -143,7 +147,7 @@ describe("ServeCommand", () => {
             expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
             await command.run([packageRoot]);
             expect(runtimeSnapshotsForPackage(packageName)).toHaveLength(1);
-            fakeProcess.trigger("SIGINT");
+            await fakeProcess.trigger("SIGINT");
             await new Promise<void>((resolve) => {
                 setImmediate(resolve);
             });
@@ -152,6 +156,7 @@ describe("ServeCommand", () => {
             expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
         } finally {
             logSpy.mockRestore();
+            fs.chmodSync(readOnlyAssets, 0o755);
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
@@ -216,13 +221,14 @@ describe("ServeCommand", () => {
             request.once("error", (error) => rejectResponse!(error));
             request.write(body.slice(0, 1));
             await accepted;
-            fakeProcess.trigger("SIGTERM");
+            const shutdown = fakeProcess.trigger("SIGTERM");
             // The listener is now closed to new work but this request was
             // accepted already. It must finish against the live snapshot
             // before ServeCommand releases that snapshot.
             request.end(body.slice(1));
 
             await expect(response).resolves.toMatchObject({status: 201, body: {sessionId: expect.any(String)}});
+            await shutdown;
             for (let tick = 0; tick < 50 && fakeProcess.exitCalls.length === 0; tick++) {
                 await new Promise<void>((resolve) => {
                     setTimeout(resolve, 10);

@@ -118,6 +118,15 @@ parentPort.on('message', ({source, destination}) => {
                 filter: file => !['node_modules', '.git', '.pokie-runtime-cache'].includes(path.basename(file)),
             });
         }
+        // Published installations may be read-only. Only the invocation-owned copy
+        // needs writable directories for dependency links and eventual recursive release.
+        const writableDirectories = directory => {
+            fs.chmodSync(directory, fs.statSync(directory).mode | 0o700);
+            for (const entry of fs.readdirSync(directory, {withFileTypes: true})) {
+                if (entry.isDirectory()) writableDirectories(path.join(directory, entry.name));
+            }
+        };
+        writableDirectories(destination);
         parentPort.postMessage({});
     } catch (error) {
         parentPort.postMessage({error: {message: error.message, name: error.name, code: error.code}});

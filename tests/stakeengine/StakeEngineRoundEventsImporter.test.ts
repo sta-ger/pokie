@@ -159,11 +159,11 @@ describe("StakeEngineRoundEventsImporter", () => {
     });
 
     it("throws stakeengine-import-win-amount-not-invertible when a win amount can't be reversed without hidden rounding", () => {
-        // Empirically confirmed: stakeUnits=1 at cost=3 doesn't reverse to an exact ratio.
+        // Seven units at cost 3 fail every exact binary64 inverse; one unit now reverses exactly.
         const events: StakeEngineEvent[] = [
             {index: 0, type: "reveal", board: [["A"]]},
-            {index: 1, type: "win", amount: 1},
-            {index: 2, type: "finalWin", amount: 1, payoutMultiplier: 1},
+            {index: 1, type: "win", amount: 7},
+            {index: 2, type: "finalWin", amount: 7, payoutMultiplier: 7},
         ];
         expectImportCode(() => importer.importEvents(events, {cost: 3, stake: 1}), "stakeengine-import-win-amount-not-invertible");
     });
@@ -207,7 +207,7 @@ describe("StakeEngineRoundEventsImporter", () => {
     it("throws stakeengine-import-payout-multiplier-not-invertible when finalWin's value can't be reversed without hidden rounding", () => {
         const events: StakeEngineEvent[] = [
             {index: 0, type: "reveal", board: [["A"]]},
-            {index: 1, type: "finalWin", amount: 1, payoutMultiplier: 1},
+            {index: 1, type: "finalWin", amount: 7, payoutMultiplier: 7},
         ];
         expectImportCode(() => importer.importEvents(events, {cost: 3, stake: 1}), "stakeengine-import-payout-multiplier-not-invertible");
     });

@@ -46,7 +46,7 @@ function createStubServer<T extends {start(): Promise<PokieDevServerAddress>; st
     } as T & {startCalls: number; stopCalls: number};
 }
 
-type SignalHandler = () => void;
+type SignalHandler = () => void | Promise<void>;
 
 class FakeProcess {
     public readonly exitCalls: number[] = [];
@@ -61,8 +61,8 @@ class FakeProcess {
         this.exitCalls.push(code);
     }
 
-    public trigger(event: string): void {
-        this.handlers.get(event)?.();
+    public async trigger(event: string): Promise<void> {
+        await this.handlers.get(event)?.();
     }
 }
 
@@ -120,7 +120,7 @@ describe("DevCommand", () => {
             expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
             await command.run([packageRoot, "--no-open"]);
             expect(runtimeSnapshotsForPackage(packageName)).toHaveLength(1);
-            fakeProcess.trigger("SIGTERM");
+            await fakeProcess.trigger("SIGTERM");
             await new Promise<void>((resolve) => {
                 setImmediate(resolve);
             });
@@ -368,7 +368,7 @@ describe("DevCommand", () => {
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
         await command.run(["./sample-slot", "--no-open"]);
-        fakeProcess.trigger("SIGINT");
+        await fakeProcess.trigger("SIGINT");
         await new Promise((resolve) => {
             setTimeout(resolve, 0);
         });
@@ -401,7 +401,7 @@ describe("DevCommand", () => {
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
         await command.run(["./sample-slot", "--no-open"]);
-        fakeProcess.trigger("SIGTERM");
+        await fakeProcess.trigger("SIGTERM");
         await new Promise((resolve) => {
             setTimeout(resolve, 0);
         });

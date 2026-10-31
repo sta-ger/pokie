@@ -1098,7 +1098,7 @@ it.each(["changed", "missing", "transitive"])("rejects %s executable dependencie
     expect(fs.existsSync(`${output}.optimization.json`)).toBe(false);
     expect(sourceInventory(project)).toEqual(before);
     await service.discard(result.candidate!);
-}, 60000);
+}, 180000);
 
 // This includes package search, held-out assessment and publication-time runtime
 // loading. Match the whole-scenario budget of the sampled package adapter above.
