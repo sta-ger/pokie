@@ -132,7 +132,7 @@ test("saved ledger regressions still reject receipt and runtime substitutions", 
     assert.equal(result.retryTerminalSubstitutionRejected, true);
 });
 
-test("the shared ownership preload preserves its local protocol without a tuple supervisor", async () => {
+test("the shared ownership preload authenticates worker process ownership without a tuple supervisor", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "p805-legacy-ownership-"));
     const registry = path.join(directory, "resources.ndjson"), secret = randomBytes(32).toString("hex"), operationId = randomBytes(16).toString("hex");
     try {
@@ -152,13 +152,84 @@ test("the shared ownership preload preserves its local protocol without a tuple 
         const records = (await readFile(registry, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
         const acquisitions = records.filter(({action}) => action === "acquired");
         assert.deepEqual(acquisitions.map(({kind}) => kind), ["process", "worker"]);
-        assert.equal(acquisitions[1].pid, undefined, "PC-20 worker protocol remains unchanged");
+        const owner = records.find(({action, kind}) => action === "registry-ready" && kind === "registry");
+        const ownerPid = Number(owner.resourceId.split(":")[1]);
+        assert.ok(Number.isInteger(ownerPid) && ownerPid > 0);
+        assert.equal(acquisitions[1].pid, ownerPid, "worker ownership names the process which loaded the hook");
+        assert.match(acquisitions[1].processIdentity, /^linux-start-ticks:\d+$/);
+        assert.match(acquisitions[1].resourceId, new RegExp(`^worker:\\d+:process:${ownerPid}$`));
         for (const {signature, ...record} of records) {
             assert.equal(record.operationId, operationId);
             assert.equal(signature, createHash("sha256").update(secret).update("\0").update(JSON.stringify(record)).digest("hex"));
         }
-        for (const acquired of acquisitions) assert.ok(records.some((record) => record.action === "released" && record.resourceId === acquired.resourceId));
+        for (const acquired of acquisitions) {
+            const releases = records.filter((record) => record.action === "released" && record.resourceId === acquired.resourceId);
+            assert.equal(releases.length, 1);
+            const {signature, ...released} = releases[0];
+            assert.deepEqual({...released, action:"acquired", signature:acquired.signature}, acquired);
+        }
     } finally { await rm(directory, {recursive:true, force:true}); }
+});
+
+test("bounded gate descendant preserves both candidate readers, selectors and protected inputs", () => {
+    // Native resolution is required by the installed-package selector. This is
+    // synthetic handoff regression data, never a new acceptance collection.
+    execFileSync(process.execPath, ["--input-type=module", "-e", `
+        import assert from 'node:assert/strict';
+        import {execFileSync} from 'node:child_process';
+        import {mkdir,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
+        import os from 'node:os';import path from 'node:path';
+        import {authenticateP805ProductTree} from './scripts/p8-05-release-handoff.mjs';
+        import {authenticateP911Tree,readP911CandidateFromEnvironment,readP911SmokeCandidateFromEnvironment,validateP911SmokeCandidateIdentity} from './scripts/p9-11-candidate.mjs';
+        import {candidateFixture,commitP911ToolingDescendant,P911_TOOLING_DESCENDANT_PATHS} from './tests/testUtils/createP911CandidateFixture.mjs';
+        const directory=await mkdtemp(path.join(os.tmpdir(),'v2c37-gate-handoff-'));
+        try {
+            const fixture=await candidateFixture(directory);
+            const git=(...args)=>execFileSync('git',args,{cwd:fixture.repository,encoding:'utf8',stdio:'pipe'}).trim();
+            const commit=()=>{git('add','.');git('-c','user.name=sta-ger','-c','user.email=pascaldelger@gmail.com','commit','--quiet','-m','bounded gate fixture');return git('rev-parse','HEAD');};
+            const delta=[
+                'tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx',
+                'tests/scripts/p8-05-valera-devtools-events.test.mjs',
+                'tests/scripts/p8-05-valera-ownership.test.mjs',
+                'scripts/p8-05-release-handoff.mjs','scripts/p9-11-candidate.mjs',
+                'tests/testUtils/createP911CandidateFixture.mjs',
+            ];
+            for(const file of delta){
+                assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file),file+' missing from independent regression fixture');
+                await writeFile(path.join(fixture.repository,file),'// Bounded correction fixture.\\n');
+            }
+            const corrected=commit(),{candidateId,candidateTreeId}=fixture.handoff;
+            assert.deepEqual(authenticateP805ProductTree(candidateId,corrected,fixture.repository).changedToolingAndEvidencePaths,delta.slice().sort());
+            assert.deepEqual(authenticateP911Tree(candidateId,candidateTreeId,fixture.repository).changedEvidenceAndTooling,delta.slice().sort());
+            const environment={POKIE_P911_CANDIDATE_HANDOFF:fixture.reference.path,POKIE_P911_CANDIDATE_HANDOFF_SHA256:fixture.reference.sha256};
+            const read=()=>readP911CandidateFromEnvironment(environment,{repository:fixture.repository});
+            const selected=await read(),smoke=await readP911SmokeCandidateFromEnvironment(environment,{repository:fixture.repository});
+            assert.deepEqual(smoke,selected);
+            assert.deepEqual(selected.archive,await readFile(fixture.handoff.archivePath));
+            assert.equal(selected.equivalence.reviewedId,corrected);
+            validateP911SmokeCandidateIdentity(smoke,{...environment,POKIE_PACK_SMOKE_CANDIDATE_ID:corrected,POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256:selected.archiveSha256},{repository:fixture.repository});
+            assert.throws(()=>validateP911SmokeCandidateIdentity(smoke,{POKIE_PACK_SMOKE_CANDIDATE_ID:candidateId},{repository:fixture.repository}),/reviewed candidate identity mismatch/);
+            for(const file of ['src/index.ts','cli/pokie.ts','package-lock.json','tsconfig.prod.json','tests/scripts/unnamed.test.mjs']){
+                await mkdir(path.dirname(path.join(fixture.repository,file)),{recursive:true});
+                await writeFile(path.join(fixture.repository,file),'changed protected input');
+                const changed=commit();
+                assert.throws(()=>authenticateP805ProductTree(candidateId,changed,fixture.repository),/product or build inputs/);
+                await assert.rejects(read(),/product\\/build inputs changed/);
+                git('reset','--hard',corrected);
+            }
+            for(const reference of [fixture.handoff.buildReceipt,fixture.handoff.installReceipt,fixture.handoff.browserDriver]){
+                const original=await readFile(reference.path);
+                await writeFile(reference.path,'changed pinned bytes');
+                await assert.rejects(read(),/receipt digest mismatch|authenticated controller browser driver/);
+                await writeFile(reference.path,original);
+            }
+            const reviewed=await commitP911ToolingDescendant(fixture);
+            const complete=await readP911SmokeCandidateFromEnvironment(environment,{repository:fixture.repository});
+            assert.equal(complete.equivalence.reviewedId,reviewed);
+            assert.deepEqual(complete.equivalence.changedEvidenceAndTooling,[...P911_TOOLING_DESCENDANT_PATHS].sort());
+            assert.deepEqual(complete.archive,selected.archive);
+        } finally {await rm(directory,{recursive:true,force:true});}
+    `], {encoding:"utf8", stdio:"pipe", timeout:20_000});
 });
 
 

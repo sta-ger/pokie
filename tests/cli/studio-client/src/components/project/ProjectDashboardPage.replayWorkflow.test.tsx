@@ -26,6 +26,7 @@ import type {
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
 import {createLongReplayList} from "../../testUtils/largeStudioProjectFixture";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+import {installNodeServiceTimers} from "../../testUtils/nodeServiceTimers";
 
 const GAME = {id: "a", name: "A", version: "1.0.0"};
 
@@ -1674,6 +1675,12 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 // Actual exact generator, CLI/Studio producers, HTTP inspection and rendered comparison.
 // This exercises the product contract; it is not an independent browser receipt.
 describe("P9-07 production native descriptors", () => {
+    let restoreNodeServiceTimers: () => void;
+    beforeAll(() => {
+        restoreNodeServiceTimers = installNodeServiceTimers();
+    });
+    afterAll(() => restoreNodeServiceTimers());
+
     let workspace: string;
     let server: StudioServer;
     let fetchImpl: FetchLike;

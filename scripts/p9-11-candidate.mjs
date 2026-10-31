@@ -16,6 +16,8 @@ const tooling = new Set([
     "scripts/pc-20-resource-ownership-hook.cjs",
 
     // V2C-37 exact bounded regression delta; product/build and driver pins stay protected.
+    "tests/scripts/p8-05-valera-devtools-events.test.mjs",
+    "tests/scripts/p8-05-valera-ownership.test.mjs",
     "tests/PackageJsonScripts.test.ts",
     "tests/cli/commands/DevCommand.test.ts",
     "tests/cli/commands/ServeCommand.test.ts",

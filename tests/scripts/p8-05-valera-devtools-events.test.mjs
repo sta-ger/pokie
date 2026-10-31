@@ -878,7 +878,8 @@ async function runProductionPointerReflow() {
             await navigateP805RenderedControl(cdp,evaluate,'overview','#/project/overview',`${viewport} Blueprint`);
             const resultSelector='[data-pokie-lifecycle-result="navigation"][data-pokie-lifecycle-route="overview"]';
             await poll(()=>evaluate(`document.querySelector(${JSON.stringify(resultSelector)})?.getAttribute('data-pokie-lifecycle-terminal')==='rendered'`));
-            if(viewport==='narrow'){
+            const drawerClosed=viewport!=='wide';
+            if(drawerClosed){
                 const legacy=await evaluate("(()=>{const item=document.getElementById('project-tab:overview');item.focus({preventScroll:true});return {hasLayout:!!(item.offsetWidth||item.offsetHeight||item.getClientRects().length),inert:!!item.closest('[inert]'),focused:document.activeElement===item};})()");
                 assert.deepEqual(legacy,{hasLayout:true,inert:true,focused:false},'the old predicate deterministically selects an unfocusable control');
             }
@@ -886,12 +887,12 @@ async function runProductionPointerReflow() {
             const focus=await observeP805RenderedFocus(evaluate,contract,'project-tab:overview',lifecycle);
             assert.equal(focus.visibleFocus,true,`${viewport} Blueprint must retain rendered focus`);
             assert.ok(focus.namedRegions.length>0);
-            assert.equal(focus.target,viewport==='narrow'?'terminal-result':'control');
+            assert.equal(focus.target,drawerClosed?'terminal-result':'control');
             assert.equal(await evaluate('window.activations.length'),clicks,'focus observation must not repeat the recorded activation');
             const screenshot=await cdp.send('Page.captureScreenshot',{format:'png'});
             assert.ok(Buffer.from(screenshot.data,'base64').length>100);
-            assert.equal(await evaluate(`document.activeElement===${viewport==='narrow'?`document.querySelector(${JSON.stringify(resultSelector)})`:"document.getElementById('project-tab:overview')"}`),true,'capture retains the measured focused identity');
-            if(viewport==='narrow'){
+            assert.equal(await evaluate(`document.activeElement===${drawerClosed?`document.querySelector(${JSON.stringify(resultSelector)})`:"document.getElementById('project-tab:overview')"}`),true,'capture retains the measured focused identity');
+            if(drawerClosed){
                 for(const [attribute,value] of [['data-pokie-lifecycle-route','simulation'],['data-pokie-lifecycle-result-control','project-tab:simulation'],['data-pokie-lifecycle-result-state','editable-submission'],['data-pokie-lifecycle-terminal','loading']]){
                     const prior=await evaluate(`(()=>{const item=document.querySelector(${JSON.stringify(resultSelector)}),prior=item.getAttribute(${JSON.stringify(attribute)});window.focusResult=item;item.setAttribute(${JSON.stringify(attribute)},${JSON.stringify(value)});return prior;})()`);
                     assert.equal((await observeP805RenderedFocus(evaluate,contract,'project-tab:overview',lifecycle)).visibleFocus,false,`reject unrelated or pending ${attribute}`);
