@@ -551,6 +551,53 @@ describe("P8-05 rendered Valera persona evidence", () => {
         expect(result).toEqual({reload: "restored", restart: "captured-job", missing: "rejected"});
     });
 
+    it("waits for exact restart project restoration before spending the job discovery deadline", () => {
+        const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import {readP805RenderedJobDiscovery, readP805RestartJobDiscovery} from './scripts/p8-05-valera-browser-audit.mjs';
+            const response = (id, pathname, status = 200) => ({method:'Network.responseReceived', params:{requestId:id, response:{url:'http://localhost'+pathname, status}}});
+            const bodies = new Map([
+                ['old-context', {status:'loaded', projectRoot:'/restored'}],
+                ['other-context', {status:'loaded', projectRoot:'/other'}],
+                ['loading', {status:'loading', projectRoot:'/restored'}],
+                ['restored-context', {status:'loaded', projectRoot:'/restored'}],
+                ['old-list', {jobs:[{id:'captured-job', status:'completed'}]}],
+                ['other-list', {jobs:[{id:'other-job', status:'recovery-required'}]}],
+                ['restored-list', {jobs:[{id:'captured-job', status:'recovery-required'}]}],
+                ['failed-context', {status:'error', projectRoot:'/restored', error:'Runtime preparation failed'}],
+            ]);
+            const reads = [];
+            const cdp = {events:[response('old-context','/api/project/context'), response('old-list','/api/project/jobs')], send:async (method,{requestId}) => {
+                reads.push(requestId);
+                return {body:JSON.stringify(bodies.get(requestId))};
+            }};
+            const cursor = cdp.events.length;
+            cdp.events.push(response('other-context','/api/project/context'), response('loading','/api/project/context'), response('other-list','/api/project/jobs'));
+            // Reproduce the retained failure: document load and an unchanged
+            // hash cannot start the list deadline while project Open is pending.
+            await assert.rejects(readP805RenderedJobDiscovery(cdp,cursor,'captured-job','premature discovery',100),/Timed out waiting for premature discovery/);
+            const restored = readP805RestartJobDiscovery(cdp,cursor,'/restored','captured-job',2_000);
+            const delivery = setTimeout(() => {
+                cdp.events.push(response('restored-context','/api/project/context'), response('restored-list','/api/project/jobs'));
+            },175);
+            try {
+                const discovery = await restored;
+                assert.equal(discovery.event.params.requestId,'restored-list');
+                assert.deepEqual(discovery.payload.jobs,[{id:'captured-job',status:'recovery-required'}]);
+                assert.equal(reads.includes('old-context'),false);
+                assert.equal(reads.includes('old-list'),false);
+            } finally {clearTimeout(delivery);}
+            const failed = {events:[response('failed-context','/api/project/context',500),response('restored-list','/api/project/jobs')],send:cdp.send};
+            await assert.rejects(readP805RestartJobDiscovery(failed,0,'/restored','captured-job',500),/restart project restoration failed.*Runtime preparation failed/);
+            const foreign = {events:[response('other-context','/api/project/context'),response('restored-list','/api/project/jobs')],send:cdp.send};
+            await assert.rejects(readP805RestartJobDiscovery(foreign,0,'/restored','captured-job',100),/Timed out waiting for restored restart project context/);
+            const wrongJob = {events:[response('restored-context','/api/project/context'),response('other-list','/api/project/jobs')],send:cdp.send};
+            await assert.rejects(readP805RestartJobDiscovery(wrongJob,0,'/restored','captured-job',100),/Timed out waiting for rendered restart job recovery/);
+            process.stdout.write(JSON.stringify({prematureDiscovery:'rejected',restored:'captured-job',stale:'rejected',foreignContext:'rejected',failedContext:'rejected',foreignJob:'rejected'}));
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000}));
+        expect(result).toEqual({prematureDiscovery: "rejected", restored: "captured-job", stale: "rejected", foreignContext: "rejected", failedContext: "rejected", foreignJob: "rejected"});
+    });
+
     it("builds its own candidate package and executes every packed CLI and rendered Studio persona workflow", async () => {
         // This test owns the local candidate.  It deliberately does not accept
         // controller-provided environment receipts, so a green result cannot
