@@ -1255,18 +1255,31 @@ export async function openP805ImportedProject(cdp, evaluate, projectLocation) {
     // Focus and retain the exact Button in the same browser turn. A separate
     // lookup after focus could silently capture an intervening replacement.
     const activation = await activateP805KeyboardControl(cdp, evaluate, controlId, true);
-    const route = await waitFor(async () => {
-        const current = await evaluate("location.hash");
-        return current !== priorRoute && /^#\/project\/[^/]+\/overview$/.test(current) ? current : false;
-    }, "keyboard imported-project Open dashboard");
+    // Observe the request before waiting for navigation: a preparation error
+    // must retain its real response rather than masquerade as a route timeout.
+    // Package opening can prepare/copy a real SDK graph, unlike a metadata read.
+    await waitFor(() => cdp.events.slice(cursor).some((event) => event.method === "Network.requestWillBeSent"
+        && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === "/api/home/projects/open"), "imported-project Open request");
     const requests = cdp.events.slice(cursor).filter((event) => event.method === "Network.requestWillBeSent"
         && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === "/api/home/projects/open");
     if (requests.length !== 1) fail("imported-project Open did not submit exactly one public Open request");
     const request = requests[0].params;
     const response = await waitFor(() => cdp.events.slice(cursor).find((event) => event.method === "Network.responseReceived"
-        && event.params.requestId === request.requestId), "imported-project Open response");
+        && event.params.requestId === request.requestId), "imported-project Open response", 120_000);
     const body = await cdp.send("Network.getResponseBody", {requestId:request.requestId});
     const payload = JSON.parse(body.base64Encoded ? Buffer.from(body.body, "base64").toString("utf8") : body.body);
+    if (response.params.response.status !== 200 || typeof payload.context?.projectRoot !== "string") fail(`imported-project Open response HTTP ${response.params.response.status}: ${JSON.stringify(payload)}`);
+    const expectedRoute = `#/project/${encodeURIComponent(payload.context.projectRoot)}/overview`;
+    let route;
+    try {
+        route = await waitFor(async () => {
+            const current = await evaluate("location.hash");
+            return current !== priorRoute && current === expectedRoute ? current : false;
+        }, "keyboard imported-project Open dashboard");
+    } catch (error) {
+        throw new Error(`${error.message}; expected ${expectedRoute}; rendered: ${JSON.stringify(await evaluate("({route:location.hash, text:document.body.innerText.slice(0,2400)})"))}`, {cause:error});
+    }
+    if (cdp.events.slice(cursor).filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === "/api/home/projects/open").length !== 1) fail("imported-project Open submitted duplicate public requests");
     const opened = {projectLocation, controlId, activation, priorRoute, route,
         request:{browserRequestId:request.requestId, method:request.request.method, path:new URL(request.request.url).pathname, body:request.request.postData},
         response:{browserRequestId:response.params.requestId, status:response.params.response.status, projectRoot:payload.context?.projectRoot}};
