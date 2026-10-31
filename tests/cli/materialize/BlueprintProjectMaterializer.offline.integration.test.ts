@@ -323,11 +323,25 @@ describe("CLI command coverage (offline end-to-end, through the built CLI execut
         restoreEnv("npm_config_registry", originalNpmRegistry);
     });
 
-    it("`pokie validate` reaches a materialized runtime through the built CLI executable", async () => {
-        const result = await runPokieCliToCompletion(pokieJsPath, ["validate", blueprintPath]);
+    it("`pokie validate` validates a bounded Blueprint through the built CLI executable", async () => {
+        const boundedPath = path.join(sourceDir, "bounded-validation.json");
+        fs.writeFileSync(boundedPath, JSON.stringify({
+            manifest: blueprint.manifest, reels: 2, rows: 1, symbols: ["A", "B"],
+            paytable: {A: {2: 1}}, reelStrips: [["A", "B"], ["A", "B"]], availableBets: [1],
+        }));
+        const result = await runPokieCliToCompletion(pokieJsPath, ["validate", boundedPath]);
         expect(result.stderr).toBe("");
         expect(result.exitCode).toBe(0);
         expect(result.stdout).toContain("valid           yes");
+    });
+
+    it("keeps the full starter's inconclusive advanced verdict distinct from structural validity", async () => {
+        const result = await runPokieCliToCompletion(pokieJsPath, ["validate", blueprintPath]);
+        expect(result.stderr).toBe("");
+        expect(result.exitCode).toBe(2);
+        expect(result.stdout).toContain("valid           yes (structural/contract validation)");
+        expect(result.stdout).toContain("budget-exhausted: inconclusive");
+        expect(result.stdout).toContain("Analysis outcomes limit exhausted.");
     });
 
     it("`pokie sim` reaches a materialized runtime through the built CLI executable", async () => {

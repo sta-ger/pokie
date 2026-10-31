@@ -164,6 +164,8 @@ describe("ServeCommand", () => {
             expect(server.stopCalls).toBe(1);
             expect(fakeProcess.exitCalls).toEqual([0]);
             expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
+            expect(fs.statSync(readOnlyAssets).mode & 0o222).toBe(0);
+            expect(fs.readFileSync(path.join(readOnlyAssets, "asset.txt"), "utf8")).toBe("immutable installed asset");
         } finally {
             logSpy.mockRestore();
             fs.chmodSync(readOnlyAssets, 0o755);

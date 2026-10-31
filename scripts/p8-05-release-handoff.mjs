@@ -14,6 +14,9 @@ const fail = (message) => { throw new Error(`P8-05 release handoff is invalid: $
 // Everything else, including package metadata, lockfile, compiler/Vite config,
 // generators, runtime sources and other steps' evidence, must be byte-identical.
 const tooling = new Set([
+    "scripts/p8-05-valera-browser-audit.mjs",
+    "scripts/pc-20-resource-ownership-hook.cjs",
+
     // V2C-37 exact bounded regression delta; product/build and driver pins stay protected.
     "tests/PackageJsonScripts.test.ts",
     "tests/cli/commands/DevCommand.test.ts",

@@ -9,6 +9,8 @@ const json = (file, value) => writeFile(file, `${JSON.stringify(value)}\n`);
 // delta, the prior driver repair, the reviewed interoperability correction and
 // every file changed by this handoff repair.
 export const P911_TOOLING_DESCENDANT_PATHS = [
+    "scripts/pc-20-resource-ownership-hook.cjs",
+
     // V2C-37 exact bounded regression delta; product/build and driver pins stay protected.
     "tests/PackageJsonScripts.test.ts",
     "tests/cli/commands/DevCommand.test.ts",

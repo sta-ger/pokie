@@ -13,6 +13,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sha = (value, length = 64) => typeof value === "string" && new RegExp(`^[a-f0-9]{${length}}$`).test(value);
 const fail = (message) => { throw new Error(`P9-11 candidate: ${message}`); };
 const tooling = new Set([
+    "scripts/pc-20-resource-ownership-hook.cjs",
+
     // V2C-37 exact bounded regression delta; product/build and driver pins stay protected.
     "tests/PackageJsonScripts.test.ts",
     "tests/cli/commands/DevCommand.test.ts",

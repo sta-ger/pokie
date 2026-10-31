@@ -231,6 +231,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         expect(screen.getByRole("button", {name: /Review See results/})).toHaveAttribute("aria-current", "step");
         expect(screen.getAllByRole("cell", {name: /%/}).length).toBeGreaterThan(0);
         await user.click(openFullReport);
+        await user.click(screen.getByRole("button", {name: "Show run identity and accounting"}));
         expect(within(await screen.findByRole("row", {name: "Requested rounds 2"})).getByRole("cell", {name: "2"})).toBeVisible();
         expect(within(screen.getByRole("row", {name: "Actual rounds 2"})).getByRole("cell", {name: "2"})).toBeVisible();
         await user.click(screen.getByRole("button", {name: /Export Download report/}));

@@ -1,6 +1,8 @@
 import {act, cleanup, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import fs from "fs";
+import {Worker} from "node:worker_threads";
+import {StudioArtifactBuildService} from "../../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import http from "http";
 import os from "os";
 import path from "path";
@@ -38,6 +40,121 @@ function createServerFetch(baseUrl: string): FetchLike {
 }
 
 describe("PC-18 Studio product acceptance", () => {
+    it.each(["preview", "targets", "gameModel"].flatMap(surface =>
+        ["shutdown", "project close"].map(action => ({surface, action})),
+    ))("drains a disconnected $surface executor before $action completes", async ({surface, action}) => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc18-preflight-drain-"));
+        const project = path.join(root, "package");
+        fs.mkdirSync(project);
+        fs.writeFileSync(path.join(project, "package.json"), JSON.stringify({name: "preflight-slot", version: "1.0.0", pokie: {entry: "index.js"}}));
+        fs.writeFileSync(path.join(project, "index.js"), "module.exports = {};\n");
+        writeStudioAssets(root);
+        const loadGame = () => Promise.resolve({getManifest: () => ({id: "preflight-slot", name: "Preflight Slot", version: "1.0.0"})}) as never;
+        const home = new StudioHomeService("1.0.0", undefined, loadGame, undefined, passthroughRuntimePackageResolver);
+        const repository = new FileStudioJobRepository(path.join(root, "jobs"));
+        const artifacts = new StudioArtifactBuildService("1.0.0");
+        let started!: () => void;
+        const entered = new Promise<void>(resolve => {
+            started = resolve;
+        });
+        let aborted!: () => void;
+        const cancellation = new Promise<void>(resolve => {
+            aborted = resolve;
+        });
+        let release!: () => void;
+        const cleanupGate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        let worker: Worker | undefined;
+        let drained = false;
+        const jobs = new StudioJobService(repository);
+        const completeShutdown = jobs.completeGracefulShutdown.bind(jobs);
+        const shutdownMarker = jest.spyOn(jobs, "completeGracefulShutdown").mockImplementation(async confirmed => {
+            if (worker && confirmed !== false) expect(drained).toBe(true);
+            await completeShutdown(confirmed);
+        });
+        const execute = async (signal?: AbortSignal): Promise<never> => {
+            if (!signal) throw new Error("Preflight executor needs its request signal.");
+            const ownedWorker = new Worker("require('node:worker_threads').parentPort.on('message', () => {});", {eval: true, execArgv: []});
+            worker = ownedWorker;
+            signal.addEventListener("abort", aborted, {once: true});
+            if (signal.aborted) aborted();
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    ownedWorker.once("online", resolve);
+                    ownedWorker.once("error", reject);
+                });
+                started();
+                await cancellation;
+                await cleanupGate;
+            } finally {
+                signal.removeEventListener("abort", aborted);
+                await ownedWorker.terminate();
+                drained = true;
+            }
+            throw new Error("Preflight cancelled after Worker cleanup.");
+        };
+        const preview = jest.spyOn(artifacts, "preview").mockImplementation((_root, _target, _out, signal) => execute(signal));
+        const targets = jest.spyOn(artifacts, "listTargets").mockImplementation((_root, signal) => execute(signal));
+        const model = jest.spyOn(artifacts, "extractPackageModel").mockImplementation((_root, signal) => execute(signal));
+        const server = new StudioServer({
+            pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot: root, homeService: home,
+            blueprintService: new StudioBlueprintService("1.0.0", root, home), loadGame,
+            jobService: jobs, artifactBuildService: artifacts,
+            resolveRuntimePackageRoot: passthroughRuntimePackageResolver, initialContext: {mode: "project", projectRoot: project},
+        });
+        let request: http.ClientRequest | undefined;
+        let stopping: Promise<void> | undefined;
+        try {
+            const address = await server.start();
+            const base = `http://${address.host}:${address.port}`;
+            const urls: Record<string, string> = {preview: "/api/project/artifacts/preview", targets: "/api/project/artifacts/targets", gameModel: "/api/project/gameModel"};
+            const url = urls[surface];
+            request = http.request(`${base}${url}`, {method: surface === "preview" ? "POST" : "GET", headers: {"Content-Type": "application/json"}}, response => response.resume());
+            // Destroying the client is the real HTTP disconnect, not an executor mock result.
+            request.on("error", () => undefined);
+            request.end(surface === "preview" ? JSON.stringify({target: "wasm"}) : undefined);
+            await entered;
+            request.destroy();
+            await cancellation;
+            let completed = false;
+            const transition = action === "shutdown" ? (stopping = server.stop())
+                : createServerFetch(base)("/api/projects/close", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({confirmActiveJobs: true})})
+                    .then(async response => {
+                        expect(drained).toBe(true);
+                        expect(response.status).toBe(200);
+                        expect(await response.json()).toMatchObject({context: {mode: "home"}});
+                    });
+            transition.then(() => {
+                completed = true;
+            }, () => {
+                completed = true;
+            });
+            await new Promise<void>(resolve => {
+                setImmediate(resolve);
+            });
+            expect(completed).toBe(false);
+            expect(drained).toBe(false);
+            expect(worker!.threadId).toBeGreaterThan(0);
+            expect(repository.getProcessState()?.status).not.toBe("gracefully-stopped");
+            release();
+            await transition;
+            expect(drained).toBe(true);
+            expect(worker!.threadId).toBe(-1);
+            if (action === "shutdown") expect(repository.getProcessState()?.status).toBe("gracefully-stopped");
+        } finally {
+            release();
+            request?.destroy();
+            await (stopping ?? server.stop());
+            await worker?.terminate();
+            preview.mockRestore();
+            targets.mockRestore();
+            model.mockRestore();
+            shutdownMarker.mockRestore();
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
     it("does not make a prior project's visible dashboard interactive after a project switch", async () => {
         const studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc18-browser-assets-"));
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc18-browser-projects-"));

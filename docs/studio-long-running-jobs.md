@@ -135,3 +135,8 @@ permission. The generic recovery action must not claim optimization resumed. Use
 support check followed by Run optimization to start a fresh bounded search. Authored apply refreshes
 the active project runtime and consumes its preview; both save and apply require the current policy
 at the server boundary, including locks and constraints.
+
+Artifact target, preview and package Game Model requests retain their executor
+promise after an HTTP disconnect until owned runtime/worker cleanup completes.
+Project close/switch and Studio shutdown cancel and await these preflights;
+a closed response alone does not establish that their resources drained.

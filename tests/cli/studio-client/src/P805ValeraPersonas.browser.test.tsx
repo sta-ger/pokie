@@ -96,6 +96,66 @@ describe("P8-05 rendered Valera persona evidence", () => {
     const controller = path.join(process.cwd(), "scripts/p8-05-product-readiness-controller.mjs");
     const verifier = path.join(process.cwd(), "scripts/p8-05-candidate-package-verifier.mjs");
 
+    it("authenticates nested Worker owners and keeps unbound or unauthenticated resources fail-closed", () => {
+        const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import {spawn} from 'node:child_process';
+            import {randomBytes} from 'node:crypto';
+            import {mkdtempSync, readFileSync, appendFileSync, rmSync} from 'node:fs';
+            import path from 'node:path';
+            import {tmpdir} from 'node:os';
+            import {once} from 'node:events';
+            import {createPc20OwnershipTracker, drainProcessTree, registerPc20OwnedResource} from './scripts/pc-20-release-completion.mjs';
+            import {drainP805TrackedOwner} from './scripts/p8-05-valera-browser-audit.mjs';
+            const root = mkdtempSync(path.join(tmpdir(), 'p805-nested-worker-'));
+            const registry = path.join(root, 'resources.ndjson');
+            const secret = randomBytes(32).toString('hex'), operationId = randomBytes(16).toString('hex');
+            const hook = path.resolve('scripts/pc-20-resource-ownership-hook.cjs');
+            const env = {...process.env, POKIE_PC20_RESOURCE_REGISTRY:registry, POKIE_PC20_RESOURCE_REGISTRY_SECRET:secret, POKIE_PC20_OPERATION_ID:operationId, NODE_OPTIONS:[process.env.NODE_OPTIONS, '--require=' + hook].filter(Boolean).join(' ')};
+            const nested = "require('node:worker_threads').parentPort.postMessage('ready'); setInterval(() => {}, 1000);";
+            const outer = "const {Worker,parentPort} = require('node:worker_threads'); new Worker(" + JSON.stringify(nested) + ", {eval:true, execArgv:[]}).once('message', () => parentPort.postMessage('ready'));";
+            const code = "const {Worker} = require('node:worker_threads'); new Worker(" + JSON.stringify(outer) + ", {eval:true, execArgv:[]}).once('message', () => process.exit(0));";
+            const child = spawn(process.execPath, ['-e', code], {env, detached:true, stdio:'pipe'});
+            const tracker = createPc20OwnershipTracker(child.pid, registry, secret, {operationId});
+            const owner = {child, tracker};
+            try {
+                await once(child, 'exit');
+                tracker.capture({final:true});
+                const workers = [...tracker.ownedResources.values()].filter(r => r.kind === 'worker');
+                assert.equal(workers.length, 2);
+                for (const worker of workers) {
+                    assert.equal(worker.pid, child.pid);
+                    assert.match(worker.processIdentity, /^linux-start-ticks:/);
+                    assert.match(worker.resourceId, new RegExp(':process:' + child.pid + '$'));
+                }
+                assert.equal(workers.some(r => !r.released), true);
+                const drained = await drainP805TrackedOwner(owner, 1000);
+                assert.equal(drained.processTreeDrained, true);
+                assert.equal(drained.resourcesDrained, true);
+                assert.equal(drained.ownedProcessIdentities.some(r => r.pid === child.pid), true);
+                registerPc20OwnedResource({kind:'worker', resourceId:'unbound-worker'}, 'acquired', env);
+                const before = readFileSync(registry);
+                const unbound = await drainP805TrackedOwner(owner, 1000);
+                assert.equal(unbound.resourcesDrained, false);
+                assert.deepEqual(readFileSync(registry), before);
+                appendFileSync(registry, JSON.stringify({schemaVersion:1, operationId, action:'released', kind:'worker', resourceId:'unbound-worker', signature:'0'.repeat(64)}) + String.fromCharCode(10));
+                await assert.rejects(drainP805TrackedOwner(owner, 1000), /signature|authenticated|ownership/i);
+                let captures = 0, drains = 0;
+                const unresolved = {child:{}, tracker:{ownedProcesses:new Map(), ownedResources:new Map(), capture() { captures++; }}};
+                const live = await drainP805TrackedOwner(unresolved, 1000, async () => { drains++; return {processTreeDrained:false, resourcesDrained:false}; });
+                assert.equal(live.processTreeDrained, false);
+                assert.equal(captures, 0);
+                assert.equal(drains, 1);
+                console.log(JSON.stringify({nestedWorkers:workers.length, boundOwnerAbsence:true, unboundRejected:true, invalidSignatureRejected:true, liveOwnerRejected:true}));
+            } finally {
+                tracker.stop();
+                await drainProcessTree(child, 1000, tracker.ownedProcesses, tracker.ownedResources);
+                rmSync(root, {recursive:true, force:true});
+            }
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000}));
+        expect(result).toEqual({nestedWorkers: 2, boundOwnerAbsence: true, unboundRejected: true, invalidSignatureRejected: true, liveOwnerRejected: true});
+    });
+
     it("exposes a fail-closed public runner command instead of accepting claim objects", () => {
         expect(() => execFileSync(process.execPath, [runner], {encoding: "utf8", stdio: "pipe"})).toThrow(/runner configuration is incomplete/i);
     });

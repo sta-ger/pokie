@@ -158,6 +158,17 @@ describe("StakeEngineRoundEventsImporter", () => {
         expectImportCode(() => importer.importEvents(badAmount, {cost: 1, stake: 1}), "stakeengine-import-events-win-shape-invalid");
     });
 
+    it("accepts an equivalent exact division order without rounding one unit at cost 3", () => {
+        const round = importer.importEvents([
+            {index: 0, type: "reveal", board: [["A"]]},
+            {index: 1, type: "win", amount: 1},
+            {index: 2, type: "finalWin", amount: 1, payoutMultiplier: 1},
+        ], {cost: 3, stake: 1});
+        expect(round.totalWin).toBe(1 / 300);
+        expect(round.payoutMultiplier).toBe(1 / 300);
+        expect(round.steps[0].totalWin * 3 * 100).toBe(1);
+    });
+
     it("throws stakeengine-import-win-amount-not-invertible when a win amount can't be reversed without hidden rounding", () => {
         // Seven units at cost 3 fail every exact binary64 inverse; one unit now reverses exactly.
         const events: StakeEngineEvent[] = [

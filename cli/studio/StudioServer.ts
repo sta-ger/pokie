@@ -332,6 +332,7 @@ export class StudioServer implements StudioServerHandling {
     private validationTransitions = 0;
     private readonly advancedValidations = new Map<AbortController, Promise<unknown>>();
     private readonly certificationDownloads = new Map<AbortController, Promise<unknown>>();
+    private readonly artifactPreflights = new Map<AbortController, Promise<void>>();
     private readonly definitionPreviews = new Map<AbortController, Promise<MathDefinitionDiff>>();
     private readonly dashboardLoads = new Set<Promise<void>>();
     private runtimePreparation: {generation: number; controller: AbortController} | undefined;
@@ -545,6 +546,7 @@ export class StudioServer implements StudioServerHandling {
 
         this.cancelRuntimePreparation();
         for (const controller of this.advancedValidations.keys()) controller.abort();
+        for (const controller of this.artifactPreflights.keys()) controller.abort();
         for (const controller of this.definitionPreviews.keys()) controller.abort();
         for (const controller of this.certificationDownloads.keys()) controller.abort();
         // Certification, deployment, Play, Home materialization, and Design
@@ -561,6 +563,7 @@ export class StudioServer implements StudioServerHandling {
             browserDrain,
             listenerClosed,
             Promise.allSettled([...this.advancedValidations.values()]),
+            Promise.allSettled([...this.artifactPreflights.values()]),
             Promise.allSettled([...this.definitionPreviews.values()]),
             this.drainCertificationDownloads(),
             this.simulationService.cancelAll(),
@@ -599,8 +602,10 @@ export class StudioServer implements StudioServerHandling {
         try {
             for (const controller of this.advancedValidations.keys()) controller.abort();
             await Promise.allSettled([...this.advancedValidations.values()]);
+            for (const controller of this.artifactPreflights.keys()) controller.abort();
             for (const controller of this.definitionPreviews.keys()) controller.abort();
             for (const controller of this.certificationDownloads.keys()) controller.abort();
+            await Promise.allSettled([...this.artifactPreflights.values()]);
             await Promise.allSettled([...this.definitionPreviews.values()]);
             await this.drainCertificationDownloads();
             if (this.currentContext.mode === "project") {
@@ -958,6 +963,7 @@ export class StudioServer implements StudioServerHandling {
 
     private cancelRuntimePreparation(): void {
         for (const controller of this.advancedValidations.keys()) controller.abort();
+        for (const controller of this.artifactPreflights.keys()) controller.abort();
         for (const controller of this.definitionPreviews.keys()) controller.abort();
         for (const controller of this.certificationDownloads.keys()) controller.abort();
         this.runtimePreparation?.controller.abort();
@@ -3591,17 +3597,20 @@ export class StudioServer implements StudioServerHandling {
     }
 
     private async withArtifactPreflight(req: IncomingMessage, res: ServerResponse, run: (signal: AbortSignal) => Promise<void>): Promise<void> {
-        if (this.stopping) throw new StudioHttpRequestError(409, "Studio is stopping.");
+        if (this.stopping || this.validationTransitions > 0) throw new StudioHttpRequestError(409, "Project is changing or Studio is stopping; retry the preflight after it settles.");
         const controller = new AbortController();
         const abort = (): void => controller.abort();
         req.once("aborted", abort);
         res.once("close", abort);
         if (req.aborted || res.destroyed) controller.abort();
+        const operation = Promise.resolve().then(() => run(controller.signal));
+        this.artifactPreflights.set(controller, operation);
         try {
-            await run(controller.signal);
+            await operation;
         } catch (error) {
             if (!controller.signal.aborted) throw error;
         } finally {
+            this.artifactPreflights.delete(controller);
             req.off("aborted", abort);
             res.off("close", abort);
         }

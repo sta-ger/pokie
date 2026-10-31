@@ -136,7 +136,9 @@ it("submits the original Blueprint refreshed Stake operation once and borrows it
         const compatibleManifest = fs.readFileSync(path.join(compatibleRoot, "manifest.json"), "utf8");
         await user.click(screen.getByRole("button", {name: "Overview"}));
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(await screen.findByRole("button", {name: "Configure Stake Engine export"}));
+        await waitFor(() => expect(document.getElementById("export-configure-artifact-stakeAdapter")).not.toBeNull());
+        const configureStake = document.getElementById("export-configure-artifact-stakeAdapter")!;
+        if (configureStake.getAttribute("aria-expanded") === "false") await user.click(configureStake);
         await waitFor(() => expect(stakePreviews.at(-1)).toMatchObject({
             stakePreflight: {route: "reuse", selectedPrerequisiteLocation: compatibleRoot},
             plan: {source: {kind: "blueprint", canonicalLocation: blueprint}},
