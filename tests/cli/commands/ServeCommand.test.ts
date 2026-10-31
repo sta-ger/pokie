@@ -85,7 +85,15 @@ type SignalHandler = () => void | Promise<void>;
 
 class FakeProcess {
     public readonly exitCalls: number[] = [];
+    public readonly exited: Promise<void>;
+    private onExit!: () => void;
     private readonly handlers = new Map<string, SignalHandler>();
+
+    constructor() {
+        this.exited = new Promise<void>((resolve) => {
+            this.onExit = resolve;
+        });
+    }
 
     public once(event: string, handler: SignalHandler): FakeProcess {
         this.handlers.set(event, handler);
@@ -94,10 +102,12 @@ class FakeProcess {
 
     public exit(code: number): void {
         this.exitCalls.push(code);
+        this.onExit();
     }
 
     public async trigger(event: string): Promise<void> {
         await this.handlers.get(event)?.();
+        await this.exited;
     }
 }
 
