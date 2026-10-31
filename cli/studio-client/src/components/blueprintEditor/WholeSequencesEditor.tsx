@@ -61,9 +61,10 @@ export function WholeSequencesEditor({
     const [message, setMessage] = useState<string>();
     const request = useRef(0);
     const controller = useRef<AbortController | undefined>(undefined);
+    const sourceIdentity = JSON.stringify(blueprint);
     const authored = JSON.stringify(blueprint.reelSequences);
     const candidate = {...blueprint, reelSequences: payload(draft)};
-    const identity = JSON.stringify({revision, selected, candidate});
+    const identity = JSON.stringify({revision, selected, sourceIdentity, candidate});
     const dirty = JSON.stringify(payload(draft)) !== authored;
     const errors = validateBlueprintReelSequences(candidate);
     const latest = useRef(identity);
@@ -326,12 +327,17 @@ export function WholeSequencesEditor({
                     disabled={!dirty || previewIdentity !== identity || errors.length > 0 || busy}
                     onClick={() => {
                         if (previewIdentity !== identity || errors.length > 0) return;
+                        let applied = false;
                         mutate((next) => {
                             // A sibling buffered field may commit on blur before this activation renders.
-                            if (JSON.stringify(next) !== JSON.stringify(blueprint)) return;
+                            if (JSON.stringify(next) !== sourceIdentity) return;
                             next.reelSequences = clone(payload(draft));
+                            applied = true;
                         });
                         invalidate();
+                        if (!applied) {
+                            setMessage("The game design changed after this preview. Your sequence edits are retained. Preview whole sequences again before applying.");
+                        }
                     }}
                 >
                     Apply whole sequences
