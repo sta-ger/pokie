@@ -2835,7 +2835,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             fixture.reelStripGeneration = Array.from({length:6}, (_, reel) => ({type:"literal", strip:Array.from({length:reel === 0 ? 1 : reel === 1 ? 101 : 300}, (_, stop) => symbols[(reel + stop) % symbols.length])}));
             const fixturePath = path.join(context.workspace, "Bounded reel editor.json");
             await services.writeFile(fixturePath, JSON.stringify(fixture));
-            await runPackedCli("packed CLI bounded modeler validate", ["validate", fixturePath]);
+            await runInconclusiveValidation("packed CLI bounded modeler validate", fixturePath, "json");
             await cdp.send("Emulation.setDeviceMetricsOverride", {...viewportDimensions[viewport], deviceScaleFactor:1});
             const projectBaseRoute = await openImportedProject(fixturePath, observation);
             await navigateProjectTab(projectBaseRoute, "gameModel", observation);

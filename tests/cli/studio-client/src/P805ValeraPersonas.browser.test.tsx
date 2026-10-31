@@ -96,7 +96,11 @@ describe("P8-05 rendered Valera persona evidence", () => {
     const controller = path.join(process.cwd(), "scripts/p8-05-product-readiness-controller.mjs");
     const verifier = path.join(process.cwd(), "scripts/p8-05-candidate-package-verifier.mjs");
 
-    it("records budget-exhausted validation as inconclusive and rejects other terminals", () => {
+    it("records budget-exhausted validation as inconclusive and rejects other terminals", async () => {
+        const source = await readFile(runner, "utf8");
+        expect(source.match(/await runInconclusiveValidation\(/g)).toHaveLength(7);
+        expect(source).toContain('await runInconclusiveValidation("packed CLI bounded modeler validate", fixturePath, "json")');
+        expect(source).not.toMatch(/await runPackedCli\("packed CLI[^"]*validate"/);
         const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
             import assert from 'node:assert/strict';
             import {describeP805InconclusiveValidation} from './scripts/p8-05-valera-browser-audit.mjs';
@@ -114,6 +118,10 @@ describe("P8-05 rendered Valera persona evidence", () => {
             const report = {valid:true, errors:[], advanced:{scope:'declared-model', structuralValid:true, status:'budget-exhausted', verdict:'inconclusive', issues:[], limitations:[limitation], checks:[{id:'analysis.completion', status:'unknown', message:limitation}]}};
             const json = value => ({...terminal, stdout:JSON.stringify(value)});
             assert.deepEqual(describeP805InconclusiveValidation(json(report), 'json'), expected);
+            // The literal reel-editor fixture also has honest weighting warnings.
+            // They do not become structural errors or a completed advanced proof.
+            const warnings = [{severity:'warning', code:'blueprint-weighting-pay-mismatch'}];
+            assert.deepEqual(describeP805InconclusiveValidation(json({...report, warnings, advanced:{...report.advanced, issues:warnings}}), 'json'), expected);
             let rejected = 0;
             const reject = (value, format = 'text') => {
                 assert.throws(() => describeP805InconclusiveValidation(value, format));
