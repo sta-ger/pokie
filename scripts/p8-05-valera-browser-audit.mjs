@@ -1248,13 +1248,23 @@ export async function activateP805FocusedControl(cdp, evaluate, lifecycle = "ope
     const pointer = await clickP805CapturedControl(cdp, evaluate, stableControlId, requiresViewportHit, ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle), !["navigation", "navigation-drawer"].includes(lifecycle), retainCapturedControl);
     return {kind:"pointer", controlId:stableControlId, count:1, ...pointer};
 }
-export async function openP805ImportedProject(cdp, evaluate, projectLocation) {
+export async function openP805ImportedProject(cdp, evaluate, projectLocation, readBrowserResponseBody) {
     const controlId = `project-open:${projectLocation}`;
     const priorRoute = await evaluate("location.hash");
     const cursor = cdp.events.length;
     // Focus and retain the exact Button in the same browser turn. A separate
     // lookup after focus could silently capture an intervening replacement.
     const activation = await activateP805KeyboardControl(cdp, evaluate, controlId, true);
+    const observed = await observeP805ImportedProjectOpen(cdp, evaluate, priorRoute, cursor, readBrowserResponseBody);
+    const opened = {projectLocation, controlId, activation, priorRoute, ...observed};
+    validateP805ImportedProjectOpen(opened);
+    return opened;
+}
+// Observe only the browser request emitted by the retained native activation.
+// Preparation and dashboard rendering have distinct bounded lifetimes.
+export async function observeP805ImportedProjectOpen(cdp, evaluate, priorRoute, cursor,
+    readBrowserResponseBody = (requestId) => cdp.send("Network.getResponseBody", {requestId}),
+    {responseTimeout = 120_000, dashboardTimeout = 30_000} = {}) {
     // Observe the request before waiting for navigation: a preparation error
     // must retain its real response rather than masquerade as a route timeout.
     // Package opening can prepare/copy a real SDK graph, unlike a metadata read.
@@ -1265,8 +1275,8 @@ export async function openP805ImportedProject(cdp, evaluate, projectLocation) {
     if (requests.length !== 1) fail("imported-project Open did not submit exactly one public Open request");
     const request = requests[0].params;
     const response = await waitFor(() => cdp.events.slice(cursor).find((event) => event.method === "Network.responseReceived"
-        && event.params.requestId === request.requestId), "imported-project Open response", 120_000);
-    const body = await cdp.send("Network.getResponseBody", {requestId:request.requestId});
+        && event.params.requestId === request.requestId), "imported-project Open response", responseTimeout);
+    const body = await readBrowserResponseBody(request.requestId, "imported-project Open");
     const payload = JSON.parse(body.base64Encoded ? Buffer.from(body.body, "base64").toString("utf8") : body.body);
     if (response.params.response.status !== 200 || typeof payload.context?.projectRoot !== "string") fail(`imported-project Open response HTTP ${response.params.response.status}: ${JSON.stringify(payload)}`);
     const expectedRoute = `#/project/${encodeURIComponent(payload.context.projectRoot)}/overview`;
@@ -1275,16 +1285,14 @@ export async function openP805ImportedProject(cdp, evaluate, projectLocation) {
         route = await waitFor(async () => {
             const current = await evaluate("location.hash");
             return current !== priorRoute && current === expectedRoute ? current : false;
-        }, "keyboard imported-project Open dashboard");
+        }, "keyboard imported-project Open dashboard", dashboardTimeout);
     } catch (error) {
         throw new Error(`${error.message}; expected ${expectedRoute}; rendered: ${JSON.stringify(await evaluate("({route:location.hash, text:document.body.innerText.slice(0,2400)})"))}`, {cause:error});
     }
     if (cdp.events.slice(cursor).filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === "/api/home/projects/open").length !== 1) fail("imported-project Open submitted duplicate public requests");
-    const opened = {projectLocation, controlId, activation, priorRoute, route,
+    return {route,
         request:{browserRequestId:request.requestId, method:request.request.method, path:new URL(request.request.url).pathname, body:request.request.postData},
         response:{browserRequestId:response.params.requestId, status:response.params.response.status, projectRoot:payload.context?.projectRoot}};
-    validateP805ImportedProjectOpen(opened);
-    return opened;
 }
 export function validateP805ImportedProjectOpen(opened) {
     // A Blueprint may resolve to a generated runtime directory. Bind the
@@ -2842,7 +2850,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             })()`), `${observation} rendered project import preview or existing registered project`);
             if (importState === "preview") await activate("project-import-add", "Add to projects");
             await waitFor(() => evaluate(`!!document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]')`), `${observation} rendered registered project`);
-            const opened = await openP805ImportedProject(cdp, evaluate, projectLocation);
+            const opened = await openP805ImportedProject(cdp, evaluate, projectLocation, readBrowserResponseBody);
             await save("json", `${observation.replace(/[^a-z0-9]+/gi, "-")}-${evidence.length + 1}-import-open.json`, JSON.stringify(opened, null, 2), [observation]);
             const route = opened.route;
             return route.replace(/\/[^/]+$/, "");

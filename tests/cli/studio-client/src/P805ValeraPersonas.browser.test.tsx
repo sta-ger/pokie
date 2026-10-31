@@ -176,6 +176,72 @@ describe("P8-05 rendered Valera persona evidence", () => {
         expect(result).toEqual({expectedTerminals: 2, wrongJobRejected: true, failedTerminalRejected: true, httpFailureRejected: true, progressRetained: true, expiredBodyRecovered: true});
     });
 
+    it("observes imported Open preparation before its exact dashboard and retains rejected responses", () => {
+        // Synthetic CDP events test the observation boundary only; they are never
+        // saved as native browser activation or installed acceptance evidence.
+        const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import {setTimeout as delay} from 'node:timers/promises';
+            import {observeP805ImportedProjectOpen} from './scripts/p8-05-valera-browser-audit.mjs';
+            const priorRoute = '#/';
+            const projectRoot = '/resolved package/runtime';
+            const expectedRoute = '#/project/' + encodeURIComponent(projectRoot) + '/overview';
+            const request = (requestId = 'open') => ({method:'Network.requestWillBeSent', params:{requestId, request:{
+                method:'POST', url:'http://localhost/api/home/projects/open', postData:JSON.stringify({projectRoot:'/imported.blueprint.json'})
+            }}});
+            const response = (requestId = 'open', status = 200) => ({method:'Network.responseReceived', params:{requestId, response:{status}}});
+            const fixture = (status = 200, payload = {context:{projectRoot}}) => ({
+                events:[request(), response('unrelated', 500), response('open', status)],
+                send:async (method, {requestId}) => {
+                    assert.equal(method, 'Network.getResponseBody');
+                    assert.equal(requestId, 'open');
+                    return {body:JSON.stringify(payload)};
+                }
+            });
+            const budget = {responseTimeout:1000, dashboardTimeout:50};
+            const slow = fixture();
+            slow.events = [request()];
+            let bodyRead = false, bodyReads = 0;
+            const delayedResponse = delay(180).then(() => slow.events.push(response()));
+            const [opened] = await Promise.all([
+                observeP805ImportedProjectOpen(slow, async expression => {
+                    assert.equal(expression, 'location.hash');
+                    assert.equal(bodyRead, true, 'dashboard deadline starts after preparation and body availability');
+                    return expectedRoute;
+                }, priorRoute, 0, async (id, label) => {
+                    assert.equal(id, 'open'); assert.equal(label, 'imported-project Open');
+                    bodyReads++; bodyRead = true;
+                    return {body:Buffer.from(JSON.stringify({context:{projectRoot}})).toString('base64'), base64Encoded:true};
+                }, budget),
+                delayedResponse,
+            ]);
+            assert.equal(bodyReads, 1);
+            assert.equal(opened.route, expectedRoute);
+            assert.equal(opened.request.browserRequestId, 'open');
+            assert.deepEqual(opened.response, {browserRequestId:'open', status:200, projectRoot});
+            const noDashboard = async () => { throw Error('must reject before dashboard observation'); };
+            await assert.rejects(observeP805ImportedProjectOpen(fixture(409, {error:'Active jobs require confirmation'}), noDashboard, priorRoute, 0), /HTTP 409:.*Active jobs require confirmation/);
+            await assert.rejects(observeP805ImportedProjectOpen(fixture(200, {}), noDashboard, priorRoute, 0), /HTTP 200/);
+            const duplicate = fixture(); duplicate.events.push(request('second-open'));
+            await assert.rejects(observeP805ImportedProjectOpen(duplicate, noDashboard, priorRoute, 0), /exactly one public Open request/);
+            const lateDuplicate = fixture();
+            await assert.rejects(observeP805ImportedProjectOpen(lateDuplicate, async () => {
+                lateDuplicate.events.push(request('late-open')); return expectedRoute;
+            }, priorRoute, 0), /duplicate public requests/);
+            const unrelatedRoute = '#/project/unrelated/overview';
+            await assert.rejects(observeP805ImportedProjectOpen(fixture(), async expression => expression === 'location.hash'
+                ? unrelatedRoute : {route:unrelatedRoute, text:'Opening another project'}, priorRoute, 0, undefined, budget),
+                error => error.message.includes('expected ' + expectedRoute) && error.message.includes(unrelatedRoute) && error.message.includes('Opening another project'));
+            const wrongResponse = fixture(); wrongResponse.events = [request(), response('unrelated')];
+            await assert.rejects(observeP805ImportedProjectOpen(wrongResponse, noDashboard, priorRoute, 0, undefined,
+                {responseTimeout:50, dashboardTimeout:50}), /Timed out waiting for imported-project Open response/);
+            console.log(JSON.stringify({delayedPreparation:true, scopedBodyReader:true, exactDashboard:true, httpFailureRejected:true,
+                missingContextRejected:true, duplicateRejected:true, lateDuplicateRejected:true, unrelatedRouteRejected:true, unrelatedResponseRejected:true}));
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000}));
+        expect(result).toEqual({delayedPreparation: true, scopedBodyReader: true, exactDashboard: true, httpFailureRejected: true,
+            missingContextRejected: true, duplicateRejected: true, lateDuplicateRejected: true, unrelatedRouteRejected: true, unrelatedResponseRejected: true});
+    });
+
     it("authenticates nested Worker owners and keeps unbound or unauthenticated resources fail-closed", () => {
         const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
             import assert from 'node:assert/strict';
