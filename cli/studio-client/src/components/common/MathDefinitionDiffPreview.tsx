@@ -1,5 +1,5 @@
 import {AdvancedValidationPanel} from "./AdvancedValidationPanel";
-import {useEffect, useRef, useState} from "react";
+import {useEffect, useId, useRef, useState} from "react";
 import {previewMathDefinitionDiff} from "../../api/apiClient";
 import type {MathDefinitionDiff} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -22,6 +22,7 @@ export function MathDefinitionDiffPreview({
     revision?: number;
 }) {
     const fetchImpl = useStudioApi();
+    const compareExplanationId = useId();
     const [rightPath, setRightPath] = useState("");
     const [state, setState] = useState<PreviewState>({status: "idle"});
     const lifecycle = useRef({generation: 0, active: undefined as AbortController | undefined});
@@ -62,6 +63,9 @@ export function MathDefinitionDiffPreview({
             setState({status: "error", message: error instanceof Error ? error.message : String(error)});
         }
     };
+    let compareDisabledReason: string | undefined;
+    if (!sourcePath) compareDisabledReason = "Load or save a source before comparing definitions.";
+    else if (draft === undefined && !rightPath.trim()) compareDisabledReason = "Choose a saved source to compare with the current definition.";
     return (
         <section aria-label="Mathematical definition comparison">
             <h3>Mathematical definition comparison</h3>
@@ -79,12 +83,14 @@ export function MathDefinitionDiffPreview({
             <button
                 type="button"
                 disabled={!sourcePath || (draft === undefined && !rightPath.trim())}
+                aria-describedby={compareDisabledReason ? compareExplanationId : undefined}
                 onClick={() => {
                     compare().catch(() => undefined);
                 }}
             >
                 {draft === undefined ? "Compare definitions" : "Compare saved versus draft"}
             </button>
+            {compareDisabledReason && <p id={compareExplanationId}>{compareDisabledReason}</p>}
             {state.status === "loading" && (
                 <>
                     <p role="status">Comparing definitions…</p>

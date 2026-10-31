@@ -1,3 +1,12 @@
+import {MantineProvider} from "@mantine/core";
+import {act, fireEvent, render, screen, waitFor} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import {MathDefinitionDiffPreview} from "../../../../cli/studio-client/src/components/common/MathDefinitionDiffPreview";
+import {OptimizationPanel} from "../../../../cli/studio-client/src/components/project/OptimizationPanel";
+import {StudioApiProvider, useStudioApi} from "../../../../cli/studio-client/src/context/StudioApiProvider";
+import {useProjectJobs} from "../../../../cli/studio-client/src/hooks/useProjectJobs";
+import type {FetchLike} from "../../../../cli/studio-client/src/api/apiClient";
+import {optimizationRequest} from "../../../v2/fixtures/OptimizationFixture";
 import {execFileSync} from "node:child_process";
 import {createHash} from "node:crypto";
 import {chmod, lstat, mkdtemp, readFile, readdir, rm, stat, writeFile} from "node:fs/promises";
@@ -95,6 +104,118 @@ describe("P8-05 rendered Valera persona evidence", () => {
     const runner = path.join(process.cwd(), "scripts/p8-05-valera-browser-audit.mjs");
     const controller = path.join(process.cwd(), "scripts/p8-05-product-readiness-controller.mjs");
     const verifier = path.join(process.cwd(), "scripts/p8-05-candidate-package-verifier.mjs");
+
+    // The retained packed audit reported these visible controls as disabled
+    // without title or aria-describedby. Exercise their actual components and
+    // request boundary without starting another packed/browser collection.
+    it("explains disabled optimization prerequisites and preserves support, start and edit boundaries", async () => {
+        function ObservedOptimization() {
+            const jobs = useProjectJobs(useStudioApi(), "/project", 0);
+            return <OptimizationPanel projectRoot="/project" jobs={jobs} />;
+        }
+        const calls: Array<{url: string; body?: string}> = [];
+        let supported = false;
+        let releaseSupport: (() => void) | undefined;
+        let releaseDiscovery: (() => void) | undefined;
+        const fetchImpl: FetchLike = async (url, init) => {
+            calls.push({url, body: init?.body as string | undefined});
+            if (url === "/api/project/jobs") await new Promise<void>(resolve => {
+                releaseDiscovery = resolve;
+            });
+            if (url.endsWith("support")) {
+                await new Promise<void>(resolve => {
+                    releaseSupport = resolve;
+                });
+                return {ok: true, status: 200, json: () => Promise.resolve({supported, reason: supported ? "Finite workflow available" : "This source has no writable tuning contract.", sourceRevision: "sha256:reviewed"})};
+            }
+            if (url.endsWith("start")) return {ok: true, status: 200, json: () => Promise.resolve({job: {id: "optimization-1", operation: "optimization", status: "running", createdAt: 1, projectId: "/project", request: {}, conflictKey: "optimization"}})};
+            return {ok: true, status: 200, json: () => Promise.resolve({jobs: []})};
+        };
+        render(<MantineProvider><StudioApiProvider fetchImpl={fetchImpl}><ObservedOptimization /></StudioApiProvider></MantineProvider>);
+        const run = screen.getByRole("button", {name: "Run optimization"});
+        expect(run).toBeDisabled();
+        expect(run).toHaveAccessibleDescription("Checking for retained work before starting optimization.");
+        await act(() => {
+            releaseDiscovery!();
+            return Promise.resolve();
+        });
+        await waitFor(() => expect(run).toHaveAccessibleDescription("Check tuning support for the current targets and policy before running optimization."));
+        expect(run).toBeDisabled();
+        const user = userEvent.setup();
+        await user.click(run);
+        expect(calls.some(call => call.url.endsWith("start"))).toBe(false);
+        fireEvent.change(screen.getByLabelText("Math targets and optimization policy (JSON)"), {target: {value: JSON.stringify(optimizationRequest())}});
+        await user.click(screen.getByRole("button", {name: "Check tuning support"}));
+        expect(run).toBeDisabled();
+        expect(run).toHaveAccessibleDescription("Wait for the current optimization request to finish.");
+        await act(() => {
+            releaseSupport!();
+            return Promise.resolve();
+        });
+        await waitFor(() => expect(run).toHaveAccessibleDescription("Optimization is unavailable: This source has no writable tuning contract."));
+        expect(document.getElementById(run.getAttribute("aria-describedby")!)).toBeVisible();
+        expect(run).toBeDisabled();
+        supported = true;
+        await user.click(screen.getByRole("button", {name: "Check tuning support"}));
+        await act(() => {
+            releaseSupport!();
+            return Promise.resolve();
+        });
+        await waitFor(() => expect(run).toBeEnabled());
+        expect(run).not.toHaveAttribute("aria-describedby");
+        // A policy edit invalidates the prior support approval.
+        fireEvent.change(screen.getByLabelText("Math targets and optimization policy (JSON)"), {target: {value: JSON.stringify({...optimizationRequest(), targets: [{metric: "rtp", unit: "ratio", value: 0.8}]})}});
+        expect(run).toBeDisabled();
+        expect(run).toHaveAccessibleDescription("Check tuning support for the current targets and policy before running optimization.");
+        await user.click(screen.getByRole("button", {name: "Check tuning support"}));
+        await act(() => {
+            releaseSupport!();
+            return Promise.resolve();
+        });
+        await waitFor(() => expect(run).toBeEnabled());
+        await user.click(run);
+        await waitFor(() => expect(run).toHaveAccessibleDescription("Wait for the active optimization to finish or cancel it before starting another."));
+        expect(run).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Cancel optimization"})).toBeEnabled();
+        const starts = calls.filter(call => call.url.endsWith("start"));
+        expect(starts).toHaveLength(1);
+        expect(JSON.parse(starts[0].body!)).toMatchObject({sourceRevision: "sha256:reviewed", expectedProjectRoot: "/project", request: {targets: [{value: 0.8}]}});
+    });
+
+    it("explains disabled definition comparison and submits only after both saved sources are chosen", async () => {
+        const calls: Array<{url: string; body: unknown}> = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            calls.push({url, body: JSON.parse(init!.body as string)});
+            return Promise.resolve({ok: false, status: 400, json: () => Promise.resolve({error: "Source missing"})});
+        };
+        const view = (sourcePath?: string, draft?: unknown) => <StudioApiProvider fetchImpl={fetchImpl}><MathDefinitionDiffPreview sourcePath={sourcePath} draft={draft} /></StudioApiProvider>;
+        const rendered = render(view());
+        const compare = screen.getByRole("button", {name: "Compare definitions"});
+        expect(compare).toBeDisabled();
+        expect(compare).toHaveAccessibleDescription("Load or save a source before comparing definitions.");
+        rendered.rerender(view("/saved.blueprint.json"));
+        expect(compare).toBeDisabled();
+        expect(compare).toHaveAccessibleDescription("Choose a saved source to compare with the current definition.");
+        const descriptionId = compare.getAttribute("aria-describedby")!;
+        expect(document.getElementById(descriptionId)).toBeVisible();
+        const user = userEvent.setup();
+        await user.click(compare);
+        expect(calls).toHaveLength(0);
+        fireEvent.change(screen.getByLabelText("Compare with saved source"), {target: {value: "  "}});
+        expect(compare).toBeDisabled();
+        fireEvent.change(screen.getByLabelText("Compare with saved source"), {target: {value: "/other.blueprint.json"}});
+        expect(compare).toBeEnabled();
+        expect(compare).not.toHaveAttribute("aria-describedby");
+        expect(document.getElementById(descriptionId)).not.toBeInTheDocument();
+        await user.click(compare);
+        await screen.findByRole("alert");
+        expect(calls).toEqual([{url: "/api/math-definition-diff/preview", body: {leftPath: "/saved.blueprint.json", rightPath: "/other.blueprint.json", revision: 0}}]);
+        expect(compare).toBeEnabled();
+        rendered.rerender(view("/saved.blueprint.json", {}));
+        expect(screen.getByRole("button", {name: "Compare saved versus draft"})).toBeEnabled();
+        rendered.rerender(view(undefined, {}));
+        expect(screen.getByRole("button", {name: "Compare saved versus draft"})).toHaveAccessibleDescription("Load or save a source before comparing definitions.");
+    });
 
     it("records budget-exhausted validation as inconclusive and rejects other terminals", async () => {
         const source = await readFile(runner, "utf8");
