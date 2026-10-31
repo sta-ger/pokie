@@ -148,6 +148,34 @@ describe("P8-05 rendered Valera persona evidence", () => {
         expect(result).toEqual({structuralValid: true, advancedProof: false, rejected: 25});
     });
 
+    it("binds recovery terminals to their captured job and retains failure or slow-job diagnostics", () => {
+        const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import {readP805RenderedTerminal} from './scripts/p8-05-valera-browser-audit.mjs';
+            const pathname = '/api/project/simulations/captured-job';
+            const event = (requestId, status = 200) => ({method:'Network.responseReceived', params:{requestId, response:{url:'http://localhost' + pathname, status}}});
+            const cdp = (payload, status) => ({events:[event('poll', status)], send:async () => ({body:JSON.stringify(payload)})});
+            for (const status of ['completed', 'cancelled']) {
+                const payload = {id:'captured-job', status};
+                assert.deepEqual((await readP805RenderedTerminal(cdp(payload), 0, pathname, [status], 'expected terminal', 150)).payload, payload);
+            }
+            await assert.rejects(readP805RenderedTerminal(cdp({id:'captured-job', status:'failed', error:'worker cleanup failed'}), 0, pathname, ['completed'], 'failed retry', 150), /unexpected terminal:.*failed.*worker cleanup failed/);
+            await assert.rejects(readP805RenderedTerminal(cdp({id:'captured-job', status:'completed'}, 500), 0, pathname, ['completed'], 'HTTP failure', 150), /unexpected terminal/);
+            await assert.rejects(readP805RenderedTerminal(cdp({id:'other-job', status:'completed'}), 0, pathname, ['completed'], 'wrong job', 150), /Timed out/);
+            await assert.rejects(readP805RenderedTerminal(cdp({id:'captured-job', status:'running', roundsCompleted:12, requestedRounds:50000}), 0, pathname, ['completed'], 'slow retry', 150), /observed job:.*running.*roundsCompleted.*12.*requestedRounds.*50000/);
+            const restored = {events:[event('expired')], send:async (_method, {requestId}) => {
+                if (requestId === 'expired') {
+                    restored.events.push(event('restored'));
+                    throw Error('No resource with given identifier found');
+                }
+                return {body:JSON.stringify({id:'captured-job', status:'completed'})};
+            }};
+            assert.equal((await readP805RenderedTerminal(restored, 0, pathname, ['completed'], 'expired poll', 1000)).event.params.requestId, 'restored');
+            console.log(JSON.stringify({expectedTerminals:2, wrongJobRejected:true, failedTerminalRejected:true, httpFailureRejected:true, progressRetained:true, expiredBodyRecovered:true}));
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000}));
+        expect(result).toEqual({expectedTerminals: 2, wrongJobRejected: true, failedTerminalRejected: true, httpFailureRejected: true, progressRetained: true, expiredBodyRecovered: true});
+    });
+
     it("authenticates nested Worker owners and keeps unbound or unauthenticated resources fail-closed", () => {
         const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
             import assert from 'node:assert/strict';

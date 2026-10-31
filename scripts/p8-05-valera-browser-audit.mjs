@@ -575,6 +575,26 @@ export async function readP805RenderedResponse(cdp, cursor, pathname, accept, la
     } catch (error) { throw new Error(`${error.message}; ${pathname}: ${lastObservation}`, {cause:error}); }
 }
 
+// Simulation and Replay recovery consume the same captured public job identity.
+// An unexpected terminal is a failure, rather than an apparent observation timeout.
+export async function readP805RenderedTerminal(cdp, cursor, pathname, statuses, label, timeout = 30_000) {
+    const jobId = decodeURIComponent(pathname.split("/").at(-1));
+    let observedJob;
+    let terminal;
+    try {
+        terminal = await readP805RenderedResponse(cdp, cursor, pathname, payload => {
+            if (payload?.id !== jobId) return false;
+            observedJob = {id:payload.id, status:payload.status, progress:payload.progress, roundsCompleted:payload.roundsCompleted, requestedRounds:payload.requestedRounds, error:payload.error ?? payload.message};
+            return typeof payload.status === "string" && !["queued", "running", "cancelling", "pending"].includes(payload.status);
+        }, label, timeout);
+    } catch (error) {
+        throw new Error(`${error.message}; observed job: ${JSON.stringify(observedJob)}`, {cause:error});
+    }
+    if (terminal.event.params.response.status < 200 || terminal.event.params.response.status >= 300
+        || !statuses.includes(terminal.payload.status)) fail(`${label} unexpected terminal: ${JSON.stringify(observedJob)}`);
+    return terminal;
+}
+
 export function readP805RenderedJobDiscovery(cdp, cursor, jobId, label, timeout = 30_000) {
     return readP805RenderedResponse(cdp, cursor, "/api/project/jobs", (payload) => {
         const jobs = Array.isArray(payload) ? payload : payload?.jobs;
@@ -2221,13 +2241,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // matrix.  Its initial response may intentionally be a 202, but its
         // final browser poll must still close the original control's receipt.
         const browserTerminal = async (pathname, observation, cursor, statuses, transactions = [], timeout = 30_000, capturePointerTransition = false) => {
-            const terminal = await waitFor(async () => {
-                // As above, retain the most recent durable state rather than
-                // pinning this recovery path to its first queued response.
-                const event = cdp.events.slice(cursor).findLast((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === pathname);
-                if (!event) return false;
-                try { const response = await readBrowserResponseBody(event.params.requestId, observation), payload = JSON.parse(response.body || "{}"); return statuses.includes(payload?.status) ? {event, payload} : false; } catch { return false; }
-            }, `${observation} rendered terminal result`, timeout);
+            const terminal = await readP805RenderedTerminal(cdp, cursor, pathname, statuses, `${observation} rendered terminal result`, timeout);
             api.push({observation, method:"GET", path:pathname, status:terminal.event.params.response.status, payload:terminal.payload, browserRequestId:terminal.event.params.requestId, initiator:"rendered-poll"});
             const receipt = {status:terminal.payload.status, jobId:terminal.payload.id, result:terminal.payload, resultSha256:digest(JSON.stringify(terminal.payload)), source:"rendered-poll", pollPath:pathname, browserRequestId:terminal.event.params.requestId};
             for (const transaction of Array.isArray(transactions) ? transactions : [transactions]) {
@@ -3285,7 +3299,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // rendered Cancel confirmation. Small probes can finish on a fast
         // packed worker before the user reaches that control, turning a
         // genuine cancellation path into a completed-job race.
-        const retryProbeRounds = 500_000;
+        // Repeat uses this exact captured request, including its round count.
+        // Keep it below the slow-host terminal budget without weakening the
+        // separate 1.8-million-round reload/reconnect durability probe.
+        const retryProbeRounds = 50_000;
         const activeReload = await startRenderedSimulation(createdProjectBaseRoute, "active-job reload", reloadProbeRounds), reloadCursor = cdp.events.length;
         await reloadP805Page(cdp); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.includes('/project/')"), "active project reload/reconnect"); const reloadJobs = await readP805RenderedJobDiscovery(cdp, reloadCursor, activeReload.payload.id, "rendered active-job reload discovery"), jobs = Array.isArray(reloadJobs.payload) ? reloadJobs.payload : reloadJobs.payload?.jobs; api.push({path:"/api/project/jobs", method:"GET", status:reloadJobs.event.params.response.status, payload:reloadJobs.payload, browserRequestId:reloadJobs.event.params.requestId, initiator:"rendered-reload", recovery:"reload"}); if (!Array.isArray(jobs) || !jobs.some((job) => job?.id === activeReload.payload.id)) fail("Studio reload did not discover the active durable job through its rendered recovery path");
         // A running job intentionally disables sibling tab navigation. The
@@ -3430,7 +3447,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // may replace it as the request begins, but the receipt keeps the
         // captured identity, native focus, hit-test, and press/release proof.
         await waitFor(() => evaluate("(()=>{const item=document.getElementById('simulation-retry'); return item instanceof HTMLButtonElement && item.getAttribute('data-pokie-lifecycle') === 'recovery' && item.getAttribute('data-pokie-lifecycle-operation') === 'simulation-retry' && item.textContent?.trim() === 'Repeat simulation' && !item.disabled;})()"), "cooperative cancellation stable rendered retry control");
-        const retryCursor = cdp.events.length, retry = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-retry", observation:"simulation retry", cursor:retryCursor, method:"POST", stateClass:"recovery-operation", capturePostTransition:true}); if (retry.response.status !== 202 || typeof retry.payload?.id !== "string") fail("Studio did not start a fresh rendered retry through its recovery control"); const retryTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(retry.payload.id)}`, "simulation retry", retryCursor, ["completed"], retry.transaction, 180_000, true), retryReceipt = {operation:"simulation-retry", controlId:retry.transaction.control.stableControlId, stateClass:"recovery-operation", transaction:retry.transaction}; validateP805RetryTerminalReceipt(retryReceipt); timings.retryMs = retry.transaction.elapsedMs; const reportsEvent = await waitFor(async () => { const event = cdp.events.slice(retryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/reports"); if (!event) return false; try { const response = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(response.body || "[]"); return Array.isArray(payload) ? {event, payload} : false; } catch { return false; } }, "rendered simulation reports"); const reports = {response:{status:reportsEvent.event.params.response.status, ok:true}, payload:reportsEvent.payload}; api.push({observation:"simulation retry", method:"GET", path:"/api/project/reports", status:reports.response.status, payload:reports.payload, browserRequestId:reportsEvent.event.params.requestId, initiator:"rendered-poll"});
+        const retryCursor = cdp.events.length, retry = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-retry", observation:"simulation retry", cursor:retryCursor, method:"POST", stateClass:"recovery-operation", capturePostTransition:true}); if (retry.response.status !== 202 || typeof retry.payload?.id !== "string") fail("Studio did not start a fresh rendered retry through its recovery control"); if (retry.entry.bodySha256 !== cancellable.entry.bodySha256) fail("Simulation Retry changed its captured request settings"); const retryTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(retry.payload.id)}`, "simulation retry", retryCursor, ["completed"], retry.transaction, 180_000, true), retryReceipt = {operation:"simulation-retry", controlId:retry.transaction.control.stableControlId, stateClass:"recovery-operation", transaction:retry.transaction}; validateP805RetryTerminalReceipt(retryReceipt); if (retryTerminal.result.requestedRounds !== cancellationRounds || retryTerminal.result.roundsCompleted !== cancellationRounds) fail("Simulation Retry did not finish the full captured round budget"); timings.retryMs = retry.transaction.elapsedMs; const reportsEvent = await waitFor(async () => { const event = cdp.events.slice(retryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/reports"); if (!event) return false; try { const response = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(response.body || "[]"); return Array.isArray(payload) ? {event, payload} : false; } catch { return false; } }, "rendered simulation reports"); const reports = {response:{status:reportsEvent.event.params.response.status, ok:true}, payload:reportsEvent.payload}; api.push({observation:"simulation retry", method:"GET", path:"/api/project/reports", status:reports.response.status, payload:reports.payload, browserRequestId:reportsEvent.event.params.requestId, initiator:"rendered-poll"});
         // A package project is intentionally read-only in Game Model.  The
         // first-time-user Design Game is the product-owned editable surface,
         // so use its native text field and its public Projects/Open workflow
