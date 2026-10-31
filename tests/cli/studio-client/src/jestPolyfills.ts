@@ -1,4 +1,3 @@
-import {setImmediate, clearImmediate} from "node:timers";
 import {randomUUID} from "node:crypto";
 import {ReadableStream} from "node:stream/web";
 import {TextDecoder, TextEncoder} from "node:util";
@@ -82,8 +81,3 @@ if (typeof globalThis.Request === "undefined") {
     Reflect.deleteProperty(globalThis, "MessagePort");
     Reflect.deleteProperty(globalThis, "MessageChannel");
 }
-
-// These rendered workflows also host real Node services in jsdom's realm.
-// Preserve their event-loop yield/cleanup boundary using Node's actual timers.
-if (typeof globalThis.setImmediate === "undefined") globalThis.setImmediate = setImmediate;
-if (typeof globalThis.clearImmediate === "undefined") globalThis.clearImmediate = clearImmediate;

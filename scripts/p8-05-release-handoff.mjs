@@ -39,6 +39,7 @@ const tooling = new Set([
     "tests/v2/OptimizationContractsAdapters.test.ts",
     "tests/cli/fixtures/packageOnlyCommandInputs.ts",
     "tests/cli/studio-client/src/jestPolyfills.ts",
+    "tests/cli/studio-client/src/testUtils/nodeServiceTimers.ts",
     "docs/v2-completion/V2C-37.md",
 
     "scripts/p8-05-product-readiness-campaign.mjs", "scripts/p8-05-product-readiness-controller.mjs",

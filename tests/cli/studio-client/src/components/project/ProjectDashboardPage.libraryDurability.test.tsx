@@ -16,6 +16,14 @@ import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
+import {installNodeServiceTimers} from "../../testUtils/nodeServiceTimers";
+
+let restoreNodeServiceTimers: () => void;
+beforeAll(() => {
+    restoreNodeServiceTimers = installNodeServiceTimers();
+});
+afterAll(() => restoreNodeServiceTimers());
+
 // Production HTTP, generation, destination planning and persistence with the
 // candidate-generated Node game; no compiler/build subprocess or browser receipt.
 describe("P9-07 library publication and refreshed generation", () => {

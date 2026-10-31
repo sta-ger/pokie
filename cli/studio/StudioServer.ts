@@ -3597,7 +3597,8 @@ export class StudioServer implements StudioServerHandling {
     }
 
     private async withArtifactPreflight(req: IncomingMessage, res: ServerResponse, run: (signal: AbortSignal) => Promise<void>): Promise<void> {
-        if (this.stopping || this.validationTransitions > 0) throw new StudioHttpRequestError(409, "Project is changing or Studio is stopping; retry the preflight after it settles.");
+        if (this.stopping) throw new StudioHttpRequestError(409, "Studio is stopping.");
+        if (this.validationTransitions > 0) throw new StudioHttpRequestError(409, "Project is changing; retry the preflight after it settles.");
         const controller = new AbortController();
         const abort = (): void => controller.abort();
         req.once("aborted", abort);

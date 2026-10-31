@@ -96,6 +96,50 @@ describe("P8-05 rendered Valera persona evidence", () => {
     const controller = path.join(process.cwd(), "scripts/p8-05-product-readiness-controller.mjs");
     const verifier = path.join(process.cwd(), "scripts/p8-05-candidate-package-verifier.mjs");
 
+    it("records budget-exhausted validation as inconclusive and rejects other terminals", () => {
+        const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import {describeP805InconclusiveValidation} from './scripts/p8-05-valera-browser-audit.mjs';
+            const limitation = 'Analysis outcomes limit exhausted.';
+            const stdout = [
+                '  valid           yes (structural/contract validation)',
+                '  advanced        budget-exhausted: inconclusive (declared-model)',
+                '  unknown analysis.completion [$]: ' + limitation,
+                '  Limit: ' + limitation,
+                'No structural issues found.',
+            ].join(String.fromCharCode(10));
+            const terminal = {exitCode:2, signal:null, stdout, stderr:''};
+            const expected = {exitCode:2, structuralValid:true, status:'inconclusive', advancedStatus:'budget-exhausted', limitation};
+            assert.deepEqual(describeP805InconclusiveValidation(terminal), expected);
+            const report = {valid:true, errors:[], advanced:{scope:'declared-model', structuralValid:true, status:'budget-exhausted', verdict:'inconclusive', issues:[], limitations:[limitation], checks:[{id:'analysis.completion', status:'unknown', message:limitation}]}};
+            const json = value => ({...terminal, stdout:JSON.stringify(value)});
+            assert.deepEqual(describeP805InconclusiveValidation(json(report), 'json'), expected);
+            let rejected = 0;
+            const reject = (value, format = 'text') => {
+                assert.throws(() => describeP805InconclusiveValidation(value, format));
+                rejected++;
+            };
+            for (const exitCode of [0, 1, 3, 130, null]) reject({...terminal, exitCode});
+            reject({...terminal, signal:'SIGTERM'});
+            reject({...terminal, stderr:'cleanup failed'});
+            reject({...terminal, stdout:stdout.replace('yes (structural', 'no (structural')});
+            reject({...terminal, stdout:stdout + String.fromCharCode(10) + '  violation accounting: mismatch'});
+            reject({...terminal, stdout:stdout.replace(limitation, 'Unsupported model.')});
+            reject({...terminal, stdout:'not JSON'}, 'json');
+            reject(json({...report, valid:false}), 'json');
+            reject(json({...report, errors:[{message:'invalid input'}]}), 'json');
+            for (const status of ['complete', 'unsupported', 'failed', 'invalid', 'cancelled']) reject(json({...report, advanced:{...report.advanced, status}}), 'json');
+            for (const structuralValid of [false, null]) reject(json({...report, advanced:{...report.advanced, structuralValid}}), 'json');
+            reject(json({...report, advanced:{...report.advanced, verdict:'violated'}}), 'json');
+            reject(json({...report, advanced:{...report.advanced, limitations:[]}}), 'json');
+            reject(json({...report, advanced:{...report.advanced, checks:[]}}), 'json');
+            reject(json({...report, advanced:{...report.advanced, checks:[...report.advanced.checks, {status:'violation'}]}}), 'json');
+            reject(json({...report, advanced:{...report.advanced, issues:[{severity:'error'}]}}), 'json');
+            console.log(JSON.stringify({structuralValid:true, advancedProof:false, rejected}));
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000}));
+        expect(result).toEqual({structuralValid: true, advancedProof: false, rejected: 25});
+    });
+
     it("authenticates nested Worker owners and keeps unbound or unauthenticated resources fail-closed", () => {
         const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
             import assert from 'node:assert/strict';
@@ -114,12 +158,14 @@ describe("P8-05 rendered Valera persona evidence", () => {
             const env = {...process.env, POKIE_PC20_RESOURCE_REGISTRY:registry, POKIE_PC20_RESOURCE_REGISTRY_SECRET:secret, POKIE_PC20_OPERATION_ID:operationId, NODE_OPTIONS:[process.env.NODE_OPTIONS, '--require=' + hook].filter(Boolean).join(' ')};
             const nested = "require('node:worker_threads').parentPort.postMessage('ready'); setInterval(() => {}, 1000);";
             const outer = "const {Worker,parentPort} = require('node:worker_threads'); new Worker(" + JSON.stringify(nested) + ", {eval:true, execArgv:[]}).once('message', () => parentPort.postMessage('ready'));";
-            const code = "const {Worker} = require('node:worker_threads'); new Worker(" + JSON.stringify(outer) + ", {eval:true, execArgv:[]}).once('message', () => process.exit(0));";
+            const code = "setTimeout(() => process.exit(99), 5000); const {Worker} = require('node:worker_threads'); new Worker(" + JSON.stringify(outer) + ", {eval:true, execArgv:[]}).once('message', () => process.exit(0));";
             const child = spawn(process.execPath, ['-e', code], {env, detached:true, stdio:'pipe'});
             const tracker = createPc20OwnershipTracker(child.pid, registry, secret, {operationId});
             const owner = {child, tracker};
             try {
-                await once(child, 'exit');
+                const [exitCode, signal] = await once(child, 'exit');
+                assert.equal(exitCode, 0);
+                assert.equal(signal, null);
                 tracker.capture({final:true});
                 const workers = [...tracker.ownedResources.values()].filter(r => r.kind === 'worker');
                 assert.equal(workers.length, 2);

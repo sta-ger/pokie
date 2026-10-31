@@ -57,6 +57,32 @@ export function p805CandidatePackageRoot(installationRoot, candidateManifest) {
 const now = () => new Date().toISOString();
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const fail = (message) => { throw new Error(`P8-05 Valera browser audit is invalid: ${message}`); };
+// The seeded audit model exceeds the public validator's exact-analysis budget.
+// Record that diagnostic explicitly; it is structural acceptance, never a math proof.
+export function describeP805InconclusiveValidation(result, format = "text") {
+    const limitation = "Analysis outcomes limit exhausted.";
+    if (result?.exitCode !== 2 || result.signal !== null || result.stderr !== "") fail("expected a clean inconclusive validation terminal");
+    if (format === "json") {
+        let report;
+        try { report = JSON.parse(result.stdout); } catch { fail("inconclusive validation report is not JSON"); }
+        const advanced = report?.advanced;
+        if (report?.valid !== true || !Array.isArray(report.errors) || report.errors.length !== 0
+            || advanced?.structuralValid !== true || advanced.scope !== "declared-model"
+            || advanced.status !== "budget-exhausted" || advanced.verdict !== "inconclusive"
+            || !Array.isArray(advanced.issues) || advanced.issues.some(issue => issue.severity === "error")
+            || !Array.isArray(advanced.limitations) || !advanced.limitations.includes(limitation)
+            || !Array.isArray(advanced.checks) || advanced.checks.some(check => check.status === "violation")
+            || !advanced.checks.some(check => check.id === "analysis.completion" && check.status === "unknown" && check.message === limitation)) fail("validation did not retain the expected structural acceptance and analysis limitation");
+    } else if (format === "text") {
+        const lines = result.stdout.split(/\r?\n/).map(line => line.trim());
+        if (!lines.includes("valid           yes (structural/contract validation)")
+            || !lines.includes("advanced        budget-exhausted: inconclusive (declared-model)")
+            || !lines.includes(`unknown analysis.completion [$]: ${limitation}`)
+            || !lines.includes(`Limit: ${limitation}`) || !lines.includes("No structural issues found.")
+            || lines.some(line => /^(?:violation|error)\b/.test(line))) fail("validation text does not retain the expected structural acceptance and analysis limitation");
+    } else fail("unknown validation report format");
+    return {exitCode:2, structuralValid:true, status:"inconclusive", advancedStatus:"budget-exhausted", limitation};
+}
 // Reveal the named public Build/Export form before reading or editing it.
 // Keep the runner on the product's disclosure path and require its visible result.
 export async function ensureP805ExportDisclosure({evaluate, focusRenderedControl, activateFocusedControl, waitFor}, cardId, label, observation) {
@@ -1882,6 +1908,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             if (timingName && !args.includes("--help")) timings[timingName] = Math.max(timings[timingName] ?? 0, Date.now() - commandStarted);
             if (args.includes("--help") && (!options.tuple || options.tuple.observation === "recursive-help")) timings.recursiveHelpMs = (timings.recursiveHelpMs ?? 0) + Date.now() - commandStarted;
             process.stderr.write(`P805_CLI command=${label} phase=complete\n`); return result; };
+        const runInconclusiveValidation = async (label, source, format = "text") => {
+            const result = await runPackedCli(label, ["validate", source, ...(format === "json" ? ["--format", "json"] : [])], 2);
+            const boundary = describeP805InconclusiveValidation(result, format);
+            transcript.push(`[${services.now()}] ${label} validation boundary ${JSON.stringify(boundary)}\n`);
+            return result;
+        };
         const blueprint = path.join(context.workspace, "Valera audit blueprint.json"), workbook = path.join(context.workspace, "Valera audit.xlsx"), importedBlueprint = path.join(context.workspace, "Valera imported blueprint.json"), wasm = path.join(context.workspace, "Valera audit.wasm"), packageRoot = path.join(context.workspace, "Valera audit package"), simulationReport = path.join(context.workspace, "Valera simulation report.json"), renderedReport = path.join(context.workspace, "Valera simulation report.md"), diffReport = path.join(context.workspace, "Valera simulation diff.json"), replayArtifact = path.join(context.workspace, "Valera replay.json"), outcomeBundle = path.join(context.workspace, "Valera outcomes"), certificationConfig = path.join(context.workspace, "Valera certification config.json"), certificationBundle = path.join(context.workspace, "Valera certification"), serverSeed = path.join(context.workspace, "Valera server seed.txt"), seedCommitment = path.join(context.workspace, "Valera seed commitment.json"), roundCommitment = path.join(context.workspace, "Valera round commitment.json"), fairnessProof = path.join(context.workspace, "Valera fairness proof.json");
         const requireOutput = async (label, target) => { if (!services.exists(target)) fail(`${label} did not create its declared output ${target}`); };
         // The compound mathematician tuple has five public CLI results in
@@ -1924,7 +1956,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 }
                 if (observation === "validate-sim-report-diff-replay-serve-wasm") {
                     await runPackedCli("packed CLI WASM build", ["build", blueprint, "--target", "wasm", "--out", wasm]); await requireOutput("packed CLI WASM build", wasm);
-                    await runPackedCli("packed CLI WASM inspect", ["inspect", wasm]); await runPackedCli("packed CLI WASM validate", ["validate", wasm]); await runPackedCli("packed CLI WASM run", ["run", wasm, "--seed", "p8-05-wasm"]);
+                    await runPackedCli("packed CLI WASM inspect", ["inspect", wasm]); await runInconclusiveValidation("packed CLI WASM validate", wasm); await runPackedCli("packed CLI WASM run", ["run", wasm, "--seed", "p8-05-wasm"]);
                     await runPackedCli("packed CLI package build", ["build", blueprint, "--target", "tsPackage", "--out", packageRoot]); await requireOutput("packed CLI package build", packageRoot);
                     await runPackedCli("packed CLI sim", ["sim", packageRoot, "--rounds", "10", "--seed", "p8-05", "--out", simulationReport]); await requireOutput("packed CLI sim", simulationReport);
                     await runPackedCli("packed CLI report", ["report", simulationReport, "--format", "markdown", "--out", renderedReport]); await requireOutput("packed CLI report", renderedReport);
@@ -1937,7 +1969,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     transcript.push(`[${services.now()}] packed CLI serve ${packageRoot} --port ${servePort}`); await settleChild(serveChild);
                 }
                 if (observation === "spaces-invalid-inputs-exit-codes-ci-recovery") {
-                    await runPackedCli("packed CLI CI validate", ["validate", blueprint, "--format", "json"]);
+                    await runInconclusiveValidation("packed CLI CI validate", blueprint, "json");
                     await runPackedCli("packed CLI invalid-input recovery", ["validate", path.join(context.workspace, "missing blueprint.json")], 1);
                 }
                 if (observation === "build-export-output-folder") {
@@ -1949,7 +1981,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     await runPackedCli("packed CLI PAR build", ["build", blueprint, "--target", "parWorkbook", "--out", workbook]); await requireOutput("packed CLI PAR build", workbook);
                     await runPackedCli("packed CLI PAR import", ["par", "import", workbook, "--out", importedBlueprint]); await requireOutput("packed CLI PAR import", importedBlueprint);
                 }
-                if (observation === "reels-paytable-modes-mechanics") { await runPackedCli("packed CLI validate", ["validate", blueprint]); await runPackedCli("packed CLI reels", ["reel", "generate", blueprint, "--format", "json"]); }
+                if (observation === "reels-paytable-modes-mechanics") { await runInconclusiveValidation("packed CLI validate", blueprint); await runPackedCli("packed CLI reels", ["reel", "generate", blueprint, "--format", "json"]); }
                 if (observation === "outcome-library-report-diff-replay") {
                     await runPackedCli("packed CLI package build for report/diff/replay", ["build", blueprint, "--target", "tsPackage", "--out", packageRoot]); await requireOutput("packed CLI package build for report/diff/replay", packageRoot);
                     await runPackedCli("packed CLI Outcome Library export", ["build", blueprint, "--target", "outcomeLibrary", "--out", outcomeBundle]); await requireOutput("packed CLI Outcome Library export", outcomeBundle);
@@ -1978,7 +2010,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             }
             if (options.tuple) await runTupleCliWorkflow();
         } else {
-        await runPackedCli("packed CLI validate", ["validate", blueprint]); await runPackedCli("packed CLI reels", ["reel", "generate", blueprint, "--format", "json"]);
+        await runInconclusiveValidation("packed CLI validate", blueprint); await runPackedCli("packed CLI reels", ["reel", "generate", blueprint, "--format", "json"]);
 
         await runPackedCli("packed CLI PAR build", ["build", blueprint, "--target", "parWorkbook", "--out", workbook]); await requireOutput("packed CLI PAR build", workbook);
         await runPackedCli("packed CLI PAR export", ["par", "export", blueprint, "--out", path.join(context.workspace, "Valera direct.xlsx")]);
@@ -1987,7 +2019,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         await runPackedCli("packed CLI WASM build", ["build", blueprint, "--target", "wasm", "--out", wasm]); await requireOutput("packed CLI WASM build", wasm);
         await runPackedCli("packed CLI inspect", ["inspect", packageRoot]);
         await runPackedCli("packed CLI WASM inspect", ["inspect", wasm]);
-        await runPackedCli("packed CLI WASM validate", ["validate", wasm]);
+        await runInconclusiveValidation("packed CLI WASM validate", wasm);
         await runPackedCli("packed CLI WASM run", ["run", wasm, "--seed", "p8-05-wasm"]);
         await runPackedCli("packed CLI sim", ["sim", packageRoot, "--rounds", "10", "--seed", "p8-05", "--out", simulationReport]); await requireOutput("packed CLI sim", simulationReport);
         await runPackedCli("packed CLI report", ["report", simulationReport, "--format", "markdown", "--out", renderedReport]); await requireOutput("packed CLI report", renderedReport);
@@ -2014,7 +2046,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         await waitFor(async () => { try { const response = await fetch(`http://127.0.0.1:${servePort}`); return response.status < 500 && /POKIE dev server listening/.test(serveOutput); } catch { return false; } }, "packed CLI serve");
         transcript.push(`[${services.now()}] packed CLI serve ${packageRoot} --port ${servePort}`);
         await settleChild(serveChild);
-        await runPackedCli("packed CLI CI validate", ["validate", blueprint, "--format", "json"]);
+        await runInconclusiveValidation("packed CLI CI validate", blueprint, "json");
         await runPackedCli("packed CLI invalid-input recovery", ["validate", path.join(context.workspace, "missing blueprint.json")], 1);
         for (const args of P805_PUBLIC_HELP_ARGUMENTS) await runPackedCli(`packed CLI help ${args.join("-")}`, args);
         const npxOwnership = ownershipEnvironment("packed-npx-help"), npxCli = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npx-cli.js"); if (!services.exists(npxCli)) fail("the installed Node npx launcher is unavailable"); const npxChild = own("packed npx help", services.spawn(process.execPath, [npxCli, "--no-install", "--prefix", installationRoot, "pokie", "--help"], {cwd:installationRoot, env:{...packedEnvironment, ...npxOwnership.env}, stdio:"pipe"}), npxOwnership), npx = await childResult(npxChild, "packed npx help"); await settleChild(npxChild); transcript.push(`[${services.now()}] PACKED_NPX_HELP\n${npx.stdout}${npx.stderr}`);

@@ -34,6 +34,14 @@ const POKIE_VERSION = "1.3.0";
 const PLAY_SESSION_TIMEOUT = 2 * PACKAGE_EXTRACTION_TEST_TIMEOUT;
 const WORKFLOW_TIMEOUT = 15 * PACKAGE_EXTRACTION_TEST_TIMEOUT;
 
+import {installNodeServiceTimers} from "./testUtils/nodeServiceTimers";
+
+let restoreNodeServiceTimers: () => void;
+beforeAll(() => {
+    restoreNodeServiceTimers = installNodeServiceTimers();
+});
+afterAll(() => restoreNodeServiceTimers());
+
 function writeStudioAssets(root: string): void {
     fs.writeFileSync(path.join(root, "index.html"), "<html>Studio</html>");
     fs.writeFileSync(path.join(root, "main.js"), "");

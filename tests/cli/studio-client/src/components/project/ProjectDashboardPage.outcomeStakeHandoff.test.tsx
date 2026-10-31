@@ -16,6 +16,14 @@ import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiCli
 import type {StudioArtifactBuildView, StudioArtifactPreviewView} from "../../../../../../cli/studio-client/src/api/types";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
+import {installNodeServiceTimers} from "../../testUtils/nodeServiceTimers";
+
+let restoreNodeServiceTimers: () => void;
+beforeAll(() => {
+    restoreNodeServiceTimers = installNodeServiceTimers();
+});
+afterAll(() => restoreNodeServiceTimers());
+
 it("submits the original Blueprint refreshed Stake operation once and borrows its compatible prerequisite", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-p906-handoff-"));
     const blueprint = path.join(directory, "source game.blueprint.json");
@@ -137,6 +145,7 @@ it("submits the original Blueprint refreshed Stake operation once and borrows it
         await user.click(screen.getByRole("button", {name: "Overview"}));
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         await waitFor(() => expect(document.getElementById("export-configure-artifact-stakeAdapter")).not.toBeNull());
+        await user.click(screen.getByRole("button", {name: "Refresh artifact targets"}));
         const configureStake = document.getElementById("export-configure-artifact-stakeAdapter")!;
         if (configureStake.getAttribute("aria-expanded") === "false") await user.click(configureStake);
         await waitFor(() => expect(stakePreviews.at(-1)).toMatchObject({

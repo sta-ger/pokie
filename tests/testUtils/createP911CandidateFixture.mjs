@@ -32,6 +32,7 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "tests/v2/OptimizationContractsAdapters.test.ts",
     "tests/cli/fixtures/packageOnlyCommandInputs.ts",
     "tests/cli/studio-client/src/jestPolyfills.ts",
+    "tests/cli/studio-client/src/testUtils/nodeServiceTimers.ts",
     "docs/v2-completion/V2C-37.md",
 
     "scripts/p9-11-rendered-driver.mjs", "tests/scripts/p9-11-rendered-driver.test.mjs",

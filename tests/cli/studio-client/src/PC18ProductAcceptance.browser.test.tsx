@@ -18,6 +18,14 @@ import type {FetchLike} from "../../../../cli/studio-client/src/api/apiClient.js
 import {buildFixtureGame} from "../../../weightedoutcome/generate/GenerateTestFixtures.js";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 
+import {installNodeServiceTimers} from "./testUtils/nodeServiceTimers";
+
+let restoreNodeServiceTimers: () => void;
+beforeAll(() => {
+    restoreNodeServiceTimers = installNodeServiceTimers();
+});
+afterAll(() => restoreNodeServiceTimers());
+
 function writeStudioAssets(root: string): void {
     fs.writeFileSync(path.join(root, "index.html"), "<html>studio</html>");
     fs.writeFileSync(path.join(root, "main.js"), "");

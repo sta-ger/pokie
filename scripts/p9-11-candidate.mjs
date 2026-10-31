@@ -36,6 +36,7 @@ const tooling = new Set([
     "tests/v2/OptimizationContractsAdapters.test.ts",
     "tests/cli/fixtures/packageOnlyCommandInputs.ts",
     "tests/cli/studio-client/src/jestPolyfills.ts",
+    "tests/cli/studio-client/src/testUtils/nodeServiceTimers.ts",
     "docs/v2-completion/V2C-37.md",
 
     "docs/audit-corrections/README.md", "docs/audit-corrections/p9-11-closeout.md",
