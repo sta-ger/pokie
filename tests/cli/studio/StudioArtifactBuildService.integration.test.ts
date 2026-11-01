@@ -20,6 +20,7 @@ import {ParSheetExporter} from "../../../src/parsheet/ParSheetExporter.js";
 import {localPokieDependencyRunner, REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
 import {prepareExactCodeFirstPackage} from "../../testUtils/prepareExactCodeFirstPackage.js";
 import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
+import {stageCompiledTestRuntime} from "../../testUtils/stageCompiledTestRuntime.js";
 
 // Compile only the worker's CLI module closure. Install the real CJS runtime it consumes,
 // rather than making every isolated snapshot copy the checkout's tests, docs and evidence.
@@ -40,11 +41,7 @@ function emitPreflightWorker(parent: string): {entry: string; runtimePackageRoot
     };
     emit("cli/studio/artifacts/artifactPreflightWorkerEntry.ts");
     fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({type: "commonjs"}));
-    const runtimePackageRoot = path.join(root, "node_modules/@fromstan/pokie");
-    fs.mkdirSync(path.join(runtimePackageRoot, "dist"), {recursive: true});
-    fs.copyFileSync(path.join(REPO_ROOT, "package.json"), path.join(runtimePackageRoot, "package.json"));
-    fs.cpSync(path.join(REPO_ROOT, "dist/cjs"), path.join(runtimePackageRoot, "dist/cjs"), {recursive: true});
-    fs.symlinkSync(path.join(REPO_ROOT, "node_modules"), path.join(runtimePackageRoot, "node_modules"), "junction");
+    const runtimePackageRoot = stageCompiledTestRuntime(root);
     return {entry: path.join(root, "cli/studio/artifacts/artifactPreflightWorkerEntry.js"), runtimePackageRoot};
 }
 
@@ -393,6 +390,14 @@ describe("StudioArtifactBuildService (integration)", () => {
         const startedPath = path.join(workDir, "http-descriptor-started");
         const imports = path.join(workDir, "runtime-imports");
         const source = writeDescriptorPackage(workDir);
+        // Opening still uses the real loader. Declare the installed fixture runtime so its
+        // snapshot copies that bounded installation instead of the entire source checkout.
+        const manifestPath = path.join(source, "package.json");
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        fs.writeFileSync(manifestPath, JSON.stringify({...manifest, dependencies: {"@fromstan/pokie": "2.0.0"}}));
+        const runtimeLink = path.join(source, "node_modules/@fromstan/pokie");
+        fs.mkdirSync(path.dirname(runtimeLink), {recursive: true});
+        fs.symlinkSync(runtimePackageRoot, runtimeLink, "junction");
         const sourceEntry = path.join(source, "index.js");
         const recordImports = (): void => {
             fs.appendFileSync(sourceEntry, `\nrequire("fs").appendFileSync(${JSON.stringify(imports)}, require("worker_threads").isMainThread ? "main\\n" : "worker\\n");`);
