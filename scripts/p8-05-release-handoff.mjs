@@ -21,6 +21,7 @@ const tooling = new Set([
     "tests/cli/studio/StudioArtifactBuildService.integration.test.ts",
     "tests/parsheet/ParSheetExporter.test.ts",
     "tests/testUtils/stageCompiledTestRuntime.ts",
+    "tests/project/ArtifactBuilderRegistry.test.ts",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx",
     "tests/scripts/p8-05-valera-devtools-events.test.mjs",
     "tests/scripts/p8-05-valera-ownership.test.mjs",

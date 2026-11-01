@@ -47,9 +47,18 @@ describe("ArtifactBuilderRegistry", () => {
                 import path from "node:path";
                 import {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} from ${JSON.stringify(pathToFileURL(path.resolve("tests/testUtils/createP911CandidateFixture.mjs")).href)};
                 import {readP911Candidate, readP911CandidateFromEnvironment} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
+                import {authenticateP805ProductTree} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p8-05-release-handoff.mjs")).href)};
                 const fixture = await candidateFixture(${JSON.stringify(root)});
                 const options = {repository: fixture.repository};
                 const original = await readP911Candidate(fixture.reference, options);
+                // Both selectors must admit this exact correction without admitting sibling tests.
+                const correctionPaths = ["scripts/p8-05-release-handoff.mjs", "tests/project/ArtifactBuilderRegistry.test.ts"];
+                for (const file of correctionPaths) await writeFile(path.join(fixture.repository, file), "// Bounded gate correction fixture.");
+                execFileSync("git", ["add", ...correctionPaths], {cwd: fixture.repository});
+                execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "bounded gate correction fixture"], {cwd: fixture.repository});
+                const correctionId = execFileSync("git", ["rev-parse", "HEAD"], {cwd: fixture.repository, encoding: "utf8"}).trim();
+                assert.deepEqual(authenticateP805ProductTree(fixture.handoff.candidateId, correctionId, fixture.repository).changedToolingAndEvidencePaths, correctionPaths);
+                assert.deepEqual((await readP911Candidate(fixture.reference, options)).equivalence.changedEvidenceAndTooling, correctionPaths);
                 for (const file of ["tests/project/ArtifactBuilderRegistry.test.ts", "tests/cli/studio/StudioArtifactBuildService.test.ts",
                     "tests/v2/fixtures/PackageExtractionFixture.ts", "docs/v2-completion/V2C-26.md"])
                     assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
@@ -75,6 +84,8 @@ describe("ArtifactBuilderRegistry", () => {
                     await writeFile(target, "changed protected input");
                     execFileSync("git", ["add", "."], {cwd: fixture.repository});
                     execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "protected input rejection fixture"], {cwd: fixture.repository});
+                    const protectedId = execFileSync("git", ["rev-parse", "HEAD"], {cwd: fixture.repository, encoding: "utf8"}).trim();
+                    assert.throws(() => authenticateP805ProductTree(reviewedId, protectedId, fixture.repository), /product or build inputs/);
                     await assert.rejects(readP911CandidateFromEnvironment(environment, options), /product\\/build inputs changed/);
                     execFileSync("git", ["reset", "--hard", reviewedId], {cwd: fixture.repository, stdio: "ignore"});
                 }
@@ -262,6 +273,8 @@ describe("ArtifactBuilderRegistry", () => {
         });
     });
 
+    // Four real package/runtime graphs are acquired and drained across this paused read.
+    // Match the compound extraction budget even under the controller's concurrent launcher.
     it("tracks the validation lease while unrelated runtime snapshots are allocated and released", async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-snapshot-ownership-"));
         const fixture = writePausedDescriptorPackage(root);
@@ -308,7 +321,7 @@ describe("ArtifactBuilderRegistry", () => {
             await unrelated?.release();
             fs.rmSync(root, {recursive: true, force: true});
         }
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)(
         "rejects final descriptor drift before exposing either model output for %s",
