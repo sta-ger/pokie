@@ -144,6 +144,7 @@ it("submits the original Blueprint refreshed Stake operation once and borrows it
         const compatibleManifest = fs.readFileSync(path.join(compatibleRoot, "manifest.json"), "utf8");
         const previewsBeforeRemount = stakePreviews.length;
         await user.click(screen.getByRole("button", {name: "Overview"}));
+        await screen.findByRole("table", {name: "Project facts"});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         await waitFor(() => expect(document.getElementById("export-configure-artifact-stakeAdapter")).not.toBeNull());
         // Remount starts its own preview. Observe that real response before
