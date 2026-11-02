@@ -381,7 +381,11 @@ async function run() {
         console.log(`PASS rendered ${state} validation prevents Create game pointer activation`);
     };
     await assertNoCreateActivation("loading");
-    await cdp.send("Fetch.continueRequest", {requestId: heldValidation.params.requestId});
+    // The interception was armed at the response stage. Chromium 156 no
+    // longer accepts the legacy request-stage continuation for that paused
+    // response (it reports "Invalid InterceptionId"), so resume the exact
+    // response through its matching Fetch command.
+    await cdp.send("Fetch.continueResponse", {requestId: heldValidation.params.requestId});
     await cdp.send("Fetch.disable");
     await waitForCreateValidation(evaluate);
 
@@ -511,7 +515,7 @@ async function run() {
     // deliberately distinct manifest name; wait for that rendered identity
     // before allowing the held A list response through.
     await waitFor(async () => (await text()).includes("Durable Browser Exact"), "project-B dashboard identity");
-    await cdp.send("Fetch.continueRequest", {requestId: staleResponse.params.requestId});
+    await cdp.send("Fetch.continueResponse", {requestId: staleResponse.params.requestId});
     await cdp.send("Fetch.disable");
     await pause(250);
     assert(!(await hasActiveJobCard("simulation")), "a stale project-A list response leaked into the project-B dashboard without a reload");
