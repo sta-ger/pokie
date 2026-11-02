@@ -142,16 +142,25 @@ it("submits the original Blueprint refreshed Stake operation once and borrows it
             expect(job).toMatchObject({status: "completed", result: {status: "ok", outputPath: compatibleRoot}});
         }, {timeout: 10_000});
         const compatibleManifest = fs.readFileSync(path.join(compatibleRoot, "manifest.json"), "utf8");
+        const previewsBeforeRemount = stakePreviews.length;
         await user.click(screen.getByRole("button", {name: "Overview"}));
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         await waitFor(() => expect(document.getElementById("export-configure-artifact-stakeAdapter")).not.toBeNull());
+        // Remount starts its own preview. Observe that real response before
+        // refreshing so it cannot be mistaken for the replacement plan below.
+        await waitFor(() => expect(stakePreviews.length).toBeGreaterThan(previewsBeforeRemount));
+        const remountedOperation = stakePreviews.at(-1)?.preparedOperationId;
+        expect(remountedOperation).toBeTruthy();
         await user.click(screen.getByRole("button", {name: "Refresh artifact targets"}));
         const configureStake = document.getElementById("export-configure-artifact-stakeAdapter")!;
         if (configureStake.getAttribute("aria-expanded") === "false") await user.click(configureStake);
-        await waitFor(() => expect(stakePreviews.at(-1)).toMatchObject({
-            stakePreflight: {route: "reuse", selectedPrerequisiteLocation: compatibleRoot},
-            plan: {source: {kind: "blueprint", canonicalLocation: blueprint}},
-        }));
+        await waitFor(() => {
+            expect(stakePreviews.at(-1)?.preparedOperationId).not.toBe(remountedOperation);
+            expect(stakePreviews.at(-1)).toMatchObject({
+                stakePreflight: {route: "reuse", selectedPrerequisiteLocation: compatibleRoot},
+                plan: {source: {kind: "blueprint", canonicalLocation: blueprint}},
+            });
+        });
         const refreshedOperation = stakePreviews.at(-1)?.preparedOperationId;
         expect(refreshedOperation).toBeTruthy();
         expect(refreshedOperation).not.toBe(initialOperation);
