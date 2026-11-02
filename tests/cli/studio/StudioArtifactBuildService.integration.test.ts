@@ -17,7 +17,8 @@ import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {ParSheetExporter} from "../../../src/parsheet/ParSheetExporter.js";
-import {localPokieDependencyRunner, REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
+import {localPokieDependencyRunner, REPO_ROOT, runBundledNpmCommand} from "../../testUtils/offlinePokieDependencyOverride.js";
+import {withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
 import {prepareExactCodeFirstPackage} from "../../testUtils/prepareExactCodeFirstPackage.js";
 import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
 import {stageCompiledTestRuntime} from "../../testUtils/stageCompiledTestRuntime.js";
@@ -203,7 +204,17 @@ describe("StudioArtifactBuildService (integration)", () => {
         const outcomeDir = path.join(workDir, "outcomes");
         const secondOutcomeDir = path.join(workDir, "second-outcomes");
         const stakeDir = path.join(workDir, "stake");
-        await prepareExactCodeFirstPackage(packageRoot, localPokieDependencyRunner());
+        // Bind the real install to the compiled runtime, not the checkout: each
+        // registry inspection snapshots the complete installed dependency graph.
+        // Copying checkout tests/docs/evidence at every step is unrelated work.
+        const runtimePackageRoot = stageCompiledTestRuntime(workDir);
+        const installRuntime = withLocalPokieInstall(runtimePackageRoot, (command, args, cwd) =>
+            runBundledNpmCommand(command, args[0] === "install" ? [...args, "--offline", "--no-audit", "--no-fund"] : args, cwd));
+        await prepareExactCodeFirstPackage(packageRoot, localPokieDependencyRunner(installRuntime));
+        expect(fs.realpathSync(path.join(packageRoot, "node_modules/@fromstan/pokie"))).toBe(runtimePackageRoot);
+        expect(fs.readFileSync(path.join(runtimePackageRoot, "dist/cjs/index.js")))
+            .toEqual(fs.readFileSync(path.join(REPO_ROOT, "dist/cjs/index.js")));
+        service = new StudioArtifactBuildService("1.3.0", undefined, undefined, undefined, undefined, runtimePackageRoot);
         const entry = fs.readFileSync(path.join(packageRoot, "dist", "index.js"));
 
         expect(await service.listTargets(packageRoot)).toEqual(expect.arrayContaining([
