@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import type {ArtifactTargetType, PackageBlueprintExtractionResult} from "@fromstan/pokie";
-import type {StudioArtifactPreflighting, StudioPreparedArtifactPreview} from "./StudioArtifactPreflighting.js";
+import {StudioArtifactPreflightCleanupError, type StudioArtifactPreflighting, type StudioPreparedArtifactPreview} from "./StudioArtifactPreflighting.js";
 import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
 import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
 
@@ -15,7 +15,7 @@ import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIden
 export class StudioArtifactPreflightWorker implements StudioArtifactPreflighting {
     private tail: Promise<unknown> = Promise.resolve();
     private readonly requests = new Map<AbortController, {projectRoot: string; target?: ArtifactTargetType | "packageModel"; promise: Promise<unknown>}>();
-    private readonly cleanupFailures: unknown[] = [];
+    private cleanupFailure?: StudioArtifactPreflightCleanupError;
     private accepting = true;
     private readonly workerEntry: string;
 
@@ -39,16 +39,24 @@ export class StudioArtifactPreflightWorker implements StudioArtifactPreflighting
         return this.run(projectRoot, target, outDir, signal);
     }
 
-    public cancelForProject(projectRoot: string): void {
+    public async cancelForProject(projectRoot: string): Promise<void> {
         const identity = canonicalStudioProjectIdentity(projectRoot);
-        for (const [controller, request] of this.requests) if (request.projectRoot === identity) controller.abort();
+        const pending: Promise<unknown>[] = [];
+        for (const [controller, request] of this.requests) if (request.projectRoot === identity) {
+            controller.abort();
+            pending.push(request.promise);
+        }
+        await Promise.allSettled(pending);
+        // The request may have disconnected and already left requests. The slot still
+        // owns any unconfirmed cleanup, just as it does during shutdown and reuse.
+        if (this.cleanupFailure !== undefined) throw this.cleanupFailure;
     }
 
     public async cancelAll(): Promise<void> {
         this.accepting = false;
         for (const controller of this.requests.keys()) controller.abort();
         await Promise.allSettled([...this.requests.values()].map(request => request.promise));
-        if (this.cleanupFailures.length > 0) throw this.cleanupFailures[0];
+        if (this.cleanupFailure !== undefined) throw this.cleanupFailure;
     }
 
     private run<T>(projectRoot: string, target?: ArtifactTargetType | "packageModel", outDir?: string, signal?: AbortSignal): Promise<T> {
@@ -63,7 +71,7 @@ export class StudioArtifactPreflightWorker implements StudioArtifactPreflighting
         if (signal?.aborted) abort();
         const operation = this.tail.catch(() => undefined).then(async (): Promise<T> => {
             controller.signal.throwIfAborted();
-            if (this.cleanupFailures.length > 0) throw this.cleanupFailures[0];
+            if (this.cleanupFailure !== undefined) throw this.cleanupFailure;
             const temporaryRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pokie-preflight-"));
             let worker: Worker | undefined;
             let stop: (() => void) | undefined;
@@ -110,8 +118,8 @@ export class StudioArtifactPreflightWorker implements StudioArtifactPreflighting
                 await fs.promises.rm(temporaryRoot, {recursive: true, force: true});
             }
         } catch (error) {
-            this.cleanupFailures.push(error);
-            throw error;
+            this.cleanupFailure ??= new StudioArtifactPreflightCleanupError(error);
+            throw this.cleanupFailure;
         }
     }
 

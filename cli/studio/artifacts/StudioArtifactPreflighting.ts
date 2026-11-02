@@ -8,11 +8,19 @@ export type StudioPreparedArtifactPreview = {
     readonly extraction?: {readonly project: PokieProject; readonly destination: string; readonly plan: ArtifactConversionPlan};
 };
 
+/** Cancellation cannot acknowledge resources whose cleanup did not finish. */
+export class StudioArtifactPreflightCleanupError extends Error {
+    public constructor(public readonly cause: unknown) {
+        super(`Artifact preflight cleanup failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+        this.name = "StudioArtifactPreflightCleanupError";
+    }
+}
+
 /** Owns read-only runtime inspection, separately from durable publication jobs. */
 export interface StudioArtifactPreflighting {
     extractPackage(projectRoot: string, signal?: AbortSignal): Promise<PackageBlueprintExtractionResult>;
     listTargets(projectRoot: string, signal?: AbortSignal): Promise<readonly StudioArtifactTargetView[]>;
     preparePreview(projectRoot: string, target: ArtifactTargetType, outDir?: string, signal?: AbortSignal): Promise<StudioPreparedArtifactPreview>;
-    cancelForProject(projectRoot: string): void;
+    cancelForProject(projectRoot: string): Promise<void>;
     cancelAll(): Promise<void>;
 }

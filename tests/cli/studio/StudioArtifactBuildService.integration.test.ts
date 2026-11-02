@@ -1,5 +1,6 @@
 import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
+import {Worker} from "worker_threads";
 import ts from "typescript";
 import {GamePackageGenerator, loadGameBlueprint} from "@fromstan/pokie";
 import {StudioArtifactPreflightWorker} from "../../../cli/studio/artifacts/StudioArtifactPreflightWorker.js";
@@ -406,14 +407,73 @@ describe("StudioArtifactBuildService (integration)", () => {
             const abandoned = service.preview(source, "blueprint", path.join(workDir, "abandoned.json"));
             const abandonedRejected = expect(abandoned).rejects.toThrow(/cancel/i);
             await descriptorStarted(startedPath, abandoned);
-            service.cancelActiveForProject(source);
+            await service.cancelActiveForProject(source);
             await abandonedRejected;
+            await service.cancelActiveForProject(source); // Empty cancellation is a no-op, not a poisoned owner.
+            for (let attempt = 0; attempt < 2; attempt++) {
+                expect(await service.preview(corrected, "blueprint", path.join(workDir, `reused-${attempt}.json`))).toMatchObject({status: "ok"});
+            }
         } finally {
             controller.abort();
             await service.cancelAll();
         }
         expect(fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-preflight-"))).toEqual([]);
     }, PREFLIGHT_WORKFLOW_TEST_TIMEOUT);
+
+    it.each(["targets", "preview", "packageModel"].flatMap(surface =>
+        ["termination", "removal"].map(failure => ({surface, failure})),
+    ))("retains real preflight $surface $failure cleanup failure through direct-service drains", async ({surface, failure}) => {
+        const {entry, runtimePackageRoot} = emitPreflightWorker(workDir);
+        const preflight = new StudioArtifactPreflightWorker("2.0.0", runtimePackageRoot, entry);
+        service = new StudioArtifactBuildService("2.0.0", undefined, undefined, undefined, undefined, runtimePackageRoot, undefined, preflight);
+        const startedPath = path.join(workDir, "cleanup-descriptor-started");
+        const source = writeDescriptorPackage(workDir, {descriptorBody: `require("fs").writeFileSync(${JSON.stringify(startedPath)}, "started"); return new Promise(() => {});`});
+        const sourceBytes = fs.readFileSync(path.join(source, "index.js"));
+        const terminate = Worker.prototype.terminate;
+        const ownedWorkers = new Set<Worker>();
+        const termination = jest.spyOn(Worker.prototype, "terminate").mockImplementation(async function (this: Worker) {
+            ownedWorkers.add(this);
+            const code = await Reflect.apply(terminate, this, []);
+            if (failure === "termination") throw new Error("injected termination failure");
+            return code;
+        });
+        const rm = fs.promises.rm.bind(fs.promises);
+        let temporaryRoot: string | undefined;
+        const removal = jest.spyOn(fs.promises, "rm").mockImplementation(async (file, options) => {
+            if (path.basename(String(file)).startsWith("pokie-preflight-")) {
+                temporaryRoot = String(file);
+                if (failure === "removal") throw new Error("injected removal failure");
+            }
+            await rm(file, options);
+        });
+        let operation: Promise<unknown>;
+        if (surface === "targets") operation = service.listTargets(source);
+        else if (surface === "preview") operation = service.preview(source, "blueprint", path.join(workDir, "never-published.json"));
+        else operation = service.extractPackageModel(source);
+        const rejected = expect(operation).rejects.toThrow(`injected ${failure} failure`);
+        try {
+            // Real production worker + native package loader must execute the valid descriptor.
+            // A malformed preview body or an unavailable conversion never reaches this boundary.
+            await descriptorStarted(startedPath, operation);
+            await expect(service.cancelActiveForProject(source)).rejects.toThrow(`injected ${failure} failure`);
+            await rejected;
+            expect([...ownedWorkers].map(worker => worker.threadId)).toEqual([-1]);
+            expect((preflight as unknown as {requests: Map<unknown, unknown>}).requests.size).toBe(0);
+            await expect(service.cancelActiveForProject(source)).rejects.toThrow(`injected ${failure} failure`);
+            await expect(service.listTargets(source)).rejects.toThrow(`injected ${failure} failure`);
+            await expect(service.cancelAll()).rejects.toThrow(`injected ${failure} failure`);
+            expect(fs.existsSync(path.join(workDir, "never-published.json"))).toBe(false);
+            expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(sourceBytes);
+            if (failure === "removal") expect(fs.existsSync(temporaryRoot!)).toBe(true);
+            else expect(fs.existsSync(temporaryRoot!)).toBe(false);
+        } finally {
+            termination.mockRestore();
+            removal.mockRestore();
+            await service.cancelAll().catch(() => undefined);
+            for (const worker of ownedWorkers) if (worker.threadId !== -1) await Reflect.apply(terminate, worker, []);
+            if (temporaryRoot) await rm(temporaryRoot, {recursive: true, force: true});
+        }
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("keeps HTTP recognition guards free of runtime imports and aborts the owning preview on disconnect", async () => {
         const {entry, runtimePackageRoot} = emitPreflightWorker(workDir);

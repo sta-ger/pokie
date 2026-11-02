@@ -2,6 +2,8 @@ import {act, cleanup, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import fs from "fs";
 import {Worker} from "node:worker_threads";
+import {StudioArtifactPreflightWorker} from "../../../../cli/studio/artifacts/StudioArtifactPreflightWorker.js";
+import {StudioProjectRegistrationService} from "../../../../cli/studio/StudioProjectRegistrationService.js";
 import {StudioArtifactBuildService} from "../../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import http from "http";
 import os from "os";
@@ -49,7 +51,7 @@ function createServerFetch(baseUrl: string): FetchLike {
 
 describe("PC-18 Studio product acceptance", () => {
     it.each(["preview", "targets", "gameModel"].flatMap(surface =>
-        ["shutdown", "project close"].map(action => ({surface, action})),
+        ["shutdown", "project close", "Home open"].map(action => ({surface, action})),
     ))("drains a disconnected $surface executor before $action completes", async ({surface, action}) => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc18-preflight-drain-"));
         const project = path.join(root, "package");
@@ -57,6 +59,9 @@ describe("PC-18 Studio product acceptance", () => {
         fs.writeFileSync(path.join(project, "package.json"), JSON.stringify({name: "preflight-slot", version: "1.0.0", pokie: {entry: "index.js"}}));
         fs.writeFileSync(path.join(project, "index.js"), "module.exports = {};\n");
         writeStudioAssets(root);
+        const destination = path.join(root, "next.blueprint.json");
+        fs.writeFileSync(destination, JSON.stringify({manifest: {id: "next", name: "Next", version: "1"},
+            reels: 2, rows: 1, symbols: ["A"], paytable: {A: {2: 1}}, reelStrips: [["A"], ["A"]]}));
         const loadGame = () => Promise.resolve({getManifest: () => ({id: "preflight-slot", name: "Preflight Slot", version: "1.0.0"})}) as never;
         const home = new StudioHomeService("1.0.0", undefined, loadGame, undefined, passthroughRuntimePackageResolver);
         const repository = new FileStudioJobRepository(path.join(root, "jobs"));
@@ -108,7 +113,7 @@ describe("PC-18 Studio product acceptance", () => {
         const server = new StudioServer({
             pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot: root, homeService: home,
             blueprintService: new StudioBlueprintService("1.0.0", root, home), loadGame,
-            jobService: jobs, artifactBuildService: artifacts,
+            jobService: jobs, artifactBuildService: artifacts, projectRegistrationService: new StudioProjectRegistrationService(),
             resolveRuntimePackageRoot: passthroughRuntimePackageResolver, initialContext: {mode: "project", projectRoot: project},
         });
         let request: http.ClientRequest | undefined;
@@ -127,11 +132,15 @@ describe("PC-18 Studio product acceptance", () => {
             await cancellation;
             let completed = false;
             const transition = action === "shutdown" ? (stopping = server.stop())
-                : createServerFetch(base)("/api/projects/close", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({confirmActiveJobs: true})})
+                : createServerFetch(base)(action === "Home open" ? "/api/home/projects/open" : "/api/projects/close", {
+                    method: "POST", headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({confirmActiveJobs: true, ...(action === "Home open" ? {projectRoot: destination} : {})}),
+                })
                     .then(async response => {
                         expect(drained).toBe(true);
                         expect(response.status).toBe(200);
-                        expect(await response.json()).toMatchObject({context: {mode: "home"}});
+                        expect(await response.json()).toMatchObject({context: action === "Home open"
+                            ? {mode: "project", projectRoot: destination} : {mode: "home"}});
                     });
             transition.then(() => {
                 completed = true;
@@ -159,6 +168,130 @@ describe("PC-18 Studio product acceptance", () => {
             targets.mockRestore();
             model.mockRestore();
             shutdownMarker.mockRestore();
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
+    it.each(["preview", "targets", "gameModel"].flatMap(surface =>
+        ["project close", "Home open", "shutdown"].flatMap(action =>
+            ["termination", "removal"].flatMap(failure =>
+                ["draining", "removed"].map(phase => ({surface, action, failure, phase})))),
+    ))("retains $failure cleanup failure for disconnected $surface ($phase) through $action", async ({surface, action, failure, phase}) => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc18-cleanup-failure-"));
+        const project = path.join(root, "package");
+        fs.mkdirSync(project);
+        fs.writeFileSync(path.join(project, "package.json"), JSON.stringify({name: "cleanup-slot", version: "1", pokie: {entry: "index.js"}}));
+        fs.writeFileSync(path.join(project, "index.js"), "module.exports = {};\n");
+        const destination = path.join(root, "next.blueprint.json");
+        fs.writeFileSync(destination, JSON.stringify({manifest: {id: "next", name: "Next", version: "1"},
+            reels: 2, rows: 1, symbols: ["A"], paytable: {A: {2: 1}}, reelStrips: [["A"], ["A"]]}));
+        writeStudioAssets(root);
+        const entered = path.join(root, "worker-entered");
+        const entry = path.join(root, "worker.cjs");
+        fs.writeFileSync(entry, `const {parentPort} = require("node:worker_threads");
+            parentPort.on("message", () => {});
+            require("node:fs").writeFileSync(${JSON.stringify(entered)}, "executing");`);
+        const preflight = new StudioArtifactPreflightWorker("2.0.0", root, entry);
+        const artifacts = new StudioArtifactBuildService("2.0.0", undefined, undefined, undefined, undefined, undefined, undefined, preflight);
+        const loadGame = () => Promise.resolve({getManifest: () => ({id: "cleanup-slot", name: "Cleanup slot", version: "1"})}) as never;
+        const home = new StudioHomeService("2.0.0", undefined, loadGame, undefined, passthroughRuntimePackageResolver);
+        const repository = new FileStudioJobRepository(path.join(root, "jobs"));
+        const jobs = new StudioJobService(repository);
+        const marker = jest.spyOn(jobs, "completeGracefulShutdown");
+        const server = new StudioServer({pokieVersion: "2.0.0", host: "127.0.0.1", port: 0, studioRoot: root,
+            initialContext: {mode: "project", projectRoot: project}, homeService: home,
+            blueprintService: new StudioBlueprintService("2.0.0", root, home), loadGame,
+            projectRegistrationService: new StudioProjectRegistrationService(), jobService: jobs,
+            artifactBuildService: artifacts, resolveRuntimePackageRoot: passthroughRuntimePackageResolver});
+        const active = (server as unknown as {artifactPreflights: Map<AbortController, Promise<void>>}).artifactPreflights;
+        const terminate = Worker.prototype.terminate;
+        const ownedWorkers = new Set<Worker>();
+        const termination = jest.spyOn(Worker.prototype, "terminate").mockImplementation(async function (this: Worker) {
+            ownedWorkers.add(this);
+            const code = await Reflect.apply(terminate, this, []);
+            if (failure === "termination") throw new Error("injected termination failure");
+            return code;
+        });
+        let cleanupStarted!: () => void;
+        const cleaning = new Promise<void>(resolve => {
+            cleanupStarted = resolve;
+        });
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        const rm = fs.promises.rm.bind(fs.promises);
+        let temporaryRoot: string | undefined;
+        const removal = jest.spyOn(fs.promises, "rm").mockImplementation(async (file, options) => {
+            if (path.basename(String(file)).startsWith("pokie-preflight-")) {
+                temporaryRoot = String(file);
+                cleanupStarted();
+                await gate;
+                if (failure === "removal") throw new Error("injected removal failure");
+            }
+            await rm(file, options);
+        });
+        let request: http.ClientRequest | undefined;
+        try {
+            const address = await server.start();
+            const base = `http://${address.host}:${address.port}`;
+            const fetchImpl = createServerFetch(base);
+            const urls: Record<string, string> = {preview: "/api/project/artifacts/preview", targets: "/api/project/artifacts/targets", gameModel: "/api/project/gameModel"};
+            request = http.request(`${base}${urls[surface]}`, {method: surface === "preview" ? "POST" : "GET",
+                headers: {"Content-Type": "application/json"}}, response => response.resume());
+            request.on("error", () => undefined);
+            request.end(surface === "preview" ? JSON.stringify({target: "blueprint", outDir: path.join(root, "output.json")}) : undefined);
+            await waitFor(() => expect(fs.existsSync(entered)).toBe(true));
+            expect(active.size).toBe(1);
+            request.destroy();
+            await cleaning;
+            expect([...ownedWorkers].map(worker => worker.threadId)).toEqual([-1]);
+            if (phase === "removed") {
+                release();
+                await waitFor(() => expect(active.size).toBe(0));
+            }
+            const transition = action === "shutdown" ? server.stop()
+                : fetchImpl(action === "Home open" ? "/api/home/projects/open" : "/api/projects/close", {
+                    method: "POST", headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({confirmActiveJobs: true, projectRoot: destination}),
+                });
+            let completed = false;
+            transition.then(() => {
+                completed = true;
+            }, () => {
+                completed = true;
+            });
+            if (phase === "draining") {
+                await new Promise<void>(resolve => {
+                    setImmediate(resolve);
+                });
+                expect(completed).toBe(false);
+                release();
+            }
+            if (action === "shutdown") await expect(transition).rejects.toThrow(`injected ${failure} failure`);
+            else {
+                const response = await transition as Awaited<ReturnType<FetchLike>>;
+                expect(response.status).toBeGreaterThanOrEqual(400);
+                expect(await response.json()).toMatchObject({error: expect.stringContaining(`injected ${failure} failure`)});
+                expect(await (await fetchImpl("/api/context")).json()).toEqual({mode: "project", projectRoot: project});
+                // Repeating the transition after removal cannot turn failed cleanup into success.
+                const retry = await fetchImpl("/api/projects/close", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+                expect(retry.status).toBeGreaterThanOrEqual(400);
+                await expect(server.stop()).rejects.toThrow(`injected ${failure} failure`);
+            }
+            expect(active.size).toBe(0);
+            expect(repository.getProcessState()?.status).not.toBe("gracefully-stopped");
+            expect(marker).not.toHaveBeenCalledWith();
+            expect(marker).toHaveBeenCalledWith(false);
+        } finally {
+            release();
+            request?.destroy();
+            await server.stop().catch(() => undefined);
+            termination.mockRestore();
+            removal.mockRestore();
+            marker.mockRestore();
+            for (const worker of ownedWorkers) if (worker.threadId !== -1) await Reflect.apply(terminate, worker, []);
+            if (temporaryRoot) await rm(temporaryRoot, {recursive: true, force: true});
             fs.rmSync(root, {recursive: true, force: true});
         }
     });
