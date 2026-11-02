@@ -2,6 +2,7 @@ import {act, cleanup, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import fs from "fs";
 import {Worker} from "node:worker_threads";
+import {transferableAbortController} from "node:util";
 import {StudioArtifactPreflightWorker} from "../../../../cli/studio/artifacts/StudioArtifactPreflightWorker.js";
 import {StudioProjectRegistrationService} from "../../../../cli/studio/StudioProjectRegistrationService.js";
 import {StudioArtifactBuildService} from "../../../../cli/studio/artifacts/StudioArtifactBuildService.js";
@@ -191,6 +192,9 @@ describe("PC-18 Studio product acceptance", () => {
         fs.writeFileSync(entry, `const {parentPort} = require("node:worker_threads");
             parentPort.on("message", () => {});
             require("node:fs").writeFileSync(${JSON.stringify(entered)}, "executing");`);
+        // This fixture exercises the server's Node worker path inside jsdom. Use the
+        // real Node signal API (including throwIfAborted), rather than jsdom's older DOM API.
+        const controllers = jest.spyOn(globalThis, "AbortController").mockImplementation(() => transferableAbortController());
         const preflight = new StudioArtifactPreflightWorker("2.0.0", root, entry);
         const artifacts = new StudioArtifactBuildService("2.0.0", undefined, undefined, undefined, undefined, undefined, undefined, preflight);
         const loadGame = () => Promise.resolve({getManifest: () => ({id: "cleanup-slot", name: "Cleanup slot", version: "1"})}) as never;
@@ -290,6 +294,7 @@ describe("PC-18 Studio product acceptance", () => {
             termination.mockRestore();
             removal.mockRestore();
             marker.mockRestore();
+            controllers.mockRestore();
             for (const worker of ownedWorkers) if (worker.threadId !== -1) await Reflect.apply(terminate, worker, []);
             if (temporaryRoot) await rm(temporaryRoot, {recursive: true, force: true});
             fs.rmSync(root, {recursive: true, force: true});
