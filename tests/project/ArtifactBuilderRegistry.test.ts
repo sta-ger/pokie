@@ -6,6 +6,7 @@ import os from "os";
 import path from "path";
 import {execFileSync} from "node:child_process";
 import {pathToFileURL} from "node:url";
+import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
 import type {ArtifactBuilder} from "../../src/project/ArtifactBuilder.js";
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
 import {PackageBlueprintExtraction} from "../../src/generated/PackageBlueprintExtraction.js";
@@ -274,7 +275,7 @@ describe("ArtifactBuilderRegistry", () => {
     });
 
     // Four real package/runtime graphs are acquired and drained across this paused read.
-    // Match the compound extraction budget even under the controller's concurrent launcher.
+    // Bind their declared dependency to an installation, excluding checkout docs/tests/evidence.
     it("tracks the validation lease while unrelated runtime snapshots are allocated and released", async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-snapshot-ownership-"));
         const fixture = writePausedDescriptorPackage(root);
@@ -287,6 +288,14 @@ describe("ArtifactBuilderRegistry", () => {
         let unrelated: LoadedPokieGame | undefined;
         let running: Promise<void> | undefined;
         try {
+            const runtimePackageRoot = stageCompiledTestRuntime(path.join(root, "runtime-host"));
+            for (const source of [fixture.source, unrelatedSource]) {
+                const manifestPath = path.join(source, "package.json");
+                const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+                fs.writeFileSync(manifestPath, JSON.stringify({...manifest, dependencies: {"@fromstan/pokie": "*"}}));
+                fs.mkdirSync(path.join(source, "node_modules/@fromstan"), {recursive: true});
+                fs.symlinkSync(runtimePackageRoot, path.join(source, "node_modules/@fromstan/pokie"), "junction");
+            }
             unrelated = await loadPokieGameRuntime(unrelatedSource);
             const unrelatedSnapshots = runtimeSnapshotNames(unrelatedSource);
             expect(unrelatedSnapshots).toHaveLength(1);
@@ -298,6 +307,8 @@ describe("ArtifactBuilderRegistry", () => {
             expect(fixture.readCount).toBe(2);
             const validationSnapshots = runtimeSnapshotNames(fixture.source);
             expect(validationSnapshots).toHaveLength(1);
+            expect(fs.readFileSync(path.join(os.tmpdir(), validationSnapshots[0], "node_modules/@fromstan/pokie/dist/cjs/index.js")))
+                .toEqual(fs.readFileSync(path.join(runtimePackageRoot, "dist/cjs/index.js")));
             expect(fs.readdirSync(os.tmpdir())).toEqual(expect.arrayContaining([...validationSnapshots, ...unrelatedSnapshots]));
             await unrelated.release();
             expect(runtimeSnapshotNames(unrelatedSource)).toEqual([]);
@@ -314,7 +325,7 @@ describe("ArtifactBuilderRegistry", () => {
             expect(fs.existsSync(path.join(root, "output"))).toBe(false);
             expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
             expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
-            expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt", "unrelated-package"]);
+            expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt", "runtime-host", "unrelated-package"]);
         } finally {
             fixture.restore();
             await running?.catch(() => undefined);
