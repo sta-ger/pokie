@@ -22,6 +22,11 @@ import {prepareExactCodeFirstPackage} from "../../testUtils/prepareExactCodeFirs
 import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
 import {stageCompiledTestRuntime} from "../../testUtils/stageCompiledTestRuntime.js";
 
+// These journeys perform several sequential native snapshot/import/release cycles.
+// Budget the complete journey separately from one extraction, including under a
+// bounded multi-worker controller launch. Keep each observed operation bounded too.
+const PREFLIGHT_WORKFLOW_TEST_TIMEOUT = 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT;
+
 // Compile only the worker's CLI module closure. Install the real CJS runtime it consumes,
 // rather than making every isolated snapshot copy the checkout's tests, docs and evidence.
 // Native exports and the complete declared dependency graph still use the production loader.
@@ -45,8 +50,8 @@ function emitPreflightWorker(parent: string): {entry: string; runtimePackageRoot
     return {entry: path.join(root, "cli/studio/artifacts/artifactPreflightWorkerEntry.js"), runtimePackageRoot};
 }
 
-async function until<T>(read: () => T | undefined): Promise<T> {
-    const deadline = Date.now() + 30_000;
+async function until<T>(read: () => T | undefined, timeout = 30_000): Promise<T> {
+    const deadline = Date.now() + timeout;
     for (;;) {
         const value = read();
         if (value !== undefined) return value;
@@ -55,6 +60,22 @@ async function until<T>(read: () => T | undefined): Promise<T> {
             setTimeout(resolve, 25);
         });
     }
+}
+
+async function descriptorStarted(startedPath: string, operation: Promise<unknown>): Promise<void> {
+    let terminal: {error?: unknown} | undefined;
+    operation.then(() => {
+        terminal = {};
+    }, (error: unknown) => {
+        terminal = {error};
+    });
+    await until(() => {
+        if (terminal !== undefined) {
+            if ("error" in terminal) throw terminal.error;
+            throw new Error("Artifact preflight settled before the descriptor started");
+        }
+        return fs.existsSync(startedPath) ? true : undefined;
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 }
 
 // This path runs `pokie init`, npm install, and the generated package's own TypeScript build. It belongs to
@@ -344,7 +365,7 @@ describe("StudioArtifactBuildService (integration)", () => {
         } finally {
             await service.cancelAll();
         }
-    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    }, PREFLIGHT_WORKFLOW_TEST_TIMEOUT);
 
     it("cancels executing and queued preflights, drains snapshots and lets the current destination finish", async () => {
         const {entry, runtimePackageRoot} = emitPreflightWorker(workDir);
@@ -356,7 +377,7 @@ describe("StudioArtifactBuildService (integration)", () => {
         const executing = service.preview(source, "blueprint", path.join(workDir, "obsolete.json"), controller.signal);
         const rejected = expect(executing).rejects.toThrow(/cancel/i);
         try {
-            await until(() => fs.existsSync(startedPath) ? true : undefined);
+            await descriptorStarted(startedPath, executing);
             const queuedController = new AbortController();
             const queued = service.preview(source, "blueprint", path.join(workDir, "queued.json"), queuedController.signal);
             const queuedRejected = expect(queued).rejects.toThrow();
@@ -373,7 +394,7 @@ describe("StudioArtifactBuildService (integration)", () => {
             fs.rmSync(startedPath);
             const abandoned = service.preview(source, "blueprint", path.join(workDir, "abandoned.json"));
             const abandonedRejected = expect(abandoned).rejects.toThrow(/cancel/i);
-            await until(() => fs.existsSync(startedPath) ? true : undefined);
+            await descriptorStarted(startedPath, abandoned);
             service.cancelActiveForProject(source);
             await abandonedRejected;
         } finally {
@@ -381,7 +402,7 @@ describe("StudioArtifactBuildService (integration)", () => {
             await service.cancelAll();
         }
         expect(fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-preflight-"))).toEqual([]);
-    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    }, PREFLIGHT_WORKFLOW_TEST_TIMEOUT);
 
     it("keeps HTTP recognition guards free of runtime imports and aborts the owning preview on disconnect", async () => {
         const {entry, runtimePackageRoot} = emitPreflightWorker(workDir);
