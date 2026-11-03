@@ -179,9 +179,14 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
                 await user.clear(rounds);
                 await user.type(rounds, "10");
                 await user.click(screen.getByRole("button", {name: "Run Simulation"}));
-                // Real Worker execution includes HTTP admission, publication and the UI poll.
-                // Keep the completion assertion under concurrent controller workers.
-                await user.click(await screen.findByRole("button", {name: "View results"}, {timeout: 30_000}));
+                // This port dispatches in-process: avoid repeatedly walking the entire
+                // jsdom accessibility tree while the Worker and HTTP publication settle.
+                // Assert the actual retained terminal result before opening it in the UI.
+                await waitFor(() => {
+                    const terminal = responses.find(({url}) => (/\/wasm\/jobs\/[^/]+\/finish$/).test(url));
+                    expect(terminal).toMatchObject({status: 200, body: {status: "completed"}});
+                }, {timeout: 30_000});
+                await user.click(await screen.findByRole("button", {name: "View results"}));
                 expect(await screen.findByRole("button", {name: "Open full report"})).toBeVisible();
                 expect(screen.queryByText(/Historical simulation result/)).not.toBeInTheDocument();
                 expect(screen.queryByText(/Run a new simulation/)).not.toBeInTheDocument();
@@ -216,16 +221,22 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
         } finally {
             unmount?.();
             owner.dispose();
-            await server.stop();
-            expect(liveWorkers).toBe(0);
-            await fixture.release();
-            fs.rmSync(directory, {recursive: true, force: true});
-            if (crypto === undefined) Reflect.deleteProperty(globalThis, "crypto");
-            else Reflect.defineProperty(globalThis, "crypto", crypto);
-            if (encoder === undefined) Reflect.deleteProperty(globalThis, "TextEncoder");
-            else Reflect.defineProperty(globalThis, "TextEncoder", encoder);
-            if (decoder === undefined) Reflect.deleteProperty(globalThis, "TextDecoder");
-            else Reflect.defineProperty(globalThis, "TextDecoder", decoder);
+            try {
+                await server.stop();
+                expect(liveWorkers).toBe(0);
+            } finally {
+                try {
+                    await fixture.release();
+                } finally {
+                    fs.rmSync(directory, {recursive: true, force: true});
+                    if (crypto === undefined) Reflect.deleteProperty(globalThis, "crypto");
+                    else Reflect.defineProperty(globalThis, "crypto", crypto);
+                    if (encoder === undefined) Reflect.deleteProperty(globalThis, "TextEncoder");
+                    else Reflect.defineProperty(globalThis, "TextEncoder", encoder);
+                    if (decoder === undefined) Reflect.deleteProperty(globalThis, "TextDecoder");
+                    else Reflect.defineProperty(globalThis, "TextDecoder", decoder);
+                }
+            }
         }
     });
 
