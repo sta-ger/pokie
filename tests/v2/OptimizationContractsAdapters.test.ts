@@ -3,6 +3,7 @@ import {acquireOptimizationAdapter} from "../../src/optimization/internal/Projec
 import {describeUnsupportedProjectOperation} from "../../src/project/describeUnsupportedProjectOperation.js";
 import {StakeAdapterArtifactBuilder} from "../../src/project/StakeAdapterArtifactBuilder.js";
 import {loadPokieGameRuntime} from "../../src/gamepackage/loadPokieGame.js";
+import {resolvePokieGameDependencyRoots} from "../../src/gamepackage/resolvePokieGameEntryModule.js";
 import fs from "fs";
 import {execFile} from "child_process";
 import {promisify} from "util";
@@ -23,6 +24,8 @@ import {StakeEngineExporter} from "../../src/stakeengine/StakeEngineExporter.js"
 import {StakeEngineOutcomeSourceReader} from "../../src/stakeengine/standalone/StakeEngineOutcomeSourceReader.js";
 import {buildWeightedOutcomeLibrary} from "../../src/weightedoutcome/buildWeightedOutcomeLibrary.js";
 import {sourceInventory} from "../../src/optimization/internal/optimizationData.js";
+import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
+import {PACKAGE_EXTRACTION_TEST_TIMEOUT} from "./fixtures/PackageExtractionFixture.js";
 
 import {optimizationBlueprint as model, optimizationRequest, stochasticOptimizationRequest, declaredOptimizationGameCode as declaredGameCode} from "./fixtures/OptimizationFixture.js";
 let directory: string;
@@ -616,9 +619,13 @@ it("rejects coordinated package code and contract drift against original authori
 });
 
 it("retains project-local dependency identity through evaluation, independent saves and runtime loading", async () => {
+    // This scenario repeatedly loads real detached graphs. Resolve the host from
+    // immutable compiled bytes, rather than snapshotting the mutable checkout.
+    const runtimeRoot = stageCompiledTestRuntime(directory);
     const loads = path.join(directory, "dependency-loads");
     const name = "optimization-local-dependency";
-    const {root} = declaredPackage("local-dependency", `const d = require('${name}'); if (d.value !== 42) throw Error('wrong dependency'); require('fs').appendFileSync(${JSON.stringify(loads)}, require.resolve('${name}') + '\\n');\n`, "", {[name]: "1.0.0"});
+    const dependencies = {"@fromstan/pokie": "*", [name]: "1.0.0"};
+    const {root} = declaredPackage("local-dependency", `const d = require('${name}'); if (d.value !== 42) throw Error('wrong dependency'); require('fs').appendFileSync(${JSON.stringify(loads)}, require.resolve('${name}') + '\\n');\n`, "", dependencies);
     const dependency = path.join(root, "node_modules", name);
     fs.mkdirSync(dependency, {recursive: true});
     fs.writeFileSync(path.join(dependency, "package.json"), JSON.stringify({name, version: "1.0.0", main: "index.cjs"}));
@@ -628,12 +635,13 @@ it("retains project-local dependency identity through evaluation, independent sa
     fs.writeFileSync(path.join(root, "src", "authored.ts"), "// Authored source, compiled into dist/index.cjs.\n");
     fs.writeFileSync(path.join(root, "dist", "index.cjs"), fs.readFileSync(path.join(root, "index.cjs"), "utf8").replace("'./parameters.json'", "'../parameters.json'"));
     fs.rmSync(path.join(root, "index.cjs"));
-    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "tunable", version: "1.0.0", pokie: {entry: "dist/index.cjs"}, dependencies: {[name]: "1.0.0"}}));
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "tunable", version: "1.0.0", pokie: {entry: "dist/index.cjs"}, dependencies}));
     fs.utimesSync(path.join(root, "src", "authored.ts"), new Date("2000-01-01"), new Date("2000-01-01"));
     fs.utimesSync(path.join(root, "dist", "index.cjs"), new Date("2001-01-01"), new Date("2001-01-01"));
     fs.rmSync(path.join(root, "pokie-tuning.json"));
     declarePackageTuning(root, "parameters.json", ["/paytable/A/2"]);
     const request = optimizationRequest();
+    expect(await resolvePokieGameDependencyRoots(root)).toEqual({"@fromstan/pokie": runtimeRoot, [name]: dependency});
     const result = await service.optimize(await resolve(root), request);
     expect(result.diagnostics).toEqual([]);
     expect(result.status).toBe("success");
@@ -663,7 +671,7 @@ it("retains project-local dependency identity through evaluation, independent sa
     expect(loadedPaths.every(file => !fs.existsSync(file))).toBe(true);
     fs.appendFileSync(path.join(saved, "dist", "index.cjs"), "\n// independently edited");
     expect(fs.readFileSync(path.join(second, "dist", "index.cjs"), "utf8")).not.toContain("independently edited");
-});
+}, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
 it("rolls back publication when the saved executable cannot load", async () => {
     const rejectLoad = path.join(directory, "reject-load");

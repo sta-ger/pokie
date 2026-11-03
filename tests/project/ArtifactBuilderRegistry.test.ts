@@ -68,8 +68,8 @@ describe("ArtifactBuilderRegistry", () => {
         }
     });
 
-    it("retains the pinned candidate through the complete V2C-26 gate-test delta", () => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-v2c26-retained-candidate-"));
+    it("retains the pinned candidate through the complete V2C-37 gate-test delta", () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-v2c37-retained-candidate-"));
         try {
             // Use native installed resolution, without Jest's POKIE source aliases.
             execFileSync(process.execPath, ["--input-type=module", "-e", `
@@ -85,15 +85,18 @@ describe("ArtifactBuilderRegistry", () => {
                 const original = await readP911Candidate(fixture.reference, options);
                 // Both selectors must admit this exact correction without admitting sibling tests.
                 const correctionPaths = ["scripts/p8-05-release-handoff.mjs", "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+                    "tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx",
+                    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.wasmWorkflow.test.tsx",
                     "tests/cli/studio/StudioServer.test.ts",
-                    "tests/project/ArtifactBuilderRegistry.test.ts", "tests/testUtils/stageCompiledTestRuntime.ts", "tests/v2/fixtures/PackageExtractionFixture.ts"];
+                    "tests/project/ArtifactBuilderRegistry.test.ts", "tests/testUtils/stageCompiledTestRuntime.ts",
+                    "tests/v2/OptimizationContractsAdapters.test.ts", "tests/v2/fixtures/PackageExtractionFixture.ts"];
                 for (const file of correctionPaths) await writeFile(path.join(fixture.repository, file), "// Bounded gate correction fixture.");
                 execFileSync("git", ["add", ...correctionPaths], {cwd: fixture.repository});
                 execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "bounded gate correction fixture"], {cwd: fixture.repository});
                 const correctionId = execFileSync("git", ["rev-parse", "HEAD"], {cwd: fixture.repository, encoding: "utf8"}).trim();
                 assert.deepEqual(authenticateP805ProductTree(fixture.handoff.candidateId, correctionId, fixture.repository).changedToolingAndEvidencePaths, correctionPaths);
                 assert.deepEqual((await readP911Candidate(fixture.reference, options)).equivalence.changedEvidenceAndTooling, correctionPaths);
-                for (const file of ["tests/project/ArtifactBuilderRegistry.test.ts", "tests/cli/studio/StudioServer.test.ts", "tests/cli/studio/StudioArtifactBuildService.test.ts",
+                for (const file of [...correctionPaths, "tests/cli/studio/StudioArtifactBuildService.test.ts",
                     "tests/v2/fixtures/PackageExtractionFixture.ts", "docs/v2-completion/V2C-26.md"])
                     assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
                 const reviewedId = await commitP911ToolingDescendant(fixture);
@@ -129,9 +132,12 @@ describe("ArtifactBuilderRegistry", () => {
         }
     });
 
-    // These compound cases acquire several real runtime/dependency snapshots, just like
-    // the package lifecycle cases below. Keep their full assertions within that budget.
-    it.each(["declared", "unknown"] as const)("refuses %s max-win policy in every model conversion and direct publication", async type => {
+    // Give each public boundary its own real-runtime budget, retaining every policy,
+    // conversion and direct-publication assertion instead of timing ten loads together.
+    it.each((["declared", "unknown"] as const).flatMap(type =>
+        (["blueprint", "tsPackage", "parWorkbook", "wasm", "direct validation", "direct publication"] as const)
+            .map(target => ({type, target})),
+    ))("refuses $type max-win policy in $target", async ({type, target}) => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-policy-conversion-"));
         try {
             const policy = type === "declared"
@@ -142,7 +148,11 @@ describe("ArtifactBuilderRegistry", () => {
             expect((await resolvePokieGameDependencyRoots(source))["@fromstan/pokie"])
                 .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
             const project: PokieProject = {type: "tsPackage", rootPath: source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
-            for (const target of ["blueprint", "tsPackage", "parWorkbook", "wasm"] as const) {
+            if (target === "direct validation" || target === "direct publication") {
+                const builder = new BlueprintArtifactBuilder();
+                const result = target === "direct validation" ? builder.validate(project) : builder.build(project, path.join(root, "direct.json"));
+                await expect(result).rejects.toThrow(/max-win-policy-not-representable/);
+            } else {
                 const destination = path.join(root, target);
                 const plan = await registry.preparePlan(project, target, {destinationPath: destination});
                 expect(plan.status).toBe("unavailable");
@@ -150,9 +160,6 @@ describe("ArtifactBuilderRegistry", () => {
                 await expect(registry.executePlan(plan, project, destination)).rejects.toThrow(/max-win-policy-not-representable/);
                 expect(fs.existsSync(destination)).toBe(false);
             }
-            const builder = new BlueprintArtifactBuilder();
-            await expect(builder.validate(project)).rejects.toThrow(/max-win-policy-not-representable/);
-            await expect(builder.build(project, path.join(root, "direct.json"))).rejects.toThrow(/max-win-policy-not-representable/);
             expect(fs.readdirSync(root)).toEqual(["descriptor-package"]);
         } finally {
             fs.rmSync(root, {recursive: true, force: true});
@@ -534,6 +541,8 @@ describe("ArtifactBuilderRegistry", () => {
             assertCleanup(memberPath("evidence"));
         }, timeout);
 
+        // build() revalidates the graph and extracts the model before publication.
+        // Include all of those real snapshots and rollback under controller contention.
         it.each(["terminal", "blueprint", "evidence"])("preserves a replaced %s when attachment is cancelled", async member => {
             const controller = new AbortController();
             const sourceHash = computeProjectInputBindingHash(project);
@@ -557,7 +566,7 @@ describe("ArtifactBuilderRegistry", () => {
             expect(cancellations).toBe(1);
             assertCleanup(competitor);
             expect(computeProjectInputBindingHash(project)).toBe(sourceHash);
-        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+        }, sourceType === "tsPackage" ? 180_000 : PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
         it("returns a complete rollback inventory and correctly bound retained evidence on success", async () => {
             const result = await registry.build(target, project, destination);

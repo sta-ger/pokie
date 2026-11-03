@@ -191,7 +191,9 @@ describe("PC-18 Studio product acceptance", () => {
         const entry = path.join(root, "worker.cjs");
         fs.writeFileSync(entry, `const {parentPort} = require("node:worker_threads");
             parentPort.on("message", () => {});
-            require("node:fs").writeFileSync(${JSON.stringify(entered)}, "executing");`);
+            require("node:fs").writeFileSync(${JSON.stringify(entered)}, JSON.stringify({
+                threadId: require("node:worker_threads").threadId, temporaryRoot: process.env.TMPDIR
+            }));`);
         // This fixture exercises the server's Node worker path inside jsdom. Use the
         // real Node signal API (including throwIfAborted), rather than jsdom's older DOM API.
         const controllers = jest.spyOn(globalThis, "AbortController").mockImplementation(() => transferableAbortController());
@@ -210,7 +212,10 @@ describe("PC-18 Studio product acceptance", () => {
         const active = (server as unknown as {artifactPreflights: Map<AbortController, Promise<void>>}).artifactPreflights;
         const terminate = Worker.prototype.terminate;
         const ownedWorkers = new Set<Worker>();
+        let ownedThreadId: number | undefined;
+        let temporaryRoot: string | undefined;
         const termination = jest.spyOn(Worker.prototype, "terminate").mockImplementation(async function (this: Worker) {
+            if (this.threadId !== ownedThreadId) return Reflect.apply(terminate, this, []);
             ownedWorkers.add(this);
             const code = await Reflect.apply(terminate, this, []);
             if (failure === "termination") throw new Error("injected termination failure");
@@ -225,10 +230,8 @@ describe("PC-18 Studio product acceptance", () => {
             release = resolve;
         });
         const rm = fs.promises.rm.bind(fs.promises);
-        let temporaryRoot: string | undefined;
         const removal = jest.spyOn(fs.promises, "rm").mockImplementation(async (file, options) => {
-            if (path.basename(String(file)).startsWith("pokie-preflight-")) {
-                temporaryRoot = String(file);
+            if (String(file) === temporaryRoot) {
                 cleanupStarted();
                 await gate;
                 if (failure === "removal") throw new Error("injected removal failure");
@@ -245,7 +248,16 @@ describe("PC-18 Studio product acceptance", () => {
                 headers: {"Content-Type": "application/json"}}, response => response.resume());
             request.on("error", () => undefined);
             request.end(surface === "preview" ? JSON.stringify({target: "blueprint", outDir: path.join(root, "output.json")}) : undefined);
-            await waitFor(() => expect(fs.existsSync(entered)).toBe(true));
+            // Bind both failure injections to the real worker's own receipt. A delayed
+            // cleanup from another operation must not release this scenario's gate.
+            const owner = await waitFor(() => {
+                const receipt = JSON.parse(fs.readFileSync(entered, "utf8")) as {threadId: number; temporaryRoot: string};
+                expect(receipt.threadId).toBeGreaterThan(0);
+                expect(path.basename(receipt.temporaryRoot)).toMatch(/^pokie-preflight-/);
+                return receipt;
+            }, {timeout: 30_000});
+            ownedThreadId = owner.threadId;
+            temporaryRoot = owner.temporaryRoot;
             expect(active.size).toBe(1);
             request.destroy();
             await cleaning;
@@ -299,7 +311,7 @@ describe("PC-18 Studio product acceptance", () => {
             if (temporaryRoot) await rm(temporaryRoot, {recursive: true, force: true});
             fs.rmSync(root, {recursive: true, force: true});
         }
-    });
+    }, 120_000);
 
     it("does not make a prior project's visible dashboard interactive after a project switch", async () => {
         const studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc18-browser-assets-"));
