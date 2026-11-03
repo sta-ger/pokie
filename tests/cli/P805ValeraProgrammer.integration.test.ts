@@ -1,5 +1,5 @@
 import {existsSync, mkdtempSync, readFileSync, rmSync} from "fs";
-import {execFileSync} from "child_process";
+import {spawnSync} from "child_process";
 import {tmpdir} from "os";
 import path from "path";
 
@@ -44,7 +44,13 @@ describe("P8-05 Valera Programmer public path", () => {
         const workspace = mkdtempSync(path.join(tmpdir(), "pokie-p8-05-programmer-"));
         const blueprint = path.join(workspace, "Valera spaced blueprint.json");
         const wasm = path.join(workspace, "Valera artifact.wasm");
-        const run = (...args: string[]) => execFileSync(process.execPath, [launcher, ...args], {encoding: "utf8"});
+        const runWithStatus = (expectedStatus: number, ...args: string[]) => {
+            const result = spawnSync(process.execPath, [launcher, ...args], {encoding: "utf8"});
+            if (result.error) throw result.error;
+            if (result.status !== expectedStatus) throw new Error(`pokie ${args.join(" ")} exited ${result.status} (${result.signal}); expected ${expectedStatus}:\n${result.stdout}\n${result.stderr}`);
+            return result.stdout;
+        };
+        const run = (...args: string[]) => runWithStatus(0, ...args);
         try {
             expect(existsSync(launcher)).toBe(true);
             const publicCommands = ["build", "certification", "client", "create", "dev", "diff", "edit", "fairness", "generate", "import", "init", "inspect", "par", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate"];
@@ -56,7 +62,27 @@ describe("P8-05 Valera Programmer public path", () => {
             expect(run("build", blueprint, "--target", "wasm", "--out", wasm)).toContain("Artifact \"wasm\" built");
             expect(existsSync(wasm)).toBe(true);
             expect(run("inspect", wasm)).toContain("POKIE WASM component");
-            expect(run("validate", wasm)).toContain("valid           yes");
+            // Structural validity does not prove this generated WASM's declared
+            // model: seed 805 exhausts the bounded outcome analysis (exit 2).
+            const validation = JSON.parse(runWithStatus(2, "validate", wasm, "--format", "json"));
+            expect(validation).toMatchObject({
+                project: {path: wasm, kind: "wasm"},
+                valid: true,
+                errors: [],
+                wasm: {compatibility: "compatible"},
+                advanced: {
+                    scope: "declared-model",
+                    adapter: "wasm-declaration-v1",
+                    status: "budget-exhausted",
+                    verdict: "inconclusive",
+                    structuralValid: true,
+                    executableFidelity: "unverified",
+                    checks: expect.arrayContaining([
+                        expect.objectContaining({id: "analysis.completion", status: "unknown", message: "Analysis outcomes limit exhausted."}),
+                        expect.objectContaining({id: "source.executable-fidelity", status: "unknown"}),
+                    ]),
+                },
+            });
             expect(run("run", wasm, "--seed", "p8-05-programmer")).toContain("POKIE WASM round");
             expect(() => run("validate", path.join(workspace, "missing blueprint.json"))).toThrow();
         } finally {
