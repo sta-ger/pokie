@@ -2060,6 +2060,8 @@ describe("StudioServer", () => {
             return {baseUrl: `http://${address.host}:${address.port}`, rawProjectRoot};
         }
 
+        // These Open/Close/cache-reuse paths load real runtime snapshots as well as
+        // installing the package. Keep their budget aligned with other real-runtime cases.
         it("materializes a genuinely loadable runtime through Home Open Project using the production materializing resolver, offline, with an installation path containing spaces, and reuses the cache on a second Open", async () => {
             // Reproduce the independent direct-Jest launch even when this file is run via npm.
             const callerKeys = Object.keys(process.env).filter(key => key.startsWith("npm_lifecycle_") || key.startsWith("npm_package_") || key === "INIT_CWD" || key === "TMPDIR");
@@ -2098,7 +2100,7 @@ describe("StudioServer", () => {
             } finally {
                 for (const [key, value] of callerEnvironment) restoreEnv(key, value);
             }
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
 
         it("retries a transient staged install through Home Open Project so one Open reaches the Workspace, then reuses the cache", async () => {
             const flakyRunner = failFirstInstallThenDelegate(runBundledNpmCommand);
@@ -2113,7 +2115,7 @@ describe("StudioServer", () => {
             const cachedAfterAutomaticRetry = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
             expect(cachedAfterAutomaticRetry.status).toBe(200);
             expect(flakyRunner.calls).toBe(2);
-        });
+        }, REAL_RUNTIME_TEST_TIMEOUT_MS);
     });
 
     describe("Home nav: GET /api/home/fs/browse", () => {

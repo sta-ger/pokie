@@ -85,6 +85,7 @@ describe("ArtifactBuilderRegistry", () => {
                 const original = await readP911Candidate(fixture.reference, options);
                 // Both selectors must admit this exact correction without admitting sibling tests.
                 const correctionPaths = ["scripts/p8-05-release-handoff.mjs", "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+                    "tests/cli/studio/StudioServer.test.ts",
                     "tests/project/ArtifactBuilderRegistry.test.ts", "tests/testUtils/stageCompiledTestRuntime.ts", "tests/v2/fixtures/PackageExtractionFixture.ts"];
                 for (const file of correctionPaths) await writeFile(path.join(fixture.repository, file), "// Bounded gate correction fixture.");
                 execFileSync("git", ["add", ...correctionPaths], {cwd: fixture.repository});
@@ -92,7 +93,7 @@ describe("ArtifactBuilderRegistry", () => {
                 const correctionId = execFileSync("git", ["rev-parse", "HEAD"], {cwd: fixture.repository, encoding: "utf8"}).trim();
                 assert.deepEqual(authenticateP805ProductTree(fixture.handoff.candidateId, correctionId, fixture.repository).changedToolingAndEvidencePaths, correctionPaths);
                 assert.deepEqual((await readP911Candidate(fixture.reference, options)).equivalence.changedEvidenceAndTooling, correctionPaths);
-                for (const file of ["tests/project/ArtifactBuilderRegistry.test.ts", "tests/cli/studio/StudioArtifactBuildService.test.ts",
+                for (const file of ["tests/project/ArtifactBuilderRegistry.test.ts", "tests/cli/studio/StudioServer.test.ts", "tests/cli/studio/StudioArtifactBuildService.test.ts",
                     "tests/v2/fixtures/PackageExtractionFixture.ts", "docs/v2-completion/V2C-26.md"])
                     assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
                 const reviewedId = await commitP911ToolingDescendant(fixture);
@@ -245,6 +246,8 @@ describe("ArtifactBuilderRegistry", () => {
     }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     describe.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)("package %s validation lifecycle", target => {
+        // Preparation and validation each acquire a real runtime graph. Use the same
+        // bounded budget as the neighboring extraction cases under concurrent Jest.
         it.each([true, false])("releases the validation snapshot with cancellation=%s and preserves optional callers", async cancel => {
             const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-validation-extraction-"));
             const fixture = writePausedDescriptorPackage(root);
@@ -253,6 +256,7 @@ describe("ArtifactBuilderRegistry", () => {
             const project: PokieProject = {type: "tsPackage", rootPath: fixture.source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
             const controller = new AbortController();
             const progress: string[] = [];
+            let checked: Promise<void> | undefined;
             try {
                 const plan = await registry.preparePlan(project, target, {destinationPath: path.join(root, "output")});
                 expect(plan.packageExtraction?.status).toBe("complete");
@@ -263,7 +267,7 @@ describe("ArtifactBuilderRegistry", () => {
                         progress.push(value.status);
                     }})
                     : registry.validate(target, project, plan);
-                const checked = cancel ? expect(running).rejects.toBeInstanceOf(ArtifactBuildCancelledError) : expect(running).resolves.toBeUndefined();
+                checked = cancel ? expect(running).rejects.toBeInstanceOf(ArtifactBuildCancelledError) : expect(running).resolves.toBeUndefined();
                 await fixture.waitForRead(checked);
                 expect(fixture.readCount).toBe(2);
                 expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
@@ -277,9 +281,10 @@ describe("ArtifactBuilderRegistry", () => {
                 expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
             } finally {
                 fixture.restore();
+                await checked?.catch(() => undefined);
                 fs.rmSync(root, {recursive: true, force: true});
             }
-        });
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
         it("rejects a malformed validation read after successful preparation as source drift", async () => {
             const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-malformed-validation-"));
@@ -287,12 +292,13 @@ describe("ArtifactBuilderRegistry", () => {
             const snapshots = runtimeSnapshotNames(fixture.source);
             const input = fs.readFileSync(path.join(fixture.source, "index.js"));
             const project: PokieProject = {type: "tsPackage", rootPath: fixture.source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
+            let checked: Promise<void> | undefined;
             try {
                 const plan = await registry.preparePlan(project, target, {destinationPath: path.join(root, "output")});
                 expect(plan.packageExtraction?.status).toBe("complete");
                 fs.writeFileSync(fixture.control, "malformed");
                 fixture.arm();
-                const checked = expect(registry.validate(target, project, plan, {signal: new AbortController().signal}))
+                checked = expect(registry.validate(target, project, plan, {signal: new AbortController().signal}))
                     .rejects.toThrow(/source configuration or generation provenance changed/);
                 await fixture.waitForRead(checked);
                 fixture.settle();
@@ -303,9 +309,10 @@ describe("ArtifactBuilderRegistry", () => {
                 expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
             } finally {
                 fixture.restore();
+                await checked?.catch(() => undefined);
                 fs.rmSync(root, {recursive: true, force: true});
             }
-        });
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     });
 
     // Four real package/runtime graphs are acquired and drained across this paused read.
