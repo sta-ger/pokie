@@ -8,7 +8,9 @@ import type {legacyComposedGame} from "../fixtures/LegacyComposedGame.js";
 /** Fresh compiler outputs with the real package export conditions, independent of Jest aliases. */
 export function emitPublicRuntime(): {directory: string; legacyGame: typeof legacyComposedGame; roundGame: typeof legacyRoundGame; dispose: () => void} {
     const root = process.cwd();
-    const directory = fs.mkdtempSync(path.join(root, "node_modules/.cache/pokie-tmp/v2c02-public-"));
+    const temporaryRoot = path.join(root, "node_modules/.cache/pokie-tmp");
+    fs.mkdirSync(temporaryRoot, {recursive: true});
+    const directory = fs.mkdtempSync(path.join(temporaryRoot, "v2c02-public-"));
     const packageRoot = path.join(directory, "node_modules/@fromstan/pokie");
     fs.mkdirSync(packageRoot, {recursive: true});
     fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({name: "public-runtime-consumer", private: true, type: "module"}));

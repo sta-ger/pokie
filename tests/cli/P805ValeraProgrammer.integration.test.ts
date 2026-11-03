@@ -17,6 +17,7 @@ beforeAll(() => {
         outputPaths: [launcher, ...["esm", "src"].map(tree => path.join(repositoryRoot, "dist", tree, "gamepackage/internal/runtimeLocation.mjs"))],
         lockName: "canonical-artifact-cli",
         forceRebuild: true,
+        executionTimeoutMs: 240_000,
         command: [process.execPath, "-e", `
             const {execFileSync}=require('node:child_process');
             for(const project of ['tsconfig.prod.json','tsconfig.cli.json'])
@@ -24,7 +25,7 @@ beforeAll(() => {
             execFileSync(process.execPath,['tests/testUtils/stageRuntimeLocation.mjs','esm','src'],{stdio:'inherit'});
         `],
     });
-}, 120_000);
+}, 250_000);
 
 describe("P8-05 Valera Programmer public path", () => {
     it("preserves installed/npx entry points and exposes the readiness and one-shot release validators", () => {

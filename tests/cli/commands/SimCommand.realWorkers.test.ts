@@ -10,7 +10,8 @@ import {emitPublicRuntime} from "../../v2/helpers/publicRuntime.js";
 // its 6 tests), which is why it lives in the "pokie-integration" lane instead of the default fast
 // "pokie" lane -- see jest.config.mjs.
 describe("SimCommand (integration, real loadPokieGame + --workers, real worker threads)", () => {
-    jest.setTimeout(30000);
+    // Four real workers each acquire an isolated dependency graph under gate contention.
+    jest.setTimeout(120_000);
     let runtime: ReturnType<typeof emitPublicRuntime>;
     let fixtureRoot: string;
     let configFixture: string;

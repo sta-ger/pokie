@@ -29,6 +29,10 @@ describe("Studio happy path: recommended model -> create project -> simulate -> 
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({mode: "home"})});
             }
 
+            if (path === "/api/home/jobs" || path === "/api/project/jobs") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({jobs: []})});
+            }
+
             if (path === "/api/home/projects/registry" && method === "GET") {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
             }
@@ -224,7 +228,9 @@ describe("Studio happy path: recommended model -> create project -> simulate -> 
 
         // 5. Head to Simulation and run it.
         await user.click(screen.getByRole("button", {name: "Simulation"}));
-        await user.click(await screen.findByRole("button", {name: "Run Simulation"}));
+        const runSimulation = await screen.findByRole("button", {name: "Run Simulation"});
+        await waitFor(() => expect(runSimulation).toBeEnabled());
+        await user.click(runSimulation);
 
         // 6. Let it complete -- Simulation's own Review step auto-advances the instant the run goes
         // terminal (see SimulationTab's own doc comment on its activeStep effect), no separate

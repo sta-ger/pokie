@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import {stageCompiledTestRuntime} from "../../testUtils/stageCompiledTestRuntime.js";
 import type {GameBlueprint} from "@fromstan/pokie";
 import {fractionalBetBlueprint} from "../../fixtures/math/FractionalBetFixture.js";
 
@@ -12,6 +13,8 @@ export function createPackageExtractionTestEnvironment(): () => void {
     const cache = path.resolve(__dirname, "../../../node_modules/.cache/pokie-tmp");
     fs.mkdirSync(cache, {recursive: true});
     const directory = fs.mkdtempSync(path.join(cache, "pokie-package-extraction-"));
+    // Bind declared fixture dependencies to stable compiled bytes, outside mutable checkout dist.
+    stageCompiledTestRuntime(directory);
     const original = process.env.TMPDIR;
     const originalTmpdir = os.tmpdir;
     let active = true;
@@ -43,7 +46,7 @@ export function writeDescriptorPackage(
     const model = options.model ?? fractionalBetBlueprint([0.05, 7.5, 1e-7], true);
     fs.writeFileSync(
         path.join(root, "package.json"),
-        JSON.stringify({name: "npm-identity", version: "99", pokie: {entry: "index.js"}}),
+        JSON.stringify({name: "npm-identity", version: "99", dependencies: {"@fromstan/pokie": "*"}, pokie: {entry: "index.js"}}),
     );
     fs.writeFileSync(
         path.join(root, "index.js"),
@@ -99,8 +102,8 @@ export function writePausedDescriptorPackage(
     // test waiting forever for a descriptor which can no longer be reached.
     const waitForRead = (operation: Promise<unknown>): Promise<void> => Promise.race([
         readStarted,
-        operation.then(() => {
-            throw new Error("Package operation settled before the paused descriptor read");
+        operation.then(result => {
+            throw new Error(`Package operation settled before the paused descriptor read: ${JSON.stringify(result)}`);
         }),
     ]);
     return {source, control, readStarted, waitForRead, settle, get readCount() {

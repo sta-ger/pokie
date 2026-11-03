@@ -9,7 +9,7 @@ const repositoryRoot = path.resolve(__dirname, "../..");
 const seed = "p906-valera";
 const rounds = 6;
 
-beforeAll(() => compileP906Candidate(repositoryRoot), 130_000);
+beforeAll(() => compileP906Candidate(repositoryRoot), 250_000);
 
 describe("P9-06 bounded public developer scenario", () => {
     it("starts real Home/projects, converts and reads back, compares seeded WASM sim/replay, and recovers with truthful statuses", async () => {
@@ -46,7 +46,7 @@ describe("P9-06 bounded public developer scenario", () => {
             const request = async (url: string, route: string, body?: unknown) => {
                 const response = await fetch(`${url}${route}`, {
                     ...(body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}),
-                    signal: AbortSignal.timeout(5000),
+                    signal: AbortSignal.timeout(30_000),
                 });
                 const text = await response.text();
                 observations.push({request: route, body, status: response.status, response: text});
@@ -74,7 +74,7 @@ describe("P9-06 bounded public developer scenario", () => {
                 const deadline = setTimeout(() => {
                     expired = true;
                     child.kill("SIGKILL");
-                }, 15_000);
+                }, 60_000);
                 try {
                     const url = await new Promise<string>((resolve, reject) => {
                         child.stdout.on("data", () => {

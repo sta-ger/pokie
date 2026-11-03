@@ -9,6 +9,21 @@ const json = (file, value) => writeFile(file, `${JSON.stringify(value)}\n`);
 // delta, the prior driver repair, the reviewed interoperability correction and
 // every file changed by this handoff repair.
 export const P911_TOOLING_DESCENDANT_PATHS = [
+    "tests/v2/helpers/publicRuntime.ts",
+    // Complete V2C-37 saved gate correction; product/build inputs and receipt pins stay protected.
+    "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
+    "tests/cli/CanonicalArtifactCli.integration.test.ts",
+    "tests/cli/InitCommandWorkflow.integration.test.ts",
+    "tests/cli/P805ValeraProgrammer.integration.test.ts",
+    "tests/cli/P906ValeraProgrammer.integration.test.ts",
+    "tests/cli/RandomBuildWorkflow.integration.test.ts",
+    "tests/cli/Workflow.integration.test.ts",
+    "tests/cli/commands/DiffCommand.test.ts",
+    "tests/cli/commands/SimCommand.realWorkers.test.ts",
+    "tests/cli/studio-client/src/openProjectGuard.test.tsx",
+    "tests/cli/studio/OutcomeLibraryGenerationWorkflow.integration.test.ts",
+    "tests/testUtils/prepareP906Candidate.ts",
+
     "scripts/pc-20-resource-ownership-hook.cjs",
 
     // V2C-37 exact bounded regression delta; product/build and driver pins stay protected.

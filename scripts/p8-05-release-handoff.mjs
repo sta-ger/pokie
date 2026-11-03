@@ -14,6 +14,22 @@ const fail = (message) => { throw new Error(`P8-05 release handoff is invalid: $
 // Everything else, including package metadata, lockfile, compiler/Vite config,
 // generators, runtime sources and other steps' evidence, must be byte-identical.
 const tooling = new Set([
+    "tests/v2/helpers/publicRuntime.ts",
+    // Complete V2C-37 saved gate correction; product/build inputs and receipt pins stay protected.
+    "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
+    "tests/cli/CanonicalArtifactCli.integration.test.ts",
+    "tests/cli/InitCommandWorkflow.integration.test.ts",
+    "tests/cli/P805ValeraProgrammer.integration.test.ts",
+    "tests/cli/P906ValeraProgrammer.integration.test.ts",
+    "tests/cli/RandomBuildWorkflow.integration.test.ts",
+    "tests/cli/Workflow.integration.test.ts",
+    "tests/cli/commands/DiffCommand.test.ts",
+    "tests/cli/commands/SimCommand.realWorkers.test.ts",
+    "tests/cli/studio-client/src/integration/happyPath.test.tsx",
+    "tests/cli/studio-client/src/openProjectGuard.test.tsx",
+    "tests/cli/studio/OutcomeLibraryGenerationWorkflow.integration.test.ts",
+    "tests/testUtils/prepareP906Candidate.ts",
+
     "scripts/p8-05-valera-browser-audit.mjs",
     "scripts/pc-20-resource-ownership-hook.cjs",
 

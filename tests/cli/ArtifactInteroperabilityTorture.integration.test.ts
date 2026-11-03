@@ -1925,8 +1925,8 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             expect.objectContaining({execution: expect.objectContaining({assertions: expect.any(Array), observations: expect.any(Array)})}),
         ]));
     // This complete matrix snapshots real packages and runs the public lifecycle.
-    // Measured serial runs reach 288 seconds; the generic five-minute ceiling
+    // Measured contended gate runs exceed 600 seconds; the generic five-minute ceiling
     // can expire before the final assertions. Keep a finite allowance for the
     // complete matrix, including contention with another changed-test worker.
-    }, 5 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    }, 8 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
 });

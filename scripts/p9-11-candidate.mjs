@@ -13,6 +13,21 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sha = (value, length = 64) => typeof value === "string" && new RegExp(`^[a-f0-9]{${length}}$`).test(value);
 const fail = (message) => { throw new Error(`P9-11 candidate: ${message}`); };
 const tooling = new Set([
+    "tests/v2/helpers/publicRuntime.ts",
+    // Complete V2C-37 saved gate correction; product/build inputs and receipt pins stay protected.
+    "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
+    "tests/cli/CanonicalArtifactCli.integration.test.ts",
+    "tests/cli/InitCommandWorkflow.integration.test.ts",
+    "tests/cli/P805ValeraProgrammer.integration.test.ts",
+    "tests/cli/P906ValeraProgrammer.integration.test.ts",
+    "tests/cli/RandomBuildWorkflow.integration.test.ts",
+    "tests/cli/Workflow.integration.test.ts",
+    "tests/cli/commands/DiffCommand.test.ts",
+    "tests/cli/commands/SimCommand.realWorkers.test.ts",
+    "tests/cli/studio-client/src/openProjectGuard.test.tsx",
+    "tests/cli/studio/OutcomeLibraryGenerationWorkflow.integration.test.ts",
+    "tests/testUtils/prepareP906Candidate.ts",
+
     "scripts/pc-20-resource-ownership-hook.cjs",
 
     // V2C-37 exact bounded regression delta; product/build and driver pins stay protected.

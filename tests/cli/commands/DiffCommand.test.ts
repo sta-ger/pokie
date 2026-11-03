@@ -597,6 +597,8 @@ describe("DiffCommand (SimulationReportSet -- diffing two `pokie sim --mode all`
 
 describe("DiffCommand (integration, real pokie sim output)", () => {
     const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
+    // Each case loads two isolated native dependency graphs before diffing.
+    jest.setTimeout(120_000);
     let outDir: string;
 
     beforeEach(() => {
