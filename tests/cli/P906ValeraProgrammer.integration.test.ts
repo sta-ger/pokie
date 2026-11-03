@@ -45,12 +45,29 @@ describe("P9-06 bounded public developer scenario", () => {
                 if (result.error !== undefined) throw result.error;
                 expect(result.signal).toBeNull();
                 expect(result.status).toBe(status);
-                if (status === 0) expect(result.stderr).toBe("");
+                if (status === 0 || status === 2) expect(result.stderr).toBe("");
                 else {
                     expect(result.stderr.trim()).not.toBe("");
                     expect(result.stdout).toBe("");
                 }
                 return result;
+            };
+            // Seed 906 exceeds the bounded declared-model outcome analysis.
+            // Structural validity is preserved through conversion, but it must
+            // not turn that inconclusive analysis into a successful proof.
+            const validate = (file: string, kind: "blueprint" | "wasm") => {
+                const result = JSON.parse(run(["validate", file, "--format", "json"], 2).stdout);
+                expect(result).toMatchObject({
+                    project: {path: file, kind}, valid: true, errors: [],
+                    advanced: {
+                        scope: "declared-model", status: "budget-exhausted", verdict: "inconclusive", structuralValid: true,
+                        executableFidelity: kind === "blueprint" ? "declarative-runtime-contract" : "unverified",
+                        checks: expect.arrayContaining([
+                            expect.objectContaining({id: "analysis.completion", status: "unknown", message: "Analysis outcomes limit exhausted."}),
+                        ]),
+                    },
+                });
+                if (kind === "wasm") expect(result.wasm).toMatchObject({compatibility: "compatible"});
             };
             const request = async (url: string, route: string, body?: unknown) => {
                 const response = await fetchStudio(`${url}${route}`, {
@@ -160,14 +177,14 @@ describe("P9-06 bounded public developer scenario", () => {
             expect(run(["create", "--help"]).stdout).toContain("--seed");
             expect(run(["build", "--help"]).stdout).toContain("--dry-run");
             expect(run(["create", "Tiny Game", "--random", "--seed", "906", "--out", blueprint]).stdout).toContain("created");
-            expect(run(["validate", blueprint]).stdout).toMatch(/valid\s+yes/);
+            validate(blueprint, "blueprint");
             const preview = run(["build", blueprint, "--target", "parWorkbook", "--out", workbook, "--dry-run"]).stdout;
             expect(preview).toContain(workbook);
             expect(fs.existsSync(workbook)).toBe(false);
             expect(run(["build", blueprint, "--target", "parWorkbook", "--out", workbook]).stdout).toContain('Artifact "parWorkbook" built');
             expect(run(["inspect", workbook]).stdout).toContain("PAR");
             expect(run(["build", workbook, "--target", "blueprint", "--out", imported]).stdout).toContain('Artifact "blueprint" built');
-            expect(run(["validate", imported]).stdout).toMatch(/valid\s+yes/);
+            validate(imported, "blueprint");
             const source = JSON.parse(fs.readFileSync(blueprint, "utf8")) as Record<string, unknown>;
             const readback = JSON.parse(fs.readFileSync(imported, "utf8")) as Record<string, unknown>;
             expect(readback.reels).toEqual(source.reels);
@@ -184,7 +201,7 @@ describe("P9-06 bounded public developer scenario", () => {
             expect(inspection).toContain("pokie run");
             expect(inspection).toContain("pokie sim");
             expect(inspection).toContain("pokie replay");
-            expect(run(["validate", wasm]).stdout).toMatch(/valid\s+yes/);
+            validate(wasm, "wasm");
             expect(run(["run", "--help"]).stdout).toContain("--seed");
             const draw = run(["run", wasm, "--seed", seed]).stdout;
             expect(draw).toContain("POKIE WASM round");
@@ -209,7 +226,7 @@ describe("P9-06 bounded public developer scenario", () => {
             expect(fs.existsSync(failedOutput)).toBe(false);
             expect(fs.existsSync(`${failedOutput}.pokie-wasm.json`)).toBe(false);
             expect(run(["build", blueprint, "--target", "wasm", "--out", failedOutput]).stdout).toContain('Artifact "wasm" built');
-            expect(run(["validate", failedOutput]).stdout).toMatch(/valid\s+yes/);
+            validate(failedOutput, "wasm");
             const bytes = fs.readFileSync(wasm);
             const sidecar = fs.readFileSync(`${wasm}.pokie-wasm.json`);
             run(["build", blueprint, "--target", "wasm", "--out", wasm], 1);
