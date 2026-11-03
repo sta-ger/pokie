@@ -126,8 +126,9 @@ describe("generated tsPackage round reproducibility (regression: context.seed th
 
     beforeAll(() => {
         outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-determinism-test-"));
+        const runtimePackageRoot = stageCompiledTestRuntime(outDir);
         const generator = new GamePackageGenerator("1.3.0");
-        const result = generator.generate(buildDeterminismBlueprint(), outDir);
+        const result = generator.generate(buildDeterminismBlueprint(), outDir, undefined, undefined, {runtimePackageRoot});
         projectRoot = result.projectRoot;
     });
 

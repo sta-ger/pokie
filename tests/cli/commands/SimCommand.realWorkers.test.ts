@@ -26,6 +26,13 @@ describe("SimCommand (integration, real loadPokieGame + --workers, real worker t
         configFixture = path.join(runtime.directory, "playable-game-with-config-hash");
         fs.cpSync(path.join(__dirname, "..", "fixtures", "playable-game"), fixtureRoot, {recursive: true});
         fs.cpSync(path.join(__dirname, "..", "fixtures", "playable-game-with-config-hash"), configFixture, {recursive: true});
+        // The parent loader and native workers must consume this emitted installation.
+        // An omitted dependency would make the source loader select the checkout host fallback.
+        for (const fixture of [fixtureRoot, configFixture]) {
+            const manifestPath = path.join(fixture, "package.json");
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+            fs.writeFileSync(manifestPath, JSON.stringify({...manifest, dependencies: {"@fromstan/pokie": "*"}}));
+        }
         workerEntryUrl = pathToFileURL(path.join(runtime.directory, "node_modules/@fromstan/pokie/dist/esm/simulation/parallel/internal/simulationWorkerEntry.js"));
     }, 120000);
 
