@@ -1,6 +1,6 @@
 import {ArtifactBuildCancelledError} from "../../src/project/ArtifactBuildOptions.js";
 import {ArtifactPublicationOwnership} from "../../src/project/ArtifactPublicationOwnership.js";
-import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, runtimeSnapshotNames, writePausedDescriptorPackage as writeUnboundPausedDescriptorPackage, writeDescriptorPackage as writeUnboundDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, runtimeSnapshotNames, writePausedDescriptorPackage as writeUnboundPausedDescriptorPackage, writeDescriptorPackage as writeUnboundDescriptorPackage, writeRunnableCodeFirstPackage} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -31,7 +31,6 @@ describe("ArtifactBuilderRegistry", () => {
     let restoreTemporaryDirectory: () => void;
     beforeAll(() => {
         restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
-        stageCompiledTestRuntime(os.tmpdir());
     }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     afterAll(() => {
         restoreTemporaryDirectory();
@@ -53,6 +52,21 @@ describe("ArtifactBuilderRegistry", () => {
     };
 
     const registry = new ArtifactBuilderRegistry();
+
+    it("binds the runnable code-first fixture to the suite's staged runtime rather than the checkout fallback", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-code-first-runtime-"));
+        try {
+            const source = writeRunnableCodeFirstPackage(root);
+            const manifest = JSON.parse(fs.readFileSync(path.join(source, "package.json"), "utf8")) as {dependencies: Record<string, string>};
+            expect(manifest.dependencies).toEqual({"@fromstan/pokie": "*"});
+            expect(await resolvePokieGameDependencyRoots(source)).toEqual({
+                "@fromstan/pokie": fs.realpathSync(path.join(os.tmpdir(), "node_modules/@fromstan/pokie")),
+            });
+            expect(fs.readdirSync(source).sort()).toEqual(["index.js", "package.json"]);
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
 
     it("retains the pinned candidate through the complete V2C-26 gate-test delta", () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-v2c26-retained-candidate-"));

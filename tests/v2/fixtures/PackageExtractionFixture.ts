@@ -138,7 +138,9 @@ export function runtimeSnapshotNames(packageSource: string): string[] {
 export function writeRunnableCodeFirstPackage(parent: string): string {
     const root = path.join(parent, "code-first");
     fs.mkdirSync(root);
-    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "code-first-probe", version: "1", pokie: {entry: "index.js"}}));
+    // This source requires the public runtime. Declare it so the loader resolves the
+    // suite's staged installation instead of snapshotting the embedding checkout.
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "code-first-probe", version: "1", dependencies: {"@fromstan/pokie": "*"}, pokie: {entry: "index.js"}}));
     fs.writeFileSync(path.join(root, "index.js"), `
 const {VideoSlotConfig, VideoSlotWithFreeGamesConfig, VideoSlotWithFreeGamesSession,
     SymbolsSequence, SymbolsCombinationsGenerator, SeededRandomNumberGenerator, CustomLinesDefinitions, Paytable} = require("@fromstan/pokie");
