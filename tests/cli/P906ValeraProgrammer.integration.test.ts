@@ -140,7 +140,10 @@ describe("P9-06 bounded public developer scenario", () => {
             ] as const) {
                 await studio([...args], cwd, async (url) => {
                     expect(await request(url, "/api/context")).toEqual({mode: "project", projectRoot: candidate.existingProject});
-                    const deadline = Date.now() + 5000;
+                    // Startup serves HTTP before the invocation-owned runtime
+                    // dependency snapshot is ready. Give that asynchronous load
+                    // the same bounded budget as Home's materializing request.
+                    const deadline = Date.now() + 30_000;
                     let context;
                     do {
                         context = await request(url, "/api/project/context");
