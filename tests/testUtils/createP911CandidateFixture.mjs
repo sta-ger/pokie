@@ -35,6 +35,7 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "tests/PackageJsonScripts.test.ts",
     "tests/cli/commands/DevCommand.test.ts",
     "tests/cli/commands/ServeCommand.test.ts",
+    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.wasmWorkflow.test.tsx",
     "tests/cli/materialize/BlueprintProjectMaterializer.offline.integration.test.ts",
     "tests/cli/packageOnlyCommandInputs.contract.test.ts",
     "tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx",

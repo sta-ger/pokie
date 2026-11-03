@@ -45,6 +45,7 @@ const tooling = new Set([
     "tests/PackageJsonScripts.test.ts",
     "tests/cli/commands/DevCommand.test.ts",
     "tests/cli/commands/ServeCommand.test.ts",
+    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.wasmWorkflow.test.tsx",
     "tests/cli/materialize/BlueprintProjectMaterializer.offline.integration.test.ts",
     "tests/cli/packageOnlyCommandInputs.contract.test.ts",
     "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",

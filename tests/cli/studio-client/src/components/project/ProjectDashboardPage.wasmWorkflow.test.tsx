@@ -18,11 +18,18 @@ import {screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+import {createPackageExtractionTestEnvironment} from "../../../../../v2/fixtures/PackageExtractionFixture.js";
 
 const game = {id: "wasm-slot", name: "wasm-slot", version: "1.0.0"};
 type WorkerEventListener = (event: MessageEvent & ErrorEvent) => void;
 
 describe("ProjectDashboardPage canonical WASM workflow", () => {
+    let restoreRuntimeEnvironment: () => void;
+    beforeAll(() => {
+        restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => restoreRuntimeEnvironment());
+
     it("renders the ordinary capability-driven play, simulation, and replay navigation", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
@@ -172,7 +179,9 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
                 await user.clear(rounds);
                 await user.type(rounds, "10");
                 await user.click(screen.getByRole("button", {name: "Run Simulation"}));
-                await user.click(await screen.findByRole("button", {name: "View results"}));
+                // Real Worker execution includes HTTP admission, publication and the UI poll.
+                // Keep the completion assertion under concurrent controller workers.
+                await user.click(await screen.findByRole("button", {name: "View results"}, {timeout: 30_000}));
                 expect(await screen.findByRole("button", {name: "Open full report"})).toBeVisible();
                 expect(screen.queryByText(/Historical simulation result/)).not.toBeInTheDocument();
                 expect(screen.queryByText(/Run a new simulation/)).not.toBeInTheDocument();
