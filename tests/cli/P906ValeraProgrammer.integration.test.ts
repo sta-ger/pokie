@@ -1,5 +1,6 @@
 import {spawn, spawnSync} from "child_process";
 import fs from "fs";
+import http from "http";
 import os from "os";
 import path from "path";
 import type {SimulationReport} from "@fromstan/pokie";
@@ -9,9 +10,17 @@ const repositoryRoot = path.resolve(__dirname, "../..");
 const seed = "p906-valera";
 const rounds = 6;
 
-beforeAll(() => compileP906Candidate(repositoryRoot), 250_000);
+// Each supervised Studio child owns a short-lived listener. Do not retain an
+// idle pooled socket across its runtime snapshots or reuse it for the next child.
+function fetchStudio(url: string | URL, options: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(options.headers);
+    headers.set("Connection", "close");
+    return fetch(url, {...options, headers});
+}
 
 describe("P9-06 bounded public developer scenario", () => {
+    beforeAll(() => compileP906Candidate(repositoryRoot), 250_000);
+
     it("starts real Home/projects, converts and reads back, compares seeded WASM sim/replay, and recovers with truthful statuses", async () => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-p906-"));
         const observations: unknown[] = [];
@@ -44,7 +53,7 @@ describe("P9-06 bounded public developer scenario", () => {
                 return result;
             };
             const request = async (url: string, route: string, body?: unknown) => {
-                const response = await fetch(`${url}${route}`, {
+                const response = await fetchStudio(`${url}${route}`, {
                     ...(body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}),
                     signal: AbortSignal.timeout(30_000),
                 });
@@ -83,13 +92,13 @@ describe("P9-06 bounded public developer scenario", () => {
                         });
                         closed.then(() => reject(new Error(`Studio exited before startup: ${stderr}`)), reject);
                     });
-                    const response = await fetch(url, {signal: AbortSignal.timeout(5000)});
+                    const response = await fetchStudio(url, {signal: AbortSignal.timeout(5000)});
                     expect(response.status).toBe(200);
                     const html = await response.text();
                     expect(html).toContain('<div id="root">');
                     const asset = html.match(/src="([^"]+\.js)"/);
                     expect(asset).not.toBeNull();
-                    const script = await fetch(new URL(asset![1], url), {signal: AbortSignal.timeout(5000)});
+                    const script = await fetchStudio(new URL(asset![1], url), {signal: AbortSignal.timeout(5000)});
                     expect(script.status).toBe(200);
                     expect((await script.text()).length).toBeGreaterThan(1000);
                     await exercise(url);
@@ -221,4 +230,51 @@ describe("P9-06 bounded public developer scenario", () => {
             fs.rmSync(directory, {recursive: true, force: true});
         }
     }, 180_000);
+});
+
+describe("P9-06 Studio HTTP transport", () => {
+    it("uses fresh sockets for Home reads and project-open without changing request or response semantics", async () => {
+        const requests: {method: string | undefined; route: string | undefined; connection: string | undefined; contentType: string | undefined; body: string}[] = [];
+        const sockets: http.IncomingMessage["socket"][] = [];
+        const server = http.createServer((request, response) => {
+            sockets.push(request.socket);
+            let body = "";
+            request.setEncoding("utf8");
+            request.on("data", (chunk: string) => {
+                body += chunk;
+            });
+            request.on("end", () => {
+                requests.push({method: request.method, route: request.url, connection: request.headers.connection, contentType: request.headers["content-type"], body});
+                response.writeHead(request.method === "POST" ? 409 : 200, {"Content-Type": "application/json"});
+                response.end(JSON.stringify(request.method === "POST" ? {error: "Project opening is already in progress."} : {mode: "home"}));
+            });
+        });
+        await new Promise<void>(resolve => {
+            server.listen(0, "127.0.0.1", resolve);
+        });
+        try {
+            const address = server.address();
+            if (address === null || typeof address === "string") throw new Error("Expected a bound Studio test port.");
+            const url = `http://127.0.0.1:${address.port}`;
+            const context = await fetchStudio(`${url}/api/context`, {signal: AbortSignal.timeout(5000)});
+            expect(context.status).toBe(200);
+            expect(await context.json()).toEqual({mode: "home"});
+            const projectRoot = "/workspace/Existing Project";
+            const opened = await fetchStudio(new URL("/api/home/projects/open", url), {
+                method: "POST", headers: new Headers({"Content-Type": "application/json", Connection: "keep-alive"}),
+                body: JSON.stringify({projectRoot}), signal: AbortSignal.timeout(5000),
+            });
+            expect(opened.status).toBe(409);
+            expect(await opened.json()).toEqual({error: "Project opening is already in progress."});
+            expect(requests).toEqual([
+                {method: "GET", route: "/api/context", connection: "close", contentType: undefined, body: ""},
+                {method: "POST", route: "/api/home/projects/open", connection: "close", contentType: "application/json", body: JSON.stringify({projectRoot})},
+            ]);
+            expect(sockets[0]).not.toBe(sockets[1]);
+        } finally {
+            await new Promise<void>((resolve, reject) => {
+                server.close(error => error ? reject(error) : resolve());
+            });
+        }
+    });
 });
