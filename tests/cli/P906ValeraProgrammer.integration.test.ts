@@ -79,6 +79,22 @@ describe("P9-06 bounded public developer scenario", () => {
                 expect(response.status).toBe(200);
                 return JSON.parse(text) as Record<string, unknown>;
             };
+            const loadedProject = async (url: string, projectRoot: string, id: string) => {
+                // Startup serves HTTP before the invocation-owned runtime
+                // dependency snapshot is ready. Give that asynchronous load
+                // the same bounded budget as Home's materializing request.
+                const deadline = Date.now() + 30_000;
+                let context;
+                do {
+                    context = await request(url, "/api/project/context");
+                    if (context.status !== "loading") break;
+                    await new Promise((resolve) => {
+                        setTimeout(resolve, 25);
+                    });
+                } while (Date.now() < deadline);
+                expect(context).toMatchObject({status: "loaded", projectRoot, game: {id}});
+                return context;
+            };
             const studio = async (args: string[], cwd: string, exercise: (url: string) => Promise<void>) => {
                 const started = Date.now();
                 const child = spawn(process.execPath, [candidate.launcher, ...args], {cwd, env: candidate.env, stdio: ["ignore", "pipe", "pipe"]});
@@ -157,19 +173,7 @@ describe("P9-06 bounded public developer scenario", () => {
             ] as const) {
                 await studio([...args], cwd, async (url) => {
                     expect(await request(url, "/api/context")).toEqual({mode: "project", projectRoot: candidate.existingProject});
-                    // Startup serves HTTP before the invocation-owned runtime
-                    // dependency snapshot is ready. Give that asynchronous load
-                    // the same bounded budget as Home's materializing request.
-                    const deadline = Date.now() + 30_000;
-                    let context;
-                    do {
-                        context = await request(url, "/api/project/context");
-                        if (context.status !== "loading") break;
-                        await new Promise((resolve) => {
-                            setTimeout(resolve, 25);
-                        });
-                    } while (Date.now() < deadline);
-                    expect(context).toMatchObject({status: "loaded", projectRoot: candidate.existingProject, game: {id: "playable-game"}});
+                    await loadedProject(url, candidate.existingProject, "playable-game");
                     expect(await request(url, "/api/home/projects/registry")).toEqual(expect.arrayContaining([expect.objectContaining({location: candidate.existingProject})]));
                 });
             }
@@ -196,7 +200,13 @@ describe("P9-06 bounded public developer scenario", () => {
 
             expect(run(["build", blueprint, "--target", "wasm", "--out", wasm]).stdout).toContain('Artifact "wasm" built');
             expect(fs.existsSync(`${wasm}.pokie-wasm.json`)).toBe(true);
-            const inspection = run([wasm]).stdout;
+            // A positional canonical WASM is a runnable Studio Project. The
+            // explicit inspect command owns the terminating CLI description.
+            await studio([wasm, "--no-open", "--port", "0"], candidate.workspace, async (url) => {
+                expect(await request(url, "/api/context")).toEqual({mode: "project", projectRoot: wasm});
+                expect(await loadedProject(url, wasm, "Tiny Game")).toMatchObject({type: "wasm"});
+            });
+            const inspection = run(["inspect", wasm]).stdout;
             expect(inspection).toContain("POKIE WASM component");
             expect(inspection).toContain("pokie run");
             expect(inspection).toContain("pokie sim");
