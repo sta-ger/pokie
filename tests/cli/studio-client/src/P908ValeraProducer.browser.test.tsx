@@ -1,10 +1,12 @@
 /** @jest-environment node */
 import {execFileSync, spawn, type ChildProcess} from "node:child_process";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {constants, runInThisContext} from "node:vm";
 import {productionStudioCandidate} from "./productionStudioCandidate";
+import {createPackageExtractionTestEnvironment} from "../../../v2/fixtures/PackageExtractionFixture.js";
 
 type Devtools = {
     events: Array<{method: string; params: {requestId?: string; response?: {url: string; status: number}}}>;
@@ -66,9 +68,23 @@ it("retains the authenticated installed candidate across the complete gate-test 
     const root = await fs.mkdtemp(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/p908-candidate-"));
     try {
         const fixtureUrl = pathToFileURL(path.join(process.cwd(), "tests/testUtils/createP911CandidateFixture.mjs")).href;
-        const {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} = await runInThisContext(`import(${JSON.stringify(fixtureUrl)})`, {
-            importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
-        }) as {
+        // Native ESM imports can first load node:os while a prior Jest suite owns
+        // an override. Its captured function must remain usable after that suite drains.
+        const restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        const retiredTmpdir = os.tmpdir;
+        const retiredDirectory = retiredTmpdir();
+        const fixtureModule = await (async () => {
+            try {
+                return await runInThisContext(`import(${JSON.stringify(fixtureUrl)})`, {
+                    importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+                });
+            } finally {
+                restoreTemporaryDirectory();
+            }
+        })();
+        expect(retiredTmpdir()).toBe(os.tmpdir());
+        await expect(fs.access(retiredDirectory)).rejects.toThrow("ENOENT");
+        const {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} = fixtureModule as {
             candidateFixture: (directory: string) => Promise<{repository: string; reference: {path: string; sha256: string}; handoff: {candidateId: string; installationRoot: string; browserDriver: {path: string}}}>;
             commitP911ToolingDescendant: (fixture: {repository: string}) => Promise<string>;
             P911_TOOLING_DESCENDANT_PATHS: string[];
@@ -91,6 +107,9 @@ it("retains the authenticated installed candidate across the complete gate-test 
             "tests/cli/studio/StudioJobRoutes.integration.test.ts",
             "tests/cli/studio/StudioServer.test.ts",
             "tests/v2/ExistingMechanicsAuthoring.test.ts",
+            "tests/project/ArtifactBuilderRegistry.test.ts",
+            "tests/testUtils/stageCompiledTestRuntime.ts",
+            "tests/v2/fixtures/PackageExtractionFixture.ts",
             "scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs",
             "tests/testUtils/createP911CandidateFixture.mjs", "docs/v2-completion/V2C-34.md",
         ];

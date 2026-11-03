@@ -1,6 +1,6 @@
 import {ArtifactBuildCancelledError} from "../../src/project/ArtifactBuildOptions.js";
 import {ArtifactPublicationOwnership} from "../../src/project/ArtifactPublicationOwnership.js";
-import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, runtimeSnapshotNames, writePausedDescriptorPackage as writeUnboundPausedDescriptorPackage, writeDescriptorPackage as writeUnboundDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -11,6 +11,7 @@ import type {ArtifactBuilder} from "../../src/project/ArtifactBuilder.js";
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
 import {PackageBlueprintExtraction} from "../../src/generated/PackageBlueprintExtraction.js";
 import {loadPokieGameRuntime, type LoadedPokieGame} from "../../src/gamepackage/loadPokieGame.js";
+import {resolvePokieGameDependencyRoots} from "../../src/gamepackage/resolvePokieGameEntryModule.js";
 import {ParSheetImporter} from "../../src/parsheet/ParSheetImporter.js";
 import {BlueprintArtifactBuilder} from "../../src/project/BlueprintArtifactBuilder.js";
 import {computeProjectInputBindingHash, computeArtifactInputBindingHash, type ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
@@ -30,10 +31,26 @@ describe("ArtifactBuilderRegistry", () => {
     let restoreTemporaryDirectory: () => void;
     beforeAll(() => {
         restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
-    });
+        stageCompiledTestRuntime(os.tmpdir());
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     afterAll(() => {
         restoreTemporaryDirectory();
     });
+
+    // Explicit dependency resolution uses this suite's immutable real installation,
+    // rather than the compatibility fallback which snapshots a mutable checkout.
+    const bindRuntime = (source: string): string => {
+        const manifestPath = path.join(source, "package.json");
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+        fs.writeFileSync(manifestPath, JSON.stringify({...manifest, dependencies: {"@fromstan/pokie": "*"}}));
+        return source;
+    };
+    const writeDescriptorPackage = (...args: Parameters<typeof writeUnboundDescriptorPackage>) => bindRuntime(writeUnboundDescriptorPackage(...args));
+    const writePausedDescriptorPackage = (...args: Parameters<typeof writeUnboundPausedDescriptorPackage>) => {
+        const fixture = writeUnboundPausedDescriptorPackage(...args);
+        bindRuntime(fixture.source);
+        return fixture;
+    };
 
     const registry = new ArtifactBuilderRegistry();
 
@@ -53,7 +70,8 @@ describe("ArtifactBuilderRegistry", () => {
                 const options = {repository: fixture.repository};
                 const original = await readP911Candidate(fixture.reference, options);
                 // Both selectors must admit this exact correction without admitting sibling tests.
-                const correctionPaths = ["scripts/p8-05-release-handoff.mjs", "tests/project/ArtifactBuilderRegistry.test.ts"];
+                const correctionPaths = ["scripts/p8-05-release-handoff.mjs", "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+                    "tests/project/ArtifactBuilderRegistry.test.ts", "tests/testUtils/stageCompiledTestRuntime.ts", "tests/v2/fixtures/PackageExtractionFixture.ts"];
                 for (const file of correctionPaths) await writeFile(path.join(fixture.repository, file), "// Bounded gate correction fixture.");
                 execFileSync("git", ["add", ...correctionPaths], {cwd: fixture.repository});
                 execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "bounded gate correction fixture"], {cwd: fixture.repository});
@@ -106,6 +124,8 @@ describe("ArtifactBuilderRegistry", () => {
                 : {type, authority: "explicitly unknown custom cap"};
             const source = writeDescriptorPackage(root, {descriptorBody:
                 `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model, maxWinPolicy: ${JSON.stringify(policy)}};`,});
+            expect((await resolvePokieGameDependencyRoots(source))["@fromstan/pokie"])
+                .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
             const project: PokieProject = {type: "tsPackage", rootPath: source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
             for (const target of ["blueprint", "tsPackage", "parWorkbook", "wasm"] as const) {
                 const destination = path.join(root, target);
