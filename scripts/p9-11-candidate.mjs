@@ -14,6 +14,7 @@ const sha = (value, length = 64) => typeof value === "string" && new RegExp(`^[a
 const fail = (message) => { throw new Error(`P9-11 candidate: ${message}`); };
 const tooling = new Set([
     "tests/v2/helpers/publicRuntime.ts",
+    "tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts",
     // V2C-37 retained runtime gate correction; no product/build exemption.
     "tests/cli/commands/ReplayCommand.test.ts",
     "tests/gamepackage/loadPokieGame.test.ts",

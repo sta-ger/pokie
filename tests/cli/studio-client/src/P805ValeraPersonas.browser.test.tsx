@@ -217,6 +217,125 @@ describe("P8-05 rendered Valera persona evidence", () => {
         expect(screen.getByRole("button", {name: "Compare saved versus draft"})).toHaveAccessibleDescription("Load or save a source before comparing definitions.");
     });
 
+    it("waits for imported package validation before compact fairness navigation and retains timeout diagnostics", () => {
+        const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import {spawn} from 'node:child_process';
+            import {mkdtemp,readFile,rm} from 'node:fs/promises';
+            import {tmpdir} from 'node:os';
+            import path from 'node:path';
+            import {createServer} from 'node:http';
+            import {connectP805Devtools,observeP805NavigationReadiness,revealP805RenderedNavigationControl,activateP805FocusedControl,hasP805NativeActivation} from './scripts/p8-05-valera-browser-audit.mjs';
+            const profile=await mkdtemp(path.join(tmpdir(),'p805-fairness-readiness-'));
+            const browser=spawn(process.env.P805_CHROMIUM_BINARY??'chromium-browser',['--headless=new','--no-sandbox','--no-first-run','--disable-background-networking','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'],{stdio:'ignore'});
+            let terminal;
+            const exited=new Promise(resolve=>{browser.once('error',error=>{terminal=error;resolve();});browser.once('exit',(code,signal)=>{terminal={code,signal};resolve();});});
+            const now=Date.now;
+            let offset=0,cdp,html='';
+            const server=createServer((_request,response)=>{response.setHeader('Content-Type','text/html');response.end(html);});
+            await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+            const poll=async read=>{const deadline=now()+30000;for(;;){const value=await read();if(value)return value;assert.equal(terminal,undefined);assert.ok(now()<deadline,'focused Chromium readiness timeout');await new Promise(resolve=>setTimeout(resolve,25));}};
+            try {
+                const port=await poll(async()=>{try{return (await readFile(path.join(profile,'DevToolsActivePort'),'utf8')).split(String.fromCharCode(10))[0];}catch(error){if(error.code!=='ENOENT')throw error;return false;}});
+                cdp=await connectP805Devtools('http://127.0.0.1:'+port);
+                const evaluate=async expression=>{const value=await cdp.send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});assert.equal(value.exceptionDetails,undefined);return value.result.value;};
+                const load=async()=>{
+                    await cdp.send('Emulation.setDeviceMetricsOverride',{width:800,height:900,mobile:false,deviceScaleFactor:1});
+                    html='<!doctype html><button type="button" id="studio-navigation-toggle" aria-label="Toggle navigation" aria-controls="studio-navigation-panel" aria-expanded="false" style="position:fixed;left:300px;top:10px;width:50px;height:30px">Menu</button><nav id="studio-navigation-panel" inert style="position:fixed;left:0;top:60px;width:260px;height:800px;transform:translateX(-260px)"><button type="button" id="project-tab:provablyFair" data-pokie-lifecycle="navigation" data-pokie-lifecycle-route="provablyFair" data-pokie-transaction-state="navigation" style="width:220px;height:40px">Provably Fair</button></nav><main style="margin-left:280px"><p id="navigation-result" data-pokie-lifecycle-result="navigation" data-pokie-lifecycle-route="overview" data-pokie-lifecycle-result-control="project-tab:overview" data-pokie-lifecycle-terminal="rendered">Overview ready</p><p id="validation" data-pokie-lifecycle-result="project-validation" data-pokie-lifecycle-terminal="loading">Checking project…</p></main>';
+                    const url='http://127.0.0.1:'+server.address().port+'/'+Math.random();
+                    await cdp.send('Page.navigate',{url});
+                    await poll(()=>evaluate("location.href==="+JSON.stringify(url)+"&&document.readyState==='complete'&&document.getElementById('validation')!==null"));
+                    await evaluate("location.hash='#/project/source/overview'");
+                    await poll(()=>evaluate("location.hash==='#/project/source/overview'"));
+                    await evaluate("window.activations=[];const toggle=document.getElementById('studio-navigation-toggle'),panel=document.getElementById('studio-navigation-panel');toggle.onclick=event=>{window.activations.push({id:toggle.id,trusted:event.isTrusted});toggle.setAttribute('aria-expanded','true');panel.inert=false;panel.style.transform='none';};document.getElementById('project-tab:provablyFair').onclick=event=>{window.activations.push({id:event.currentTarget.id,trusted:event.isTrusted});location.hash='#/project/source/provablyFair';};");
+                };
+                Date.now=()=>now()+offset;
+                for(const terminal of ['completed','error']){
+                    await load();
+                    const diagnostics={};
+                    assert.equal(await observeP805NavigationReadiness(evaluate,'provablyFair',diagnostics),false);
+                    assert.equal(diagnostics.phase,'project-validation');
+                    let polls=0;
+                    const delayed=async expression=>{
+                        if(expression.includes('data-pokie-lifecycle-result="project-validation"')){
+                            polls++;
+                            assert.deepEqual(await evaluate('window.activations'),[],'validation must settle before the drawer or tab receives input');
+                            if(polls===2)offset+=31000;
+                            if(polls===3)await evaluate("document.getElementById('validation').setAttribute('data-pokie-lifecycle-terminal',"+JSON.stringify(terminal)+")");
+                        }
+                        return evaluate(expression);
+                    };
+                    const control=await revealP805RenderedNavigationControl(cdp,delayed,'provablyFair','fairness-conditional');
+                    assert.equal(polls,3,'package preparation may exceed the ordinary 30s control deadline');
+                    assert.equal(hasP805NativeActivation(control.navigationDisclosure,'studio-navigation-toggle'),true);
+                    const activation=await activateP805FocusedControl(cdp,evaluate,'navigation',control);
+                    assert.equal(hasP805NativeActivation(activation,'project-tab:provablyFair'),true);
+                    assert.deepEqual(await evaluate('window.activations'),[{id:'studio-navigation-toggle',trusted:true},{id:'project-tab:provablyFair',trusted:true}]);
+                    assert.equal(await evaluate('location.hash'),'#/project/source/provablyFair');
+                }
+                await load();
+                let polls=0;
+                await assert.rejects(()=>revealP805RenderedNavigationControl(cdp,async expression=>{
+                    if(expression.includes('data-pokie-lifecycle-result="project-validation"')&&++polls===2)offset+=121000;
+                    return evaluate(expression);
+                },'provablyFair','fairness-conditional'),error=>/last navigation readiness:/.test(error.message)&&/project-validation/.test(error.message)&&/loading/.test(error.message));
+                assert.deepEqual(await evaluate('window.activations'),[],'an exhausted preparation budget never authorizes native input');
+                console.log(JSON.stringify({validationTerminals:2,delayedPreparation:true,nativeDrawerAndTab:true,timeoutDiagnostics:true}));
+            } finally {Date.now=now;cdp?.close();browser.kill('SIGTERM');await exited;await new Promise(resolve=>server.close(resolve));await rm(profile,{recursive:true,force:true});}
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 60_000}));
+        expect(result).toEqual({validationTerminals: 2, delayedPreparation: true, nativeDrawerAndTab: true, timeoutDiagnostics: true});
+    }, 90_000);
+
+    it("admits the complete bounded correction through pinned candidate readers without exempting product inputs", () => {
+        const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import {execFileSync} from 'node:child_process';
+            import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
+            import {tmpdir} from 'node:os';
+            import path from 'node:path';
+            import {candidateFixture,P911_TOOLING_DESCENDANT_PATHS} from './tests/testUtils/createP911CandidateFixture.mjs';
+            import {authenticateP805ProductTree} from './scripts/p8-05-release-handoff.mjs';
+            import {readP911CandidateFromEnvironment,readP911SmokeCandidateFromEnvironment} from './scripts/p9-11-candidate.mjs';
+            const directory=await mkdtemp(path.join(tmpdir(),'p805-bounded-handoff-'));
+            try {
+                const fixture=await candidateFixture(directory),repository=fixture.repository;
+                const paths=[...new Set([
+                    'tests/cli/commands/ReplayCommand.test.ts','tests/cli/commands/SimCommand.test.ts',
+                    'tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx',
+                    'tests/gamepackage/loadPokieGame.test.ts','tests/project/wasm/WasmRuntimeParity.golden.test.ts',
+                    'tests/v2/OptimizationContractsAdapters.test.ts','tests/v2/OptimizationSearchConvergence.test.ts',
+                    'tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts',
+                    'tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx',
+                    'tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx',
+                    'scripts/p8-05-valera-browser-audit.mjs','scripts/p8-05-release-handoff.mjs',
+                    'scripts/p9-11-candidate.mjs','tests/testUtils/createP911CandidateFixture.mjs',
+                ])].sort();
+                for(const file of paths){assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file),file);await mkdir(path.dirname(path.join(repository,file)),{recursive:true});await writeFile(path.join(repository,file),'// bounded correction fixture');}
+                const commit=()=>{execFileSync('git',['add','.'],{cwd:repository});execFileSync('git',['-c','user.name=sta-ger','-c','user.email=pascaldelger@gmail.com','commit','--quiet','-m','bounded correction fixture'],{cwd:repository});return execFileSync('git',['rev-parse','HEAD'],{cwd:repository,encoding:'utf8'}).trim();};
+                const descendant=commit();
+                assert.deepEqual(authenticateP805ProductTree(fixture.handoff.candidateId,descendant,repository).changedToolingAndEvidencePaths,paths);
+                const environment={POKIE_P911_CANDIDATE_HANDOFF:fixture.reference.path,POKIE_P911_CANDIDATE_HANDOFF_SHA256:fixture.reference.sha256};
+                for(const read of [readP911CandidateFromEnvironment,readP911SmokeCandidateFromEnvironment]){
+                    const selected=await read(environment,{repository});
+                    assert.equal(selected.installationRoot,fixture.handoff.installationRoot);
+                    assert.deepEqual(selected.archive,await readFile(fixture.handoff.archivePath));
+                    await assert.rejects(()=>read({...environment,POKIE_P911_CANDIDATE_HANDOFF_SHA256:'b'.repeat(64)},{repository}),/digest mismatch/);
+                    const driver=await readFile(fixture.handoff.browserDriver.path);
+                    try {await writeFile(fixture.handoff.browserDriver.path,'substituted driver');await assert.rejects(()=>read(environment,{repository}),/authenticated controller browser driver required/);}finally{await writeFile(fixture.handoff.browserDriver.path,driver);}
+                }
+                for(const file of ['src/changed.ts','tsconfig.prod.json','tests/unnamed.test.ts']){
+                    await mkdir(path.dirname(path.join(repository,file)),{recursive:true});await writeFile(path.join(repository,file),'protected');
+                    const changed=commit();
+                    assert.throws(()=>authenticateP805ProductTree(fixture.handoff.candidateId,changed,repository),/new blind retests are required/);
+                    for(const read of [readP911CandidateFromEnvironment,readP911SmokeCandidateFromEnvironment])await assert.rejects(()=>read(environment,{repository}),/product[/]build inputs changed/);
+                    execFileSync('git',['reset','--hard',descendant],{cwd:repository});
+                }
+                console.log(JSON.stringify({completeCorrectionAdmitted:true,archivePreserved:true,pinsProtected:true,protectedPaths:3}));
+            } finally {await rm(directory,{recursive:true,force:true});}
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 30_000}));
+        expect(result).toEqual({completeCorrectionAdmitted: true, archivePreserved: true, pinsProtected: true, protectedPaths: 3});
+    });
+
     it("records budget-exhausted validation as inconclusive and rejects other terminals", async () => {
         const source = await readFile(runner, "utf8");
         expect(source.match(/await runInconclusiveValidation\(/g)).toHaveLength(7);

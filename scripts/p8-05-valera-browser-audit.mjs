@@ -970,22 +970,25 @@ export async function observeP805CreatorValidation(cdp, evaluate, readBrowserRes
 // tabs render. Overview also validates independently after opening a project:
 // its diagnostics can add a scrollbar while the shell already says "ready".
 // Wait for that rendered terminal before capturing navigation's viewport.
-export async function observeP805NavigationReadiness(evaluate, route) {
-    return evaluate(`(()=>{
+export async function observeP805NavigationReadiness(evaluate, route, diagnostics = {}) {
+    const observation = await evaluate(`(()=>{
         const item=[...document.querySelectorAll('[data-pokie-lifecycle="navigation"]')].find((candidate)=>candidate.getAttribute('data-pokie-lifecycle-route')===${JSON.stringify(route)});
-        if(!(item instanceof HTMLElement)||!item.id||('disabled' in item&&item.disabled)||item.getClientRects().length===0)return false;
         const currentRoute=location.hash;
+        const state={currentRoute,controlId:item?.id??null,terminal:null,validationTerminals:[]};
+        const pending=(phase,details={})=>({ready:false,state:{...state,phase,...details}});
+        if(!(item instanceof HTMLElement)||!item.id||('disabled' in item&&item.disabled)||item.getClientRects().length===0)return pending('target-control');
         let terminal=null;
         if(currentRoute.startsWith('#/project/')){
             const selectedRoute=currentRoute.split('?')[0].split('/').at(-1);
             const result=[...document.querySelectorAll('[data-pokie-lifecycle-result="navigation"]')].find((candidate)=>candidate.getAttribute('data-pokie-lifecycle-route')===selectedRoute&&candidate.getAttribute('data-pokie-lifecycle-result-control')==='project-tab:'+selectedRoute);
-            if(!(result instanceof HTMLElement)||result.getClientRects().length===0)return false;
+            if(!(result instanceof HTMLElement)||result.getClientRects().length===0)return pending('project-context');
             terminal=result.getAttribute('data-pokie-lifecycle-terminal');
-            if(!['rendered','error'].includes(terminal))return false;
+            if(!['rendered','error'].includes(terminal))return pending('project-context',{terminal});
             if(selectedRoute==='overview'){
-                const validations=[...document.querySelectorAll('[data-pokie-lifecycle-result="project-validation"]')]
-                    .filter((candidate)=>candidate instanceof HTMLElement&&candidate.getClientRects().length>0);
-                if(validations.some((candidate)=>!['completed','error'].includes(candidate.getAttribute('data-pokie-lifecycle-terminal'))))return false;
+                const validationTerminals=[...document.querySelectorAll('[data-pokie-lifecycle-result="project-validation"]')]
+                    .filter((candidate)=>candidate instanceof HTMLElement&&candidate.getClientRects().length>0)
+                    .map((candidate)=>candidate.getAttribute('data-pokie-lifecycle-terminal'));
+                if(validationTerminals.some((value)=>!['completed','error'].includes(value)))return pending('project-validation',{terminal,validationTerminals});
             }
         }else if(currentRoute.startsWith('#/home/')){
             // Home retains both bodies. A changed hash alone can precede the
@@ -995,14 +998,26 @@ export async function observeP805NavigationReadiness(evaluate, route) {
             const panel=document.getElementById(selected?.getAttribute('aria-controls'));
             if(!(selected instanceof HTMLElement)||selected.getAttribute('aria-current')!=='page'
                 ||selected.getAttribute('data-pokie-lifecycle-route')!==selectedRoute
-                ||!(panel instanceof HTMLElement)||!panel.isConnected||panel.getClientRects().length===0)return false;
+                ||!(panel instanceof HTMLElement)||!panel.isConnected||panel.getClientRects().length===0)return pending('home-panel');
             terminal='rendered';
         }
-        return {controlId:item.id,currentRoute,terminal};
+        return {ready:{controlId:item.id,currentRoute,terminal},state:{...state,phase:'ready',terminal}};
     })()`);
+    Object.assign(diagnostics, observation.state);
+    return observation.ready;
 }
 export async function revealP805RenderedNavigationControl(cdp, evaluate, route, observation) {
-    await waitFor(() => observeP805NavigationReadiness(evaluate, route), `${observation} rendered ${route} navigation context`);
+    const readiness = {};
+    try {
+        // Imported code packages run Overview validation after Open completes.
+        // That acquisition is independent of the context response and can
+        // outlast the ordinary 30s control budget under the changed-test gate.
+        // Keep the terminal/viewport guard; give preparation its own bounded
+        // budget, as for imported Open and durable recovery.
+        await waitFor(() => observeP805NavigationReadiness(evaluate, route, readiness), `${observation} rendered ${route} navigation context`, 120_000);
+    } catch (error) {
+        throw new Error(`${error.message}; last navigation readiness: ${JSON.stringify(readiness)}`, {cause:error});
+    }
     const disclosureKey = randomBytes(16).toString("hex");
     // Retain the product disclosure and its actual controlled panel across
     // settling and activation. A new node with the same id is not this drawer.

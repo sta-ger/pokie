@@ -101,6 +101,7 @@ it("retains the authenticated installed candidate across the complete gate-test 
         // Both archive selectors must admit the complete correction since the
         // authenticated candidate, including its already retained recheck receipt.
         const correctionPaths = [
+            "tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts",
             "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
             "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",
             "tests/cli/commands/ReplayCommand.test.ts",

@@ -6,6 +6,7 @@ import path from "path";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {OutcomeLibraryCommand} from "../../cli/commands/OutcomeLibraryCommand.js";
 import {OutcomeSourceCommand} from "../../cli/commands/OutcomeSourceCommand.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
 
 // End-to-end happy path for "pokie outcomelibrary generate": package (a real "pokie build" output) ->
 // generate (drives the built package's own runtime) -> validate (WeightedOutcomeLibraryValidator, the
@@ -16,7 +17,14 @@ import {OutcomeSourceCommand} from "../../cli/commands/OutcomeSourceCommand.js";
 // tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts for that lower-level core
 // coverage; this file is the CLI's own surface).
 describe("CLI workflow (integration): pokie outcomelibrary generate -> validate -> analyze -> bundle", () => {
+    jest.setTimeout(PACKAGE_EXTRACTION_TEST_TIMEOUT);
     let workDir: string;
+    let restoreRuntimeEnvironment: () => void;
+
+    beforeAll(() => {
+        restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    afterAll(() => restoreRuntimeEnvironment());
 
     beforeEach(() => {
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcomelibrary-generate-e2e-"));

@@ -15,6 +15,7 @@ const fail = (message) => { throw new Error(`P8-05 release handoff is invalid: $
 // generators, runtime sources and other steps' evidence, must be byte-identical.
 const tooling = new Set([
     "tests/v2/helpers/publicRuntime.ts",
+    "tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts",
     // V2C-37 retained runtime gate correction; no product/build exemption.
     "tests/cli/commands/ReplayCommand.test.ts",
     "tests/gamepackage/loadPokieGame.test.ts",
