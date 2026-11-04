@@ -1,3 +1,5 @@
+import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
+import {PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
 import {loadPokieGame, loadPokieGameRuntime, readPokiePackageConfig, releasePokieGame} from "@fromstan/pokie";
 import fs from "fs";
 import {createRequire} from "module";
@@ -306,7 +308,10 @@ it.each(["cjs", "esm"])("isolates direct/transitive %s code, lazy imports and li
     const manifest = (value: string) => ({id: "dependency-game", name: value, version: "1.0.0"});
     const write = (value: string) => fs.writeFileSync(dependencyFile, format === "cjs" ? `module.exports = '${value}';` : `export default '${value}';`);
     fs.mkdirSync(nested, {recursive: true});
-    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({pokie: {entry: `index.${suffix}`}, dependencies: {direct: "1"}}));
+    // Bind the current native runtime explicitly. The host-fallback contract is
+    // covered separately above; these repeated acquisitions own dependency edits.
+    stageCompiledTestRuntime(root);
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({pokie: {entry: `index.${suffix}`}, dependencies: {"@fromstan/pokie": "*", direct: "1"}}));
     for (const [name, location, dependencies] of [["direct", direct, {nested: "1"}], ["nested", nested, {}]] as const) {
         fs.writeFileSync(path.join(location, "package.json"), JSON.stringify({name, main: `index.${suffix}`, dependencies, peerDependencies: name === "nested" ? {direct: "1"} : {}}));
     }
@@ -366,4 +371,4 @@ Module._extensions['.ts'] = (module, file) => module._compile(ts.transpileModule
         expect(snapshots.every(snapshot => !fs.existsSync(snapshot))).toBe(true);
         fs.rmSync(root, {recursive: true, force: true});
     }
-}, 60000);
+}, PACKAGE_EXTRACTION_TEST_TIMEOUT);

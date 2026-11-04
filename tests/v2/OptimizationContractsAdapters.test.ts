@@ -238,9 +238,10 @@ it("requires package source authority before mutation", async () => {
 
 
 function declaredPackage(name = "package", prefix = "", release = "", dependencies: Record<string, string> = {}) {
+    if (!fs.existsSync(path.join(directory, "node_modules/@fromstan/pokie/package.json"))) stageCompiledTestRuntime(directory);
     const root = path.join(directory, name);
     fs.mkdirSync(root);
-    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "tunable", version: "1.0.0", pokie: {entry: "index.cjs"}, dependencies}));
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "tunable", version: "1.0.0", pokie: {entry: "index.cjs"}, dependencies: {"@fromstan/pokie": "*", ...dependencies}}));
     fs.writeFileSync(path.join(root, "parameters.json"), JSON.stringify(model()));
     const code = prefix + declaredGameCode.replace("module.exports = {", `module.exports = {${release ? `release: async () => {${release}},` : ""}`);
     fs.writeFileSync(path.join(root, "index.cjs"), code);
@@ -1276,7 +1277,7 @@ it.each(["blueprint", "parWorkbook", "wasm", "tsPackage"] as const)("V35 optimiz
     expect(await measure()).toEqual([0.5]);
     expect(await measure()).toEqual([0.5]);
     expect(sourceInventory(project)).toEqual(before);
-}, 60000);
+}, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
 it("V35 optimizer progress observations cannot mutate execution authority and failures permit first/subsequent reuse", async () => {
     const project = await resolve(source);

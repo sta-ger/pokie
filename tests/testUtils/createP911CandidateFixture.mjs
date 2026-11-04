@@ -10,6 +10,13 @@ const json = (file, value) => writeFile(file, `${JSON.stringify(value)}\n`);
 // every file changed by this handoff repair.
 export const P911_TOOLING_DESCENDANT_PATHS = [
     "tests/v2/helpers/publicRuntime.ts",
+    // V2C-37 retained runtime gate correction; no product/build exemption.
+    "tests/cli/commands/ReplayCommand.test.ts",
+    "tests/gamepackage/loadPokieGame.test.ts",
+    "tests/cli/commands/SimCommand.test.ts",
+    "tests/project/wasm/WasmRuntimeParity.golden.test.ts",
+    "tests/v2/OptimizationSearchConvergence.test.ts",
+
     // Complete V2C-37 saved gate correction; product/build inputs and receipt pins stay protected.
     "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
     "tests/cli/CanonicalArtifactCli.integration.test.ts",

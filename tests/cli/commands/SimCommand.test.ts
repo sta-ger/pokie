@@ -1,3 +1,4 @@
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {
     BetMode,
     GamePackageGenerator,
@@ -28,6 +29,12 @@ import {SimCommand} from "../../../cli/commands/SimCommand.js";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
+
+let restoreRuntimeEnvironment: () => void;
+beforeAll(() => {
+    restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+}, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+afterAll(() => restoreRuntimeEnvironment());
 
 function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
     const calls: string[] = [];
@@ -580,6 +587,7 @@ describe("SimCommand --mode", () => {
 // End-to-end: a REAL "pokie build"-generated package (not a fake session) whose blueprint carries a
 // fully-determined explicit runtime-semantics contract, run through the real CLI --mode flag.
 describe("SimCommand --mode (integration, real generated package)", () => {
+    jest.setTimeout(PACKAGE_EXTRACTION_TEST_TIMEOUT);
     let cwd: string;
 
     beforeEach(() => {
@@ -686,6 +694,7 @@ describe("SimCommand --mode (integration, real generated package)", () => {
 // buyFeature modes -- one full simulation per mode, bundled into a SimulationReportSet, never a single
 // blended/"overall" number across modes.
 describe("SimCommand --mode all (integration, real generated package)", () => {
+    jest.setTimeout(PACKAGE_EXTRACTION_TEST_TIMEOUT);
     const manifest: PokieGameManifest = {id: "deterministic-game", name: "Deterministic Game", version: "0.1.0"};
     let cwd: string;
 

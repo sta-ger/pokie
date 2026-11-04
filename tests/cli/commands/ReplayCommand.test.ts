@@ -1,3 +1,4 @@
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {createOverscanGame} from "../../v2/fixtures/OverscanGame.js";
 import {
     GameSessionHandling,
@@ -326,8 +327,20 @@ describe("ReplayCommand generated package mode policy", () => {
 });
 
 describe("ReplayCommand (integration, real loadPokieGame + fixture game package)", () => {
-    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
+    jest.setTimeout(PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    let restoreRuntimeEnvironment: () => void;
+    let fixtureRoot: string;
     let outDir: string;
+
+    beforeAll(() => {
+        restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+        fixtureRoot = path.join(os.tmpdir(), "playable-game");
+        fs.cpSync(path.join(__dirname, "..", "fixtures", "playable-game"), fixtureRoot, {recursive: true});
+        const manifestPath = path.join(fixtureRoot, "package.json");
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        fs.writeFileSync(manifestPath, JSON.stringify({...manifest, dependencies: {"@fromstan/pokie": "*"}}));
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    afterAll(() => restoreRuntimeEnvironment());
 
     beforeEach(() => {
         outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-test-"));

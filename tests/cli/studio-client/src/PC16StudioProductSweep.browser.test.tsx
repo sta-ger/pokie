@@ -24,20 +24,37 @@ function writeStudioAssets(root: string): void {
 
 function createServerFetch(baseUrl: string, observe: (url: string, method: string, status: number, body: unknown) => void): FetchLike {
     return (url, init) => new Promise((resolve, reject) => {
-        const request = http.request(`${baseUrl}${url}`, {method: init?.method, headers: init?.headers}, (response) => {
+        const signal = init?.signal;
+        const release = () => signal?.removeEventListener("abort", abort);
+        const fail = (error: Error) => {
+            release();
+            reject(error);
+        };
+        const request = http.request(`${baseUrl}${url}`, {
+            method: init?.method, headers: {...init?.headers, Connection: "close"}, agent: false,
+        }, (response) => {
             const chunks: Buffer[] = [];
             response.on("data", (chunk: Buffer) => chunks.push(chunk));
+            response.on("error", fail);
             response.on("end", () => {
-                const body = Buffer.concat(chunks).toString("utf8");
-                observe(url, init?.method ?? "GET", response.statusCode ?? 500, JSON.parse(body));
-                resolve({
-                    ok: (response.statusCode ?? 500) >= 200 && (response.statusCode ?? 500) < 300,
-                    status: response.statusCode ?? 500,
-                    json: () => Promise.resolve(JSON.parse(body)),
-                });
+                release();
+                try {
+                    const body: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+                    observe(url, init?.method ?? "GET", response.statusCode ?? 500, body);
+                    resolve({
+                        ok: (response.statusCode ?? 500) >= 200 && (response.statusCode ?? 500) < 300,
+                        status: response.statusCode ?? 500,
+                        json: () => Promise.resolve(body),
+                    });
+                } catch (error) {
+                    reject(error);
+                }
             });
         });
-        request.on("error", reject);
+        const abort = () => request.destroy(Object.assign(new Error("Studio test request aborted"), {name: "AbortError"}));
+        request.on("error", fail);
+        if (signal?.aborted) abort();
+        else signal?.addEventListener("abort", abort, {once: true});
         request.end(init?.body);
     });
 }
@@ -140,9 +157,12 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
             onTimeout: (error: Error) => new Error(`${error.message}\nActual simulation request/admission/status: ${JSON.stringify({simulationSubmissions, simulationAdmission, simulationStatus})}\nRendered state: ${document.body.textContent}`),
         };
         await waitFor(() => expect(simulationAdmission).toMatchObject({status: 202, body: {id: expect.any(String)}}), simulationWait);
-        // Completion opens Review automatically; assert its settled public result.
-        await screen.findByRole("button", {name: "Open full report"}, simulationWait);
-        expect(simulationStatus).toMatchObject({status: "completed", rounds: 2, report: {rounds: 2}});
+        // Keep the HTTP/service event loop available during runtime preparation.
+        // Repeated accessible-name scans of the full live dashboard can starve
+        // its real copier and cleanup while the report control does not exist.
+        await waitFor(() => expect(simulationStatus).toMatchObject({status: "completed", rounds: 2, report: {rounds: 2}}), simulationWait);
+        // Completion opens Review automatically; still prove the rendered result.
+        await screen.findByRole("button", {name: "Open full report"});
         expect(simulationSubmissions).toBe(1);
         expect(screen.queryByText(/Deployment has moved into Build\/Export/)).not.toBeInTheDocument();
     }, 300000);

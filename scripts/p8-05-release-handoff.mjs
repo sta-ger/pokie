@@ -15,6 +15,13 @@ const fail = (message) => { throw new Error(`P8-05 release handoff is invalid: $
 // generators, runtime sources and other steps' evidence, must be byte-identical.
 const tooling = new Set([
     "tests/v2/helpers/publicRuntime.ts",
+    // V2C-37 retained runtime gate correction; no product/build exemption.
+    "tests/cli/commands/ReplayCommand.test.ts",
+    "tests/gamepackage/loadPokieGame.test.ts",
+    "tests/cli/commands/SimCommand.test.ts",
+    "tests/project/wasm/WasmRuntimeParity.golden.test.ts",
+    "tests/v2/OptimizationSearchConvergence.test.ts",
+
     // Complete V2C-37 saved gate correction; product/build inputs and receipt pins stay protected.
     "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
     "tests/cli/CanonicalArtifactCli.integration.test.ts",

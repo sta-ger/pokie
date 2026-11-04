@@ -551,6 +551,10 @@ export async function reloadP805Page(cdp, timeout = 30_000) {
 
 export async function readP805RenderedResponse(cdp, cursor, pathname, accept, label, timeout = 30_000) {
     let lastObservation = "no matching response";
+    // A successful body read is immutable for this request. Re-reading every
+    // prior poll on each pass makes long preparation/cleanup quadratic and can
+    // starve the next rendered poll. Failed reads stay eligible for recovery.
+    const inspected = new Set();
     try {
         return await waitFor(async () => {
             // Reload/restart can leave an old response whose body expired.
@@ -558,6 +562,7 @@ export async function readP805RenderedResponse(cdp, cursor, pathname, accept, la
             const events = cdp.events.slice(cursor).filter((value) => value.method === "Network.responseReceived"
                 && new URL(value.params.response.url).pathname === pathname).reverse();
             for (const event of events) {
+                if (inspected.has(event.params.requestId)) continue;
                 let timer;
                 try {
                     const body = await Promise.race([
@@ -565,6 +570,7 @@ export async function readP805RenderedResponse(cdp, cursor, pathname, accept, la
                         new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("response-body deadline exceeded")), 1_250); }),
                     ]);
                     const payload = JSON.parse(body.body || "{}");
+                    inspected.add(event.params.requestId);
                     lastObservation = `HTTP ${event.params.response.status}, job ${payload?.id ?? "list"}, status ${payload?.status ?? "list"}`;
                     if (accept(payload)) return {event, payload};
                 } catch (error) { lastObservation = String(error); }
@@ -3480,7 +3486,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // but short enough that its rendered Retry can repeat the captured
         // request and reach a terminal report inside this tuple worker.
         const cancellationRounds = retryProbeRounds;
-        const cancellable = await startRenderedSimulation(projectBaseRoute, "cooperative cancellation", cancellationRounds); if (cancellable.response.status !== 202 || typeof cancellable.payload?.id !== "string") fail("Studio did not start a cancellable rendered simulation"); const cancelled = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-cancel", observation:"cooperative cancellation", cursor:cdp.events.length, method:"DELETE", confirmation:true, stateClass:"recovery-operation"}); if (cancelled.response.status !== 200 || cancelled.entry.path !== `/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}` || !["cancelling", "cancelled"].includes(cancelled.payload?.status)) fail("Studio did not acknowledge cooperative simulation cancellation through its rendered control"); const cancelledTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}`, "cooperative cancellation", cancellable.cursor, ["cancelled"], [cancellable.transaction, cancelled.transaction]); timings.cancellationMs = cancelled.transaction.elapsedMs;
+        const cancellable = await startRenderedSimulation(projectBaseRoute, "cooperative cancellation", cancellationRounds); if (cancellable.response.status !== 202 || typeof cancellable.payload?.id !== "string") fail("Studio did not start a cancellable rendered simulation"); const cancelled = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-cancel", observation:"cooperative cancellation", cursor:cdp.events.length, method:"DELETE", confirmation:true, stateClass:"recovery-operation"}); if (cancelled.response.status !== 200 || cancelled.entry.path !== `/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}` || !["cancelling", "cancelled"].includes(cancelled.payload?.status)) fail("Studio did not acknowledge cooperative simulation cancellation through its rendered control"); const cancelledTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}`, "cooperative cancellation", cancellable.cursor, ["cancelled"], [cancellable.transaction, cancelled.transaction], 120_000); timings.cancellationMs = cancelled.transaction.elapsedMs;
         // The durable terminal response can arrive one React commit before
         // Simulation switches from its Run step to Review. Observe the
         // stable Retry control before its native pointer activation. React

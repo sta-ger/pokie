@@ -101,6 +101,15 @@ it("retains the authenticated installed candidate across the complete gate-test 
         // Both archive selectors must admit the complete correction since the
         // authenticated candidate, including its already retained recheck receipt.
         const correctionPaths = [
+            "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
+            "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",
+            "tests/cli/commands/ReplayCommand.test.ts",
+            "tests/gamepackage/loadPokieGame.test.ts",
+            "tests/cli/commands/SimCommand.test.ts",
+            "tests/project/wasm/WasmRuntimeParity.golden.test.ts",
+            "tests/v2/OptimizationSearchConvergence.test.ts",
+            "tests/v2/OptimizationContractsAdapters.test.ts",
+            "scripts/p8-05-valera-browser-audit.mjs",
             "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
             "tests/cli/commands/BuildCommand.test.ts",
             "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",

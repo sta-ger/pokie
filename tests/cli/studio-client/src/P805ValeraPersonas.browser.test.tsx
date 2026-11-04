@@ -292,9 +292,19 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 return {body:JSON.stringify({id:'captured-job', status:'completed'})};
             }};
             assert.equal((await readP805RenderedTerminal(restored, 0, pathname, ['completed'], 'expired poll', 1000)).event.params.requestId, 'restored');
-            console.log(JSON.stringify({expectedTerminals:2, wrongJobRejected:true, failedTerminalRejected:true, httpFailureRejected:true, progressRetained:true, expiredBodyRecovered:true}));
+            const reads = [];
+            const delayed = {events:[event('preparing')], send:async (_method, {requestId}) => {
+                reads.push(requestId);
+                return {body:JSON.stringify({id:'captured-job', status:requestId === 'settled' ? 'cancelled' : 'running'})};
+            }};
+            const timer = setTimeout(() => delayed.events.push(event('settled')), 300);
+            try {
+                assert.equal((await readP805RenderedTerminal(delayed, 0, pathname, ['cancelled'], 'safe cleanup', 1000)).event.params.requestId, 'settled');
+            } finally { clearTimeout(timer); }
+            assert.deepEqual(reads, ['preparing', 'settled']);
+            console.log(JSON.stringify({expectedTerminals:2, wrongJobRejected:true, failedTerminalRejected:true, httpFailureRejected:true, progressRetained:true, expiredBodyRecovered:true, immutableBodiesReadOnce:true}));
         `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000}));
-        expect(result).toEqual({expectedTerminals: 2, wrongJobRejected: true, failedTerminalRejected: true, httpFailureRejected: true, progressRetained: true, expiredBodyRecovered: true});
+        expect(result).toEqual({expectedTerminals: 2, wrongJobRejected: true, failedTerminalRejected: true, httpFailureRejected: true, progressRetained: true, expiredBodyRecovered: true, immutableBodiesReadOnce: true});
     });
 
     it("observes imported Open preparation before its exact dashboard and retains rejected responses", () => {
