@@ -195,9 +195,15 @@ describe("ReplayCommand", () => {
 });
 
 describe("ReplayCommand generated package mode policy", () => {
+    let restoreRuntimeEnvironment: () => void;
+    beforeAll(() => {
+        restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    afterAll(() => restoreRuntimeEnvironment());
+
     let directory: string;
     beforeEach(() => {
-        directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/replay-modes-"));
+        directory = fs.mkdtempSync(path.join(os.tmpdir(), "replay-modes-"));
         jest.spyOn(console, "log").mockImplementation(() => undefined);
     });
     afterEach(() => {

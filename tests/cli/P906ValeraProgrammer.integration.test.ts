@@ -9,6 +9,11 @@ import {compileP906Candidate, prepareP906Candidate} from "../testUtils/prepareP9
 const repositoryRoot = path.resolve(__dirname, "../..");
 const seed = "p906-valera";
 const rounds = 6;
+// A session includes several real dependency snapshots (Open, Inspect, Validate
+// and shutdown). Give preparation its own budget rather than killing the child
+// while a still-owned snapshot is draining under concurrent gate workers.
+const runtimePhaseTimeoutMs = 120_000;
+const studioSessionTimeoutMs = 3 * runtimePhaseTimeoutMs;
 
 // Each supervised Studio child owns a short-lived listener. Do not retain an
 // idle pooled socket across its runtime snapshots or reuse it for the next child.
@@ -72,7 +77,7 @@ describe("P9-06 bounded public developer scenario", () => {
             const request = async (url: string, route: string, body?: unknown) => {
                 const response = await fetchStudio(`${url}${route}`, {
                     ...(body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}),
-                    signal: AbortSignal.timeout(30_000),
+                    signal: AbortSignal.timeout(runtimePhaseTimeoutMs),
                 });
                 const text = await response.text();
                 observations.push({request: route, body, status: response.status, response: text});
@@ -83,7 +88,7 @@ describe("P9-06 bounded public developer scenario", () => {
                 // Startup serves HTTP before the invocation-owned runtime
                 // dependency snapshot is ready. Give that asynchronous load
                 // the same bounded budget as Home's materializing request.
-                const deadline = Date.now() + 30_000;
+                const deadline = Date.now() + runtimePhaseTimeoutMs;
                 let context;
                 do {
                     context = await request(url, "/api/project/context");
@@ -116,7 +121,7 @@ describe("P9-06 bounded public developer scenario", () => {
                 const deadline = setTimeout(() => {
                     expired = true;
                     child.kill("SIGKILL");
-                }, 60_000);
+                }, studioSessionTimeoutMs);
                 try {
                     const url = await new Promise<string>((resolve, reject) => {
                         child.stdout.on("data", () => {
@@ -259,7 +264,7 @@ describe("P9-06 bounded public developer scenario", () => {
             fs.writeFileSync(path.join(repositoryRoot, "node_modules", ".cache", "p906-scenario.json"), JSON.stringify(observations, null, 2));
             fs.rmSync(directory, {recursive: true, force: true});
         }
-    }, 180_000);
+    }, 6 * runtimePhaseTimeoutMs);
 });
 
 describe("P9-06 Studio HTTP transport", () => {

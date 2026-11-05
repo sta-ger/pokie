@@ -24,6 +24,7 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "tests/cli/InitCommandWorkflow.integration.test.ts",
     "tests/cli/P805ValeraProgrammer.integration.test.ts",
     "tests/cli/P906ValeraProgrammer.integration.test.ts",
+    "tests/cli/PC18LifecycleParity.integration.test.ts",
     "tests/cli/RandomBuildWorkflow.integration.test.ts",
     "tests/cli/Workflow.integration.test.ts",
     "tests/cli/commands/DiffCommand.test.ts",

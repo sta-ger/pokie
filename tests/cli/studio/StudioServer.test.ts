@@ -1636,7 +1636,9 @@ describe("StudioServer", () => {
     ] as const)("retains %s %s release failure as cleanup-unconfirmed (cancelled=%s)", async (entry, resource, cancelled) => {
         const sourcePath = path.join(studioRoot, "release-failure-game");
         fs.mkdirSync(sourcePath);
-        fs.writeFileSync(path.join(sourcePath, "package.json"), JSON.stringify({name: "release-failure-game", pokie: {entry: "index.js"}}));
+        // Resolve the suite's staged runtime instead of the compatibility fallback
+        // to the entire embedding checkout. The real snapshot/release still runs.
+        fs.writeFileSync(path.join(sourcePath, "package.json"), JSON.stringify({name: "release-failure-game", dependencies: {"@fromstan/pokie": "*"}, pokie: {entry: "index.js"}}));
         fs.writeFileSync(path.join(sourcePath, "index.js"), "// injectable game module");
         const failureMessage = `fixture ${resource} release failed`;
         let finishLoad!: (game: PokieGame) => void;
