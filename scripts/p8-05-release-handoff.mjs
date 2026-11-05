@@ -95,6 +95,7 @@ const tooling = new Set([
     "tests/fixtures/wasm/verifyDeliveredSharedMath.cjs",
     "tests/v2/fixtures/normal-pack.stdout.txt",
     "scripts/p9-11-candidate.mjs",
+    "scripts/p9-11-corrective-closeout.mjs",
     "tests/testUtils/createP911CandidateFixture.mjs",
     "tests/scripts/p9-11-produce-candidate.test.mjs",
     "tests/scripts/p9-11-corrective-closeout.test.mjs",

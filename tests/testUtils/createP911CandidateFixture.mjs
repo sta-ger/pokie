@@ -96,6 +96,7 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "tests/v2/OptimizationPublicWorkflow.test.ts",
     "docs/v2-completion/V2C-26.md",
     "scripts/p9-11-candidate.mjs", "tests/testUtils/createP911CandidateFixture.mjs",
+    "scripts/p9-11-corrective-closeout.mjs",
     "tests/scripts/p9-11-corrective-closeout.test.mjs", "tests/scripts/p9-11-produce-candidate.test.mjs",
     "docs/audit-corrections/README.md", "docs/audit-corrections/p9-11-closeout.md",
     // Complete V2C-31 test/evidence repair; production and build inputs stay protected.

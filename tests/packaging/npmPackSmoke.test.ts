@@ -153,6 +153,68 @@ it("selects the pinned P9 smoke archive/installation through native ESM without 
     }
 });
 
+it("preserves authenticated handoffs across the complete bounded prepack correction", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "p911-prepack-handoff-"));
+    try {
+        execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from "node:assert/strict";
+            import {execFileSync} from "node:child_process";
+            import {mkdir, readFile, writeFile} from "node:fs/promises";
+            import path from "node:path";
+            import {candidateFixture, P911_TOOLING_DESCENDANT_PATHS} from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "tests/testUtils/createP911CandidateFixture.mjs")).href)};
+            import {readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment} from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "scripts/p9-11-candidate.mjs")).href)};
+            import {authenticateP805ProductTree} from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "scripts/p8-05-release-handoff.mjs")).href)};
+            const fixture = await candidateFixture(${JSON.stringify(directory)});
+            const options = {repository: fixture.repository};
+            const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
+            // The programmer and rendered selectors use the first reader; the
+            // packaging selector additionally authenticates release context.
+            const readers = [readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment];
+            const original = await readers[0](environment, options);
+            const paths = ["scripts/p8-05-release-handoff.mjs", "scripts/p9-11-corrective-closeout.mjs",
+                "tests/cli/studio-client/src/components/project/ProjectDashboardPage.wasmWorkflow.test.tsx",
+                "tests/packaging/npmPackSmoke.test.ts", "tests/testUtils/createP911CandidateFixture.mjs"];
+            for (const file of paths) {
+                assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
+                await writeFile(path.join(fixture.repository, file), "// Bounded prepack regression correction.");
+            }
+            const git = args => execFileSync("git", args, {cwd: fixture.repository, encoding: "utf8"}).trim();
+            const commit = () => {
+                git(["add", "."]);
+                git(["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "bounded prepack correction fixture"]);
+                return git(["rev-parse", "HEAD"]);
+            };
+            const reviewedId = commit();
+            assert.deepEqual(authenticateP805ProductTree(fixture.handoff.candidateId, reviewedId, fixture.repository).changedToolingAndEvidencePaths, paths);
+            const releaseEnvironment = {...environment, POKIE_PACK_SMOKE_CANDIDATE_ID: reviewedId, POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256: original.archiveSha256};
+            for (const reader of readers) {
+                const selected = await reader(releaseEnvironment, options);
+                assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, paths);
+                assert.deepEqual({...selected, equivalence: original.equivalence}, original);
+            }
+            for (const reference of [fixture.reference, fixture.handoff.browserDriver, fixture.handoff.buildReceipt, fixture.handoff.installReceipt,
+                {path: fixture.handoff.archivePath}, {path: path.join(original.packageRoot, "dist/cli/pokie.js")}]) {
+                const bytes = await readFile(reference.path);
+                await writeFile(reference.path, "changed pinned input");
+                for (const reader of readers) await assert.rejects(reader(releaseEnvironment, options),
+                    /authenticated controller browser driver required|receipt digest mismatch|archive digest mismatch|stale installed asset/);
+                await writeFile(reference.path, bytes);
+            }
+            for (const file of ["tests/packaging/unlisted.test.ts", "src/index.ts", "package.json", "tsconfig.prod.json"]) {
+                const target = path.join(fixture.repository, file);
+                await mkdir(path.dirname(target), {recursive: true});
+                await writeFile(target, "changed protected input");
+                const changedId = commit();
+                assert.throws(() => authenticateP805ProductTree(fixture.handoff.candidateId, changedId, fixture.repository), /product or build inputs/);
+                for (const reader of readers) await assert.rejects(reader(environment, options), /product\\/build inputs changed/);
+                git(["reset", "--hard", reviewedId]);
+            }
+        `], {timeout: 30_000, stdio: ["ignore", "pipe", "pipe"]});
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
 // The installed-binary sweep must keep a workflow row for every public parser surface.  These ids
 // deliberately mirror the public command tree rather than the private implementation commands.
 const PACKAGED_PUBLIC_WORKFLOW_SCENARIOS = [
@@ -201,6 +263,110 @@ async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
     await stopP911Child(child);
 }
 
+function smokeFailure(error: unknown): Error {
+    const failure = error as {stack?: string; pc20Result?: {exitCode: number | null; timedOut: boolean; cancelled: boolean; processTreeDrained: boolean; resourcesDrained: boolean; stdioClosed: boolean; stdout: string; stderr: string}} | undefined;
+    const result = failure?.pc20Result;
+    // execFileSync launch/timeout errors can contain error.error === error;
+    // native ESM failures can also be thrown again by cleanup. Give each hook
+    // its own Error while retaining the actual child diagnostics.
+    return new Error([
+        failure?.stack ?? String(error),
+        result === undefined ? undefined : JSON.stringify({exitCode: result.exitCode, timedOut: result.timedOut, cancelled: result.cancelled, processTreeDrained: result.processTreeDrained, resourcesDrained: result.resourcesDrained, stdioClosed: result.stdioClosed}),
+        result?.stdout,
+        result?.stderr,
+    ].filter(part => part !== undefined).join("\n"));
+}
+
+function smokeNpmEnvironment(cwd: string, inherited: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+    const environment = Object.fromEntries(Object.entries(inherited).filter(([name]) => !name.startsWith("npm_") && name !== "NODE_OPTIONS"));
+    return {...environment, NODE_ENV: "production", INIT_CWD: cwd, PWD: cwd};
+}
+
+it("isolates explicit inherited npm context in the real smoke child environment and artifacts", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "p911-smoke-environment-"));
+    try {
+        const {runP911Process} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+            runP911Process: (command: string, args: string[], options: {cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number}) => Promise<{exitCode: number; stdout: string; resourcesDrained: boolean; stdioClosed: boolean}>;
+        };
+        const inherited = {...process.env, "npm_lifecycle_event": "caller-test", "npm_package_json": "/caller/package.json", INIT_CWD: "/caller", TMPDIR: directory};
+        const result = await runP911Process(process.execPath, ["-e", `
+            const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
+            const environment = {nodeEnv: process.env.NODE_ENV, initial: process.env.INIT_CWD, pwd: process.env.PWD,
+                lifecycle: process.env.npm_lifecycle_event ?? null, packageJson: process.env.npm_package_json ?? null, tmpdir: os.tmpdir()};
+            fs.writeFileSync(path.join(os.tmpdir(), "child-environment.json"), JSON.stringify(environment));
+            process.stdout.write(JSON.stringify(environment));
+        `], {cwd: directory, env: smokeNpmEnvironment(directory, inherited), timeoutMs: 10_000});
+        expect(result).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+        const expected = {nodeEnv: "production", initial: directory, pwd: directory, lifecycle: null, packageJson: null, tmpdir: directory};
+        expect(JSON.parse(result.stdout)).toEqual(expected);
+        expect(JSON.parse(fs.readFileSync(path.join(directory, "child-environment.json"), "utf8"))).toEqual(expected);
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
+it("retains native synchronous launch failures without circular Jest transport data", () => {
+    let nativeFailure: unknown;
+    try {
+        execFileSync(path.join(REPO_ROOT, "node_modules/.cache/nonexistent-pokie-smoke-command"), [], {stdio: "pipe"});
+    } catch (error) {
+        nativeFailure = error;
+    }
+    expect(nativeFailure).toMatchObject({code: "ENOENT", error: nativeFailure});
+    expect(() => JSON.stringify(nativeFailure)).toThrow(/circular/);
+    const failure = smokeFailure(nativeFailure);
+    expect(failure.message).toContain("ENOENT");
+    expect(failure.message).toContain("nonexistent-pokie-smoke-command");
+    expect(() => JSON.stringify({failureDetails: [failure]})).not.toThrow();
+});
+
+it.each(["exit-failure", "timeout"])("keeps bounded prepack %s diagnostics serializable after awaited cleanup", async mode => {
+    const {spawnP911Child, waitP911Child, stopP911Child, p911ChildrenDrained} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+        spawnP911Child: (command: string, args: string[], options: {cwd: string; timeoutMs: number}) => ChildProcessWithoutNullStreams;
+        waitP911Child: (child: ChildProcessWithoutNullStreams) => Promise<unknown>;
+        stopP911Child: (child: ChildProcessWithoutNullStreams) => Promise<unknown>;
+        p911ChildrenDrained: (children: Iterable<ChildProcessWithoutNullStreams>) => boolean;
+    };
+    const child = spawnP911Child(process.execPath, ["-e", `
+        process.stdout.write("prepack stdout");
+        process.stderr.write("prepack stderr");
+        ${mode === "timeout" ? "setInterval(() => {}, 1000)" : "process.exitCode = 7"};
+    `], {cwd: REPO_ROOT, timeoutMs: mode === "timeout" ? 2000 : 600_000});
+    let executionFailure: unknown;
+    let cleanupFailure: unknown;
+    try {
+        await waitP911Child(child);
+    } catch (error) {
+        executionFailure = error;
+    } finally {
+        try {
+            await stopP911Child(child);
+        } catch (error) {
+            cleanupFailure = error;
+            expect(error).toBe(executionFailure);
+            const setupError = smokeFailure(executionFailure);
+            const cleanupError = smokeFailure(error);
+            expect(setupError).not.toBe(cleanupError);
+            expect(JSON.parse(JSON.stringify({setupError, cleanupError}))).toEqual({setupError: {}, cleanupError: {}});
+            for (const failure of [setupError, cleanupError]) {
+                expect(failure.message).toContain("prepack stdout");
+                expect(failure.message).toContain("prepack stderr");
+                expect(failure.message).toContain('"processTreeDrained":true');
+                expect(failure.message).toContain('"resourcesDrained":true');
+                expect(failure.message).toContain('"stdioClosed":true');
+                expect(failure.message).toContain(mode === "timeout" ? '"timedOut":true' : '"exitCode":7');
+            }
+        }
+    }
+    expect(executionFailure).toBeDefined();
+    expect(cleanupFailure).toBe(executionFailure);
+    // A drained failed command cannot authorize a successful smoke receipt.
+    expect(p911ChildrenDrained([child])).toBe(false);
+    for (const timeoutMs of [0, 600_001, Number.POSITIVE_INFINITY]) {
+        expect(() => spawnP911Child(process.execPath, [], {cwd: REPO_ROOT, timeoutMs})).toThrow("invalid packaging execution deadline");
+    }
+});
+
 describe("npm pack smoke test (real tarball, real npm install, real spawned pokie binary)", () => {
     // Real `npm pack` (which runs the full `prepack` -> `npm run build` lifecycle) plus a real
     // `npm install` are both genuinely slow — far outside the rest of the suite's normal budget.
@@ -224,10 +390,27 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         spawnedSmokeChildren.add(child);
         return child;
     };
+    const runSmokeNpm = async (args: string[], cwd: string, timeoutMs: number): Promise<string> => {
+        const {spawnP911Child, waitP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+            spawnP911Child: (command: string, args: string[], options: {cwd: string; timeoutMs: number; env: NodeJS.ProcessEnv}) => ChildProcessWithoutNullStreams;
+            waitP911Child: (child: ChildProcessWithoutNullStreams) => Promise<{stdout: string}>;
+        };
+        const child = spawnP911Child("npm", args, {cwd, timeoutMs, env: smokeNpmEnvironment(cwd)});
+        spawnedSmokeChildren.add(child);
+        try {
+            return (await waitP911Child(child)).stdout;
+        } finally {
+            await stopChild(child);
+        }
+    };
     const smokeIt = (name: string, implementation: () => unknown | Promise<unknown>): void => {
         registeredSmokeTests++;
         it(name, async () => {
-            await implementation();
+            try {
+                await implementation();
+            } catch (error) {
+                throw smokeFailure(error);
+            }
             completedSmokeTests.add(name);
         });
     };
@@ -285,7 +468,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }, null, 2)}\n`, {flag: "wx"});
     }
 
-    beforeAll(async () => {
+    async function prepareSmokeCandidate(): Promise<void> {
         // Keep the real tarball and npm's output outside the candidate tree.
         // `npm pack --json` includes one record per shipped file; once the package exceeded 8,000
         // files that output crossed execFileSync's default 1 MiB buffer and failed with ENOBUFS.
@@ -316,30 +499,13 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             fs.writeFileSync(tarballPath, result.archive, {flag: "wx"});
         } else {
             packDir = createExternalSmokeDirectory("pokie-npm-pack-output-");
-            const {spawnP911Child, waitP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
-                spawnP911Child: (command: string, args: string[], options: {cwd: string; timeoutMs: number; env: NodeJS.ProcessEnv}) => ChildProcessWithoutNullStreams;
-                waitP911Child: (child: ChildProcessWithoutNullStreams) => Promise<{stdout: string}>;
-            };
             // Preserve normal prepack, with launch-time ownership of its build
             // descendants and awaited cleanup even when it fails or times out.
             // Normal prepack includes lint, all compilers and the installed help
             // build. Give that composite its own bounded deadline; individual
             // installed commands retain the shorter default. Match the normal
             // producer's production context under both npm and direct Jest.
-            const packEnvironment = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("npm_") && name !== "NODE_OPTIONS"));
-            Object.assign(packEnvironment, {NODE_ENV: "production", INIT_CWD: REPO_ROOT, PWD: REPO_ROOT});
-            const packChild = spawnP911Child("npm", ["pack", "--silent", "--pack-destination", packDir], {cwd: REPO_ROOT, timeoutMs: 300000, env: packEnvironment});
-            spawnedSmokeChildren.add(packChild);
-            let stdout: string;
-            try {
-                stdout = (await waitP911Child(packChild)).stdout;
-            } catch (error) {
-                const result = (error as Error & {pc20Result?: {stdout: string; stderr: string}}).pc20Result;
-                if (result) console.error("Candidate prepack failed:\n" + result.stdout + result.stderr);
-                throw error;
-            } finally {
-                await stopChild(packChild);
-            }
+            const stdout = await runSmokeNpm(["pack", "--silent", "--pack-destination", packDir], REPO_ROOT, 600_000);
             tarballPath = selectPackedArchive(packDir, stdout);
         }
         expect(fs.existsSync(tarballPath)).toBe(true);
@@ -368,7 +534,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // for a cold cache), so this smoke suite cannot time out merely on registry metadata latency.
         // Always install the authenticated archive natively. A borrowed node_modules symlink
         // cannot establish clean installed-consumer acceptance, even for a shared candidate.
-        execFileSync("npm", ["install", tarballPath, "--no-audit", "--no-fund", "--prefer-offline"], {cwd: installDir, encoding: "utf-8", timeout: 120000});
+        await runSmokeNpm(["install", tarballPath, "--no-audit", "--no-fund", "--prefer-offline"], installDir, 180_000);
         const installedRoot = path.join(installDir, "node_modules", "@fromstan", "pokie");
         expect(fs.lstatSync(path.join(installDir, "node_modules")).isSymbolicLink()).toBe(false);
         expect(fs.lstatSync(installedRoot).isSymbolicLink()).toBe(false);
@@ -391,7 +557,17 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         fs.cpSync(path.join(REPO_ROOT, "tests/cli/fixtures/playable-game"), path.join(installDir, "playable-game"), {
             recursive: true, filter: (source) => path.basename(source) !== "node_modules",
         });
-    });
+    }
+
+    // Prepack and the native install have separate deadlines. The hook must
+    // allow both plus awaited process cleanup before Jest starts teardown.
+    beforeAll(async () => {
+        try {
+            await prepareSmokeCandidate();
+        } catch (error) {
+            throw smokeFailure(error);
+        }
+    }, 810_000);
 
     afterAll(async () => {
         // Jest reaches afterAll only after every real installed CLI, Studio/API/assets and worker
@@ -432,8 +608,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             temporaryPackDirectoryRemoved: packDir === undefined || !fs.existsSync(packDir),
             processesDrained: smokeResults.processesDrained,
         };
-        if (stopFailure?.status === "rejected") throw stopFailure.reason;
-        if (cleanupFailure !== undefined) throw cleanupFailure;
+        if (stopFailure?.status === "rejected") throw smokeFailure(stopFailure.reason);
+        if (cleanupFailure !== undefined) throw smokeFailure(cleanupFailure);
         expect(Object.values(cleanup).every(Boolean)).toBe(true);
         if (suitePassed && archive !== undefined && smokeResults.cli && smokeResults.studioApi && smokeResults.studioAssets && smokeResults.libraryWorker && smokeResults.wasm) stageReleaseSmokeArchive(archive);
         retainP911PackagingReceipt(spawnedSmokeChildren, () => retainReleaseSmokeReceipt(suitePassed, cleanup));

@@ -186,8 +186,9 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
                     const terminal = responses.find(({url}) => (/\/wasm\/jobs\/[^/]+\/finish$/).test(url));
                     expect(terminal).toMatchObject({status: 200, body: {status: "completed"}});
                 }, {timeout: 30_000});
-                await user.click(await screen.findByRole("button", {name: "View results"}));
-                expect(await screen.findByRole("button", {name: "Open full report"})).toBeVisible();
+                // Completion automatically advances Run to Review. "View results"
+                // belongs to the previous step and need not survive that render.
+                expect(await screen.findByRole("button", {name: "Open full report"}, {timeout: 30_000})).toBeVisible();
                 expect(screen.queryByText(/Historical simulation result/)).not.toBeInTheDocument();
                 expect(screen.queryByText(/Run a new simulation/)).not.toBeInTheDocument();
                 await user.click(screen.getByRole("button", {name: "Open full report"}));
