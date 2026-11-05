@@ -1,4 +1,5 @@
 /** @jest-environment-options {"customExportConditions": ["node", "node-addons"]} */
+import {createPackageExtractionTestEnvironment} from "../../../../../v2/fixtures/PackageExtractionFixture";
 import fs from "fs";
 import {GamePackageGenerator, loadPokieGameRuntime, type GameBlueprint} from "@fromstan/pokie";
 import http from "http";
@@ -19,10 +20,15 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 import {installNodeServiceTimers} from "../../testUtils/nodeServiceTimers";
 
 let restoreNodeServiceTimers: () => void;
+let restoreTemporaryDirectory: () => void;
 beforeAll(() => {
     restoreNodeServiceTimers = installNodeServiceTimers();
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
 });
-afterAll(() => restoreNodeServiceTimers());
+afterAll(() => {
+    restoreTemporaryDirectory();
+    restoreNodeServiceTimers();
+});
 
 it("submits the original Blueprint refreshed Stake operation once and borrows its compatible prerequisite", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-p906-handoff-"));
@@ -36,7 +42,9 @@ it("submits the original Blueprint refreshed Stake operation once and borrows it
     // Generator preflight and execution consume a real generated game; the
     // resolver avoids compiler subprocesses while using the identical model.
     const runtimeRoot = path.join(directory, "runtime");
-    new GamePackageGenerator("1.3.0").generate(model, directory, runtimeRoot);
+    new GamePackageGenerator("1.3.0").generate(model, directory, runtimeRoot, undefined, {
+        runtimePackageRoot: path.join(os.tmpdir(), "node_modules/@fromstan/pokie"),
+    });
     const runtime = await loadPokieGameRuntime(runtimeRoot, (entry) => require(entry));
     const loadGame = () => Promise.resolve(runtime.game);
     const resolveRuntimePackageRoot = () => Promise.resolve({runtimePath: runtimeRoot, release: () => Promise.resolve()});
@@ -107,12 +115,10 @@ it("submits the original Blueprint refreshed Stake operation once and borrows it
         await user.click(within(generator).getByRole("button", {name: "Configure Outcome library generator"}));
         await user.click(within(generator).getByRole("button", {name: "Sampled"}));
         const sample = within(generator).getByLabelText("Sample size");
-        await user.clear(sample);
-        await user.type(sample, "5000");
+        fireEvent.change(sample, {target: {value: "5000"}});
         await user.click(within(generator).getByRole("button", {name: "Show Advanced generation controls"}));
         const seed = within(generator).getByLabelText("Coverage seed");
-        await user.clear(seed);
-        await user.type(seed, "p911-programmer-library");
+        fireEvent.change(seed, {target: {value: "p911-programmer-library"}});
         const generate = document.getElementById("outcome-library-generate")!;
         await waitFor(() => expect(generate).toBeEnabled());
         await user.click(generate);
@@ -211,7 +217,9 @@ it("cancels a real TypeScript publication while its queued start response is wit
     fs.writeFileSync(blueprint, JSON.stringify(model));
     const input = fs.readFileSync(blueprint);
     const runtimeRoot = path.join(directory, "runtime");
-    new GamePackageGenerator("1.3.0").generate(model, directory, runtimeRoot);
+    new GamePackageGenerator("1.3.0").generate(model, directory, runtimeRoot, undefined, {
+        runtimePackageRoot: path.join(os.tmpdir(), "node_modules/@fromstan/pokie"),
+    });
     const runtime = await loadPokieGameRuntime(runtimeRoot, (entry) => require(entry));
     const loadGame = () => Promise.resolve(runtime.game);
     const resolveRuntimePackageRoot = () => Promise.resolve({runtimePath: runtimeRoot, release: () => Promise.resolve()});
@@ -278,6 +286,7 @@ it("cancels a real TypeScript publication while its queued start response is wit
         releaseStart();
         unmount?.();
         await server.stop();
+        await runtime.release();
         fs.rmSync(directory, {recursive: true, force: true});
     }
 });

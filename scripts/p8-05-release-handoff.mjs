@@ -23,6 +23,12 @@ const tooling = new Set([
     "tests/project/wasm/WasmRuntimeParity.golden.test.ts",
     "tests/v2/OptimizationSearchConvergence.test.ts",
 
+    // V2C-37 saved post-review fixture correction; no product/build or driver exemption.
+    "tests/cli/BlueprintEditorWorkflow.integration.test.ts",
+    "tests/cli/studio-client/src/hooks/usePlaySession.test.tsx",
+    "tests/simulation/parallel/simulationWorkerEntry.test.ts",
+    "tests/v2/PlaygroundGallery.test.ts",
+
     // Complete V2C-37 saved gate correction; product/build inputs and receipt pins stay protected.
     "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
     "tests/cli/CanonicalArtifactCli.integration.test.ts",

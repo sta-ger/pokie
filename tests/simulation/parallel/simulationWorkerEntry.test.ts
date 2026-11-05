@@ -1,11 +1,15 @@
 import type {SimulationWorkerRequest} from "@fromstan/pokie";
 import path from "path";
+import fs from "fs";
 import {Worker} from "worker_threads";
+import {stageCompiledTestRuntime} from "../../testUtils/stageCompiledTestRuntime.js";
 import type {SimulationWorkerMessage} from "../../../src/simulation/parallel/internal/SimulationWorkerMessage.js";
-import {TEST_WORKER_ENTRY_URL} from "./testWorkerEntryUrl.js";
 
-const fixtureRoot = path.join(__dirname, "..", "..", "cli", "fixtures", "playable-game");
-const fixtureRootWithFreeGames = path.join(__dirname, "..", "..", "cli", "fixtures", "playable-game-with-free-games");
+let directory: string;
+let workerEntry: string;
+let fixtureRoot: string;
+let fixtureRootWithFreeGames: string;
+const workers = new Set<Worker>();
 
 // Real worker_threads integration tests against the internal worker entry point directly: no fakes
 // anywhere in this file — a real Worker loads simulationWorkerEntry.js, which itself calls the real
@@ -15,28 +19,50 @@ const fixtureRootWithFreeGames = path.join(__dirname, "..", "..", "cli", "fixtur
 // part of the public API — imported by relative path on purpose, unlike SimulationWorkerRequest.
 function runWorker(request: SimulationWorkerRequest): Promise<{messages: SimulationWorkerMessage[]; worker: Worker}> {
     return new Promise((resolve, reject) => {
-        const worker = new Worker(TEST_WORKER_ENTRY_URL, {workerData: request});
+        const worker = new Worker(workerEntry, {workerData: request, env: {...process.env, TMPDIR: directory}});
+        workers.add(worker);
         const messages: SimulationWorkerMessage[] = [];
+        let terminal = false;
         worker.on("message", (message: SimulationWorkerMessage) => {
             messages.push(message);
             if (message.type === "result" || message.type === "error") {
+                terminal = true;
                 resolve({messages, worker});
             }
         });
         worker.on("error", reject);
+        worker.once("exit", code => {
+            workers.delete(worker);
+            if (!terminal) reject(new Error(`Simulation Worker exited before its terminal message (exit ${code}).`));
+        });
     });
 }
 
 describe("simulationWorkerEntry (real worker_threads + real fixture package)", () => {
     jest.setTimeout(30000);
 
-    afterEach(async () => {
-        // Belt-and-suspenders: make sure nothing from a previous test is still alive before the next
-        // one starts spawning more real OS threads.
-        await new Promise((resolve) => {
-            setTimeout(resolve, 10);
-        });
+    beforeAll(() => {
+        const cache = path.resolve(__dirname, "../../../node_modules/.cache/pokie-tmp");
+        fs.mkdirSync(cache, {recursive: true});
+        directory = fs.mkdtempSync(path.join(cache, "simulation-worker-entry-"));
+        const runtimeRoot = stageCompiledTestRuntime(directory);
+        workerEntry = path.join(runtimeRoot, "dist/cjs/simulation/parallel/internal/simulationWorkerEntry.js");
+        for (const name of ["playable-game", "playable-game-with-free-games"]) {
+            const destination = path.join(directory, name);
+            fs.cpSync(path.resolve(__dirname, "../../cli/fixtures", name), destination, {recursive: true});
+            // Declare the real bare require so snapshotting retains this isolated runtime,
+            // rather than the mutable checkout and its unrelated evidence/build outputs.
+            const declaration = path.join(destination, "package.json");
+            fs.writeFileSync(declaration, JSON.stringify({...JSON.parse(fs.readFileSync(declaration, "utf8")), dependencies: {"@fromstan/pokie": "*"}}));
+        }
+        fixtureRoot = path.join(directory, "playable-game");
+        fixtureRootWithFreeGames = path.join(directory, "playable-game-with-free-games");
     });
+
+    afterEach(async () => {
+        await Promise.all([...workers].map(worker => worker.terminate()));
+    });
+    afterAll(() => fs.rmSync(directory, {recursive: true, force: true}));
 
     test("plays its requested rounds and posts a terminal result message with the game's manifest", async () => {
         const {messages, worker} = await runWorker({
@@ -71,6 +97,7 @@ describe("simulationWorkerEntry (real worker_threads + real fixture package)", (
         });
         await worker.terminate();
 
+        expect(messages.find(message => message.type === "error")).toBeUndefined();
         const progress = messages.filter((m) => m.type === "progress");
         expect(progress.map((m) => (m.type === "progress" ? m.roundsCompleted : undefined))).toEqual([100, 200, 250]);
     });

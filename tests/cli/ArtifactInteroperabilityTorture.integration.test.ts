@@ -98,7 +98,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         });
 
         const resolver = new ProjectTargetResolver();
-        const registry = new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(process.cwd());
+        const registry = new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
         const build = new BuildCommand(POKIE_VERSION, undefined, undefined, resolver, registry);
         const packagePath = path.join(workDir, "package");
         const libraryPath = path.join(workDir, "library");
@@ -316,7 +316,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         });
 
         const resolver = new ProjectTargetResolver();
-        const registry = new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(process.cwd());
+        const registry = new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
         const build = new BuildCommand(POKIE_VERSION, undefined, undefined, resolver, registry);
         expect(await build.run([blueprintPath, "--target", "tsPackage", "--out", packagePath])).toBe(0);
         evidence.record({
@@ -418,7 +418,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         fs.mkdirSync(defaultBuildRoot);
         const defaultBuildBlueprintPath = path.join(defaultBuildRoot, "source.blueprint.json");
         fs.copyFileSync(blueprintPath, defaultBuildBlueprintPath);
-        const defaultBuild = new BuildCommand(POKIE_VERSION, undefined, undefined, new ProjectTargetResolver(), new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(process.cwd()));
+        const defaultBuild = new BuildCommand(POKIE_VERSION, undefined, undefined, new ProjectTargetResolver(), new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(path.join(os.tmpdir(), "node_modules/@fromstan/pokie")));
         const defaultPackagePath = path.join(defaultBuildRoot, "tsPackage");
         expect(await defaultBuild.run([defaultBuildBlueprintPath, "--target", "tsPackage"])).toBe(0);
         expect(fs.existsSync(defaultPackagePath)).toBe(true);
@@ -456,7 +456,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         fs.mkdirSync(exportRoot);
         const exportBlueprintPath = path.join(exportRoot, "source.blueprint.json");
         fs.copyFileSync(blueprintPath, exportBlueprintPath);
-        const exportBuild = new BuildCommand(POKIE_VERSION, undefined, undefined, new ProjectTargetResolver(), new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(process.cwd()));
+        const exportBuild = new BuildCommand(POKIE_VERSION, undefined, undefined, new ProjectTargetResolver(), new ArtifactBuilderRegistry(POKIE_VERSION).withRuntimePackageRoot(path.join(os.tmpdir(), "node_modules/@fromstan/pokie")));
         const exportPackagePath = path.join(exportRoot, "package");
         expect(await exportBuild.run([exportBlueprintPath, "--target", "tsPackage", "--out", exportPackagePath])).toBe(0);
         const descriptorBuildCommand = new BuildCommand(POKIE_VERSION);
