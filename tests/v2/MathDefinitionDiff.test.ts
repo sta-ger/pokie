@@ -1054,7 +1054,7 @@ it("preserves authenticated delivery across the complete saved runtime fixture c
     try {
         execFileSync(process.execPath, ["--input-type=module", "-e", `
             import assert from "node:assert/strict";
-            import {readFile, writeFile} from "node:fs/promises";
+            import {mkdir, readFile, writeFile} from "node:fs/promises";
             import {execFileSync} from "node:child_process";
             import path from "node:path";
             import {candidateFixture, P911_TOOLING_DESCENDANT_PATHS} from ${JSON.stringify(pathToFileURL(path.resolve("tests/testUtils/createP911CandidateFixture.mjs")).href)};
@@ -1100,10 +1100,15 @@ it("preserves authenticated delivery across the complete saved runtime fixture c
                     await writeFile(reference.path, bytes);
                 }
             }
-            await writeFile(path.join(fixture.repository, "src/index.ts"), "changed product input");
-            const productId = commit();
-            assert.throws(() => authenticateP805ProductTree(fixture.handoff.candidateId, productId, fixture.repository), /product.*build.*changed/);
-            for (const reader of readers) await assert.rejects(reader(environment, options), /product.*build.*changed/);
+            for (const file of ["src/index.ts", "package.json", "tsconfig.prod.json", "tests/v2/Unrelated.test.ts"]) {
+                const target = path.join(fixture.repository, file);
+                await mkdir(path.dirname(target), {recursive: true});
+                await writeFile(target, "changed protected input");
+                const productId = commit();
+                assert.throws(() => authenticateP805ProductTree(fixture.handoff.candidateId, productId, fixture.repository), /product or build inputs/);
+                for (const reader of readers) await assert.rejects(reader(environment, options), /product.*build inputs changed/);
+                git(["reset", "--hard", correctedId]);
+            }
         `], {stdio: "pipe", timeout: 30_000});
     } finally {
         fs.rmSync(directory, {recursive: true, force: true});
