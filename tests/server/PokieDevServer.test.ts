@@ -1,3 +1,4 @@
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
 import {transactionalRoundGame} from "../v2/fixtures/TransactionalRoundGame.js";
 import {emitPublicRuntime} from "../v2/helpers/publicRuntime.js";
 import {
@@ -13,7 +14,8 @@ import {
     InMemorySessionRepository,
     InMemoryIdempotencyRepository, InMemorySpinOperationLog, type SpinCommandResult,
     InMemoryWallet,
-    loadPokieGame,
+    loadPokieGame as loadFixtureGame,
+    releasePokieGame,
     PokieDevServer,
     PokieGame,
     PokieGameManifest,
@@ -35,6 +37,35 @@ import os from "os";
 import path from "path";
 
 import {legacyCompositions} from "../v2/fixtures/LegacyComposedGame.js";
+
+let restoreRuntimeEnvironment: () => void;
+const fixtureGames: PokieGame[] = [];
+beforeAll(() => {
+    restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+});
+afterEach(async () => {
+    for (const game of fixtureGames.splice(0)) await releasePokieGame(game);
+});
+afterAll(() => restoreRuntimeEnvironment());
+
+// Keep real fixture bytes and the production snapshot loader, but resolve their
+// legacy undeclared host dependency from this suite's compiled installation.
+async function loadPokieGame(source: string): Promise<PokieGame> {
+    const fixtureDirectory = path.join(__dirname, "../cli/fixtures");
+    let packageRoot = source;
+    if (path.dirname(source) === fixtureDirectory) {
+        packageRoot = path.join(os.tmpdir(), path.basename(source));
+        if (!fs.existsSync(packageRoot)) {
+            fs.cpSync(source, packageRoot, {recursive: true});
+            const manifestPath = path.join(packageRoot, "package.json");
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+            fs.writeFileSync(manifestPath, JSON.stringify({...manifest, dependencies: {...manifest.dependencies, "@fromstan/pokie": "*"}}));
+        }
+    }
+    const game = await loadFixtureGame(packageRoot);
+    fixtureGames.push(game);
+    return game;
+}
 
 const fixtureCodec: Pick<PokieGame, "getSessionStateSchema" | "getSessionCommandCapabilities" | "validateSessionState" | "validateLiveSessionState"> = {
     getSessionStateSchema: () => ({kind: "custom"}),

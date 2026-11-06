@@ -1,3 +1,4 @@
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -39,6 +40,12 @@ const rounds = 8;
 // Real Studio HTTP/services, workbook bytes, generated Node game, native bundle,
 // durable reports and replay. This is regression coverage, never cold-user evidence.
 describe("P9-07 bounded mathematician workflow", () => {
+    let restoreRuntimeEnvironment: () => void;
+    beforeAll(() => {
+        restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+    });
+    afterAll(() => restoreRuntimeEnvironment());
+
     let workspace: string;
     let server: StudioServer;
     let base: string;

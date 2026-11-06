@@ -52,7 +52,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         // Match cli/pokie.ts's public command registration: a fresh package is linked to the exact
         // runtime that built it, so the next package-consuming command need not first resolve an
         // unpublished candidate from npm.
-        const buildExitCode = await new BuildCommand("1.3.0", undefined, undefined, undefined, undefined, undefined, process.cwd()).run([
+        const buildExitCode = await new BuildCommand("1.3.0", undefined, undefined, undefined, undefined, undefined, path.join(os.tmpdir(), "node_modules/@fromstan/pokie")).run([
             blueprintPath,
             "--target",
             "tsPackage",
@@ -290,6 +290,11 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         const secondOutcomeDir = path.join(workDir, "second-outcomes");
         const stakeDir = path.join(workDir, "stake");
         await prepareExactCodeFirstPackage(packageRoot, localPokieDependencyRunner());
+        // Init still installs and compiles the author's real TS module. Subsequent
+        // snapshots use the same source-bound runtime without copying checkout evidence.
+        const runtimeLink = path.join(packageRoot, "node_modules/@fromstan/pokie");
+        fs.rmSync(runtimeLink, {recursive: true, force: true});
+        fs.symlinkSync(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"), runtimeLink, "junction");
 
         await expectInconclusiveArtifactValidation([packageRoot]);
         const simFile = path.join(workDir, "code-first-sim.json");

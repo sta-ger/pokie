@@ -1,3 +1,5 @@
+import {execFileSync} from "child_process";
+import {pathToFileURL} from "url";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -6,10 +8,17 @@ import {fractionalBetBlueprint} from "../fixtures/math/FractionalBetFixture.js";
 import {weightedBlueprint, weightedConfig, weightedGame} from "./fixtures/WeightedWholeSequenceGame.js";
 import {weightedBonusBlueprint} from "./fixtures/WeightedBonusGame.js";
 import {
+    createPackageExtractionTestEnvironment,
     writeDescriptorPackage,
     writePausedDescriptorPackage,
     runtimeSnapshotNames,
 } from "./fixtures/PackageExtractionFixture.js";
+let restoreRuntimeEnvironment: () => void;
+beforeAll(() => {
+    restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+});
+afterAll(() => restoreRuntimeEnvironment());
+
 const modifierExample = JSON.parse(
     fs.readFileSync("examples/blueprints/wild-expanding.blueprint.json", "utf8"),
 ) as api.GameBlueprint;
@@ -400,7 +409,7 @@ describe("canonical math definition diff", () => {
                     finished = true;
                     return result;
                 });
-            await paused.readStarted;
+            await paused.waitForRead(running);
             controller.abort();
             expect(finished).toBe(false);
             paused.settle();
@@ -476,7 +485,7 @@ describe("definition acquisition and cleanup boundaries", () => {
                         settled = true;
                         return diff;
                     });
-                await paused.readStarted;
+                await paused.waitForRead(running);
                 expect(settled).toBe(false);
                 paused.settle();
                 const result = await running;
@@ -1037,4 +1046,66 @@ it("diffs advanced witness additions, removals, support assumptions and escaped 
     expect(collision).toHaveLength(3);
     expect(collision.filter(change => change.after.present)).toHaveLength(2);
     expect(new api.MathDefinitionDiffer().diff(right, right)).toMatchObject({status: "partial", changes: []});
+});
+
+// Synthetic receipts test the shared selectors without rebuilding or collecting acceptance.
+it("preserves authenticated delivery across the complete saved runtime fixture correction", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "definition-candidate-"));
+    try {
+        execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from "node:assert/strict";
+            import {readFile, writeFile} from "node:fs/promises";
+            import {execFileSync} from "node:child_process";
+            import path from "node:path";
+            import {candidateFixture, P911_TOOLING_DESCENDANT_PATHS} from ${JSON.stringify(pathToFileURL(path.resolve("tests/testUtils/createP911CandidateFixture.mjs")).href)};
+            import {readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
+            import {authenticateP805ProductTree} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p8-05-release-handoff.mjs")).href)};
+            const fixture = await candidateFixture(${JSON.stringify(directory)});
+            const options = {repository: fixture.repository};
+            const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
+            const readers = [readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment];
+            const original = await readers[0](environment, options);
+            const correctionPaths = ["scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs",
+                "tests/cli/BuildWorkflow.integration.test.ts", "tests/cli/P907ValeraMathematician.integration.test.ts",
+                "tests/cli/studio/StudioServerParWorkbook.integration.test.ts", "tests/server/PokieDevServer.test.ts",
+                "tests/testUtils/createP911CandidateFixture.mjs", "tests/v2/MathDefinitionDiff.test.ts"];
+            for (const file of correctionPaths) {
+                assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
+                await writeFile(path.join(fixture.repository, file), "// Saved runtime fixture correction.");
+            }
+            const git = args => execFileSync("git", args, {cwd: fixture.repository, encoding: "utf8"}).trim();
+            const commit = () => {
+                git(["add", "."]);
+                git(["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "bounded fixture regression"]);
+                return git(["rev-parse", "HEAD"]);
+            };
+            const correctedId = commit();
+            assert.deepEqual(authenticateP805ProductTree(fixture.handoff.candidateId, correctedId, fixture.repository).changedToolingAndEvidencePaths, correctionPaths);
+            const selectedEnvironment = {...environment, POKIE_PACK_SMOKE_CANDIDATE_ID: correctedId,
+                POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256: original.archiveSha256};
+            for (const reader of readers) {
+                const selected = await reader(selectedEnvironment, options);
+                assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, correctionPaths);
+                assert.deepEqual({...selected, equivalence: original.equivalence}, original);
+            }
+            for (const reference of [fixture.reference, fixture.handoff.browserDriver, fixture.handoff.buildReceipt,
+                fixture.handoff.installReceipt, {path: fixture.handoff.archivePath},
+                {path: path.join(original.packageRoot, "dist/cli/pokie.js")}]) {
+                const bytes = await readFile(reference.path);
+                try {
+                    await writeFile(reference.path, "changed pinned input");
+                    for (const reader of readers) await assert.rejects(reader(selectedEnvironment, options),
+                        /authenticated controller browser driver required|receipt digest mismatch|archive digest mismatch|stale installed asset/);
+                } finally {
+                    await writeFile(reference.path, bytes);
+                }
+            }
+            await writeFile(path.join(fixture.repository, "src/index.ts"), "changed product input");
+            const productId = commit();
+            assert.throws(() => authenticateP805ProductTree(fixture.handoff.candidateId, productId, fixture.repository), /product.*build.*changed/);
+            for (const reader of readers) await assert.rejects(reader(environment, options), /product.*build.*changed/);
+        `], {stdio: "pipe", timeout: 30_000});
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
 });

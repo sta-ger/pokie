@@ -14,6 +14,11 @@ const fail = (message) => { throw new Error(`P8-05 release handoff is invalid: $
 // Everything else, including package metadata, lockfile, compiler/Vite config,
 // generators, runtime sources and other steps' evidence, must be byte-identical.
 const tooling = new Set([
+    // V2C-37 saved runtime-fixture correction; product/build and receipt pins stay protected.
+    "tests/cli/BuildWorkflow.integration.test.ts",
+    "tests/cli/P907ValeraMathematician.integration.test.ts",
+    "tests/server/PokieDevServer.test.ts",
+    "tests/v2/MathDefinitionDiff.test.ts",
     "tests/v2/helpers/publicRuntime.ts",
     "tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts",
     // V2C-37 retained runtime gate correction; no product/build exemption.

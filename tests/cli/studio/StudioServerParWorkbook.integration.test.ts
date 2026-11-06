@@ -1,3 +1,7 @@
+import {STUDIO_OPERATION} from "@fromstan/pokie";
+import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
+import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
+import {withLinkedLocalPokieRuntime} from "../../../cli/prepare/PackageCommandRunner.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -45,18 +49,39 @@ describe("Studio PAR workbook source dispatch", () => {
         const workbookPath = path.join(workRoot, "starter.par.xlsx");
         fs.copyFileSync(path.join(process.cwd(), "examples", "parsheets", "starter.par.xlsx"), workbookPath);
         const home = new StudioHomeService("1.3.0");
+        const runtimeRoot = path.join(os.tmpdir(), "node_modules/@fromstan/pokie");
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", STUDIO_OPERATION, runtimeRoot, {
+            materializer: new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined,
+                withLinkedLocalPokieRuntime(runtimeRoot), undefined, path.join(workRoot, "runtime-cache")),
+        });
         server = new StudioServer({
             pokieVersion: "1.3.0",
             host: "127.0.0.1",
             port: 0,
             studioRoot,
             homeService: home,
+            resolveRuntimePackageRoot,
             blueprintService: new StudioBlueprintService("1.3.0", studioRoot, home),
             jobService: new StudioJobService(new FileStudioJobRepository(path.join(workRoot, "jobs"))),
             initialContext: {mode: "project", projectRoot: workbookPath},
         });
         const address = await server.start();
         const base = `http://${address.host}:${address.port}`;
+
+        // Initial project entry owns a real asynchronous PAR materialization.
+        // Observe its terminal before stop() can cancel it during teardown.
+        const deadline = Date.now() + 30_000;
+        let dashboard;
+        do {
+            const response = await get(`${base}/api/project/context`);
+            expect(response.status).toBe(200);
+            dashboard = response.body as {status: string};
+            if (dashboard.status !== "loading") break;
+            await new Promise<void>(resolve => {
+                setTimeout(resolve, 10);
+            });
+        } while (Date.now() < deadline);
+        expect(dashboard).toMatchObject({status: "loaded", projectRoot: workbookPath});
 
         const inspection = await get(`${base}/api/project/inspect`);
         const validation = await get(`${base}/api/project/validate`);

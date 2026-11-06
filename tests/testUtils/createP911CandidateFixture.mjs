@@ -9,6 +9,11 @@ const json = (file, value) => writeFile(file, `${JSON.stringify(value)}\n`);
 // delta, the prior driver repair, the reviewed interoperability correction and
 // every file changed by this handoff repair.
 export const P911_TOOLING_DESCENDANT_PATHS = [
+    // V2C-37 saved runtime-fixture correction; product/build and receipt pins stay protected.
+    "tests/cli/BuildWorkflow.integration.test.ts",
+    "tests/cli/P907ValeraMathematician.integration.test.ts",
+    "tests/server/PokieDevServer.test.ts",
+    "tests/v2/MathDefinitionDiff.test.ts",
     "tests/v2/helpers/publicRuntime.ts",
     "tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts",
     // V2C-37 retained runtime gate correction; no product/build exemption.

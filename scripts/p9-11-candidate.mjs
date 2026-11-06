@@ -13,6 +13,11 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sha = (value, length = 64) => typeof value === "string" && new RegExp(`^[a-f0-9]{${length}}$`).test(value);
 const fail = (message) => { throw new Error(`P9-11 candidate: ${message}`); };
 const tooling = new Set([
+    // V2C-37 saved runtime-fixture correction; product/build and receipt pins stay protected.
+    "tests/cli/BuildWorkflow.integration.test.ts",
+    "tests/cli/P907ValeraMathematician.integration.test.ts",
+    "tests/server/PokieDevServer.test.ts",
+    "tests/v2/MathDefinitionDiff.test.ts",
     "tests/v2/helpers/publicRuntime.ts",
     "tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts",
     // V2C-37 retained runtime gate correction; no product/build exemption.
