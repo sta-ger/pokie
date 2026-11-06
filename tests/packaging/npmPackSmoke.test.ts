@@ -171,9 +171,10 @@ it("preserves authenticated handoffs across the complete bounded prepack correct
             // packaging selector additionally authenticates release context.
             const readers = [readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment];
             const original = await readers[0](environment, options);
-            const paths = ["scripts/p8-05-release-handoff.mjs", "scripts/p9-11-corrective-closeout.mjs",
+            const paths = ["scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs", "scripts/p9-11-corrective-closeout.mjs",
                 "tests/cli/studio-client/src/components/project/ProjectDashboardPage.wasmWorkflow.test.tsx",
-                "tests/packaging/npmPackSmoke.test.ts", "tests/testUtils/createP911CandidateFixture.mjs"];
+                "tests/packaging/npmPackSmoke.test.ts", "tests/testUtils/createP911CandidateFixture.mjs",
+                "tests/cli/PC18RoleMissions.integration.test.ts"].sort();
             for (const file of paths) {
                 assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
                 await writeFile(path.join(fixture.repository, file), "// Bounded prepack regression correction.");
@@ -1866,18 +1867,18 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(sample.status).toBe(0);
     });
 
-    smokeIt("runs a data-driven, artifact-producing workflow for every public command and nested verb from the installed binary", async () => {
+    describe("runs a data-driven, artifact-producing workflow for every public command and nested verb from the installed binary", () => {
         // This is intentionally not another recursive-help assertion.  Each row below is a command the
         // tarball-installed executable actually runs with a concrete input, expected exit status, and a
         // produced/consumed artifact (or, for the non-interactive edit boundary, its actionable recovery).
         // Keep the list explicit: adding a public command or verb must add a meaningful clean-room workflow.
-        const workflowRoot = fs.mkdtempSync(path.join(installDir!, "all-public-workflows-"));
-        const blueprintPath = path.join(workflowRoot, "workflow.blueprint.json");
-        const packageRoot = path.join(workflowRoot, "workflow-package");
-        const libraryPath = path.join(workflowRoot, "workflow-library.json");
-        const bundlePath = path.join(workflowRoot, "workflow-bundle");
-        const simPath = path.join(workflowRoot, "workflow-sim.json");
-        const comparisonSimPath = path.join(workflowRoot, "workflow-sim-comparison.json");
+        let workflowRoot: string;
+        let blueprintPath: string;
+        let packageRoot: string;
+        let libraryPath: string;
+        let bundlePath: string;
+        let simPath: string;
+        let comparisonSimPath: string;
         const workflowIds: string[] = [];
         const exercisedPublicWorkflows = new Set<string>();
 
@@ -1905,7 +1906,17 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             }
         };
 
-        try {
+        // Share only the installed artifacts between phases. Each phase keeps the
+        // normal Jest deadline instead of charging all 35 CLI launches to one
+        // 300-second test. Every phase participates in the smoke receipt count.
+        beforeAll(() => {
+            workflowRoot = fs.mkdtempSync(path.join(installDir!, "all-public-workflows-"));
+            blueprintPath = path.join(workflowRoot, "workflow.blueprint.json");
+            packageRoot = path.join(workflowRoot, "workflow-package");
+            libraryPath = path.join(workflowRoot, "workflow-library.json");
+            bundlePath = path.join(workflowRoot, "workflow-bundle");
+            simPath = path.join(workflowRoot, "workflow-sim.json");
+            comparisonSimPath = path.join(workflowRoot, "workflow-sim-comparison.json");
             // Use a deliberately tiny source so every generated/consumed artifact is fast and inspectable.
             fs.writeFileSync(
                 blueprintPath,
@@ -1918,7 +1929,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                     reelStrips: [["A", "A", "B"], ["A", "B"]],
                 }),
             );
+        });
 
+        smokeIt("creates, validates and builds the installed source and outcome artifacts", () => {
             const createdBlueprintPath = path.join(workflowRoot, "created.blueprint.json");
             run("create", ["create", "Packed Workflow", "--random", "--seed", "71", "--out", createdBlueprintPath]);
             expectFile(createdBlueprintPath);
@@ -1937,7 +1950,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             expectDirectory(bundlePath);
             run("inspect", ["inspect", bundlePath]);
             run("sample", ["sample", bundlePath, "--mode", "base", "--seed", "workflow-seed"]);
+        });
 
+        smokeIt("simulates, reports, compares and replays the installed package", () => {
             run("sim", ["sim", packageRoot, "--rounds", "40", "--seed", "workflow-seed", "--out", simPath, "--format", "json"]);
             expectFile(simPath);
             run("sim-comparison", ["sim", packageRoot, "--rounds", "40", "--seed", "comparison-seed", "--out", comparisonSimPath, "--format", "json"]);
@@ -1951,7 +1966,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             const replayPath = path.join(workflowRoot, "workflow-replay.json");
             run("replay", ["replay", packageRoot, "--round", "1", "--seed", "workflow-seed", "--out", replayPath]);
             expectFile(replayPath);
+        });
 
+        smokeIt("builds and plays the installed WASM artifact", () => {
             const wasmSourcePath = path.join(workflowRoot, "wasm-source.blueprint.json");
             const wasmPath = path.join(workflowRoot, "workflow.wasm");
             fs.writeFileSync(wasmSourcePath, JSON.stringify({
@@ -1961,7 +1978,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             run("build-wasm", ["build", wasmSourcePath, "--target", "wasm", "--out", wasmPath]);
             expectFile(wasmPath);
             expect(run("run", ["run", wasmPath, "--seed", "workflow-wasm"]).stdout).toContain("POKIE WASM round 1");
+        });
 
+        smokeIt("round-trips installed PAR artifacts and generates reels", () => {
             const workbookPath = path.join(workflowRoot, "workflow.par.xlsx");
             run("par export", ["par", "export", blueprintPath, "--out", workbookPath]);
             expectFile(workbookPath);
@@ -1993,7 +2012,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             const reelOutputPath = path.join(workflowRoot, "generated-reels-output.blueprint.json");
             run("reel generate", ["reel", "generate", reelBlueprintPath, "--apply", "--out", reelOutputPath, "--format", "json"]);
             expectFile(reelOutputPath);
+        });
 
+        smokeIt("produces and verifies installed fairness and certification artifacts", () => {
             const seedPath = path.join(workflowRoot, "server-seed.txt");
             const seedCommitmentPath = path.join(workflowRoot, "server-seed-commitment.json");
             const commitmentPath = path.join(workflowRoot, "round-commitment.json");
@@ -2013,7 +2034,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             run("certification build", ["certification", "build", bundlePath, certificationConfigPath, "--out", certificationPath]);
             expectDirectory(certificationPath);
             run("certification verify", ["certification", "verify", certificationPath, "--source", bundlePath]);
+        });
 
+        smokeIt("initializes a package and preserves installed command recovery diagnostics", () => {
             const initializedRoot = path.join(workflowRoot, "initialized");
             run("init", ["init", initializedRoot, "--no-install", "--no-prepare"]);
             expectFile(path.join(initializedRoot, "package.json"));
@@ -2027,7 +2050,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 const missingVerb = run(`${parent}-missing-verb-recovery`, [parent], 1);
                 expect(`${missingVerb.stdout}\n${missingVerb.stderr}`).toContain("Usage:");
             }
+        });
 
+        smokeIt("serves the installed client, API and development workflows", async () => {
             await runListeningWorkflow("client", ["client", packageRoot, "--port", "0", "--no-open"], async (baseUrl) => {
                 expect((await fetch(`${baseUrl}/`)).status).toBe(200);
             });
@@ -2037,7 +2062,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             await runListeningWorkflow("dev", ["dev", packageRoot, "--port", "0", "--client-port", "0", "--no-open"], async (baseUrl) => {
                 expect((await fetch(`${baseUrl}/health`)).status).toBe(200);
             });
+        });
 
+        smokeIt("retains the complete ordered public command and nested verb coverage", () => {
             expect(workflowIds).toEqual([
                 "create", "validate", "build", "generate", "build-outcome-library", "inspect", "sample", "sim", "sim-comparison", "report", "diff", "replay", "build-wasm", "run",
                 "par export", "par import", "build-par-workbook", "import", "reel generate", "fairness seed-commit", "fairness commit", "fairness reveal", "fairness verify",
@@ -2045,9 +2072,11 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 "par-missing-verb-recovery", "reel-missing-verb-recovery", "client", "serve", "dev",
             ]);
             expect([...exercisedPublicWorkflows].sort()).toEqual([...PACKAGED_PUBLIC_WORKFLOW_SCENARIOS].sort());
-        } finally {
-            fs.rmSync(workflowRoot, {recursive: true, force: true});
-        }
+        });
+
+        afterAll(() => {
+            if (workflowRoot !== undefined) fs.rmSync(workflowRoot, {recursive: true, force: true});
+        });
     });
 
     // A "pokie build" package (GamePackageGenerator's canonical output) carries none of the
