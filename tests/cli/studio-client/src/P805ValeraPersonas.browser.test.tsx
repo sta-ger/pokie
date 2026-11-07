@@ -467,6 +467,56 @@ describe("P8-05 rendered Valera persona evidence", () => {
         expect(result).toEqual({expectedTerminals: 2, wrongJobRejected: true, failedTerminalRejected: true, httpFailureRejected: true, progressRetained: true, expiredBodyRecovered: true, immutableBodiesReadOnce: true});
     });
 
+    it("waits for reload cancellation cleanup beyond the control deadline with a bounded exact-job terminal", () => {
+        const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import {readP805RenderedTerminal} from './scripts/p8-05-valera-browser-audit.mjs';
+            const id='a2b85598802f4c89bef83e27cee30734', pathname='/api/project/simulations/'+id;
+            const preparing={id,status:'cancelling',progress:{stage:'preparing',unit:'accepted plays',current:0,total:1800000},roundsCompleted:0,requestedRounds:1800000};
+            const originalNow=Date.now, originalTimeout=globalThis.setTimeout;
+            let elapsed=0, cdp, terminal, reads;
+            const event=()=>({method:'Network.responseReceived',params:{requestId:String(elapsed),response:{url:'http://localhost'+pathname,status:200}}});
+            const reset=(status, wrongJob=false)=>{
+                elapsed=0; terminal=status; reads=[];
+                cdp={events:[event()],send:async (_method,{requestId})=>{
+                    reads.push(requestId);
+                    const settled=Number(requestId)>=60000;
+                    return {body:JSON.stringify(settled&&terminal ? {id:wrongJob?'other-job':id,status:terminal} : preparing)};
+                }};
+            };
+            Date.now=()=>elapsed;
+            globalThis.setTimeout=(callback,ms,...args)=>{
+                if(ms===125){elapsed+=15000;cdp.events.push(event());return originalTimeout(callback,0,...args);}
+                return originalTimeout(callback,ms,...args);
+            };
+            try {
+                reset('cancelled');
+                const cancelled=await readP805RenderedTerminal(cdp,0,pathname,['cancelled'],'active-job reload rendered terminal result');
+                assert.equal(elapsed,60000);
+                assert.equal(cancelled.payload.id,id);
+                assert.equal(cancelled.payload.status,'cancelled');
+                assert.deepEqual(reads,['0','15000','30000','45000','60000']);
+                reset('completed');
+                await assert.rejects(readP805RenderedTerminal(cdp,0,pathname,['cancelled'],'unexpected completion'),/unexpected terminal:.*completed/);
+                reset('failed');
+                await assert.rejects(readP805RenderedTerminal(cdp,0,pathname,['cancelled'],'failed cleanup'),/unexpected terminal:.*failed/);
+                for(const wrongJob of [false,true]){
+                    reset(wrongJob?'cancelled':undefined,wrongJob);
+                    await assert.rejects(readP805RenderedTerminal(cdp,0,pathname,['cancelled'],'stuck cleanup'),/Timed out.*observed job:.*cancelling.*preparing.*1800000/);
+                    assert.equal(elapsed,135000,'cleanup has one finite 120s budget');
+                }
+                reset(undefined);
+                await assert.rejects(readP805RenderedTerminal(cdp,0,pathname,['completed'],'ordinary terminal'),/Timed out/);
+                assert.equal(elapsed,45000,'ordinary terminals retain their 30s deadline');
+                reset(undefined);
+                await assert.rejects(readP805RenderedTerminal(cdp,0,pathname,['cancelled'],'explicit deadline',15000),/Timed out/);
+                assert.equal(elapsed,30000,'explicit caller budgets remain authoritative');
+            } finally {Date.now=originalNow;globalThis.setTimeout=originalTimeout;}
+            console.log(JSON.stringify({delayedCancellation:true,exactJob:true,unexpectedTerminalsRejected:2,boundedTimeouts:2,ordinaryDeadlinePreserved:true,explicitDeadlinePreserved:true}));
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000}));
+        expect(result).toEqual({delayedCancellation: true, exactJob: true, unexpectedTerminalsRejected: 2, boundedTimeouts: 2, ordinaryDeadlinePreserved: true, explicitDeadlinePreserved: true});
+    });
+
     it("observes imported Open preparation before its exact dashboard and retains rejected responses", () => {
         // Synthetic CDP events test the observation boundary only; they are never
         // saved as native browser activation or installed acceptance evidence.
