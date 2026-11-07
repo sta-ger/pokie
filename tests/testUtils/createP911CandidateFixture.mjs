@@ -5,6 +5,24 @@ import path from "node:path";
 import {P911_CAMPAIGN, sha256} from "../../scripts/p9-11-candidate.mjs";
 import {archiveExecutableManifest} from "../../scripts/p8-05-candidate-package-verifier.mjs";
 const json = (file, value) => writeFile(file, `${JSON.stringify(value)}\n`);
+// Exact accumulated correction from the saved V2C-37 verified candidate.
+// Keep this independent of both readers, including every helper and selector.
+export const V2C37_SAVED_GATE_CORRECTION_PATHS = [
+    "scripts/p8-05-release-handoff.mjs",
+    "scripts/p8-05-valera-browser-audit.mjs",
+    "scripts/p9-11-candidate.mjs",
+    "tests/cli/BuildWorkflow.integration.test.ts",
+    "tests/cli/P907ValeraMathematician.integration.test.ts",
+    "tests/cli/commands/SimCommand.test.ts",
+    "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",
+    "tests/cli/studio-client/src/StudioReadinessConvergence.test.tsx",
+    "tests/cli/studio-client/src/hooks/usePlaySession.test.tsx",
+    "tests/cli/studio/StudioServerParWorkbook.integration.test.ts",
+    "tests/packaging/npmPackSmoke.test.ts",
+    "tests/server/PokieDevServer.test.ts",
+    "tests/testUtils/createP911CandidateFixture.mjs",
+    "tests/v2/MathDefinitionDiff.test.ts",
+];
 // Independent of the reader's allowlist: include the entire reviewed gate
 // delta, the prior driver repair, the reviewed interoperability correction and
 // every file changed by this handoff repair.

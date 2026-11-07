@@ -286,6 +286,46 @@ describe("P8-05 rendered Valera persona evidence", () => {
         expect(result).toEqual({validationTerminals: 2, delayedPreparation: true, nativeDrawerAndTab: true, timeoutDiagnostics: true});
     }, 90_000);
 
+    it("waits for packed serve preparation beyond the rendered deadline and retains startup failures", () => {
+        const result = execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import {spawn} from 'node:child_process';
+            import {once} from 'node:events';
+            import {setTimeout as pause} from 'node:timers/promises';
+            import {waitForP805PackedServer} from './scripts/p8-05-valera-browser-audit.mjs';
+            const child=spawn(process.execPath,['-e',
+                "const http=require('node:http');const server=http.createServer((req,res)=>{res.writeHead(404);res.end('no index');});server.listen(0,'127.0.0.1',()=>process.send(server.address().port));process.stdin.once('data',()=>console.log('POKIE dev server listening'));"
+            ],{stdio:['pipe','pipe','pipe','ipc']});
+            const exited=once(child,'exit');
+            try {
+                const [port]=await once(child,'message');
+                let elapsed=0,polls=0;
+                const output=await waitForP805PackedServer(child,'http://127.0.0.1:'+port,{
+                    now:()=>elapsed,
+                    pause:async()=>{elapsed+=15000;if(++polls===3)child.stdin.write('ready\\n');await pause(10);}
+                });
+                assert.ok(elapsed>30000);
+                assert.match(output,/POKIE dev server listening/);
+                assert.equal((await fetch('http://127.0.0.1:'+port)).status,404);
+            } finally {child.kill();await exited;}
+            for(const timeout of [false,true]){
+                const child=spawn(process.execPath,['-e',timeout
+                    ? "console.error('still preparing package');setInterval(()=>{},1000);"
+                    : "console.error('invalid package input');process.exitCode=7;"
+                ],{stdio:['ignore','pipe','pipe']});
+                const exited=once(child,'exit');
+                try {
+                    let elapsed=0;
+                    await assert.rejects(waitForP805PackedServer(child,'http://127.0.0.1:1',{
+                        now:()=>elapsed,pause:async()=>{await pause(20);elapsed+=timeout?30000:1;}
+                    }),timeout?/Timed out waiting for packed CLI serve[\\s\\S]*still preparing package/:/stopped before readiness: 7[\\s\\S]*invalid package input/);
+                } finally {if(child.exitCode===null)child.kill();await exited;}
+            }
+            console.log('PACKED_SERVE_BOUNDARY_OK');
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000});
+        expect(result).toContain("PACKED_SERVE_BOUNDARY_OK");
+    });
+
     it("admits the complete bounded correction through pinned candidate readers without exempting product inputs", () => {
         const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
             import assert from 'node:assert/strict';
@@ -293,13 +333,14 @@ describe("P8-05 rendered Valera persona evidence", () => {
             import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
             import {tmpdir} from 'node:os';
             import path from 'node:path';
-            import {candidateFixture,P911_TOOLING_DESCENDANT_PATHS} from './tests/testUtils/createP911CandidateFixture.mjs';
+            import {candidateFixture,P911_TOOLING_DESCENDANT_PATHS,V2C37_SAVED_GATE_CORRECTION_PATHS} from './tests/testUtils/createP911CandidateFixture.mjs';
             import {authenticateP805ProductTree} from './scripts/p8-05-release-handoff.mjs';
             import {readP911CandidateFromEnvironment,readP911SmokeCandidateFromEnvironment} from './scripts/p9-11-candidate.mjs';
             const directory=await mkdtemp(path.join(tmpdir(),'p805-bounded-handoff-'));
             try {
                 const fixture=await candidateFixture(directory),repository=fixture.repository;
                 const paths=[...new Set([
+                    ...V2C37_SAVED_GATE_CORRECTION_PATHS,
                     'tests/cli/commands/ReplayCommand.test.ts','tests/cli/commands/SimCommand.test.ts',
                     'tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx',
                     'tests/gamepackage/loadPokieGame.test.ts','tests/project/wasm/WasmRuntimeParity.golden.test.ts',

@@ -161,7 +161,7 @@ it("preserves authenticated handoffs across the complete bounded prepack correct
             import {execFileSync} from "node:child_process";
             import {mkdir, readFile, writeFile} from "node:fs/promises";
             import path from "node:path";
-            import {candidateFixture, P911_TOOLING_DESCENDANT_PATHS} from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "tests/testUtils/createP911CandidateFixture.mjs")).href)};
+            import {candidateFixture, P911_TOOLING_DESCENDANT_PATHS, V2C37_SAVED_GATE_CORRECTION_PATHS} from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "tests/testUtils/createP911CandidateFixture.mjs")).href)};
             import {readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment} from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "scripts/p9-11-candidate.mjs")).href)};
             import {authenticateP805ProductTree} from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, "scripts/p8-05-release-handoff.mjs")).href)};
             const fixture = await candidateFixture(${JSON.stringify(directory)});
@@ -171,10 +171,10 @@ it("preserves authenticated handoffs across the complete bounded prepack correct
             // packaging selector additionally authenticates release context.
             const readers = [readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment];
             const original = await readers[0](environment, options);
-            const paths = ["scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs", "scripts/p9-11-corrective-closeout.mjs",
+            const paths = [...new Set([...V2C37_SAVED_GATE_CORRECTION_PATHS, "scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs", "scripts/p9-11-corrective-closeout.mjs",
                 "tests/cli/studio-client/src/components/project/ProjectDashboardPage.wasmWorkflow.test.tsx",
                 "tests/packaging/npmPackSmoke.test.ts", "tests/testUtils/createP911CandidateFixture.mjs",
-                "tests/cli/PC18RoleMissions.integration.test.ts"].sort();
+                "tests/cli/PC18RoleMissions.integration.test.ts"])].sort();
             for (const file of paths) {
                 assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "missing correction path: " + file);
                 await writeFile(path.join(fixture.repository, file), "// Bounded prepack regression correction.");
@@ -1692,7 +1692,12 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(rendered.status).toBe(0);
         expect(fs.readFileSync(markdown, "utf8")).toContain("RTP");
         const replay = path.join(installDir!, "init-replay.json");
-        expect(spawnSync(pokieBinPath, ["replay", projectRoot, "--round", "2", "--seed", "demo", "--out", replay], {cwd: installDir, encoding: "utf8", timeout: 60000}).status).toBe(0);
+        // Replay acquires the same isolated installed dependency graph as Sim.
+        // Allow its existing package-preparation budget and retain native failure diagnostics.
+        const replayed = spawnSync(pokieBinPath, ["replay", projectRoot, "--round", "2", "--seed", "demo", "--out", replay], {cwd: installDir, encoding: "utf8", timeout: 120000});
+        expect(replayed.error).toBeUndefined();
+        expect(replayed.signal).toBeNull();
+        expect({status: replayed.status, stderr: replayed.stderr}).toEqual({status: 0, stderr: expect.any(String)});
         expect(installedProbe("init-replay-agreement", `
             import assert from 'node:assert/strict';
             import fs from 'node:fs';

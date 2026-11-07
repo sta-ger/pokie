@@ -537,6 +537,35 @@ async function waitFor(predicate, label, timeout = 30000) {
         await wait(125);
     }
 }
+/** CLI package preparation has the same bounded budget as the other packed
+ * commands, independently of the shorter rendered-control deadline. Retain the
+ * child's own diagnostic and require both its listener marker and real HTTP. */
+export async function waitForP805PackedServer(child, origin, {timeoutMs = 120_000, fetchImpl = fetch, now = Date.now, pause = wait} = {}) {
+    const until = now() + timeoutMs;
+    let output = "", launchError;
+    const capture = chunk => { output += chunk.toString(); };
+    const failedLaunch = error => { launchError = error; };
+    child.stdout?.on("data", capture); child.stderr?.on("data", capture); child.on("error", failedLaunch);
+    try {
+        for (;;) {
+            if (launchError || child.exitCode != null || child.signalCode != null) throw new Error(`packed CLI serve stopped before readiness: ${launchError?.message ?? child.signalCode ?? child.exitCode}`);
+            if (now() >= until) throw new Error("Timed out waiting for packed CLI serve");
+            if (/POKIE dev server listening/.test(output)) {
+                try {
+                    // A package without an index page correctly responds 404.
+                    const response = await fetchImpl(origin, {signal: AbortSignal.timeout(Math.max(1, Math.min(1000, until - now())))});
+                    await response.body?.cancel();
+                    if (response.status < 500) return output;
+                } catch { /* Keep polling within the same startup deadline. */ }
+            }
+            await pause(125);
+        }
+    } catch (error) {
+        throw new Error(`${error.message}\n${output}`, {cause: error});
+    } finally {
+        child.stdout?.off("data", capture); child.stderr?.off("data", capture); child.off("error", failedLaunch);
+    }
+}
 export async function reloadP805Page(cdp, timeout = 30_000) {
     const {frameTree:{frame}} = await cdp.send("Page.getFrameTree");
     await cdp.send("Page.setLifecycleEventsEnabled", {enabled:true});
@@ -2044,10 +2073,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     await runPackedCli("packed CLI diff", ["diff", simulationReport, simulationReport, "--out", diffReport]); await requireOutput("packed CLI diff", diffReport);
                     await runPackedCli("packed CLI replay", ["replay", packageRoot, "--seed", "p8-05", "--round", "1", "--out", replayArtifact]); await requireOutput("packed CLI replay", replayArtifact);
                     const servePort = await freeLoopbackPort(), serveOwnership = ownershipEnvironment("packed-cli-serve"), serveChild = own("packed CLI serve", services.spawn(installedCli, ["serve", packageRoot, "--host", "127.0.0.1", "--port", String(servePort)], {cwd:context.workspace, env:{...packedEnvironment, ...serveOwnership.env}, stdio:"pipe"}), serveOwnership);
-                    let serveOutput = "";
-                    serveChild.stdout?.on("data", (chunk) => { serveOutput += chunk.toString(); }); serveChild.stderr?.on("data", (chunk) => { serveOutput += chunk.toString(); });
-                    await waitFor(async () => { try { return (await fetch(`http://127.0.0.1:${servePort}`)).status < 500 && /POKIE dev server listening/.test(serveOutput); } catch { return false; } }, "packed CLI serve");
-                    transcript.push(`[${services.now()}] packed CLI serve ${packageRoot} --port ${servePort}`); await settleChild(serveChild);
+                    const serveOutput = await waitForP805PackedServer(serveChild, `http://127.0.0.1:${servePort}`);
+                    transcript.push(`[${services.now()}] packed CLI serve ${packageRoot} --port ${servePort}\n${serveOutput}`); await settleChild(serveChild);
                 }
                 if (observation === "spaces-invalid-inputs-exit-codes-ci-recovery") {
                     await runInconclusiveValidation("packed CLI CI validate", blueprint, "json");
@@ -2116,16 +2143,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         await runPackedCli("packed CLI fairness reveal", ["fairness", "reveal", roundCommitment, "--server-seed", serverSeed, "--source", outcomeBundle, "--out", fairnessProof]); await requireOutput("packed CLI fairness reveal", fairnessProof);
         await runPackedCli("packed CLI fairness verify", ["fairness", "verify", fairnessProof, "--commitment", roundCommitment, "--source", outcomeBundle]);
         const servePort = await freeLoopbackPort(), serveOwnership = ownershipEnvironment("packed-cli-serve"), serveChild = own("packed CLI serve", services.spawn(installedCli, ["serve", packageRoot, "--host", "127.0.0.1", "--port", String(servePort)], {cwd:context.workspace, env:{...packedEnvironment, ...serveOwnership.env}, stdio:"pipe"}), serveOwnership);
-        let serveOutput = "";
-        serveChild.stdout?.on("data", (chunk) => { serveOutput += chunk.toString(); });
-        serveChild.stderr?.on("data", (chunk) => { serveOutput += chunk.toString(); });
-        // `serve` is a package development server, not a web-site generator:
-        // a package without an index page correctly answers 404 at `/`.  Its
-        // listener transcript plus any non-5xx loopback response proves the
-        // installed public command is serving instead of mistaking that 404
-        // for a semantic command failure.
-        await waitFor(async () => { try { const response = await fetch(`http://127.0.0.1:${servePort}`); return response.status < 500 && /POKIE dev server listening/.test(serveOutput); } catch { return false; } }, "packed CLI serve");
-        transcript.push(`[${services.now()}] packed CLI serve ${packageRoot} --port ${servePort}`);
+        const serveOutput = await waitForP805PackedServer(serveChild, `http://127.0.0.1:${servePort}`);
+        transcript.push(`[${services.now()}] packed CLI serve ${packageRoot} --port ${servePort}\n${serveOutput}`);
         await settleChild(serveChild);
         await runInconclusiveValidation("packed CLI CI validate", blueprint, "json");
         await runPackedCli("packed CLI invalid-input recovery", ["validate", path.join(context.workspace, "missing blueprint.json")], 1);

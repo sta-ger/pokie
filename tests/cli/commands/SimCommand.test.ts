@@ -31,8 +31,22 @@ import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/O
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 let restoreRuntimeEnvironment: () => void;
+const simulationFixtures = new Map<string, string>();
+
+function simulationFixture(name: string): string {
+    return simulationFixtures.get(name)!;
+}
 beforeAll(() => {
     restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+    // Declare the actual dependency under the isolated installation. An omitted
+    // dependency binds to the loader's host checkout and snapshots its evidence.
+    for (const name of ["playable-game", "playable-game-with-free-games", "playable-game-with-bonus-round"]) {
+        const root = path.join(os.tmpdir(), name);
+        fs.cpSync(path.join(__dirname, "..", "fixtures", name), root, {recursive: true});
+        const manifest = path.join(root, "package.json");
+        fs.writeFileSync(manifest, JSON.stringify({...JSON.parse(fs.readFileSync(manifest, "utf8")), dependencies: {"@fromstan/pokie": "*"}}));
+        simulationFixtures.set(name, root);
+    }
 }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 afterAll(() => restoreRuntimeEnvironment());
 
@@ -914,7 +928,7 @@ describe("SimCommand --mode all (integration, real generated package)", () => {
 });
 
 describe("SimCommand (integration, real loadPokieGame + fixture game package)", () => {
-    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
+    const fixtureRoot = () => simulationFixture("playable-game");
     let outDir: string;
 
     beforeEach(() => {
@@ -931,7 +945,7 @@ describe("SimCommand (integration, real loadPokieGame + fixture game package)", 
         const command = new SimCommand(loadPokieGame);
         const outFile = path.join(outDir, "report.json");
 
-        await command.run([fixtureRoot, "--rounds", "200", "--seed", "demo", "--out", outFile]);
+        await command.run([fixtureRoot(), "--rounds", "200", "--seed", "demo", "--out", outFile]);
 
         expect(fs.existsSync(outFile)).toBe(true);
         const report = JSON.parse(fs.readFileSync(outFile, "utf-8")) as SimulationReport;
@@ -947,8 +961,8 @@ describe("SimCommand (integration, real loadPokieGame + fixture game package)", 
         const firstFile = path.join(outDir, "first.json");
         const secondFile = path.join(outDir, "second.json");
 
-        await command.run([fixtureRoot, "--rounds", "300", "--seed", "reproducible-seed", "--out", firstFile]);
-        await command.run([fixtureRoot, "--rounds", "300", "--seed", "reproducible-seed", "--out", secondFile]);
+        await command.run([fixtureRoot(), "--rounds", "300", "--seed", "reproducible-seed", "--out", firstFile]);
+        await command.run([fixtureRoot(), "--rounds", "300", "--seed", "reproducible-seed", "--out", secondFile]);
 
         const first = JSON.parse(fs.readFileSync(firstFile, "utf-8")) as SimulationReport;
         const second = JSON.parse(fs.readFileSync(secondFile, "utf-8")) as SimulationReport;
@@ -971,7 +985,7 @@ describe("SimCommand (integration, real loadPokieGame + fixture game package)", 
         const outFile = path.join(outDir, "report.json");
 
         await command.run([
-            fixtureRoot,
+            fixtureRoot(),
             "--rounds",
             "50000",
             "--seed",
@@ -999,7 +1013,7 @@ describe("SimCommand (integration, real loadPokieGame + fixture game package)", 
 });
 
 describe("SimCommand (integration, real game with a free-games feature)", () => {
-    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game-with-free-games");
+    const fixtureRoot = () => simulationFixture("playable-game-with-free-games");
     let outDir: string;
 
     beforeEach(() => {
@@ -1016,7 +1030,7 @@ describe("SimCommand (integration, real game with a free-games feature)", () => 
         const command = new SimCommand(loadPokieGame);
         const outFile = path.join(outDir, "report.json");
 
-        await command.run([fixtureRoot, "--rounds", "5000", "--seed", "demo", "--out", outFile]);
+        await command.run([fixtureRoot(), "--rounds", "5000", "--seed", "demo", "--out", outFile]);
 
         const report = JSON.parse(fs.readFileSync(outFile, "utf-8")) as SimulationReport;
         expect(report.breakdown).toBeDefined();
@@ -1032,7 +1046,7 @@ describe("SimCommand (integration, real game with a free-games feature)", () => 
 });
 
 describe("SimCommand (integration, real game with an explicit custom category)", () => {
-    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game-with-bonus-round");
+    const fixtureRoot = () => simulationFixture("playable-game-with-bonus-round");
     let outDir: string;
 
     beforeEach(() => {
@@ -1049,7 +1063,7 @@ describe("SimCommand (integration, real game with an explicit custom category)",
         const command = new SimCommand(loadPokieGame);
         const outFile = path.join(outDir, "report.json");
 
-        await command.run([fixtureRoot, "--rounds", "1000", "--out", outFile]);
+        await command.run([fixtureRoot(), "--rounds", "1000", "--out", outFile]);
 
         const report = JSON.parse(fs.readFileSync(outFile, "utf-8")) as SimulationReport;
         expect(report.breakdown).toBeDefined();
@@ -1065,7 +1079,7 @@ describe("SimCommand (integration, real game with an explicit custom category)",
 
     it("renders the custom category in the markdown/html breakdown table via pokie report", async () => {
         const outFile = path.join(outDir, "report.json");
-        await new SimCommand(loadPokieGame).run([fixtureRoot, "--rounds", "1000", "--out", outFile]);
+        await new SimCommand(loadPokieGame).run([fixtureRoot(), "--rounds", "1000", "--out", outFile]);
 
         const {ReportCommand} = await import("../../../cli/commands/ReportCommand.js");
         const markdownOut = path.join(outDir, "report.md");
