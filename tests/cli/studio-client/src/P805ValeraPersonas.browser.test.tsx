@@ -467,6 +467,91 @@ describe("P8-05 rendered Valera persona evidence", () => {
         expect(result).toEqual({expectedTerminals: 2, wrongJobRejected: true, failedTerminalRejected: true, httpFailureRejected: true, progressRetained: true, expiredBodyRecovered: true, immutableBodiesReadOnce: true});
     });
 
+    it("waits for Outcome Library analysis beyond 120s and preserves exact first-terminal failures", () => {
+        const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import {createHash} from 'node:crypto';
+            import {readP805RenderedOperationTerminal} from './scripts/p8-05-valera-browser-audit.mjs';
+            // Progress fields copied from the retained UyGLW5 slow-job record.
+            // These boundary fixtures are not new browser acceptance evidence.
+            const jobId='c8b5123c-26b2-4704-8579-a0899f201898';
+            const progress={stage:'Analyzing outcomes',unit:'outcome records',current:'5632',total:'10000',message:'Analyzing Outcome mode base (pass 2 of 2)'};
+            const active={id:jobId,status:'running',lifecycleStage:'analyzing',durableProgress:progress};
+            const entry={browserRequestId:'2112492.320'};
+            const contract={body:'outcome-library',poll:'/api/project/outcome-libraries/jobs/{id}'};
+            const pathname=contract.poll.replace('{id}',jobId);
+            const originalNow=Date.now, originalTimeout=globalThis.setTimeout;
+            let elapsed=0, cdp, reads, snapshots, bodies, deliver, api;
+            const event=(requestId,url=pathname,status=200)=>({method:'Network.responseReceived',params:{requestId,response:{url:'http://localhost'+url,status}}});
+            const append=(requestId,payload,status=200)=>{bodies.set(requestId,payload);cdp.events.push(event(requestId,pathname,status));};
+            const reset=(next)=>{
+                elapsed=0;reads=[];api=[];snapshots=[{source:'start-response',browserRequestId:entry.browserRequestId,jobId,durableStatus:'queued'}];
+                bodies=new Map();cdp={events:[event('stale')]};deliver=next;
+                append('2112492.942',active);
+            };
+            const observe=(selectedContract=contract)=>readP805RenderedOperationTerminal({cdp,cursor:1,contract:selectedContract,entry,jobId,progressSnapshots:snapshots,observation:'outcome-library-report-diff-replay',api,readBrowserResponseBody:async requestId=>{
+                reads.push(requestId);
+                const payload=bodies.get(requestId);
+                if(payload instanceof Error)throw payload;
+                return {body:JSON.stringify(payload)};
+            }});
+            Date.now=()=>elapsed;
+            globalThis.setTimeout=(callback,ms,...args)=>{
+                if(ms===125){elapsed+=30000;deliver?.();return originalTimeout(callback,0,...args);}
+                return originalTimeout(callback,ms,...args);
+            };
+            try {
+                reset(()=>{if(elapsed===150000)append('completed',{id:jobId,status:'completed',result:{status:'ok',outputPath:'/generated-outcomes'}});});
+                const completed=await observe();
+                assert.equal(elapsed,150000,'analysis may finish after the former 120s observer budget');
+                assert.equal(completed.event.params.requestId,'completed');
+                assert.equal(api[0].browserRequestId,'completed');
+                assert.equal(completed.result.result.outputPath,'/generated-outcomes');
+                assert.deepEqual(reads,['2112492.942','completed'],'ignore pre-activation polls and read each captured body once');
+                assert.deepEqual(snapshots[1].durableProgress,progress);
+                assert.equal(snapshots[1].responseSha256,createHash('sha256').update(JSON.stringify(active)).digest('hex'));
+                assert.equal(snapshots.at(-1).durableStatus,'completed');
+                for(const payload of [{id:jobId,status:'failed',error:'analysis failed'},{id:jobId,status:'cancelled'},{id:jobId,status:'completed',result:{status:'invalid'}}]){
+                    reset(()=>{if(elapsed===150000){append('first-terminal',payload);append('later-success',{id:jobId,status:'completed'});}});
+                    await assert.rejects(observe(),error=>{
+                        assert.equal(error.kind,'terminal-failure');
+                        assert.equal(error.details.requestId,entry.browserRequestId);
+                        assert.equal(error.details.jobId,jobId);
+                        assert.deepEqual(error.details.firstTerminal.result,payload);
+                        assert.equal(error.details.firstTerminal.browserRequestId,'first-terminal');
+                        assert.equal(reads.includes('later-success'),false);
+                        assert.deepEqual(api.map(receipt=>receipt.payload),[payload],'retain the first terminal API record even on failure');
+                        return true;
+                    });
+                }
+                reset(()=>{if(elapsed===150000)append('wrong-job',{id:'foreign-job',status:'completed'});});
+                await assert.rejects(observe(),error=>error.kind==='uncorrelated-poll'&&error.details.jobId===jobId);
+                reset(()=>{if(elapsed===150000)append('server-error',{},500);});
+                await assert.rejects(observe(),error=>error.kind==='server-error'&&error.details.lastObserved.httpStatus===500);
+                reset(()=>append('progress-'+elapsed,{...active,durableProgress:{...progress,current:String(5632+elapsed/30000)}}));
+                await assert.rejects(observe(),error=>{
+                    assert.equal(error.kind,'slow-job');
+                    assert.equal(error.details.jobId,jobId);
+                    assert.equal(error.details.lastObserved.lifecycleStage,'analyzing');
+                    assert.equal(error.details.progressSnapshots,snapshots);
+                    assert.ok(snapshots.length>2,'retain every advancing poll without extending the deadline');
+                    return true;
+                });
+                assert.equal(elapsed,330000,'one fixed five-minute operation budget');
+                reset();cdp.events.length=1;
+                await assert.rejects(observe(),error=>error.kind==='missing-poll');
+                assert.equal(elapsed,330000);
+                reset();bodies.set('2112492.942',new Error('expired response body'));
+                await assert.rejects(observe(),error=>error.kind==='poll-read-failure'&&error.details.lastObserved.readError.includes('expired response body'));
+                reset();
+                await assert.rejects(observe({...contract,body:'simulation'}),error=>error.kind==='slow-job');
+                assert.equal(elapsed,60000,'ordinary durable controls retain their 30s budget');
+            } finally {Date.now=originalNow;globalThis.setTimeout=originalTimeout;}
+            console.log(JSON.stringify({delayedTerminal:true,firstTerminalFailures:3,wrongJobRejected:true,httpFailureRejected:true,progressRetained:true,boundedDespiteProgress:true,missingAndUnreadableRejected:true,ordinaryBudgetPreserved:true}));
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000}));
+        expect(result).toEqual({delayedTerminal: true, firstTerminalFailures: 3, wrongJobRejected: true, httpFailureRejected: true, progressRetained: true, boundedDespiteProgress: true, missingAndUnreadableRejected: true, ordinaryBudgetPreserved: true});
+    });
+
     it("waits for reload cancellation cleanup beyond the control deadline with a bounded exact-job terminal", () => {
         const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
             import assert from 'node:assert/strict';

@@ -120,6 +120,57 @@ class OutcomeLibraryTerminalBoundaryError extends Error {
         this.details = details;
     }
 }
+/** Observe the first exact-job terminal from browser-owned operation polls.
+ * Outcome generation includes preparation, durable writes and both analysis
+ * passes. The retained 10,000-record run was still advancing in pass two at
+ * 120s; give that whole operation one fixed five-minute budget, without
+ * renewing it on progress or changing the ordinary control deadline. */
+export async function readP805RenderedOperationTerminal({cdp, cursor, contract, entry, jobId, progressSnapshots, readBrowserResponseBody, observation, api}) {
+    const observedPolls = new Set();
+    let lastObserved;
+    let terminalEvent;
+    try { terminalEvent = await waitFor(async () => {
+        const expectedPath = contract.poll.replace("{id}", encodeURIComponent(jobId));
+        const events = cdp.events.slice(cursor).filter((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === expectedPath);
+        // Process responses in browser order. The first non-active
+        // durable record is the terminal truth; a later rerender or
+        // recovery read may never replace it.
+        for (const event of events) {
+            if (observedPolls.has(event.params.requestId)) continue;
+            observedPolls.add(event.params.requestId);
+            if (event.params.response.status < 200 || event.params.response.status >= 300) {
+                throw new OutcomeLibraryTerminalBoundaryError("server-error", {
+                    requestId:entry.browserRequestId,
+                    jobId,
+                    lastObserved:{browserRequestId:event.params.requestId, httpStatus:event.params.response.status},
+                });
+            }
+            let result;
+            try {
+                const body = await readBrowserResponseBody(event.params.requestId, observation);
+                result = JSON.parse(body.body || "{}");
+            } catch (error) {
+                lastObserved = {browserRequestId:event.params.requestId, httpStatus:event.params.response.status, readError:String(error)};
+                continue;
+            }
+            const snapshot = {source:"rendered-poll", browserRequestId:event.params.requestId, jobId:result?.id, durableStatus:result?.status, lifecycleStage:result?.lifecycleStage, durableProgress:result?.durableProgress ?? result?.progress, httpStatus:event.params.response.status, responseSha256:digest(JSON.stringify(result))};
+            if (progressSnapshots !== undefined) progressSnapshots.push(snapshot);
+            lastObserved = snapshot;
+            if (result?.id !== jobId) throw new OutcomeLibraryTerminalBoundaryError("uncorrelated-poll", {requestId:entry.browserRequestId, jobId, lastObserved});
+            if (!P805_OUTCOME_LIBRARY_ACTIVE_JOB_STATUSES.has(result?.status)) return {event, result};
+        }
+        return false;
+    }, `${observation} rendered terminal job`, contract.body === "outcome-library" ? 300_000 : 30_000); }
+    catch (error) {
+        if (error instanceof OutcomeLibraryTerminalBoundaryError) throw error;
+        const kind = lastObserved === undefined ? "missing-poll" : P805_OUTCOME_LIBRARY_ACTIVE_JOB_STATUSES.has(lastObserved.durableStatus) ? "slow-job" : "poll-read-failure";
+        throw new OutcomeLibraryTerminalBoundaryError(kind, {requestId:entry.browserRequestId, jobId, lastObserved, progressSnapshots});
+    }
+    api.push({observation, method:"GET", path:new URL(terminalEvent.event.params.response.url).pathname, status:terminalEvent.event.params.response.status, payload:terminalEvent.result, browserRequestId:terminalEvent.event.params.requestId, initiator:"rendered-poll"});
+    if (!["completed", "success", "ok", "valid", "partial"].includes(terminalEvent.result?.status) || ["failed", "error", "cancelled", "incomplete", "load-error", "invalid"].includes(terminalEvent.result?.result?.status)) throw new OutcomeLibraryTerminalBoundaryError("terminal-failure", {requestId:entry.browserRequestId, jobId, firstTerminal:{browserRequestId:terminalEvent.event.params.requestId, durableStatus:terminalEvent.result?.status, result:terminalEvent.result}, progressSnapshots});
+    return terminalEvent;
+}
+
 const auditTuples = (audit) => audit?.tuple ? [audit.tuple] : (audit?.workflowPersonas ?? [audit?.persona]).flatMap((persona) => (P805_REQUIRED_OBSERVATIONS[persona] ?? []).flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
 
 /** Persist the observed page independently of the control/request receipt.
@@ -2279,48 +2330,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // or cancelled one.  Polling only for a success used to turn a
             // useful terminal result into a timeout and let callers lose the
             // actual diagnostic that a persona saw.
-            const observedPolls = new Set();
-            let lastObserved;
-            let terminalEvent;
-            try { terminalEvent = await waitFor(async () => {
-                const expectedPath = contract.poll.replace("{id}", encodeURIComponent(jobId));
-                const events = cdp.events.slice(activationCursor).filter((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === expectedPath);
-                // Process responses in browser order. The first non-active
-                // durable record is the terminal truth; a later rerender or
-                // recovery read may never replace it.
-                for (const event of events) {
-                    if (observedPolls.has(event.params.requestId)) continue;
-                    observedPolls.add(event.params.requestId);
-                    if (event.params.response.status < 200 || event.params.response.status >= 300) {
-                        throw new OutcomeLibraryTerminalBoundaryError("server-error", {
-                            requestId:entry.browserRequestId,
-                            jobId,
-                            lastObserved:{browserRequestId:event.params.requestId, httpStatus:event.params.response.status},
-                        });
-                    }
-                    let result;
-                    try {
-                        const body = await readBrowserResponseBody(event.params.requestId, observation);
-                        result = JSON.parse(body.body || "{}");
-                    } catch (error) {
-                        lastObserved = {browserRequestId:event.params.requestId, httpStatus:event.params.response.status, readError:String(error)};
-                        continue;
-                    }
-                    const snapshot = {source:"rendered-poll", browserRequestId:event.params.requestId, jobId:result?.id, durableStatus:result?.status, lifecycleStage:result?.lifecycleStage, durableProgress:result?.durableProgress ?? result?.progress, httpStatus:event.params.response.status, responseSha256:digest(JSON.stringify(result))};
-                    if (progressSnapshots !== undefined) progressSnapshots.push(snapshot);
-                    lastObserved = snapshot;
-                    if (result?.id !== jobId) throw new OutcomeLibraryTerminalBoundaryError("uncorrelated-poll", {requestId:entry.browserRequestId, jobId, lastObserved});
-                    if (!P805_OUTCOME_LIBRARY_ACTIVE_JOB_STATUSES.has(result?.status)) return {event, result};
-                }
-                return false;
-            }, `${observation} rendered terminal job`, contract.body === "outcome-library" ? 120_000 : 30_000); }
-            catch (error) {
-                if (error instanceof OutcomeLibraryTerminalBoundaryError) throw error;
-                const kind = lastObserved === undefined ? "missing-poll" : P805_OUTCOME_LIBRARY_ACTIVE_JOB_STATUSES.has(lastObserved.durableStatus) ? "slow-job" : "poll-read-failure";
-                throw new OutcomeLibraryTerminalBoundaryError(kind, {requestId:entry.browserRequestId, jobId, lastObserved, progressSnapshots});
-            }
-            api.push({observation, method:"GET", path:new URL(terminalEvent.event.params.response.url).pathname, status:terminalEvent.event.params.response.status, payload:terminalEvent.result, browserRequestId:terminalEvent.event.params.requestId, initiator:"rendered-poll"});
-            if (!["completed", "success", "ok", "valid", "partial"].includes(terminalEvent.result?.status) || ["failed", "error", "cancelled", "incomplete", "load-error", "invalid"].includes(terminalEvent.result?.result?.status)) throw new OutcomeLibraryTerminalBoundaryError("terminal-failure", {requestId:entry.browserRequestId, jobId, firstTerminal:{browserRequestId:terminalEvent.event.params.requestId, durableStatus:terminalEvent.result?.status, result:terminalEvent.result}, progressSnapshots});
+            const terminalEvent = await readP805RenderedOperationTerminal({cdp, cursor:activationCursor, contract, entry, jobId, progressSnapshots, readBrowserResponseBody, observation, api});
             const terminal = {status:terminalEvent.result.status, result:terminalEvent.result, resultSha256:digest(JSON.stringify(terminalEvent.result)), jobId, pollPath:contract.poll.replace("{id}", encodeURIComponent(jobId)), browserRequestId:terminalEvent.event.params.requestId, source:"rendered-poll"};
             transaction.terminal = {status:terminal.status, resultSha256:terminal.resultSha256, source:terminal.source, pollPath:terminal.pollPath, browserRequestId:terminal.browserRequestId, causedByRequestId:entry.browserRequestId};
             return {...entry, terminal};
