@@ -264,6 +264,25 @@ async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
     await stopP911Child(child);
 }
 
+async function runSmokeCommand(
+    command: string,
+    args: string[],
+    options: {cwd: string; env?: NodeJS.ProcessEnv; timeoutMs?: number},
+    children: Set<ChildProcessWithoutNullStreams>,
+): Promise<{exitCode: number; stdout: string; stderr: string; resourcesDrained: boolean; stdioClosed: boolean}> {
+    const {spawnP911Child, waitP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+        spawnP911Child: (command: string, args: string[], options: {cwd: string; env?: NodeJS.ProcessEnv; timeoutMs: number}) => ChildProcessWithoutNullStreams;
+        waitP911Child: (child: ChildProcessWithoutNullStreams) => Promise<{exitCode: number; stdout: string; stderr: string; resourcesDrained: boolean; stdioClosed: boolean}>;
+    };
+    const child = spawnP911Child(command, args, {...options, timeoutMs: options.timeoutMs ?? 180_000});
+    children.add(child);
+    try {
+        return await waitP911Child(child);
+    } finally {
+        await stopChild(child);
+    }
+}
+
 function smokeFailure(error: unknown): Error {
     const failure = error as {stack?: string; pc20Result?: {exitCode: number | null; timedOut: boolean; cancelled: boolean; processTreeDrained: boolean; resourcesDrained: boolean; stdioClosed: boolean; stdout: string; stderr: string}} | undefined;
     const result = failure?.pc20Result;
@@ -286,17 +305,14 @@ function smokeNpmEnvironment(cwd: string, inherited: NodeJS.ProcessEnv = process
 it("isolates explicit inherited npm context in the real smoke child environment and artifacts", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "p911-smoke-environment-"));
     try {
-        const {runP911Process} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
-            runP911Process: (command: string, args: string[], options: {cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number}) => Promise<{exitCode: number; stdout: string; resourcesDrained: boolean; stdioClosed: boolean}>;
-        };
         const inherited = {...process.env, "npm_lifecycle_event": "caller-test", "npm_package_json": "/caller/package.json", INIT_CWD: "/caller", TMPDIR: directory};
-        const result = await runP911Process(process.execPath, ["-e", `
+        const result = await runSmokeCommand(process.execPath, ["-e", `
             const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
             const environment = {nodeEnv: process.env.NODE_ENV, initial: process.env.INIT_CWD, pwd: process.env.PWD,
                 lifecycle: process.env.npm_lifecycle_event ?? null, packageJson: process.env.npm_package_json ?? null, tmpdir: os.tmpdir()};
             fs.writeFileSync(path.join(os.tmpdir(), "child-environment.json"), JSON.stringify(environment));
             process.stdout.write(JSON.stringify(environment));
-        `], {cwd: directory, env: smokeNpmEnvironment(directory, inherited), timeoutMs: 10_000});
+        `], {cwd: directory, env: smokeNpmEnvironment(directory, inherited), timeoutMs: 10_000}, new Set());
         expect(result).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
         const expected = {nodeEnv: "production", initial: directory, pwd: directory, lifecycle: null, packageJson: null, tmpdir: directory};
         expect(JSON.parse(result.stdout)).toEqual(expected);
@@ -368,6 +384,45 @@ it.each(["exit-failure", "timeout"])("keeps bounded prepack %s diagnostics seria
     }
 });
 
+it.each(["success", "exit-failure", "timeout"])("awaits owned conversion %s completion and retains its terminal diagnostics", async mode => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "p911-conversion-command-"));
+    const children = new Set<ChildProcessWithoutNullStreams>();
+    try {
+        const execution = runSmokeCommand(process.execPath, ["-e", `
+            const fs = require("node:fs");
+            process.stdout.write("conversion started");
+            ${mode === "timeout" ? "setInterval(() => {}, 1000);" : `
+                setTimeout(() => {
+                    fs.writeFileSync("conversion.json", JSON.stringify({status: "complete"}));
+                    ${mode === "exit-failure" ? 'process.stderr.write("conversion rejected"); process.exitCode = 7;' : 'process.stdout.write("; conversion completed");'}
+                }, 200);
+            `}
+        `], {cwd: directory, ...(mode === "timeout" ? {timeoutMs: 2000} : {})}, children);
+        if (mode === "success") {
+            expect(await execution).toMatchObject({exitCode: 0, stdout: "conversion started; conversion completed", stderr: "", resourcesDrained: true, stdioClosed: true});
+            expect(JSON.parse(fs.readFileSync(path.join(directory, "conversion.json"), "utf8"))).toEqual({status: "complete"});
+        } else {
+            let failure: Error | undefined;
+            try {
+                await execution;
+            } catch (error) {
+                failure = smokeFailure(error);
+            }
+            expect(failure).toBeDefined();
+            expect(failure?.message).toContain("conversion started");
+            expect(failure?.message).toContain(mode === "timeout" ? '"timedOut":true' : '"exitCode":7');
+            if (mode === "exit-failure") expect(failure?.message).toContain("conversion rejected");
+            for (const field of ["processTreeDrained", "resourcesDrained", "stdioClosed"]) expect(failure?.message).toContain(`"${field}":true`);
+            expect(fs.existsSync(path.join(directory, "conversion.json"))).toBe(mode === "exit-failure");
+        }
+        expect(children.size).toBe(1);
+        for (const child of children) expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
+    } finally {
+        await Promise.allSettled([...children].map(child => stopChild(child)));
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
 describe("npm pack smoke test (real tarball, real npm install, real spawned pokie binary)", () => {
     // Real `npm pack` (which runs the full `prepack` -> `npm run build` lifecycle) plus a real
     // `npm install` are both genuinely slow — far outside the rest of the suite's normal budget.
@@ -392,17 +447,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         return child;
     };
     const runSmokeNpm = async (args: string[], cwd: string, timeoutMs: number): Promise<string> => {
-        const {spawnP911Child, waitP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
-            spawnP911Child: (command: string, args: string[], options: {cwd: string; timeoutMs: number; env: NodeJS.ProcessEnv}) => ChildProcessWithoutNullStreams;
-            waitP911Child: (child: ChildProcessWithoutNullStreams) => Promise<{stdout: string}>;
-        };
-        const child = spawnP911Child("npm", args, {cwd, timeoutMs, env: smokeNpmEnvironment(cwd)});
-        spawnedSmokeChildren.add(child);
-        try {
-            return (await waitP911Child(child)).stdout;
-        } finally {
-            await stopChild(child);
-        }
+        return (await runSmokeCommand("npm", args, {cwd, timeoutMs, env: smokeNpmEnvironment(cwd)}, spawnedSmokeChildren)).stdout;
     };
     const smokeIt = (name: string, implementation: () => unknown | Promise<unknown>): void => {
         registeredSmokeTests++;
@@ -1476,7 +1521,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }
     });
 
-    smokeIt("publishes and reads all six installed project types, follows automatic intermediates and rejects unsupported reconstruction", () => {
+    smokeIt("publishes and reads all six installed project types, follows automatic intermediates and rejects unsupported reconstruction", async () => {
         const directory = fs.mkdtempSync(path.join(installDir!, "canonical-artifacts-"));
         const blueprintPath = path.join(directory, "source.blueprint.json");
         fs.writeFileSync(blueprintPath, JSON.stringify({
@@ -1518,8 +1563,12 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             }
             for (const [source, target, name] of [["parWorkbook", "wasm", "from-par.wasm"], ["tsPackage", "blueprint", "extracted.json"], ["outcomeLibrary", "outcomeLibrary", "republished-outcome"], ["stakeAdapter", "stakeAdapter", "republished-stake"]]) {
                 const output = path.join(directory, name);
-                const result = spawnSync(pokieBinPath, ["build", sources[source], "--target", target, "--out", output], {cwd: directory, encoding: "utf8", timeout: 60000});
-                expect({source, status: result.status, stderr: result.stderr}).toEqual({source, status: 0, stderr: ""});
+                // Package extraction loads and releases isolated dependency snapshots at
+                // recognition, planning and execution. Use the owned command budget,
+                // and await the complete process tree even on failure or timeout.
+                const result = await runSmokeCommand(pokieBinPath, ["build", sources[source], "--target", target, "--out", output], {cwd: directory}, spawnedSmokeChildren);
+                expect({source, status: result.exitCode, stderr: result.stderr, resourcesDrained: result.resourcesDrained, stdioClosed: result.stdioClosed})
+                    .toEqual({source, status: 0, stderr: "", resourcesDrained: true, stdioClosed: true});
                 expect(spawnSync(pokieBinPath, ["inspect", output], {cwd: directory, encoding: "utf8", timeout: 60000}).status).toBe(0);
             }
             const parEvidence = JSON.parse(fs.readFileSync(path.join(directory, "from-par.wasm.pokie/par-import/conversion-evidence.json"), "utf8"));
