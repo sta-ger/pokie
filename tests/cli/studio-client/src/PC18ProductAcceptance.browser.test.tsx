@@ -17,6 +17,7 @@ import {FileStudioJobRepository} from "../../../../cli/studio/jobs/FileStudioJob
 import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js";
 import {StudioServer} from "../../../../cli/studio/StudioServer.js";
 import {computeGameBlueprintHash} from "../../../../src/generated/computeGameBlueprintHash.js";
+import {ProjectTargetResolver} from "../../../../src/project/ProjectTargetResolver.js";
 import type {FetchLike} from "../../../../cli/studio-client/src/api/apiClient.js";
 import {buildFixtureGame} from "../../../weightedoutcome/generate/GenerateTestFixtures.js";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
@@ -50,12 +51,26 @@ function createServerFetch(baseUrl: string): FetchLike {
     });
 }
 
+function isolateLifecycleFixtureRecognition(project: string) {
+    const resolveProject = ProjectTargetResolver.prototype.resolve;
+    // These fixtures own cancellation/cleanup executors, not package metadata.
+    // Keep real file/type recognition, but do not let the parallel dashboard
+    // load snapshot the host runtime's entire dependency graph for the stub
+    // module's optional provenance. Limit the opt-out to this exact package;
+    // Home-open destinations and the real preflight worker keep their readers.
+    return jest.spyOn(ProjectTargetResolver.prototype, "resolve").mockImplementation(function (this: ProjectTargetResolver, target, options) {
+        return Reflect.apply(resolveProject, this, [target, path.resolve(target) === project
+            ? {...options, readConfigurationProvenance: false} : options]);
+    });
+}
+
 describe("PC-18 Studio product acceptance", () => {
     it.each(["preview", "targets", "gameModel"].flatMap(surface =>
         ["shutdown", "project close", "Home open"].map(action => ({surface, action})),
     ))("drains a disconnected $surface executor before $action completes", async ({surface, action}) => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc18-preflight-drain-"));
         const project = path.join(root, "package");
+        const resolution = isolateLifecycleFixtureRecognition(project);
         fs.mkdirSync(project);
         fs.writeFileSync(path.join(project, "package.json"), JSON.stringify({name: "preflight-slot", version: "1.0.0", pokie: {entry: "index.js"}}));
         fs.writeFileSync(path.join(project, "index.js"), "module.exports = {};\n");
@@ -120,6 +135,7 @@ describe("PC-18 Studio product acceptance", () => {
         let request: http.ClientRequest | undefined;
         let stopping: Promise<void> | undefined;
         try {
+            const startedAt = Date.now();
             const address = await server.start();
             const base = `http://${address.host}:${address.port}`;
             const urls: Record<string, string> = {preview: "/api/project/artifacts/preview", targets: "/api/project/artifacts/targets", gameModel: "/api/project/gameModel"};
@@ -129,8 +145,10 @@ describe("PC-18 Studio product acceptance", () => {
             request.on("error", () => undefined);
             request.end(surface === "preview" ? JSON.stringify({target: "wasm"}) : undefined);
             await entered;
+            const workerOnlineMs = Date.now() - startedAt;
             request.destroy();
             await cancellation;
+            const cancelledMs = Date.now() - startedAt;
             let completed = false;
             const transition = action === "shutdown" ? (stopping = server.stop())
                 : createServerFetch(base)(action === "Home open" ? "/api/home/projects/open" : "/api/projects/close", {
@@ -160,6 +178,8 @@ describe("PC-18 Studio product acceptance", () => {
             expect(drained).toBe(true);
             expect(worker!.threadId).toBe(-1);
             if (action === "shutdown") expect(repository.getProcessState()?.status).toBe("gracefully-stopped");
+            console.log(JSON.stringify({operation: "disconnected preflight drain", surface, action, workerOnlineMs,
+                cancelledMs, completedMs: Date.now() - startedAt, workerDrained: worker!.threadId === -1}));
         } finally {
             release();
             request?.destroy();
@@ -169,6 +189,7 @@ describe("PC-18 Studio product acceptance", () => {
             targets.mockRestore();
             model.mockRestore();
             shutdownMarker.mockRestore();
+            resolution.mockRestore();
             fs.rmSync(root, {recursive: true, force: true});
         }
     });
@@ -180,6 +201,7 @@ describe("PC-18 Studio product acceptance", () => {
     ))("retains $failure cleanup failure for disconnected $surface ($phase) through $action", async ({surface, action, failure, phase}) => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pc18-cleanup-failure-"));
         const project = path.join(root, "package");
+        const resolution = isolateLifecycleFixtureRecognition(project);
         fs.mkdirSync(project);
         fs.writeFileSync(path.join(project, "package.json"), JSON.stringify({name: "cleanup-slot", version: "1", pokie: {entry: "index.js"}}));
         fs.writeFileSync(path.join(project, "index.js"), "module.exports = {};\n");
@@ -309,6 +331,7 @@ describe("PC-18 Studio product acceptance", () => {
             controllers.mockRestore();
             for (const worker of ownedWorkers) if (worker.threadId !== -1) await Reflect.apply(terminate, worker, []);
             if (temporaryRoot) await rm(temporaryRoot, {recursive: true, force: true});
+            resolution.mockRestore();
             fs.rmSync(root, {recursive: true, force: true});
         }
     }, 120_000);
