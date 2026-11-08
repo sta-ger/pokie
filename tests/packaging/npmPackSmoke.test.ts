@@ -233,29 +233,43 @@ const PACKAGED_PUBLIC_WORKFLOW_SCENARIOS = [
 // tests/cli/materialize/BlueprintProjectMaterializer.offline.integration.test.ts's own CLI command
 // coverage describe block, which spawns the built (not packed/installed) executable to prove
 // running-installation-root discovery against a spaced path, not packaging.
-function waitForListeningPort(child: ChildProcessWithoutNullStreams, timeoutMs = 60000): Promise<number> {
+const SMOKE_COMMAND_TIMEOUT_MS = 180_000;
+
+function waitForListeningPort(child: ChildProcessWithoutNullStreams, timeoutMs = SMOKE_COMMAND_TIMEOUT_MS): Promise<number> {
     return new Promise((resolve, reject) => {
         let output = "";
+        const cleanup = (): void => {
+            clearTimeout(timer);
+            child.stdout.off("data", onData);
+            child.stderr.off("data", onErrorData);
+            child.off("error", onError);
+            child.off("exit", onExit);
+        };
+        const fail = (reason: string): void => {
+            cleanup();
+            reject(new Error(`${reason}. Command: ${JSON.stringify(child.spawnargs)}. Output so far:\n${output}`));
+        };
         const timer = setTimeout(() => {
-            reject(new Error(`Timed out waiting for "pokie" to report its listening port. Output so far:\n${output}`));
+            fail(`Timed out after ${timeoutMs}ms waiting for "pokie" to report its listening port`);
         }, timeoutMs);
         const onData = (chunk: Buffer): void => {
             output += chunk.toString();
             const match = (/listening on http:\/\/[^:]+:(\d+)/).exec(output);
             if (match) {
-                clearTimeout(timer);
-                child.stdout.off("data", onData);
+                cleanup();
                 resolve(Number(match[1]));
             }
         };
-        child.stdout.on("data", onData);
-        child.stderr.on("data", (chunk: Buffer) => {
+        const onErrorData = (chunk: Buffer): void => {
             output += chunk.toString();
-        });
-        child.once("exit", (code) => {
-            clearTimeout(timer);
-            reject(new Error(`"pokie" exited early (code ${code}). Output so far:\n${output}`));
-        });
+        };
+        const onError = (error: Error): void => fail(`"pokie" failed to launch: ${error.message}`);
+        const onExit = (code: number | null, signal: NodeJS.Signals | null): void => fail(`"pokie" exited before listening (code ${code}, signal ${signal})`);
+        child.stdout.on("data", onData);
+        child.stderr.on("data", onErrorData);
+        child.once("error", onError);
+        child.once("exit", onExit);
+        if (child.exitCode !== null || child.signalCode !== null) onExit(child.exitCode, child.signalCode);
     });
 }
 
@@ -274,7 +288,7 @@ async function runSmokeCommand(
         spawnP911Child: (command: string, args: string[], options: {cwd: string; env?: NodeJS.ProcessEnv; timeoutMs: number}) => ChildProcessWithoutNullStreams;
         waitP911Child: (child: ChildProcessWithoutNullStreams) => Promise<{exitCode: number; stdout: string; stderr: string; resourcesDrained: boolean; stdioClosed: boolean}>;
     };
-    const child = spawnP911Child(command, args, {...options, timeoutMs: options.timeoutMs ?? 180_000});
+    const child = spawnP911Child(command, args, {...options, timeoutMs: options.timeoutMs ?? SMOKE_COMMAND_TIMEOUT_MS});
     children.add(child);
     try {
         return await waitP911Child(child);
@@ -460,6 +474,103 @@ it.each(["success", "exit-failure", "lingering-worker"])("awaits owned worker sm
     for (const child of children) expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
 });
 
+describe("snapshot-backed smoke observation regressions without build, pack or install", () => {
+    let directory: string;
+    let cli: string;
+    let game: string;
+    const children = new Set<ChildProcessWithoutNullStreams>();
+
+    beforeAll(() => {
+        directory = fs.mkdtempSync(path.join(os.tmpdir(), "p911-snapshot-observation-"));
+        const runtime = path.join(directory, "runtime");
+        fs.mkdirSync(runtime);
+        // Development regression only: reuse the clone's already compiled CLI
+        // and its real dependency graph. This is not installed-candidate proof.
+        // Missing compiled inputs must fail, never trigger a build or npm setup.
+        fs.cpSync(path.join(REPO_ROOT, "dist"), path.join(runtime, "dist"), {recursive: true});
+        fs.copyFileSync(path.join(REPO_ROOT, "package.json"), path.join(runtime, "package.json"));
+        fs.symlinkSync(path.join(REPO_ROOT, "node_modules"), path.join(runtime, "node_modules"), "dir");
+        cli = path.join(runtime, "dist/cli/pokie.js");
+        game = path.join(directory, "custom executable package");
+        fs.mkdirSync(path.join(game, "dist"), {recursive: true});
+        fs.writeFileSync(path.join(game, "dist/index.js"), `
+            if (process.env.POKIE_SMOKE_PREPARATION_DELAY_MS) {
+                process.stderr.write("authored package preparation started\\n");
+                Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.POKIE_SMOKE_PREPARATION_DELAY_MS));
+                process.stderr.write("authored package preparation completed\\n");
+            }
+        ` + fs.readFileSync(path.join(REPO_ROOT, "tests/cli/fixtures/playable-game/index.js"), "utf8"));
+        fs.writeFileSync(path.join(game, "package.json"), JSON.stringify({name: "snapshot-observation", version: "1.0.0", pokie: {entry: "dist/index.js"}}));
+    }, SMOKE_COMMAND_TIMEOUT_MS);
+
+    it("awaits the real custom-package simulation's metadata, execution and cleanup", async () => {
+        const report = path.join(directory, "simulation.json");
+        const started = Date.now();
+        const result = await runSmokeCommand(process.execPath, [cli, "sim", game, "--rounds", "4", "--seed", "custom-seed", "--out", report], {
+            cwd: directory, env: {...process.env, POKIE_SMOKE_PREPARATION_DELAY_MS: ""},
+        }, children);
+        expect(result).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+        expect(JSON.parse(fs.readFileSync(report, "utf8"))).toMatchObject({rounds: 4, seed: "custom-seed"});
+        console.log(JSON.stringify({operation: "custom sim", elapsedMs: Date.now() - started, exitCode: result.exitCode, resourcesDrained: result.resourcesDrained, stdioClosed: result.stdioClosed}));
+    }, SMOKE_COMMAND_TIMEOUT_MS + 10_000);
+
+    it.each(["client", "serve", "dev"])("awaits real %s readiness and drains its runtime after a healthy response", async id => {
+        const {spawnP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+            spawnP911Child: (command: string, args: string[], options: {cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number}) => ChildProcessWithoutNullStreams;
+        };
+        const args = [cli, id, game, "--port", "0"];
+        if (id === "dev") args.push("--client-port", "0");
+        if (id !== "serve") args.push("--no-open");
+        const started = Date.now();
+        // A real authored initializer crosses the former 60s observer cutoff.
+        // The owned execution deadline still bounds startup and shutdown.
+        const env = {...process.env, POKIE_SMOKE_PREPARATION_DELAY_MS: id === "serve" ? "61000" : ""};
+        const child = spawnP911Child(process.execPath, args, {cwd: directory, env, timeoutMs: SMOKE_COMMAND_TIMEOUT_MS});
+        children.add(child);
+        try {
+            const port = await waitForListeningPort(child);
+            expect((await fetch(`http://127.0.0.1:${port}${id === "client" ? "/" : "/health"}`)).status).toBe(200);
+            expect(child.exitCode).toBeNull();
+            console.log(JSON.stringify({operation: id, readinessMs: Date.now() - started}));
+        } finally {
+            await stopChild(child);
+        }
+        expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
+    }, SMOKE_COMMAND_TIMEOUT_MS + 10_000);
+
+    afterAll(async () => {
+        try {
+            for (const child of children) await stopChild(child);
+            const {p911ChildrenDrained} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+                p911ChildrenDrained: (owned: Iterable<ChildProcessWithoutNullStreams>) => boolean;
+            };
+            expect(p911ChildrenDrained(children)).toBe(true);
+        } finally {
+            if (directory) fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+});
+
+it.each(["early-exit", "timeout"])("rejects %s before readiness and removes observers before owned cleanup", async mode => {
+    const {spawnP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+        spawnP911Child: (command: string, args: string[], options: {cwd: string; timeoutMs: number}) => ChildProcessWithoutNullStreams;
+    };
+    const child = spawnP911Child(process.execPath, ["-e", `
+        process.stderr.write("preparing without a listener");
+        ${mode === "timeout" ? "setInterval(() => {}, 1000);" : ""}
+    `], {cwd: REPO_ROOT, timeoutMs: 10_000});
+    const dataListeners = child.stdout.listenerCount("data");
+    try {
+        await expect(waitForListeningPort(child, mode === "timeout" ? 1000 : 5000)).rejects.toThrow(
+            mode === "timeout" ? "Timed out after 1000ms" : "exited before listening (code 0",
+        );
+        expect(child.stdout.listenerCount("data")).toBe(dataListeners);
+    } finally {
+        await stopChild(child);
+    }
+    expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
+});
+
 describe("npm pack smoke test (real tarball, real npm install, real spawned pokie binary)", () => {
     // Real `npm pack` (which runs the full `prepack` -> `npm run build` lifecycle) plus a real
     // `npm install` are both genuinely slow — far outside the rest of the suite's normal budget.
@@ -477,9 +588,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     const spawnedSmokeChildren = new Set<ChildProcessWithoutNullStreams>();
     const spawnSmokeChild = async (args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env): Promise<ChildProcessWithoutNullStreams> => {
         const {spawnP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
-            spawnP911Child: (command: string, args: string[], options: {cwd: string; env: NodeJS.ProcessEnv}) => ChildProcessWithoutNullStreams;
+            spawnP911Child: (command: string, args: string[], options: {cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number}) => ChildProcessWithoutNullStreams;
         };
-        const child = spawnP911Child(pokieBinPath, args, {cwd, env});
+        const child = spawnP911Child(pokieBinPath, args, {cwd, env, timeoutMs: SMOKE_COMMAND_TIMEOUT_MS});
         spawnedSmokeChildren.add(child);
         return child;
     };
@@ -1211,50 +1322,76 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }
     });
 
-    smokeIt("preserves an independently authored installed package and its custom behavior during inspection, simulation and rejected model extraction", () => {
-        const root = path.join(installDir!, "custom executable package");
-        fs.mkdirSync(path.join(root, "dist"), {recursive: true});
-        fs.mkdirSync(path.join(root, "src"));
-        const executable = fs.readFileSync(path.join(installDir!, "playable-game/index.js"));
-        const files: Record<string, Buffer> = {
-            "src/index.js": executable,
-            "dist/index.js": executable,
-            "package.json": Buffer.from(JSON.stringify({name: "independent-custom", version: "1.0.0", pokie: {entry: "dist/index.js"}})),
-            "package-lock.json": Buffer.from('{"lockfileVersion":3,"packages":{}}\n'),
-        };
-        for (const [file, bytes] of Object.entries(files)) fs.writeFileSync(path.join(root, file), bytes);
-        const probe = `
-            import assert from 'node:assert/strict';
-            import {loadPokieGameRuntime, PackageBlueprintExtraction} from '@fromstan/pokie';
-            const runtime = await loadPokieGameRuntime(${JSON.stringify(root)});
-            try {
-                assert.equal(runtime.game.getModelDescriptor, undefined);
-                const session = runtime.game.createSession({seed: 'custom-seed'});
-                session.setCreditsAmount(1000); session.play();
-                const extraction = await new PackageBlueprintExtraction().extract(runtime.game);
-                assert.notEqual(extraction.status, 'complete'); assert.equal(extraction.blueprint, undefined);
-                console.log(JSON.stringify({manifest: runtime.game.getManifest(), screen: session.getSymbolsCombination().toMatrix(), win: session.getWinAmount(), state: session.toSessionState()}));
-            } finally {await runtime.release();}
-        `;
-        const before = JSON.parse(installedProbe("custom-before", probe));
-        const inspection = spawnSync(pokieBinPath, ["inspect", root], {cwd: installDir, encoding: "utf8", timeout: 60000});
-        expect(inspection.status).toBe(0);
-        // Validation takes several isolated runtime snapshots, including the
-        // installed dependency graph. Allow the same bounded command budget as
-        // conversions; a valid but declaration-only package must still exit 2.
-        const validation = spawnSync(pokieBinPath, ["validate", root, "--format", "json"], {cwd: installDir, encoding: "utf8", timeout: 180_000});
-        expectLegacyPackageValidation(validation);
-        const simulation = spawnSync(pokieBinPath, ["sim", root, "--rounds", "4", "--seed", "custom-seed", "--out", path.join(installDir!, "custom-sim.json")], {cwd: installDir, encoding: "utf8", timeout: 60000});
-        expect(simulation.status).toBe(0);
+    describe("preserves an independently authored installed package and its custom behavior during inspection, simulation and rejected model extraction", () => {
+        let root: string;
+        let files: Record<string, Buffer>;
+        let probe: string;
+        let before: unknown;
+
+        beforeAll(() => {
+            root = path.join(installDir!, "custom executable package");
+            fs.mkdirSync(path.join(root, "dist"), {recursive: true});
+            fs.mkdirSync(path.join(root, "src"));
+            const executable = fs.readFileSync(path.join(installDir!, "playable-game/index.js"));
+            files = {
+                "src/index.js": executable,
+                "dist/index.js": executable,
+                "package.json": Buffer.from(JSON.stringify({name: "independent-custom", version: "1.0.0", pokie: {entry: "dist/index.js"}})),
+                "package-lock.json": Buffer.from('{"lockfileVersion":3,"packages":{}}\n'),
+            };
+            for (const [file, bytes] of Object.entries(files)) fs.writeFileSync(path.join(root, file), bytes);
+            probe = `
+                import assert from 'node:assert/strict';
+                import {loadPokieGameRuntime, PackageBlueprintExtraction} from '@fromstan/pokie';
+                const runtime = await loadPokieGameRuntime(${JSON.stringify(root)});
+                try {
+                    assert.equal(runtime.game.getModelDescriptor, undefined);
+                    const session = runtime.game.createSession({seed: 'custom-seed'});
+                    session.setCreditsAmount(1000); session.play();
+                    const extraction = await new PackageBlueprintExtraction().extract(runtime.game);
+                    assert.notEqual(extraction.status, 'complete'); assert.equal(extraction.blueprint, undefined);
+                    console.log(JSON.stringify({manifest: runtime.game.getManifest(), screen: session.getSymbolsCombination().toMatrix(), win: session.getWinAmount(), state: session.toSessionState()}));
+                } finally {await runtime.release();}
+            `;
+            before = JSON.parse(installedProbe("custom-before", probe));
+        });
+
+        smokeIt("inspects the authored package", () => {
+            const inspection = spawnSync(pokieBinPath, ["inspect", root], {cwd: installDir, encoding: "utf8", timeout: SMOKE_COMMAND_TIMEOUT_MS});
+            expect(inspection.error).toBeUndefined();
+            expect(inspection.status).toBe(0);
+        });
+
+        smokeIt("validates the authored package without claiming executable fidelity", () => {
+            // Validation takes several isolated runtime snapshots, including the
+            // installed dependency graph. Allow the same bounded command budget as
+            // conversions; a valid but declaration-only package must still exit 2.
+            const validation = spawnSync(pokieBinPath, ["validate", root, "--format", "json"], {cwd: installDir, encoding: "utf8", timeout: SMOKE_COMMAND_TIMEOUT_MS});
+            expectLegacyPackageValidation(validation);
+        });
+
+        smokeIt("simulates the authored package after metadata and execution snapshots drain", async () => {
+            const report = path.join(installDir!, "custom-sim.json");
+            // SimCommand acquires/releases a metadata snapshot and then a separate
+            // execution snapshot. Four rounds do not make those graph copies cheap.
+            const simulation = await runSmokeCommand(pokieBinPath, ["sim", root, "--rounds", "4", "--seed", "custom-seed", "--out", report], {cwd: installDir!}, spawnedSmokeChildren);
+            expect(simulation).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+            expect(JSON.parse(fs.readFileSync(report, "utf8"))).toMatchObject({rounds: 4, seed: "custom-seed"});
+        });
         for (const target of ["blueprint", "tsPackage", "parWorkbook", "wasm"]) {
-            const output = path.join(installDir!, `custom-rejected-${target}`);
-            const result = spawnSync(pokieBinPath, ["build", root, "--target", target, "--out", output], {cwd: installDir, encoding: "utf8", timeout: 60000});
-            expect(result.status).toBe(1);
-            expect(result.stderr).toMatch(/descriptor|model|extract|represent/i);
-            expect(fs.existsSync(output)).toBe(false);
+            smokeIt(`rejects authored model extraction to ${target} without output`, () => {
+                const output = path.join(installDir!, `custom-rejected-${target}`);
+                const result = spawnSync(pokieBinPath, ["build", root, "--target", target, "--out", output], {cwd: installDir, encoding: "utf8", timeout: SMOKE_COMMAND_TIMEOUT_MS});
+                expect(result.error).toBeUndefined();
+                expect(result.status).toBe(1);
+                expect(result.stderr).toMatch(/descriptor|model|extract|represent/i);
+                expect(fs.existsSync(output)).toBe(false);
+            });
         }
-        expect(JSON.parse(installedProbe("custom-after", probe))).toEqual(before);
-        for (const [file, bytes] of Object.entries(files)) expect(fs.readFileSync(path.join(root, file))).toEqual(bytes);
+        smokeIt("retains the authored bytes and custom seeded behavior after every operation", () => {
+            expect(JSON.parse(installedProbe("custom-after", probe))).toEqual(before);
+            for (const [file, bytes] of Object.entries(files)) expect(fs.readFileSync(path.join(root, file))).toEqual(bytes);
+        });
     });
 
     smokeIt("runs `pokie --no-open` (Home mode): serves the app shell/assets and a healthy API", async () => {
@@ -2148,17 +2285,19 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             }
         });
 
-        smokeIt("serves the installed client, API and development workflows", async () => {
-            await runListeningWorkflow("client", ["client", packageRoot, "--port", "0", "--no-open"], async (baseUrl) => {
-                expect((await fetch(`${baseUrl}/`)).status).toBe(200);
+        // Each listener owns runtime preparation before announcing readiness.
+        // Keep their deadlines independent, while retaining the ordered coverage
+        // assertion and requiring health plus awaited process-tree cleanup.
+        for (const id of ["client", "serve", "dev"]) {
+            smokeIt(`serves the installed client, API and development workflows (${id})`, async () => {
+                const args = [id, packageRoot, "--port", "0"];
+                if (id === "dev") args.push("--client-port", "0");
+                if (id !== "serve") args.push("--no-open");
+                await runListeningWorkflow(id, args, async (baseUrl) => {
+                    expect((await fetch(`${baseUrl}${id === "client" ? "/" : "/health"}`)).status).toBe(200);
+                });
             });
-            await runListeningWorkflow("serve", ["serve", packageRoot, "--port", "0"], async (baseUrl) => {
-                expect((await fetch(`${baseUrl}/health`)).status).toBe(200);
-            });
-            await runListeningWorkflow("dev", ["dev", packageRoot, "--port", "0", "--client-port", "0", "--no-open"], async (baseUrl) => {
-                expect((await fetch(`${baseUrl}/health`)).status).toBe(200);
-            });
-        });
+        }
 
         smokeIt("retains the complete ordered public command and nested verb coverage", () => {
             expect(workflowIds).toEqual([
