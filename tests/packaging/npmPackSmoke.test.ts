@@ -423,6 +423,43 @@ it.each(["success", "exit-failure", "timeout"])("awaits owned conversion %s comp
     }
 });
 
+it.each(["success", "exit-failure", "lingering-worker"])("awaits owned worker smoke %s exit instead of accepting a result marker", async mode => {
+    const children = new Set<ChildProcessWithoutNullStreams>();
+    let output: Awaited<ReturnType<typeof runSmokeCommand>> | undefined;
+    let failure: Error | undefined;
+    try {
+        output = await runSmokeCommand(process.execPath, ["-e", `
+            const {Worker} = require("node:worker_threads");
+            const worker = new Worker(\`
+                const {parentPort} = require("node:worker_threads");
+                setTimeout(() => {
+                    parentPort.postMessage("WORKER_SMOKE_RESULT");
+                    ${mode === "lingering-worker" ? "setInterval(() => {}, 1000);" : "parentPort.close();"}
+                }, 200);
+            \`, {eval: true});
+            worker.once("message", value => process.stdout.write(value));
+            worker.once("exit", () => {
+                process.stdout.write("; worker exited");
+                ${mode === "exit-failure" ? 'process.stderr.write("worker smoke rejected"); process.exitCode = 7;' : ""}
+            });
+        `], {cwd: REPO_ROOT, ...(mode === "lingering-worker" ? {timeoutMs: 2000} : {})}, children);
+    } catch (error) {
+        failure = smokeFailure(error);
+    }
+    if (mode === "success") {
+        expect(failure).toBeUndefined();
+        expect(output).toMatchObject({exitCode: 0, stdout: "WORKER_SMOKE_RESULT; worker exited", stderr: "", resourcesDrained: true, stdioClosed: true});
+    } else {
+        expect(output).toBeUndefined();
+        expect(failure?.message).toContain("WORKER_SMOKE_RESULT");
+        expect(failure?.message).toContain(mode === "lingering-worker" ? '"timedOut":true' : '"exitCode":7');
+        if (mode === "exit-failure") expect(failure?.message).toContain("worker smoke rejected");
+        for (const field of ["processTreeDrained", "resourcesDrained", "stdioClosed"]) expect(failure?.message).toContain(`"${field}":true`);
+    }
+    expect(children.size).toBe(1);
+    for (const child of children) expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
+});
+
 describe("npm pack smoke test (real tarball, real npm install, real spawned pokie binary)", () => {
     // Real `npm pack` (which runs the full `prepack` -> `npm run build` lifecycle) plus a real
     // `npm install` are both genuinely slow — far outside the rest of the suite's normal budget.
@@ -798,7 +835,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             const sim = path.join(installDir!, `${phase}-generated-sim.json`);
             const markdown = path.join(installDir!, `${phase}-generated-report.md`);
             const replay = path.join(installDir!, `${phase}-generated-replay.json`);
-            const validation = spawnSync(pokieBinPath, ["validate", root, "--format", "json"], {cwd: installDir, encoding: "utf8", timeout: 60000});
+            // Both emitted CJS and recompiled TS validation take isolated
+            // runtime/dependency snapshots, just like custom-package validation.
+            const validation = spawnSync(pokieBinPath, ["validate", root, "--format", "json"], {cwd: installDir, encoding: "utf8", timeout: 180_000});
             expectGeneratedPackageValidation(validation);
             for (const args of [
                 ["inspect", root],
@@ -1292,7 +1331,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }
     });
 
-    smokeIt("imports ParallelSimulationRunner from the installed \"pokie\" package and runs a workers=2 simulation, exiting cleanly with no lingering worker threads", () => {
+    smokeIt("imports ParallelSimulationRunner from the installed \"pokie\" package and runs a workers=2 simulation, exiting cleanly with no lingering worker threads", async () => {
         const fixtureRoot = path.join(installDir!, "playable-game");
         const scriptPath = path.join(installDir!, "run-parallel-simulation.mjs");
         // Deliberately not importing anything from this repo's own src/cli — this script only ever
@@ -1330,12 +1369,13 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             `,
         );
 
-        // execFileSync only returns once the child process has actually exited on its own — if a
-        // worker thread were left running (not terminated after run() resolves), Node's event loop
-        // would never drain and this would hang until Jest's own timeout killed it, failing the test.
-        const output = execFileSync("node", [scriptPath], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        // Each worker prepares an installed runtime snapshot before simulation.
+        // Allow the bounded command budget, and require natural process exit:
+        // a result marker with lingering threads still fails and drains ownership.
+        const output = await runSmokeCommand(process.execPath, [scriptPath], {cwd: installDir!}, spawnedSmokeChildren);
 
-        expect(output).toContain('PARALLEL_SIMULATION_SMOKE_OK {"workers":2,"rounds":20000}');
+        expect(output).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+        expect(output.stdout).toContain('PARALLEL_SIMULATION_SMOKE_OK {"workers":2,"rounds":20000}');
         smokeResults.libraryWorker = true;
     });
 
