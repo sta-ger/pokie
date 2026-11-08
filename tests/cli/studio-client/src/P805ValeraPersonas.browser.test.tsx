@@ -467,6 +467,85 @@ describe("P8-05 rendered Valera persona evidence", () => {
         expect(result).toEqual({expectedTerminals: 2, wrongJobRejected: true, failedTerminalRejected: true, httpFailureRejected: true, progressRetained: true, expiredBodyRecovered: true, immutableBodiesReadOnce: true});
     });
 
+    it("waits for simulation and replay preparation beyond the control deadline with bounded exact-job terminals", () => {
+        const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import {readP805RenderedTerminal,readP805RenderedOperationTerminal} from './scripts/p8-05-valera-browser-audit.mjs';
+            // Exact slow-job fields retained in Bcuiaz/initial-audit-failure.json.
+            // This boundary regression does not recollect installed acceptance.
+            const id='e5ffa6f0b4e94ce4930a4ba81bbefc6c';
+            const preparing={id,status:'running',progress:{stage:'preparing',unit:'accepted plays',current:0,total:1},roundsCompleted:0,requestedRounds:1};
+            const originalNow=Date.now,originalTimeout=globalThis.setTimeout;
+            let elapsed,cdp,deliver,bodies,reads;
+            const reset=(pathname,terminal='completed',wrongJob=false,httpStatus=200)=>{
+                elapsed=0;bodies=new Map();reads=[];cdp={events:[],send:async(_method,{requestId})=>{reads.push(requestId);return {body:JSON.stringify(bodies.get(requestId))};}};
+                deliver=()=>{
+                    const requestId=String(elapsed),settled=elapsed>=75000&&terminal!==null;
+                    bodies.set(requestId,settled?{id:wrongJob?'other-job':id,status:terminal,error:terminal==='failed'?'snapshot validation failed':undefined}:preparing);
+                    cdp.events.push({method:'Network.responseReceived',params:{requestId,response:{url:'http://localhost'+pathname,status:settled?httpStatus:200}}});
+                };
+                deliver();
+            };
+            Date.now=()=>elapsed;
+            globalThis.setTimeout=(callback,ms,...args)=>{
+                if(ms===125){elapsed+=15000;deliver();return originalTimeout(callback,0,...args);}
+                return originalTimeout(callback,ms,...args);
+            };
+            try {
+                for(const kind of ['simulations','replays']){
+                    const pathname='/api/project/'+kind+'/'+id;
+                    const observe=()=>readP805RenderedTerminal(cdp,0,pathname,['completed'],'successful '+kind+' rendered terminal result');
+                    reset(pathname);
+                    const terminal=await observe();
+                    assert.equal(elapsed,75000);
+                    assert.equal(terminal.payload.id,id);
+                    assert.equal(terminal.payload.status,'completed');
+                    assert.deepEqual(reads,['0','15000','30000','45000','60000','75000']);
+                    for(const status of ['failed','cancelled']){
+                        reset(pathname,status);
+                        await assert.rejects(observe(),new RegExp('unexpected terminal:.*'+status));
+                        assert.equal(elapsed,75000);
+                    }
+                    reset(pathname,'completed',false,500);
+                    await assert.rejects(observe(),/unexpected terminal/);
+                    for(const wrongJob of [false,true]){
+                        reset(pathname,wrongJob?'completed':null,wrongJob);
+                        await assert.rejects(observe(),/Timed out.*observed job:.*running.*preparing.*requestedRounds/);
+                        assert.equal(elapsed,135000,'one finite 120s job budget, never renewed by progress');
+                    }
+                    reset(pathname);
+                    await assert.rejects(readP805RenderedTerminal(cdp,0,pathname,['completed'],'explicit deadline',15000),/Timed out/);
+                    assert.equal(elapsed,30000);
+                    const contract={body:kind==='simulations'?'simulation':'replay',poll:'/api/project/'+kind+'/{id}'};
+                    const api=[];
+                    const observeOperation=()=>readP805RenderedOperationTerminal({cdp,cursor:0,contract,entry:{browserRequestId:'submission'},jobId:id,readBrowserResponseBody:requestId=>cdp.send('Network.getResponseBody',{requestId}),observation:'delayed '+kind,api});
+                    reset(pathname);
+                    const operation=await observeOperation();
+                    assert.equal(elapsed,75000);
+                    assert.equal(operation.result.status,'completed');
+                    assert.equal(api[0].payload.id,id);
+                    for(const status of ['failed','cancelled']){
+                        reset(pathname,status);
+                        await assert.rejects(observeOperation(),new RegExp('terminal-failure.*'+status));
+                    }
+                    reset(pathname,'completed',true);
+                    await assert.rejects(observeOperation(),/uncorrelated-poll/);
+                    reset(pathname,'completed',false,500);
+                    await assert.rejects(observeOperation(),/server-error/);
+                    reset(pathname,null);
+                    await assert.rejects(observeOperation(),/slow-job.*preparing/);
+                    assert.equal(elapsed,135000);
+                }
+                const ordinary='/api/project/other-jobs/'+id;
+                reset(ordinary);
+                await assert.rejects(readP805RenderedTerminal(cdp,0,ordinary,['completed'],'ordinary control'),/Timed out/);
+                assert.equal(elapsed,45000,'unrelated controls retain the 30s deadline');
+            } finally {Date.now=originalNow;globalThis.setTimeout=originalTimeout;}
+            console.log(JSON.stringify({delayedJobs:2,operationCallers:2,exactJobs:true,terminalAndHttpFailuresRejected:true,finiteBudgets:true,explicitAndOrdinaryDeadlinesPreserved:true}));
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000}));
+        expect(result).toEqual({delayedJobs: 2, operationCallers: 2, exactJobs: true, terminalAndHttpFailuresRejected: true, finiteBudgets: true, explicitAndOrdinaryDeadlinesPreserved: true});
+    });
+
     it("waits for Outcome Library analysis beyond 120s and preserves exact first-terminal failures", () => {
         const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
             import assert from 'node:assert/strict';
@@ -591,15 +670,15 @@ describe("P8-05 rendered Valera persona evidence", () => {
                     assert.equal(elapsed,135000,'cleanup has one finite 120s budget');
                 }
                 reset(undefined);
-                await assert.rejects(readP805RenderedTerminal(cdp,0,pathname,['completed'],'ordinary terminal'),/Timed out/);
-                assert.equal(elapsed,45000,'ordinary terminals retain their 30s deadline');
+                await assert.rejects(readP805RenderedTerminal(cdp,0,pathname,['completed'],'simulation terminal'),/Timed out/);
+                assert.equal(elapsed,135000,'simulation preparation has one finite 120s deadline');
                 reset(undefined);
                 await assert.rejects(readP805RenderedTerminal(cdp,0,pathname,['cancelled'],'explicit deadline',15000),/Timed out/);
                 assert.equal(elapsed,30000,'explicit caller budgets remain authoritative');
             } finally {Date.now=originalNow;globalThis.setTimeout=originalTimeout;}
-            console.log(JSON.stringify({delayedCancellation:true,exactJob:true,unexpectedTerminalsRejected:2,boundedTimeouts:2,ordinaryDeadlinePreserved:true,explicitDeadlinePreserved:true}));
+            console.log(JSON.stringify({delayedCancellation:true,exactJob:true,unexpectedTerminalsRejected:2,boundedTimeouts:2,simulationDeadlineBounded:true,explicitDeadlinePreserved:true}));
         `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000}));
-        expect(result).toEqual({delayedCancellation: true, exactJob: true, unexpectedTerminalsRejected: 2, boundedTimeouts: 2, ordinaryDeadlinePreserved: true, explicitDeadlinePreserved: true});
+        expect(result).toEqual({delayedCancellation: true, exactJob: true, unexpectedTerminalsRejected: 2, boundedTimeouts: 2, simulationDeadlineBounded: true, explicitDeadlinePreserved: true});
     });
 
     it("observes imported Open preparation before its exact dashboard and retains rejected responses", () => {

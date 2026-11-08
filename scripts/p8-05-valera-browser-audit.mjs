@@ -160,7 +160,7 @@ export async function readP805RenderedOperationTerminal({cdp, cursor, contract, 
             if (!P805_OUTCOME_LIBRARY_ACTIVE_JOB_STATUSES.has(result?.status)) return {event, result};
         }
         return false;
-    }, `${observation} rendered terminal job`, contract.body === "outcome-library" ? 300_000 : 30_000); }
+    }, `${observation} rendered terminal job`, contract.body === "outcome-library" ? 300_000 : renderedTerminalTimeout(["completed"], contract.poll)); }
     catch (error) {
         if (error instanceof OutcomeLibraryTerminalBoundaryError) throw error;
         const kind = lastObserved === undefined ? "missing-poll" : P805_OUTCOME_LIBRARY_ACTIVE_JOB_STATUSES.has(lastObserved.durableStatus) ? "slow-job" : "poll-read-failure";
@@ -663,15 +663,20 @@ export async function readP805RenderedResponse(cdp, cursor, pathname, accept, la
 
 // Simulation and Replay recovery consume the same captured public job identity.
 // An unexpected terminal is a failure, rather than an apparent observation timeout.
-function renderedTerminalTimeout(statuses) {
+function renderedTerminalTimeout(statuses, pathname) {
     // Cancellation during preparation must drain snapshot validation and its
     // owned files before Studio may publish cancelled. Reload recovery needs
     // the same bounded cleanup window as the cooperative cancellation probe,
     // independently of the shorter deadline for an ordinary rendered control.
-    return statuses.length === 1 && statuses[0] === "cancelled" ? 120_000 : 30_000;
+    // Simulation and Replay also prepare a runtime before executing rounds.
+    // The retained one-round simulation was still preparing at 30s. Both the
+    // persona and recovery readers need one fixed preparation/execution budget;
+    // progress never renews it, and unrelated controls keep their short bound.
+    return (statuses.length === 1 && statuses[0] === "cancelled")
+        || /^\/api\/project\/(?:simulations|replays)\/[^/]+$/.test(pathname ?? "") ? 120_000 : 30_000;
 }
 
-export async function readP805RenderedTerminal(cdp, cursor, pathname, statuses, label, timeout = renderedTerminalTimeout(statuses)) {
+export async function readP805RenderedTerminal(cdp, cursor, pathname, statuses, label, timeout = renderedTerminalTimeout(statuses, pathname)) {
     const jobId = decodeURIComponent(pathname.split("/").at(-1));
     let observedJob;
     let terminal;
@@ -2338,7 +2343,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // Recovery uses the very same operation transaction as the persona
         // matrix.  Its initial response may intentionally be a 202, but its
         // final browser poll must still close the original control's receipt.
-        const browserTerminal = async (pathname, observation, cursor, statuses, transactions = [], timeout = renderedTerminalTimeout(statuses), capturePointerTransition = false) => {
+        const browserTerminal = async (pathname, observation, cursor, statuses, transactions = [], timeout = renderedTerminalTimeout(statuses, pathname), capturePointerTransition = false) => {
             const terminal = await readP805RenderedTerminal(cdp, cursor, pathname, statuses, `${observation} rendered terminal result`, timeout);
             api.push({observation, method:"GET", path:pathname, status:terminal.event.params.response.status, payload:terminal.payload, browserRequestId:terminal.event.params.requestId, initiator:"rendered-poll"});
             const receipt = {status:terminal.payload.status, jobId:terminal.payload.id, result:terminal.payload, resultSha256:digest(JSON.stringify(terminal.payload)), source:"rendered-poll", pollPath:pathname, browserRequestId:terminal.event.params.requestId};
