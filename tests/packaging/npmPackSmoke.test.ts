@@ -494,7 +494,10 @@ describe("snapshot-backed smoke observation regressions without build, pack or i
         game = path.join(directory, "custom executable package");
         fs.mkdirSync(path.join(game, "dist"), {recursive: true});
         fs.writeFileSync(path.join(game, "dist/index.js"), `
-            if (process.env.POKIE_SMOKE_PREPARATION_DELAY_MS) {
+            const marker = process.env.POKIE_SMOKE_PREPARATION_MARKER;
+            const fs = require("node:fs");
+            if (process.env.POKIE_SMOKE_PREPARATION_DELAY_MS && !fs.existsSync(marker)) {
+                fs.writeFileSync(marker, "first initializer");
                 process.stderr.write("authored package preparation started\\n");
                 Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.POKIE_SMOKE_PREPARATION_DELAY_MS));
                 process.stderr.write("authored package preparation completed\\n");
@@ -523,24 +526,35 @@ describe("snapshot-backed smoke observation regressions without build, pack or i
         if (id !== "serve") args.push("--no-open");
         const started = Date.now();
         // A real authored initializer crosses the former 60s observer cutoff.
-        // The owned execution deadline still bounds startup and shutdown.
-        const env = {...process.env, POKIE_SMOKE_PREPARATION_DELAY_MS: id === "serve" ? "61000" : ""};
+        // Delay once: both project resolvers read configuration provenance by
+        // loading snapshots, before the server acquires its final runtime.
+        // Keep the marker outside the authored package and its input identity.
+        const env = {...process.env, POKIE_SMOKE_PREPARATION_DELAY_MS: id === "serve" ? "61000" : "",
+            POKIE_SMOKE_PREPARATION_MARKER: path.join(directory, `${id}-preparation-started`)};
         const child = spawnP911Child(process.execPath, args, {cwd: directory, env, timeoutMs: SMOKE_COMMAND_TIMEOUT_MS});
         children.add(child);
         try {
             const port = await waitForListeningPort(child);
+            if (id === "serve") {
+                expect(fs.readFileSync(env.POKIE_SMOKE_PREPARATION_MARKER, "utf8")).toBe("first initializer");
+                expect(Date.now() - started).toBeGreaterThan(60_000);
+            }
             expect((await fetch(`http://127.0.0.1:${port}${id === "client" ? "/" : "/health"}`)).status).toBe(200);
             expect(child.exitCode).toBeNull();
             console.log(JSON.stringify({operation: id, readinessMs: Date.now() - started}));
         } finally {
-            await stopChild(child);
+            await stopChild(child).catch((error: unknown) => {
+                throw smokeFailure(error);
+            });
         }
         expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
     }, SMOKE_COMMAND_TIMEOUT_MS + 10_000);
 
     afterAll(async () => {
         try {
-            for (const child of children) await stopChild(child);
+            const stopped = await Promise.allSettled([...children].map(child => stopChild(child)));
+            const failure = stopped.find(result => result.status === "rejected");
+            if (failure?.status === "rejected") throw smokeFailure(failure.reason);
             const {p911ChildrenDrained} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
                 p911ChildrenDrained: (owned: Iterable<ChildProcessWithoutNullStreams>) => boolean;
             };
@@ -1372,8 +1386,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
 
         smokeIt("simulates the authored package after metadata and execution snapshots drain", async () => {
             const report = path.join(installDir!, "custom-sim.json");
-            // SimCommand acquires/releases a metadata snapshot and then a separate
-            // execution snapshot. Four rounds do not make those graph copies cheap.
+            // Both project resolvers load configuration-provenance snapshots;
+            // SimCommand then loads metadata and execution snapshots. Four
+            // rounds do not make those repeated dependency graph copies cheap.
             const simulation = await runSmokeCommand(pokieBinPath, ["sim", root, "--rounds", "4", "--seed", "custom-seed", "--out", report], {cwd: installDir!}, spawnedSmokeChildren);
             expect(simulation).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
             expect(JSON.parse(fs.readFileSync(report, "utf8"))).toMatchObject({rounds: 4, seed: "custom-seed"});
