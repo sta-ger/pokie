@@ -159,67 +159,92 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         }
     }
 
-    it("streams 614,656 distinct canonical outcomes through public build and generate commands", async () => {
-        const blueprint = acceptedExactWorkloadBlueprint("accepted-exact-workload-slot");
-        for (const reel of blueprint.reelStrips!) {
-            const windows = reel.map((_symbol, stop) => JSON.stringify(
-                Array.from({length: blueprint.rows}, (_unused, row) => reel[(stop + row) % reel.length]),
-            ));
-            expect(reel).toHaveLength(28);
-            expect(new Set(windows).size).toBe(28);
-        }
-        const blueprintPath = path.join(workDir, "accepted-exact.blueprint.json");
-        fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
-
-        const bundleDir = path.join(workDir, "accepted-exact-bundle");
-        expect(await new BuildCommand("1.3.0").run([blueprintPath, "--target", "outcomeLibrary", "--exact", "--out", bundleDir])).toBe(0);
-        const manifest = JSON.parse(fs.readFileSync(path.join(bundleDir, "manifest.json"), "utf-8")) as {game: {id: string}; modes: Array<{outcomeCount: number; generator?: {strategy: string; totalOutcomeSpaceSize: number}}>};
-        expect(manifest.game.id).toBe("accepted-exact-workload-slot");
-        expect(manifest.modes[0]).toEqual(expect.objectContaining({outcomeCount: 614_656, totalWeight: 614_656, generator: expect.objectContaining({strategy: "exact", totalOutcomeSpaceSize: 614_656})}));
-        // This reads the staged byte index back against every record; it is
-        // intentionally the bundle reader's real integrity boundary, not an
-        // in-memory manifest-only assertion.
-        expect(await new OutcomeLibraryCommand("1.3.0").run(["validate", bundleDir, "--deep"])).toBe(0);
-
-        const packageRoot = await buildPackage(blueprint, "accepted-exact-package");
-        const rawLibrary = path.join(workDir, "accepted-exact.json");
-        const checkpointFile = path.join(workDir, "accepted-exact.checkpoint.json");
-        const fakeProcess = new EventEmitter() as unknown as NodeJS.Process;
-        let cancelled = false;
-        (console.error as jest.Mock).mockImplementation((message: unknown) => {
-            if (!cancelled && typeof message === "string" && message.includes("progress")) {
-                cancelled = true;
-                fakeProcess.emit("SIGINT");
+    describe.each([
+        {workload: "bounded exact", reelLengths: [28, 28, 3, 3], outcomeCount: 7_056, scanTimeout: PACKAGE_EXTRACTION_TEST_TIMEOUT},
+        {workload: "614,656 distinct canonical", reelLengths: [28, 28, 28, 28], outcomeCount: 614_656, scanTimeout: 3_600_000},
+    ])("$workload outcomes", ({reelLengths, outcomeCount, scanTimeout}) => {
+        function workloadBlueprint(): GameBlueprint {
+            const blueprint = acceptedExactWorkloadBlueprint("accepted-exact-workload-slot");
+            blueprint.reelStrips = blueprint.reelStrips!.map((reel, index) => reel.slice(0, reelLengths[index]));
+            for (const [index, reel] of blueprint.reelStrips.entries()) {
+                const windows = reel.map((_symbol, stop) => JSON.stringify(
+                    Array.from({length: blueprint.rows}, (_unused, row) => reel[(stop + row) % reel.length]),
+                ));
+                expect(reel).toHaveLength(reelLengths[index]);
+                expect(new Set(windows).size).toBe(reelLengths[index]);
             }
-        });
-        const cancellingCommand = new OutcomeLibraryCommand(
-            "1.3.0", undefined, undefined, undefined, undefined, undefined,
-            undefined, undefined, undefined, undefined, undefined, fakeProcess,
-        );
-        expect(await cancellingCommand.run([
-            "generate", packageRoot, "--exact", "--out", rawLibrary,
-            "--resume", checkpointFile, "--progress",
-        ])).toBe(130);
-        expect(cancelled).toBe(true);
-        expect(fs.existsSync(rawLibrary)).toBe(false);
-        const checkpoint = JSON.parse(fs.readFileSync(checkpointFile, "utf8")) as {recoveryAuthorityId: string};
-        expect(checkpoint).toEqual(expect.objectContaining({
-            recoveryAuthorityId: expect.any(String),
-        }));
-        const stagingDirectory = path.join(`${path.resolve(checkpointFile)}.pokie-recovery`, checkpoint.recoveryAuthorityId);
-        expect(fs.existsSync(stagingDirectory)).toBe(true);
+            expect(reelLengths.reduce((total, length) => total * length, 1)).toBe(outcomeCount);
+            return blueprint;
+        }
 
-        // The resumed public CLI path consumes only this invocation-owned
-        // partition state, then removes it along with the checkpoint.
-        expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", rawLibrary, "--resume", checkpointFile])).toBe(0);
-        expect(fs.existsSync(checkpointFile)).toBe(false);
-        expect(fs.existsSync(stagingDirectory)).toBe(false);
-        // Count directly from the durable JSON stream. Do not JSON.parse this
-        // 614,656-outcome library: the assertion is specifically a public
-        // streaming-regression boundary, not an in-memory fallback.
-        expect(countRawOutcomes(rawLibrary)).toBe(614_656);
-        expect(readRawLibraryPrefix(rawLibrary, 1024)).toContain('"provenance":{"game":{"id":"accepted-exact-workload-slot"');
-    }, 3_600_000);
+        it("streams through public build and deep validation", async () => {
+            const blueprint = workloadBlueprint();
+            const blueprintPath = path.join(workDir, "accepted-exact.blueprint.json");
+            fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
+
+            const bundleDir = path.join(workDir, "accepted-exact-bundle");
+            expect(await new BuildCommand("1.3.0").run([blueprintPath, "--target", "outcomeLibrary", "--exact", "--out", bundleDir])).toBe(0);
+            const manifest = JSON.parse(fs.readFileSync(path.join(bundleDir, "manifest.json"), "utf-8")) as {game: {id: string}; modes: Array<{outcomeCount: number; generator?: {strategy: string; totalOutcomeSpaceSize: number}}>};
+            expect(manifest.game.id).toBe("accepted-exact-workload-slot");
+            expect(manifest.modes[0]).toEqual(expect.objectContaining({outcomeCount, totalWeight: outcomeCount, generator: expect.objectContaining({strategy: "exact", totalOutcomeSpaceSize: outcomeCount})}));
+            // This reads the staged byte index back against every record; it is
+            // intentionally the bundle reader's real integrity boundary, not an
+            // in-memory manifest-only assertion.
+            expect(await new OutcomeLibraryCommand("1.3.0").run(["validate", bundleDir, "--deep"])).toBe(0);
+
+            // Publication and deep validation each traverse the entire population.
+            // Give both real scans their own budget instead of sharing one with a
+            // second generation and its package/snapshot setup.
+        }, 2 * scanTimeout);
+
+        it("streams through public generate after durable cancellation and resume", async () => {
+            const blueprint = workloadBlueprint();
+            const packageRoot = await buildPackage(blueprint, "accepted-exact-package");
+            const rawLibrary = path.join(workDir, "accepted-exact.json");
+            const checkpointFile = path.join(workDir, "accepted-exact.checkpoint.json");
+            const fakeProcess = new EventEmitter() as unknown as NodeJS.Process;
+            let cancelled = false;
+            (console.error as jest.Mock).mockImplementation((message: unknown) => {
+                if (!cancelled && typeof message === "string" && message.includes("progress")) {
+                    cancelled = true;
+                    fakeProcess.emit("SIGINT");
+                }
+            });
+            const cancellingCommand = new OutcomeLibraryCommand(
+                "1.3.0", undefined, undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined, fakeProcess,
+            );
+            expect(await cancellingCommand.run([
+                "generate", packageRoot, "--exact", "--out", rawLibrary,
+                "--resume", checkpointFile, "--progress",
+            ])).toBe(130);
+            expect(cancelled).toBe(true);
+            expect(fs.existsSync(rawLibrary)).toBe(false);
+            const checkpoint = JSON.parse(fs.readFileSync(checkpointFile, "utf8")) as {recoveryAuthorityId: string; processedRawIndex: string; progressTotal: string};
+            expect(checkpoint).toEqual(expect.objectContaining({
+                recoveryAuthorityId: expect.any(String),
+            }));
+            expect(BigInt(checkpoint.processedRawIndex)).toBeGreaterThan(BigInt(0));
+            expect(BigInt(checkpoint.processedRawIndex)).toBeLessThan(BigInt(outcomeCount));
+            expect(BigInt(checkpoint.progressTotal)).toBe(BigInt(outcomeCount));
+            expect(fakeProcess.listenerCount("SIGINT")).toBe(0);
+            const stagingDirectory = path.join(`${path.resolve(checkpointFile)}.pokie-recovery`, checkpoint.recoveryAuthorityId);
+            expect(fs.existsSync(stagingDirectory)).toBe(true);
+
+            // The resumed public CLI path consumes only this invocation-owned
+            // partition state, then removes it along with the checkpoint.
+            expect(await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--exact", "--out", rawLibrary, "--resume", checkpointFile])).toBe(0);
+            expect(fs.existsSync(checkpointFile)).toBe(false);
+            expect(fs.existsSync(stagingDirectory)).toBe(false);
+            // Count directly from the durable JSON stream. Do not JSON.parse this
+            // 614,656-outcome library: the assertion is specifically a public
+            // streaming-regression boundary, not an in-memory fallback.
+            expect(countRawOutcomes(rawLibrary)).toBe(outcomeCount);
+            expect(readRawLibraryPrefix(rawLibrary, 1024)).toContain('"provenance":{"game":{"id":"accepted-exact-workload-slot"');
+            // Raw generation is independent of bundle publication/validation;
+            // budget its full scan plus package build, cancellation and resumption.
+        }, scanTimeout + 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    });
 
     it("cancels raw publication without retaining an unreachable staging directory or partial destination", async () => {
         const packageRoot = await buildPackage(finiteBlueprint("raw-publication-cancel-slot"), "raw-publication-package");
