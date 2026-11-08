@@ -235,6 +235,16 @@ const PACKAGED_PUBLIC_WORKFLOW_SCENARIOS = [
 // running-installation-root discovery against a spaced path, not packaging.
 const SMOKE_COMMAND_TIMEOUT_MS = 180_000;
 
+function runInstalledValidation(binary: string, project: string, cwd: string, options: {deep?: boolean; env?: NodeJS.ProcessEnv} = {}): SpawnSyncReturns<string> {
+    // Provenance, contract validation and advanced declaration extraction each
+    // acquire/release a snapshot of the resolved dependency graph, including a
+    // physically reinstalled candidate and its dependencies.
+    // Keep one finite budget for every caller rather than a second 60s cutoff.
+    return spawnSync(binary, ["validate", project, ...(options.deep ? ["--deep"] : []), "--format", "json"], {
+        cwd, env: options.env, encoding: "utf8", timeout: SMOKE_COMMAND_TIMEOUT_MS,
+    });
+}
+
 function waitForListeningPort(child: ChildProcessWithoutNullStreams, timeoutMs = SMOKE_COMMAND_TIMEOUT_MS): Promise<number> {
     return new Promise((resolve, reject) => {
         let output = "";
@@ -496,6 +506,9 @@ describe("snapshot-backed smoke observation regressions without build, pack or i
         fs.writeFileSync(path.join(game, "dist/index.js"), `
             const marker = process.env.POKIE_SMOKE_PREPARATION_MARKER;
             const fs = require("node:fs");
+            if (process.env.POKIE_SMOKE_VALIDATION_TRACE) {
+                fs.appendFileSync(process.env.POKIE_SMOKE_VALIDATION_TRACE, JSON.stringify({entry: __dirname, startedAt: Date.now()}) + "\\n");
+            }
             if (process.env.POKIE_SMOKE_PREPARATION_DELAY_MS && !fs.existsSync(marker)) {
                 fs.writeFileSync(marker, "first initializer");
                 process.stderr.write("authored package preparation started\\n");
@@ -505,6 +518,70 @@ describe("snapshot-backed smoke observation regressions without build, pack or i
         ` + fs.readFileSync(path.join(REPO_ROOT, "tests/cli/fixtures/playable-game/index.js"), "utf8"));
         fs.writeFileSync(path.join(game, "package.json"), JSON.stringify({name: "snapshot-observation", version: "1.0.0", pokie: {entry: "dist/index.js"}}));
     }, SMOKE_COMMAND_TIMEOUT_MS);
+
+    it.each(["initialized", "reinstalled", "moved"])("awaits real %s package validation, repeated snapshots and release", phase => {
+        const initialized = path.join(directory, `${phase} source package`);
+        const root = phase === "initialized" ? initialized : path.join(directory, `${phase} package`);
+        fs.cpSync(game, initialized, {recursive: true});
+        const authoredMetadata = JSON.parse(fs.readFileSync(path.join(initialized, "package.json"), "utf8")) as {dependencies?: Record<string, string>};
+        authoredMetadata.dependencies = {"@fromstan/pokie": "^2.0.0"};
+        fs.writeFileSync(path.join(initialized, "package.json"), JSON.stringify(authoredMetadata));
+        fs.mkdirSync(path.join(initialized, "node_modules/@fromstan"), {recursive: true});
+        fs.symlinkSync(path.join(directory, "runtime"), path.join(initialized, "node_modules/@fromstan/pokie"), "dir");
+        if (phase === "reinstalled") {
+            // Exercise the failing physical dependency topology without running
+            // npm install, build, pack or installed acceptance collection here.
+            fs.cpSync(initialized, root, {recursive: true, filter: source => path.basename(source) !== "node_modules"});
+            fs.cpSync(path.join(directory, "runtime"), path.join(root, "node_modules/@fromstan/pokie"), {recursive: true});
+            expect(fs.lstatSync(path.join(root, "node_modules/@fromstan/pokie")).isSymbolicLink()).toBe(false);
+        } else if (phase === "moved") {
+            fs.renameSync(initialized, root);
+        }
+        const metadata = fs.readFileSync(path.join(root, "package.json"));
+        const temporaryRoot = path.join(directory, `${phase}-snapshots`);
+        fs.mkdirSync(temporaryRoot);
+        const trace = path.join(directory, `${phase}-validation.ndjson`);
+        const marker = path.join(directory, `${phase}-validation-started`);
+        const started = Date.now();
+        const validation = runInstalledValidation(cli, root, directory, {env: {...process.env, TMPDIR: temporaryRoot,
+            POKIE_SMOKE_VALIDATION_TRACE: trace, POKIE_SMOKE_PREPARATION_MARKER: marker,
+            POKIE_SMOKE_PREPARATION_DELAY_MS: phase === "reinstalled" ? "61000" : ""}});
+        expectLegacyPackageValidation(validation);
+        const loads = fs.readFileSync(trace, "utf8").trim().split("\n").map(line => JSON.parse(line) as {entry: string; startedAt: number});
+        // These are separate native loads of the real game, not simulated
+        // completion markers: provenance, contract and declaration extraction
+        // acquire distinct snapshots and release all three before returning.
+        expect(loads).toHaveLength(3);
+        expect(new Set(loads.map(load => load.entry)).size).toBe(3);
+        for (const load of loads) {
+            expect(load.entry.startsWith(temporaryRoot + path.sep)).toBe(true);
+            expect(fs.existsSync(load.entry)).toBe(false);
+        }
+        if (phase === "reinstalled") {
+            expect(fs.readFileSync(marker, "utf8")).toBe("first initializer");
+            expect(loads[1].startedAt - loads[0].startedAt).toBeGreaterThan(60_000);
+        }
+        expect(fs.readdirSync(temporaryRoot)).toEqual([]);
+        expect(fs.readFileSync(path.join(root, "package.json"))).toEqual(metadata);
+        console.log(JSON.stringify({operation: `${phase} validate`, elapsedMs: Date.now() - started, status: validation.status,
+            snapshotLoads: loads.length, loadOffsetsMs: loads.map(load => load.startedAt - started), snapshotsRemoved: true}));
+    }, SMOKE_COMMAND_TIMEOUT_MS + 10_000);
+
+    it("retains real invalid-package validation failure and releases temporary state", () => {
+        const root = path.join(directory, "invalid package");
+        fs.mkdirSync(root);
+        fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "invalid", version: "1.0.0", pokie: {entry: "missing.js"}}));
+        const temporaryRoot = path.join(directory, "invalid-snapshots");
+        fs.mkdirSync(temporaryRoot);
+        const validation = runInstalledValidation(cli, root, directory, {env: {...process.env, TMPDIR: temporaryRoot}});
+        expect(validation.error).toBeUndefined();
+        expect(validation.signal).toBeNull();
+        expect(validation.status).toBe(1);
+        const report = JSON.parse(validation.stdout) as {valid: boolean; errors: unknown[]};
+        expect(report.valid).toBe(false);
+        expect(report.errors.length).toBeGreaterThan(0);
+        expect(fs.readdirSync(temporaryRoot)).toEqual([]);
+    }, SMOKE_COMMAND_TIMEOUT_MS + 10_000);
 
     it("awaits the real custom-package simulation's metadata, execution and cleanup", async () => {
         const report = path.join(directory, "simulation.json");
@@ -962,7 +1039,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             const replay = path.join(installDir!, `${phase}-generated-replay.json`);
             // Both emitted CJS and recompiled TS validation take isolated
             // runtime/dependency snapshots, just like custom-package validation.
-            const validation = spawnSync(pokieBinPath, ["validate", root, "--format", "json"], {cwd: installDir, encoding: "utf8", timeout: 180_000});
+            const validation = runInstalledValidation(pokieBinPath, root, installDir!);
             expectGeneratedPackageValidation(validation);
             for (const args of [
                 ["inspect", root],
@@ -1380,7 +1457,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             // Validation takes several isolated runtime snapshots, including the
             // installed dependency graph. Allow the same bounded command budget as
             // conversions; a valid but declaration-only package must still exit 2.
-            const validation = spawnSync(pokieBinPath, ["validate", root, "--format", "json"], {cwd: installDir, encoding: "utf8", timeout: SMOKE_COMMAND_TIMEOUT_MS});
+            const validation = runInstalledValidation(pokieBinPath, root, installDir!);
             expectLegacyPackageValidation(validation);
         });
 
@@ -1542,7 +1619,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         try {
             execFileSync(pokieBinPath, ["build", blueprintPath, "--target", "wasm", "--out", wasmPath], {cwd: workflowDir, encoding: "utf-8"});
             expect(execFileSync(pokieBinPath, ["inspect", wasmPath], {cwd: workflowDir, encoding: "utf-8"})).toContain("canonical ABI operations: play, replay");
-            const validation = spawnSync(pokieBinPath, ["validate", wasmPath, "--format", "json"], {cwd: workflowDir, encoding: "utf-8", timeout: 60000});
+            const validation = runInstalledValidation(pokieBinPath, wasmPath, workflowDir);
             expectInstalledValidation(validation, installedValidationContracts.wasm);
             expect(execFileSync(pokieBinPath, ["run", wasmPath, "--seed", "installed"], {cwd: workflowDir, encoding: "utf-8"})).toContain("POKIE WASM round 1");
 
@@ -1725,7 +1802,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }));
         try {
             const sources: Record<string, string> = {blueprint: blueprintPath};
-            expectInstalledValidation(spawnSync(pokieBinPath, ["validate", blueprintPath, "--format", "json"], {cwd: directory, encoding: "utf-8", timeout: 60000}), installedValidationContracts.blueprint);
+            expectInstalledValidation(runInstalledValidation(pokieBinPath, blueprintPath, directory), installedValidationContracts.blueprint);
             const names = {tsPackage: "package", outcomeLibrary: "outcome", stakeAdapter: "stake", parWorkbook: "model.xlsx", wasm: "game.wasm"};
             for (const target of Object.keys(names) as Array<keyof typeof names>) {
                 const name = names[target];
@@ -1741,7 +1818,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 const inspection = spawnSync(pokieBinPath, ["inspect", destination], {cwd: directory, encoding: "utf-8"});
                 expect(inspection.status).toBe(0);
                 expect(inspection.stderr).toBe("");
-                const validation = spawnSync(pokieBinPath, ["validate", destination, "--format", "json"], {cwd: directory, encoding: "utf-8", timeout: 60000});
+                const validation = runInstalledValidation(pokieBinPath, destination, directory);
                 expect(validation.stderr).toBe("");
                 if (target === "tsPackage") expectGeneratedPackageValidation(validation);
                 else expectInstalledValidation(validation, installedValidationContracts[target]);
@@ -1912,7 +1989,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(scaffoldedPkg.dependencies?.["@fromstan/pokie"]).toBe(`^${ownVersion}`);
         expect(fs.existsSync(path.join(projectRoot, "node_modules", "@fromstan", "pokie", "package.json"))).toBe(true);
 
-        const validate = spawnSync(pokieBinPath, ["validate", projectRoot, "--format", "json"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        const validate = runInstalledValidation(pokieBinPath, projectRoot, installDir!);
         expectLegacyPackageValidation(validate);
 
         const simFile = path.join(installDir!, "init-sim.json");
@@ -2011,7 +2088,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const game = require(path.join(reinstalledRoot, "dist", "index.js")) as {getManifest(): {id: string}};
         expect(game.getManifest().id).toBeDefined();
 
-        const validate = spawnSync(pokieBinPath, ["validate", reinstalledRoot, "--format", "json"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        const validate = runInstalledValidation(pokieBinPath, reinstalledRoot, installDir!);
         expectLegacyPackageValidation(validate);
     });
 
@@ -2041,7 +2118,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const game = require(path.join(movedRoot, "dist", "index.js")) as {getManifest(): {id: string}};
         expect(game.getManifest().id).toBeDefined();
 
-        const validate = spawnSync(pokieBinPath, ["validate", movedRoot, "--format", "json"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        const validate = runInstalledValidation(pokieBinPath, movedRoot, installDir!);
         expectLegacyPackageValidation(validate);
     });
 
@@ -2091,11 +2168,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const bundleBuild = await runSmokeCommand(pokieBinPath, ["build", packageRoot, "--target", "outcomeLibrary", "--out", bundleDir], {cwd: installDir!}, spawnedSmokeChildren);
         expect(bundleBuild).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
 
-        const bundleValidate = spawnSync(pokieBinPath, ["validate", bundleDir, "--deep", "--format", "json"], {
-            cwd: installDir,
-            encoding: "utf-8",
-            timeout: 60000,
-        });
+        const bundleValidate = runInstalledValidation(pokieBinPath, bundleDir, installDir!, {deep: true});
         const bundleValidation = expectInstalledValidation(bundleValidate, installedValidationContracts.outcomeLibrary);
         expect(bundleValidation.deep).toBe(true);
         expect(bundleValidation.advanced.issues).toContainEqual(expect.objectContaining({code: "outcome-only-definition-unavailable"}));
