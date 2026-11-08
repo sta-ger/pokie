@@ -341,7 +341,10 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
 
         const manifest = JSON.parse(fs.readFileSync(path.join(bundleDir, "manifest.json"), "utf-8")) as {modes: Array<{modeName: string}>};
         expect(manifest.modes.map((mode) => mode.modeName).sort()).toEqual(["base", "bonus"]);
-    });
+        // Budget the package build and both public generation commands separately.
+        // Each generator acquires, rebinds and drains real runtime snapshots; the
+        // parallel controller gate must not squeeze all three into one conversion budget.
+    }, 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("enumerates a free-games package's finite paid-spin outcome space and preserves its trigger", async () => {
         const packageRoot = await buildPackage(freeGamesBlueprint("freegames-cli-slot"), "pkg");
