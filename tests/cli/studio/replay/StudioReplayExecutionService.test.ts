@@ -9,6 +9,7 @@ import {
     GameSessionHandling,
     GameSessionSerializing,
     loadPokieGame,
+    releasePokieGame,
     OutcomeLibraryBundleWriter,
     POKIE_VERSION,
     PokieGame,
@@ -37,6 +38,7 @@ import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js"
 import type {StudioReplayJobView} from "../../../../cli/studio/replay/StudioReplayJobView.js";
 import {createCanonicalWasmFixture} from "../../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../../v2/fixtures/PackageExtractionFixture.js";
 
 it("retains a generated seed before direct WASM replay admission and reproduces its executable result", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "v2c22-replay-seed-"));
@@ -1592,7 +1594,23 @@ describe("StudioReplayExecutionService with a resolved, multi-mode native outcom
 });
 
 describe("StudioReplayExecutionService (integration, real loadPokieGame + fixture game package)", () => {
-    const fixtureRoot = path.join(__dirname, "..", "..", "fixtures", "playable-game");
+    let fixtureRoot: string;
+    let restoreRuntimeEnvironment: () => void;
+
+    beforeAll(() => {
+        restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+        for (const name of ["playable-game", "playable-game-with-serializer"]) {
+            const directory = path.join(os.tmpdir(), name);
+            fs.cpSync(path.join(__dirname, "..", "..", "fixtures", name), directory, {
+                recursive: true,
+                filter: source => !["node_modules", ".pokie-runtime-cache"].includes(path.basename(source)),
+            });
+            const manifest = path.join(directory, "package.json");
+            fs.writeFileSync(manifest, JSON.stringify({...JSON.parse(fs.readFileSync(manifest, "utf8")), dependencies: {"@fromstan/pokie": "*"}}));
+        }
+        fixtureRoot = path.join(os.tmpdir(), "playable-game");
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    afterAll(() => restoreRuntimeEnvironment());
 
     it("produces a real, reproducible replay against a real fixture game", async () => {
         const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), loadPokieGame);
@@ -1623,6 +1641,7 @@ describe("StudioReplayExecutionService (integration, real loadPokieGame + fixtur
         fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({
             name: packageName,
             version: "1.0.0",
+            dependencies: {"@fromstan/pokie": "*"},
             pokie: {entry: "./index.js"},
         }));
         const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), loadPokieGame);
@@ -1636,6 +1655,7 @@ describe("StudioReplayExecutionService (integration, real loadPokieGame + fixtur
                 expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
             }
         } finally {
+            await service.cancelAll();
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
@@ -1653,7 +1673,12 @@ describe("StudioReplayExecutionService (integration, real loadPokieGame + fixtur
         const job = await waitForTerminal(service, fixtureRoot, result.job.id);
 
         const game = await loadPokieGame(fixtureRoot);
-        const directDescriptor = new ReplayRecorder().record({game, round: 37, seed: "compare-me"});
+        let directDescriptor: ReplayDescriptor;
+        try {
+            directDescriptor = new ReplayRecorder().record({game, round: 37, seed: "compare-me"});
+        } finally {
+            await releasePokieGame(game);
+        }
 
         // Both paths retain artifacts; Studio additionally captures session state/debug and
         // records its injected host version. Compare financial fields independently of that evidence.
@@ -1677,7 +1702,7 @@ describe("StudioReplayExecutionService (integration, real loadPokieGame + fixtur
     });
 
     it("captures initialPayload/roundPayload from a real VideoSlotSessionSerializer end to end (playable-game-with-serializer fixture)", async () => {
-        const serializerFixtureRoot = path.join(__dirname, "..", "..", "fixtures", "playable-game-with-serializer");
+        const serializerFixtureRoot = path.join(os.tmpdir(), "playable-game-with-serializer");
         const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), loadPokieGame);
 
         const result = service.start(serializerFixtureRoot, {round: 4, seed: "demo"});

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import {execFileSync} from "node:child_process";
+import {execFileSync, spawnSync} from "node:child_process";
 import ts from "typescript";
 import {linkFixtureRuntime} from "../cli/fixtures/ensureFixturesCanRequirePokie.js";
 import {buildPackageJsonPatch} from "../../src/gamepackage/buildPackageJsonPatch.js";
@@ -9,6 +9,7 @@ import {GamePackageGenerator} from "../../src/generated/GamePackageGenerator.js"
 import {renderBuiltGameModule} from "../../src/generated/renderBuiltGameModule.js";
 import {renderEntryModule} from "../../cli/scaffold/renderEntryModule.js";
 import {inspectRuntimeGraph, runtimeEdges} from "./helpers/runtimeGraph.js";
+import {PACKAGE_EXTRACTION_TEST_TIMEOUT} from "./fixtures/PackageExtractionFixture.js";
 
 const root = path.resolve(__dirname, "../..");
 const identity = "@fromstan/pokie";
@@ -22,6 +23,20 @@ const staleDeliveryIdentity = /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*(?:\(\s
 function fixtureDirectory(): string {
     fs.mkdirSync(tempRoot, {recursive: true});
     return fs.mkdtempSync(path.join(tempRoot, "v2c01-identity-"));
+}
+
+function executeNativeConsumer(directory: string, timeout = PACKAGE_EXTRACTION_TEST_TIMEOUT): string {
+    // Three independent acquisitions copy the real dual-format runtime and its
+    // dependency graph. Use the established package-fixture budget under worker
+    // contention, and keep native failures serializable across Jest workers.
+    // execFileSync's timeout Error contains a circular `.error` reference.
+    const execution = spawnSync(process.execPath, [path.join(directory, "consumer.mjs")], {
+        cwd: directory, encoding: "utf8", timeout,
+    });
+    if (execution.error || execution.status !== 0 || execution.signal !== null) {
+        throw new Error(`Native public consumer failed (status=${execution.status}, signal=${execution.signal}): ${execution.error?.message ?? ""}\n${execution.stdout ?? ""}\n${execution.stderr ?? ""}`);
+    }
+    return execution.stdout;
 }
 
 function files(directory: string): string[] {
@@ -150,13 +165,34 @@ describe("V2C-01 delivery identity", () => {
                 console.log('native public exports and generated/code-first execution PASS');
             `;
             fs.writeFileSync(path.join(directory, "consumer.mjs"), consumer);
-            expect(execFileSync(process.execPath, [path.join(directory, "consumer.mjs")], {cwd: directory, encoding: "utf8", timeout: 30000})).toContain("execution PASS");
+            expect(executeNativeConsumer(directory)).toContain("execution PASS");
             for (const module of [identity, `${identity}/browser`, `${identity}/wasm`, `${identity}/client/player`]) {
                 const result = ts.resolveModuleName(module, path.join(directory, "consumer.mts"), {module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext}, ts.sys, undefined, undefined, ts.ModuleKind.ESNext);
                 expect(result.resolvedModule?.resolvedFileName).toMatch(/\.d\.ts$/);
             }
             const cjs = ts.resolveModuleName(identity, path.join(directory, "consumer.cts"), {module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext}, ts.sys, undefined, undefined, ts.ModuleKind.CommonJS);
             expect(cjs.resolvedModule?.resolvedFileName).toContain("dist/cjs/index.d.ts");
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+
+    it.each(["exit", "timeout"])("reports native consumer %s failures without a circular Jest worker error", failure => {
+        const directory = fixtureDirectory();
+        try {
+            fs.writeFileSync(path.join(directory, "consumer.mjs"), failure === "exit"
+                ? "console.error('native consumer diagnostic'); process.exit(7);"
+                : "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);");
+            let reported: Error | undefined;
+            try {
+                executeNativeConsumer(directory, failure === "timeout" ? 250 : 5000);
+            } catch (error) {
+                reported = error as Error;
+            }
+            expect(reported).toBeInstanceOf(Error);
+            expect(reported?.message).toContain(failure === "exit" ? "status=7" : "ETIMEDOUT");
+            if (failure === "exit") expect(reported?.message).toContain("native consumer diagnostic");
+            expect(() => JSON.stringify(reported)).not.toThrow();
         } finally {
             fs.rmSync(directory, {recursive: true, force: true});
         }

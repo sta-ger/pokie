@@ -22,6 +22,7 @@ import path from "path";
 import zlib from "zlib";
 import {ReportCommand} from "../../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 const report: SimulationReport = {
@@ -848,8 +849,21 @@ describe("ReportCommand (integration, real pokie sim output)", () => {
 });
 
 describe("ReportCommand (integration, base vs. freeGames breakdown from a real free-games game)", () => {
-    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game-with-free-games");
+    let fixtureRoot: string;
+    let restoreRuntimeEnvironment: () => void;
     let outDir: string;
+
+    beforeAll(() => {
+        restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+        fixtureRoot = path.join(os.tmpdir(), "playable-game-with-free-games");
+        fs.cpSync(path.join(__dirname, "..", "fixtures", "playable-game-with-free-games"), fixtureRoot, {
+            recursive: true,
+            filter: source => !["node_modules", ".pokie-runtime-cache"].includes(path.basename(source)),
+        });
+        const manifest = path.join(fixtureRoot, "package.json");
+        fs.writeFileSync(manifest, JSON.stringify({...JSON.parse(fs.readFileSync(manifest, "utf8")), dependencies: {"@fromstan/pokie": "*"}}));
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    afterAll(() => restoreRuntimeEnvironment());
 
     beforeEach(() => {
         outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-report-breakdown-test-"));

@@ -16,6 +16,10 @@ const fail = (message) => { throw new Error(`P8-05 release handoff is invalid: $
 const tooling = new Set([
     // V2C-37 readiness fixture isolation; product/build inputs and receipt pins stay protected.
     "tests/cli/studio-client/src/StudioReadinessConvergence.test.tsx",
+    // V2C-37 retained unit-gate fixture repair; product/build and receipt pins stay protected.
+    "tests/cli/commands/ReportCommand.test.ts",
+    "tests/cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.test.ts",
+    "tests/v2/PackageIdentity.test.ts",
     // V2C-37 saved runtime-fixture correction; product/build and receipt pins stay protected.
     "tests/cli/BuildWorkflow.integration.test.ts",
     "tests/cli/P907ValeraMathematician.integration.test.ts",

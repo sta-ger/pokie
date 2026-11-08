@@ -13,6 +13,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sha = (value, length = 64) => typeof value === "string" && new RegExp(`^[a-f0-9]{${length}}$`).test(value);
 const fail = (message) => { throw new Error(`P9-11 candidate: ${message}`); };
 const tooling = new Set([
+    // V2C-37 retained unit-gate fixture repair; product/build and receipt pins stay protected.
+    "tests/cli/commands/ReportCommand.test.ts",
+    "tests/cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.test.ts",
+    "tests/v2/PackageIdentity.test.ts",
     // V2C-37 saved runtime-fixture correction; product/build and receipt pins stay protected.
     "tests/cli/BuildWorkflow.integration.test.ts",
     "tests/cli/P907ValeraMathematician.integration.test.ts",
