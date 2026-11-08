@@ -1200,7 +1200,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const before = JSON.parse(installedProbe("custom-before", probe));
         const inspection = spawnSync(pokieBinPath, ["inspect", root], {cwd: installDir, encoding: "utf8", timeout: 60000});
         expect(inspection.status).toBe(0);
-        const validation = spawnSync(pokieBinPath, ["validate", root, "--format", "json"], {cwd: installDir, encoding: "utf8", timeout: 60000});
+        // Validation takes several isolated runtime snapshots, including the
+        // installed dependency graph. Allow the same bounded command budget as
+        // conversions; a valid but declaration-only package must still exit 2.
+        const validation = spawnSync(pokieBinPath, ["validate", root, "--format", "json"], {cwd: installDir, encoding: "utf8", timeout: 180_000});
         expectLegacyPackageValidation(validation);
         const simulation = spawnSync(pokieBinPath, ["sim", root, "--rounds", "4", "--seed", "custom-seed", "--out", path.join(installDir!, "custom-sim.json")], {cwd: installDir, encoding: "utf8", timeout: 60000});
         expect(simulation.status).toBe(0);
@@ -1850,7 +1853,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expectLegacyPackageValidation(validate);
     });
 
-    smokeIt("runs the public outcome-library lifecycle against a package built by the installed binary itself", () => {
+    smokeIt("runs the public outcome-library lifecycle against a package built by the installed binary itself", async () => {
         // Same small, hand-computable, exactly-enumerable blueprint as
         // tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts's own finiteBlueprint(): 2 reels of
         // 3/2 stops, no stateful mechanics, so "generate" resolves the exact strategy without --bounded.
@@ -1890,12 +1893,11 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(6);
 
         const bundleDir = path.join(installDir!, "outcomelibrary-bundle");
-        const bundleBuild = spawnSync(pokieBinPath, ["build", packageRoot, "--target", "outcomeLibrary", "--out", bundleDir], {
-            cwd: installDir,
-            encoding: "utf-8",
-            timeout: 60000,
-        });
-        expect(bundleBuild.status).toBe(0);
+        // Planning and execution each own runtime snapshots. Use the existing
+        // bounded conversion runner and await descendant/stdio cleanup before
+        // validating its output, including when the build fails or times out.
+        const bundleBuild = await runSmokeCommand(pokieBinPath, ["build", packageRoot, "--target", "outcomeLibrary", "--out", bundleDir], {cwd: installDir!}, spawnedSmokeChildren);
+        expect(bundleBuild).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
 
         const bundleValidate = spawnSync(pokieBinPath, ["validate", bundleDir, "--deep", "--format", "json"], {
             cwd: installDir,
