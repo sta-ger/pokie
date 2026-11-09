@@ -20,6 +20,8 @@ const tooling = new Set([
     "tests/cli/commands/ReportCommand.test.ts",
     "tests/cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.test.ts",
     "tests/v2/PackageIdentity.test.ts",
+    // V2C-37 generated-math fixture isolation; no product/build or driver exemption.
+    "tests/generated/GamePackageGenerator.test.ts",
     // V2C-37 saved runtime-fixture correction; product/build and receipt pins stay protected.
     "tests/cli/BuildWorkflow.integration.test.ts",
     "tests/cli/P907ValeraMathematician.integration.test.ts",

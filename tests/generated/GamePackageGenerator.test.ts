@@ -1,3 +1,5 @@
+import {resolvePokieGameDependencyRoots} from "../../src/gamepackage/resolvePokieGameEntryModule.js";
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
 import {existingMechanicsBlueprint} from "../v2/fixtures/ExistingMechanicsGame.js";
 import {emitPublicRuntime} from "../v2/helpers/publicRuntime.js";
 import {weightedBlueprint} from "../v2/fixtures/WeightedWholeSequenceGame.js";
@@ -45,7 +47,17 @@ function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
 
 describe("GamePackageGenerator", () => {
     let cwd: string;
+    let restoreRuntimeEnvironment: () => void;
     let fractionalGames: Awaited<ReturnType<typeof loadPokieGameRuntime>>[];
+
+    beforeAll(() => {
+        // Generated packages declare their runtime dependency. Resolve it from
+        // a source-bound compiled fixture, rather than snapshotting the checkout
+        // (docs, tests and unrelated build outputs) twice for every math case.
+        restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+    });
+
+    afterAll(() => restoreRuntimeEnvironment());
 
     beforeEach(() => {
         cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-test-"));
@@ -55,6 +67,7 @@ describe("GamePackageGenerator", () => {
     afterEach(async () => {
         try {
             await Promise.all(fractionalGames.map(loaded => loaded.release()));
+            expect(fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-"))).toEqual([]);
         } finally {
             fs.rmSync(cwd, {recursive: true, force: true});
         }
@@ -85,6 +98,8 @@ describe("GamePackageGenerator", () => {
         expect(compiled.diagnostics).toEqual([]);
         const compiledPath = path.join(result.projectRoot, "dist", "fractional-typed.js");
         fs.writeFileSync(compiledPath, compiled.outputText);
+        const dependencies = await resolvePokieGameDependencyRoots(result.projectRoot);
+        expect(dependencies["@fromstan/pokie"]).toBe(fs.realpathSync(path.join(os.tmpdir(), "node_modules/@fromstan/pokie")));
         const cjs = await loadPokieGameRuntime(result.projectRoot, entry => require(entry));
         fractionalGames.push(cjs);
         const typed = await loadPokieGameRuntime(result.projectRoot, entry => require(path.join(path.dirname(entry), "fractional-typed.js")));
