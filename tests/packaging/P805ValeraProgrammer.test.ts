@@ -156,7 +156,7 @@ it("validates seed 805 WASM through public commands without archive collection",
         expect(await new ValidateCommand().run([wasm, "--format", "json", "--out", output])).toBe(2);
         expectProgrammerWasmValidation(readFileSync(output, "utf8"), wasm);
         expect(await new ValidateCommand().run([path.join(directory, "missing blueprint.json"), "--format", "json"])).toBe(1);
-        expect(JSON.parse(log.mock.calls.at(-1)![0])).toMatchObject({valid: false, errors: expect.arrayContaining([expect.objectContaining({severity: "error"})])});
+        expect(JSON.parse(log.mock.calls[log.mock.calls.length - 1][0])).toMatchObject({valid: false, errors: expect.arrayContaining([expect.objectContaining({severity: "error"})])});
     } finally {
         log.mockRestore();
         rmSync(directory, {recursive: true, force: true});
