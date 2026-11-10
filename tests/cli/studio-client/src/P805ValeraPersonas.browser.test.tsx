@@ -9,20 +9,11 @@ import type {FetchLike} from "../../../../cli/studio-client/src/api/apiClient";
 import {optimizationRequest} from "../../../v2/fixtures/OptimizationFixture";
 import {execFileSync} from "node:child_process";
 import {createHash} from "node:crypto";
-import {chmod, lstat, mkdtemp, readFile, readdir, rm, stat, writeFile} from "node:fs/promises";
+import {chmod, copyFile, lstat, mkdtemp, readFile, readdir, rm, stat, writeFile} from "node:fs/promises";
+import {preparePackedTestCandidate} from "../../../testUtils/preparePackedTestCandidate.js";
 import {tmpdir} from "node:os";
 import path from "node:path";
 
-// Jest is launched through the implementer command policy, whose npm wrapper
-// intentionally refuses broad build commands. This whole-file test owns a
-// candidate build as part of its packed-package assertion, so invoke Node's
-// installed npm CLI directly rather than inheriting that test-launch wrapper.
-const npmCli = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npm-cli.js");
-const candidatePath = (process.env.PATH ?? "").split(path.delimiter).filter((entry) => !entry.includes("pokie-command-policy")).join(path.delimiter);
-const runCandidateNpm = (args: string[]) => {
-    if (!npmCli) throw new Error("the candidate package test requires npm");
-    return execFileSync(process.execPath, [npmCli, ...args], {cwd: process.cwd(), encoding: "utf8", env: {...process.env, NODE_ENV: "production", PATH: candidatePath}, stdio: "pipe", maxBuffer: 64 * 1024 * 1024});
-};
 
 type PointerDelivery = {
     kind: string;
@@ -103,7 +94,6 @@ const makeWritableForCleanup = async (directory: string): Promise<void> => {
 describe("P8-05 rendered Valera persona evidence", () => {
     const runner = path.join(process.cwd(), "scripts/p8-05-valera-browser-audit.mjs");
     const controller = path.join(process.cwd(), "scripts/p8-05-product-readiness-controller.mjs");
-    const verifier = path.join(process.cwd(), "scripts/p8-05-candidate-package-verifier.mjs");
 
     // The retained packed audit reported these visible controls as disabled
     // without title or aria-describedby. Exercise their actual components and
@@ -1014,23 +1004,15 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 }
                 return readFile(target);
             };
-            // The package test is the browser-bundle boundary: refresh the
-            // candidate's Studio assets before packing so this cannot exercise
-            // a stale checked-in dist directory while asserting source-only
-            // accessibility identities.
-            try {
-                runCandidateNpm(["run", "build"]);
-            } catch (error) {
-                const output = error as {stdout?: Buffer | string; stderr?: Buffer | string};
-                const asText = (value: Buffer | string | undefined): string => Buffer.isBuffer(value) ? value.toString("utf8") : value ?? "";
-                throw new Error(`candidate build failed:\n${asText(output.stdout)}${asText(output.stderr)}`);
-            }
-            const packed = JSON.parse(runCandidateNpm(["pack", "--ignore-scripts", "--json", "--pack-destination", candidateDirectory])) as Array<{filename: string}>;
-            expect(packed).toHaveLength(1);
-            const sourceArchivePath = path.join(candidateDirectory, packed[0].filename);
+            // Preparation owns one clean build, canonical pack and independent
+            // rebuild per candidate. This browser operation retains private
+            // archive/receipt paths and all 75 fresh isolated children.
+            const prepared = preparePackedTestCandidate();
+            expect(prepared.candidateId).toBe(candidate);
             const archivePath = path.join(candidateDirectory, "candidate-package.tgz");
             const receiptPath = path.join(candidateDirectory, "candidate-executable-receipt.json");
-            execFileSync(process.execPath, [verifier, "--source-archive", sourceArchivePath, "--candidate-archive", archivePath, "--candidate", candidate, "--receipt", receiptPath], {encoding: "utf8", stdio: "pipe"});
+            await copyFile(prepared.archive, archivePath);
+            await copyFile(prepared.receipt, receiptPath);
             const archive = await readFile(archivePath);
             const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
             const receiptSha256 = createHash("sha256").update(await readFile(receiptPath)).digest("hex");

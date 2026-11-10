@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {createRequire} from "node:module";
 import ts from "typescript";
+import {stageCompiledTestRuntime} from "../../testUtils/stageCompiledTestRuntime.js";
 import type {legacyRoundGame} from "../fixtures/RuntimeExtension.js";
 import type {legacyComposedGame} from "../fixtures/LegacyComposedGame.js";
 
@@ -11,25 +12,9 @@ export function emitPublicRuntime(): {directory: string; legacyGame: typeof lega
     const temporaryRoot = path.join(root, "node_modules/.cache/pokie-tmp");
     fs.mkdirSync(temporaryRoot, {recursive: true});
     const directory = fs.mkdtempSync(path.join(temporaryRoot, "v2c02-public-"));
-    const packageRoot = path.join(directory, "node_modules/@fromstan/pokie");
-    fs.mkdirSync(packageRoot, {recursive: true});
+    stageCompiledTestRuntime(directory, ["esm", "cjs"]);
     fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({name: "public-runtime-consumer", private: true, type: "module"}));
-    fs.copyFileSync(path.join(root, "package.json"), path.join(packageRoot, "package.json"));
-    const config = ts.readConfigFile(path.join(root, "tsconfig.prod.json"), ts.sys.readFile);
-    const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
-    for (const [format, module] of [["esm", ts.ModuleKind.Node16], ["cjs", ts.ModuleKind.CommonJS]] as const) {
-        const outDir = path.join(packageRoot, "dist", format);
-        const program = ts.createProgram(parsed.fileNames, {...parsed.options, module, rootDir: path.join(root, "src"), outDir, sourceMap: false});
-        const diagnostics = ts.getPreEmitDiagnostics(program);
-        if (diagnostics.length > 0) throw new Error(ts.formatDiagnosticsWithColorAndContext(diagnostics, {
-            getCurrentDirectory: () => root, getCanonicalFileName: file => file, getNewLine: () => "\n",
-        }));
-        if (program.emit().emitSkipped) throw new Error(`Public ${format} runtime emit failed.`);
-        if (format === "cjs") fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify({type: "commonjs"}));
-        for (const asset of ["gamepackage/internal/runtimeLocation.mjs", "simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]) {
-            fs.mkdirSync(path.dirname(path.join(outDir, asset)), {recursive: true});
-            fs.copyFileSync(path.join(root, "src", asset), path.join(outDir, asset));
-        }
+    for (const format of ["esm", "cjs"] as const) {
         for (const [fixtureName, outputName] of [["LegacyComposedGame", "game"], ["RuntimeExtension", "extension"]]) {
             const fixture = fs.readFileSync(path.join(root, `tests/v2/fixtures/${fixtureName}.ts`), "utf8");
             fs.writeFileSync(path.join(directory, `${outputName}.${format === "esm" ? "mjs" : "cjs"}`), ts.transpileModule(fixture, {

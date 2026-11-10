@@ -13,6 +13,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sha = (value, length = 64) => typeof value === "string" && new RegExp(`^[a-f0-9]{${length}}$`).test(value);
 const fail = (message) => { throw new Error(`P9-11 candidate: ${message}`); };
 const tooling = new Set([
+    // User-authorized test preparation delta; independent review/gates remain required.
+    "scripts/prepare-test-package.mjs",
+    "tests/testUtils/preparePackedTestCandidate.ts",
+    "tests/testUtils/runtimePreparationCache.test.ts",
+    "tests/testUtils/ensureCompiledTestOutput.ts",
+    "tests/testUtils/ensureCompiledTestOutput.test.ts",
     // V2C-37 retained unit-gate fixture repair; product/build and receipt pins stay protected.
     "tests/cli/commands/ReportCommand.test.ts",
     "tests/cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.test.ts",

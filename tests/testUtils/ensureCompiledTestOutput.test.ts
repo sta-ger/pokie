@@ -1,6 +1,8 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import ts from "typescript";
+import {spawn} from "node:child_process";
 import {ensureCompiledTestOutput} from "./ensureCompiledTestOutput.js";
 
 describe("ensureCompiledTestOutput", () => {
@@ -43,6 +45,43 @@ describe("ensureCompiledTestOutput", () => {
         expect(fs.readFileSync(outputPath, "utf8")).toBe("compiled");
         expect(fs.readFileSync(commandLogPath, "utf8")).toBe("build\n");
         expect(fs.existsSync(path.join(repositoryRoot, "node_modules", ".cache", "pokie-test-build-locks", "test-output.lock"))).toBe(false);
+    });
+
+    it("rebuilds a corrupt existing output under the same compiler lock", () => {
+        const options = {...buildOptions(), validateOutputs: () => fs.readFileSync(outputPath, "utf8") === "compiled"};
+        ensureCompiledTestOutput(options);
+        fs.writeFileSync(outputPath, "corrupt");
+        ensureCompiledTestOutput(options);
+        ensureCompiledTestOutput(options);
+        expect(fs.readFileSync(outputPath, "utf8")).toBe("compiled");
+        expect(fs.readFileSync(commandLogPath, "utf8")).toBe("build\nbuild\n");
+    });
+
+    it("serializes separate processes and validates the winner's output before reuse", async () => {
+        const helper = path.join(repositoryRoot, "helper.cjs");
+        fs.writeFileSync(helper, ts.transpileModule(fs.readFileSync(path.join(__dirname, "ensureCompiledTestOutput.ts"), "utf8"), {
+            compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true},
+        }).outputText);
+        const options = buildOptions();
+        const script = `const {ensureCompiledTestOutput}=require(${JSON.stringify(helper)}); ensureCompiledTestOutput(${JSON.stringify(options)});`;
+        const run = (): Promise<void> => new Promise((resolve, reject) => {
+            const child = spawn(process.execPath, ["-e", script], {stdio: "pipe"});
+            let errors = "";
+            child.stderr.on("data", chunk => errors += String(chunk));
+            child.once("error", reject);
+            child.once("close", code => code === 0 ? resolve() : reject(new Error(errors || `child exited ${code}`)));
+        });
+        await Promise.all([run(), run(), run()]);
+        expect(fs.readFileSync(commandLogPath, "utf8")).toBe("build\n");
+        expect(fs.readFileSync(outputPath, "utf8")).toBe("compiled");
+    });
+
+    it("does not convert a rejected artifact marker into a passing cache hit", () => {
+        ensureCompiledTestOutput(buildOptions());
+        expect(() => ensureCompiledTestOutput({...buildOptions(), validateOutputs: () => {
+            throw new Error("artifact digest mismatch");
+        }})).toThrow("artifact digest mismatch");
+        expect(fs.readFileSync(commandLogPath, "utf8")).toBe("build\n");
     });
 
     it("reclaims an abandoned compiler lock after its creation grace period", () => {

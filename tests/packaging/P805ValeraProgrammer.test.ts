@@ -8,6 +8,7 @@ import {constants, runInThisContext} from "node:vm";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {CreateCommand} from "../../cli/commands/CreateCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
+import {preparePackedTestCandidate} from "../testUtils/preparePackedTestCandidate.js";
 
 function expectProgrammerWasmValidation(output: string, wasm: string): void {
     expect(JSON.parse(output)).toMatchObject({
@@ -184,18 +185,6 @@ describe("P8-05 Valera Programmer installed public path", () => {
         const candidate = execFileSync("git", ["rev-parse", "HEAD"], {encoding: "utf8"}).trim();
         const candidateDirectory = mkdtempSync(path.join(tmpdir(), "pokie-p8-05-packed-cli-"));
         const installation = path.join(candidateDirectory, "installation");
-        const sourceArchiveDirectory = path.join(candidateDirectory, "source");
-        const sourceArchive = () => {
-            // build-cli is incremental and may retain obsolete dist/src or
-            // CJS files. Canonical prepack uses build, which clears dist;
-            // reproduce that boundary before packing without lifecycle scripts.
-            // The release smoke launches its compilers from Jest's test
-            // environment. It must still produce the production archive that
-            // the independently rebuilt candidate verifier authenticates.
-            runNpm(["run", "build"], {cwd: process.cwd(), nodeEnv: "test"});
-            mkdirSync(sourceArchiveDirectory, {recursive: true});
-            return JSON.parse(runNpm(["pack", "--ignore-scripts", "--json", "--pack-destination", sourceArchiveDirectory], {cwd: process.cwd()})) as Array<{filename: string}>;
-        };
         try {
             const shared = await readSharedProgrammerCandidate(process.env);
             let launcher: string;
@@ -206,13 +195,10 @@ describe("P8-05 Valera Programmer installed public path", () => {
             } else {
                 // Preserve the historical standalone P8 verifier path. The P9
                 // lifecycle instead consumes its pinned normal build/install.
-                const packed = sourceArchive();
-                expect(packed).toHaveLength(1);
-                const source = path.join(sourceArchiveDirectory, packed[0].filename);
-                const archive = path.join(candidateDirectory, "candidate-package.tgz");
-                const receipt = path.join(candidateDirectory, "candidate-executable-receipt.json");
+                const {archive, receipt, candidateId} = preparePackedTestCandidate();
+                expect(candidateId).toBe(candidate);
+                const source = archive;
                 const canonicalBytes = readFileSync(source);
-                execFileSync(process.execPath, [path.join(process.cwd(), "scripts", "p8-05-candidate-package-verifier.mjs"), "--source-archive", source, "--candidate-archive", archive, "--candidate", candidate, "--receipt", receipt], {encoding: "utf8", stdio: "pipe"});
                 expect(readFileSync(source).equals(canonicalBytes)).toBe(true);
                 expect(readFileSync(archive).equals(canonicalBytes)).toBe(true);
                 const provenance = JSON.parse(readFileSync(receipt, "utf8")) as {
