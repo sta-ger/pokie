@@ -8,6 +8,7 @@ const json = (file, value) => writeFile(file, `${JSON.stringify(value)}\n`);
 // Exact accumulated correction from the saved V2C-37 verified candidate.
 // Keep this independent of both readers, including every helper and selector.
 export const V2C37_SAVED_GATE_CORRECTION_PATHS = [
+    "tests/packaging/P805ValeraProgrammer.test.ts",
     "tests/cli/commands/ReportCommand.test.ts",
     "tests/cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.test.ts",
     "tests/cli/studio/replay/StudioReplayExecutionService.test.ts",
@@ -31,6 +32,8 @@ export const V2C37_SAVED_GATE_CORRECTION_PATHS = [
 // delta, the prior driver repair, the reviewed interoperability correction and
 // every file changed by this handoff repair.
 export const P911_TOOLING_DESCENDANT_PATHS = [
+    // V2C-37 packed programmer semantic-validation regression only.
+    "tests/packaging/P805ValeraProgrammer.test.ts",
     // V2C-37 retained unit-gate fixture repair; product/build and receipt pins stay protected.
     "tests/cli/commands/ReportCommand.test.ts",
     "tests/cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.test.ts",

@@ -14,6 +14,8 @@ const fail = (message) => { throw new Error(`P8-05 release handoff is invalid: $
 // Everything else, including package metadata, lockfile, compiler/Vite config,
 // generators, runtime sources and other steps' evidence, must be byte-identical.
 const tooling = new Set([
+    // V2C-37 packed programmer semantic-validation regression only.
+    "tests/packaging/P805ValeraProgrammer.test.ts",
     // V2C-37 readiness fixture isolation; product/build inputs and receipt pins stay protected.
     "tests/cli/studio-client/src/StudioReadinessConvergence.test.tsx",
     // V2C-37 retained unit-gate fixture repair; product/build and receipt pins stay protected.
