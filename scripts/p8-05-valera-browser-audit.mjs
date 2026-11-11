@@ -110,6 +110,74 @@ export async function ensureP805ExportDisclosure({evaluate, focusRenderedControl
         return next?.expanded === 'true' && next.revealed ? next : false;
     }, `${observation} revealed ${label} form`);
 }
+// Preflight acquires the package and plans publication, then the card fills
+// server defaults and prepares a second, option-bound token. This is separate
+// from the ordinary rendered-control deadline. Share one preparation budget
+// across defaults and the explicit sampled choice; never retry the request or
+// accept a loading/disabled/error card as an enabled submission.
+export async function requireP805OutcomeLibraryCard({evaluate, focusRenderedControl, activateFocusedControl, events = [], now = Date.now, pause = wait}, observation) {
+    const outcomeLibraryCardState = () => evaluate(`(() => {
+        const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
+        const card = document.querySelector('[data-pokie-lifecycle-card="outcome-library"]');
+        const control = document.getElementById('outcome-library-generate');
+        const preflight = document.querySelector('[data-pokie-lifecycle-preflight="outcome-library"]');
+        if (!(card instanceof HTMLElement) || !visible(card)) return {state:'missing-card'};
+        if (!(control instanceof HTMLButtonElement) || !visible(control)) return {state:'missing-control'};
+        if (control.getAttribute('data-pokie-lifecycle') !== 'operation' || control.getAttribute('data-pokie-lifecycle-operation') !== 'outcome-library' || control.getAttribute('data-pokie-transaction-state') !== 'editable-submission') return {state:'stale-control'};
+        if (!(preflight instanceof HTMLElement) || !visible(preflight) || preflight.getAttribute('data-pokie-lifecycle-preflight-control') !== control.id) return {state:'missing-preflight'};
+        const status = preflight.getAttribute('data-pokie-lifecycle-preflight-status');
+        if (status === 'loading') return {state:'loading', status};
+        if (status !== 'ok') return {state:status === 'error' ? 'unsupported-preflight' : 'stale-preflight', status, diagnostic:(preflight.innerText || preflight.textContent || '').trim()};
+        if (control.disabled) return {state:'disabled-control', status, disabledExplanation:control.getAttribute('title') || null};
+        return {state:'ready', status, controlId:control.id, cardLabel:[...card.querySelectorAll('*')].find((item) => item.textContent?.trim() === 'Outcome library generator')?.textContent?.trim() ?? null, enabled:true, disabled:false};
+    })()`);
+    let state;
+    try {
+        await ensureP805ExportDisclosure({evaluate, focusRenderedControl, activateFocusedControl, waitFor}, "outcome-library", "Outcome library generator", observation);
+        await waitFor(async () => {
+            state = await outcomeLibraryCardState();
+            return ['missing-card', 'missing-control', 'missing-preflight'].includes(state?.state) ? false : state;
+        }, `${observation} rendered Outcome Library card`);
+        const until = now() + 120_000;
+        const boundedExplanation = 'Choose sampled or conditional bounded coverage before generating this Outcome Library.';
+        const settlePreflight = async (sampledChoicePending = false) => {
+            for (;;) {
+                state = await outcomeLibraryCardState();
+                if (now() >= until) throw new Error(`Timed out waiting for ${observation} Outcome Library preparation`);
+                // Native input can return before React commits the choice.
+                // The previous bounded-choice guard remains pending in that
+                // frame; neither it nor the next loading state renews time.
+                if (state?.state !== 'loading' && !(sampledChoicePending && state?.state === 'disabled-control' && state.disabledExplanation === boundedExplanation)) return;
+                await pause(125);
+            }
+        };
+        await settlePreflight();
+        if (state?.state === 'disabled-control' && state.disabledExplanation === boundedExplanation) {
+            const sampled = await focusRenderedControl('button', "(item, name) => name === 'Sampled' && item.closest('[data-pokie-lifecycle-card=\"outcome-library\"]') !== null");
+            if (!sampled?.keyboardFocused) fail(`${observation} did not expose its rendered sampled Outcome Library coverage control`);
+            await activateFocusedControl('precondition', sampled);
+            await settlePreflight(true);
+        }
+        if (state?.state !== 'ready' || state.controlId !== 'outcome-library-generate' || state.cardLabel !== 'Outcome library generator') {
+            fail(`${observation} rendered Outcome Library card is ${state?.state ?? 'unreadable'}${state?.disabledExplanation ? `: ${state.disabledExplanation}` : ''}`);
+        }
+        return state;
+    } catch (error) {
+        // Failed tuples previously retained only cleanup, hiding whether this
+        // was DOM mounting, repeated default preparation, or a blocked request.
+        // Preserve exact browser identities and completed nested timings in
+        // the supervisor's existing failure receipt without starting any work.
+        const requests = events.filter(event => event.method === 'Network.requestWillBeSent'
+            && new URL(event.params.request.url).pathname === '/api/project/outcome-libraries/generate/estimate').slice(-8).map(event => {
+            const response = events.find(item => item.method === 'Network.responseReceived' && item.params.requestId === event.params.requestId);
+            const finished = events.find(item => ['Network.loadingFinished', 'Network.loadingFailed'].includes(item.method) && item.params.requestId === event.params.requestId);
+            return {requestId:event.params.requestId, options:event.params.request.postData, status:response?.params.response.status,
+                completion:finished?.method ?? 'pending', elapsedMs:finished ? Math.round((finished.params.timestamp - event.params.timestamp) * 1000) : null,
+                error:finished?.params.errorText};
+        });
+        throw new Error(`${error.message}; last Outcome Library preparation: ${JSON.stringify({state, requests})}`, {cause:error});
+    }
+}
 const P805_ACTIVE_JOB_STATUSES = new Set(["queued", "running"]);
 const P805_OUTCOME_LIBRARY_ACTIVE_JOB_STATUSES = new Set(["queued", "running", "cancelling", "pending"]);
 class OutcomeLibraryTerminalBoundaryError extends Error {
@@ -2759,61 +2827,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             input.dispatchEvent(new Event('change', {bubbles:true}));
             return input.value === value;
         })()`);
-        // Outcome Library generation is the one Build/Export transaction
-        // whose availability is determined by a separate asynchronous
-        // preflight.  Read that product-owned card before the control is
-        // activated so a missing, stale, loading, unsupported, or disabled
-        // card fails at its own public boundary instead of later timing out
-        // while some unrelated route happens to settle.
-        const outcomeLibraryCardState = async () => evaluate(`(() => {
-            const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
-            const card = document.querySelector('[data-pokie-lifecycle-card="outcome-library"]');
-            const control = document.getElementById('outcome-library-generate');
-            const preflight = document.querySelector('[data-pokie-lifecycle-preflight="outcome-library"]');
-            if (!(card instanceof HTMLElement) || !visible(card)) return {state:'missing-card'};
-            if (!(control instanceof HTMLButtonElement) || !visible(control)) return {state:'missing-control'};
-            if (control.getAttribute('data-pokie-lifecycle') !== 'operation' || control.getAttribute('data-pokie-lifecycle-operation') !== 'outcome-library' || control.getAttribute('data-pokie-transaction-state') !== 'editable-submission') return {state:'stale-control'};
-            if (!(preflight instanceof HTMLElement) || !visible(preflight) || preflight.getAttribute('data-pokie-lifecycle-preflight-control') !== control.id) return {state:'missing-preflight'};
-            const status = preflight.getAttribute('data-pokie-lifecycle-preflight-status');
-            if (status === 'loading') return {state:'loading', status};
-            if (status !== 'ok') return {state:status === 'error' ? 'unsupported-preflight' : 'stale-preflight', status};
-            if (control.disabled) return {state:'disabled-control', status, disabledExplanation:control.getAttribute('title') || null};
-            return {state:'ready', status, controlId:control.id, cardLabel:[...card.querySelectorAll('*')].find((item) => item.textContent?.trim() === 'Outcome library generator')?.textContent?.trim() ?? null, enabled:true, disabled:false};
-        })()`);
-        const requireOutcomeLibraryCard = async (observation) => {
-            await ensureP805ExportDisclosure({evaluate, focusRenderedControl, activateFocusedControl, waitFor}, "outcome-library", "Outcome library generator", observation);
-            let state = await outcomeLibraryCardState();
-            // The route and its navigation receipt can render before the
-            // Build/Export card subtree has committed.  In particular the
-            // first artifact-target request is started by that subtree, so a
-            // one-shot query here used to call a real, just-entered route a
-            // missing Outcome Library card.  Wait for the public card and
-            // its preflight as one rendered transaction boundary; do not
-            // replace it with a route-level or API-only shortcut.
-            if (['missing-card', 'missing-control', 'missing-preflight', 'loading'].includes(state?.state)) state = await waitFor(async () => {
-                const next = await outcomeLibraryCardState();
-                return ['missing-card', 'missing-control', 'missing-preflight', 'loading'].includes(next?.state) ? false : next;
-            }, `${observation} rendered Outcome Library card and preflight`);
-            // Bounded coverage is an explicit product choice.  When a real
-            // project's outcome space requires it, make that choice through
-            // the visible strategy control before accepting the Generate
-            // button as an enabled submission.  This keeps the audit on the
-            // same first-time-user path rather than weakening the product's
-            // safety gate or treating a disabled operation as a ready one.
-            if (state?.state === 'disabled-control' && state.disabledExplanation === 'Choose sampled or conditional bounded coverage before generating this Outcome Library.') {
-                const sampled = await focusRenderedControl('button', "(item, name) => name === 'Sampled' && item.closest('[data-pokie-lifecycle-card=\"outcome-library\"]') !== null");
-                if (!sampled?.keyboardFocused) fail(`${observation} did not expose its rendered sampled Outcome Library coverage control`);
-                await activateFocusedControl('precondition', sampled);
-                state = await waitFor(async () => {
-                    const next = await outcomeLibraryCardState();
-                    return ['loading', 'disabled-control'].includes(next?.state) ? false : next;
-                }, `${observation} sampled Outcome Library coverage preflight`);
-            }
-            if (state?.state !== 'ready' || state.controlId !== 'outcome-library-generate' || state.cardLabel !== 'Outcome library generator') {
-                fail(`${observation} rendered Outcome Library card is ${state?.state ?? 'unreadable'}${state?.disabledExplanation ? `: ${state.disabledExplanation}` : ''}`);
-            }
-            return state;
-        };
+        const requireOutcomeLibraryCard = observation => requireP805OutcomeLibraryCard({evaluate, focusRenderedControl, activateFocusedControl, events:cdp.events}, observation);
         const prepareScreenOperation = async (body, viewport, observation) => {
             if (body === "outcome-library") {
                 const preflight = await requireOutcomeLibraryCard(observation);

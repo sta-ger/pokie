@@ -14,7 +14,8 @@ import {preparePackedTestCandidate} from "../../../testUtils/preparePackedTestCa
 import {tmpdir} from "node:os";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
-import {constants, runInThisContext} from "node:vm";
+import {constants, runInNewContext, runInThisContext} from "node:vm";
+import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 
 
 const loadLogEvidence = () => {
@@ -337,6 +338,142 @@ describe("P8-05 rendered Valera persona evidence", () => {
             console.log('PACKED_SERVE_BOUNDARY_OK');
         `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000});
         expect(result).toContain("PACKED_SERVE_BOUNDARY_OK");
+    });
+
+    it.each(["exact", "sampled", "rejected", "blocked", "sampled-budget"] as const)("observes Outcome Library preparation through the production card (%s)", async scenario => {
+        const {requireP805OutcomeLibraryCard} = await runInThisContext(`import(${JSON.stringify(pathToFileURL(runner).href)})`, {importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER});
+        const pending: Array<{body: Record<string, unknown>; resolve: (value: Awaited<ReturnType<FetchLike>>) => void}> = [];
+        const response = (body: unknown) => ({ok: true, status: 200, json: () => Promise.resolve(body)});
+        const plan = {status: "planned", source: {kind: "blueprint", capabilities: []}, target: {kind: "outcomeLibrary", capabilities: []}, steps: [], preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false}};
+        const fetchImpl: FetchLike = (url, init) => {
+            const request = url.split("?")[0];
+            if (request === "/api/project/outcome-libraries/generate/estimate") return new Promise(resolve => {
+                pending.push({body: JSON.parse(String(init?.body)), resolve});
+            });
+            if (request === "/api/project/context") return Promise.resolve(response({status: "loaded", projectRoot: "/games/a", type: "blueprint", game: {id: "a", name: "A", version: "1"}, capabilities: ["blueprint.build"]}));
+            if (request === "/api/project/inspect") return Promise.resolve(response({valid: true, packageRoot: "/games/a", generated: false}));
+            if (["/api/project/jobs", "/api/project/outcome-libraries/generate/jobs"].includes(request)) return Promise.resolve(response({jobs: []}));
+            if (request === "/api/project/deployment/build-modes") return Promise.resolve(response({status: "ok", modeIds: ["base"]}));
+            if (request === "/api/project/artifacts/targets") return Promise.resolve(response([{target: "outcomeLibrary", supported: true, state: "supported", unsupportedNotes: [], plan}]));
+            if (["/api/project/reports", "/api/project/replays", "/api/project/deployment/targets"].includes(request)) return Promise.resolve(response([]));
+            return Promise.reject(new Error(`Unexpected request during preflight: ${url}`));
+        };
+        const app = renderRoutedApp({fetchImpl, initialEntries: ["/project/exportDeploy"]});
+        // JSDOM has no layout. Only geometry is supplied; the production card,
+        // defaults reconciliation, disabled state and request bodies stay real.
+        const geometry = jest.spyOn(HTMLElement.prototype, "getClientRects").mockImplementation(function (this: HTMLElement) {
+            return (this.closest("[hidden]") ? [] : [this.getBoundingClientRect()]) as unknown as DOMRectList;
+        });
+        // Exact request/response/timing fields from the retained compact
+        // browser.json (c6226d04953f1d2a), through the third request start.
+        // A blocked successor must retain the two completed preparations.
+        const retainedPreflights = [
+            {"method": "Network.requestWillBeSent", "params": {"requestId": "3038334.597", "timestamp": 490930.707146, "request": {"url": "http://127.0.0.1:34045/api/project/outcome-libraries/generate/estimate", "method": "POST", "postData": "{\"mode\":\"base\",\"generation\":\"default\"}"}}},
+            {"method": "Network.responseReceived", "params": {"requestId": "3038334.597", "timestamp": 490945.145961, "response": {"url": "http://127.0.0.1:34045/api/project/outcome-libraries/generate/estimate", "status": 200}}},
+            {"method": "Network.loadingFinished", "params": {"requestId": "3038334.597", "timestamp": 490945.145858}},
+            {"method": "Network.requestWillBeSent", "params": {"requestId": "3038334.632", "timestamp": 490945.170787, "request": {"url": "http://127.0.0.1:34045/api/project/outcome-libraries/generate/estimate", "method": "POST", "postData": "{\"mode\":\"base\",\"generation\":\"default\",\"maxOutcomeSpaceSize\":\"20000000\"}"}}},
+            {"method": "Network.responseReceived", "params": {"requestId": "3038334.632", "timestamp": 490958.826595, "response": {"url": "http://127.0.0.1:34045/api/project/outcome-libraries/generate/estimate", "status": 200}}},
+            {"method": "Network.loadingFinished", "params": {"requestId": "3038334.632", "timestamp": 490958.826273}},
+            {"method": "Network.requestWillBeSent", "params": {"requestId": "3038334.659", "timestamp": 490959.140661, "request": {"url": "http://127.0.0.1:34045/api/project/outcome-libraries/generate/estimate", "method": "POST", "postData": "{\"mode\":\"base\",\"generation\":\"sampled\",\"maxOutcomeSpaceSize\":\"20000000\",\"sample\":{\"sampleSize\":\"10000\",\"seed\":\"pokie-bounded-coverage-v1\"}}"}}},
+        ];
+        let clock = 0;
+        let resolved = 0;
+        const selections: string[] = [];
+        let deferredSampledControl: string | undefined;
+        try {
+            fireEvent.click(await screen.findByRole("button", {name: "Configure Outcome library generator"}));
+            await waitFor(() => expect(pending).toHaveLength(1));
+            const generate = document.getElementById("outcome-library-generate")!;
+            expect(generate).toBeDisabled();
+            const evaluate = (expression: string) => Promise.resolve(runInNewContext(expression, {document, HTMLElement, HTMLButtonElement, getComputedStyle: window.getComputedStyle}));
+            const options = {
+                evaluate, events: scenario === "sampled-budget" ? retainedPreflights : [], now: () => clock,
+                focusRenderedControl: (selector: string, predicate: string) => {
+                    const matches = runInNewContext(`(${predicate})`) as (item: HTMLElement, name: string) => boolean;
+                    const button = [...document.querySelectorAll<HTMLElement>(selector)].find(item => matches(item, item.textContent?.trim() ?? ""));
+                    expect(button).toBeDefined();
+                    button!.focus();
+                    return Promise.resolve({stableControlId: button!.id, keyboardFocused: document.activeElement === button});
+                },
+                activateFocusedControl: async (_kind: string, control: {stableControlId: string}) => {
+                    expect(generate).toBeDisabled();
+                    expect(control.stableControlId).toBe("outcome-library-generation-sampled");
+                    selections.push(control.stableControlId);
+                    if (scenario === "sampled") {
+                        deferredSampledControl = control.stableControlId;
+                        return;
+                    }
+                    await act(async () => {
+                        fireEvent.click(document.getElementById(control.stableControlId)!);
+                        await Promise.resolve();
+                    });
+                },
+                pause: async () => {
+                    // CDP input may return before React commits the selection.
+                    if (deferredSampledControl !== undefined) {
+                        const controlId = deferredSampledControl;
+                        deferredSampledControl = undefined;
+                        await act(async () => {
+                            fireEvent.click(document.getElementById(controlId)!);
+                            await Promise.resolve();
+                        });
+                        return;
+                    }
+                    // Completed compact receipt: default 14.439s, bound default
+                    // 13.656s, sampled 12.405s. Modest contention makes the first
+                    // pair exceed 30s; do not reset a budget on either response.
+                    clock += scenario === "sampled-budget" || scenario === "blocked" ? 40_000 : 20_000;
+                    expect(generate).toBeDisabled();
+                    if (scenario === "blocked" || clock >= 120_000) return;
+                    const request = pending[resolved++];
+                    expect(request).toBeDefined();
+                    const sampled = request.body.generation === "sampled";
+                    await act(async () => {
+                        request.resolve(response(scenario === "rejected" ? {status: "unsupported", error: "Package preparation rejected"} : {
+                            status: "ok", game: {id: "a", name: "A", version: "1"}, reelsNumber: 3, reelsSymbolsNumber: 3, reelSizes: [30, 30, 30],
+                            totalOutcomeSpaceSize: 27000, maxOutcomeSpaceSize: 20_000_000, strategy: sampled ? "sampled" : "exact", requiresBounded: scenario !== "exact" && !sampled,
+                            expectedRawWork: sampled ? 10000 : 27000, warnings: [], plan, preflightToken: `bound-${resolved}`,
+                            defaults: {compatibilityVersion: "v1", maxExactOutcomeSpaceSize: 20_000_000, boundedSample: {sampleSize: 10_000, seed: "pokie-bounded-coverage-v1"}},
+                        }));
+                        await Promise.resolve();
+                    });
+                },
+            };
+            if (["rejected", "blocked", "sampled-budget"].includes(scenario)) {
+                let failure: Error | undefined;
+                try {
+                    await requireP805OutcomeLibraryCard(options, "outcome-library-report-diff-replay");
+                } catch (error) {
+                    failure = error as Error;
+                }
+                expect(failure?.message).toMatch(scenario === "rejected" ? /unsupported-preflight.*last Outcome Library preparation:.*Package preparation rejected/ : /Timed out.*last Outcome Library preparation:.*loading/);
+                const diagnostic = JSON.parse(failure!.message.split("last Outcome Library preparation: ")[1]);
+                expect(diagnostic.requests).toEqual(scenario === "sampled-budget" ? [
+                    {requestId: "3038334.597", options: JSON.stringify({mode: "base", generation: "default"}), status: 200, completion: "Network.loadingFinished", elapsedMs: 14439},
+                    {requestId: "3038334.632", options: JSON.stringify({mode: "base", generation: "default", maxOutcomeSpaceSize: "20000000"}), status: 200, completion: "Network.loadingFinished", elapsedMs: 13655},
+                    {requestId: "3038334.659", options: JSON.stringify({mode: "base", generation: "sampled", maxOutcomeSpaceSize: "20000000", sample: {sampleSize: "10000", seed: "pokie-bounded-coverage-v1"}}), completion: "pending", elapsedMs: null},
+                ] : []);
+                expect(selections).toHaveLength(scenario === "sampled-budget" ? 1 : 0);
+                expect(clock).toBe(scenario === "rejected" ? 20_000 : 120_000);
+            } else {
+                await expect(requireP805OutcomeLibraryCard(options, "outcome-library-report-diff-replay")).resolves.toMatchObject({state: "ready", enabled: true, disabled: false, controlId: "outcome-library-generate"});
+                expect(generate).toBeEnabled();
+                expect(selections).toHaveLength(scenario === "sampled" ? 1 : 0);
+                expect(clock).toBe(scenario === "sampled" ? 60_000 : 40_000);
+            }
+            // Exact request bytes observed in the retained compact browser log:
+            // 3038334.597 discovers defaults, 3038334.632 binds the exact cap.
+            expect(pending[0].body).toEqual({mode: "base", generation: "default"});
+            if (resolved >= 2) expect(pending[1].body).toEqual({mode: "base", generation: "default", maxOutcomeSpaceSize: "20000000"});
+            if (selections.length) expect(pending[2].body).toEqual({mode: "base", generation: "sampled", maxOutcomeSpaceSize: "20000000", sample: {sampleSize: "10000", seed: "pokie-bounded-coverage-v1"}});
+            const expectedRequests = scenario === "blocked" || scenario === "rejected" ? 1 : 2;
+            expect(pending).toHaveLength(selections.length ? 3 : expectedRequests);
+        } finally {
+            app.unmount();
+            app.router.dispose();
+            geometry.mockRestore();
+            for (const request of pending.slice(resolved)) request.resolve(response({status: "unsupported", error: "Test disposed"}));
+        }
     });
 
     it("admits the complete bounded correction through pinned candidate readers without exempting product inputs", () => {
