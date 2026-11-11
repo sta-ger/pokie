@@ -13,7 +13,30 @@ import {chmod, copyFile, lstat, mkdtemp, readFile, readdir, rm, stat, writeFile}
 import {preparePackedTestCandidate} from "../../../testUtils/preparePackedTestCandidate.js";
 import {tmpdir} from "node:os";
 import path from "node:path";
+import {pathToFileURL} from "node:url";
+import {constants, runInThisContext} from "node:vm";
 
+
+const loadLogEvidence = () => {
+    const url = pathToFileURL(path.join(process.cwd(), "scripts/p8-05-packed-output-evidence.mjs")).href;
+    return runInThisContext(`import(${JSON.stringify(url)})`, {importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER});
+};
+
+type CapturedLogEvidence = {evidenceId: string; kind: string; path: string; sha256: string; sizeBytes: number; observationIds: string[]};
+
+const readCapturedApiLog = async (evidence: CapturedLogEvidence[], readArtifact: (file: string) => Promise<Buffer>): Promise<Array<{browserRequestId?: string; transaction?: {pointerActivations: PointerDelivery[]; confirmation?: {activation?: PointerDelivery}}}>> => {
+    const {readP805Log, P805_MAX_EVIDENCE_BYTES} = await loadLogEvidence();
+    const entries = new Map<string, {item: CapturedLogEvidence; contents: Buffer}>();
+    for (const item of evidence.filter((item) => ["api-log", "api-log-chunk"].includes(item.kind))) {
+        const contents = await readArtifact(item.path);
+        expect(contents.length).toBe(item.sizeBytes);
+        expect(contents.length).toBeLessThanOrEqual(P805_MAX_EVIDENCE_BYTES);
+        expect(createHash("sha256").update(contents).digest("hex")).toBe(item.sha256);
+        expect(entries.has(item.evidenceId)).toBe(false);
+        entries.set(item.evidenceId, {item, contents});
+    }
+    return readP805Log("api-log", entries);
+};
 
 type PointerDelivery = {
     kind: string;
@@ -365,6 +388,101 @@ describe("P8-05 rendered Valera persona evidence", () => {
             } finally {await rm(directory,{recursive:true,force:true});}
         `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 30_000}));
         expect(result).toEqual({completeCorrectionAdmitted: true, archivePreserved: true, pinsProtected: true, protectedPaths: 3});
+    });
+
+    it("preserves oversized browser and API logs losslessly within immutable evidence bounds", () => {
+        const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import {createHash} from 'node:crypto';
+            import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
+            import {tmpdir} from 'node:os';
+            import path from 'node:path';
+            import {P805_MAX_EVIDENCE_BYTES,preserveP805Log,readP805Log} from './scripts/p8-05-packed-output-evidence.mjs';
+            const directory=await mkdtemp(path.join(tmpdir(),'p805-bounded-logs-'));
+            const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+            // Exact completion event retained in AsM99I/e6cb59bb9b9449fd/browser.json.
+            // The failing tuple's oversized browser bytes were never published.
+            const retained={"method":"Network.loadingFinished","params":{"requestId":"2314961.71","timestamp":466121.167379,"encodedDataLength":630}};
+            const observationIds=['simulation-success-failure-cancellation'];
+            let writes=0,rejected=0;
+            try {
+                for(const kind of ['browser-log','api-log']) {
+                    const entries=new Map();
+                    const save=async (kind,name,content,observationIds)=>{
+                        const bytes=Buffer.from(content),evidenceId='log-'+(++writes);
+                        assert.ok(bytes.length>0 && bytes.length<=P805_MAX_EVIDENCE_BYTES);
+                        const target=path.join(directory,evidenceId+'-'+name);
+                        await writeFile(target,bytes,{flag:'wx'});
+                        const contents=await readFile(target);
+                        assert.equal(digest(contents),digest(bytes));
+                        entries.set(evidenceId,{item:{kind,path:target,observationIds,sha256:digest(bytes),sizeBytes:bytes.length},contents});
+                        return evidenceId;
+                    };
+                    const name=kind==='browser-log'?'browser.json':'api.json';
+                    const legacy=[retained];
+                    await preserveP805Log(kind,name,legacy,observationIds,save);
+                    assert.deepEqual(readP805Log(kind,entries),legacy);
+                    assert.deepEqual([...entries.values()][0].contents,Buffer.from(JSON.stringify(legacy)));
+                    entries.clear();
+                    // Repeated polling crosses 5 MiB; UTF-8 also crosses chunk boundaries.
+                    const values=[...Array.from({length:5000},()=>({...retained,diagnostic:'ж'.repeat(600)})),
+                        {method:'Runtime.exceptionThrown',params:{exceptionDetails:{text:'retained exception'}}},
+                        {method:'Network.loadingFailed',params:{requestId:retained.params.requestId,errorText:'net::ERR_ABORTED'}}];
+                    const original=Buffer.from(JSON.stringify(values));
+                    assert.ok(original.length>P805_MAX_EVIDENCE_BYTES);
+                    const id=await preserveP805Log(kind,name,values,observationIds,save);
+                    assert.deepEqual(Buffer.from(JSON.stringify(readP805Log(kind,entries))),original);
+                    const anchor=entries.get(id),manifest=JSON.parse(anchor.contents);
+                    assert.ok(manifest.chunks.length>5);
+                    assert.equal(readP805Log(kind,entries).filter(event=>event.method==='Runtime.exceptionThrown').length,1);
+                    assert.equal(readP805Log(kind,entries).filter(event=>event.method==='Network.loadingFailed').length,1);
+                    const reject=(alter)=>{
+                        const changed=new Map([...entries].map(([id,entry])=>[id,{item:{...entry.item},contents:Buffer.from(entry.contents)}]));
+                        const changedManifest=structuredClone(manifest);
+                        alter(changed,changedManifest);
+                        changed.get(id).contents=Buffer.from(JSON.stringify(changedManifest));
+                        assert.throws(()=>readP805Log(kind,changed));
+                        rejected++;
+                    };
+                    const first=manifest.chunks[0].evidenceId;
+                    reject(map=>map.delete(first));
+                    reject(map=>{map.get(first).contents[0]^=1;});
+                    reject(map=>{map.get(first).item.kind='other-log-chunk';});
+                    reject(map=>{map.get(first).item.observationIds=['another-workflow'];});
+                    reject((_,m)=>{m.chunks.reverse();});
+                    reject((_,m)=>{m.chunks[1]={...m.chunks[0]};});
+                    reject((_,m)=>{m.chunks[0].sizeBytes=P805_MAX_EVIDENCE_BYTES+1;});
+                    reject((_,m)=>{m.sizeBytes++;});
+                    reject((_,m)=>{m.sha256='0'.repeat(64);});
+                    reject(map=>map.set('orphan',{item:{kind:kind+'-chunk',observationIds},contents:Buffer.from('lost')}));
+                    reject(map=>map.set('duplicate',{...anchor}));
+                    entries.set(id,{...anchor,contents:Buffer.from('[]')});
+                    assert.throws(()=>readP805Log(kind,entries),/unreferenced/);
+                    rejected++;
+                }
+                console.log(JSON.stringify({largeLogs:2,legacyArraysPreserved:2,allEventsPreserved:true,rejected}));
+            } finally {await rm(directory,{recursive:true,force:true});}
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 15_000}));
+        expect(result).toEqual({largeLogs: 2, legacyArraysPreserved: 2, allEventsPreserved: true, rejected: 24});
+    });
+
+    it("reads chunked API transactions at the packed acceptance boundary without losing assertions", async () => {
+        const {preserveP805Log, P805_MAX_EVIDENCE_BYTES} = await loadLogEvidence();
+        const values = [{browserRequestId: "captured-request", transaction: {pointerActivations: []}, body: "ж".repeat(P805_MAX_EVIDENCE_BYTES)}];
+        const evidence: CapturedLogEvidence[] = [];
+        const bytesByPath = new Map<string, Buffer>();
+        await preserveP805Log("api-log", "api.json", values, ["simulation-success-failure-cancellation"], (kind: string, file: string, content: string | Buffer, observationIds: string[]) => {
+            const bytes = Buffer.from(content);
+            const evidenceId = `log-${evidence.length}`;
+            evidence.push({evidenceId, kind, path: file, sha256: createHash("sha256").update(bytes).digest("hex"), sizeBytes: bytes.length, observationIds});
+            bytesByPath.set(file, bytes);
+            return Promise.resolve(evidenceId);
+        });
+        const readArtifact = (file: string) => Promise.resolve(bytesByPath.get(file)!);
+        expect(await readCapturedApiLog(evidence, readArtifact)).toEqual(values);
+        const chunk = evidence.find((item) => item.kind === "api-log-chunk")!;
+        bytesByPath.get(chunk.path)![0] ^= 1;
+        await expect(readCapturedApiLog(evidence, readArtifact)).rejects.toThrow();
     });
 
     it("records budget-exhausted validation as inconclusive and rejects other terminals", async () => {
@@ -1370,7 +1488,7 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 const [tupleReceiptBytes, cleanupBytes, auditBytes] = await Promise.all([readOperationArtifact(child.tupleReceiptPath), readOperationArtifact(child.cleanupPath), readOperationArtifact(auditPath)]);
                 const tupleAudit = JSON.parse(auditBytes.toString("utf8")) as {
                     rendered: {actions: Array<{transaction: {pointerActivations: PointerDelivery[]}}>};
-                    evidence: Array<{kind: string; path: string; sha256: string}>;
+                    evidence: CapturedLogEvidence[];
                 };
                 assertPointerDeliveries(tupleAudit.rendered.actions.flatMap((action) => action.transaction.pointerActivations));
                 // Includes restored-job Cancel, its real portal confirmation,
@@ -1378,9 +1496,7 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 const apiEvidence = tupleAudit.evidence.find((evidence) => evidence.kind === "api-log");
                 expect(apiEvidence).toBeDefined();
                 if (apiEvidence === undefined) throw new Error("packed tuple is missing its actual API transaction log");
-                const apiBytes = await readOperationArtifact(apiEvidence.path);
-                expect(createHash("sha256").update(apiBytes).digest("hex")).toBe(apiEvidence.sha256);
-                const api = JSON.parse(apiBytes.toString("utf8")) as Array<{browserRequestId?: string; transaction?: {pointerActivations: PointerDelivery[]; confirmation?: {activation?: PointerDelivery}}}>;
+                const api = await readCapturedApiLog(tupleAudit.evidence, readOperationArtifact);
                 const requestIds = api.flatMap((entry) => entry.browserRequestId === undefined ? [] : [entry.browserRequestId]);
                 expect(new Set(requestIds).size).toBe(requestIds.length);
                 const transactionEvidence = tupleAudit.evidence.find((evidence) => evidence.kind === "live-dom-transaction");

@@ -8,6 +8,50 @@ const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const sha = (value) => typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
 const outputPath = (value) => typeof value === "string" && value.length > 0 && !value.includes("\\") && !path.posix.isAbsolute(value) && value.split("/").every((part) => part && part !== "." && part !== "..");
 
+/** Keep complete polling histories without raising the per-artifact bound.
+ * Small historical logs retain their original JSON array representation. */
+export async function preserveP805Log(kind, name, values, observationIds, save) {
+    if (!["browser-log", "api-log"].includes(kind) || !Array.isArray(values)) throw new Error("invalid workflow log");
+    const bytes = Buffer.from(JSON.stringify(values));
+    if (bytes.length <= P805_MAX_EVIDENCE_BYTES) return save(kind, name, bytes, observationIds);
+    const chunks = [];
+    for (let offset = 0; offset < bytes.length; offset += chunkBytes) {
+        const chunk = bytes.subarray(offset, offset + chunkBytes);
+        const evidenceId = await save(`${kind}-chunk`, `${name}-${chunks.length}.bin`, chunk, observationIds);
+        chunks.push({evidenceId, offset, sizeBytes:chunk.length, sha256:digest(chunk)});
+    }
+    return save(kind, name, JSON.stringify({kind:"p8-05-chunked-log", sizeBytes:bytes.length, sha256:digest(bytes), chunks}), observationIds);
+}
+
+/** Entries must first pass boundedEvidence's candidate, namespace and hash checks.
+ * The original log remains the single diagnostic anchor for its complete bytes. */
+export function readP805Log(kind, evidenceById) {
+    const entries = [...evidenceById.values()];
+    const logs = entries.filter((entry) => entry.item.kind === kind);
+    if (logs.length !== 1) throw new Error(`${kind} requires exactly one log`);
+    const log = logs[0], value = JSON.parse(log.contents.toString("utf8"));
+    const chunks = entries.filter((entry) => entry.item.kind === `${kind}-chunk`);
+    if (Array.isArray(value)) {
+        if (chunks.length) throw new Error(`${kind} has unreferenced chunks`);
+        return value;
+    }
+    if (value?.kind !== "p8-05-chunked-log" || !Number.isSafeInteger(value.sizeBytes) || value.sizeBytes <= P805_MAX_EVIDENCE_BYTES || !sha(value.sha256) || !Array.isArray(value.chunks) || value.chunks.length !== chunks.length || !chunks.length) throw new Error(`${kind} has an invalid chunk manifest`);
+    const used = new Set(), buffers = [];
+    let offset = 0;
+    for (const chunk of value.chunks) {
+        const entry = evidenceById.get(chunk.evidenceId);
+        if (used.has(chunk.evidenceId) || entry?.item.kind !== `${kind}-chunk` || JSON.stringify(entry.item.observationIds) !== JSON.stringify(log.item.observationIds) || chunk.offset !== offset || !Number.isSafeInteger(chunk.sizeBytes) || chunk.sizeBytes < 1 || chunk.sizeBytes > chunkBytes || entry.contents.length !== chunk.sizeBytes || !sha(chunk.sha256) || digest(entry.contents) !== chunk.sha256) throw new Error(`${kind} chunk differs from its immutable log`);
+        used.add(chunk.evidenceId);
+        buffers.push(entry.contents);
+        offset += chunk.sizeBytes;
+    }
+    const bytes = Buffer.concat(buffers);
+    if (offset !== value.sizeBytes || digest(bytes) !== value.sha256) throw new Error(`${kind} reconstructed bytes differ from its immutable log`);
+    const result = JSON.parse(bytes.toString("utf8"));
+    if (!Array.isArray(result)) throw new Error(`${kind} is not a log array`);
+    return result;
+}
+
 /** Preserve the actual public CLI output before its owned workspace is drained.
  * Bytes live once in bounded immutable evidence; receipts carry only references. */
 export async function preserveP805PackedCliOutput(output, command, target, candidate, save, services = {readFile, readdir, stat}) {

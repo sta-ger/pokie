@@ -14,6 +14,9 @@ const sha = (value, length = 64) => typeof value === "string" && new RegExp(`^[a
 const fail = (message) => { throw new Error(`P9-11 candidate: ${message}`); };
 const tooling = new Set([
     // User-authorized test preparation delta; independent review/gates remain required.
+    // V2C-37 bounded lossless browser/API log persistence; product and driver pins stay protected.
+    "scripts/p8-05-packed-output-evidence.mjs",
+    "scripts/p8-05-product-readiness-campaign.mjs",
     // V2C-37 retained optimizer native-host regression; product/build inputs remain protected.
     "tests/v2/Valera35Regression.test.ts",
     "tests/v2/fixtures/RetainedOptimizationProbe.ts",

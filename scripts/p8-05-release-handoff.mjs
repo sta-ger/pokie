@@ -15,6 +15,8 @@ const fail = (message) => { throw new Error(`P8-05 release handoff is invalid: $
 // generators, runtime sources and other steps' evidence, must be byte-identical.
 const tooling = new Set([
     // User-authorized test preparation delta; independent review/gates remain required.
+    // V2C-37 bounded lossless browser/API log persistence; product and driver pins stay protected.
+    "scripts/p8-05-packed-output-evidence.mjs",
     // V2C-37 retained optimizer native-host regression; product/build inputs remain protected.
     "tests/v2/Valera35Regression.test.ts",
     "tests/v2/fixtures/RetainedOptimizationProbe.ts",
