@@ -14,6 +14,9 @@ const sha = (value, length = 64) => typeof value === "string" && new RegExp(`^[a
 const fail = (message) => { throw new Error(`P9-11 candidate: ${message}`); };
 const tooling = new Set([
     // User-authorized test preparation delta; independent review/gates remain required.
+    // V2C-37 retained optimizer native-host regression; product/build inputs remain protected.
+    "tests/v2/Valera35Regression.test.ts",
+    "tests/v2/fixtures/RetainedOptimizationProbe.ts",
     "scripts/prepare-test-package.mjs",
     "tests/testUtils/preparePackedTestCandidate.ts",
     "tests/testUtils/runtimePreparationCache.test.ts",

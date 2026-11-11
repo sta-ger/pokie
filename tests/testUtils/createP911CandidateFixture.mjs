@@ -8,6 +8,12 @@ const json = (file, value) => writeFile(file, `${JSON.stringify(value)}\n`);
 // Exact accumulated correction from the saved V2C-37 verified candidate.
 // Keep this independent of both readers, including every helper and selector.
 export const V2C37_SAVED_GATE_CORRECTION_PATHS = [
+    "docs/v2-completion/V2C-37.md",
+    "tests/testUtils/stageCompiledTestRuntime.ts",
+    "tests/v2/helpers/publicRuntime.ts",
+    // V2C-37 retained optimizer native-host regression; product/build inputs remain protected.
+    "tests/v2/Valera35Regression.test.ts",
+    "tests/v2/fixtures/RetainedOptimizationProbe.ts",
     "scripts/prepare-test-package.mjs",
     "tests/testUtils/preparePackedTestCandidate.ts",
     "tests/testUtils/runtimePreparationCache.test.ts",
@@ -37,6 +43,9 @@ export const V2C37_SAVED_GATE_CORRECTION_PATHS = [
 // delta, the prior driver repair, the reviewed interoperability correction and
 // every file changed by this handoff repair.
 export const P911_TOOLING_DESCENDANT_PATHS = [
+    // V2C-37 retained optimizer native-host regression; product/build inputs remain protected.
+    "tests/v2/Valera35Regression.test.ts",
+    "tests/v2/fixtures/RetainedOptimizationProbe.ts",
     "scripts/prepare-test-package.mjs",
     "tests/testUtils/preparePackedTestCandidate.ts",
     "tests/testUtils/runtimePreparationCache.test.ts",
