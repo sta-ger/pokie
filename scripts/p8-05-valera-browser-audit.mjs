@@ -441,9 +441,10 @@ export function hasP805NativeActivation(activation, controlId) {
             && activation.dispatch.keyDownCount === 1 && activation.dispatch.keyUpCount === 1 && ["Enter", " "].includes(activation.dispatch.key)
             && activation.dispatch.focus?.controlId === controlId && activation.dispatch.focus.native === true && activation.dispatch.focus.trusted === true && activation.dispatch.focus.targetMatchesCapturedControl === true;
         if (!focused) return false;
-        // Open and the narrow disclosure bind all three events to one Button.
+        // Open, import confirmations and the narrow disclosure bind all three events to one Button.
         const navigationToggle = controlId === "studio-navigation-toggle";
-        if (!controlId.startsWith("project-open:") && !navigationToggle) return true;
+        const projectImport = ["project-import-check", "project-import-add"].includes(controlId);
+        if (!controlId.startsWith("project-open:") && !navigationToggle && !projectImport) return true;
         const disclosure = activation.dispatch.disclosure;
         if (navigationToggle && (disclosure?.expandedBefore !== "false" || disclosure.expandedAfter !== "true"
             || disclosure.panelId !== "studio-navigation-panel" || disclosure.panelConnected !== true
@@ -457,7 +458,7 @@ export function hasP805NativeActivation(activation, controlId) {
                 && event.targetId === controlId && event.targetMatchesCapturedControl === true && event.nativeFocus === true
                 && event.capturedControlConnected === true && event.identityPreserved === true && event.enabled === true
                 && (navigationToggle ? event.accessibleName === "Toggle navigation" && event.panelId === "studio-navigation-panel" && event.expanded === "false"
-                    : event.projectLocation === controlId.slice("project-open:".length))
+                    : projectImport || event.projectLocation === controlId.slice("project-open:".length))
                 && (event.eventType === "click" ? event.detail === 0 : event.key === " " && event.repeat === false));
     }
     return activation.kind === "pointer" && activation.capturedControlId === controlId && typeof activation.captureKey === "string" && activation.captureKey.length > 0
@@ -1344,12 +1345,13 @@ export async function navigateP805RenderedControl(cdp, evaluate, route, expected
 }
 
 // Space delivers keyup to the retained Button before its native click changes
-// the product state. Both Open and the narrow disclosure need that ordering.
+// the product state. Open, import and the narrow disclosure need that ordering.
 export async function activateP805KeyboardControl(cdp, evaluate, controlId, focusControl = false) {
-    const captureKey = randomBytes(16).toString("hex"), projectOpen = controlId.startsWith("project-open:"), navigationToggle = controlId === "studio-navigation-toggle";
+    const captureKey = randomBytes(16).toString("hex"), projectOpen = controlId.startsWith("project-open:"), navigationToggle = controlId === "studio-navigation-toggle", projectImport = ["project-import-check", "project-import-add"].includes(controlId);
     const captured = await evaluate(`(()=>{
-        const item=document.getElementById(${JSON.stringify(controlId)}),projectOpen=${projectOpen},navigationToggle=${navigationToggle},boundButton=projectOpen||navigationToggle;
+        const item=document.getElementById(${JSON.stringify(controlId)}),projectOpen=${projectOpen},navigationToggle=${navigationToggle},projectImport=${projectImport},boundButton=projectOpen||navigationToggle||projectImport;
         if(!(item instanceof HTMLElement)||!item.isConnected||item.disabled)return null;
+        if(projectImport&&(!(item instanceof HTMLButtonElement)||item.type!=='button'||item.getClientRects().length===0))return null;
         if(projectOpen&&(!(item instanceof HTMLButtonElement)||item.type!=='button'||item.getClientRects().length===0||item.dataset.pokieProjectLocation!==${JSON.stringify(controlId.slice("project-open:".length))}))return null;
         if(navigationToggle&&(!(item instanceof HTMLButtonElement)||item.type!=='button'||item.getClientRects().length===0||item.getAttribute('aria-label')!=='Toggle navigation'||item.getAttribute('aria-controls')!=='studio-navigation-panel'||item.getAttribute('aria-expanded')!=='false'||!document.getElementById('studio-navigation-panel')?.isConnected))return null;
         if(${focusControl}){item.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});item.focus({preventScroll:true});}
@@ -1369,7 +1371,7 @@ export async function activateP805KeyboardControl(cdp, evaluate, controlId, focu
                     ...(navigationToggle?{accessibleName:item.getAttribute('aria-label'),panelId:item.getAttribute('aria-controls'),expanded:item.getAttribute('aria-expanded')}:{})};
                 receipt.eventBindings.push(binding);
                 receipt.invalid ||= !binding.trusted||!binding.targetMatchesCapturedControl||!binding.nativeFocus||!binding.capturedControlConnected||!binding.identityPreserved||!binding.enabled
-                    ||(navigationToggle?binding.accessibleName!=='Toggle navigation'||binding.panelId!=='studio-navigation-panel'||binding.expanded!=='false':binding.projectLocation!==${JSON.stringify(controlId.slice("project-open:".length))})
+                    ||(navigationToggle?binding.accessibleName!=='Toggle navigation'||binding.panelId!=='studio-navigation-panel'||binding.expanded!=='false':projectOpen&&binding.projectLocation!==${JSON.stringify(controlId.slice("project-open:".length))})
                     ||binding.repeat||event.type!==['keydown','keyup','click'][receipt.eventBindings.length-1];
                 if(receipt.invalid){
                     event.preventDefault();event.stopImmediatePropagation();
@@ -1402,7 +1404,7 @@ export async function activateP805KeyboardControl(cdp, evaluate, controlId, focu
         }window.__p805KeyboardReceipts?.delete(${JSON.stringify(captureKey)});return record?.receipt;})()`);
     }
     const activation = {kind:"keyboard", controlId, count:1, nativeFocus:true, preDispatchFocus:captured.preDispatchFocus, dispatch,
-        ...(projectOpen || navigationToggle ? {capturedControlId:controlId, captureKey} : {})};
+        ...(projectOpen || navigationToggle || projectImport ? {capturedControlId:controlId, captureKey} : {})};
     if (!hasP805NativeActivation(activation, controlId)) fail(`rendered ${controlId} did not receive one native keyboard activation`);
     return activation;
 }
@@ -1448,6 +1450,58 @@ export async function activateP805FocusedControl(cdp, evaluate, lifecycle = "ope
     // validation/save/navigation lifecycle.
     const pointer = await clickP805CapturedControl(cdp, evaluate, stableControlId, requiresViewportHit, ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle), !["navigation", "navigation-drawer"].includes(lifecycle), retainCapturedControl);
     return {kind:"pointer", controlId:stableControlId, count:1, ...pointer};
+}
+// Check and Add each own a browser request. A preview is not registration,
+// response headers are not completed bytes, and successful registration is not
+// yet a rendered Open control. Keep those boundaries separate for every caller.
+export async function registerP805ImportedProject(cdp, evaluate, projectLocation, readBrowserResponseBody, observation,
+    {responseTimeout = 120_000, renderTimeout = 30_000} = {}) {
+    const cursor = cdp.events.length, stages = [];
+    let phase = "preview", location = projectLocation;
+    const requests = pathname => cdp.events.slice(cursor).filter(event => event.method === "Network.requestWillBeSent"
+        && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === pathname);
+    try {
+        for (const [controlId, pathname, expectedStatus, expectedResult] of [
+            ["project-import-check", "/api/home/projects/registry/preview", 200, "recognized"],
+            ["project-import-add", "/api/home/projects/registry/register", 201, "ok"],
+        ]) {
+            phase = controlId === "project-import-check" ? "preview" : "registration";
+            const stage = {phase, pathname};
+            stages.push(stage);
+            await waitFor(() => evaluate(`(() => { const item = document.getElementById(${JSON.stringify(controlId)}); return item instanceof HTMLButtonElement && !item.disabled; })()`), `${observation} enabled ${controlId}`, renderTimeout);
+            // Space binds keydown, keyup and the ensuing native click before
+            // React can replace/disable the submitting Button. Never retry input.
+            stage.activation = await activateP805KeyboardControl(cdp, evaluate, controlId, true);
+            const request = await waitFor(() => requests(pathname)[0], `${observation} ${phase} request`, renderTimeout);
+            stage.requestId = request.params.requestId;
+            if (requests(pathname).length !== 1 || JSON.parse(request.params.request.postData).location !== location) fail(`${observation} ${phase} did not submit exactly one request for ${location}`);
+            const response = await waitFor(() => cdp.events.slice(cursor).find(event => event.method === "Network.responseReceived" && event.params.requestId === stage.requestId), `${observation} ${phase} response`, responseTimeout);
+            stage.status = response.params.response.status;
+            const body = await readBrowserResponseBody(stage.requestId, `${observation} ${phase}`);
+            const payload = JSON.parse(body.base64Encoded ? Buffer.from(body.body, "base64").toString("utf8") : body.body);
+            stage.result = payload;
+            if (stage.status !== expectedStatus || payload.status !== expectedResult) fail(`${observation} ${phase} HTTP ${stage.status}: ${JSON.stringify(payload)}`);
+            const canonicalLocation = phase === "preview" ? payload.location : payload.entry?.location;
+            if (typeof canonicalLocation !== "string" || !canonicalLocation || phase === "registration" && canonicalLocation !== location) fail(`${observation} ${phase} returned an unrelated project location`);
+            location = canonicalLocation;
+            phase = `${phase} rendered control`;
+            await waitFor(() => evaluate(controlId === "project-import-check"
+                ? `(() => { const item = document.getElementById('project-import-add'); return item instanceof HTMLButtonElement && !item.disabled && document.body.innerText.includes('Found a'); })()`
+                : `(() => { const item = document.getElementById(${JSON.stringify(`project-open:${location}`)}); return item instanceof HTMLButtonElement && !item.disabled && item.dataset.pokieProjectLocation === ${JSON.stringify(location)}; })()`), `${observation} ${phase}`, renderTimeout);
+            if (requests(pathname).length !== 1) fail(`${observation} ${phase} submitted duplicate requests`);
+        }
+        return {projectLocation:location, stages};
+    } catch (error) {
+        const transactions = cdp.events.slice(cursor).filter(event => event.method === "Network.requestWillBeSent"
+            && /\/api\/home\/projects\/registry\/(preview|register)$/.test(new URL(event.params.request.url).pathname)).map(event => {
+            const response = cdp.events.slice(cursor).find(item => item.method === "Network.responseReceived" && item.params.requestId === event.params.requestId);
+            const finished = cdp.events.slice(cursor).find(item => ["Network.loadingFinished", "Network.loadingFailed"].includes(item.method) && item.params.requestId === event.params.requestId);
+            return {requestId:event.params.requestId, body:event.params.request.postData, status:response?.params.response.status,
+                completion:finished?.method ?? "pending", elapsedMs:finished ? Math.round((finished.params.timestamp - event.params.timestamp) * 1000) : null, error:finished?.params.errorText};
+        });
+        const rendered = await evaluate("({route:location.hash, text:document.body.innerText.slice(0,2400)})");
+        throw new Error(`${error.message}; imported project: ${JSON.stringify({phase, projectLocation, location, stages, transactions, rendered})}`, {cause:error});
+    }
 }
 export async function openP805ImportedProject(cdp, evaluate, projectLocation, readBrowserResponseBody) {
     const controlId = `project-open:${projectLocation}`;
@@ -2927,27 +2981,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 return input.value === ${JSON.stringify(projectLocation)};
             })()`);
             if (!locationSet) fail(`${observation} could not set the rendered project import location`);
-            const activate = async (id, label) => {
-                const control = await evaluate(`(() => { const item = document.getElementById(${JSON.stringify(id)}); if (!(item instanceof HTMLElement) || ('disabled' in item && item.disabled)) return false; item.focus({preventScroll:true}); return document.activeElement === item ? {stableControlId:item.id} : false; })()`);
-                if (!control?.stableControlId) fail(`${observation} did not expose its rendered ${label} control`);
-                // Project import controls replace their own preview/card while
-                // handling the action.  Native keyboard activation keeps the
-                // focused rendered button as the event target through that
-                // React update; a pointer release can otherwise be retargeted
-                // to the reflowed panel and leave the person at a silent
-                // unchanged form.
-                await activateFocusedControl("operation", control, "keyboard");
-            };
-            await activate("project-import-check", "Check game");
-            const importState = await waitFor(() => evaluate(`(() => {
-                const registered = document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]');
-                const preview = document.body.innerText.includes('Found a') && !!document.getElementById('project-import-add');
-                return preview ? 'preview' : registered instanceof HTMLElement ? 'registered' : false;
-            })()`), `${observation} rendered project import preview or existing registered project`);
-            if (importState === "preview") await activate("project-import-add", "Add to projects");
-            await waitFor(() => evaluate(`!!document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]')`), `${observation} rendered registered project`);
-            const opened = await openP805ImportedProject(cdp, evaluate, projectLocation, readBrowserResponseBody);
-            await save("json", `${observation.replace(/[^a-z0-9]+/gi, "-")}-${evidence.length + 1}-import-open.json`, JSON.stringify(opened, null, 2), [observation]);
+            const imported = await registerP805ImportedProject(cdp, evaluate, projectLocation, readBrowserResponseBody, observation);
+            const opened = await openP805ImportedProject(cdp, evaluate, imported.projectLocation, readBrowserResponseBody);
+            await save("json", `${observation.replace(/[^a-z0-9]+/gi, "-")}-${evidence.length + 1}-import-open.json`, JSON.stringify({...opened, imported}, null, 2), [observation]);
             const route = opened.route;
             return route.replace(/\/[^/]+$/, "");
         };

@@ -314,9 +314,10 @@ describe("P8-05 rendered Valera persona evidence", () => {
             try {
                 const [port]=await once(child,'message');
                 let elapsed=0,polls=0;
+                const marker=once(child.stdout,'data');
                 const output=await waitForP805PackedServer(child,'http://127.0.0.1:'+port,{
                     now:()=>elapsed,
-                    pause:async()=>{elapsed+=15000;if(++polls===3)child.stdin.write('ready\\n');await pause(10);}
+                    pause:async()=>{elapsed+=15000;if(++polls===3){child.stdin.write('ready\\n');await marker;}await pause(0);}
                 });
                 assert.ok(elapsed>30000);
                 assert.match(output,/POKIE dev server listening/);
@@ -328,10 +329,13 @@ describe("P8-05 rendered Valera persona evidence", () => {
                     : "console.error('invalid package input');process.exitCode=7;"
                 ],{stdio:['ignore','pipe','pipe']});
                 const exited=once(child,'exit');
+                // Start the virtual deadline only after the real child has
+                // emitted diagnostics. Fixed sleeps race cold Node startup.
+                const diagnostic=once(child.stderr,'data');
                 try {
                     let elapsed=0;
                     await assert.rejects(waitForP805PackedServer(child,'http://127.0.0.1:1',{
-                        now:()=>elapsed,pause:async()=>{await pause(20);elapsed+=timeout?30000:1;}
+                        now:()=>elapsed,pause:async()=>{await diagnostic;await pause(0);elapsed+=timeout?30000:1;}
                     }),timeout?/Timed out waiting for packed CLI serve[\\s\\S]*still preparing package/:/stopped before readiness: 7[\\s\\S]*invalid package input/);
                 } finally {if(child.exitCode===null)child.kill();await exited;}
             }
@@ -339,6 +343,96 @@ describe("P8-05 rendered Valera persona evidence", () => {
         `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000});
         expect(result).toContain("PACKED_SERVE_BOUNDARY_OK");
     });
+
+    it("binds native import confirmations to exact responses before observing registered projects", () => {
+        // Exercise the shared browser boundary, without starting installed
+        // persona collection. Real Chromium input/fetch/CDP is used throughout.
+        const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", String.raw`
+            import assert from 'node:assert/strict';
+            import {spawn} from 'node:child_process';
+            import {mkdtemp,readFile,rm} from 'node:fs/promises';
+            import {tmpdir} from 'node:os';
+            import path from 'node:path';
+            import {createServer} from 'node:http';
+            import {connectP805Devtools,registerP805ImportedProject,hasP805NativeActivation} from './scripts/p8-05-valera-browser-audit.mjs';
+            const profile=await mkdtemp(path.join(tmpdir(),'p805-import-boundary-'));
+            const browser=spawn(process.env.P805_CHROMIUM_BINARY??'chromium-browser',['--headless=new','--no-sandbox','--no-first-run','--disable-background-networking','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'],{stdio:'ignore'});
+            let terminal,cdp,scenario,source;
+            const exited=new Promise(resolve=>{browser.once('error',error=>{terminal=error;resolve();});browser.once('exit',(code,signal)=>{terminal={code,signal};resolve();});});
+            const requests=[],timers=new Set();
+            const later=(callback,ms)=>{const timer=setTimeout(()=>{timers.delete(timer);callback();},ms);timers.add(timer);};
+            const server=createServer(async(request,response)=>{
+                if(!request.url.startsWith('/api/')){
+                    response.setHeader('Content-Type','text/html');
+                    response.end('<!doctype html><button type="button" id="project-import-check">Check game</button><main id="preview"></main><p id="error"></p><script>'+
+                        'window.clicks=[];const source='+JSON.stringify(source)+';'+
+                        'document.getElementById("project-import-check").onclick=async event=>{window.clicks.push({id:event.currentTarget.id,trusted:event.isTrusted});event.currentTarget.disabled=true;'+
+                        'const result=await (await fetch("/api/home/projects/registry/preview",{method:"POST",body:JSON.stringify({location:source})})).json();'+
+                        'document.getElementById("preview").innerHTML="Found a "+result.type+" <button type=button id=project-import-add>Add to projects</button>";'+
+                        'document.getElementById("project-import-add").disabled='+(scenario==='disabled-add')+';document.getElementById("project-import-add").onclick=async event=>{window.clicks.push({id:event.currentTarget.id,trusted:event.isTrusted});event.currentTarget.disabled=true;'+
+                        'const result=await (await fetch("/api/home/projects/registry/register",{method:"POST",body:JSON.stringify({location:resultLocation(),name:"Imported"})})).json();'+
+                        'if(result.status!=="ok"){document.getElementById("error").textContent=result.error;return;}'+
+                        (scenario==='missing-row'?'return;':
+                            'const open=document.createElement("button");open.type="button";open.id="project-open:"+result.entry.location;open.dataset.pokieProjectLocation=result.entry.location;open.textContent="Open";document.body.append(open);')+
+                        '};window.resultLocation=()=>result.location;};</script>');
+                    return;
+                }
+                let body='';for await(const chunk of request)body+=chunk;
+                const input=JSON.parse(body),register=request.url.endsWith('/register');
+                const transaction={path:request.url,input,started:Date.now()};requests.push(transaction);
+                if(register&&scenario==='blocked')return;
+                const status=register?(scenario==='rejected'?409:201):200;
+                const location=register&&scenario==='wrong-location'?'/another-project':source;
+                const payload=register?(scenario==='rejected'?{status:'error',error:'Registry is read-only'}:{status:'ok',entry:{location}}):{status:'recognized',location,type:scenario};
+                const headers=()=>{response.writeHead(status,{'Content-Type':'application/json'});response.flushHeaders();};
+                const finish=()=>{transaction.completed=Date.now();response.end(JSON.stringify(payload));};
+                if(register&&scenario==='delayed-headers')later(()=>{headers();finish();},180);
+                else {headers();if(register&&scenario==='delayed-bytes')later(finish,180);else finish();}
+            });
+            await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+            const poll=async read=>{const until=Date.now()+30000;for(;;){const value=await read();if(value)return value;assert.equal(terminal,undefined);assert.ok(Date.now()<until,'Chromium boundary timeout');await new Promise(resolve=>setTimeout(resolve,10));}};
+            try {
+                const port=await poll(async()=>{try{return (await readFile(path.join(profile,'DevToolsActivePort'),'utf8')).split(String.fromCharCode(10))[0];}catch(error){if(error.code!=='ENOENT')throw error;return false;}});
+                cdp=await connectP805Devtools('http://127.0.0.1:'+port);
+                const evaluate=async expression=>{const result=await cdp.send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});assert.equal(result.exceptionDetails,undefined);return result.result.value;};
+                for(scenario of ['blueprint','tsPackage','outcomeLibrary','delayed-headers','delayed-bytes','rejected','wrong-location','blocked','missing-row','disabled-add']){
+                    source='/imported '+scenario;requests.length=0;
+                    const url='http://127.0.0.1:'+server.address().port+'/'+scenario;
+                    await cdp.send('Page.navigate',{url});
+                    await poll(()=>evaluate('location.href==='+JSON.stringify(url)+'&&document.readyState==="complete"&&!!document.getElementById("project-import-check")'));
+                    const started=Date.now();
+                    const operation=registerP805ImportedProject(cdp,evaluate,source,async id=>{
+                        await poll(()=>cdp.events.some(event=>event.method==='Network.loadingFinished'&&event.params.requestId===id));
+                        return cdp.send('Network.getResponseBody',{requestId:id});
+                    },'primary Blueprint workflow import',{responseTimeout:500,renderTimeout:100});
+                    if(['rejected','wrong-location','blocked','missing-row','disabled-add'].includes(scenario)){
+                        const pattern={rejected:/registration HTTP 409:.*Registry is read-only/, 'wrong-location':/unrelated project location/,blocked:/registration response.*"completion":"pending"/, 'missing-row':/registration rendered control.*"status":201.*"completion":"Network.loadingFinished"/, 'disabled-add':/preview rendered control/}[scenario];
+                        await assert.rejects(operation,pattern);
+                    } else {
+                        const imported=await operation;
+                        assert.equal(imported.projectLocation,source);
+                        assert.deepEqual(imported.stages.map(stage=>stage.status),[200,201]);
+                        for(const stage of imported.stages){assert.equal(hasP805NativeActivation(stage.activation,stage.activation.controlId),true);assert.equal(stage.activation.dispatch.clickCount,1);}
+                        const receipt=imported.stages[1].activation;
+                        assert.equal(hasP805NativeActivation({...receipt,dispatch:{...receipt.dispatch,clickCount:0}},receipt.controlId),false,'keyup without native click is not import evidence');
+                        if(scenario.startsWith('delayed')){assert.ok(Date.now()-started>100,'response preparation does not consume the rendered deadline');assert.ok(requests[1].completed-requests[1].started>=100,'registration itself exceeds the rendered budget');}
+                    }
+                    assert.deepEqual(requests.map(item=>item.path),scenario==='disabled-add'?['/api/home/projects/registry/preview']:['/api/home/projects/registry/preview','/api/home/projects/registry/register']);
+                    assert.deepEqual(requests.map(item=>item.input.location),scenario==='disabled-add'?[source]:[source,source]);
+                    const clicks=[{id:'project-import-check',trusted:true},...(scenario==='disabled-add'?[]:[{id:'project-import-add',trusted:true}])];
+                    assert.deepEqual(await evaluate('window.clicks'),clicks);
+                    assert.equal(await evaluate('window.__p805KeyboardReceipts.size'),0);
+                }
+                console.log(JSON.stringify({nativeImportCases:10,siblingTypes:3,delayedPreparation:2,rejections:5,noRepeatedRequests:true}));
+            } finally {
+                cdp?.close();browser.kill('SIGTERM');await exited;
+                for(const timer of timers)clearTimeout(timer);
+                server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
+                await rm(profile,{recursive:true,force:true});
+            }
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 60_000}));
+        expect(result).toEqual({nativeImportCases: 10, siblingTypes: 3, delayedPreparation: 2, rejections: 5, noRepeatedRequests: true});
+    }, 90_000);
 
     it.each(["exact", "sampled", "rejected", "blocked", "sampled-budget"] as const)("observes Outcome Library preparation through the production card (%s)", async scenario => {
         const {requireP805OutcomeLibraryCard} = await runInThisContext(`import(${JSON.stringify(pathToFileURL(runner).href)})`, {importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER});
