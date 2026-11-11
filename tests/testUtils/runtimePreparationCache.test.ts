@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {execFileSync} from "node:child_process";
+import childProcess, {execFileSync} from "node:child_process";
 import {createHash} from "node:crypto";
 import {compiledTestRuntime} from "./stageCompiledTestRuntime.js";
 import {preparePackedTestCandidate} from "./preparePackedTestCandidate.js";
@@ -125,7 +125,7 @@ describe("source-bound test preparation", () => {
         expect(fs.readFileSync(path.join(root, "node_modules/package-calls"), "utf8")).toBe("prepare\nprepare\n");
     });
 
-    function tinyPackage(interruptPublication = false): string {
+    function tinyPackage(): string {
         write(".gitignore", "node_modules/\ndist/\n");
         write("package.json", JSON.stringify({name: "preparation-probe", version: "0.0.1", files: ["dist"],
             scripts: {build: "node build.cjs"}}));
@@ -137,9 +137,10 @@ describe("source-bound test preparation", () => {
             fs.mkdirSync('dist',{recursive:true});fs.writeFileSync('dist/index.js','exports.answer=42;');
         `);
         for (const name of ["prepare-test-package.mjs", "p8-05-candidate-package-verifier.mjs"]) {
-            const preload = interruptPublication && name === "prepare-test-package.mjs" ? 'import "../node_modules/interrupt-publication.cjs";\n' : "";
+            const preload = name === "prepare-test-package.mjs" ? 'import "../node_modules/preparation-probe.cjs";\n' : "";
             write(`scripts/${name}`, preload + fs.readFileSync(path.resolve(__dirname, "../../scripts", name), "utf8"));
         }
+        write("node_modules/preparation-probe.cjs", "// Native boundary probe, replaced only by interruption cases.\n");
         const git = (args: string[]): string => execFileSync("git", args, {cwd: root, encoding: "utf8"}).trim();
         git(["init", "-q"]);
         git(["config", "user.email", "test@local"]);
@@ -156,11 +157,25 @@ describe("source-bound test preparation", () => {
         return path.join(parent, names[0]);
     }
 
+    function attempts(output: string): string[] {
+        return fs.readdirSync(output).filter(name => name.startsWith("attempt-")).map(name => path.join(output, name));
+    }
+
+    function failure(output: string): {candidateId: string; stage: string; message: string; code?: string; stdout?: string; stderr?: string} {
+        const entries = attempts(output);
+        expect(entries).toHaveLength(1);
+        return JSON.parse(fs.readFileSync(path.join(entries[0], "failure.json"), "utf8"));
+    }
+
     function expectVerifiedReuse(candidateId: string, output: string): void {
         const privateFile = path.join(output, "consumer/state.json");
         fs.mkdirSync(path.dirname(privateFile), {recursive: true});
         fs.writeFileSync(privateFile, "private consumer state");
+        const failedAttempt = attempts(output)[0];
+        const failedBytes = fs.readFileSync(path.join(failedAttempt, "failure.json"));
         const prepared = preparePackedTestCandidate(root);
+        expect(attempts(output)).toHaveLength(2);
+        expect(fs.readFileSync(path.join(failedAttempt, "failure.json"))).toEqual(failedBytes);
         expect(path.dirname(prepared.archive)).toBe(output);
         const proof = JSON.parse(fs.readFileSync(prepared.receipt, "utf8"));
         expect(proof.candidateId).toBe(candidateId);
@@ -188,7 +203,9 @@ describe("source-bound test preparation", () => {
         write("node_modules/reject-verifier", "fail this attempt");
         expect(() => preparePackedTestCandidate(root)).toThrow(/exit 1/);
         const output = incompleteDirectory();
-        expect(fs.readdirSync(path.join(output, "source"))).toEqual(["preparation-probe-0.0.1.tgz"]);
+        expect(fs.readdirSync(path.join(attempts(output)[0], "source"))).toEqual(["preparation-probe-0.0.1.tgz"]);
+        expect(failure(output)).toMatchObject({candidateId, stage: "independent-verification",
+            stderr: expect.stringContaining("fixture verifier build failure")});
         expect(fs.existsSync(path.join(output, "complete.json"))).toBe(false);
         expect(fs.existsSync(path.join(output, "candidate-package.tgz"))).toBe(false);
         fs.unlinkSync(path.join(root, "node_modules/reject-verifier"));
@@ -197,10 +214,10 @@ describe("source-bound test preparation", () => {
     }, 30_000);
 
     it("retries interrupted publication with exclusive archive, receipt and temporary marker already present", () => {
-        const candidateId = tinyPackage(true);
+        const candidateId = tinyPackage();
         // Inject only the final rename failure in the child. All build, pack,
         // verification and exclusive publication writes execute unchanged.
-        write("node_modules/interrupt-publication.cjs", `
+        write("node_modules/preparation-probe.cjs", `
             const fs=require('node:fs/promises'),path=require('node:path');
             const flag=path.join(__dirname,'interrupt-publication');
             const rename=fs.rename;
@@ -213,12 +230,82 @@ describe("source-bound test preparation", () => {
         write("node_modules/interrupt-publication", "fail this publication");
         expect(() => preparePackedTestCandidate(root)).toThrow(/exit 1/);
         const output = incompleteDirectory();
-        for (const name of ["source", "candidate-package.tgz", "candidate-executable-receipt.json", "complete.tmp"]) {
-            expect(fs.existsSync(path.join(output, name))).toBe(true);
-        }
+        for (const name of ["source", "complete.tmp"]) expect(fs.existsSync(path.join(attempts(output)[0], name))).toBe(true);
+        for (const name of ["candidate-package.tgz", "candidate-executable-receipt.json"]) expect(fs.existsSync(path.join(output, name))).toBe(true);
+        expect(failure(output)).toMatchObject({candidateId, stage: "publication", message: "interrupted publication"});
         expect(fs.existsSync(path.join(output, "complete.json"))).toBe(false);
         fs.unlinkSync(path.join(root, "node_modules/interrupt-publication"));
         expectVerifiedReuse(candidateId, output);
         expect(fs.readFileSync(path.join(root, "node_modules/package-builds"), "utf8")).toBe("canonical\nindependent\ncanonical\nindependent\n");
+    }, 30_000);
+
+    it("retries after source creation without reusing stale staging or removing private state", () => {
+        const candidateId = tinyPackage();
+        write("node_modules/preparation-probe.cjs", `
+            const fs=require('node:fs/promises'),path=require('node:path');
+            const mkdir=fs.mkdir,flag=path.join(__dirname,'interrupt-source');
+            fs.mkdir=async(target,...args)=>{
+                const value=await mkdir(target,...args);
+                if(require('node:fs').existsSync(flag) && path.basename(target)==='source') throw new Error('interrupted source creation');
+                return value;
+            };
+            require('node:module').syncBuiltinESMExports();
+        `);
+        write("node_modules/interrupt-source", "stop after mkdir");
+        expect(() => preparePackedTestCandidate(root)).toThrow(/exit 1/);
+        const output = incompleteDirectory();
+        expect(failure(output)).toMatchObject({candidateId, stage: "source-creation", message: "interrupted source creation"});
+        expect(fs.readdirSync(path.join(attempts(output)[0], "source"))).toEqual([]);
+        expect(fs.existsSync(path.join(output, "complete.json"))).toBe(false);
+        // Also exercise recovery of the previous in-place preparation layout.
+        for (const name of ["source/stale.tgz", "candidate-package.tgz", "candidate-executable-receipt.json", "complete.tmp"]) {
+            write(path.relative(root, path.join(output, name)), "incomplete legacy bytes");
+        }
+        fs.unlinkSync(path.join(root, "node_modules/interrupt-source"));
+        expectVerifiedReuse(candidateId, output);
+        expect(fs.existsSync(path.join(output, "source"))).toBe(false);
+        expect(fs.readFileSync(path.join(root, "node_modules/package-builds"), "utf8")).toBe("canonical\ncanonical\nindependent\n");
+    }, 30_000);
+
+    it("retains native build timeout diagnostics and budgets the public preparation through verification and reuse", () => {
+        const candidateId = tinyPackage();
+        write("node_modules/preparation-probe.cjs", `
+            const cp=require('node:child_process'),fs=require('node:fs'),path=require('node:path');
+            const exec=cp.execFileSync;
+            cp.execFileSync=(file,args,options)=>{
+                if(args[1]==='run' && args[2]==='build') {
+                    fs.appendFileSync(path.join(__dirname,'build-budgets'),String(options.timeout)+'\\n');
+                    if(fs.existsSync(path.join(__dirname,'interrupt-build'))) {
+                        // Reproduce the retained native ETIMEDOUT/output contract
+                        // in milliseconds, without running a real five-minute build.
+                        return exec(process.execPath,['-e',"process.stdout.write('cold build reached Studio compiler\\\\n');process.stderr.write('bounded timeout probe\\\\n');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10000)"],
+                            {...options,timeout:500,killSignal:'SIGKILL'});
+                    }
+                }
+                return exec(file,args,options);
+            };
+            require('node:module').syncBuiltinESMExports();
+        `);
+        write("node_modules/interrupt-build", "stop canonical build");
+        const spawn = jest.spyOn(childProcess, "spawnSync");
+        try {
+            expect(() => preparePackedTestCandidate(root)).toThrow(/exit 1/);
+            const output = incompleteDirectory();
+            expect(failure(output)).toMatchObject({candidateId, stage: "canonical-build", code: "ETIMEDOUT",
+                stdout: expect.stringContaining("cold build reached Studio compiler"),
+                stderr: expect.stringContaining("bounded timeout probe")});
+            expect(fs.existsSync(path.join(output, "complete.json"))).toBe(false);
+            expect(fs.existsSync(path.join(root, "node_modules/.cache/pokie-test-build-locks/verified-test-package.lock"))).toBe(false);
+            fs.unlinkSync(path.join(root, "node_modules/interrupt-build"));
+            expectVerifiedReuse(candidateId, output);
+            const budgets = fs.readFileSync(path.join(root, "node_modules/build-budgets"), "utf8").trim().split("\n").map(Number);
+            expect(budgets).toEqual([600_000, 600_000]);
+            const preparationCalls = spawn.mock.calls.filter(call => call[1]?.some(arg => String(arg).endsWith("/scripts/prepare-test-package.mjs")));
+            expect(preparationCalls).toHaveLength(2);
+            for (const call of preparationCalls) expect(call[2]?.timeout).toBeGreaterThan(600_000 + 30_000 + 300_000);
+            expect(fs.readFileSync(path.join(root, "node_modules/package-builds"), "utf8")).toBe("canonical\nindependent\n");
+        } finally {
+            spawn.mockRestore();
+        }
     }, 30_000);
 });

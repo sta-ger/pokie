@@ -240,5 +240,5 @@ describe("P8-05 Valera Programmer installed public path", () => {
         } finally {
             rmSync(candidateDirectory, {recursive: true, force: true});
         }
-    }, 900_000);
+    }, 1_200_000);
 });

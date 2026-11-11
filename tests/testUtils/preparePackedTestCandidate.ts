@@ -21,7 +21,10 @@ export function preparePackedTestCandidate(repository = process.cwd()): {archive
         repositoryRoot: repository,
         // Marker presence must trigger validation even when an artifact is
         // missing. Only marker absence permits rebuilding incomplete staging.
-        lockName: "verified-test-package", outputPaths: [complete], executionTimeoutMs: 660_000,
+        // 600s canonical build (including lint), 30s pack, 300s independent
+        // build, plus bounded manifest/publication overhead. The outer owner
+        // still drains the whole process group if any phase exceeds its bound.
+        lockName: "verified-test-package", outputPaths: [complete], executionTimeoutMs: 960_000,
         validateOutputs: () => {
             // A corrupt cache is a real failure. Never silently re-bless bytes
             // by updating its marker or skipping the independent verifier.
