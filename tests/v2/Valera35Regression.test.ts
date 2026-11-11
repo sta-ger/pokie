@@ -325,7 +325,7 @@ describe("V2C-35 retained exact-finite request through public consumers", () => 
         // Fresh native source execution avoids Jest's cross-context hot-loop cost.
         // No checkout dist, package preparation, npm lifecycle or ambient temp path.
         const entry = path.resolve("tests/v2/fixtures/RetainedOptimizationProbe.ts");
-        const script = `
+        const script = (phase: "search" | "apply") => `
             const fs = require("node:fs"), Module = require("node:module"), ts = require("typescript");
             const original = Module._resolveFilename;
             Module._resolveFilename = function(request, ...rest) {
@@ -339,26 +339,32 @@ describe("V2C-35 retained exact-finite request through public consumers", () => 
             Module._extensions[".ts"] = (module, file) => module._compile(ts.transpileModule(fs.readFileSync(file, "utf8"), {
                 compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true}
             }).outputText, file);
-            require(${JSON.stringify(entry)}).runRetainedOptimization(${JSON.stringify(directory)}).catch(error => {
+            require(${JSON.stringify(entry)}).runRetainedOptimization(${JSON.stringify(directory)}, ${JSON.stringify(phase)}).catch(error => {
                 console.error(error); process.exitCode = 1;
             });
         `;
         preserveDirectory = true;
-        const result = spawnSync(process.execPath, ["--max-old-space-size=768", "-e", script], {
-            cwd: process.cwd(), encoding: "utf8", timeout: 600000, killSignal: "SIGKILL", maxBuffer: 2 * 1024 * 1024,
-            env: {...process.env, TMPDIR: directory},
-        });
-        fs.writeFileSync(path.join(directory, "native.stdout.log"), result.stdout ?? "");
-        fs.writeFileSync(path.join(directory, "native.stderr.log"), result.stderr ?? "");
-        console.info(result.stdout);
-        if (result.error || result.status !== 0) console.error(`Retained native diagnostics: ${directory}`, result.stderr);
-        expect(result.error).toBeUndefined();
-        expect(result.signal).toBeNull();
-        expect(result.status).toBe(0);
-        expect(result.stdout).toContain("V2C-35 shutdown released the retained candidate workspace.");
-        expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+        // The retained log completed search (432.8s) and retry (146.2s), then
+        // hit a shared 600s deadline before Apply could remeasure. Keep the same
+        // per-child bound, with separate drained search and retry/Apply hosts.
+        for (const phase of ["search", "apply"] as const) {
+            const result = spawnSync(process.execPath, ["--max-old-space-size=768", "-e", script(phase)], {
+                cwd: process.cwd(), encoding: "utf8", timeout: 600000, killSignal: "SIGKILL", maxBuffer: 2 * 1024 * 1024,
+                env: {...process.env, TMPDIR: directory},
+            });
+            fs.writeFileSync(path.join(directory, `native.${phase}.stdout.log`), result.stdout ?? "");
+            fs.writeFileSync(path.join(directory, `native.${phase}.stderr.log`), result.stderr ?? "");
+            console.info(result.stdout);
+            if (result.error || result.status !== 0) console.error(`Retained native ${phase} diagnostics: ${directory}`, result.stderr);
+            expect(result.error).toBeUndefined();
+            expect(result.signal).toBeNull();
+            expect(result.status).toBe(0);
+            expect(result.stdout).toContain(`V2C-35 native ${phase} phase:`);
+            expect(result.stdout).toContain("V2C-35 shutdown released the retained candidate workspace.");
+            expect(fs.readdirSync(path.join(directory, "scratch"))).toEqual([]);
+        }
         preserveDirectory = false;
-    }, 660000);
+    }, 1260000);
 
     it("authenticates the complete saved gate delta without exempting product, build or receipt pins", () => {
         const repository = path.join(directory, "handoff-repository");

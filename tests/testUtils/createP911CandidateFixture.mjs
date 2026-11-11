@@ -18,6 +18,7 @@ export const V2C37_SAVED_GATE_CORRECTION_PATHS = [
     "tests/testUtils/stageCompiledTestRuntime.ts",
     "tests/v2/helpers/publicRuntime.ts",
     // V2C-37 retained optimizer native-host regression; product/build inputs remain protected.
+    "tests/project/BlueprintStakeOutcomeLibraryWorkflow.test.ts",
     "tests/v2/Valera35Regression.test.ts",
     "tests/v2/fixtures/RetainedOptimizationProbe.ts",
     "scripts/prepare-test-package.mjs",
@@ -56,6 +57,7 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "scripts/p8-05-packed-output-evidence.mjs",
     "scripts/p8-05-product-readiness-campaign.mjs",
     // V2C-37 retained optimizer native-host regression; product/build inputs remain protected.
+    "tests/project/BlueprintStakeOutcomeLibraryWorkflow.test.ts",
     "tests/v2/Valera35Regression.test.ts",
     "tests/v2/fixtures/RetainedOptimizationProbe.ts",
     "scripts/prepare-test-package.mjs",

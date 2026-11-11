@@ -22,6 +22,7 @@ const tooling = new Set([
     // V2C-37 bounded lossless browser/API log persistence; product and driver pins stay protected.
     "scripts/p8-05-packed-output-evidence.mjs",
     // V2C-37 retained optimizer native-host regression; product/build inputs remain protected.
+    "tests/project/BlueprintStakeOutcomeLibraryWorkflow.test.ts",
     "tests/v2/Valera35Regression.test.ts",
     "tests/v2/fixtures/RetainedOptimizationProbe.ts",
     "scripts/prepare-test-package.mjs",

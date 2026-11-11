@@ -4,6 +4,7 @@ import {authoritativePaytableBlueprint, expectAuthoritativeEightOutcomes} from "
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
 import {
     ArtifactBuildCancelledError,
     ArtifactBuilderRegistry,
@@ -103,10 +104,14 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
         const packageRoot = path.join(workDir, "game");
         const packageName = "workflow-runtime-lease-fixture";
         fs.cpSync(path.join(__dirname, "..", "cli", "fixtures", "playable-game-with-config-hash"), packageRoot, {recursive: true});
+        // Exercise real snapshots of a private source-bound runtime, as an installed
+        // package would. The implicit host fallback would snapshot the whole checkout.
+        stageCompiledTestRuntime(packageRoot);
         fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({
             name: packageName,
             version: "1.0.0",
             pokie: {entry: "./index.js"},
+            dependencies: {"@fromstan/pokie": "*"},
         }));
         fs.writeFileSync(path.join(packageRoot, "index.js"), `
             const {SymbolsSequence, VideoSlotConfig, VideoSlotSession} = require("@fromstan/pokie");
