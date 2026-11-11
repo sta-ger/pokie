@@ -125,7 +125,7 @@ describe("source-bound test preparation", () => {
         expect(fs.readFileSync(path.join(root, "node_modules/package-calls"), "utf8")).toBe("prepare\nprepare\n");
     });
 
-    function tinyPackage(): string {
+    function tinyPackage(interruptPublication = false): string {
         write(".gitignore", "node_modules/\ndist/\n");
         write("package.json", JSON.stringify({name: "preparation-probe", version: "0.0.1", files: ["dist"],
             scripts: {build: "node build.cjs"}}));
@@ -137,7 +137,8 @@ describe("source-bound test preparation", () => {
             fs.mkdirSync('dist',{recursive:true});fs.writeFileSync('dist/index.js','exports.answer=42;');
         `);
         for (const name of ["prepare-test-package.mjs", "p8-05-candidate-package-verifier.mjs"]) {
-            write(`scripts/${name}`, fs.readFileSync(path.resolve(__dirname, "../../scripts", name), "utf8"));
+            const preload = interruptPublication && name === "prepare-test-package.mjs" ? 'import "../node_modules/interrupt-publication.cjs";\n' : "";
+            write(`scripts/${name}`, preload + fs.readFileSync(path.resolve(__dirname, "../../scripts", name), "utf8"));
         }
         const git = (args: string[]): string => execFileSync("git", args, {cwd: root, encoding: "utf8"}).trim();
         git(["init", "-q"]);
@@ -196,31 +197,27 @@ describe("source-bound test preparation", () => {
     }, 30_000);
 
     it("retries interrupted publication with exclusive archive, receipt and temporary marker already present", () => {
-        const candidateId = tinyPackage();
+        const candidateId = tinyPackage(true);
         // Inject only the final rename failure in the child. All build, pack,
         // verification and exclusive publication writes execute unchanged.
         write("node_modules/interrupt-publication.cjs", `
             const fs=require('node:fs/promises'),path=require('node:path');
+            const flag=path.join(__dirname,'interrupt-publication');
             const rename=fs.rename;
             fs.rename=async(from,to)=>{
-                if(path.basename(from)==='complete.tmp' && path.basename(to)==='complete.json') throw new Error('interrupted publication');
+                if(require('node:fs').existsSync(flag) && path.basename(from)==='complete.tmp' && path.basename(to)==='complete.json') throw new Error('interrupted publication');
                 return rename(from,to);
             };
             require('node:module').syncBuiltinESMExports();
         `);
-        const previous = process.env.NODE_OPTIONS;
-        process.env.NODE_OPTIONS = `${previous ?? ""} --require=${JSON.stringify(path.join(root, "node_modules/interrupt-publication.cjs"))}`;
-        try {
-            expect(() => preparePackedTestCandidate(root)).toThrow(/exit 1/);
-        } finally {
-            if (previous === undefined) Reflect.deleteProperty(process.env, "NODE_OPTIONS");
-            else process.env.NODE_OPTIONS = previous;
-        }
+        write("node_modules/interrupt-publication", "fail this publication");
+        expect(() => preparePackedTestCandidate(root)).toThrow(/exit 1/);
         const output = incompleteDirectory();
         for (const name of ["source", "candidate-package.tgz", "candidate-executable-receipt.json", "complete.tmp"]) {
             expect(fs.existsSync(path.join(output, name))).toBe(true);
         }
         expect(fs.existsSync(path.join(output, "complete.json"))).toBe(false);
+        fs.unlinkSync(path.join(root, "node_modules/interrupt-publication"));
         expectVerifiedReuse(candidateId, output);
         expect(fs.readFileSync(path.join(root, "node_modules/package-builds"), "utf8")).toBe("canonical\nindependent\ncanonical\nindependent\n");
     }, 30_000);
