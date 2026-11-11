@@ -354,9 +354,10 @@ describe("P8-05 rendered Valera persona evidence", () => {
             import {tmpdir} from 'node:os';
             import path from 'node:path';
             import {createServer} from 'node:http';
-            import {connectP805Devtools,registerP805ImportedProject,hasP805NativeActivation} from './scripts/p8-05-valera-browser-audit.mjs';
+            import {connectP805Devtools,registerP805ImportedProject,hasP805NativeActivation,drainP805TrackedOwner,createP805OwnedProcessRecord} from './scripts/p8-05-valera-browser-audit.mjs';
             const profile=await mkdtemp(path.join(tmpdir(),'p805-import-boundary-'));
             const browser=spawn(process.env.P805_CHROMIUM_BINARY??'chromium-browser',['--headless=new','--no-sandbox','--no-first-run','--disable-background-networking','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'],{stdio:'ignore'});
+            const owner=createP805OwnedProcessRecord('focused import browser',browser,{});
             let terminal,cdp,scenario,source;
             const exited=new Promise(resolve=>{browser.once('error',error=>{terminal=error;resolve();});browser.once('exit',(code,signal)=>{terminal={code,signal};resolve();});});
             const requests=[],timers=new Set();
@@ -425,7 +426,13 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 }
                 console.log(JSON.stringify({nativeImportCases:10,siblingTypes:3,delayedPreparation:2,rejections:5,noRepeatedRequests:true}));
             } finally {
-                cdp?.close();browser.kill('SIGTERM');await exited;
+                const finalOwner=createP805OwnedProcessRecord('focused import browser',browser,{});
+                for(const [pid,identity] of finalOwner.ownedProcesses)owner.ownedProcesses.set(pid,identity);
+                cdp?.close();
+                const drained=await drainP805TrackedOwner(owner,1000);
+                assert.equal(drained.processTreeDrained,true);
+                assert.equal(drained.resourcesDrained,true);
+                await exited;
                 for(const timer of timers)clearTimeout(timer);
                 server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
                 await rm(profile,{recursive:true,force:true});
