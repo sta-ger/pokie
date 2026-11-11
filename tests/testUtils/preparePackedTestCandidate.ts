@@ -19,7 +19,9 @@ export function preparePackedTestCandidate(repository = process.cwd()): {archive
     const complete = path.join(directory, "complete.json");
     ensureCompiledTestOutput({
         repositoryRoot: repository,
-        lockName: "verified-test-package", outputPaths: [complete, archive, receipt], executionTimeoutMs: 660_000,
+        // Marker presence must trigger validation even when an artifact is
+        // missing. Only marker absence permits rebuilding incomplete staging.
+        lockName: "verified-test-package", outputPaths: [complete], executionTimeoutMs: 660_000,
         validateOutputs: () => {
             // A corrupt cache is a real failure. Never silently re-bless bytes
             // by updating its marker or skipping the independent verifier.

@@ -2,7 +2,7 @@
 // this module does not issue an acceptance or skip a consumer workflow.
 import {execFileSync} from "node:child_process";
 import {createHash} from "node:crypto";
-import {mkdir, readFile, rename, writeFile} from "node:fs/promises";
+import {lstat, mkdir, readFile, rename, rm, writeFile} from "node:fs/promises";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {verifyP805CandidatePackage} from "./p8-05-candidate-package-verifier.mjs";
@@ -20,6 +20,19 @@ export async function prepareTestPackage(repository, directory, candidateId) {
     env.PATH = (process.env.PATH ?? "").split(path.delimiter).filter(entry => !entry.includes("pokie-command-policy")).join(path.delimiter);
     const npm = args => execFileSync(process.execPath, [npmCli, ...args], {cwd: repository, env, encoding: "utf8", timeout: 300_000, maxBuffer: 64 * 1024 * 1024});
     await mkdir(directory, {recursive: true});
+    // The caller holds the serialized preparation lock. Never erase a completed
+    // cache (including a corrupt one); its validation belongs to the caller.
+    try {
+        await lstat(path.join(directory, "complete.json"));
+        throw new Error("Test package preparation requires an incomplete cache");
+    } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+    }
+    // Failure or process interruption can leave any publication phase behind.
+    // Clear only this attempt's known outputs, preserving private consumer state.
+    for (const name of ["source", "candidate-package.tgz", "candidate-executable-receipt.json", "complete.tmp"]) {
+        await rm(path.join(directory, name), {recursive: true, force: true});
+    }
     npm(["run", "build"]);
     const source = path.join(directory, "source");
     await mkdir(source);

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {execFileSync} from "node:child_process";
-import {pathToFileURL} from "node:url";
+import {createHash} from "node:crypto";
 import {compiledTestRuntime} from "./stageCompiledTestRuntime.js";
 import {preparePackedTestCandidate} from "./preparePackedTestCandidate.js";
 
@@ -81,11 +81,42 @@ describe("source-bound test preparation", () => {
         expect(preparePackedTestCandidate(root)).toEqual(prepared);
         expect(fs.readFileSync(path.join(root, "node_modules/package-calls"), "utf8")).toBe("prepare\n");
         const archive = fs.readFileSync(prepared.archive);
+        const receipt = fs.readFileSync(prepared.receipt);
+        const complete = path.join(path.dirname(prepared.archive), "complete.json");
+        const marker = fs.readFileSync(complete);
         fs.writeFileSync(prepared.archive, "corrupt archive");
         expect(() => preparePackedTestCandidate(root)).toThrow("Corrupt prepared test package");
         fs.writeFileSync(prepared.archive, archive);
         fs.writeFileSync(prepared.receipt, "{}");
         expect(() => preparePackedTestCandidate(root)).toThrow("Corrupt prepared test package");
+        fs.writeFileSync(prepared.receipt, receipt);
+        for (const file of [prepared.archive, prepared.receipt]) {
+            const bytes = fs.readFileSync(file);
+            fs.unlinkSync(file);
+            expect(() => preparePackedTestCandidate(root)).toThrow(/ENOENT/);
+            expect(fs.readFileSync(complete)).toEqual(marker);
+            expect(fs.existsSync(file)).toBe(false);
+            fs.writeFileSync(file, bytes);
+        }
+        // Matching edited copies cannot override the actual candidate or the
+        // required independent-build/authentication fields.
+        const proof = JSON.parse(receipt.toString());
+        for (const changed of [
+            {...proof, candidateId: "a".repeat(40)},
+            {...proof, verifiedBuild: undefined},
+            {...proof, authentication: {...proof.authentication, verifierExecutableSha256: "0".repeat(64)}},
+        ]) {
+            const bytes = JSON.stringify(changed);
+            fs.writeFileSync(prepared.receipt, bytes);
+            fs.writeFileSync(complete, JSON.stringify({...JSON.parse(marker.toString()), candidateId: changed.candidateId,
+                receiptSha256: createHash("sha256").update(bytes).digest("hex")}));
+            expect(() => preparePackedTestCandidate(root)).toThrow("Corrupt prepared test package");
+            expect(fs.readFileSync(prepared.receipt, "utf8")).toBe(bytes);
+        }
+        fs.writeFileSync(prepared.receipt, receipt);
+        fs.writeFileSync(complete, marker);
+        expect(preparePackedTestCandidate(root)).toEqual(prepared);
+        expect(fs.readFileSync(path.join(root, "node_modules/package-calls"), "utf8")).toBe("prepare\n");
         write("src/index.ts", "dirty");
         expect(() => preparePackedTestCandidate(root)).toThrow("must be clean");
         git(["add", "."]);
@@ -94,29 +125,103 @@ describe("source-bound test preparation", () => {
         expect(fs.readFileSync(path.join(root, "node_modules/package-calls"), "utf8")).toBe("prepare\nprepare\n");
     });
 
-    it("runs the real package preparer and independent verifier against a tiny committed package", () => {
+    function tinyPackage(): string {
         write(".gitignore", "node_modules/\ndist/\n");
         write("package.json", JSON.stringify({name: "preparation-probe", version: "0.0.1", files: ["dist"],
             scripts: {build: "node build.cjs"}}));
-        write("build.cjs", "const fs=require('fs');fs.mkdirSync('dist',{recursive:true});fs.writeFileSync('dist/index.js','exports.answer=42;');");
+        write("build.cjs", `
+            const fs=require('fs'),path=require('path');
+            const independent=path.basename(process.cwd()).startsWith('.p8-05-candidate-build-');
+            fs.appendFileSync('node_modules/package-builds',independent?'independent\\n':'canonical\\n');
+            if(independent && fs.existsSync('node_modules/reject-verifier')) throw new Error('fixture verifier build failure');
+            fs.mkdirSync('dist',{recursive:true});fs.writeFileSync('dist/index.js','exports.answer=42;');
+        `);
+        for (const name of ["prepare-test-package.mjs", "p8-05-candidate-package-verifier.mjs"]) {
+            write(`scripts/${name}`, fs.readFileSync(path.resolve(__dirname, "../../scripts", name), "utf8"));
+        }
         const git = (args: string[]): string => execFileSync("git", args, {cwd: root, encoding: "utf8"}).trim();
         git(["init", "-q"]);
         git(["config", "user.email", "test@local"]);
         git(["config", "user.name", "test"]);
         git(["add", "."]);
         git(["commit", "-qm", "tiny package"]);
-        const candidateId = git(["rev-parse", "HEAD"]);
-        const output = path.join(root, "node_modules/prepared");
-        const module = pathToFileURL(path.resolve(__dirname, "../../scripts/prepare-test-package.mjs")).href;
-        execFileSync(process.execPath, ["--input-type=module", "-e", `
-            import {prepareTestPackage} from ${JSON.stringify(module)};
-            await prepareTestPackage(${JSON.stringify(root)}, ${JSON.stringify(output)}, ${JSON.stringify(candidateId)});
-        `], {encoding: "utf8", timeout: 20_000});
-        const proof = JSON.parse(fs.readFileSync(path.join(output, "candidate-executable-receipt.json"), "utf8"));
+        return git(["rev-parse", "HEAD"]);
+    }
+
+    function incompleteDirectory(): string {
+        const parent = path.join(root, "node_modules/.cache/pokie-test-packages");
+        const names = fs.readdirSync(parent);
+        expect(names).toHaveLength(1);
+        return path.join(parent, names[0]);
+    }
+
+    function expectVerifiedReuse(candidateId: string, output: string): void {
+        const privateFile = path.join(output, "consumer/state.json");
+        fs.mkdirSync(path.dirname(privateFile), {recursive: true});
+        fs.writeFileSync(privateFile, "private consumer state");
+        const prepared = preparePackedTestCandidate(root);
+        expect(path.dirname(prepared.archive)).toBe(output);
+        const proof = JSON.parse(fs.readFileSync(prepared.receipt, "utf8"));
         expect(proof.candidateId).toBe(candidateId);
         expect(proof.verifiedBuild.environment.NODE_ENV).toBe("production");
+        expect(proof.verifiedBuild.executableFiles).toBe(1);
         expect(proof.authentication.scheme).toBe("verifier-owned-candidate-tree");
         expect(JSON.parse(fs.readFileSync(path.join(output, "complete.json"), "utf8")).archiveSha256).toBe(proof.candidatePackageSha256);
-        expect(git(["status", "--porcelain", "--untracked-files=all"])).toBe("");
+        const files = [prepared.archive, prepared.receipt, path.join(output, "complete.json")];
+        const bytes = files.map(file => fs.readFileSync(file));
+        const builds = fs.readFileSync(path.join(root, "node_modules/package-builds"), "utf8");
+        expect(preparePackedTestCandidate(root)).toEqual(prepared);
+        // Even the direct script must refuse a published directory.
+        expect(() => execFileSync(process.execPath, [path.join(root, "scripts/prepare-test-package.mjs"), root, output, candidateId],
+            {stdio: "pipe", timeout: 20_000})).toThrow(/requires an incomplete cache/);
+        expect(files.map(file => fs.readFileSync(file))).toEqual(bytes);
+        expect(fs.readFileSync(path.join(root, "node_modules/package-builds"), "utf8")).toBe(builds);
+        expect(fs.readFileSync(privateFile, "utf8")).toBe("private consumer state");
+        expect(fs.existsSync(path.join(output, "complete.tmp"))).toBe(false);
+        expect(fs.existsSync(path.join(root, "node_modules/.cache/pokie-test-build-locks/verified-test-package.lock"))).toBe(false);
+        expect(execFileSync("git", ["status", "--porcelain", "--untracked-files=all"], {cwd: root, encoding: "utf8"})).toBe("");
+    }
+
+    it("retries the same tiny candidate after source creation and a real independent verifier failure", () => {
+        const candidateId = tinyPackage();
+        write("node_modules/reject-verifier", "fail this attempt");
+        expect(() => preparePackedTestCandidate(root)).toThrow(/exit 1/);
+        const output = incompleteDirectory();
+        expect(fs.readdirSync(path.join(output, "source"))).toEqual(["preparation-probe-0.0.1.tgz"]);
+        expect(fs.existsSync(path.join(output, "complete.json"))).toBe(false);
+        expect(fs.existsSync(path.join(output, "candidate-package.tgz"))).toBe(false);
+        fs.unlinkSync(path.join(root, "node_modules/reject-verifier"));
+        expectVerifiedReuse(candidateId, output);
+        expect(fs.readFileSync(path.join(root, "node_modules/package-builds"), "utf8")).toBe("canonical\nindependent\ncanonical\nindependent\n");
+    }, 30_000);
+
+    it("retries interrupted publication with exclusive archive, receipt and temporary marker already present", () => {
+        const candidateId = tinyPackage();
+        // Inject only the final rename failure in the child. All build, pack,
+        // verification and exclusive publication writes execute unchanged.
+        write("node_modules/interrupt-publication.cjs", `
+            const fs=require('node:fs/promises'),path=require('node:path');
+            const rename=fs.rename;
+            fs.rename=async(from,to)=>{
+                if(path.basename(from)==='complete.tmp' && path.basename(to)==='complete.json') throw new Error('interrupted publication');
+                return rename(from,to);
+            };
+            require('node:module').syncBuiltinESMExports();
+        `);
+        const previous = process.env.NODE_OPTIONS;
+        process.env.NODE_OPTIONS = `${previous ?? ""} --require=${JSON.stringify(path.join(root, "node_modules/interrupt-publication.cjs"))}`;
+        try {
+            expect(() => preparePackedTestCandidate(root)).toThrow(/exit 1/);
+        } finally {
+            if (previous === undefined) Reflect.deleteProperty(process.env, "NODE_OPTIONS");
+            else process.env.NODE_OPTIONS = previous;
+        }
+        const output = incompleteDirectory();
+        for (const name of ["source", "candidate-package.tgz", "candidate-executable-receipt.json", "complete.tmp"]) {
+            expect(fs.existsSync(path.join(output, name))).toBe(true);
+        }
+        expect(fs.existsSync(path.join(output, "complete.json"))).toBe(false);
+        expectVerifiedReuse(candidateId, output);
+        expect(fs.readFileSync(path.join(root, "node_modules/package-builds"), "utf8")).toBe("canonical\nindependent\ncanonical\nindependent\n");
     }, 30_000);
 });
