@@ -8,6 +8,9 @@ const json = (file, value) => writeFile(file, `${JSON.stringify(value)}\n`);
 // Exact accumulated correction from the saved V2C-37 verified candidate.
 // Keep this independent of both readers, including every helper and selector.
 export const V2C37_SAVED_GATE_CORRECTION_PATHS = [
+    "tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.profileRecovery.test.tsx",
+    "tests/v2/WasmFeatureParity.test.ts",
+    "tests/fixtures/wasm/verifyDeliveredFeatures.cjs",
     "scripts/p8-05-packed-output-evidence.mjs",
     "scripts/p8-05-product-readiness-campaign.mjs",
     "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",
@@ -46,6 +49,9 @@ export const V2C37_SAVED_GATE_CORRECTION_PATHS = [
 // delta, the prior driver repair, the reviewed interoperability correction and
 // every file changed by this handoff repair.
 export const P911_TOOLING_DESCENDANT_PATHS = [
+    "tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.profileRecovery.test.tsx",
+    "tests/v2/WasmFeatureParity.test.ts",
+    "tests/fixtures/wasm/verifyDeliveredFeatures.cjs",
     // V2C-37 bounded lossless browser/API log persistence; product and driver pins stay protected.
     "scripts/p8-05-packed-output-evidence.mjs",
     "scripts/p8-05-product-readiness-campaign.mjs",

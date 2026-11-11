@@ -1,4 +1,4 @@
-import {act, fireEvent, render, screen, waitFor} from "@testing-library/react";
+import {act, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import {StrictMode} from "react";
 import {MantineProvider} from "@mantine/core";
 import {ModalsProvider} from "@mantine/modals";
@@ -140,7 +140,9 @@ describe("Design recovery in the same browser tab", () => {
         await user.click(screen.getByRole("radio", {name: "JSON"}));
         fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: "unfinished JSON"}});
         await user.click(screen.getByRole("button", {name: "Restore", exact: true}));
-        await user.click(await screen.findByRole("button", {name: "Cancel", exact: true}));
+        const replacement = await screen.findByRole("dialog", {name: "Please confirm"});
+        await user.click(within(replacement).getByRole("button", {name: "Cancel", exact: true}));
+        await waitFor(() => expect(replacement).not.toBeInTheDocument());
         expect(screen.getByLabelText("Blueprint JSON")).toHaveValue("unfinished JSON");
         expect(window.sessionStorage.getItem(storageKey)).toBe(saved);
         await user.click(screen.getByRole("button", {name: "Discard", exact: true}));
@@ -647,11 +649,14 @@ describe("Project Game Model tab-local recovery", () => {
         editName("Current edit");
         expect(window.sessionStorage.getItem(projectDraftKey)).toBe(saved);
         await user.click(screen.getByRole("button", {name: "Restore", exact: true}));
-        await user.click(await screen.findByRole("button", {name: "Cancel", exact: true}));
+        const replacement = await screen.findByRole("dialog", {name: "Please confirm"});
+        await user.click(within(replacement).getByRole("button", {name: "Cancel", exact: true}));
+        await waitFor(() => expect(replacement).not.toBeInTheDocument());
         expect(screen.getByLabelText("Game name")).toHaveValue("Current edit");
         expect(window.sessionStorage.getItem(projectDraftKey)).toBe(saved);
         await user.click(screen.getByRole("button", {name: "Restore", exact: true}));
-        await user.click(await screen.findByRole("button", {name: "Confirm", exact: true}));
+        const retry = await screen.findByRole("dialog", {name: "Please confirm"});
+        await user.click(within(retry).getByRole("button", {name: "Confirm", exact: true}));
         expect(screen.getByLabelText("Game name")).toHaveValue("Retained choice");
         expect(loadPersistedProjectBlueprintDraft(projectRoot)?.blueprint.manifest).toMatchObject({name: "Retained choice"});
     });

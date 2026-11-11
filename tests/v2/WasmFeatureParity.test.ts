@@ -59,17 +59,55 @@ it("covers the frozen 36 launch rows through fresh public CJS/TypeScript/browser
             {id: "weighted-bonus", kind: "bonus", blueprint: weightedBonusBlueprint()},
         ];
         fs.writeFileSync(path.join(candidate.directory, "feature-fixtures.json"), JSON.stringify(fixtures));
-        // One emitted public runtime, with sequential native batches that each
-        // retain the original deadline and release their compiler/module state.
+        // Compile each family once, then release compiler state before bounded
+        // comparison slices, real conversion routes and compact-state checks.
+        // Keep both the existing per-child bound and a whole-operation budget.
+        const deadline = Date.now() + 540000;
         const reports = ["catalogue", "modifiers", "features"].map(batch => {
-            const started = Date.now();
-            const result = spawnSync(process.execPath, [path.resolve("tests/fixtures/wasm/verifyDeliveredFeatures.cjs"), candidate.directory, batch], {encoding: "utf8", timeout: 180000, maxBuffer: 4 * 1024 * 1024});
-            expect({batch, status: result.status, error: result.error?.message, stderr: result.stderr}).toEqual({batch, status: 0, error: undefined, stderr: ""});
-            const report = JSON.parse(result.stdout.trim());
-            expect(report.batch).toBe(batch);
+            const run = (phase: string, offset = 0) => {
+                const started = Date.now();
+                const remaining = deadline - started;
+                expect(remaining).toBeGreaterThan(0);
+                // Every snapshot/worker belongs to this child. Explicit temporary
+                // roots also make direct Jest and npm launches behave identically.
+                const temporary = fs.mkdtempSync(path.join(candidate.directory, "native-tmp-"));
+                try {
+                    const result = spawnSync(process.execPath, [path.resolve("tests/fixtures/wasm/verifyDeliveredFeatures.cjs"), candidate.directory, batch, phase, String(offset)], {
+                        env: {...process.env, TMPDIR: temporary, TMP: temporary, TEMP: temporary},
+                        encoding: "utf8", timeout: Math.min(180000, remaining), killSignal: "SIGKILL", maxBuffer: 4 * 1024 * 1024,
+                    });
+                    const progressFile = path.join(candidate.directory, `${batch}-${phase}-${offset}-progress.jsonl`);
+                    const progress = fs.existsSync(progressFile) ? fs.readFileSync(progressFile, "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line)) : [];
+                    expect({batch, phase, offset, status: result.status, signal: result.signal, error: result.error?.message, stderr: result.stderr, progress: result.status === 0 ? undefined : progress}).toEqual({batch, phase, offset, status: 0, signal: null, error: undefined, stderr: "", progress: undefined});
+                    const report = JSON.parse(result.stdout.trim());
+                    expect([report.batch, report.phase, report.offset]).toEqual([batch, phase, offset]);
+                    expect(report.publicExports).toEqual(["cjs", "esm", "browser", "wasm"]);
+                    const completed = progress.filter(row => row.status === "completed");
+                    expect(completed.map(row => [row.stage, row.id])).toEqual(progress.filter(row => row.status === "started").map(row => [row.stage, row.id]));
+                    console.log(`Native feature parity ${batch}/${phase}/${offset}: ${completed.length} operations, ${Date.now() - started}ms wall, ${completed.reduce((sum, row) => sum + row.cpuMs, 0)}ms CPU, peak RSS ${Math.max(0, ...completed.map(row => row.rssBytes))}`);
+                    return report;
+                } finally {
+                    fs.rmSync(temporary, {recursive: true, force: true});
+                }
+            };
+            const prepared = run("prepare");
+            const ids = [...prepared.catalogueIds, ...prepared.crossProducts];
+            const phases = [prepared];
+            for (let offset = 0; offset < ids.length; offset += 12) {
+                const compared = run("compare", offset);
+                expect(compared.receipts.map((row: {id: string}) => row.id)).toEqual(ids.slice(offset, offset + 12));
+                phases.push(compared);
+            }
+            phases.push(run("routes"), run("compact"));
+            const report = {
+                catalogueIds: phases.flatMap(row => row.catalogueIds),
+                crossProducts: phases.flatMap(row => row.crossProducts),
+                receipts: phases.flatMap(row => row.receipts),
+                routes: phases.flatMap(row => row.routes),
+                compact: phases.flatMap(row => row.compact),
+                rejectionIds: phases.flatMap(row => row.rejectionIds),
+            };
             expect(report.receipts.map((row: {id: string}) => row.id)).toEqual([...report.catalogueIds, ...report.crossProducts]);
-            expect(report.publicExports).toEqual(["cjs", "esm", "browser", "wasm"]);
-            console.log(`Native feature parity ${batch}: ${report.receipts.length} cells, ${report.compact.length} compact continuations, ${Date.now() - started}ms`);
             return report;
         });
         const report = {

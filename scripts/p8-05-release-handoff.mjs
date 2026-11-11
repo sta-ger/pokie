@@ -14,6 +14,10 @@ const fail = (message) => { throw new Error(`P8-05 release handoff is invalid: $
 // Everything else, including package metadata, lockfile, compiler/Vite config,
 // generators, runtime sources and other steps' evidence, must be byte-identical.
 const tooling = new Set([
+    // V2C-37 saved recovery-selector and bounded native parity regression repair only.
+    "tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.profileRecovery.test.tsx",
+    "tests/v2/WasmFeatureParity.test.ts",
+    "tests/fixtures/wasm/verifyDeliveredFeatures.cjs",
     // User-authorized test preparation delta; independent review/gates remain required.
     // V2C-37 bounded lossless browser/API log persistence; product and driver pins stay protected.
     "scripts/p8-05-packed-output-evidence.mjs",
