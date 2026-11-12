@@ -17,6 +17,13 @@ export const V2C37_SAVED_GATE_CORRECTION_PATHS = [
     "docs/v2-completion/V2C-37.md",
     "tests/testUtils/stageCompiledTestRuntime.ts",
     "tests/v2/helpers/publicRuntime.ts",
+    // Accumulated CLI, HTTP teardown and producer corrections after the saved baseline.
+    "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
+    "tests/cli/PC17CliStudioParity.integration.test.ts",
+    "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+    "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
+    "tests/cli/studio/StudioServer.test.ts",
+    "tests/project/ArtifactBuilderRegistry.test.ts",
     // V2C-37 retained optimizer native-host regression; product/build inputs remain protected.
     "tests/project/BlueprintStakeOutcomeLibraryWorkflow.test.ts",
     "tests/v2/Valera35Regression.test.ts",

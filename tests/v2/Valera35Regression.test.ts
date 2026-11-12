@@ -374,8 +374,9 @@ describe("V2C-35 retained exact-finite request through public consumers", () => 
             import path from "node:path";
             import {execFileSync} from "node:child_process";
             import {authenticateP805ProductTree} from "./scripts/p8-05-release-handoff.mjs";
-            import {authenticateP911Tree, authenticateP911Driver} from "./scripts/p9-11-candidate.mjs";
-            import {V2C37_SAVED_GATE_CORRECTION_PATHS, P911_TOOLING_DESCENDANT_PATHS} from "./tests/testUtils/createP911CandidateFixture.mjs";
+            import {authenticateP911Tree, authenticateP911Driver, readP911Candidate,
+                readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment} from "./scripts/p9-11-candidate.mjs";
+            import {candidateFixture, V2C37_SAVED_GATE_CORRECTION_PATHS, P911_TOOLING_DESCENDANT_PATHS} from "./tests/testUtils/createP911CandidateFixture.mjs";
             const delta = [...new Set(execFileSync("git", ["diff", "--name-only", "b30ed0d66717342782714230f8b97f21c2feddd3"],
                 {encoding: "utf8"}).trim().split("\\n").filter(Boolean).concat([
                     "tests/v2/Valera35Regression.test.ts", "tests/v2/fixtures/RetainedOptimizationProbe.ts"
@@ -384,8 +385,16 @@ describe("V2C-35 retained exact-finite request through public consumers", () => 
                 assert.ok(V2C37_SAVED_GATE_CORRECTION_PATHS.includes(file), "saved delta omitted " + file);
                 assert.ok(P911_TOOLING_DESCENDANT_PATHS.includes(file), "descendant fixture omitted " + file);
             }
-            const repository = ${JSON.stringify(repository)};
-            fs.mkdirSync(repository);
+            const fixtureRoot = ${JSON.stringify(repository)};
+            fs.mkdirSync(fixtureRoot);
+            const fixture = await candidateFixture(fixtureRoot);
+            const repository = fixture.repository, options = {repository};
+            const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path,
+                POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256, POKIE_P805_RELEASE_HANDOFF: ""};
+            const original = await readP911Candidate(fixture.reference, options);
+            const readers = [() => readP911Candidate(fixture.reference, options),
+                () => readP911CandidateFromEnvironment(environment, options),
+                () => readP911SmokeCandidateFromEnvironment(environment, options)];
             const git = (...args) => execFileSync("git", args, {cwd: repository, encoding: "utf8"}).trim();
             const write = (file, bytes) => {
                 fs.mkdirSync(path.dirname(path.join(repository, file)), {recursive: true});
@@ -396,18 +405,43 @@ describe("V2C-35 retained exact-finite request through public consumers", () => 
                 git("-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "synthetic handoff contract");
                 return git("rev-parse", "HEAD");
             };
-            git("init", "--quiet");
-            write("package.json", "{}");
-            const base = commit(), tree = git("rev-parse", base + "^{tree}");
+            const base = fixture.handoff.candidateId, tree = fixture.handoff.candidateTreeId;
             for (const file of delta) write(file, "synthetic regression delta");
             const reviewed = commit();
             assert.deepEqual(authenticateP805ProductTree(base, reviewed, repository).changedToolingAndEvidencePaths, delta);
             assert.deepEqual(authenticateP911Tree(base, tree, repository).changedEvidenceAndTooling, delta);
-            for (const file of ["src/retained.ts", "tsconfig.prod.json", "tests/v2/unlisted.test.ts"]) {
+            Object.assign(environment, {POKIE_PACK_SMOKE_CANDIDATE_ID: reviewed,
+                POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256: original.archiveSha256});
+            for (const read of readers) {
+                const selected = await read();
+                assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, delta);
+                assert.deepEqual({...selected, equivalence: original.equivalence}, original);
+            }
+            for (const reference of [fixture.reference, fixture.handoff.browserDriver,
+                fixture.handoff.buildReceipt, fixture.handoff.installReceipt, {path: fixture.handoff.archivePath},
+                {path: path.join(original.packageRoot, "dist/cli/pokie.js")}]) {
+                const bytes = fs.readFileSync(reference.path);
+                try {
+                    fs.writeFileSync(reference.path, "substituted pinned input");
+                    for (const read of readers) await assert.rejects(read(),
+                        /receipt digest mismatch|authenticated controller browser driver|archive digest mismatch|stale installed asset/);
+                } finally { fs.writeFileSync(reference.path, bytes); }
+            }
+            for (const file of ["src/retained.ts", "cli/retained.ts", "package.json", "package-lock.json",
+                "tsconfig.prod.json", "generate-barrels.js", "tests/v2/unlisted.test.ts"]) {
                 write(file, "protected drift");
                 const changed = commit();
                 assert.throws(() => authenticateP805ProductTree(base, changed, repository), /product or build inputs/);
                 assert.throws(() => authenticateP911Tree(base, tree, repository), /affected proofs must be rerun/);
+                for (const read of readers) await assert.rejects(read(), /affected proofs must be rerun/);
+                git("reset", "--hard", reviewed);
+            }
+            for (const file of delta) {
+                fs.unlinkSync(path.join(repository, file));
+                fs.symlinkSync("package.json", path.join(repository, file));
+                const changed = commit();
+                assert.throws(() => authenticateP805ProductTree(base, changed, repository), /nonregular/);
+                assert.throws(() => authenticateP911Tree(base, tree, repository), /nonregular/);
                 git("reset", "--hard", reviewed);
             }
             const driver = path.join(repository, "driver.mjs");
