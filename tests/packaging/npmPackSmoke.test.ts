@@ -7,7 +7,7 @@ import path from "path";
 import {pathToFileURL} from "url";
 import {createServer} from "node:http";
 import {constants, runInThisContext} from "node:vm";
-import {BUILT_PACKAGE_FILES, type AdvancedModelValidationReport} from "@fromstan/pokie";
+import {BUILT_PACKAGE_FILES, OutcomeLibraryBundleReader, renderBuiltGameModule, type AdvancedModelValidationReport} from "@fromstan/pokie";
 import {registerCliCommands} from "../../cli/registerCliCommands.js";
 import {fractionalBetBlueprint, FRACTIONAL_MIXED_CONTINUATION} from "../fixtures/math/FractionalBetFixture.js";
 import {authoritativePaytableBlueprint} from "../fixtures/math/AuthoritativePaytableFixture.js";
@@ -484,10 +484,11 @@ it.each(["success", "exit-failure", "lingering-worker"])("awaits owned worker sm
     for (const child of children) expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
 });
 
-describe("snapshot-backed smoke observation regressions without build, pack or install", () => {
+describe("snapshot-backed smoke observation regressions without candidate compilation, pack or install", () => {
     let directory: string;
     let cli: string;
     let game: string;
+    let preparation: string;
     const children = new Set<ChildProcessWithoutNullStreams>();
 
     beforeAll(() => {
@@ -503,7 +504,7 @@ describe("snapshot-backed smoke observation regressions without build, pack or i
         cli = path.join(runtime, "dist/cli/pokie.js");
         game = path.join(directory, "custom executable package");
         fs.mkdirSync(path.join(game, "dist"), {recursive: true});
-        fs.writeFileSync(path.join(game, "dist/index.js"), `
+        preparation = `
             const marker = process.env.POKIE_SMOKE_PREPARATION_MARKER;
             const fs = require("node:fs");
             if (process.env.POKIE_SMOKE_VALIDATION_TRACE) {
@@ -515,7 +516,8 @@ describe("snapshot-backed smoke observation regressions without build, pack or i
                 Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.POKIE_SMOKE_PREPARATION_DELAY_MS));
                 process.stderr.write("authored package preparation completed\\n");
             }
-        ` + fs.readFileSync(path.join(REPO_ROOT, "tests/cli/fixtures/playable-game/index.js"), "utf8"));
+        `;
+        fs.writeFileSync(path.join(game, "dist/index.js"), preparation + fs.readFileSync(path.join(REPO_ROOT, "tests/cli/fixtures/playable-game/index.js"), "utf8"));
         fs.writeFileSync(path.join(game, "package.json"), JSON.stringify({name: "snapshot-observation", version: "1.0.0", pokie: {entry: "dist/index.js"}}));
     }, SMOKE_COMMAND_TIMEOUT_MS);
 
@@ -565,6 +567,66 @@ describe("snapshot-backed smoke observation regressions without build, pack or i
         expect(fs.readFileSync(path.join(root, "package.json"))).toEqual(metadata);
         console.log(JSON.stringify({operation: `${phase} validate`, elapsedMs: Date.now() - started, status: validation.status,
             snapshotLoads: loads.length, loadOffsetsMs: loads.map(load => load.startedAt - started), snapshotsRemoved: true}));
+    }, SMOKE_COMMAND_TIMEOUT_MS + 10_000);
+
+    it.each(["generate", "build"])("awaits real generated-package %s preflight, publication and snapshot cleanup past the old cutoff", async operation => {
+        const root = path.join(directory, `${operation} generated package`);
+        fs.mkdirSync(path.join(root, "dist"), {recursive: true});
+        const entry = preparation + renderBuiltGameModule({
+            manifest: {id: "packed-outcomelibrary-slot", name: "Packed Outcomelibrary Slot", version: "1.0.0"},
+            reels: 2, rows: 1, symbols: ["A", "B"], paytable: {A: {2: 5}}, reelStrips: [["A", "A", "B"], ["A", "B"]],
+        }, "2.0.0");
+        fs.writeFileSync(path.join(root, "dist/index.js"), entry);
+        const metadata = JSON.stringify({name: "generated-outcome-workflow", version: "1.0.0", pokie: {entry: "dist/index.js"},
+            dependencies: {"@fromstan/pokie": "^2.0.0"}});
+        fs.writeFileSync(path.join(root, "package.json"), metadata);
+        // Use existing compiled runtime bytes and production dependencies only.
+        // A link to the clone's entire dev node_modules would add unrelated
+        // compiler/test/cache inputs to generation's real source-binding hash.
+        const runtime = path.join(directory, `${operation} production runtime`);
+        fs.cpSync(path.join(directory, "runtime"), runtime, {recursive: true, filter: source => path.basename(source) !== "node_modules"});
+        const dependencies = (JSON.parse(fs.readFileSync(path.join(runtime, "package.json"), "utf8")) as {dependencies: Record<string, string>}).dependencies;
+        for (const name of Object.keys(dependencies)) {
+            const destination = path.join(runtime, "node_modules", name);
+            fs.mkdirSync(path.dirname(destination), {recursive: true});
+            fs.symlinkSync(path.join(REPO_ROOT, "node_modules", name), destination, "dir");
+        }
+        fs.mkdirSync(path.join(root, "node_modules/@fromstan"), {recursive: true});
+        fs.symlinkSync(runtime, path.join(root, "node_modules/@fromstan/pokie"), "dir");
+        const temporaryRoot = path.join(directory, `${operation}-publication-snapshots`);
+        fs.mkdirSync(temporaryRoot);
+        const trace = path.join(directory, `${operation}-publication-loads.ndjson`);
+        const marker = path.join(directory, `${operation}-publication-initializer`);
+        const output = path.join(directory, `${operation}-published`);
+        const started = Date.now();
+        const args = operation === "generate"
+            ? ["generate", root, "--stake", "1", "--out", output, "--format", "json"]
+            : ["build", root, "--target", "outcomeLibrary", "--out", output];
+        const result = await runSmokeCommand(cli, args, {cwd: directory, env: {...process.env, TMPDIR: temporaryRoot,
+            POKIE_SMOKE_VALIDATION_TRACE: trace, POKIE_SMOKE_PREPARATION_MARKER: marker, POKIE_SMOKE_PREPARATION_DELAY_MS: "61000"}}, children);
+        expect(result).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+        expect(result.stderr).toContain("authored package preparation started");
+        expect(result.stderr).toContain("authored package preparation completed");
+        const library = operation === "generate"
+            ? JSON.parse(fs.readFileSync(output, "utf8")) as {outcomes: Array<{weight: number}>}
+            : await new OutcomeLibraryBundleReader().readLibrary(output, "base");
+        expect(library.outcomes).toHaveLength(4);
+        expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(6);
+        const loads = fs.readFileSync(trace, "utf8").trim().split("\n").map(line => JSON.parse(line) as {entry: string; startedAt: number});
+        expect(loads.length).toBeGreaterThanOrEqual(2);
+        expect(new Set(loads.map(load => load.entry)).size).toBe(loads.length);
+        expect(fs.readFileSync(marker, "utf8")).toBe("first initializer");
+        expect(loads[1].startedAt - loads[0].startedAt).toBeGreaterThan(60_000);
+        for (const load of loads) {
+            expect(load.entry.startsWith(temporaryRoot + path.sep)).toBe(true);
+            expect(fs.existsSync(load.entry)).toBe(false);
+        }
+        expect(fs.readdirSync(temporaryRoot)).toEqual([]);
+        expect(fs.readFileSync(path.join(root, "package.json"), "utf8")).toBe(metadata);
+        expect(fs.readFileSync(path.join(root, "dist/index.js"), "utf8")).toBe(entry);
+        console.log(JSON.stringify({operation: `generated ${operation}`, elapsedMs: Date.now() - started,
+            snapshotLoads: loads.length, loadOffsetsMs: loads.map(load => load.startedAt - started), snapshotsRemoved: true,
+            resourcesDrained: result.resourcesDrained, stdioClosed: result.stdioClosed}));
     }, SMOKE_COMMAND_TIMEOUT_MS + 10_000);
 
     it("retains real invalid-package validation failure and releases temporary state", () => {
@@ -2191,70 +2253,79 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expectLegacyPackageValidation(validate);
     });
 
-    smokeIt("runs the public outcome-library lifecycle against a package built by the installed binary itself", async () => {
-        // Same small, hand-computable, exactly-enumerable blueprint as
-        // tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts's own finiteBlueprint(): 2 reels of
-        // 3/2 stops, no stateful mechanics, so "generate" resolves the exact strategy without --bounded.
-        const blueprintPath = path.join(installDir!, "outcomelibrary-blueprint.json");
-        fs.writeFileSync(
-            blueprintPath,
-            JSON.stringify({
-                manifest: {id: "packed-outcomelibrary-slot", name: "Packed Outcomelibrary Slot", version: "1.0.0"},
-                reels: 2,
-                rows: 1,
-                symbols: ["A", "B"],
-                paytable: {A: {2: 5}},
-                reelStrips: [
-                    ["A", "A", "B"],
-                    ["A", "B"],
-                ],
-            }),
-        );
-        const packageRoot = path.join(installDir!, "outcomelibrary-pkg");
-        const build = spawnSync(pokieBinPath, ["build", blueprintPath, "--target", "tsPackage", "--out", packageRoot], {
-            cwd: installDir,
-            encoding: "utf-8",
-            timeout: 60000,
+    describe("runs the public outcome-library lifecycle against a package built by the installed binary itself", () => {
+        let packageRoot: string;
+        let bundleDir: string;
+        beforeAll(() => {
+            // Same small, hand-computable, exactly-enumerable blueprint as
+            // tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts's own finiteBlueprint(): 2 reels of
+            // 3/2 stops, no stateful mechanics, so "generate" resolves the exact strategy without --bounded.
+            const blueprintPath = path.join(installDir!, "outcomelibrary-blueprint.json");
+            fs.writeFileSync(
+                blueprintPath,
+                JSON.stringify({
+                    manifest: {id: "packed-outcomelibrary-slot", name: "Packed Outcomelibrary Slot", version: "1.0.0"},
+                    reels: 2,
+                    rows: 1,
+                    symbols: ["A", "B"],
+                    paytable: {A: {2: 5}},
+                    reelStrips: [
+                        ["A", "A", "B"],
+                        ["A", "B"],
+                    ],
+                }),
+            );
+            packageRoot = path.join(installDir!, "outcomelibrary-pkg");
+            const build = spawnSync(pokieBinPath, ["build", blueprintPath, "--target", "tsPackage", "--out", packageRoot], {
+                cwd: installDir,
+                encoding: "utf-8",
+                timeout: 60000,
+            });
+            expect(build.status).toBe(0);
+
+            bundleDir = path.join(installDir!, "outcomelibrary-bundle");
         });
-        expect(build.status).toBe(0);
 
-        const libraryFile = path.join(installDir!, "outcomelibrary-base.json");
-        const generate = spawnSync(pokieBinPath, ["generate", packageRoot, "--stake", "1", "--out", libraryFile, "--format", "json"], {
-            cwd: installDir,
-            encoding: "utf-8",
-            timeout: 60000,
+        smokeIt("generates the installed package's exact raw outcome library and drains its runtime", async () => {
+            const libraryFile = path.join(installDir!, "outcomelibrary-base.json");
+            // Preflight and execution acquire separate runtime snapshots and
+            // rebind all executable inputs before publication. Await the owned
+            // command, rather than cutting off that work at spawnSync's 60s.
+            const started = Date.now();
+            const generate = await runSmokeCommand(pokieBinPath, ["generate", packageRoot, "--stake", "1", "--out", libraryFile, "--format", "json"], {cwd: installDir!}, spawnedSmokeChildren);
+            expect(generate).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+            const library = JSON.parse(fs.readFileSync(libraryFile, "utf-8")) as {outcomes: Array<{weight: number}>};
+            expect(library.outcomes).toHaveLength(4);
+            expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(6);
+            console.log(JSON.stringify({operation: "installed generate", elapsedMs: Date.now() - started,
+                exitCode: generate.exitCode, resourcesDrained: generate.resourcesDrained, stdioClosed: generate.stdioClosed}));
         });
-        expect(generate.status).toBe(0);
 
-        const library = JSON.parse(fs.readFileSync(libraryFile, "utf-8")) as {outcomes: Array<{weight: number}>};
-        expect(library.outcomes).toHaveLength(4);
-        expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(6);
-
-        const bundleDir = path.join(installDir!, "outcomelibrary-bundle");
-        // Planning and execution each own runtime snapshots. Use the existing
-        // bounded conversion runner and await descendant/stdio cleanup before
-        // validating its output, including when the build fails or times out.
-        const bundleBuild = await runSmokeCommand(pokieBinPath, ["build", packageRoot, "--target", "outcomeLibrary", "--out", bundleDir], {cwd: installDir!}, spawnedSmokeChildren);
-        expect(bundleBuild).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
-
-        const bundleValidate = runInstalledValidation(pokieBinPath, bundleDir, installDir!, {deep: true});
-        const bundleValidation = expectInstalledValidation(bundleValidate, installedValidationContracts.outcomeLibrary);
-        expect(bundleValidation.deep).toBe(true);
-        expect(bundleValidation.advanced.issues).toContainEqual(expect.objectContaining({code: "outcome-only-definition-unavailable"}));
-
-        const inspect = spawnSync(pokieBinPath, ["inspect", bundleDir], {
-            cwd: installDir,
-            encoding: "utf-8",
-            timeout: 60000,
+        smokeIt("builds the installed package's outcome bundle and drains its runtime", async () => {
+            const bundleBuild = await runSmokeCommand(pokieBinPath, ["build", packageRoot, "--target", "outcomeLibrary", "--out", bundleDir], {cwd: installDir!}, spawnedSmokeChildren);
+            expect(bundleBuild).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
         });
-        expect(inspect.status).toBe(0);
 
-        const sample = spawnSync(pokieBinPath, ["sample", bundleDir, "--mode", "base", "--seed", "packed-source-seed"], {
-            cwd: installDir,
-            encoding: "utf-8",
-            timeout: 60000,
+        smokeIt("validates, inspects and samples the installed package's outcome bundle", () => {
+            const bundleValidate = runInstalledValidation(pokieBinPath, bundleDir, installDir!, {deep: true});
+            const bundleValidation = expectInstalledValidation(bundleValidate, installedValidationContracts.outcomeLibrary);
+            expect(bundleValidation.deep).toBe(true);
+            expect(bundleValidation.advanced.issues).toContainEqual(expect.objectContaining({code: "outcome-only-definition-unavailable"}));
+
+            const inspect = spawnSync(pokieBinPath, ["inspect", bundleDir], {
+                cwd: installDir,
+                encoding: "utf-8",
+                timeout: 60000,
+            });
+            expect(inspect.status).toBe(0);
+
+            const sample = spawnSync(pokieBinPath, ["sample", bundleDir, "--mode", "base", "--seed", "packed-source-seed"], {
+                cwd: installDir,
+                encoding: "utf-8",
+                timeout: 60000,
+            });
+            expect(sample.status).toBe(0);
         });
-        expect(sample.status).toBe(0);
     });
 
     describe("runs a data-driven, artifact-producing workflow for every public command and nested verb from the installed binary", () => {
@@ -2272,14 +2343,25 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const workflowIds: string[] = [];
         const exercisedPublicWorkflows = new Set<string>();
 
-        const run = (id: string, args: string[], expectedStatus = 0): ReturnType<typeof spawnSync> => {
-            const result = spawnSync(pokieBinPath, args, {cwd: workflowRoot, encoding: "utf-8", timeout: 120000});
+        const recordWorkflow = (id: string, args: string[]): void => {
             workflowIds.push(id);
             const nestedVerb = args.slice(0, 2).join(" ");
             exercisedPublicWorkflows.add(PACKAGED_PUBLIC_WORKFLOW_SCENARIOS.includes(nestedVerb as typeof PACKAGED_PUBLIC_WORKFLOW_SCENARIOS[number]) ? nestedVerb : args[0]);
+        };
+        const run = (id: string, args: string[], expectedStatus = 0): ReturnType<typeof spawnSync> => {
+            const result = spawnSync(pokieBinPath, args, {cwd: workflowRoot, encoding: "utf-8", timeout: 120000});
+            recordWorkflow(id, args);
             expect(result.error).toBeUndefined();
             expect(result.status).toBe(expectedStatus);
             return result;
+        };
+        const runPackageWorkflow = async (id: string, args: string[]): Promise<void> => {
+            const started = Date.now();
+            const result = await runSmokeCommand(pokieBinPath, args, {cwd: workflowRoot}, spawnedSmokeChildren);
+            recordWorkflow(id, args);
+            expect(result).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+            console.log(JSON.stringify({operation: id, elapsedMs: Date.now() - started, exitCode: result.exitCode,
+                resourcesDrained: result.resourcesDrained, stdioClosed: result.stdioClosed}));
         };
         const expectFile = (filePath: string): void => expect(fs.existsSync(filePath)).toBe(true);
         const expectDirectory = (directoryPath: string): void => expect(fs.statSync(directoryPath).isDirectory()).toBe(true);
@@ -2321,7 +2403,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             );
         });
 
-        smokeIt("creates, validates and builds the installed source and outcome artifacts", () => {
+        smokeIt("creates, validates and builds the installed source artifacts", () => {
             const createdBlueprintPath = path.join(workflowRoot, "created.blueprint.json");
             run("create", ["create", "Packed Workflow", "--random", "--seed", "71", "--out", createdBlueprintPath]);
             expectFile(createdBlueprintPath);
@@ -2334,27 +2416,42 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
 
             run("build", ["build", blueprintPath, "--target", "tsPackage", "--out", packageRoot]);
             expectDirectory(packageRoot);
-            run("generate", ["generate", packageRoot, "--stake", "1", "--out", libraryPath, "--format", "json"]);
+        });
+
+        smokeIt("generates the workflow package's exact raw outcomes and drains its runtime", async () => {
+            await runPackageWorkflow("generate", ["generate", packageRoot, "--stake", "1", "--out", libraryPath, "--format", "json"]);
             expectFile(libraryPath);
-            run("build-outcome-library", ["build", packageRoot, "--target", "outcomeLibrary", "--out", bundlePath]);
+        });
+
+        smokeIt("builds the workflow package's outcome bundle and drains its runtime", async () => {
+            await runPackageWorkflow("build-outcome-library", ["build", packageRoot, "--target", "outcomeLibrary", "--out", bundlePath]);
             expectDirectory(bundlePath);
             run("inspect", ["inspect", bundlePath]);
             run("sample", ["sample", bundlePath, "--mode", "base", "--seed", "workflow-seed"]);
         });
 
-        smokeIt("simulates, reports, compares and replays the installed package", () => {
-            run("sim", ["sim", packageRoot, "--rounds", "40", "--seed", "workflow-seed", "--out", simPath, "--format", "json"]);
+        smokeIt("simulates the installed workflow package and drains its runtime", async () => {
+            await runPackageWorkflow("sim", ["sim", packageRoot, "--rounds", "40", "--seed", "workflow-seed", "--out", simPath, "--format", "json"]);
             expectFile(simPath);
-            run("sim-comparison", ["sim", packageRoot, "--rounds", "40", "--seed", "comparison-seed", "--out", comparisonSimPath, "--format", "json"]);
+        });
+
+        smokeIt("simulates the installed comparison package and drains its runtime", async () => {
+            await runPackageWorkflow("sim-comparison", ["sim", packageRoot, "--rounds", "40", "--seed", "comparison-seed", "--out", comparisonSimPath, "--format", "json"]);
             expectFile(comparisonSimPath);
+        });
+
+        smokeIt("reports and compares the installed package's simulations", () => {
             const reportPath = path.join(workflowRoot, "workflow-report.md");
             run("report", ["report", simPath, "--format", "markdown", "--out", reportPath]);
             expectFile(reportPath);
             const diffPath = path.join(workflowRoot, "workflow-diff.json");
             run("diff", ["diff", simPath, comparisonSimPath, "--format", "json", "--out", diffPath]);
             expectFile(diffPath);
+        });
+
+        smokeIt("replays the installed workflow package and drains its runtime", async () => {
             const replayPath = path.join(workflowRoot, "workflow-replay.json");
-            run("replay", ["replay", packageRoot, "--round", "1", "--seed", "workflow-seed", "--out", replayPath]);
+            await runPackageWorkflow("replay", ["replay", packageRoot, "--round", "1", "--seed", "workflow-seed", "--out", replayPath]);
             expectFile(replayPath);
         });
 
