@@ -749,18 +749,137 @@ describe("P8-05 rendered Valera persona evidence", () => {
                     const driver=await readFile(fixture.handoff.browserDriver.path);
                     try {await writeFile(fixture.handoff.browserDriver.path,'substituted driver');await assert.rejects(()=>read(environment,{repository}),/authenticated controller browser driver required/);}finally{await writeFile(fixture.handoff.browserDriver.path,driver);}
                 }
-                for(const file of ['src/changed.ts','cli/studio/StudioProjectRegistrationService.ts','tsconfig.prod.json','tests/unnamed.test.ts']){
+                for(const file of ['src/changed.ts','src/gamepackage/resolvePokieGameEntryModule.ts','cli/studio/StudioProjectRegistrationService.ts','tsconfig.prod.json','tests/unnamed.test.ts']){
                     await mkdir(path.dirname(path.join(repository,file)),{recursive:true});await writeFile(path.join(repository,file),'protected');
                     const changed=commit();
                     assert.throws(()=>authenticateP805ProductTree(fixture.handoff.candidateId,changed,repository),/new blind retests are required/);
                     for(const read of [readP911CandidateFromEnvironment,readP911SmokeCandidateFromEnvironment])await assert.rejects(()=>read(environment,{repository}),/product[/]build inputs changed/);
                     execFileSync('git',['reset','--hard',descendant],{cwd:repository});
                 }
-                console.log(JSON.stringify({completeCorrectionAdmitted:true,archivePreserved:true,pinsProtected:true,protectedPaths:4}));
+                console.log(JSON.stringify({completeCorrectionAdmitted:true,archivePreserved:true,pinsProtected:true,protectedPaths:5}));
             } finally {await rm(directory,{recursive:true,force:true});}
         `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 30_000}));
-        expect(result).toEqual({completeCorrectionAdmitted: true, archivePreserved: true, pinsProtected: true, protectedPaths: 4});
+        expect(result).toEqual({completeCorrectionAdmitted: true, archivePreserved: true, pinsProtected: true, protectedPaths: 5});
     });
+
+    it("copies complete runtime acquisitions without repeating per-file ancestry checks and drains sibling consumers", () => {
+        const result = JSON.parse(execFileSync(process.execPath, ["-e", String.raw`
+            const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+            const ts=require('typescript'),threads=require('node:worker_threads');
+            const base=path.join(process.cwd(),'node_modules/.cache/pokie-tmp');fs.mkdirSync(base,{recursive:true});
+            const root=fs.mkdtempSync(path.join(base,'p805-runtime-copy-'));
+            const temporary=path.join(root,'temporary'),emitted=path.join(root,'emitted');
+            const priorTmp=process.env.TMPDIR;
+            const workers=[],metrics=[];
+            // Observe the production worker's actual filesystem calls and exit. No
+            // copy, import, validation or cleanup operation is replaced by a fixture.
+            const NativeWorker=threads.Worker;
+            threads.Worker=class extends NativeWorker {
+                constructor(code,options){
+                    super(String.raw` + "`" + String.raw`
+                        (()=>{
+                            const fs=require('node:fs'),port=require('node:worker_threads').parentPort,counts={};
+                            for(const name of ['cpSync','copyFileSync','readdirSync','statSync','chmodSync']){
+                                const original=fs[name];fs[name]=(...args)=>{counts[name]=(counts[name]||0)+1;return original(...args);};
+                            }
+                            const post=port.postMessage.bind(port);port.postMessage=value=>post({...value,copyMetrics:{...counts}});
+                        })();
+                    ` + "`" + String.raw`+code,options);
+                    const record={exited:false};workers.push(record);
+                    this.on('message',message=>{if(message.copyMetrics)metrics.push(message.copyMetrics);});
+                    this.once('exit',()=>{record.exited=true;});
+                }
+            };
+            const write=(file,contents)=>{fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,contents);};
+            const json=(file,value)=>write(file,JSON.stringify(value));
+            const files=new Set();
+            const emit=relative=>{
+                if(files.has(relative))return;files.add(relative);
+                const output=ts.transpileModule(fs.readFileSync(path.join('src',relative),'utf8'),{
+                    compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}
+                }).outputText;
+                write(path.join(emitted,relative.replace(/\.ts$/,'.js')),output);
+                for(const match of output.matchAll(/require\("(\.[^"]+\.js)"\)/g))emit(path.join(path.dirname(relative),match[1]).replace(/\.js$/,'.ts'));
+            };
+            (async()=>{
+                fs.mkdirSync(temporary);process.env.TMPDIR=temporary;
+                emit('gamepackage/loadPokieGame.ts');emit('gamepackage/PokieGamePackageValidator.ts');
+                const runtime=require(path.join(emitted,'gamepackage/loadPokieGame.js'));
+                const {PokieGamePackageValidator}=require(path.join(emitted,'gamepackage/PokieGamePackageValidator.js'));
+                const host=path.join(root,'node_modules/@fromstan/pokie'),leaf=path.join(host,'node_modules/leaf');
+                json(path.join(host,'package.json'),{name:'@fromstan/pokie',main:'index.cjs',dependencies:{leaf:'1'}});
+                write(path.join(host,'index.cjs'),"module.exports = require('leaf');");
+                json(path.join(leaf,'package.json'),{name:'leaf',main:'index.cjs',peerDependencies:{'@fromstan/pokie':'*'}});
+                const leafEntry=path.join(leaf,'index.cjs');write(leafEntry,"module.exports = 'before';");
+                // The retained failure was still copying the SDK's 10,759 files
+                // after 180s. Keep a similarly sized graph, including non-code assets.
+                for(let i=0;i<10759;i++)write(path.join(host,'assets',String(i%32),i+'.txt'),'asset '+i);
+                const stamp=new Date('2020-01-02T03:04:05Z'),asset=path.join(host,'assets/0/0.txt');
+                fs.utimesSync(asset,stamp,stamp);fs.chmodSync(asset,0o444);fs.chmodSync(path.dirname(asset),0o555);
+                fs.symlinkSync(asset,path.join(host,'asset-link'));
+                write(path.join(host,'.git/ignored'),'must not copy');
+                write(path.join(host,'.pokie-runtime-cache/ignored'),'must not copy');
+                const game=path.join(root,'game');
+                json(path.join(game,'package.json'),{pokie:{entry:'game.cjs'},dependencies:{'@fromstan/pokie':'*'}});
+                write(path.join(game,'game.cjs'),String.raw` + "`" + String.raw`
+                    const value=require('@fromstan/pokie');
+                    module.exports={getManifest:()=>({id:'copy-probe',name:value,version:'1.0.0'}),
+                        createSession:()=>({root:__dirname,lazy:()=>require('@fromstan/pokie')})};
+                ` + "`" + String.raw`);
+                const first=await runtime.loadPokieGameRuntime(game),session=first.game.createSession();
+                assert.equal(first.game.getManifest().name,'before');
+                const snapshotHost=fs.realpathSync(path.join(session.root,'node_modules/@fromstan/pokie'));
+                assert.ok(snapshotHost.startsWith(session.root+path.sep));
+                for(let i=0;i<10759;i++)assert.equal(fs.readFileSync(path.join(snapshotHost,'assets',String(i%32),i+'.txt'),'utf8'),'asset '+i);
+                const copiedAsset=path.join(snapshotHost,'assets/0/0.txt');
+                assert.equal(fs.statSync(copiedAsset).mtimeMs,stamp.getTime());
+                assert.equal(fs.statSync(copiedAsset).mode&0o777,0o444);
+                assert.equal(fs.statSync(path.dirname(copiedAsset)).mode&0o700,0o700);
+                assert.equal(fs.statSync(path.dirname(asset)).mode&0o777,0o555);
+                assert.equal(fs.readlinkSync(path.join(snapshotHost,'asset-link')),asset);
+                for(const name of ['.git','.pokie-runtime-cache'])assert.equal(fs.existsSync(path.join(snapshotHost,name)),false);
+                assert.ok(workers.every(worker=>worker.exited),'copiers drain before a game is returned');
+                const copied=metrics.at(-1);
+                assert.ok(copied.copyFileSync>=10759,'the complete dependency package was actually copied');
+                assert.equal(copied.cpSync,1,'only symlinks need general-purpose copy ancestry/overwrite checks');
+                assert.ok(copied.readdirSync<50,'one traversal, no chmod traversal over the copied graph');
+                // Package validation is the sibling preparation consumer behind
+                // Blueprint materialization and Outcome Library preflight.
+                write(leafEntry,"module.exports = 'after';");
+                const report=await new PokieGamePackageValidator().validate(game);
+                assert.equal(report.valid,true);assert.equal(report.game.name,'after');
+                assert.equal(session.lazy(),'before','an earlier live session retains its isolated dependency graph');
+                assert.equal(fs.readdirSync(temporary).length,1,'validator releases its snapshot');
+                write(leafEntry,"throw new Error('preparation rejected');");
+                const rejected=await new PokieGamePackageValidator().validate(game);
+                assert.equal(rejected.valid,false);assert.match(rejected.errors[0].message,/preparation rejected/);
+                assert.equal(fs.readdirSync(temporary).length,1,'rejected imports drain too');
+                write(leafEntry,"module.exports = 'retry';");
+                const reopened=await runtime.loadPokieGame(game);
+                assert.equal(reopened.getManifest().name,'retry');
+                await runtime.releasePokieGame(reopened);await first.release();await first.release();
+                assert.deepEqual(fs.readdirSync(temporary),[]);
+                // A package-local TMPDIR outside the excluded node_modules
+                // branch must still fail instead of recursively copying itself.
+                const nestedTemporary=path.join(game,'nested-temporary');fs.mkdirSync(nestedTemporary);
+                process.env.TMPDIR=nestedTemporary;
+                await assert.rejects(runtime.loadPokieGameRuntime(game),/Cannot copy.*into.*source/);
+                assert.deepEqual(fs.readdirSync(nestedTemporary),[]);
+                const aliasedTemporary=path.join(root,'aliased-temporary');fs.symlinkSync(nestedTemporary,aliasedTemporary);
+                process.env.TMPDIR=aliasedTemporary;
+                await assert.rejects(runtime.loadPokieGameRuntime(game),/Cannot copy.*into.*source/);
+                assert.deepEqual(fs.readdirSync(nestedTemporary),[]);
+                assert.ok(workers.every(worker=>worker.exited));
+                console.log(JSON.stringify({completeFiles:10759,privateGraph:true,timestamps:true,readOnlySource:true,siblingValidation:true,rejectionAndRetry:true,drained:true}));
+            })().finally(()=>{
+                threads.Worker=NativeWorker;
+                if(priorTmp===undefined)Reflect.deleteProperty(process.env,'TMPDIR');else process.env.TMPDIR=priorTmp;
+                fs.chmodSync(path.join(root,'node_modules/@fromstan/pokie/assets/0'),0o755);
+                fs.rmSync(root,{recursive:true,force:true});
+            }).catch(error=>{console.error(error);process.exitCode=1;});
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 90_000}));
+        expect(result).toEqual({completeFiles: 10759, privateGraph: true, timestamps: true, readOnlySource: true, siblingValidation: true, rejectionAndRetry: true, drained: true});
+    }, 100_000);
 
     it("preserves oversized browser and API logs losslessly within immutable evidence bounds", () => {
         const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `

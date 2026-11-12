@@ -110,23 +110,38 @@ const fs = require('node:fs'), path = require('node:path'), {parentPort} = requi
 parentPort.on('message', ({source, destination}) => {
     try {
         fs.mkdirSync(destination, {recursive: true});
-        // TMPDIR may be below the host's node_modules. Exclude installations before recursion.
-        for (const name of fs.readdirSync(source)) {
-            if (['node_modules', '.git', '.pokie-runtime-cache'].includes(name)) continue;
-            fs.cpSync(path.join(source, name), path.join(destination, name), {
-                recursive: true, preserveTimestamps: true, mode: fs.constants.COPYFILE_FICLONE,
-                filter: file => !['node_modules', '.git', '.pokie-runtime-cache'].includes(path.basename(file)),
-            });
-        }
-        // Published installations may be read-only. Only the invocation-owned copy
-        // needs writable directories for dependency links and eventual recursive release.
-        const writableDirectories = directory => {
-            fs.chmodSync(directory, fs.statSync(directory).mode | 0o700);
-            for (const entry of fs.readdirSync(directory, {withFileTypes: true})) {
-                if (entry.isDirectory()) writableDirectories(path.join(directory, entry.name));
+        const realSource = fs.realpathSync(source), realDestination = fs.realpathSync(destination);
+        // The destination is private and new. cpSync's per-file source/destination
+        // ancestry and overwrite checks repeat thousands of filesystem operations
+        // for every SDK acquisition. Walk each directory once; copy regular files
+        // directly, retaining their bytes, modes and timestamps (including stale-
+        // build checks). Keep cpSync's link/special-file semantics at that boundary.
+        const copyDirectory = (from, to) => {
+            for (const entry of fs.readdirSync(from, {withFileTypes: true})) {
+                // TMPDIR may be below node_modules. Exclude before recursion.
+                if (['node_modules', '.git', '.pokie-runtime-cache'].includes(entry.name)) continue;
+                const input = path.join(from, entry.name), output = path.join(to, entry.name);
+                if (entry.isDirectory()) {
+                    const nestedDestination = path.relative(path.join(realSource, path.relative(source, input)), realDestination);
+                    if (nestedDestination === '' || (nestedDestination !== '..' && !nestedDestination.startsWith('..' + path.sep) && !path.isAbsolute(nestedDestination))) {
+                        throw new Error('Cannot copy a runtime package into its own source directory: ' + input);
+                    }
+                    const mode = fs.statSync(input).mode | 0o700;
+                    fs.mkdirSync(output, {mode});
+                    // Read-only installations stay untouched; only owned directories
+                    // become writable for dependency links and recursive release.
+                    fs.chmodSync(output, mode);
+                    copyDirectory(input, output);
+                } else if (entry.isFile() && process.platform !== 'win32') {
+                    const stats = fs.statSync(input);
+                    fs.copyFileSync(input, output, fs.constants.COPYFILE_FICLONE);
+                    fs.utimesSync(output, stats.atime, stats.mtime);
+                } else {
+                    fs.cpSync(input, output, {recursive: true, preserveTimestamps: true, mode: fs.constants.COPYFILE_FICLONE});
+                }
             }
         };
-        writableDirectories(destination);
+        copyDirectory(source, destination);
         parentPort.postMessage({});
     } catch (error) {
         parentPort.postMessage({error: {message: error.message, name: error.name, code: error.code}});
