@@ -532,7 +532,7 @@ describe("P8-05 rendered Valera persona evidence", () => {
     }, 90_000);
 
     it.each(["exact", "sampled", "rejected", "blocked", "sampled-budget"] as const)("observes Outcome Library preparation through the production card (%s)", async scenario => {
-        const {requireP805OutcomeLibraryCard} = await runInThisContext(`import(${JSON.stringify(pathToFileURL(runner).href)})`, {importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER});
+        const {requireP805OutcomeLibraryCard, preserveP805FailedWorkflow} = await runInThisContext(`import(${JSON.stringify(pathToFileURL(runner).href)})`, {importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER});
         const pending: Array<{body: Record<string, unknown>; resolve: (value: Awaited<ReturnType<FetchLike>>) => void}> = [];
         const response = (body: unknown) => ({ok: true, status: 200, json: () => Promise.resolve(body)});
         const plan = {status: "planned", source: {kind: "blueprint", capabilities: []}, target: {kind: "outcomeLibrary", capabilities: []}, steps: [], preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false}};
@@ -567,6 +567,14 @@ describe("P8-05 rendered Valera persona evidence", () => {
             {"method": "Network.loadingFinished", "params": {"requestId": "3038334.632", "timestamp": 490958.826273}},
             {"method": "Network.requestWillBeSent", "params": {"requestId": "3038334.659", "timestamp": 490959.140661, "request": {"url": "http://127.0.0.1:34045/api/project/outcome-libraries/generate/estimate", "method": "POST", "postData": "{\"mode\":\"base\",\"generation\":\"sampled\",\"maxOutcomeSpaceSize\":\"20000000\",\"sample\":{\"sampleSize\":\"10000\",\"seed\":\"pokie-bounded-coverage-v1\"}}"}}},
         ];
+        // The latest B61p9g failure stopped on its first request. Its receipt
+        // contains no completed response or timestamp; do not invent either.
+        const blockedPreflight = [{method: "Network.requestWillBeSent", params: {
+            requestId: "4139235.606", request: {url: "http://127.0.0.1/api/project/outcome-libraries/generate/estimate", method: "POST", postData: '{"mode":"base","generation":"default"}'},
+        }}];
+        let preparationEvents: unknown[] = [];
+        if (scenario === "sampled-budget") preparationEvents = retainedPreflights;
+        if (scenario === "blocked") preparationEvents = blockedPreflight;
         let clock = 0;
         let resolved = 0;
         const selections: string[] = [];
@@ -578,7 +586,7 @@ describe("P8-05 rendered Valera persona evidence", () => {
             expect(generate).toBeDisabled();
             const evaluate = (expression: string) => Promise.resolve(runInNewContext(expression, {document, HTMLElement, HTMLButtonElement, getComputedStyle: window.getComputedStyle}));
             const options = {
-                evaluate, events: scenario === "sampled-budget" ? retainedPreflights : [], now: () => clock,
+                evaluate, events: preparationEvents, now: () => clock,
                 focusRenderedControl: (selector: string, predicate: string) => {
                     const matches = runInNewContext(`(${predicate})`) as (item: HTMLElement, name: string) => boolean;
                     const button = [...document.querySelectorAll<HTMLElement>(selector)].find(item => matches(item, item.textContent?.trim() ?? ""));
@@ -639,13 +647,48 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 }
                 expect(failure?.message).toMatch(scenario === "rejected" ? /unsupported-preflight.*last Outcome Library preparation:.*Package preparation rejected/ : /Timed out.*last Outcome Library preparation:.*loading/);
                 const diagnostic = JSON.parse(failure!.message.split("last Outcome Library preparation: ")[1]);
+                const expectedRequests = scenario === "blocked" ? [{requestId: "4139235.606", options: '{"mode":"base","generation":"default"}', completion: "pending", elapsedMs: null}] : [];
                 expect(diagnostic.requests).toEqual(scenario === "sampled-budget" ? [
                     {requestId: "3038334.597", options: JSON.stringify({mode: "base", generation: "default"}), status: 200, completion: "Network.loadingFinished", elapsedMs: 14439},
                     {requestId: "3038334.632", options: JSON.stringify({mode: "base", generation: "default", maxOutcomeSpaceSize: "20000000"}), status: 200, completion: "Network.loadingFinished", elapsedMs: 13655},
                     {requestId: "3038334.659", options: JSON.stringify({mode: "base", generation: "sampled", maxOutcomeSpaceSize: "20000000", sample: {sampleSize: "10000", seed: "pokie-bounded-coverage-v1"}}), completion: "pending", elapsedMs: null},
-                ] : []);
+                ] : expectedRequests);
                 expect(selections).toHaveLength(scenario === "sampled-budget" ? 1 : 0);
                 expect(clock).toBe(scenario === "rejected" ? 20_000 : 120_000);
+                if (scenario === "blocked") {
+                    const directory = await mkdtemp(path.join(tmpdir(), "p805-failed-workflow-"));
+                    const entries = new Map<string, {item: CapturedLogEvidence; contents: Buffer}>();
+                    const save = async (kind: string, name: string, content: string | Buffer, observationIds: string[]) => {
+                        const contents = Buffer.from(content);
+                        const evidenceId = `failure-${entries.size}`;
+                        // Use actual immutable filesystem writes, not an in-memory
+                        // substitute for a receipt that survives context removal.
+                        await writeFile(path.join(directory, name), contents, {flag: "wx"});
+                        entries.set(evidenceId, {item: {evidenceId, kind, path: name, sha256: createHash("sha256").update(contents).digest("hex"), sizeBytes: contents.length, observationIds}, contents});
+                        return evidenceId;
+                    };
+                    try {
+                        const {readP805Log, P805_MAX_EVIDENCE_BYTES} = await loadLogEvidence();
+                        const transcript = ["P805_CLI command=packed CLI replay phase=complete", "ж".repeat(P805_MAX_EVIDENCE_BYTES)];
+                        const api = [{browserRequestId: "completed-sibling", status: 200}];
+                        const references = await preserveP805FailedWorkflow({error: failure, transcript, events: blockedPreflight, api, errors: [], timings: {replayMs: 27478}, observations: ["outcome-library-report-diff-replay"], save});
+                        for (const entry of entries.values()) {
+                            expect(await readFile(path.join(directory, entry.item.path))).toEqual(entry.contents);
+                            expect(entry.contents.length).toBeGreaterThan(0);
+                            expect(entry.contents.length).toBeLessThanOrEqual(P805_MAX_EVIDENCE_BYTES);
+                            expect(entry.item.observationIds).toEqual(["outcome-library-report-diff-replay"]);
+                        }
+                        expect(readP805Log("browser-log", entries)).toEqual(blockedPreflight);
+                        expect(readP805Log("api-log", entries)).toEqual(api);
+                        expect(Buffer.concat(references.transcript.map((id: string) => entries.get(id)!.contents)).toString()).toBe(transcript.join("\n"));
+                        expect(JSON.parse(entries.get(references.timings)!.contents.toString())).toEqual({replayMs: 27478});
+                        expect(JSON.parse(entries.get(references.failure)!.contents.toString())).toEqual({kind: "p8-05-workflow-failure", status: "failed", message: failure!.stack, references: expect.objectContaining({browser: references.browser, api: references.api})});
+                        expect(generate).toBeDisabled();
+                        expect(pending).toHaveLength(1);
+                    } finally {
+                        await rm(directory, {recursive: true, force: true});
+                    }
+                }
             } else {
                 await expect(requireP805OutcomeLibraryCard(options, "outcome-library-report-diff-replay")).resolves.toMatchObject({state: "ready", enabled: true, disabled: false, controlId: "outcome-library-generate"});
                 expect(generate).toBeEnabled();
