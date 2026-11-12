@@ -377,7 +377,9 @@ describe("V2C-35 retained exact-finite request through public consumers", () => 
             import {authenticateP911Tree, authenticateP911Driver, readP911Candidate,
                 readP911CandidateFromEnvironment, readP911SmokeCandidateFromEnvironment} from "./scripts/p9-11-candidate.mjs";
             import {candidateFixture, V2C37_SAVED_GATE_CORRECTION_PATHS, P911_TOOLING_DESCENDANT_PATHS} from "./tests/testUtils/createP911CandidateFixture.mjs";
-            const delta = [...new Set(execFileSync("git", ["diff", "--name-only", "b30ed0d66717342782714230f8b97f21c2feddd3"],
+            // This is the retained test/tooling-only gate delta, not a claim
+            // that subsequent production corrections can reuse its package.
+            const delta = [...new Set(execFileSync("git", ["diff", "--name-only", "b30ed0d66717342782714230f8b97f21c2feddd3", "2a4490ba53a3086e93a6a81e802bd1d90d720041"],
                 {encoding: "utf8"}).trim().split("\\n").filter(Boolean).concat([
                     "tests/v2/Valera35Regression.test.ts", "tests/v2/fixtures/RetainedOptimizationProbe.ts"
                 ]))].sort();
@@ -427,7 +429,7 @@ describe("V2C-35 retained exact-finite request through public consumers", () => 
                         /receipt digest mismatch|authenticated controller browser driver|archive digest mismatch|stale installed asset/);
                 } finally { fs.writeFileSync(reference.path, bytes); }
             }
-            for (const file of ["src/retained.ts", "cli/retained.ts", "package.json", "package-lock.json",
+            for (const file of ["src/retained.ts", "cli/retained.ts", "cli/studio/StudioProjectRegistrationService.ts", "package.json", "package-lock.json",
                 "tsconfig.prod.json", "generate-barrels.js", "tests/v2/unlisted.test.ts"]) {
                 write(file, "protected drift");
                 const changed = commit();

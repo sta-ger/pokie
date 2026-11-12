@@ -16,6 +16,12 @@ import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {constants, runInNewContext, runInThisContext} from "node:vm";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
+import {renderWithProviders} from "./testUtils/renderWithProviders";
+import {ProjectsPanel} from "../../../../cli/studio-client/src/components/home/ProjectsPanel";
+import {StudioProjectRegistrationService} from "../../../../cli/studio/StudioProjectRegistrationService";
+import {FileStudioProjectRegistry} from "../../../../cli/studio/FileStudioProjectRegistry";
+import {ProjectTargetResolver} from "../../../../src/project/ProjectTargetResolver";
+import fs from "node:fs";
 
 
 const loadLogEvidence = () => {
@@ -118,6 +124,90 @@ const makeWritableForCleanup = async (directory: string): Promise<void> => {
 describe("P8-05 rendered Valera persona evidence", () => {
     const runner = path.join(process.cwd(), "scripts/p8-05-valera-browser-audit.mjs");
     const controller = path.join(process.cwd(), "scripts/p8-05-product-readiness-controller.mjs");
+
+    it("checks and durably adds an imported package without preparing its executable graph", async () => {
+        const directory = await mkdtemp(path.join(tmpdir(), "p805-import-metadata-"));
+        const registryPath = path.join(directory, "projects.json");
+        const marker = path.join(directory, "entry-executed");
+        const manifest = {name: "import-metadata", pokie: {entry: "game.cjs"}};
+        await writeFile(path.join(directory, "package.json"), JSON.stringify(manifest));
+        await writeFile(path.join(directory, "game.cjs"), `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'executed'); throw new Error('Check game must not execute a package');`);
+        const service = new StudioProjectRegistrationService(new FileStudioProjectRegistry(registryPath));
+        // The retained 31.843s preview loaded an unnecessary invocation-owned
+        // snapshot (including dependencies) before discarding its late result.
+        // Observe that resource boundary even if an entry cannot load in Jest.
+        const snapshots = jest.spyOn(fs.promises, "mkdtemp");
+        const requests: string[] = [];
+        const fetchImpl: FetchLike = async (url, init) => {
+            requests.push(url);
+            let result: unknown;
+            if (url.startsWith("/api/home/projects/registry?")) result = await service.list();
+            else if (url === "/api/home/projects/registry/preview") result = await service.previewImport(JSON.parse(init!.body as string).location);
+            else if (url === "/api/home/projects/registry/register") {
+                const input = JSON.parse(init!.body as string);
+                result = await service.registerExternal(input.location, input.name);
+            } else if (url.startsWith("/api/home/fs/browse?")) result = {status: "ok", resolvedPath: directory, entries: []};
+            else throw new Error(`Unexpected import request: ${url}`);
+            return {ok: true, status: url.endsWith("/register") ? 201 : 200, json: () => Promise.resolve(result)};
+        };
+        const app = renderWithProviders(<ProjectsPanel />, {fetchImpl});
+        try {
+            const check = screen.getByRole("button", {name: "Check game"});
+            expect(check).toBeDisabled();
+            fireEvent.change(screen.getByLabelText("Game location"), {target: {value: directory}});
+            await userEvent.setup().click(check);
+            const add = await screen.findByRole("button", {name: "Add to projects"});
+            expect(add).toBeEnabled();
+            expect(await service.list()).toEqual([]);
+            expect(fs.existsSync(registryPath)).toBe(false);
+            await userEvent.setup().click(add);
+            expect(await screen.findByRole("button", {name: "Open"})).toHaveAttribute("data-pokie-project-location", directory);
+            const restored = new StudioProjectRegistrationService(new FileStudioProjectRegistry(registryPath));
+            expect(await restored.list()).toEqual([expect.objectContaining({location: directory, type: "tsPackage", name: path.basename(directory), origin: "external", status: "ok"})]);
+            expect(requests.filter(url => url.endsWith("/preview"))).toHaveLength(1);
+            expect(requests.filter(url => url.endsWith("/register"))).toHaveLength(1);
+            expect(fs.existsSync(marker)).toBe(false);
+            expect(snapshots).not.toHaveBeenCalled();
+            expect(JSON.parse(await readFile(path.join(directory, "package.json"), "utf8"))).toEqual(manifest);
+        } finally {
+            app.unmount();
+            snapshots.mockRestore();
+            await rm(directory, {recursive: true, force: true});
+        }
+    });
+
+    it("keeps registration sibling callers read-only at recognition and rejects malformed imports", async () => {
+        const directory = await mkdtemp(path.join(tmpdir(), "p805-registration-metadata-"));
+        await writeFile(path.join(directory, "package.json"), JSON.stringify({pokie: {entry: "game.cjs"}}));
+        await writeFile(path.join(directory, "game.cjs"), "throw new Error('registration must not load a game');");
+        const resolver = new ProjectTargetResolver();
+        const resolve = jest.spyOn(resolver, "resolve");
+        const snapshots = jest.spyOn(fs.promises, "mkdtemp");
+        const service = new StudioProjectRegistrationService(undefined, resolver);
+        try {
+            expect(await service.previewImport(directory)).toMatchObject({status: "recognized", location: directory, type: "tsPackage"});
+            expect(await service.registerManaged(directory, "Managed", "/source.xlsx")).toMatchObject({status: "ok", entry: {origin: "managed", importedFromParSheetPath: "/source.xlsx"}});
+            expect(await service.recordOpened(directory)).toMatchObject({status: "ok", entry: {origin: "managed", name: "Managed"}});
+            expect(await service.describeLocation(directory)).toMatchObject({type: "tsPackage", origin: "managed"});
+            expect(await service.relocate(directory, directory)).toMatchObject({status: "ok", entry: {origin: "managed", importedFromParSheetPath: "/source.xlsx"}});
+            await service.remove(directory);
+            await service.migrateRecentProjects([{projectRoot: directory, name: "Migrated", openedAt: new Date().toISOString(), missing: false, availability: "available"}]);
+            expect(await service.list()).toEqual([expect.objectContaining({location: directory, name: "Migrated", origin: "external"})]);
+            // Recognition remains fresh, strict and non-mutating on failure.
+            await writeFile(path.join(directory, "package.json"), JSON.stringify({pokie: {}}));
+            await expect(service.previewImport(directory)).rejects.toThrow(/pokie.entry/);
+            await expect(service.registerExternal(directory)).rejects.toThrow(/pokie.entry/);
+            expect(await service.describeLocation(directory)).toBeUndefined();
+            expect(await service.list()).toEqual([expect.objectContaining({name: "Migrated"})]);
+            expect(resolve.mock.calls.length).toBeGreaterThanOrEqual(9);
+            for (const call of resolve.mock.calls) expect(call).toEqual([directory, {readConfigurationProvenance: false}]);
+            expect(snapshots).not.toHaveBeenCalled();
+        } finally {
+            resolve.mockRestore();
+            snapshots.mockRestore();
+            await rm(directory, {recursive: true, force: true});
+        }
+    });
 
     // The retained packed audit reported these visible controls as disabled
     // without title or aria-describedby. Exercise their actual components and
@@ -615,17 +705,17 @@ describe("P8-05 rendered Valera persona evidence", () => {
                     const driver=await readFile(fixture.handoff.browserDriver.path);
                     try {await writeFile(fixture.handoff.browserDriver.path,'substituted driver');await assert.rejects(()=>read(environment,{repository}),/authenticated controller browser driver required/);}finally{await writeFile(fixture.handoff.browserDriver.path,driver);}
                 }
-                for(const file of ['src/changed.ts','tsconfig.prod.json','tests/unnamed.test.ts']){
+                for(const file of ['src/changed.ts','cli/studio/StudioProjectRegistrationService.ts','tsconfig.prod.json','tests/unnamed.test.ts']){
                     await mkdir(path.dirname(path.join(repository,file)),{recursive:true});await writeFile(path.join(repository,file),'protected');
                     const changed=commit();
                     assert.throws(()=>authenticateP805ProductTree(fixture.handoff.candidateId,changed,repository),/new blind retests are required/);
                     for(const read of [readP911CandidateFromEnvironment,readP911SmokeCandidateFromEnvironment])await assert.rejects(()=>read(environment,{repository}),/product[/]build inputs changed/);
                     execFileSync('git',['reset','--hard',descendant],{cwd:repository});
                 }
-                console.log(JSON.stringify({completeCorrectionAdmitted:true,archivePreserved:true,pinsProtected:true,protectedPaths:3}));
+                console.log(JSON.stringify({completeCorrectionAdmitted:true,archivePreserved:true,pinsProtected:true,protectedPaths:4}));
             } finally {await rm(directory,{recursive:true,force:true});}
         `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 30_000}));
-        expect(result).toEqual({completeCorrectionAdmitted: true, archivePreserved: true, pinsProtected: true, protectedPaths: 3});
+        expect(result).toEqual({completeCorrectionAdmitted: true, archivePreserved: true, pinsProtected: true, protectedPaths: 4});
     });
 
     it("preserves oversized browser and API logs losslessly within immutable evidence bounds", () => {
