@@ -120,6 +120,8 @@ const tooling = new Set([
     "tests/cli/studio-client/src/components/common/StudioPresentation.test.tsx",
     "tests/cli/studio-client/src/hooks/useHomeSourceJobs.test.tsx",
     "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",
+    "tests/cli/studio-client/src/P805ValeraHarness.test.tsx",
+    "tests/testUtils/p805PackedEvidence.ts",
     "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
     "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
     "tests/cli/studio-client/src/StudioReadinessConvergence.test.tsx",

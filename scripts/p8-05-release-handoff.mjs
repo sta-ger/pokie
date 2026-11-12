@@ -96,6 +96,8 @@ const tooling = new Set([
     "tests/cli/materialize/BlueprintProjectMaterializer.offline.integration.test.ts",
     "tests/cli/packageOnlyCommandInputs.contract.test.ts",
     "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",
+    "tests/cli/studio-client/src/P805ValeraHarness.test.tsx",
+    "tests/testUtils/p805PackedEvidence.ts",
     "tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx",
     "tests/cli/studio-client/src/components/blueprintEditor/BlueprintBuildPanel.test.tsx",
     "tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.guidedProgress.test.tsx",
