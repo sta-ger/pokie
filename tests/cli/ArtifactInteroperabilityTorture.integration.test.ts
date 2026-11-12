@@ -8,6 +8,7 @@ import {
     ArtifactBuilderRegistry,
     ArtifactConversionPlanner,
     BUILD_PRODUCT_MATRIX_TARGETS,
+    BlueprintStakeOutcomeLibraryWorkflow,
     computeBlueprintHash,
     describeUnavailableArtifactOperation,
     GameBlueprintValidator,
@@ -45,10 +46,16 @@ import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import {ArtifactInteroperabilityRun, installPc14FixedRunnerClock, pc05CliOwnerOperations} from "../support/ArtifactInteroperabilityRun.js";
 
 const POKIE_VERSION = "1.3.0";
+// Package -> library resolves, plans, revalidates source/graph and generates
+// through five independent runtime snapshots. Budget the complete public chain,
+// including their releases, separately from a single package extraction.
+const PROVENANCE_CHAIN_TIMEOUT = 3 * PACKAGE_EXTRACTION_TEST_TIMEOUT;
+const MATRIX_TIMEOUT = 8 * PACKAGE_EXTRACTION_TEST_TIMEOUT;
 
 describe("PC-14 CLI real-artifact interoperability torture", () => {
     let workDir: string;
     let restoreRunnerClock: () => void;
+    let workflow: Promise<void> | undefined;
 
     let restoreTemporaryDirectory: () => void;
     beforeAll(() => {
@@ -59,20 +66,68 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
     });
 
     beforeEach(() => {
+        workflow = undefined;
         restoreRunnerClock = installPc14FixedRunnerClock();
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-artifact-torture-"));
         jest.spyOn(console, "log").mockImplementation(() => undefined);
         jest.spyOn(console, "error").mockImplementation(() => undefined);
     });
 
-    afterEach(() => {
-        fs.rmSync(workDir, {recursive: true, force: true});
-        restoreRunnerClock();
-        (console.log as jest.Mock).mockRestore();
-        (console.error as jest.Mock).mockRestore();
-    });
+    afterEach(async () => {
+        const pending = workflow;
+        workflow = undefined;
+        try {
+            // Jest's deadline does not cancel its async callback. Do not delete
+            // source files or start the sibling matrix while a snapshot/writer
+            // still owns them. Both workflows use this terminal drain.
+            await pending?.catch(() => undefined);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+            restoreRunnerClock();
+            (console.log as jest.Mock).mockRestore();
+            (console.error as jest.Mock).mockRestore();
+        }
+    }, MATRIX_TIMEOUT);
 
-    it("chains generated PAR, package, Outcome Library and Stake artifacts without replacing provenance", async () => {
+    it("chains generated PAR, package, Outcome Library and Stake artifacts without replacing provenance", () => {
+        workflow = runProvenanceChain();
+        return workflow;
+    }, PROVENANCE_CHAIN_TIMEOUT);
+
+    async function runProvenanceChain(): Promise<void> {
+        const snapshots = () => fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-")).sort();
+        const originalSnapshots = snapshots();
+        const prepare = BlueprintStakeOutcomeLibraryWorkflow.prototype.prepare;
+        const preparation = jest.spyOn(BlueprintStakeOutcomeLibraryWorkflow.prototype, "prepare").mockImplementation(async function(this: BlueprintStakeOutcomeLibraryWorkflow, ...args) {
+            const started = performance.now();
+            const result = await Reflect.apply(prepare, this, args);
+            // Forward the real runtime unchanged. Its caller still owns release;
+            // these timings distinguish repeated loads from a stalled writer.
+            console.info(`Provenance runtime prepare: ${JSON.stringify({source: args[0].type, configHash: result.configHash, elapsedMs: Math.round(performance.now() - started)})}`);
+            return result;
+        });
+        const run = async (operation: string, command: () => Promise<number>): Promise<void> => {
+            const started = performance.now();
+            try {
+                const result = await command();
+                console.info(`Provenance command: ${JSON.stringify({operation, result, elapsedMs: Math.round(performance.now() - started), remainingSnapshots: snapshots()})}`);
+                expect(result).toBe(0);
+                // Command success includes releasing every invocation-owned load,
+                // not just publishing files while cleanup continues underneath it.
+                expect(snapshots()).toEqual(originalSnapshots);
+            } catch (error) {
+                console.info(`Provenance command failed: ${JSON.stringify({operation, elapsedMs: Math.round(performance.now() - started), remainingSnapshots: snapshots()})}`);
+                throw error;
+            }
+        };
+        try {
+            await verifyProvenanceChain(run);
+        } finally {
+            preparation.mockRestore();
+        }
+    }
+
+    async function verifyProvenanceChain(run: (operation: string, command: () => Promise<number>) => Promise<void>): Promise<void> {
         const blueprint: GameBlueprint = {
             manifest: {id: "artifact-torture", name: "Artifact Torture", version: "1.0.0"},
             reels: 2,
@@ -87,8 +142,8 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const importedBlueprintPath = path.join(workDir, "imported.blueprint.json");
         fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
 
-        expect(await new ParCommand(POKIE_VERSION).run(["export", blueprintPath, "--out", workbookPath])).toBe(0);
-        expect(await new ParCommand(POKIE_VERSION).run(["import", workbookPath, "--out", importedBlueprintPath])).toBe(0);
+        await run("par export", () => new ParCommand(POKIE_VERSION).run(["export", blueprintPath, "--out", workbookPath]));
+        await run("par import", () => new ParCommand(POKIE_VERSION).run(["import", workbookPath, "--out", importedBlueprintPath]));
         const parEvidence = JSON.parse(fs.readFileSync(`${importedBlueprintPath}.conversion-evidence.json`, "utf-8"));
         expect(parEvidence).toMatchObject({
             provenance: {blueprintHash: computeBlueprintHash(blueprint)},
@@ -106,16 +161,16 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const importedLibraryPath = path.join(workDir, "imported-library");
         const reexportedStakePath = path.join(workDir, "stake-reexported");
 
-        expect(await build.run([importedBlueprintPath, "--target", "tsPackage", "--out", packagePath])).toBe(0);
-        expect(await build.run([packagePath, "--target", "outcomeLibrary", "--out", libraryPath])).toBe(0);
-        expect(await build.run([libraryPath, "--target", "stakeAdapter", "--out", stakePath])).toBe(0);
-        expect(await new StakeEngineCommand(POKIE_VERSION).run(["import", stakePath, "--out", importedLibraryPath])).toBe(0);
+        await run("build tsPackage", () => build.run([importedBlueprintPath, "--target", "tsPackage", "--out", packagePath]));
+        await run("build outcomeLibrary", () => build.run([packagePath, "--target", "outcomeLibrary", "--out", libraryPath]));
+        await run("build stakeAdapter", () => build.run([libraryPath, "--target", "stakeAdapter", "--out", stakePath]));
+        await run("stakeengine import", () => new StakeEngineCommand(POKIE_VERSION).run(["import", stakePath, "--out", importedLibraryPath]));
         // Exercise the Stake public re-export owner itself. Building from the
         // imported library proves registry conversion, but it cannot stand in
         // for the config-driven `stakeengine export` boundary users receive
         // after an import.
         const importedConfigPath = path.join(importedLibraryPath, "config.json");
-        expect(await new StakeEngineCommand(POKIE_VERSION).run(["export", importedConfigPath, "--out", reexportedStakePath])).toBe(0);
+        await run("stakeengine export", () => new StakeEngineCommand(POKIE_VERSION).run(["export", importedConfigPath, "--out", reexportedStakePath]));
 
         const sourceManifest = JSON.parse(fs.readFileSync(path.join(libraryPath, "manifest.json"), "utf-8"));
         const importedManifest = JSON.parse(fs.readFileSync(path.join(importedLibraryPath, "manifest.json"), "utf-8"));
@@ -143,13 +198,18 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         });
         expect(stakeManifest).toMatchObject({game: sourceManifest.game, configHash: sourceManifest.configHash, pokieVersion: sourceManifest.pokieVersion});
         expect(fs.existsSync(path.join(reexportedStakePath, "pokie-manifest.json"))).toBe(true);
-    });
+    }
 
     // This runner intentionally exercises every public artifact boundary and
     // emits the evidence consumed by the clean-process remediation contract.
     // It can exceed Jest's default minute when it shares the constrained
     // changed-test workers with the Studio and evidence-regeneration suites.
-    it("executes the provenance, drift, recovery and diagnostic matrix from public artifacts", async () => {
+    it("executes the provenance, drift, recovery and diagnostic matrix from public artifacts", () => {
+        workflow = runArtifactMatrix();
+        return workflow;
+    }, MATRIX_TIMEOUT);
+
+    async function runArtifactMatrix(): Promise<void> {
         const evidence = new ArtifactInteroperabilityRun(workDir);
         const blueprint: GameBlueprint = {
             manifest: {id: "matrix-slot", name: "Matrix Slot", version: "1.0.0"},
@@ -1924,9 +1984,5 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         expect((JSON.parse(fs.readFileSync(emittedEvidencePath, "utf-8")) as {"scenario_results": {execution: {assertions: string[]; observations: unknown[]}}[]}).scenario_results).toEqual(expect.arrayContaining([
             expect.objectContaining({execution: expect.objectContaining({assertions: expect.any(Array), observations: expect.any(Array)})}),
         ]));
-    // This complete matrix snapshots real packages and runs the public lifecycle.
-    // Measured contended gate runs exceed 600 seconds; the generic five-minute ceiling
-    // can expire before the final assertions. Keep a finite allowance for the
-    // complete matrix, including contention with another changed-test worker.
-    }, 8 * PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    }
 });
