@@ -673,7 +673,8 @@ describe("P8-05 rendered Valera persona evidence", () => {
                         const api = [{browserRequestId: "completed-sibling", status: 200}];
                         const references = await preserveP805FailedWorkflow({error: failure, transcript, events: blockedPreflight, api, errors: [], timings: {replayMs: 27478}, observations: ["outcome-library-report-diff-replay"], save});
                         for (const entry of entries.values()) {
-                            expect(await readFile(path.join(directory, entry.item.path))).toEqual(entry.contents);
+                            const saved = await readFile(path.join(directory, entry.item.path));
+                            expect(saved.equals(entry.contents)).toBe(true);
                             expect(entry.contents.length).toBeGreaterThan(0);
                             expect(entry.contents.length).toBeLessThanOrEqual(P805_MAX_EVIDENCE_BYTES);
                             expect(entry.item.observationIds).toEqual(["outcome-library-report-diff-replay"]);
