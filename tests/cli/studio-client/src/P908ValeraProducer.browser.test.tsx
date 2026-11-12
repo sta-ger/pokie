@@ -9,7 +9,7 @@ import {productionStudioCandidate} from "./productionStudioCandidate";
 import {createPackageExtractionTestEnvironment} from "../../../v2/fixtures/PackageExtractionFixture.js";
 
 type Devtools = {
-    events: Array<{method: string; params: {requestId?: string; response?: {url: string; status: number}}}>;
+    events: Array<{method: string; params: {requestId?: string; request?: {url: string; method: string; postData?: string}; response?: {url: string; status: number}}}>;
     send(method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
     close(): Promise<void>;
 };
@@ -58,6 +58,165 @@ async function stop(child: ChildProcess | undefined): Promise<void> {
         await bounded(exited, "forced process cleanup", 5_000);
     }
 }
+
+type BrowserActions = {
+    evaluate<T>(expression: string): Promise<T>;
+    send(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>>;
+    until(check: () => Promise<boolean>, label: string, timeout?: number): Promise<void>;
+};
+
+async function nativeClick({evaluate, send, until}: BrowserActions, expression: string, timeout?: number): Promise<void> {
+    await until(() => evaluate<boolean>(`Boolean(${expression})`), `available control: ${expression}`, timeout);
+    let point: {x: number; y: number} | undefined;
+    try {
+        // The native press focuses its target. Settle that focus (and the
+        // production focus-visibility scroll) before measuring, rather than
+        // allowing it to move the control between press and release.
+        await until(async () => {
+            const candidate = await evaluate<{x: number; y: number} | undefined>(`(async () => {
+                const e = ${expression};
+                if (!e || e.disabled || e.getAttribute('aria-busy') === 'true') return;
+                e.focus({preventScroll:true});
+                e.scrollIntoView({block:'center', behavior:'instant'});
+                await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                if (${expression} !== e || !e.isConnected || e.disabled || document.activeElement !== e) return;
+                window.__p908PointerTarget = e;
+                const r = e.getBoundingClientRect();
+                return {x:r.x+r.width/2, y:r.y+r.height/2};
+            })()`);
+            if (candidate === undefined) return false;
+            await send("Input.dispatchMouseEvent", {type: "mouseMoved", ...candidate, pointerType: "mouse"});
+            point = await evaluate<{x: number; y: number} | undefined>(`(async () => {
+                const e = window.__p908PointerTarget;
+                const before = e.getBoundingClientRect();
+                await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                if (${expression} !== e || !e.isConnected || e.disabled || e.getAttribute('aria-busy') === 'true' || document.activeElement !== e) return;
+                const r = e.getBoundingClientRect();
+                if (r.width <= 0 || r.height <= 0 || ['x', 'y', 'width', 'height'].some(key => Math.abs(before[key] - r[key]) > 0.1)) return;
+                const point = {x:r.x+r.width/2, y:r.y+r.height/2};
+                if (Math.abs(point.x - ${candidate.x}) > 0.1 || Math.abs(point.y - ${candidate.y}) > 0.1 || !e.contains(document.elementFromPoint(point.x, point.y))) return;
+                const events = window.__p908PointerEvents = [];
+                window.__p908CapturePointer = event => events.push({
+                    type:event.type, trusted:event.isTrusted, target:e.isConnected && event.composedPath().includes(e)
+                });
+                for (const type of ['pointerdown','pointerup','click']) document.addEventListener(type, window.__p908CapturePointer, true);
+                return point;
+            })()`);
+            return point !== undefined;
+        }, `settled pointer target: ${expression}`, timeout);
+        await send("Input.dispatchMouseEvent", {type: "mousePressed", ...point, button: "left", buttons: 1, pointerType: "mouse", clickCount: 1});
+        await send("Input.dispatchMouseEvent", {type: "mouseReleased", ...point, button: "left", buttons: 0, pointerType: "mouse", clickCount: 1});
+        expect(await evaluate("window.__p908PointerEvents")).toEqual([
+            {type: "pointerdown", trusted: true, target: true},
+            {type: "pointerup", trusted: true, target: true},
+            {type: "click", trusted: true, target: true},
+        ]);
+    } finally {
+        await evaluate(`(() => {
+            for (const type of ['pointerdown','pointerup','click']) document.removeEventListener(type, window.__p908CapturePointer, true);
+            delete window.__p908CapturePointer;
+            delete window.__p908PointerTarget;
+            delete window.__p908PointerEvents;
+        })()`);
+    }
+}
+
+it("settles focus reflow before native pointer delivery to the built-package follow-up", async () => {
+    const url = pathToFileURL(path.join(process.cwd(), "scripts/p8-05-valera-browser-audit.mjs")).href;
+    type BrowserOwner = {ownedProcesses: Map<number, unknown>};
+    const {connectP805Devtools, createP805OwnedProcessRecord, drainP805TrackedOwner} = await runInThisContext(`import(${JSON.stringify(url)})`, {
+        importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+    }) as {
+        connectP805Devtools: (url: string) => Promise<Devtools>;
+        createP805OwnedProcessRecord: (label: string, child: ChildProcess, options: Record<string, unknown>) => BrowserOwner;
+        drainP805TrackedOwner: (owner: BrowserOwner, graceMs: number) => Promise<{processTreeDrained: boolean; resourcesDrained: boolean}>;
+    };
+    const root = await fs.mkdtemp(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/p908-pointer-"));
+    let owner: BrowserOwner | undefined;
+    let browser: ChildProcess | undefined;
+    let devtools: Devtools | undefined;
+    let startupError: Error | undefined;
+    const deadline = Date.now() + 15_000;
+    const until: BrowserActions["until"] = (check, label, timeout) => waitUntil(check, label, deadline, timeout ?? 5_000);
+    try {
+        browser = spawn(process.env.P908_CHROMIUM_BINARY ?? "chromium-browser", [
+            "--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--no-first-run",
+            `--user-data-dir=${root}`, "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", "about:blank",
+        ], {stdio: "ignore"});
+        owner = createP805OwnedProcessRecord("producer pointer regression browser", browser, {});
+        browser.on("error", (error) => {
+            startupError = error;
+        });
+        const portFile = path.join(root, "DevToolsActivePort");
+        await until(() => {
+            if (startupError !== undefined) throw startupError;
+            return fs.access(portFile).then(() => true, () => false);
+        }, "pointer regression Chromium startup");
+        const port = (await fs.readFile(portFile, "utf8")).split("\n")[0];
+        devtools = await bounded(connectP805Devtools(`http://127.0.0.1:${port}`), "pointer regression DevTools startup", 5_000);
+        const connection = devtools;
+        const send: BrowserActions["send"] = (method, params) => bounded(connection.send(method, params), method, 5_000);
+        const evaluate: BrowserActions["evaluate"] = async <T, >(expression: string): Promise<T> => {
+            const result = await send("Runtime.evaluate", {expression, returnByValue: true, awaitPromise: true});
+            if (result.exceptionDetails !== undefined) throw new Error(JSON.stringify(result.exceptionDetails));
+            return (result.result as {value: T}).value;
+        };
+        // A transport fixture, not a substitute Studio result. A native focus
+        // handler moves the same node, reproducing the unobserved press/release
+        // gap without starting an installed persona/save/build collection.
+        await send("Page.setDocumentContent", {frameId: ((await send("Page.getFrameTree", {})).frameTree as {frame: {id: string}}).frame.id,
+            html: '<button id="open" style="position:absolute;left:100px;top:100px">Open as Project</button>'});
+        const reset = () => evaluate(`(() => {
+            const e = document.getElementById('open');
+            e.blur(); e.style.top = '100px'; window.delivered = 0;
+            e.onfocus = () => { e.style.top = '300px'; };
+            e.onclick = () => { window.delivered++; };
+        })()`);
+        await reset();
+        const stale = await evaluate<{x: number; y: number}>("(() => { const r = document.getElementById('open').getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()");
+        await send("Input.dispatchMouseEvent", {type: "mousePressed", ...stale, button: "left", clickCount: 1});
+        await send("Input.dispatchMouseEvent", {type: "mouseReleased", ...stale, button: "left", clickCount: 1});
+        expect(await evaluate("window.delivered")).toBe(0);
+        expect(await evaluate("document.activeElement.id")).toBe("open");
+        await reset();
+        await nativeClick({evaluate, send, until}, "document.getElementById('open')");
+        expect(await evaluate("window.delivered")).toBe(1);
+        // Hover can reflow a target after the first focus/scroll measurement.
+        await reset();
+        await evaluate(`(() => {
+            const e = document.getElementById('open');
+            e.onfocus = null;
+            e.onpointerenter = () => { e.style.top = '400px'; e.onpointerenter = null; };
+        })()`);
+        await nativeClick({evaluate, send, until}, "document.getElementById('open')");
+        expect(await evaluate("window.delivered")).toBe(1);
+        await evaluate("document.getElementById('open').disabled = true; window.delivered = 0");
+        await expect(nativeClick({evaluate, send, until}, "document.getElementById('open')", 150)).rejects.toThrow("settled pointer target");
+        expect(await evaluate("window.delivered")).toBe(0);
+    } finally {
+        try {
+            // Capture the live descendants before cooperative Browser.close
+            // can reparent them; verify both process and resource drainage.
+            if (browser !== undefined && owner !== undefined) {
+                const finalOwner = createP805OwnedProcessRecord("producer pointer regression browser", browser, {});
+                for (const [pid, identity] of finalOwner.ownedProcesses) owner.ownedProcesses.set(pid, identity);
+            }
+            if (devtools !== undefined) {
+                await bounded(devtools.send("Browser.close"), "pointer regression browser shutdown", 2_000).catch(() => undefined);
+                await bounded(devtools.close(), "pointer regression DevTools cleanup", 2_000);
+            }
+        } finally {
+            try {
+                if (owner !== undefined) {
+                    expect(await drainP805TrackedOwner(owner, 1_000)).toMatchObject({processTreeDrained: true, resourcesDrained: true});
+                }
+                await stop(browser);
+            } finally {
+                await fs.rm(root, {recursive: true, force: true});
+            }
+        }
+    }
+}, 30_000);
 
 it("loads the shared Studio test setup without supplying a simulated browser DOM", () => {
     expect(typeof Element).toBe("undefined");
@@ -246,30 +405,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
             return (response.result as {value: T}).value;
         };
         const button = (label: string, scope = "document") => `Array.from((${scope})?.querySelectorAll('button') ?? []).find(e => e.textContent.trim() === ${JSON.stringify(label)} && e.getClientRects().length && !e.disabled)`;
-        const click = async (expression: string, timeout?: number) => {
-            await until(() => evaluate<boolean>(`Boolean(${expression})`), `available control: ${expression}`, timeout);
-            let point: {x: number; y: number} | undefined;
-            // Validation and disclosure transitions can move or disable a control
-            // after it first appears. Dispatch once, only at a settled, hittable target.
-            await until(async () => {
-                point = await evaluate<{x: number; y: number} | undefined>(`(async () => {
-                    const e = ${expression};
-                    if (!e) return;
-                    e.scrollIntoView({block:'center', behavior:'instant'});
-                    const before = e.getBoundingClientRect();
-                    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-                    if (${expression} !== e || !e.isConnected || e.disabled || e.getAttribute('aria-busy') === 'true') return;
-                    const r = e.getBoundingClientRect();
-                    if (r.width <= 0 || r.height <= 0 || ['x', 'y', 'width', 'height'].some(key => Math.abs(before[key] - r[key]) > 0.1)) return;
-                    const point = {x:r.x+r.width/2, y:r.y+r.height/2};
-                    if (!e.contains(document.elementFromPoint(point.x, point.y))) return;
-                    return point;
-                })()`);
-                return point !== undefined;
-            }, `settled pointer target: ${expression}`);
-            await bounded(connection.send("Input.dispatchMouseEvent", {type: "mousePressed", ...point, button: "left", clickCount: 1}), "pointer press");
-            await bounded(connection.send("Input.dispatchMouseEvent", {type: "mouseReleased", ...point, button: "left", clickCount: 1}), "pointer release");
-        };
+        const click = (expression: string, timeout?: number) => nativeClick({evaluate, send, until}, expression, timeout);
         const playRound = async (projectRoot: string) => {
             await click(button("Open Play"));
             await click(button("New Play session"));
@@ -330,9 +466,27 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
         await until(() => evaluate<boolean>("document.querySelectorAll('[data-pokie-lifecycle-card=outcome-library]').length === 1"), "single outcome generator");
         const packageScope = "document.getElementById('artifact-build-tsPackage')?.closest('[data-pokie-lifecycle-form=artifact-build]')";
         await click(button("Build", packageScope));
+        await until(() => evaluate<boolean>(`Boolean(${button("Open as Project", packageScope)})`), "completed package follow-up");
+        const outputPath = await evaluate<string>(`(${button("Open as Project", packageScope)}).getAttribute('data-pokie-lifecycle-artifact-output')`);
+        await fs.access(path.join(outputPath, "dist/index.js"));
         const packageCursor = connection.events.length;
-        await click(button("Open as Project", packageScope));
         try {
+            await click(button("Open as Project", packageScope));
+            let requestId: string | undefined;
+            // A missed native click is not slow runtime materialization. Join
+            // this activation to its own submitted path before waiting for work.
+            await until(() => {
+                requestId = connection.events.slice(packageCursor).find((event) => event.method === "Network.requestWillBeSent"
+                    && event.params.request?.url.endsWith("/api/home/projects/open") && event.params.request.method === "POST"
+                    && JSON.parse(event.params.request.postData ?? "{}").projectRoot === outputPath)?.params.requestId;
+                return Promise.resolve(requestId !== undefined);
+            }, "built package open request dispatch", 5_000);
+            await until(() => Promise.resolve(connection.events.slice(packageCursor).some((event) => event.method === "Network.responseReceived" && event.params.requestId === requestId)), "built package open response", RUNTIME_PHASE_TIMEOUT);
+            const opened = connection.events.slice(packageCursor).find((event) => event.method === "Network.responseReceived" && event.params.requestId === requestId)!;
+            expect(opened.params.response?.status).toBe(200);
+            await until(() => Promise.resolve(connection.events.slice(packageCursor).some((event) => event.method === "Network.loadingFinished" && event.params.requestId === requestId)), "completed package open response body", 5_000);
+            const openedBody = await send("Network.getResponseBody", {requestId});
+            expect(JSON.parse(openedBody.body as string)).toMatchObject({context: {mode: "project", projectRoot: outputPath}});
             await until(() => evaluate<boolean>("location.hash.endsWith('/overview') && document.body.innerText.includes('Game Model is read-only for this package')"), "built package opening and truthful editability", RUNTIME_PHASE_TIMEOUT);
             await until(() => evaluate<boolean>("document.body.innerText.includes('Valid — no issues found.')"), "built package validation", RUNTIME_PHASE_TIMEOUT);
         } catch (error) {
@@ -345,6 +499,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
             throw new Error(`${String(error)}; rendered state: ${JSON.stringify(rendered)}; project responses: ${JSON.stringify(responses)}; Studio: ${stderr}`, {cause: error});
         }
         const packagePath = await evaluate<string>("decodeURIComponent(location.hash.split('/')[2])");
+        expect(packagePath).toBe(outputPath);
         expect(packagePath).not.toBe(designPath);
         expect(packagePath.startsWith(root + path.sep)).toBe(true);
         const validationResponse = connection.events.slice(packageCursor).find((event) => event.method === "Network.responseReceived" && event.params.response?.url.endsWith("/api/project/validate"));
