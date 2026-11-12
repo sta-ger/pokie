@@ -8,6 +8,12 @@ const json = (file, value) => writeFile(file, `${JSON.stringify(value)}\n`);
 // Exact accumulated correction from the saved V2C-37 verified candidate.
 // Keep this independent of both readers, including every helper and selector.
 export const V2C37_SAVED_GATE_CORRECTION_PATHS = [
+    // V2C-37 bounded native-runtime and transaction race fixtures only.
+    "tests/cli/studio/OptimizationRoutes.test.ts",
+    "tests/cli/studio/blueprint/StudioBlueprintService.test.ts",
+    "tests/v2/TransactionalRoundStore.test.ts",
+    "tests/v2/Valera34Regression.test.ts",
+    "tests/scripts/p9-11-corrective-closeout.test.mjs",
     "tests/cli/BuildProductMatrix.crossSurface.contract.test.ts",
     "tests/scripts/p8-05-product-readiness-campaign.test.mjs",
     "tests/v2/FeatureAnalyticsPublic.test.ts",
@@ -68,6 +74,11 @@ export const V2C37_SAVED_GATE_CORRECTION_PATHS = [
 // delta, the prior driver repair, the reviewed interoperability correction and
 // every file changed by this handoff repair.
 export const P911_TOOLING_DESCENDANT_PATHS = [
+    // V2C-37 bounded native-runtime and transaction race fixtures only.
+    "tests/cli/studio/OptimizationRoutes.test.ts",
+    "tests/cli/studio/blueprint/StudioBlueprintService.test.ts",
+    "tests/v2/TransactionalRoundStore.test.ts",
+    "tests/v2/Valera34Regression.test.ts",
     "tests/scripts/p8-05-product-readiness-campaign.test.mjs",
     "tests/v2/FeatureAnalyticsPublic.test.ts",
     "tests/v2/TransactionalRuntimeBoundary.test.ts",

@@ -1,3 +1,5 @@
+import os from "node:os";
+import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {loadPokieGame} from "../../../src/gamepackage/loadPokieGame.js";
 import {ArtifactPublicationOwnership} from "../../../src/project/ArtifactPublicationOwnership.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
@@ -16,6 +18,11 @@ import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRep
 import {ProjectOptimizationService} from "../../../src/optimization/ProjectOptimizationService.js";
 import {optimizationBlueprint, optimizationRequest, stochasticOptimizationRequest} from "../../v2/fixtures/OptimizationFixture.js";
 import type {StudioJobView} from "../../../cli/studio/jobs/StudioJobView.js";
+let disposeRuntime: () => void;
+beforeAll(() => {
+    disposeRuntime = createPackageExtractionTestEnvironment();
+}, 120000);
+afterAll(() => disposeRuntime?.());
 let directory: string;
 let source: string;
 let jobs: StudioJobService;
@@ -23,7 +30,7 @@ let routes: StudioOptimizationService;
 let current: boolean;
 const context = () => ({projectRoot: source, projectId: source, isCurrent: () => current});
 beforeEach(() => {
-    directory = fs.mkdtempSync(path.resolve("node_modules/.cache/optimization-routes-"));
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), "optimization-routes-"));
     source = path.join(directory, "source.blueprint.json");
     fs.writeFileSync(source, JSON.stringify(optimizationBlueprint()));
     jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
@@ -31,9 +38,13 @@ beforeEach(() => {
     current = true;
 });
 afterEach(async () => {
-    await routes.drain();
-    jest.restoreAllMocks();
-    fs.rmSync(directory, {recursive: true, force: true});
+    try {
+        await routes.shutdown();
+        expect(fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-"))).toEqual([]);
+    } finally {
+        jest.restoreAllMocks();
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
 });
 async function preview(request = optimizationRequest()) {
     const response = await routes.handle("POST", "support", {request, expectedProjectRoot: source}, context());

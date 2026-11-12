@@ -4,8 +4,9 @@ import {mkdir, mkdtemp, readFile, rm, symlink, writeFile, access} from "node:fs/
 import os from "node:os";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
-import {test, jest} from "@jest/globals";
+import {test, jest, describe, beforeAll, afterEach, afterAll} from "@jest/globals";
 import {P911_SCENARIOS, P911_PERSONAS, P911_RENDERED_COVERAGE, runP911Closeout, validateActionCoverage, settleP911Commands, stopP911Child, spawnP911Child, p911ChildrenDrained, retainP911PackagingReceipt, waitP911Child, runP911Process} from "../../scripts/p9-11-corrective-closeout.mjs";
+import {authenticateP805ProductTree} from "../../scripts/p8-05-release-handoff.mjs";
 import {readPinnedJson, sha256, P911_CAMPAIGN} from "../../scripts/p9-11-candidate.mjs";
 import {assertRareP911Metrics} from "../../scripts/p9-11-corrective-scenarios.mjs";
 import {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} from "../testUtils/createP911CandidateFixture.mjs";
@@ -25,6 +26,9 @@ const selectRetained = async (fixture) => JSON.parse(execFileSync(process.execPa
         POKIE_P805_RELEASE_HANDOFF:"",
     })}, {repository:${JSON.stringify(fixture.repository)}});
     validateP911SmokeCandidateIdentity(candidate, {}, {repository:${JSON.stringify(fixture.repository)}, archive:Buffer.from(archive)});
+    const {authenticateP805ProductTree} = await import(${JSON.stringify(pathToFileURL(path.resolve("scripts/p8-05-release-handoff.mjs")).href)});
+    const legacy = authenticateP805ProductTree(candidate.candidateId, candidate.equivalence.reviewedId, ${JSON.stringify(fixture.repository)});
+    if (JSON.stringify(legacy.changedToolingAndEvidencePaths) !== JSON.stringify(candidate.equivalence.changedEvidenceAndTooling)) throw new Error('candidate readers disagree on the complete correction');
     process.stdout.write(JSON.stringify({...candidate, consumedArchiveSha256:sha256(archive)}));
 `], {encoding:"utf8", timeout:10_000, stdio:["ignore", "pipe", "pipe"]}));
 const commitFixture = (repository) => {
@@ -156,6 +160,10 @@ test("shared selector retains the authenticated archive/install through committe
             "scripts/p9-11-candidate.mjs",
             "tests/testUtils/createP911CandidateFixture.mjs",
             "tests/scripts/p9-11-corrective-closeout.test.mjs",
+            "tests/cli/studio/OptimizationRoutes.test.ts",
+            "tests/cli/studio/blueprint/StudioBlueprintService.test.ts",
+            "tests/v2/TransactionalRoundStore.test.ts",
+            "tests/v2/Valera34Regression.test.ts",
         ]) assert.ok(selected.equivalence.changedEvidenceAndTooling.includes(file), `missing committed descendant: ${file}`);
         assert.deepEqual({...selected, equivalence:original.equivalence}, original);
         assert.equal(selected.consumedArchiveSha256, fixture.handoff.archiveSha256);
@@ -197,7 +205,31 @@ test("shared selector retains the authenticated archive/install through committe
     } finally { await rm(directory, {recursive:true, force:true}); }
 });
 
-test.each([
+// Each table owns one authenticated archive/install and a committed descendant.
+// Reset only this synthetic Git repository between mutations. Recreating hundreds
+// of tooling files, two commits, tar and installation for every rejection obscured
+// the selector under test and contended with native runtime snapshots in the gate.
+function descendantCases(name, files, check) {
+    describe(name, () => {
+        let directory, fixture, reviewedId;
+        beforeAll(async () => {
+            directory = await mkdtemp(path.join(os.tmpdir(), "p911-descendant-cases-"));
+            fixture = await candidateFixture(directory);
+            reviewedId = await commitP911ToolingDescendant(fixture);
+            await selectRetained(fixture);
+        });
+        afterEach(() => {
+            if (reviewedId) execFileSync("git", ["reset", "--hard", reviewedId], {cwd:fixture.repository, stdio:"pipe"});
+        });
+        afterAll(async () => { if (directory) await rm(directory, {recursive:true, force:true}); });
+        test.each(files)("%s", async file => {
+            assert.equal(execFileSync("git", ["status", "--porcelain"], {cwd:fixture.repository, encoding:"utf8"}), "");
+            await check(fixture, file);
+        });
+    });
+}
+
+descendantCases("tooling descendant does not exempt product/build or unnamed input", [
     "package.json", "package-lock.json", "generate-barrels.js", "tsconfig.prod.json", "src/index.ts", "cli/studio-client/src/global.css",
     "scripts/p9-11-rendered-driver-extra.mjs", "tests/scripts/p9-11-other.test.mjs", "docs/audit-corrections/valera-graphic-designer.md",
     "docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification-extra.md",
@@ -207,31 +239,24 @@ test.each([
     "scripts/p8-05-valera-browser-audit-extra.mjs", "tests/cli/studio-client/src/other.test.tsx",
     "tests/cli/studio-client/src/Pc14StudioUiInteroperability.extra.test.tsx",
     "cli/studio-client/vite.config.ts", "cli/studio-client/tsconfig.json",
-])("tooling descendant does not exempt product/build or unnamed input %s", async (file) => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "p911-protected-descendant-"));
-    try {
-        const fixture = await candidateFixture(directory);
-        await commitP911ToolingDescendant(fixture);
-        await selectRetained(fixture);
-        const target = path.join(fixture.repository, file);
-        await mkdir(path.dirname(target), {recursive:true});
-        await writeFile(target, file === "package.json" ? `${JSON.stringify({name:"changed-product"})}\n` : "changed protected input\n");
-        commitFixture(fixture.repository);
-        await assert.rejects(selectRetained(fixture), /product\/build inputs changed/);
-    } finally { await rm(directory, {recursive:true, force:true}); }
+    "src/gamepackage/resolvePokieGameEntryModule.ts", "cli/studio/StudioProjectRegistrationService.ts",
+    "tests/cli/studio/OptimizationRoutes.extra.test.ts", "tests/cli/studio/blueprint/StudioBlueprintService.extra.test.ts",
+    "tests/v2/TransactionalRoundStore.extra.test.ts", "tests/v2/Valera34Regression.extra.test.ts",
+], async (fixture, file) => {
+    const target = path.join(fixture.repository, file);
+    await mkdir(path.dirname(target), {recursive:true});
+    await writeFile(target, file === "package.json" ? `${JSON.stringify({name:"changed-product"})}\n` : "changed protected input\n");
+    const reviewedId = commitFixture(fixture.repository);
+    assert.throws(() => authenticateP805ProductTree(fixture.handoff.candidateId, reviewedId, fixture.repository), /changes product or build inputs/);
+    await assert.rejects(selectRetained(fixture), /product\/build inputs changed/);
 });
 
-test.each(P911_TOOLING_DESCENDANT_PATHS)("tooling descendant rejects nonregular entry %s", async (file) => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "p911-nonregular-descendant-"));
-    try {
-        const fixture = await candidateFixture(directory);
-        await commitP911ToolingDescendant(fixture);
-        await selectRetained(fixture);
-        const target = path.join(fixture.repository, file);
-        await rm(target); await symlink(fixture.handoff.browserDriver.path, target);
-        commitFixture(fixture.repository);
-        await assert.rejects(selectRetained(fixture), /nonregular tooling\/evidence entry/);
-    } finally { await rm(directory, {recursive:true, force:true}); }
+descendantCases("tooling descendant rejects nonregular entry", P911_TOOLING_DESCENDANT_PATHS, async (fixture, file) => {
+    const target = path.join(fixture.repository, file);
+    await rm(target); await symlink(fixture.handoff.browserDriver.path, target);
+    const reviewedId = commitFixture(fixture.repository);
+    assert.throws(() => authenticateP805ProductTree(fixture.handoff.candidateId, reviewedId, fixture.repository), /nonregular Git entries/);
+    await assert.rejects(selectRetained(fixture), /nonregular tooling\/evidence entry/);
 });
 
 test("pinned real file/archive reader rejects candidate, stale assets, extra assets and product descendants", async () => {

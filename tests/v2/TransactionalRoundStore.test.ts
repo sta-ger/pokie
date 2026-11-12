@@ -95,7 +95,7 @@ describe("durable transactional reference rounds", () => {
     let stores: API.SqliteTransactionalRoundStore[];
     let readers: import("node:sqlite").DatabaseSync[];
     beforeAll(() => {
-        runtime = emitPublicRuntime();
+        runtime = emitPublicRuntime({runtimeFilesOnly: true});
         for (const name of ["TransactionalRoundGame", "TransactionalRoundStoreProcess"]) {
             const source = fs.readFileSync(path.join(process.cwd(), "tests/v2/fixtures", `${name}.ts`), "utf8");
             for (const format of ["mjs", "cjs"]) {
@@ -466,12 +466,13 @@ describe("durable transactional reference rounds", () => {
     it("rejects active changed payloads, serializes distinct keys/version races, allows cross-session reuse and omitted-version successive execution", async () => {
         await run("initialize");
         const first = worker("execute", command, "after:debit-balance");
-        await first.wait("ready");
-        first.send("start");
-        await first.wait("boundary");
         const changed = worker("execute", {...command, mode: "double"});
         const distinct = worker("execute", {...command, requestId: "distinct"});
-        await Promise.all([changed.wait("ready"), distinct.wait("ready")]);
+        // Load every native public runtime before deliberately holding the database.
+        // Process startup is unrelated to the store's bounded contention contract.
+        await Promise.all([first.wait("ready"), changed.wait("ready"), distinct.wait("ready")]);
+        first.send("start");
+        await first.wait("boundary");
         changed.send("start");
         distinct.send("start");
         first.send("resume");
@@ -498,12 +499,11 @@ describe("durable transactional reference rounds", () => {
     it.each(["bet", "mode", "expectedVersion"])("rejects conflicting %s from a process while the owner is active", async field => {
         await run("initialize");
         const holder = worker("execute", command, "after:debit-balance");
-        await holder.wait("ready");
-        holder.send("start");
-        await holder.wait("boundary");
         const changed = changedIntent(field);
         const contender = worker("execute", changed);
-        await contender.wait("ready");
+        await Promise.all([holder.wait("ready"), contender.wait("ready")]);
+        holder.send("start");
+        await holder.wait("boundary");
         contender.send("start");
         holder.send("resume");
         await holder.wait("done");
