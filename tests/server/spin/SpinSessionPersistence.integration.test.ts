@@ -18,20 +18,20 @@ describe("SpinCommandHandler persistence (package-loaded games + file repository
     let fixtureRoot: string;
     let freeGamesFixtureRoot: string;
     let directory: string;
-    let restoreTemporaryDirectory: () => void;
-    const games: Awaited<ReturnType<typeof loadGame>>[] = [];
+    let restoreTemporaryDirectory: (() => void) | undefined;
+    let baseGame: Awaited<ReturnType<typeof loadGame>>;
+    let freeGamesGame: Awaited<ReturnType<typeof loadGame>>;
+    let restoredFreeGamesGame: Awaited<ReturnType<typeof loadGame>>;
+    const acquisitions: ReturnType<typeof loadGame>[] = [];
+    let releasing = false;
 
-    beforeAll(() => {
+    beforeAll(async () => {
+        const started = performance.now();
         // Source-bound compiled bytes live outside mutable checkout dist. The fixtures
         // explicitly resolve this private installation instead of the host fallback.
         restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
-    }, 300_000);
-    afterAll(() => restoreTemporaryDirectory());
-
-    beforeEach(async () => {
-        directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-spin-continuation-"));
         [fixtureRoot, freeGamesFixtureRoot] = ["playable-game", "playable-game-with-free-games"].map(name => {
-            const target = path.join(directory, name);
+            const target = path.join(os.tmpdir(), name);
             fs.cpSync(path.join(__dirname, "../../cli/fixtures", name), target, {recursive: true, filter: file => path.basename(file) !== "node_modules"});
             const manifest = path.join(target, "package.json");
             fs.writeFileSync(manifest, JSON.stringify({...JSON.parse(fs.readFileSync(manifest, "utf8")), dependencies: {"@fromstan/pokie": "*"}}));
@@ -41,23 +41,50 @@ describe("SpinCommandHandler persistence (package-loaded games + file repository
             expect((await resolvePokieGameDependencyRoots(source))["@fromstan/pokie"])
                 .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
         }
-    });
+        // These immutable modules keep no session state: every createSession constructs its
+        // own config and RNG. Copy their installed dependency graphs once, rather than spend
+        // each persistence case's deadline repeating package acquisition under disk contention.
+        // The restoration instance has a separate module graph and is never used for priming.
+        baseGame = await acquireGame(fixtureRoot);
+        freeGamesGame = await acquireGame(freeGamesFixtureRoot);
+        restoredFreeGamesGame = await acquireGame(freeGamesFixtureRoot);
+        expect(restoredFreeGamesGame).not.toBe(freeGamesGame);
+        expect(restoredFreeGamesGame.createSession).not.toBe(freeGamesGame.createSession);
+        console.info(`SPIN_PERSISTENCE_PHASE ${JSON.stringify({phase: "fixture-acquisition", elapsedMs: Math.round(performance.now() - started), snapshots: acquisitions.length})}`);
+    }, 300_000);
 
-    afterEach(async () => {
-        await Promise.all(games.splice(0).map(game => releasePokieGame(game)));
-        expect(runtimeSnapshotNames(fixtureRoot)).toEqual([]);
-        expect(runtimeSnapshotNames(freeGamesFixtureRoot)).toEqual([]);
+    afterAll(async () => {
+        const started = performance.now();
+        releasing = true;
+        try {
+            // Track promises before awaiting: a hook timeout must not let an acquisition
+            // publish another snapshot after cleanup has already inspected the inventory.
+            const settled = await Promise.allSettled(acquisitions);
+            await Promise.all(settled.map(result => result.status === "fulfilled" ? releasePokieGame(result.value) : undefined));
+            if (fixtureRoot !== undefined) expect(runtimeSnapshotNames(fixtureRoot)).toEqual([]);
+            if (freeGamesFixtureRoot !== undefined) expect(runtimeSnapshotNames(freeGamesFixtureRoot)).toEqual([]);
+            console.info(`SPIN_PERSISTENCE_PHASE ${JSON.stringify({phase: "fixture-release", elapsedMs: Math.round(performance.now() - started), remainingSnapshots: 0})}`);
+        } finally {
+            restoreTemporaryDirectory?.();
+        }
+    }, 300_000);
+
+    beforeEach(() => {
+        directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-spin-continuation-"));
+    });
+    afterEach(() => {
         fs.rmSync(directory, {recursive: true, force: true});
     });
 
-    async function loadPokieGame(source: string) {
-        const game = await loadGame(source);
-        games.push(game);
-        return game;
+    function acquireGame(source: string) {
+        if (releasing) throw new Error("Cannot acquire a persistence fixture after teardown started.");
+        const acquisition = loadGame(source);
+        acquisitions.push(acquisition);
+        return acquisition;
     }
 
     async function initialize(
-        game: Awaited<ReturnType<typeof loadPokieGame>>,
+        game: Awaited<ReturnType<typeof loadGame>>,
         repository: FileSessionRepository,
         wallet: InMemoryWallet,
         sessionId: string,
@@ -73,7 +100,7 @@ describe("SpinCommandHandler persistence (package-loaded games + file repository
     }
 
     it("reconstructs the constructor continuation before the first spin without exposing RNG in player payloads", async () => {
-        const game = await loadPokieGame(fixtureRoot);
+        const game = baseGame;
         const serializer = new VideoSlotSessionSerializer();
         const session = game.createSession({seed: "save-restore-continuation"});
         const initial = captureInitialPokieSessionState({seed: "save-restore-continuation"}, session, serializer, true, game);
@@ -91,7 +118,7 @@ describe("SpinCommandHandler persistence (package-loaded games + file repository
     });
 
     it("has the same deterministic next round after save, destruction, restore, and continuation", async () => {
-        const game = await loadPokieGame(fixtureRoot);
+        const game = baseGame;
 
         const continuousRepository = new FileSessionRepository(path.join(directory, "continuous"));
         const continuousWallet = new InMemoryWallet();
@@ -117,7 +144,7 @@ describe("SpinCommandHandler persistence (package-loaded games + file repository
     });
 
     it("keeps an unseeded default session live-only and rejects cache loss without mutation", async () => {
-        const game = await loadPokieGame(fixtureRoot);
+        const game = baseGame;
         const session = game.createSession();
         const initial = captureInitialPokieSessionState(undefined, session, undefined, true, game);
         expect(initial.executionState).toBe("live-only");
@@ -138,7 +165,8 @@ describe("SpinCommandHandler persistence (package-loaded games + file repository
     });
 
     it("preserves a live free-games continuation and its nested base RNG across destruction and restore", async () => {
-        const game = await loadPokieGame(freeGamesFixtureRoot);
+        const started = performance.now();
+        const game = freeGamesGame;
         const continuousRepository = new FileSessionRepository(path.join(directory, "free-continuous"));
         const continuousWallet = new InMemoryWallet();
         const continuous = await initialize(game, continuousRepository, continuousWallet, "free-continuous");
@@ -157,7 +185,7 @@ describe("SpinCommandHandler persistence (package-loaded games + file repository
         expect(persisted?.executionState).toBe("durably-restorable");
         expect(persisted?.featureState).toMatchObject({freeGamesNum: 0, freeGamesSum: 10, base: {rngState: expect.any(Number)}});
 
-        const restoredGame = await loadPokieGame(freeGamesFixtureRoot);
+        const restoredGame = restoredFreeGamesGame;
         const afterRestart = new SpinCommandHandler(restoredGame, new FileSessionRepository(restoredDirectory), restoredWallet);
         const restoredNext = await afterRestart.handle("free-restored");
 
@@ -165,10 +193,11 @@ describe("SpinCommandHandler persistence (package-loaded games + file repository
         await expect(new FileSessionRepository(restoredDirectory).load("free-restored")).resolves.toEqual(
             await continuousRepository.load("free-continuous"),
         );
+        console.info(`SPIN_PERSISTENCE_PHASE ${JSON.stringify({phase: "free-games-save-restore", elapsedMs: Math.round(performance.now() - started), paidRoundsPerSession: 8, restoredFreeRounds: 1})}`);
     });
 
     it("rejects forged fixed-fixture stakes before started-operation recovery or cached publication", async () => {
-        const game = await loadPokieGame(freeGamesFixtureRoot);
+        const game = freeGamesGame;
         const session = game.createSession();
         const repository = new FileSessionRepository(directory);
         const wallet = new InMemoryWallet();
@@ -210,7 +239,7 @@ describe("SpinCommandHandler persistence (package-loaded games + file repository
     });
 
     it("reconstructs durable executable state when two handlers alternate committed versions", async () => {
-        const game = await loadPokieGame(freeGamesFixtureRoot);
+        const game = freeGamesGame;
         const continuousRepository = new FileSessionRepository(path.join(directory, "alternating-continuous"));
         const continuousWallet = new InMemoryWallet();
         const continuous = await initialize(game, continuousRepository, continuousWallet, "continuous");
