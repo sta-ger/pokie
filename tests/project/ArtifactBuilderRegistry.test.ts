@@ -382,38 +382,90 @@ describe("ArtifactBuilderRegistry", () => {
         }
     }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
-    it.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)(
-        "rejects final descriptor drift before exposing either model output for %s",
-        async target => {
-            const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-model-binding-"));
+    describe.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)("final descriptor drift for %s", target => {
+        let root: string;
+        let control: string;
+        let source: string;
+        let project: PokieProject;
+        let destination: string;
+        let plan: ArtifactConversionPlan;
+        let input: Buffer;
+        let snapshots: string[];
+        let reads: {status: string; payout: number | undefined; elapsedMs: number}[];
+        let restoreExtraction: () => void;
+        let running: Promise<unknown> | undefined;
+
+        // Preview owns one snapshot; executePlan owns two independent revalidation
+        // snapshots and the final read. Keep cold preview/setup out of the execution
+        // deadline, as in the other real-runtime lifecycle regressions. All four
+        // targets retain the same bounded budget and real loader/release path.
+        beforeEach(async () => {
+            running = undefined;
+            root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-model-binding-"));
+            control = path.join(root, "payout.txt");
+            fs.writeFileSync(control, "1");
+            source = writeDescriptorPackage(root, {descriptorBody:
+                `model.paytable.A[3] = Number(require("fs").readFileSync(${JSON.stringify(control)}, "utf8"));
+                return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model};`,});
+            input = fs.readFileSync(path.join(source, "index.js"));
+            snapshots = runtimeSnapshotNames(source);
+            reads = [];
+            const extract = PackageBlueprintExtraction.prototype.extract;
+            const extraction = jest.spyOn(PackageBlueprintExtraction.prototype, "extract").mockImplementation(async function(this: PackageBlueprintExtraction, ...args) {
+                const started = performance.now();
+                const result = await Reflect.apply(extract, this, args);
+                // extract() resolves only after releasing its invocation-owned runtime.
+                reads.push({status: result.status, payout: result.blueprint?.paytable.A[3], elapsedMs: Math.round(performance.now() - started)});
+                expect(runtimeSnapshotNames(source)).toEqual(snapshots);
+                return result;
+            });
+            restoreExtraction = () => extraction.mockRestore();
+            project = {type: "tsPackage", rootPath: source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
+            destination = path.join(root, target === "blueprint" ? "model.json" : target);
+            const preparing = registry.preparePlan(project, target, {destinationPath: destination});
+            running = preparing;
+            plan = await preparing;
+            expect(plan.status).toBe("planned");
+            expect(plan.packageExtraction?.blueprint?.paytable.A[3]).toBe(1);
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+
+        afterEach(async () => {
             try {
-                const control = path.join(root, "payout.txt");
-                fs.writeFileSync(control, "1");
-                const source = writeDescriptorPackage(root, {descriptorBody:
-                    `model.paytable.A[3] = Number(require("fs").readFileSync(${JSON.stringify(control)}, "utf8"));
-                    return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model};`,});
-                const input = fs.readFileSync(path.join(source, "index.js"));
-                const project: PokieProject = {type: "tsPackage", rootPath: source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
-                const destination = path.join(root, target === "blueprint" ? "model.json" : target);
-                const plan = await registry.preparePlan(project, target, {destinationPath: destination});
-                expect(plan.status).toBe("planned");
-                expect(plan.packageExtraction?.blueprint?.paytable.A[3]).toBe(1);
-                const link = jest.spyOn(fs.promises, "link");
-                try {
-                    await expect(registry.executePlan(plan, project, destination, {onProgress: progress => {
-                        if (progress.message === "Extracting public package model into Blueprint") fs.writeFileSync(control, "99");
-                    }})).rejects.toThrow(/Package model changed after preview/);
-                    expect(link).not.toHaveBeenCalled();
-                } finally {
-                    link.mockRestore();
-                }
-                expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(input);
-                expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "payout.txt"]);
+                // A Jest deadline must not delete inputs or restore spies beneath
+                // an owned loader which is still copying/releasing its snapshot.
+                await running?.catch(() => undefined);
+                // Retain completed per-read timings even when an assertion fails.
+                console.info(`Final descriptor drift ${target}: ${JSON.stringify(reads)}`);
+                expect(runtimeSnapshotNames(source)).toEqual(snapshots);
             } finally {
+                restoreExtraction?.();
                 fs.rmSync(root, {recursive: true, force: true});
             }
-        },
-    );
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+
+        it("rejects final descriptor drift before exposing either model output", async () => {
+            const link = jest.spyOn(fs.promises, "link");
+            try {
+                running = expect(registry.executePlan(plan, project, destination, {onProgress: progress => {
+                    if (progress.message === "Extracting public package model into Blueprint") fs.writeFileSync(control, "99");
+                }})).rejects.toThrow(/Package model changed after preview/);
+                await running;
+                expect(link).not.toHaveBeenCalled();
+            } finally {
+                link.mockRestore();
+            }
+            // The real preview/source/graph reads see the original model. Only the
+            // final read sees drift; no downstream compiler or writer should run.
+            expect(reads.map(({status, payout}) => ({status, payout}))).toEqual([
+                {status: "complete", payout: 1},
+                {status: "complete", payout: 1},
+                {status: "complete", payout: 1},
+                {status: "complete", payout: 99},
+            ]);
+            expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(input);
+            expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "payout.txt"]);
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    });
 
     describe.each([
         {sourceType: "tsPackage", target: "tsPackage", empty: false},
