@@ -594,6 +594,52 @@ describe("snapshot-backed smoke observation regressions without build, pack or i
         console.log(JSON.stringify({operation: "custom sim", elapsedMs: Date.now() - started, exitCode: result.exitCode, resourcesDrained: result.resourcesDrained, stdioClosed: result.stdioClosed}));
     }, SMOKE_COMMAND_TIMEOUT_MS + 10_000);
 
+    it.each(["sim", "replay"])("awaits real reinstalled-package %s snapshots past the old cutoff and drains them", async operation => {
+        const root = path.join(directory, `${operation} physical package`);
+        fs.cpSync(game, root, {recursive: true});
+        const metadataPath = path.join(root, "package.json");
+        const metadata = JSON.stringify({name: "physical-round-workflow", version: "1.0.0", pokie: {entry: "dist/index.js"},
+            dependencies: {"@fromstan/pokie": "^2.0.0"}});
+        fs.writeFileSync(metadataPath, metadata);
+        // Match the failed generated package's physical dependency layout,
+        // using existing compiled bytes without build, pack or npm install.
+        const dependency = path.join(root, "node_modules/@fromstan/pokie");
+        fs.cpSync(path.join(directory, "runtime"), dependency, {recursive: true});
+        expect(fs.lstatSync(dependency).isSymbolicLink()).toBe(false);
+        const temporaryRoot = path.join(directory, `${operation}-snapshots`);
+        fs.mkdirSync(temporaryRoot);
+        const trace = path.join(directory, `${operation}-loads.ndjson`);
+        const marker = path.join(directory, `${operation}-initializer`);
+        const output = path.join(directory, `${operation}-physical.json`);
+        const started = Date.now();
+        const result = await runSmokeCommand(cli, [operation, root, operation === "sim" ? "--rounds" : "--round", "3",
+            "--seed", "0", "--out", output], {cwd: directory, env: {...process.env, TMPDIR: temporaryRoot,
+            POKIE_SMOKE_VALIDATION_TRACE: trace, POKIE_SMOKE_PREPARATION_MARKER: marker, POKIE_SMOKE_PREPARATION_DELAY_MS: "61000"}}, children);
+        expect(result).toMatchObject({exitCode: 0, resourcesDrained: true, stdioClosed: true});
+        expect(result.stderr).toContain("authored package preparation started");
+        expect(result.stderr).toContain("authored package preparation completed");
+        const report = JSON.parse(fs.readFileSync(output, "utf8")) as {totalBet: number; totalWin: number; rtp?: number; screen?: unknown};
+        expect(report).toMatchObject({seed: "0", [operation === "sim" ? "rounds" : "round"]: 3, totalBet: 3});
+        expect(Number.isFinite(report.totalWin)).toBe(true);
+        if (operation === "sim") expect(report.rtp).toBe(report.totalWin / report.totalBet);
+        else expect(Array.isArray(report.screen)).toBe(true);
+        const loads = fs.readFileSync(trace, "utf8").trim().split("\n").map(line => JSON.parse(line) as {entry: string; startedAt: number});
+        expect(loads).toHaveLength(operation === "sim" ? 4 : 3);
+        expect(new Set(loads.map(load => load.entry)).size).toBe(loads.length);
+        expect(fs.readFileSync(marker, "utf8")).toBe("first initializer");
+        expect(loads[1].startedAt - loads[0].startedAt).toBeGreaterThan(60_000);
+        expect(Date.now() - started).toBeGreaterThan(60_000);
+        for (const load of loads) {
+            expect(load.entry.startsWith(temporaryRoot + path.sep)).toBe(true);
+            expect(fs.existsSync(load.entry)).toBe(false);
+        }
+        expect(fs.readdirSync(temporaryRoot)).toEqual([]);
+        expect(fs.readFileSync(metadataPath, "utf8")).toBe(metadata);
+        console.log(JSON.stringify({operation: `reinstalled ${operation}`, elapsedMs: Date.now() - started,
+            snapshotLoads: loads.length, loadOffsetsMs: loads.map(load => load.startedAt - started),
+            snapshotsRemoved: true, resourcesDrained: result.resourcesDrained, stdioClosed: result.stdioClosed}));
+    }, SMOKE_COMMAND_TIMEOUT_MS + 10_000);
+
     it.each(["client", "serve", "dev"])("awaits real %s readiness and drains its runtime after a healthy response", async id => {
         const {spawnP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
             spawnP911Child: (command: string, args: string[], options: {cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number}) => ChildProcessWithoutNullStreams;
@@ -1014,218 +1060,241 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(fs.readdirSync(cwd)).toEqual([]);
     });
 
-    smokeIt("executes unchanged generated CJS and genuinely recompiled TS against the installed candidate, including numeric and compact-state regressions", () => {
+    describe("executes unchanged generated CJS and genuinely recompiled TS against the installed candidate, including numeric and compact-state regressions", () => {
         const model = fractionalBetBlueprint([0.05, 7.5, 1e-7], true);
-        const root = path.join(installDir!, "native generated package");
-        const blueprint = path.join(installDir!, "native-source.json");
-        fs.writeFileSync(blueprint, JSON.stringify(model));
-        const build = spawnSync(pokieBinPath, ["build", blueprint, "--target", "tsPackage", "--out", root], {cwd: installDir, encoding: "utf8", timeout: 60000});
-        expect({status: build.status, stderr: build.stderr}).toEqual({status: 0, stderr: ""});
-        const source = fs.readFileSync(path.join(root, "src/index.ts"));
-        const direct = fs.readFileSync(path.join(root, "dist/index.js"));
-        expect(source.toString()).toContain('from "@fromstan/pokie"');
-        expect(direct.toString()).toContain('require("@fromstan/pokie")');
-        for (const bytes of [source, direct]) {
-            expect(bytes.toString()).not.toContain(REPO_ROOT);
-            expect(bytes.toString()).not.toMatch(/(?:require\(|from\s+)["'](?:pokie|.*\/src\/index)["']/);
-        }
-        // Remove the production convenience link, then perform a real native candidate install.
-        fs.rmSync(path.join(root, "node_modules"), {recursive: true, force: true});
-        execFileSync("npm", ["install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund", tarballPath!], {cwd: root, encoding: "utf8", timeout: 120000});
-        expect(fs.lstatSync(path.join(root, "node_modules/@fromstan/pokie")).isSymbolicLink()).toBe(false);
-        const runGeneratedWorkflow = (phase: string) => {
-            const sim = path.join(installDir!, `${phase}-generated-sim.json`);
-            const markdown = path.join(installDir!, `${phase}-generated-report.md`);
-            const replay = path.join(installDir!, `${phase}-generated-replay.json`);
-            // Both emitted CJS and recompiled TS validation take isolated
-            // runtime/dependency snapshots, just like custom-package validation.
-            const validation = runInstalledValidation(pokieBinPath, root, installDir!);
-            expectGeneratedPackageValidation(validation);
-            for (const args of [
-                ["inspect", root],
-                ["sim", root, "--rounds", "3", "--seed", "0", "--out", sim],
-                ["report", sim, "--format", "markdown", "--out", markdown],
-                ["replay", root, "--round", "3", "--seed", "0", "--out", replay],
-            ]) {
-                const result = spawnSync(pokieBinPath, args, {cwd: installDir, encoding: "utf8", timeout: 60000});
-                expect({phase, args, status: result.status, error: result.error?.message, stderr: result.stderr})
-                    .toEqual({phase, args, status: 0, error: undefined, stderr: ""});
+        let root: string;
+        let source: Buffer;
+        let direct: Buffer;
+        const workflows: Record<string, {statistics: Record<string, unknown>; recorded: Record<string, unknown>}> = {};
+
+        beforeAll(() => {
+            root = path.join(installDir!, "native generated package");
+            const blueprint = path.join(installDir!, "native-source.json");
+            fs.writeFileSync(blueprint, JSON.stringify(model));
+            const build = spawnSync(pokieBinPath, ["build", blueprint, "--target", "tsPackage", "--out", root], {cwd: installDir, encoding: "utf8", timeout: 60000});
+            expect({status: build.status, stderr: build.stderr}).toEqual({status: 0, stderr: ""});
+            source = fs.readFileSync(path.join(root, "src/index.ts"));
+            direct = fs.readFileSync(path.join(root, "dist/index.js"));
+            expect(source.toString()).toContain('from "@fromstan/pokie"');
+            expect(direct.toString()).toContain('require("@fromstan/pokie")');
+            for (const bytes of [source, direct]) {
+                expect(bytes.toString()).not.toContain(REPO_ROOT);
+                expect(bytes.toString()).not.toMatch(/(?:require\(|from\s+)["'](?:pokie|.*\/src\/index)["']/);
             }
-            const statistics = JSON.parse(fs.readFileSync(sim, "utf8"));
-            const recorded = JSON.parse(fs.readFileSync(replay, "utf8"));
-            expect(statistics).toMatchObject({rounds: 3, seed: "0", totalBet: expect.closeTo(0.15, 12), totalWin: 0.1, rtp: expect.closeTo(2 / 3, 12)});
-            expect(recorded).toMatchObject({seed: "0", round: 3, totalBet: statistics.totalBet, totalWin: statistics.totalWin, screen: FRACTIONAL_MIXED_CONTINUATION[2].screen});
-            expect(fs.readFileSync(markdown, "utf8")).toContain("RTP");
-            return {statistics, recorded};
-        };
-        const finalContract = path.join(installDir!, "final-delivery-contracts.mjs");
-        fs.writeFileSync(finalContract, ts.transpileModule(fs.readFileSync(path.join(REPO_ROOT, "tests/fixtures/math/FinalDeliveryContracts.ts"), "utf8"), {
-            compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022},
-        }).outputText);
-        const originalWorkflow = runGeneratedWorkflow("original-cjs");
-        fs.writeFileSync(path.join(root, "dist/direct.cjs"), direct);
-        execFileSync("npm", ["run", "build"], {cwd: root, encoding: "utf8", timeout: 120000});
-        expect(fs.readFileSync(path.join(root, "src/index.ts"))).toEqual(source);
-        const recompiledWorkflow = runGeneratedWorkflow("recompiled-ts");
-        for (const field of ["rounds", "seed", "totalBet", "totalWin", "rtp", "hitFrequency"]) {
-            expect(recompiledWorkflow.statistics[field]).toEqual(originalWorkflow.statistics[field]);
+            // Remove the production convenience link, then perform a real native candidate install.
+            fs.rmSync(path.join(root, "node_modules"), {recursive: true, force: true});
+            execFileSync("npm", ["install", "--no-save", "--package-lock=false", "--no-audit", "--no-fund", tarballPath!], {cwd: root, encoding: "utf8", timeout: 120000});
+            expect(fs.lstatSync(path.join(root, "node_modules/@fromstan/pokie")).isSymbolicLink()).toBe(false);
+        });
+
+        for (const phase of ["original-cjs", "recompiled-ts"]) {
+            if (phase === "recompiled-ts") {
+                smokeIt("recompiles the unchanged TypeScript with the real installed compiler", async () => {
+                    fs.writeFileSync(path.join(root, "dist/direct.cjs"), direct);
+                    await runSmokeNpm(["run", "build"], root, 120_000);
+                    expect(fs.readFileSync(path.join(root, "src/index.ts"))).toEqual(source);
+                });
+            }
+            smokeIt(`${phase} validates the generated package without claiming executable fidelity`, () => {
+                expectGeneratedPackageValidation(runInstalledValidation(pokieBinPath, root, installDir!));
+            });
+            for (const operation of ["inspect", "sim", "report", "replay"]) {
+                smokeIt(`${phase} completes ${operation} and drains its runtime snapshots`, async () => {
+                    const sim = path.join(installDir!, `${phase}-generated-sim.json`);
+                    const markdown = path.join(installDir!, `${phase}-generated-report.md`);
+                    const replay = path.join(installDir!, `${phase}-generated-replay.json`);
+                    const commands: Record<string, string[]> = {
+                        inspect: ["inspect", root],
+                        sim: ["sim", root, "--rounds", "3", "--seed", "0", "--out", sim],
+                        report: ["report", sim, "--format", "markdown", "--out", markdown],
+                        replay: ["replay", root, "--round", "3", "--seed", "0", "--out", replay],
+                    };
+                    // Both commands resolve provenance twice; Sim also loads
+                    // metadata and execution snapshots. Await owned completion
+                    // under the shared command budget, including descendant drain.
+                    const started = Date.now();
+                    const result = await runSmokeCommand(pokieBinPath, commands[operation], {cwd: installDir!}, spawnedSmokeChildren);
+                    expect(result).toMatchObject({exitCode: 0, stderr: "", resourcesDrained: true, stdioClosed: true});
+                    console.log(JSON.stringify({phase, operation, elapsedMs: Date.now() - started,
+                        exitCode: result.exitCode, resourcesDrained: result.resourcesDrained, stdioClosed: result.stdioClosed}));
+                    if (operation !== "replay") return;
+                    const statistics = JSON.parse(fs.readFileSync(sim, "utf8"));
+                    const recorded = JSON.parse(fs.readFileSync(replay, "utf8"));
+                    expect(statistics).toMatchObject({rounds: 3, seed: "0", totalBet: expect.closeTo(0.15, 12), totalWin: 0.1, rtp: expect.closeTo(2 / 3, 12)});
+                    expect(recorded).toMatchObject({seed: "0", round: 3, totalBet: statistics.totalBet, totalWin: statistics.totalWin, screen: FRACTIONAL_MIXED_CONTINUATION[2].screen});
+                    expect(fs.readFileSync(markdown, "utf8")).toContain("RTP");
+                    workflows[phase] = {statistics, recorded};
+                });
+            }
         }
-        for (const field of ["game", "seed", "round", "screen", "totalBet", "totalWin"]) {
-            expect(recompiledWorkflow.recorded[field]).toEqual(originalWorkflow.recorded[field]);
-        }
-        const rare = path.join(installDir!, "rare-native-stake");
-        writeRareStakeDirectory(rare);
-        markRecognizedStakeProject(rare);
-        expect(installedProbe("native-regressions", `
-            import assert from 'node:assert/strict';
-            import fs from 'node:fs';
-            import {createRequire} from 'node:module';
-            import * as api from '@fromstan/pokie';
-            import * as portable from '@fromstan/pokie/wasm';
-            import {verifyFinalDelivery} from './final-delivery-contracts.mjs';
-            const require = createRequire(import.meta.url);
-            const packageRoot = ${JSON.stringify(root)};
-            const consumer = createRequire(packageRoot + '/package.json');
-            assert.equal(fs.realpathSync(consumer.resolve('@fromstan/pokie')), packageRoot + '/node_modules/@fromstan/pokie/dist/cjs/index.js');
-            const original = consumer('./dist/direct.cjs');
-            const recompiled = consumer('./dist/index.js');
-            const loaded = await api.loadPokieGameRuntime(packageRoot);
-            const model = ${JSON.stringify(model)};
-            const golden = ${JSON.stringify(FRACTIONAL_MIXED_CONTINUATION)};
-            try {
-                for (const seed of [0, '0', 37, '37']) {
-                    const games = [original, recompiled, loaded.game];
-                    const sessions = games.map(game => game.createSession({seed}));
-                    const oracle = new api.SeededRandomNumberGenerator(seed);
-                    for (let reel = 0; reel < 3; reel++) oracle.getRandomInt(0, 2);
-                    for (const session of sessions) {
-                        assert.equal(session.toSessionState().rngState, oracle.toSessionState());
-                        session.setCreditsAmount(1000);
-                    }
-                    const artifact = typeof seed === 'string' ? await portable.createBlueprintWasmArtifact(model) : undefined;
-                    const runtime = artifact && await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost(seed));
-                    const wasm = runtime?.createSession(seed);
-                    const initialWasm = wasm?.serialize();
-                    const portableRounds = [];
-                    try {
-                        for (let round = 0; round < 12; round++) {
-                            const bet = model.availableBets[round % 3];
-                            const before = sessions[0].getCreditsAmount();
-                            for (const session of sessions) { session.setBet(bet); session.play(); }
-                            const screen = sessions[0].getSymbolsCombination().toMatrix();
-                            const expected = screen.every(reel => reel[0] === 'A') ? bet * 5 : screen.every(reel => reel[0] === 'B') ? bet * 2 : 0;
-                            if (seed === '0' && round < golden.length) {
-                                assert.deepEqual(screen, golden[round].screen);
-                                assert.equal(sessions[0].toSessionState().rngState, golden[round].rngState);
-                            }
-                            for (let index = 0; index < sessions.length; index++) {
-                                const session = sessions[index];
-                                assert.deepEqual(session.getSymbolsCombination().toMatrix(), screen);
-                                assert.equal(session.getWinAmount(), expected);
-                                assert.equal(session.getCreditsAmount(), before - bet + expected);
-                                assert.deepEqual(session.toSessionState(), sessions[0].toSessionState());
-                                const restored = games[index].createSession({seed: 'unrelated'});
-                                restored.fromSessionState(JSON.parse(JSON.stringify(session.toSessionState())));
-                                restored.setBet(bet); restored.setCreditsAmount(session.getCreditsAmount());
-                                const continuation = games[index].createSession({seed});
-                                continuation.fromSessionState(session.toSessionState());
-                                continuation.setBet(bet); continuation.setCreditsAmount(session.getCreditsAmount());
-                                restored.play(); continuation.play();
-                                assert.deepEqual(restored.toSessionState(), continuation.toSessionState());
-                                assert.equal(restored.getWinAmount(), continuation.getWinAmount());
+
+        smokeIt("preserves installed numeric, compiled-workflow and compact-state contracts", () => {
+            const originalWorkflow = workflows["original-cjs"];
+            const recompiledWorkflow = workflows["recompiled-ts"];
+            for (const field of ["rounds", "seed", "totalBet", "totalWin", "rtp", "hitFrequency"]) {
+                expect(recompiledWorkflow.statistics[field]).toEqual(originalWorkflow.statistics[field]);
+            }
+            for (const field of ["game", "seed", "round", "screen", "totalBet", "totalWin"]) {
+                expect(recompiledWorkflow.recorded[field]).toEqual(originalWorkflow.recorded[field]);
+            }
+            const finalContract = path.join(installDir!, "final-delivery-contracts.mjs");
+            fs.writeFileSync(finalContract, ts.transpileModule(fs.readFileSync(path.join(REPO_ROOT, "tests/fixtures/math/FinalDeliveryContracts.ts"), "utf8"), {
+                compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022},
+            }).outputText);
+            const rare = path.join(installDir!, "rare-native-stake");
+            writeRareStakeDirectory(rare);
+            markRecognizedStakeProject(rare);
+            expect(installedProbe("native-regressions", `
+                import assert from 'node:assert/strict';
+                import fs from 'node:fs';
+                import {createRequire} from 'node:module';
+                import * as api from '@fromstan/pokie';
+                import * as portable from '@fromstan/pokie/wasm';
+                import {verifyFinalDelivery} from './final-delivery-contracts.mjs';
+                const require = createRequire(import.meta.url);
+                const packageRoot = ${JSON.stringify(root)};
+                const consumer = createRequire(packageRoot + '/package.json');
+                assert.equal(fs.realpathSync(consumer.resolve('@fromstan/pokie')), packageRoot + '/node_modules/@fromstan/pokie/dist/cjs/index.js');
+                const original = consumer('./dist/direct.cjs');
+                const recompiled = consumer('./dist/index.js');
+                const loaded = await api.loadPokieGameRuntime(packageRoot);
+                const model = ${JSON.stringify(model)};
+                const golden = ${JSON.stringify(FRACTIONAL_MIXED_CONTINUATION)};
+                try {
+                    for (const seed of [0, '0', 37, '37']) {
+                        const games = [original, recompiled, loaded.game];
+                        const sessions = games.map(game => game.createSession({seed}));
+                        const oracle = new api.SeededRandomNumberGenerator(seed);
+                        for (let reel = 0; reel < 3; reel++) oracle.getRandomInt(0, 2);
+                        for (const session of sessions) {
+                            assert.equal(session.toSessionState().rngState, oracle.toSessionState());
+                            session.setCreditsAmount(1000);
+                        }
+                        const artifact = typeof seed === 'string' ? await portable.createBlueprintWasmArtifact(model) : undefined;
+                        const runtime = artifact && await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost(seed));
+                        const wasm = runtime?.createSession(seed);
+                        const initialWasm = wasm?.serialize();
+                        const portableRounds = [];
+                        try {
+                            for (let round = 0; round < 12; round++) {
+                                const bet = model.availableBets[round % 3];
+                                const before = sessions[0].getCreditsAmount();
+                                for (const session of sessions) { session.setBet(bet); session.play(); }
+                                const screen = sessions[0].getSymbolsCombination().toMatrix();
+                                const expected = screen.every(reel => reel[0] === 'A') ? bet * 5 : screen.every(reel => reel[0] === 'B') ? bet * 2 : 0;
+                                if (seed === '0' && round < golden.length) {
+                                    assert.deepEqual(screen, golden[round].screen);
+                                    assert.equal(sessions[0].toSessionState().rngState, golden[round].rngState);
+                                }
+                                for (let index = 0; index < sessions.length; index++) {
+                                    const session = sessions[index];
+                                    assert.deepEqual(session.getSymbolsCombination().toMatrix(), screen);
+                                    assert.equal(session.getWinAmount(), expected);
+                                    assert.equal(session.getCreditsAmount(), before - bet + expected);
+                                    assert.deepEqual(session.toSessionState(), sessions[0].toSessionState());
+                                    const restored = games[index].createSession({seed: 'unrelated'});
+                                    restored.fromSessionState(JSON.parse(JSON.stringify(session.toSessionState())));
+                                    restored.setBet(bet); restored.setCreditsAmount(session.getCreditsAmount());
+                                    const continuation = games[index].createSession({seed});
+                                    continuation.fromSessionState(session.toSessionState());
+                                    continuation.setBet(bet); continuation.setCreditsAmount(session.getCreditsAmount());
+                                    restored.play(); continuation.play();
+                                    assert.deepEqual(restored.toSessionState(), continuation.toSessionState());
+                                    assert.equal(restored.getWinAmount(), continuation.getWinAmount());
+                                }
+                                if (wasm) {
+                                    const result = await wasm.play({bet});
+                                    assert.deepEqual(result.screen, screen);
+                                    assert.equal(result.stake, bet); assert.equal(result.payout, expected);
+                                    assert.equal(result.credits, sessions[0].getCreditsAmount());
+                                    portableRounds.push(result);
+                                }
                             }
                             if (wasm) {
-                                const result = await wasm.play({bet});
-                                assert.deepEqual(result.screen, screen);
-                                assert.equal(result.stake, bet); assert.equal(result.payout, expected);
-                                assert.equal(result.credits, sessions[0].getCreditsAmount());
-                                portableRounds.push(result);
+                                const replayed = await runtime.replay(initialWasm, portableRounds.map(round => ({bet: round.stake})));
+                                assert.deepEqual(replayed.rounds, portableRounds);
+                                assert.deepEqual(replayed.stateAfter, wasm.serialize());
                             }
-                        }
-                        if (wasm) {
-                            const replayed = await runtime.replay(initialWasm, portableRounds.map(round => ({bet: round.stake})));
-                            assert.deepEqual(replayed.rounds, portableRounds);
-                            assert.deepEqual(replayed.stateAfter, wasm.serialize());
-                        }
-                    } finally { runtime?.dispose(); }
-                }
-                for (const bet of model.availableBets) {
-                    for (const game of [original, recompiled, loaded.game]) {
-                        const session = game.createSession({seed: '0'});
-                        session.setCreditsAmount(1000); session.setBet(bet);
-                        const statistics = new api.AggregateSimulationRunner(session, 3).run().getStatistics();
-                        const report = new api.SimulationReportBuilder().build({manifest: game.getManifest(), statistics, requestedRounds: 3, seed: '0', durationMs: 1});
-                        assert.equal(report.rounds, 3);
-                        assert.ok(Math.abs(report.totalBet / (3 * bet) - 1) < 1e-12);
-                        assert.ok(Math.abs(report.totalWin / (2 * bet) - 1) < 1e-12);
-                        assert.ok(Math.abs(report.rtp - 2 / 3) < 1e-12);
-                        const replay = new api.ReplayRecorder().record({game, seed: '0', round: 3, entryCommands: Array.from({length: 3}, () => ({kind: 'spin', bet}))});
-                        assert.deepEqual(replay.screen, golden[2].screen);
-                        assert.equal(replay.totalBet, report.totalBet);
-                        assert.equal(replay.totalWin, report.totalWin);
+                        } finally { runtime?.dispose(); }
                     }
-                }
-                const initial0 = new api.SeededRandomNumberGenerator(0).toSessionState();
-                assert.notEqual(initial0, new api.SeededRandomNumberGenerator('0').toSessionState());
-                for (const model of ${JSON.stringify(["missing-symbol", "missing-count", "zero"].map(kind => authoritativePaytableBlueprint(kind as "zero", 0.05)))}) {
-                    const output = new api.GamePackageGenerator('2.0.0').generate(model, process.cwd(), process.cwd() + '/omission-' + model.manifest.id);
-                    const game = require(output.projectRoot + '/dist/index.js');
-                    const session = game.createSession({seed: '0'}); session.setBet(0.05); session.play();
-                    assert.equal(session.getWinAmount(), 0);
-                    assert.deepEqual(game.getModelDescriptor().model.paytable, model.paytable);
-                }
-                // Keep the authored map valid while omitting the observed three-scatter count.
-                for (const awards of [{2: 0}, {3: 0}]) {
-                    const freeModel = {...model, symbols: ['A','S'], scatters: ['S'], reelStrips: [['S'],['S'],['S']], paytable: {A: {3: 5}, S: {3: 2}}, mechanics: {freeGames: {scatterSymbol: 'S', awardsByCount: awards}}};
-                    const output = new api.GamePackageGenerator('2.0.0').generate(freeModel, process.cwd(), process.cwd() + '/free-' + Object.keys(awards)[0]);
-                    const game = require(output.projectRoot + '/dist/index.js');
-                    assert.deepEqual(game.getModelDescriptor().model.mechanics.freeGames.awardsByCount, awards);
-                    const session = game.createSession({seed: '0'});
-                    session.setBet(0.05); session.play();
-                    assert.equal(session.getWinAmount(), 0.1);
-                    assert.equal(session.getFreeGamesNum(), 0);
-                }
-                for (const feature of [false, true]) {
-                    const artifact = await portable.createBlueprintWasmArtifact(feature ? ${JSON.stringify(weightedBonusBlueprint())} : model);
-                    const runtime = await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost('0'));
-                    const fresh = await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost('fresh'));
-                    try {
-                        const session = runtime.createSession('0', {credits: 10000});
-                        for (let i = 0; i < 48; i++) {
-                            const state = JSON.parse(JSON.stringify(session.serialize()));
-                            assert.equal(state.schemaVersion, feature ? 'pokie.state.v4' : 'pokie.state.v3');
-                            assert.ok(JSON.stringify(state).length < (feature ? 16384 : 512));
-                            assert.ok(!('commands' in state) && !('draws' in state));
-                            const restored = fresh.restoreSession(state);
-                            const command = feature ? portable.nextPokieWasmCommand(state) : {bet: 0.05};
-                            assert.deepEqual(await restored.play(command), await session.play(command));
-                            assert.deepEqual(restored.serialize(), session.serialize()); restored.dispose();
-                            const before = session.serialize();
-                            assert.throws(() => runtime.restoreSession({...state, artifactIdentity: 'wrong'}));
-                            assert.throws(() => runtime.restoreSession({...state, rngState: -1}));
-                            assert.deepEqual(session.serialize(), before);
+                    for (const bet of model.availableBets) {
+                        for (const game of [original, recompiled, loaded.game]) {
+                            const session = game.createSession({seed: '0'});
+                            session.setCreditsAmount(1000); session.setBet(bet);
+                            const statistics = new api.AggregateSimulationRunner(session, 3).run().getStatistics();
+                            const report = new api.SimulationReportBuilder().build({manifest: game.getManifest(), statistics, requestedRounds: 3, seed: '0', durationMs: 1});
+                            assert.equal(report.rounds, 3);
+                            assert.ok(Math.abs(report.totalBet / (3 * bet) - 1) < 1e-12);
+                            assert.ok(Math.abs(report.totalWin / (2 * bet) - 1) < 1e-12);
+                            assert.ok(Math.abs(report.rtp - 2 / 3) < 1e-12);
+                            const replay = new api.ReplayRecorder().record({game, seed: '0', round: 3, entryCommands: Array.from({length: 3}, () => ({kind: 'spin', bet}))});
+                            assert.deepEqual(replay.screen, golden[2].screen);
+                            assert.equal(replay.totalBet, report.totalBet);
+                            assert.equal(replay.totalWin, report.totalWin);
                         }
-                    } finally { runtime.dispose(); fresh.dispose(); }
-                }
-                const project = await new api.ProjectTargetResolver().resolve(${JSON.stringify(rare)});
-                const report = await new api.OutcomeSourceProjectAnalyzer().analyze(project);
-                assert.equal(report.issues.filter(issue => issue.severity === 'error').length, 0);
-                const analysis = report.modes[0].analysis;
-                for (const [field, expected] of [['hitFrequency', 2 ** -64], ['maxWinProbability', 2 ** -64], ['rtp', 2 ** -63], ['variance', 2 ** -62]]) {
-                    assert.ok(analysis[field] > 0 && Math.abs(analysis[field] / expected - 1) <= 1e-12, field);
-                }
-                let finalIndex = 0;
-                for (const host of [api, consumer('@fromstan/pokie')]) {
-                    const completed = await verifyFinalDelivery(host, blueprint => {
-                        const file = packageRoot + '/dist/final-' + finalIndex++ + '.cjs';
-                        fs.writeFileSync(file, host.renderBuiltGameModule(blueprint, '2.0.0'));
-                        return consumer(file);
-                    }, packageRoot + '/final-' + finalIndex + '.sqlite');
-                    assert.equal(completed.length, 4);
-                }
-                console.log('INSTALLED_NUMERIC_AND_COMPACT_CONTRACTS_OK');
-            } finally { await loaded.release(); }
-        `)).toContain("INSTALLED_NUMERIC_AND_COMPACT_CONTRACTS_OK");
+                    }
+                    const initial0 = new api.SeededRandomNumberGenerator(0).toSessionState();
+                    assert.notEqual(initial0, new api.SeededRandomNumberGenerator('0').toSessionState());
+                    for (const model of ${JSON.stringify(["missing-symbol", "missing-count", "zero"].map(kind => authoritativePaytableBlueprint(kind as "zero", 0.05)))}) {
+                        const output = new api.GamePackageGenerator('2.0.0').generate(model, process.cwd(), process.cwd() + '/omission-' + model.manifest.id);
+                        const game = require(output.projectRoot + '/dist/index.js');
+                        const session = game.createSession({seed: '0'}); session.setBet(0.05); session.play();
+                        assert.equal(session.getWinAmount(), 0);
+                        assert.deepEqual(game.getModelDescriptor().model.paytable, model.paytable);
+                    }
+                    // Keep the authored map valid while omitting the observed three-scatter count.
+                    for (const awards of [{2: 0}, {3: 0}]) {
+                        const freeModel = {...model, symbols: ['A','S'], scatters: ['S'], reelStrips: [['S'],['S'],['S']], paytable: {A: {3: 5}, S: {3: 2}}, mechanics: {freeGames: {scatterSymbol: 'S', awardsByCount: awards}}};
+                        const output = new api.GamePackageGenerator('2.0.0').generate(freeModel, process.cwd(), process.cwd() + '/free-' + Object.keys(awards)[0]);
+                        const game = require(output.projectRoot + '/dist/index.js');
+                        assert.deepEqual(game.getModelDescriptor().model.mechanics.freeGames.awardsByCount, awards);
+                        const session = game.createSession({seed: '0'});
+                        session.setBet(0.05); session.play();
+                        assert.equal(session.getWinAmount(), 0.1);
+                        assert.equal(session.getFreeGamesNum(), 0);
+                    }
+                    for (const feature of [false, true]) {
+                        const artifact = await portable.createBlueprintWasmArtifact(feature ? ${JSON.stringify(weightedBonusBlueprint())} : model);
+                        const runtime = await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost('0'));
+                        const fresh = await portable.instantiatePokieWasm(artifact.bytes, artifact.manifest, new portable.SeededPokieWasmHost('fresh'));
+                        try {
+                            const session = runtime.createSession('0', {credits: 10000});
+                            for (let i = 0; i < 48; i++) {
+                                const state = JSON.parse(JSON.stringify(session.serialize()));
+                                assert.equal(state.schemaVersion, feature ? 'pokie.state.v4' : 'pokie.state.v3');
+                                assert.ok(JSON.stringify(state).length < (feature ? 16384 : 512));
+                                assert.ok(!('commands' in state) && !('draws' in state));
+                                const restored = fresh.restoreSession(state);
+                                const command = feature ? portable.nextPokieWasmCommand(state) : {bet: 0.05};
+                                assert.deepEqual(await restored.play(command), await session.play(command));
+                                assert.deepEqual(restored.serialize(), session.serialize()); restored.dispose();
+                                const before = session.serialize();
+                                assert.throws(() => runtime.restoreSession({...state, artifactIdentity: 'wrong'}));
+                                assert.throws(() => runtime.restoreSession({...state, rngState: -1}));
+                                assert.deepEqual(session.serialize(), before);
+                            }
+                        } finally { runtime.dispose(); fresh.dispose(); }
+                    }
+                    const project = await new api.ProjectTargetResolver().resolve(${JSON.stringify(rare)});
+                    const report = await new api.OutcomeSourceProjectAnalyzer().analyze(project);
+                    assert.equal(report.issues.filter(issue => issue.severity === 'error').length, 0);
+                    const analysis = report.modes[0].analysis;
+                    for (const [field, expected] of [['hitFrequency', 2 ** -64], ['maxWinProbability', 2 ** -64], ['rtp', 2 ** -63], ['variance', 2 ** -62]]) {
+                        assert.ok(analysis[field] > 0 && Math.abs(analysis[field] / expected - 1) <= 1e-12, field);
+                    }
+                    let finalIndex = 0;
+                    for (const host of [api, consumer('@fromstan/pokie')]) {
+                        const completed = await verifyFinalDelivery(host, blueprint => {
+                            const file = packageRoot + '/dist/final-' + finalIndex++ + '.cjs';
+                            fs.writeFileSync(file, host.renderBuiltGameModule(blueprint, '2.0.0'));
+                            return consumer(file);
+                        }, packageRoot + '/final-' + finalIndex + '.sqlite');
+                        assert.equal(completed.length, 4);
+                    }
+                    console.log('INSTALLED_NUMERIC_AND_COMPACT_CONTRACTS_OK');
+                } finally { await loaded.release(); }
+            `)).toContain("INSTALLED_NUMERIC_AND_COMPACT_CONTRACTS_OK");
+        });
     });
 
     smokeIt("bounds installed continuation in a real Node Worker and awaits its exit", () => {
