@@ -1,6 +1,6 @@
 import {generatedMechanicsGame} from "../../v2/fixtures/ExistingMechanicsGame.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
-import {createPackageExtractionTestEnvironment, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, runtimeSnapshotNames, writeDescriptorPackage, writePausedDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {StudioRoundRecorder} from "../../../cli/studio/runtime/StudioRoundRecorder.js";
 import {transactionalRoundGame} from "../../v2/fixtures/TransactionalRoundGame.js";
 import {
@@ -20,6 +20,7 @@ import {
     ManagedOutcomeProjectService,
     OutcomeLibraryBundleWriter,
     OutcomeLibraryBundleReader,
+    PackageBlueprintExtraction,
     PokieGame,
     PokieGameManifest,
     PokieGamePackageValidationReport,
@@ -98,6 +99,22 @@ const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulatio
 // under the controller's concurrent Jest launcher; route-only cases keep the default timeout.
 const REAL_RUNTIME_TEST_TIMEOUT_MS = 300000;
 const RUNTIME_PHASE_POLL_TIMEOUT_MS = 60000;
+// Preview owns one extraction; publication rechecks the source and graph before
+// extracting the published model. Each read acquires and releases a real snapshot.
+const PRODUCER_WORKFLOW_TIMEOUT_MS = 3 * REAL_RUNTIME_TEST_TIMEOUT_MS;
+
+async function waitForProducerJob(producer: StudioArtifactBuildService, source: string, id: string, timeoutMs = REAL_RUNTIME_TEST_TIMEOUT_MS) {
+    const started = performance.now();
+    let lastJob: ReturnType<StudioArtifactBuildService["getStatusForProject"]>;
+    while (performance.now() - started < timeoutMs) {
+        lastJob = producer.getStatusForProject(source, id);
+        if (lastJob && !["queued", "running", "cancelling"].includes(lastJob.status)) return lastJob;
+        await new Promise<void>(resolve => {
+            setTimeout(resolve, 50);
+        });
+    }
+    throw new Error(`Producer job ${id} did not settle after ${Math.round(performance.now() - started)}ms: ${JSON.stringify(lastJob)}`);
+}
 type PendingGameLoad = (game: PokieGame) => void;
 type PendingLoadStarted = () => void;
 
@@ -2386,12 +2403,20 @@ describe("StudioServer", () => {
         let folderServer: StudioServer | undefined;
         let folderStudioRoot: string;
         let folderWorkDir: string;
+        let folderWorkflow: Promise<void> | undefined;
+
+        beforeEach(() => {
+            folderWorkflow = undefined;
+        });
 
         afterEach(async () => {
+            // Jest timing out does not cancel its callback. Its producer finally
+            // must settle before either HTTP service or its source is removed.
+            await folderWorkflow?.catch(() => undefined);
             await folderServer?.stop();
             fs.rmSync(folderStudioRoot, {recursive: true, force: true});
             fs.rmSync(folderWorkDir, {recursive: true, force: true});
-        });
+        }, PRODUCER_WORKFLOW_TIMEOUT_MS);
 
         async function startServerWithOpenFolder(
             openFolder: (folderPath: string) => void,
@@ -2488,30 +2513,47 @@ describe("StudioServer", () => {
             expect(openFolder).toHaveBeenCalledWith(folderWorkDir);
         });
 
-        it("opens an authenticated completed Blueprint producer output through the file-or-directory boundary", async () => {
+        it("opens an authenticated completed Blueprint producer output through the file-or-directory boundary", () => {
+            folderWorkflow = openProducedBlueprint();
+            return folderWorkflow;
+        }, PRODUCER_WORKFLOW_TIMEOUT_MS);
+
+        async function openProducedBlueprint(): Promise<void> {
             const openFolder = jest.fn();
             const folderBaseUrl = await startServerWithOpenFolder(openFolder);
             const source = writeDescriptorPackage(folderWorkDir);
+            const sourceBytes = fs.readFileSync(path.join(source, "index.js"));
+            const snapshots = runtimeSnapshotNames(source);
             const destination = path.join(folderWorkDir, "blueprint.json");
             const repository = new FileStudioJobRepository(path.join(folderWorkDir, "producer"));
             const jobs = new StudioJobService(repository);
             const producer = new StudioArtifactBuildService("1.0.0");
             producer.attachJobService(jobs);
-            let settle!: () => void;
-            const completed = new Promise<void>(resolve => {
-                settle = resolve;
+            let phase = "preview";
+            const extract = PackageBlueprintExtraction.prototype.extract;
+            const extractions: Array<{phase: string; status: string; elapsedMs: number}> = [];
+            const reads = jest.spyOn(PackageBlueprintExtraction.prototype, "extract").mockImplementation(async function(this: PackageBlueprintExtraction, ...args) {
+                const started = performance.now();
+                const result = await Reflect.apply(extract, this, args);
+                extractions.push({phase, status: result.status, elapsedMs: Math.round(performance.now() - started)});
+                // extract() returns after releasing its invocation-owned snapshot.
+                console.info(`Producer extraction: ${JSON.stringify({...extractions[extractions.length - 1], remainingSnapshots: runtimeSnapshotNames(source)})}`);
+                return result;
             });
-            const persist = repository.save.bind(repository);
-            const save = jest.spyOn(repository, "save").mockImplementation(job => {
-                persist(job);
-                if (["completed", "failed", "cancelled", "recovery-required"].includes(job.status)) settle();
-            });
+            const controller = new AbortController();
+            const deadline = setTimeout(() => controller.abort(), REAL_RUNTIME_TEST_TIMEOUT_MS);
+            let phaseStarted = performance.now();
             try {
-                const preview = await producer.preview(source, "blueprint", destination);
+                const preview = await producer.preview(source, "blueprint", destination, controller.signal);
                 if (preview.status !== "ok") throw new Error(JSON.stringify(preview));
+                console.info(`Producer phase: ${JSON.stringify({phase, elapsedMs: Math.round(performance.now() - phaseStarted)})}`);
+                clearTimeout(deadline);
+                phase = "publication";
+                phaseStarted = performance.now();
                 const start = producer.startPreparedExtraction(source, preview.preparedOperationId!, destination);
                 if (start.status !== "created") throw new Error(JSON.stringify(start));
-                await completed;
+                expect(await waitForProducerJob(producer, source, start.job.id)).toMatchObject({status: "completed"});
+                console.info(`Producer phase: ${JSON.stringify({phase, elapsedMs: Math.round(performance.now() - phaseStarted)})}`);
                 const job = jobs.get(source, start.job.id)!;
                 expect(job).toMatchObject({status: "completed", result: {
                     outputs: [{label: "Built artifact", path: destination}],
@@ -2519,6 +2561,12 @@ describe("StudioServer", () => {
                 }});
                 expect(fs.statSync(destination).isFile()).toBe(true);
                 expect(JSON.parse(fs.readFileSync(destination, "utf8"))).toHaveProperty("manifest");
+                expect(JSON.parse(fs.readFileSync(`${destination}.conversion-evidence.json`, "utf8"))).toMatchObject({kind: "package-extraction", extraction: preview.plan.packageExtraction});
+                expect(extractions.filter(read => read.phase === "preview")).toHaveLength(1);
+                expect(extractions.filter(read => read.phase === "publication").length).toBeGreaterThan(1);
+                expect(extractions.every(read => read.status === "complete")).toBe(true);
+                phase = "host action";
+                phaseStarted = performance.now();
                 const outputPath = job.result!.outputs![0].path!;
                 // The old route still truthfully rejects files; common cards
                 // must use the existing file-aware route for this exact receipt.
@@ -2527,11 +2575,68 @@ describe("StudioServer", () => {
                 expect((await post(`${folderBaseUrl}/api/home/fs/reveal-path`, {path: outputPath})).body).toEqual({status: "ok"});
                 expect(openFolder).toHaveBeenLastCalledWith(folderWorkDir);
                 expect(fs.statSync(outputPath).isFile()).toBe(true);
+                console.info(`Producer phase: ${JSON.stringify({phase, elapsedMs: Math.round(performance.now() - phaseStarted)})}`);
             } finally {
-                await producer.cancelAll();
-                save.mockRestore();
+                clearTimeout(deadline);
+                controller.abort();
+                const started = performance.now();
+                try {
+                    await producer.cancelAll();
+                    expect(runtimeSnapshotNames(source)).toEqual(snapshots);
+                    expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(sourceBytes);
+                    console.info(`Producer drain: ${JSON.stringify({phase, elapsedMs: Math.round(performance.now() - started), remainingSnapshots: runtimeSnapshotNames(source)})}`);
+                } finally {
+                    reads.mockRestore();
+                }
             }
-        });
+        }
+
+        it("bounds a stalled producer wait and drains its cancelled extraction before removing the source", () => {
+            folderWorkflow = cancelStalledProducer();
+            return folderWorkflow;
+        }, PRODUCER_WORKFLOW_TIMEOUT_MS);
+
+        async function cancelStalledProducer(): Promise<void> {
+            await startServerWithOpenFolder(jest.fn());
+            const fixture = writePausedDescriptorPackage(folderWorkDir);
+            const snapshots = runtimeSnapshotNames(fixture.source);
+            const producer = new StudioArtifactBuildService("1.0.0");
+            const jobs = new StudioJobService(new FileStudioJobRepository(path.join(folderWorkDir, "producer")));
+            producer.attachJobService(jobs);
+            const destination = path.join(folderWorkDir, "cancelled.json");
+            let drain: Promise<void> | undefined;
+            let terminal: ReturnType<typeof waitForProducerJob> | undefined;
+            try {
+                const preview = await producer.preview(fixture.source, "blueprint", destination);
+                if (preview.status !== "ok") throw new Error(JSON.stringify(preview));
+                fixture.arm();
+                const start = producer.startPreparedExtraction(fixture.source, preview.preparedOperationId!, destination);
+                if (start.status !== "created") throw new Error(JSON.stringify(start));
+                terminal = waitForProducerJob(producer, fixture.source, start.job.id);
+                await fixture.waitForRead(terminal);
+                const waiting = waitForProducerJob(producer, fixture.source, start.job.id, 50);
+                await expect(waiting).rejects.toThrow(/Producer job .* did not settle after .*"status":"running"/);
+                drain = producer.cancelAll();
+                expect(jobs.get(fixture.source, start.job.id)?.status).toBe("cancelling");
+                expect(runtimeSnapshotNames(fixture.source)).toHaveLength(snapshots.length + 1);
+                fixture.settle();
+                await drain;
+                expect(await terminal).toMatchObject({status: "cancelled"});
+                expect(jobs.get(fixture.source, start.job.id)).toMatchObject({status: "cancelled"});
+                expect(jobs.get(fixture.source, start.job.id)?.result?.outputs).toBeUndefined();
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(fs.existsSync(`${destination}.conversion-evidence.json`)).toBe(false);
+                expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
+            } finally {
+                fixture.settle();
+                try {
+                    await (drain ?? producer.cancelAll());
+                    await terminal;
+                } finally {
+                    fixture.restore();
+                }
+            }
+        }
 
         it.each([undefined, null, 1, [], {}, "", "   "])("rejects malformed path %p at the shared validator and both host callers, then reuses valid outputs", async invalidPath => {
             const openFolder = jest.fn();
