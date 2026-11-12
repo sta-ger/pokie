@@ -188,7 +188,9 @@ describe("V2C-17 public analytics parity", () => {
     });
 
     it("fresh emitted workers match exact per-worker seeds, modes, uneven/zero shares, chunks and independent tails", async () => {
-        const runtime = emitPublicRuntime();
+        const startedAt = performance.now();
+        const runtime = emitPublicRuntime({runtimeFilesOnly: true});
+        process.stderr.write(`ANALYTICS_PHASE emitted-runtime ${Math.round(performance.now() - startedAt)}ms\n`);
         const workers: Worker[] = [];
         try {
             const bonus = weightedBonusBlueprint();
@@ -205,13 +207,17 @@ describe("V2C-17 public analytics parity", () => {
             ];
             const entry = pathToFileURL(path.join(runtime.directory, "node_modules/@fromstan/pokie/dist/esm/simulation/parallel/internal/simulationWorkerEntry.js"));
             for (const [caseIndex, {blueprint, rounds, mode, convergence}] of cases.entries()) {
+                const caseStartedAt = performance.now();
                 const root = path.join(runtime.directory, `game-${caseIndex}`);
                 fs.mkdirSync(root);
                 fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({name: "analytics-public", version: "1.0.0", pokie: {entry: "./index.cjs"}}));
                 fs.writeFileSync(path.join(root, "index.cjs"), api.renderBuiltGameModule(blueprint, "1.3.0"));
                 const game = generatedMechanicsGame(blueprint);
                 const phases: string[] = [];
-                const result = await new api.ParallelSimulationRunner(root, rounds, {workers: 3, seed: "public", betModeId: mode, convergence, chunkSize: 2, workerEntryUrl: entry, onPhase: phase => phases.push(phase), createWorkerCoordinator: url => new api.SimulationWorkerCoordinator(url, request => {
+                const result = await new api.ParallelSimulationRunner(root, rounds, {workers: 3, seed: "public", betModeId: mode, convergence, chunkSize: 2, workerEntryUrl: entry, onPhase: phase => {
+                    phases.push(phase);
+                    process.stderr.write(`ANALYTICS_PHASE case-${caseIndex} ${phase} ${Math.round(performance.now() - caseStartedAt)}ms\n`);
+                }, createWorkerCoordinator: url => new api.SimulationWorkerCoordinator(url, request => {
                     const worker = new Worker(entry, {workerData: request});
                     workers.push(worker);
                     return worker;
@@ -248,6 +254,7 @@ describe("V2C-17 public analytics parity", () => {
                 expect(phases).toContain("simulation");
                 expect(phases[phases.length - 1]).toBe("finalizing / cleanup");
                 expect(workers.every(worker => worker.threadId === -1)).toBe(true);
+                process.stderr.write(`ANALYTICS_PHASE case-${caseIndex} drained ${Math.round(performance.now() - caseStartedAt)}ms\n`);
             }
             expect(workers).toHaveLength(10); // zero shares never allocate workers
         } finally {

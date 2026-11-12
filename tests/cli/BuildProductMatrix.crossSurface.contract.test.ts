@@ -5,7 +5,7 @@ import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT}
 import fs from "fs";
 import os from "os";
 import path from "path";
-import ts from "typescript";
+import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
 import {
     ArtifactBuilderRegistry,
     ArtifactTargetType,
@@ -62,39 +62,6 @@ async function resolveRequired(resolver: ProjectTargetResolver, projectRoot: str
     return project;
 }
 
-// Source-contract fixture, never a delivered-package substitute. Snapshotting the whole checkout
-// repeatedly copies its docs, test evidence and every compiled output tree. Give native generated
-// modules the current source runtime alone, keeping the real loader and dependency graph intact.
-function createMatrixRuntimeFixture(directory: string): void {
-    const metadata = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
-    fs.mkdirSync(directory);
-    fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({
-        name: metadata.name,
-        version: metadata.version,
-        type: "commonjs",
-        main: "./index.js",
-        exports: {".": "./index.js"},
-        dependencies: metadata.dependencies,
-    }));
-    const compile = (sourceDirectory: string, outputDirectory: string): void => {
-        fs.mkdirSync(outputDirectory, {recursive: true});
-        for (const entry of fs.readdirSync(sourceDirectory, {withFileTypes: true})) {
-            const source = path.join(sourceDirectory, entry.name);
-            const output = path.join(outputDirectory, entry.name);
-            if (entry.isDirectory()) compile(source, output);
-            else if (entry.name.endsWith(".mjs")) fs.copyFileSync(source, output);
-            else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) {
-                fs.writeFileSync(output.replace(/\.ts$/, ".js"), ts.transpileModule(fs.readFileSync(source, "utf8"), {
-                    fileName: source,
-                    compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true},
-                }).outputText);
-            }
-        }
-    };
-    compile(path.join(process.cwd(), "src"), directory);
-    fs.symlinkSync(path.join(process.cwd(), "node_modules"), path.join(directory, "node_modules"), "dir");
-}
-
 // Produces real, resolver-recognizable sources. An in-memory registry/resolver double could only prove its
 // own imitation of the artifacts that the public registry, CLI, and Studio must consume.
 async function createSource(
@@ -136,15 +103,19 @@ async function createSource(
 }
 
 describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
-    let restoreTemporaryDirectory: () => void;
+    let restoreTemporaryDirectory: (() => void) | undefined;
     let runtimeFixture: string;
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
-        runtimeFixture = path.join(os.tmpdir(), "matrix-source-runtime");
-        createMatrixRuntimeFixture(runtimeFixture);
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({stageRuntime: false});
+        // Use the source-bound compiler cache once. transpileModule on the barrel
+        // cannot distinguish type-only exports, so every descriptor acquisition
+        // used to load hundreds of extra interface modules as well as retranspile
+        // the whole source tree. This remains a native runtime, with real exports
+        // and dependencies; no loader, builder or session is substituted.
+        runtimeFixture = stageCompiledTestRuntime(os.tmpdir(), ["cjs"], {runtimeFilesOnly: true});
     });
     afterAll(() => {
-        restoreTemporaryDirectory();
+        restoreTemporaryDirectory?.();
     });
 
     let workDir: string;
@@ -166,7 +137,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         fs.rmSync(workDir, {recursive: true, force: true});
     });
 
-    it("admits the complete V2C-31 repair in both candidate readers while protecting product inputs and pins", async () => {
+    it("admits the complete V2C-31 and V2C-37 repairs in both candidate readers while protecting product inputs and pins", async () => {
         const load = (file: string): Promise<unknown> => runInThisContext(
             `import(${JSON.stringify(pathToFileURL(path.resolve(__dirname, "../..", file)).href)})`,
             {importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER},
@@ -180,10 +151,11 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         const p8 = await load("scripts/p8-05-release-handoff.mjs") as {
             authenticateP805ProductTree: (candidate: string, reviewed: string, repository: string) => {changedToolingAndEvidencePaths: string[]};
         };
-        const fixture = await load("tests/testUtils/createP911CandidateFixture.mjs") as {P911_TOOLING_DESCENDANT_PATHS: string[]};
+        const fixture = await load("tests/testUtils/createP911CandidateFixture.mjs") as {P911_TOOLING_DESCENDANT_PATHS: string[]; V2C37_SAVED_GATE_CORRECTION_PATHS: string[]};
         // Independent of either reader's admission list: this is the complete delta since the
         // authenticated installed candidate, including these readers and their regression fixture.
-        const repairPaths = [
+        const repairPaths = [...new Set([
+            ...fixture.V2C37_SAVED_GATE_CORRECTION_PATHS,
             "docs/v2-completion/V2C-31.md",
             "tests/cli/BuildProductMatrix.crossSurface.contract.test.ts",
             "tests/cli/studio/replay/StudioReplayExecutionService.test.ts",
@@ -196,7 +168,15 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
             "tests/testUtils/createP911CandidateFixture.mjs",
             "tests/scripts/p9-11-produce-candidate.test.mjs",
             "tests/scripts/p9-11-corrective-closeout.test.mjs",
-        ];
+        ])];
+        expect(fixture.V2C37_SAVED_GATE_CORRECTION_PATHS).toEqual(expect.arrayContaining([
+            "tests/cli/BuildProductMatrix.crossSurface.contract.test.ts",
+            "tests/scripts/p8-05-product-readiness-campaign.test.mjs",
+            "tests/v2/FeatureAnalyticsPublic.test.ts",
+            "tests/v2/TransactionalRuntimeBoundary.test.ts",
+            "tests/testUtils/stageCompiledTestRuntime.ts",
+            "tests/v2/helpers/publicRuntime.ts",
+        ]));
         expect(fixture.P911_TOOLING_DESCENDANT_PATHS).toEqual(expect.arrayContaining(repairPaths));
         const repository = path.join(workDir, "candidate-repository");
         fs.mkdirSync(repository);
@@ -310,12 +290,19 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
     });
 
     it.each(SUPPORTED_CELLS)("runs $source -> $target through registry, CLI, Studio, and its next public readback", async ({source, target}) => {
+        let previousPhase = performance.now();
+        const phase = (name: string): void => {
+            const now = performance.now();
+            process.stderr.write(`MATRIX_PHASE ${source}->${target} ${name} ${Math.round(now - previousPhase)}ms\n`);
+            previousPhase = now;
+        };
         const fixtureRoot = path.join(workDir, `${source}-${target}`);
         fs.mkdirSync(fixtureRoot, {recursive: true});
         const sourcePath = await createSource(source, fixtureRoot, resolver, registry);
         const sourceProject = await resolveRequired(resolver, sourcePath);
         const command = new BuildCommand("1.3.0", undefined, undefined, resolver, registry);
 
+        phase("source-ready");
         // The registry's public matrix answer gates both higher-level callers.
         expect(registry.supportsConversionFrom(target, source)).toBe(true);
         expect(await registry.validate(target, sourceProject)).toBeUndefined();
@@ -331,6 +318,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
             expect.objectContaining({target, supported: BUILD_PRODUCT_MATRIX[target][target].state === "supported"}),
         ]));
 
+        phase("default-and-readback");
         const explicitOut = path.join(fixtureRoot, `explicit-${target}${targetExtension(target)}`);
         // Runtime -> Outcome deliberately reuses a compatible managed result for one source. Give the
         // explicit-output assertion an equivalent but independently rooted source so it proves an actual
@@ -341,6 +329,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         expect(await command.run([explicitSourcePath, "--target", target, "--out", explicitOut])).toBe(0);
         expect(fs.existsSync(explicitOut)).toBe(true);
 
+        phase("explicit-output");
         const studioOut = path.join(fixtureRoot, `studio-${target}${targetExtension(target)}`);
         const studioSourcePath = target === "outcomeLibrary" && (source === "blueprint" || source === "tsPackage")
             ? await createSource(source, path.join(fixtureRoot, "studio-source"), resolver, registry)
@@ -353,6 +342,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         });
         expect(fs.existsSync(studioOut)).toBe(true);
 
+        phase("studio-output");
         const dryRunOut = path.join(fixtureRoot, `dry-run-${target}${targetExtension(target)}`);
         expect(await command.run([sourcePath, "--target", target, "--out", dryRunOut, "--dry-run"])).toBe(0);
         expect(fs.existsSync(dryRunOut)).toBe(false);
@@ -373,6 +363,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         await expect(studio.build(occupiedSourcePath, target, occupiedOut)).resolves.toMatchObject({status: "conflict", target});
         expect(["blueprint", "parWorkbook", "wasm"].includes(target) ? fs.readFileSync(occupiedOut, "utf-8") : fs.readFileSync(path.join(occupiedOut, "preserve-me.txt"), "utf-8")).toBe("preserve me");
 
+        phase("dry-run-and-conflict");
         // Both the literal source and a filesystem alias of it are forbidden destinations.
         const unsafeSourcePath = target === "outcomeLibrary" && (source === "blueprint" || source === "tsPackage")
             ? await createSource(source, path.join(fixtureRoot, "unsafe-source"), resolver, registry)
@@ -382,6 +373,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         fs.symlinkSync(unsafeSourcePath, sourceAlias, fs.statSync(unsafeSourcePath).isDirectory() ? "dir" : "file");
         await expect(command.run([unsafeSourcePath, "--target", target, "--out", sourceAlias])).rejects.toThrow(/source|same|inside|destination/i);
 
+        phase("unsafe-destinations");
         // Cancellation after a production builder starts must leave no output behind. Individual builder
         // suites additionally inject writer failures; this is the matrix-wide public cleanup assertion.
         const cleanupOut = path.join(fixtureRoot, `cleanup-${target}${targetExtension(target)}`);
@@ -395,5 +387,6 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         });
         expect(cleanup).toMatchObject({status: "cancelled"});
         expect(fs.existsSync(cleanupOut)).toBe(false);
+        phase("cancelled-and-drained");
     }, MATRIX_LIFECYCLE_TEST_TIMEOUT);
 });

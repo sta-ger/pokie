@@ -77,6 +77,10 @@ const tooling = new Set([
     // V2C-37 exact bounded regression delta; product/build and driver pins stay protected.
     "tests/cli/studio/StudioArtifactBuildService.integration.test.ts",
     "tests/parsheet/ParSheetExporter.test.ts",
+    // V2C-37 saved runtime/matrix fixture correction; product inputs and pins stay protected.
+    "tests/scripts/p8-05-product-readiness-campaign.test.mjs",
+    "tests/v2/FeatureAnalyticsPublic.test.ts",
+    "tests/v2/TransactionalRuntimeBoundary.test.ts",
     "tests/testUtils/stageCompiledTestRuntime.ts",
     "tests/scripts/p8-05-valera-devtools-events.test.mjs",
     "tests/scripts/p8-05-valera-ownership.test.mjs",

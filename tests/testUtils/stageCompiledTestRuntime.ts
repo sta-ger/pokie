@@ -74,12 +74,18 @@ export function compiledTestRuntime(format: "cjs" | "esm", repositoryRoot = path
 }
 
 /** Real native runtime, private to the consumer; only compiler outputs are shared. */
-export function stageCompiledTestRuntime(parent: string, formats: readonly ("cjs" | "esm")[] = ["cjs"]): string {
+export function stageCompiledTestRuntime(parent: string, formats: readonly ("cjs" | "esm")[] = ["cjs"], options: {runtimeFilesOnly?: boolean} = {}): string {
     const repositoryRoot = path.resolve(__dirname, "../..");
     const runtimePackageRoot = path.join(parent, "node_modules/@fromstan/pokie");
     fs.mkdirSync(path.join(runtimePackageRoot, "dist"), {recursive: true});
     fs.copyFileSync(path.join(repositoryRoot, "package.json"), path.join(runtimePackageRoot, "package.json"));
-    for (const format of formats) fs.cpSync(compiledTestRuntime(format), path.join(runtimePackageRoot, "dist", format), {recursive: true});
+    // Executing generated games/workers needs the real JS/module scopes, not
+    // declarations and source maps copied again into every private runtime lease.
+    // Keep full outputs by default for callers that compile public consumers.
+    for (const format of formats) fs.cpSync(compiledTestRuntime(format), path.join(runtimePackageRoot, "dist", format), {
+        recursive: true,
+        filter: file => !options.runtimeFilesOnly || (!file.endsWith(".d.ts") && !file.endsWith(".map")),
+    });
     fs.symlinkSync(path.join(repositoryRoot, "node_modules"), path.join(runtimePackageRoot, "node_modules"), "junction");
     return runtimePackageRoot;
 }

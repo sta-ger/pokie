@@ -362,6 +362,7 @@ test("transaction state classes are accepted only from rendered control or resul
 async function campaignFixture({initialOverflow = false, throughController = false, largeCompoundOutput = false, retestCandidate = retest, noFindings = false, historicalFreezeAnchor = false, recoveryRequestFailures = false, mutateRecoveryFailure} = {}) {
     const retest = retestCandidate;
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-p8-05-campaign-"));
+    await mkdir(path.join(directory, "records"));
     let sequence = 0;
     const evidence = async (candidate, kind, at, observationIds = [], contents) => {
         const evidenceSequence = ++sequence;
@@ -385,7 +386,6 @@ async function campaignFixture({initialOverflow = false, throughController = fal
             body = JSON.stringify(runtime);
         }
         const relativePath = `records/${evidenceSequence}.txt`;
-        await mkdir(path.join(directory, "records"), {recursive: true});
         await writeFile(path.join(directory, relativePath), body);
         return {
             evidenceId: `e-${evidenceSequence}`,
@@ -1711,26 +1711,47 @@ test("rejects a non-PAR durable terminal whose rendered result belongs to a diff
     } finally { await fixture.cleanup(); }
 });
 
-test.each([
-    ["missing preflight", (page) => { delete page.transaction.preflight; }],
-    ["loading preflight", (page) => { page.transaction.preflight.state = "loading"; }],
-    ["unsupported preflight", (page) => { page.transaction.preflight.status = "error"; }],
-    ["disabled preflight", (page) => { page.transaction.preflight.enabled = false; page.transaction.preflight.disabled = true; }],
-    ["stale control", (page) => { page.transaction.preflight.controlId = "outcome-library-generate-stale"; }],
-    ["stale durable result", (page) => { page.renderedTerminal.lifecycle.durableJobId = "job-from-a-stale-result"; }],
-])("rejects an Outcome Library %s receipt before generic route evidence", async (_label, corrupt) => {
-    const fixture = await campaignFixture();
-    try {
-        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits.find((item) => item.persona === "mathematician"), action = audit.rendered.actions.find((item) => item.observation === "outcome-library-report-diff-replay" && item.viewport === "wide"), evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), page = JSON.parse(await readFile(target, "utf8"));
-        corrupt(page);
-        const contents = JSON.stringify(page);
-        await writeFile(target, contents);
-        evidence.sha256 = hash(contents);
-        evidence.sizeBytes = Buffer.byteLength(contents);
-        await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await rebindFixtureChildEvidence(fixture.directory, record);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /Outcome Library control, preflight, or durable result|aggregate differs|immutable child/i);
-    } finally { await fixture.cleanup(); }
+describe("Outcome Library preflight receipt regression", () => {
+    let fixture;
+    // Every row authenticates the complete matrix, but they differ by one receipt.
+    // Build its 150 tuple fixtures once; no timed-out setup can overlap the next row.
+    beforeAll(async () => { fixture = await campaignFixture(); }, campaignTimeoutMs);
+    afterAll(async () => { await fixture?.cleanup(); });
+
+    test("accepts the intact Outcome Library preflight matrix", async () => {
+        await validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors});
+    });
+
+    test.each([
+        ["missing preflight", (page) => { delete page.transaction.preflight; }],
+        ["loading preflight", (page) => { page.transaction.preflight.state = "loading"; }],
+        ["unsupported preflight", (page) => { page.transaction.preflight.status = "error"; }],
+        ["disabled preflight", (page) => { page.transaction.preflight.enabled = false; page.transaction.preflight.disabled = true; }],
+        ["stale control", (page) => { page.transaction.preflight.controlId = "outcome-library-generate-stale"; }],
+        ["stale durable result", (page) => { page.renderedTerminal.lifecycle.durableJobId = "job-from-a-stale-result"; }],
+    ])("rejects an Outcome Library %s receipt before generic route evidence", async (_label, corrupt) => {
+        const record = path.join(fixture.directory, "retests.json"), original = await readFile(record, "utf8");
+        const audits = JSON.parse(original), audit = audits.audits.find((item) => item.persona === "mathematician"), action = audit.rendered.actions.find((item) => item.observation === "outcome-library-report-diff-replay" && item.viewport === "wide"), evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), pageBytes = await readFile(target, "utf8"), page = JSON.parse(pageBytes);
+        try {
+            corrupt(page);
+            const contents = JSON.stringify(page);
+            await writeFile(target, contents);
+            evidence.sha256 = hash(contents);
+            evidence.sizeBytes = Buffer.byteLength(contents);
+            await writeFile(record, `${JSON.stringify(audits)}\n`);
+            await rebindFixtureChildEvidence(fixture.directory, record);
+            await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /Outcome Library control, preflight, or durable result/i);
+        } finally {
+            await writeFile(target, pageBytes);
+            await writeFile(record, original);
+            await rebindFixtureChildEvidence(fixture.directory, record);
+            await writeFile(record, original);
+        }
+    });
+
+    test("accepts the restored Outcome Library preflight matrix", async () => {
+        await validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors});
+    });
 });
 
 test("rejects a rendered terminal captured without the browser request that produced it", async () => {
