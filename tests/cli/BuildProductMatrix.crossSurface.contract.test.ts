@@ -29,8 +29,8 @@ const SUPPORTED_CELLS: readonly SupportedCell[] = BUILD_PRODUCT_MATRIX_SOURCE_TY
     BUILD_PRODUCT_MATRIX_TARGETS.map((target) => BUILD_PRODUCT_MATRIX[source][target]).filter((cell) => cell.state === "supported"),
 );
 
-// A row repeats real package snapshots across registry, CLI, Studio, readback and negative paths.
-// Budget the complete lifecycle separately from a single extraction case, including parallel gates.
+// Each public operation owns a fresh source and drains its native package snapshots.
+// Keep the existing bound; unrelated operations must not share one cumulative deadline.
 const MATRIX_LIFECYCLE_TEST_TIMEOUT = 2 * PACKAGE_EXTRACTION_TEST_TIMEOUT;
 
 const BLUEPRINT: GameBlueprint = {
@@ -164,8 +164,14 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
     });
 
     afterEach(() => {
-        logSpy.mockRestore();
-        fs.rmSync(workDir, {recursive: true, force: true});
+        try {
+            // The suite owns this temporary root, including all nested native loaders.
+            // A resolved publication/cancellation must also have released its leases.
+            expect(fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-"))).toEqual([]);
+        } finally {
+            logSpy.mockRestore();
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it("admits the complete V2C-31 and V2C-37 repairs in both candidate readers while protecting product inputs and pins", async () => {
@@ -338,101 +344,91 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         process.stderr.write(`MATRIX_PHASE ${source}->${target} next-studio-plans-and-drain ${Math.round(performance.now() - startedAt)}ms\n`);
     }, MATRIX_LIFECYCLE_TEST_TIMEOUT);
 
-    it.each(SUPPORTED_CELLS)("runs $source -> $target through registry, CLI, Studio, and its next public readback", async ({source, target}) => {
-        let previousPhase = performance.now();
-        const phase = (name: string): void => {
-            const now = performance.now();
-            process.stderr.write(`MATRIX_PHASE ${source}->${target} ${name} ${Math.round(now - previousPhase)}ms\n`);
-            previousPhase = now;
-        };
+    // A native read copies the full runtime/dependency graph. Retained completed phase
+    // timings exceed 100 seconds for individual public operations under filesystem
+    // contention. Accumulating every operation in one row caused Jest to advance to
+    // the next row while the timed-out row still owned work. These scenarios keep
+    // the real readers/builders and every assertion, with independent sources so
+    // managed Outcome Library reuse cannot bypass an intended publication or error.
+    const operations = ["default CLI and registry", "explicit CLI", "Studio publication", "dry-run", "occupied destination", "unsafe destinations", "cancellation"] as const;
+    const lifecycleCases = SUPPORTED_CELLS.flatMap(cell => operations.map(operation => ({...cell, operation})));
+    it.each(lifecycleCases)("runs $source -> $target: $operation", async ({source, target, operation}) => {
+        const startedAt = performance.now();
         const fixtureRoot = path.join(workDir, `${source}-${target}`);
-        fs.mkdirSync(fixtureRoot, {recursive: true});
         const sourcePath = await createSource(source, fixtureRoot, resolver, registry);
-        const sourceProject = await resolveRequired(resolver, sourcePath);
         const command = new BuildCommand("1.3.0", undefined, undefined, resolver, registry);
 
-        phase("source-ready");
-        // The registry's public matrix answer gates both higher-level callers.
-        expect(registry.supportsConversionFrom(target, source)).toBe(true);
-        expect(await registry.validate(target, sourceProject)).toBeUndefined();
-
-        const defaultOut = defaultDestination(sourcePath, target);
-        expect(await command.run([sourcePath, "--target", target])).toBe(0);
-        expect(fs.existsSync(defaultOut)).toBe(true);
-
-        // Resolve the emitted artifact through the next public boundary. The
-        // six-plan Studio query below has its own independently owned fixture.
-        await expect(resolver.resolve(defaultOut)).resolves.toMatchObject({type: target, rootPath: defaultOut});
-
-        phase("default-and-readback");
-        const explicitOut = path.join(fixtureRoot, `explicit-${target}${targetExtension(target)}`);
-        // Runtime -> Outcome deliberately reuses a compatible managed result for one source. Give the
-        // explicit-output assertion an equivalent but independently rooted source so it proves an actual
-        // explicit publish instead of merely observing that intentional reuse branch.
-        const explicitSourcePath = target === "outcomeLibrary" && (source === "blueprint" || source === "tsPackage")
-            ? await createSource(source, path.join(fixtureRoot, "explicit-source"), resolver, registry)
-            : sourcePath;
-        expect(await command.run([explicitSourcePath, "--target", target, "--out", explicitOut])).toBe(0);
-        expect(fs.existsSync(explicitOut)).toBe(true);
-
-        phase("explicit-output");
-        const studioOut = path.join(fixtureRoot, `studio-${target}${targetExtension(target)}`);
-        const studioSourcePath = target === "outcomeLibrary" && (source === "blueprint" || source === "tsPackage")
-            ? await createSource(source, path.join(fixtureRoot, "studio-source"), resolver, registry)
-            : explicitSourcePath;
-        await expect(studio.build(studioSourcePath, target, studioOut)).resolves.toMatchObject({
-            status: "ok",
-            target,
-            outputPath: studioOut,
-            sourceType: source,
-        });
-        expect(fs.existsSync(studioOut)).toBe(true);
-
-        phase("studio-output");
-        const dryRunOut = path.join(fixtureRoot, `dry-run-${target}${targetExtension(target)}`);
-        expect(await command.run([sourcePath, "--target", target, "--out", dryRunOut, "--dry-run"])).toBe(0);
-        expect(fs.existsSync(dryRunOut)).toBe(false);
-
-        const occupiedOut = path.join(fixtureRoot, `occupied-${target}${targetExtension(target)}`);
-        if (["blueprint", "parWorkbook", "wasm"].includes(target)) {
-            fs.writeFileSync(occupiedOut, "preserve me");
-        } else {
-            fs.mkdirSync(occupiedOut);
-            fs.writeFileSync(path.join(occupiedOut, "preserve-me.txt"), "preserve me");
+        switch (operation) {
+            case "default CLI and registry": {
+                const sourceProject = await resolveRequired(resolver, sourcePath);
+                // The registry's public matrix answer gates both higher-level callers.
+                expect(registry.supportsConversionFrom(target, source)).toBe(true);
+                expect(await registry.validate(target, sourceProject)).toBeUndefined();
+                const defaultOut = defaultDestination(sourcePath, target);
+                expect(await command.run([sourcePath, "--target", target])).toBe(0);
+                expect(fs.existsSync(defaultOut)).toBe(true);
+                await expect(resolver.resolve(defaultOut)).resolves.toMatchObject({type: target, rootPath: defaultOut});
+                break;
+            }
+            case "explicit CLI": {
+                const explicitOut = path.join(fixtureRoot, `explicit-${target}${targetExtension(target)}`);
+                expect(await command.run([sourcePath, "--target", target, "--out", explicitOut])).toBe(0);
+                expect(fs.existsSync(explicitOut)).toBe(true);
+                break;
+            }
+            case "Studio publication": {
+                const studioOut = path.join(fixtureRoot, `studio-${target}${targetExtension(target)}`);
+                await expect(studio.build(sourcePath, target, studioOut)).resolves.toMatchObject({
+                    status: "ok",
+                    target,
+                    outputPath: studioOut,
+                    sourceType: source,
+                });
+                expect(fs.existsSync(studioOut)).toBe(true);
+                break;
+            }
+            case "dry-run": {
+                const dryRunOut = path.join(fixtureRoot, `dry-run-${target}${targetExtension(target)}`);
+                expect(await command.run([sourcePath, "--target", target, "--out", dryRunOut, "--dry-run"])).toBe(0);
+                expect(fs.existsSync(dryRunOut)).toBe(false);
+                break;
+            }
+            case "occupied destination": {
+                const occupiedOut = path.join(fixtureRoot, `occupied-${target}${targetExtension(target)}`);
+                if (["blueprint", "parWorkbook", "wasm"].includes(target)) {
+                    fs.writeFileSync(occupiedOut, "preserve me");
+                } else {
+                    fs.mkdirSync(occupiedOut);
+                    fs.writeFileSync(path.join(occupiedOut, "preserve-me.txt"), "preserve me");
+                }
+                await expect(command.run([sourcePath, "--target", target, "--out", occupiedOut])).rejects.toThrow(
+                    new RegExp(`Cannot build target "${target}".*Next: choose a different --out path`, "s"),
+                );
+                await expect(studio.build(sourcePath, target, occupiedOut)).resolves.toMatchObject({status: "conflict", target});
+                expect(["blueprint", "parWorkbook", "wasm"].includes(target) ? fs.readFileSync(occupiedOut, "utf-8") : fs.readFileSync(path.join(occupiedOut, "preserve-me.txt"), "utf-8")).toBe("preserve me");
+                break;
+            }
+            case "unsafe destinations": {
+                // Both the literal source and a filesystem alias are forbidden destinations.
+                await expect(command.run([sourcePath, "--target", target, "--out", sourcePath])).rejects.toThrow(/source|same|inside|destination/i);
+                const sourceAlias = `${sourcePath}-alias`;
+                fs.symlinkSync(sourcePath, sourceAlias, fs.statSync(sourcePath).isDirectory() ? "dir" : "file");
+                await expect(command.run([sourcePath, "--target", target, "--out", sourceAlias])).rejects.toThrow(/source|same|inside|destination/i);
+                break;
+            }
+            case "cancellation": {
+                // Abort only after the production builder reports progress; no partial publication.
+                const cleanupOut = path.join(fixtureRoot, `cleanup-${target}${targetExtension(target)}`);
+                const controller = new AbortController();
+                const cleanup = await studio.build(sourcePath, target, cleanupOut, {
+                    signal: controller.signal,
+                    onProgress: () => controller.abort(),
+                });
+                expect(cleanup).toMatchObject({status: "cancelled"});
+                expect(fs.existsSync(cleanupOut)).toBe(false);
+                break;
+            }
         }
-        const occupiedSourcePath = target === "outcomeLibrary" && (source === "blueprint" || source === "tsPackage")
-            ? await createSource(source, path.join(fixtureRoot, "occupied-source"), resolver, registry)
-            : sourcePath;
-        await expect(command.run([occupiedSourcePath, "--target", target, "--out", occupiedOut])).rejects.toThrow(
-            new RegExp(`Cannot build target "${target}".*Next: choose a different --out path`, "s"),
-        );
-        await expect(studio.build(occupiedSourcePath, target, occupiedOut)).resolves.toMatchObject({status: "conflict", target});
-        expect(["blueprint", "parWorkbook", "wasm"].includes(target) ? fs.readFileSync(occupiedOut, "utf-8") : fs.readFileSync(path.join(occupiedOut, "preserve-me.txt"), "utf-8")).toBe("preserve me");
-
-        phase("dry-run-and-conflict");
-        // Both the literal source and a filesystem alias of it are forbidden destinations.
-        const unsafeSourcePath = target === "outcomeLibrary" && (source === "blueprint" || source === "tsPackage")
-            ? await createSource(source, path.join(fixtureRoot, "unsafe-source"), resolver, registry)
-            : sourcePath;
-        await expect(command.run([unsafeSourcePath, "--target", target, "--out", unsafeSourcePath])).rejects.toThrow(/source|same|inside|destination/i);
-        const sourceAlias = `${unsafeSourcePath}-alias`;
-        fs.symlinkSync(unsafeSourcePath, sourceAlias, fs.statSync(unsafeSourcePath).isDirectory() ? "dir" : "file");
-        await expect(command.run([unsafeSourcePath, "--target", target, "--out", sourceAlias])).rejects.toThrow(/source|same|inside|destination/i);
-
-        phase("unsafe-destinations");
-        // Cancellation after a production builder starts must leave no output behind. Individual builder
-        // suites additionally inject writer failures; this is the matrix-wide public cleanup assertion.
-        const cleanupOut = path.join(fixtureRoot, `cleanup-${target}${targetExtension(target)}`);
-        const cleanupSourcePath = target === "outcomeLibrary" && (source === "blueprint" || source === "tsPackage")
-            ? await createSource(source, path.join(fixtureRoot, "cleanup-source"), resolver, registry)
-            : sourcePath;
-        const controller = new AbortController();
-        const cleanup = await studio.build(cleanupSourcePath, target, cleanupOut, {
-            signal: controller.signal,
-            onProgress: () => controller.abort(),
-        });
-        expect(cleanup).toMatchObject({status: "cancelled"});
-        expect(fs.existsSync(cleanupOut)).toBe(false);
-        phase("cancelled-and-drained");
+        process.stderr.write(`MATRIX_PHASE ${source}->${target} ${operation}-and-drain ${Math.round(performance.now() - startedAt)}ms\n`);
     }, MATRIX_LIFECYCLE_TEST_TIMEOUT);
 });
