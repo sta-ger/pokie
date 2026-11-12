@@ -5,7 +5,7 @@ import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT}
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
+import ts from "typescript";
 import {
     ArtifactBuilderRegistry,
     ArtifactTargetType,
@@ -62,6 +62,39 @@ async function resolveRequired(resolver: ProjectTargetResolver, projectRoot: str
     return project;
 }
 
+// Source-contract fixture, never a delivered-package substitute. Snapshotting the whole checkout
+// repeatedly copies its docs, test evidence and every compiled output tree. Give native generated
+// modules the current source runtime alone, keeping the real loader and dependency graph intact.
+function createMatrixRuntimeFixture(directory: string): void {
+    const metadata = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
+    fs.mkdirSync(directory);
+    fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({
+        name: metadata.name,
+        version: metadata.version,
+        type: "commonjs",
+        main: "./index.js",
+        exports: {".": "./index.js"},
+        dependencies: metadata.dependencies,
+    }));
+    const compile = (sourceDirectory: string, outputDirectory: string): void => {
+        fs.mkdirSync(outputDirectory, {recursive: true});
+        for (const entry of fs.readdirSync(sourceDirectory, {withFileTypes: true})) {
+            const source = path.join(sourceDirectory, entry.name);
+            const output = path.join(outputDirectory, entry.name);
+            if (entry.isDirectory()) compile(source, output);
+            else if (entry.name.endsWith(".mjs")) fs.copyFileSync(source, output);
+            else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) {
+                fs.writeFileSync(output.replace(/\.ts$/, ".js"), ts.transpileModule(fs.readFileSync(source, "utf8"), {
+                    fileName: source,
+                    compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true},
+                }).outputText);
+            }
+        }
+    };
+    compile(path.join(process.cwd(), "src"), directory);
+    fs.symlinkSync(path.join(process.cwd(), "node_modules"), path.join(directory, "node_modules"), "dir");
+}
+
 // Produces real, resolver-recognizable sources. An in-memory registry/resolver double could only prove its
 // own imitation of the artifacts that the public registry, CLI, and Studio must consume.
 async function createSource(
@@ -107,12 +140,10 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
     let runtimeFixture: string;
     beforeAll(() => {
         restoreTemporaryDirectory = createPackageExtractionTestEnvironment({stageRuntime: false});
-        // Use the source-bound compiler cache once. transpileModule on the barrel
-        // cannot distinguish type-only exports, so every descriptor acquisition
-        // used to load hundreds of extra interface modules as well as retranspile
-        // the whole source tree. This remains a native runtime, with real exports
-        // and dependencies; no loader, builder or session is substituted.
-        runtimeFixture = stageCompiledTestRuntime(os.tmpdir(), ["cjs"], {runtimeFilesOnly: true});
+        // This suite already supplies its runtime below; staging a second, unused
+        // compiled package duplicates setup and filesystem pressure in the gate.
+        runtimeFixture = path.join(os.tmpdir(), "matrix-source-runtime");
+        createMatrixRuntimeFixture(runtimeFixture);
     });
     afterAll(() => {
         restoreTemporaryDirectory?.();
@@ -289,6 +320,24 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         expect(cliDocumentation).toMatch(/exported literal snapshot/i);
     });
 
+    // listTargets prepares six real downstream plans, each with private native
+    // package acquisition/cleanup. Retained phase timings charged 90-118 seconds
+    // to this readback alone. Give that operation its own fixture and deadline;
+    // the conversion lifecycle below keeps every positive/negative assertion.
+    it.each(SUPPORTED_CELLS)("reads $source -> $target through next Studio target planning", async ({source, target}) => {
+        const fixtureRoot = path.join(workDir, `${source}-${target}`);
+        const sourcePath = await createSource(source, fixtureRoot, resolver, registry);
+        const sourceProject = await resolveRequired(resolver, sourcePath);
+        const output = path.join(fixtureRoot, `next-${target}${targetExtension(target)}`);
+        await registry.build(target, sourceProject, output);
+        await expect(resolver.resolve(output)).resolves.toMatchObject({type: target, rootPath: output});
+        const startedAt = performance.now();
+        expect(await studio.listTargets(output)).toEqual(expect.arrayContaining([
+            expect.objectContaining({target, supported: BUILD_PRODUCT_MATRIX[target][target].state === "supported"}),
+        ]));
+        process.stderr.write(`MATRIX_PHASE ${source}->${target} next-studio-plans-and-drain ${Math.round(performance.now() - startedAt)}ms\n`);
+    }, MATRIX_LIFECYCLE_TEST_TIMEOUT);
+
     it.each(SUPPORTED_CELLS)("runs $source -> $target through registry, CLI, Studio, and its next public readback", async ({source, target}) => {
         let previousPhase = performance.now();
         const phase = (name: string): void => {
@@ -311,12 +360,9 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         expect(await command.run([sourcePath, "--target", target])).toBe(0);
         expect(fs.existsSync(defaultOut)).toBe(true);
 
-        // Resolver readback is the next public workflow for each emitted product; Studio consumes that
-        // resolved shape rather than test-owned metadata to expose the product's following matrix choices.
+        // Resolve the emitted artifact through the next public boundary. The
+        // six-plan Studio query below has its own independently owned fixture.
         await expect(resolver.resolve(defaultOut)).resolves.toMatchObject({type: target, rootPath: defaultOut});
-        expect(await studio.listTargets(defaultOut)).toEqual(expect.arrayContaining([
-            expect.objectContaining({target, supported: BUILD_PRODUCT_MATRIX[target][target].state === "supported"}),
-        ]));
 
         phase("default-and-readback");
         const explicitOut = path.join(fixtureRoot, `explicit-${target}${targetExtension(target)}`);
