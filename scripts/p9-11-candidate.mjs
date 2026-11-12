@@ -162,6 +162,9 @@ const tooling = new Set([
     "docs/v2-completion/V2C-34.md",
     // V2C-34 bounded timeout regressions; sibling tests and product/build inputs stay protected.
     "tests/cli/studio/AdvancedModelValidationRoutes.test.ts",
+    "tests/cli/WasmWorkflow.integration.test.ts",
+    "tests/server/spin/SpinSessionPersistence.integration.test.ts",
+    "tests/v2/AdvancedModelValidation.test.ts",
     "tests/cli/studio/simulation/StudioSimulationService.test.ts",
     // Remaining V2C-34 saved gate files (the two rendered suites are named above).
     "tests/cli/PC17CliStudioParity.integration.test.ts",

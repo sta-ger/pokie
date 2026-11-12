@@ -2,6 +2,14 @@ import {AdvancedModelValidator} from "../../src/validation/AdvancedModelValidato
 import type {GameBlueprint} from "../../src/generated/GameBlueprint.js";
 import type {DeclaredTransitionModel} from "../../src/validation/AdvancedModelValidation.js";
 
+import {createPackageExtractionTestEnvironment} from "./fixtures/PackageExtractionFixture.js";
+
+let restoreTemporaryDirectory: () => void;
+beforeAll(() => {
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({stageRuntime: false});
+});
+afterAll(() => restoreTemporaryDirectory());
+
 const blueprint = (): GameBlueprint => ({manifest: {id: "analysis", name: "Analysis", version: "1"}, reels: 1, rows: 1, symbols: ["A", "S"], scatters: ["S"], paytable: {}, reelStrips: [["A", "S"]], availableBets: [0.05, 7.5, 1e-7]});
 const validate = (model: GameBlueprint) => new AdvancedModelValidator().validate({kind: "blueprint", model});
 
@@ -199,6 +207,12 @@ it.each([false, true])("releases owned snapshots on cancellation (cleanup fails:
     const {AdvancedModelSourceValidator} = await import("../../src/validation/AdvancedModelSourceValidator.js");
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "advanced-owned-"));
     const fixture = writePausedDescriptorPackage(root);
+    // This descriptor never imports a runtime. Make its declared dependency explicit;
+    // otherwise acquisition falls back to copying the embedding checkout and its graph.
+    const runtime = path.join(fixture.source, "node_modules/@fromstan/pokie");
+    fs.mkdirSync(runtime, {recursive: true});
+    fs.writeFileSync(path.join(runtime, "package.json"), JSON.stringify({name: "@fromstan/pokie", main: "index.js"}));
+    fs.writeFileSync(path.join(runtime, "index.js"), 'throw new Error("Descriptor acquisition must not execute a runtime");');
     const controller = new AbortController();
     const before = runtimeSnapshotNames(fixture.source);
     const remove = fs.promises.rm.bind(fs.promises);
@@ -207,9 +221,10 @@ it.each([false, true])("releases owned snapshots on cancellation (cleanup fails:
         if (path.basename(String(target)).startsWith("pokie-runtime-")) throw new Error("cleanup failed");
     }) : undefined;
     fixture.arm();
+    let run: ReturnType<InstanceType<typeof AdvancedModelSourceValidator>["validate"]> | undefined;
     try {
-        const run = new AdvancedModelSourceValidator().validate(fixture.source, {signal: controller.signal});
-        await fixture.readStarted;
+        run = new AdvancedModelSourceValidator().validate(fixture.source, {signal: controller.signal});
+        await fixture.waitForRead(run);
         controller.abort();
         fixture.settle();
         const report = await run;
@@ -217,8 +232,10 @@ it.each([false, true])("releases owned snapshots on cancellation (cleanup fails:
         if (failure) expect(report.issues).toContainEqual(expect.objectContaining({code: "snapshot-release-failed"}));
         expect(runtimeSnapshotNames(fixture.source)).toEqual(before);
     } finally {
-        cleanup?.mockRestore();
+        controller.abort();
         fixture.restore();
+        await Promise.allSettled([run]);
+        cleanup?.mockRestore();
         fs.rmSync(root, {recursive: true, force: true});
     }
 });

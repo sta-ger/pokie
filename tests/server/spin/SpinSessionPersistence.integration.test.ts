@@ -1,5 +1,6 @@
+import {resolvePokieGameDependencyRoots} from "../../../src/gamepackage/resolvePokieGameEntryModule.js";
 import {VideoSlotSessionSerializer} from "../../../src/net/videoslot/VideoSlotSessionSerializer.js";
-import {loadPokieGame} from "../../../src/gamepackage/loadPokieGame.js";
+import {loadPokieGame as loadGame, releasePokieGame} from "../../../src/gamepackage/loadPokieGame.js";
 import {captureInitialPokieSessionState} from "../../../src/server/session/captureInitialPokieSessionState.js";
 import {FileSessionRepository} from "../../../src/server/session/FileSessionRepository.js";
 import {SpinCommandHandler} from "../../../src/server/spin/SpinCommandHandler.js";
@@ -11,33 +12,49 @@ import {SpinReconciliationService} from "../../../src/server/spin/SpinReconcilia
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
+import {createPackageExtractionTestEnvironment, runtimeSnapshotNames} from "../../v2/fixtures/PackageExtractionFixture.js";
 
 describe("SpinCommandHandler persistence (package-loaded games + file repository)", () => {
-    const fixtureRoot = path.join(__dirname, "..", "..", "cli", "fixtures", "playable-game");
-    const freeGamesFixtureRoot = path.join(__dirname, "..", "..", "cli", "fixtures", "playable-game-with-free-games");
+    let fixtureRoot: string;
+    let freeGamesFixtureRoot: string;
     let directory: string;
+    let restoreTemporaryDirectory: () => void;
+    const games: Awaited<ReturnType<typeof loadGame>>[] = [];
 
     beforeAll(() => {
-        // loadPokieGame uses the installed runtime in these CommonJS fixture packages.
-        // Exercise this candidate's compiled codec even when another test left dist behind.
-        const repositoryRoot = path.resolve(__dirname, "..", "..", "..");
-        ensureCompiledTestOutput({
-            repositoryRoot,
-            outputPaths: [path.join(repositoryRoot, "dist", "cjs", "index.js")],
-            lockName: "compiled-runtime",
-            command: ["npm", "run", "build-test-runtime"],
-            forceRebuild: true,
-        });
-    }, 300000);
+        // Source-bound compiled bytes live outside mutable checkout dist. The fixtures
+        // explicitly resolve this private installation instead of the host fallback.
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+    }, 300_000);
+    afterAll(() => restoreTemporaryDirectory());
 
-    beforeEach(() => {
+    beforeEach(async () => {
         directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-spin-continuation-"));
+        [fixtureRoot, freeGamesFixtureRoot] = ["playable-game", "playable-game-with-free-games"].map(name => {
+            const target = path.join(directory, name);
+            fs.cpSync(path.join(__dirname, "../../cli/fixtures", name), target, {recursive: true, filter: file => path.basename(file) !== "node_modules"});
+            const manifest = path.join(target, "package.json");
+            fs.writeFileSync(manifest, JSON.stringify({...JSON.parse(fs.readFileSync(manifest, "utf8")), dependencies: {"@fromstan/pokie": "*"}}));
+            return target;
+        });
+        for (const source of [fixtureRoot, freeGamesFixtureRoot]) {
+            expect((await resolvePokieGameDependencyRoots(source))["@fromstan/pokie"])
+                .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
+        }
     });
 
-    afterEach(() => {
+    afterEach(async () => {
+        await Promise.all(games.splice(0).map(game => releasePokieGame(game)));
+        expect(runtimeSnapshotNames(fixtureRoot)).toEqual([]);
+        expect(runtimeSnapshotNames(freeGamesFixtureRoot)).toEqual([]);
         fs.rmSync(directory, {recursive: true, force: true});
     });
+
+    async function loadPokieGame(source: string) {
+        const game = await loadGame(source);
+        games.push(game);
+        return game;
+    }
 
     async function initialize(
         game: Awaited<ReturnType<typeof loadPokieGame>>,
