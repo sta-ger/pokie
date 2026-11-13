@@ -159,6 +159,7 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     // V2C-37 exact bounded regression delta; product/build and driver pins stay protected.
     "tests/cli/studio/StudioArtifactBuildService.integration.test.ts",
     "tests/parsheet/ParSheetExporter.test.ts",
+    "tests/v2/CascadeCollectionAuthoring.test.ts",
     "tests/testUtils/stageCompiledTestRuntime.ts",
     "tests/cli/WasmWorkflow.integration.test.ts",
     "tests/server/spin/SpinSessionPersistence.integration.test.ts",

@@ -1718,9 +1718,23 @@ describe("Outcome Library preflight receipt regression", () => {
     beforeAll(async () => { fixture = await campaignFixture(); }, campaignTimeoutMs);
     afterAll(async () => { await fixture?.cleanup(); });
 
-    test("accepts the intact Outcome Library preflight matrix", async () => {
-        await validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors});
-    });
+    // Full success traverses every immutable child and its installed transcript.
+    // Run the public validator outside Jest's retained VM graph, with a native
+    // deadline shorter than the row's timeout. A timeout cannot leave this read
+    // walking the shared fixture while a later negative row mutates it.
+    function validateCompleteMatrix() {
+        const started = Date.now();
+        const stdout = execFileSync(process.execPath, ["scripts/p8-05-product-readiness-campaign.mjs",
+            "--campaign-dir", fixture.directory, "--expected-candidate", retest.candidateId,
+            "--expected-package-sha256", retest.candidatePackageSha256,
+            "--freeze-anchor-sha256", fixture.anchors.freezeAnchorSha256,
+            "--closeout-anchor-sha256", fixture.anchors.closeoutAnchorSha256,
+        ], {cwd:process.cwd(), encoding:"utf8", stdio:"pipe", timeout:45000});
+        assert.equal(stdout, `P805_PRODUCT_READINESS_PASS candidate=${retest.candidateId} personas=5\n`);
+        console.info(`Outcome Library full matrix authenticated in ${Date.now() - started} ms`);
+    }
+
+    test("accepts the intact Outcome Library preflight matrix", validateCompleteMatrix);
 
     test.each([
         ["missing preflight", (page) => { delete page.transaction.preflight; }],
@@ -1749,9 +1763,7 @@ describe("Outcome Library preflight receipt regression", () => {
         }
     });
 
-    test("accepts the restored Outcome Library preflight matrix", async () => {
-        await validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors});
-    });
+    test("accepts the restored Outcome Library preflight matrix", validateCompleteMatrix);
 });
 
 test("rejects a rendered terminal captured without the browser request that produced it", async () => {

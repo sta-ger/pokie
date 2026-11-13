@@ -851,20 +851,23 @@ describe("V2C-14 authored bounded mechanics", () => {
 
 
     it("real multiple workers isolate collection trajectories and retain cancellation checkpoints", async () => {
-        const runtime = emitPublicRuntime();
+        const observedAt = Date.now();
+        const runtime = emitPublicRuntime({runtimeFilesOnly: true});
+        const phases: Record<string, number> = {stagedMs: Date.now() - observedAt};
         try {
             const blueprint = constant("respins-collection"),
                 game = generatedMechanicsGame(blueprint);
             const packageRoot = path.join(runtime.directory, "bounded-workers");
             fs.mkdirSync(packageRoot);
-            fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: "bounded-workers", version: "1.0.0", pokie: {entry: "./index.cjs"}}));
+            fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: "bounded-workers", version: "1.0.0", pokie: {entry: "./index.cjs"}, dependencies: {"@fromstan/pokie": "file:../node_modules/@fromstan/pokie"}}));
             fs.writeFileSync(path.join(packageRoot, "index.cjs"), api.renderBuiltGameModule(blueprint, "1.3.0"));
             const workerEntryUrl = pathToFileURL(path.join(runtime.directory, "node_modules/@fromstan/pokie/dist/esm/simulation/parallel/internal/simulationWorkerEntry.js"));
             const referenceSession = boundedSession(game);
             api.setSimulationModelIdentity(referenceSession, game.getConfigHash?.());
             const reference = new api.AggregateSimulationRunner(referenceSession, 10).run().getStatistics();
             for (const chunkSize of [2, 10]) {
-                const results = await new api.SimulationWorkerCoordinator(workerEntryUrl).run([0, 1].map(workerIndex => ({workerIndex, totalWorkers: 2, packageRoot, rounds: 10, seed: String(31 + workerIndex), progressChunkSize: chunkSize})));
+                const results = await new api.SimulationWorkerCoordinator(workerEntryUrl).run([0, 1].map(workerIndex => ({workerIndex, totalWorkers: 2, packageRoot, rounds: 10, seed: String(31 + workerIndex), progressChunkSize: chunkSize, requireCleanup: true})));
+                phases[`batch${chunkSize}Ms`] = Date.now() - observedAt;
                 expect(results).toHaveLength(2);
                 for (const result of results) {
                     const statistics = api.SimulationAccumulator.fromSnapshot(result.accumulator).getStatistics();
@@ -877,20 +880,27 @@ describe("V2C-14 authored bounded mechanics", () => {
             }
             const controller = new AbortController(),
                 checkpoints = new Map<number, api.SimulationAccumulatorSnapshot>();
-            const threadIds = new Set<number>();
+            const threadIds = new Set<number>(),
+                exited = new Set<number>();
             const coordinator = new api.SimulationWorkerCoordinator(workerEntryUrl, request => {
                 const worker = new Worker(workerEntryUrl, {workerData: request});
-                threadIds.add(worker.threadId);
+                const threadId = worker.threadId;
+                threadIds.add(threadId);
+                worker.once("exit", () => exited.add(threadId));
                 worker.on("message", (message: SimulationWorkerMessage) => {
                     if (!controller.signal.aborted && message.type === "progress" && message.accumulator) checkpoints.set(message.workerIndex, message.accumulator);
                 });
                 return worker;
             });
-            await expect(new api.ParallelSimulationRunner(packageRoot, 20, {workers: 2, seed: "31", chunkSize: 10, signal: controller.signal,
+            await expect(new api.ParallelSimulationRunner(packageRoot, 20, {workers: 2, seed: "31", chunkSize: 10, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60000)]), requireCleanup: true,
                 createWorkerCoordinator: () => coordinator,
                 onProgress: () => {
                     if (checkpoints.size === 2) controller.abort();
-                },}).run()).rejects.toMatchObject({observedPrefix: {rounds: 20, totalPayout: 120, logicalRoundMetrics: {rounds: 2}, logicalSampling: {carriedSubrounds: 0, excludedSubrounds: 2}}});
+                },}).run()).rejects.toMatchObject({name: "SimulationCancelledError", observedPrefix: {rounds: 20, totalPayout: 120, logicalRoundMetrics: {rounds: 2}, logicalSampling: {carriedSubrounds: 0, excludedSubrounds: 2}}});
+            phases.cancelledMs = Date.now() - observedAt;
+            console.info(`Bounded workers: ${JSON.stringify(phases)}`);
+            expect(controller.signal.aborted).toBe(true);
+            expect(exited).toEqual(threadIds);
             expect(threadIds.size).toBe(2);
             expect(checkpoints.size).toBe(2);
             const reopened = JSON.parse(JSON.stringify([...checkpoints.values()])) as api.SimulationAccumulatorSnapshot[];
@@ -975,7 +985,7 @@ describe("V2C-14 authored bounded mechanics", () => {
     });
 
     it("new public processes resume active chains and partial collections via durable SpinCommandHandler", () => {
-        const runtime = emitPublicRuntime();
+        const runtime = emitPublicRuntime({runtimeFilesOnly: true});
         try {
             const script = path.join(runtime.directory, "continue.cjs");
             fs.writeFileSync(script, `

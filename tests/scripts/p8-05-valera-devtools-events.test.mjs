@@ -409,6 +409,9 @@ async function runProductionDrawerRecovery() {
         createRoot(document.getElementById('root')).render(h(Fixture));
     `;
     const server = await createViteServer({configFile:false, root:process.cwd(), cacheDir:path.join(profile,"vite"),
+        // Scan the actual Studio entry, rather than historical HTML throughout
+        // the repository. Each fixture still owns its optimizer output.
+        optimizeDeps:{entries:["cli/studio-client/index.html"]},
         server:{host:"127.0.0.1",port:0}, plugins:[{name:"p805-drawer-fixture",resolveId:id=>id===fixtureId?id:undefined,load:id=>id===fixtureId?source:undefined,
             configureServer(vite){vite.middlewares.use((request,response,next)=>{
                 if(request.url!=="/drawer-recovery")return next();
@@ -419,6 +422,8 @@ async function runProductionDrawerRecovery() {
     let browser, exited, cdp;
     try {
         await server.listen();
+        await server.transformRequest(fixtureId);
+        await server.waitForRequestsIdle();
         const launched=launchFocusedBrowser(profile);({browser,exited}=launched);
         cdp=await connectP805Devtools(`http://127.0.0.1:${await launched.waitForPort()}`);
         const evaluate=async(expression)=>{
@@ -675,7 +680,7 @@ async function runProductionPointerReflow() {
             ?h(RouterProvider,{router:createHashRouter([{path:'/project/:tab',element:h(ProjectDashboardPage)}])}):h(Fixture);
         createRoot(document.getElementById('root')).render(h(MantineProvider,null,h(ModalsProvider,null,h(StudioApiProvider,{fetchImpl:fetch},surface))));
     `;
-    const server = await createViteServer({configFile:false,root:process.cwd(),cacheDir:path.join(profile,'vite'),server:{host:'127.0.0.1',port:0},plugins:[{
+    const server = await createViteServer({configFile:false,root:process.cwd(),cacheDir:path.join(profile,'vite'),optimizeDeps:{entries:['cli/studio-client/index.html']},server:{host:'127.0.0.1',port:0},plugins:[{
         name:'p805-production-pointer-reflow',resolveId:id=>id==='/reflow.js'?id:undefined,load:id=>id==='/reflow.js'?source:undefined,
         configureServer(vite){vite.middlewares.use((request,response,next)=>{
             if(request.url==='/reflow'||request.url==='/dashboard'){
@@ -718,7 +723,14 @@ async function runProductionPointerReflow() {
     }]});
     let browser,exited,cdp;
     try {
-        await server.listen();const launched=launchFocusedBrowser(profile);({browser,exited}=launched);
+        const started = Date.now();
+        await server.listen();
+        // Drain the real static import transforms before Chromium's rendered
+        // readiness clock. This does not execute any product control or API.
+        await server.transformRequest('/reflow.js');
+        await server.waitForRequestsIdle();
+        const preparedMs = Date.now() - started;
+        const launched=launchFocusedBrowser(profile);({browser,exited}=launched);
         cdp=await connectP805Devtools(`http://127.0.0.1:${await launched.waitForPort()}`);
         const evaluate=async expression=>{const result=await cdp.send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});assert.equal(result.exceptionDetails,undefined);return result.result.value;};
         await cdp.send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,mobile:false,deviceScaleFactor:1});
@@ -733,6 +745,7 @@ async function runProductionPointerReflow() {
         };
         await cdp.send('Page.navigate',{url:`http://127.0.0.1:${server.httpServer.address().port}/reflow`});
         await poll(()=>navigationReady("!!document.getElementById('simulation-run')"),30_000);
+        console.log(`Pointer fixture prepared in ${preparedMs} ms; first render in ${Date.now() - started} ms`);
         const accepted=[],snapshots=[],pages=[];
         const activate=async(id,lifecycle='recovery',reflow=false,retain=false)=>{
             if(['simulation-cancel-dismiss','simulation-cancel-confirm'].includes(id)){
@@ -916,7 +929,7 @@ async function runProductionPointerReflow() {
 }
 
 test('native delivery reflow survives restored Simulation cancellation, dismissal, failed Retry, completed Retry and Replay Artifact recovery',()=>{
-    try{execFileSync(process.execPath,['--input-type=module','-e',`
+    try{const stdout=execFileSync(process.execPath,['--input-type=module','-e',`
         import assert from 'node:assert/strict';import {spawn} from 'node:child_process';
         import {mkdtemp,readFile,rm} from 'node:fs/promises';import {createHash} from 'node:crypto';
         import {tmpdir} from 'node:os';import path from 'node:path';
@@ -925,7 +938,7 @@ test('native delivery reflow survives restored Simulation cancellation, dismissa
         import {projectP805PersonaAudit} from './scripts/p8-05-persona-projection.mjs';
         const hash=${hash.toString()};const poll=${poll.toString()};${launchFocusedBrowser.toString()}
         await (${runProductionPointerReflow.toString()})();
-    `],{cwd:process.cwd(),encoding:'utf8',stdio:'pipe',timeout:60_000});}
+    `],{cwd:process.cwd(),encoding:'utf8',stdio:'pipe',timeout:60_000});console.info(stdout.trim());}
     catch(error){throw new Error(`Production pointer reflow failed: ${error.stderr||error.message}`);}
 },65_000);
 
