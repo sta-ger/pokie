@@ -5,7 +5,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
-import {ArtifactBuildCancelledError, ArtifactBuilderRegistry, ArtifactConversionPlanner, computeGameBlueprintHash, loadWeightedOutcomeLibraryFromBundle, ManagedOutcomeProjectService, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, resolvePokieGameEntryModule, type ArtifactTargetType, type GameBlueprint, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "@fromstan/pokie";
+import {ArtifactBuildCancelledError, ArtifactBuilderRegistry, ArtifactConversionPlanner, computeGameBlueprintHash, loadWeightedOutcomeLibraryFromBundle, ManagedOutcomeProjectService, OutcomeLibraryBundleWriter, PackageBlueprintExtraction, PROJECT_TYPE_CAPABILITIES, resolvePokieGameEntryModule, type ArtifactTargetType, type GameBlueprint, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
@@ -26,7 +26,10 @@ function buildBlueprint(overrides: Record<string, unknown> = {}): Record<string,
 describe("StudioArtifactBuildService", () => {
     let restoreTemporaryDirectory: () => void;
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        // These consumers execute JS, including generated games, but never compile against
+        // declarations/maps. Do not copy those files into every invocation-owned snapshot.
+        // Keep the real runtime JS, module scopes and complete declared dependency graph.
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
     });
     afterAll(() => {
         restoreTemporaryDirectory();
@@ -34,14 +37,35 @@ describe("StudioArtifactBuildService", () => {
 
     let workDir: string;
     let service: StudioArtifactBuildService;
+    let extractionReads: jest.SpyInstance;
+    let extractionTimings: Array<{status: string; elapsedMs: number}>;
+    let extractedSources: Set<string>;
 
     beforeEach(() => {
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-artifact-build-test-"));
         service = new StudioArtifactBuildService("1.3.0");
+        extractionTimings = [];
+        extractedSources = new Set();
+        const extract = PackageBlueprintExtraction.prototype.extract;
+        extractionReads = jest.spyOn(PackageBlueprintExtraction.prototype, "extract").mockImplementation(async function(this: PackageBlueprintExtraction, ...args) {
+            const started = performance.now();
+            if (typeof args[0] === "string" && fs.existsSync(path.join(args[0], "index.js"))) extractedSources.add(args[0]);
+            const result = await Reflect.apply(extract, this, args);
+            extractionTimings.push({status: result.status, elapsedMs: Math.round(performance.now() - started)});
+            return result;
+        });
     });
 
     afterEach(() => {
-        fs.rmSync(workDir, {recursive: true, force: true});
+        try {
+            if (extractionTimings.length > 0) console.info(`Studio package extractions: ${JSON.stringify({test: expect.getState().currentTestName, reads: extractionTimings})}`);
+            // extract() must settle only after releasing each private runtime. Check before
+            // deleting fixture inputs so a leaked acquisition cannot race the next case.
+            for (const source of extractedSources) expect(runtimeSnapshotNames(source)).toEqual([]);
+        } finally {
+            extractionReads.mockRestore();
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it.each(evaluatorValidationCases)("agrees on $kind preview/build rejection, preserves files and publishes corrected retries", async ({blueprint, corrected, code}) => {
@@ -265,7 +289,7 @@ describe("StudioArtifactBuildService", () => {
         } finally {
             spy.mockRestore();
         }
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it.each(["blueprint", "evidence"])("preserves a competing %s replacement on registration failure", async member => {
         const source = writeDescriptorPackage(workDir);
@@ -375,7 +399,7 @@ describe("StudioArtifactBuildService", () => {
         expect(fs.existsSync(`${destination}.pokie`)).toBe(false);
         expect(registered.size).toBe(0);
         expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", path.basename(competitor)].sort());
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it.each([false, true])("preserves a replaced package directory and its contents during registration rollback (cancelled: %s)", async cancelled => {
         const source = writeDescriptorPackage(workDir);
@@ -399,7 +423,7 @@ describe("StudioArtifactBuildService", () => {
         expect(fs.readFileSync(path.join(destination, "package.json"))).toEqual(fs.readFileSync(path.join(moved, "package.json")));
         expect(fs.readdirSync(destination).sort()).toEqual(["package.json", "unrelated.bin"]);
         expect(fs.readdirSync(workDir).some(name => name.startsWith(".pokie-"))).toBe(false);
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     describe.each(["tsPackage", "parWorkbook"] as const)("direct %s Blueprint ancestor ownership", sourceType => {
         it.each([false, true])("preserves replacement ancestors and hard links on registration rollback (cancelled: %s)", async cancelled => {
@@ -428,7 +452,7 @@ describe("StudioArtifactBuildService", () => {
             for (const name of ["model.json", "model.json.conversion-evidence.json"]) expect(fs.readFileSync(path.join(parent, name))).toEqual(fs.readFileSync(path.join(moved, name)));
             expect(fs.readdirSync(parent).sort()).toEqual(["model.json", "model.json.conversion-evidence.json", "unrelated.bin"]);
             expect(fs.readFileSync(path.join(parent, "unrelated.bin"), "utf8")).toBe("another directory owner");
-        });
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     });
 
     describe.each([
@@ -490,7 +514,7 @@ describe("StudioArtifactBuildService", () => {
         expect(result).toMatchObject({message: expect.stringContaining("Package model changed after preview")});
         expect(register).not.toHaveBeenCalled();
         expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", "payout.txt"]);
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it.each([
         ['manifest: null', /manifest/],
@@ -510,7 +534,7 @@ describe("StudioArtifactBuildService", () => {
         expect(register).not.toHaveBeenCalled();
         expect(fs.readdirSync(workDir)).toEqual(["descriptor-package"]);
         expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(input);
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it.each([false, true])("rolls back package extraction files and registrations (cancelled: %s)", async cancelled => {
         const source = writeDescriptorPackage(workDir);

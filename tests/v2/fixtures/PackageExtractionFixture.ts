@@ -9,13 +9,13 @@ import {fractionalBetBlueprint} from "../../fixtures/math/FractionalBetFixture.j
 export const PACKAGE_EXTRACTION_TEST_TIMEOUT = 120_000;
 
 /** Give direct Jest and npm launches the same clone-local snapshot storage. */
-export function createPackageExtractionTestEnvironment(options: {stageRuntime?: boolean} = {}): () => void {
+export function createPackageExtractionTestEnvironment(options: {stageRuntime?: boolean; runtimeFilesOnly?: boolean} = {}): () => void {
     const cache = path.resolve(__dirname, "../../../node_modules/.cache/pokie-tmp");
     fs.mkdirSync(cache, {recursive: true});
     const directory = fs.mkdtempSync(path.join(cache, "pokie-package-extraction-"));
     // Bind declared fixture dependencies to stable compiled bytes, outside mutable checkout dist.
     try {
-        if (options.stageRuntime !== false) stageCompiledTestRuntime(directory);
+        if (options.stageRuntime !== false) stageCompiledTestRuntime(directory, ["cjs"], {runtimeFilesOnly: options.runtimeFilesOnly});
     } catch (error) {
         fs.rmSync(directory, {recursive: true, force: true});
         // Native spawn errors can reference themselves through .error, which Jest's
