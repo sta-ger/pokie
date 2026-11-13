@@ -1,11 +1,11 @@
 import {expectInconclusiveArtifactValidation} from "../testUtils/expectInconclusiveArtifactValidation.js";
-import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {execFileSync} from "child_process";
 import {pathToFileURL} from "url";
-import {loadPokieGame, releasePokieGame, type ReplayDescriptor, type SimulationReport} from "@fromstan/pokie";
+import {loadPokieGame, ParallelSimulationRunner, releasePokieGame, type ReplayDescriptor, type SimulationReport} from "@fromstan/pokie";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {CreateCommand} from "../../cli/commands/CreateCommand.js";
 import {InitCommand} from "../../cli/commands/InitCommand.js";
@@ -97,26 +97,16 @@ describe("PC-18 fresh public CLI role missions", () => {
     let workDir: string;
     let runtimePackageRoot: string;
 
-    beforeAll(() => {
-        ensureCompiledTestOutput({
-            repositoryRoot: REPO_ROOT,
-            outputPaths: [
-                path.join(REPO_ROOT, "dist", "cjs", "index.js"),
-                path.join(REPO_ROOT, "dist", "cjs", "package.json"),
-                path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js"),
-            ],
-            lockName: "compiled-runtime",
-            command: ["npm", "run", "build-test-runtime"],
-        });
-    });
-
     let restoreTemporaryDirectory: () => void;
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        // These generated packages execute JS directly; none compiles against this
+        // staged dependency. Init's real install/build uses its own full dependency.
+        // The staging helper owns isolated, source-bound compilation already.
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
         // Native package loads snapshot their dependency. Bind generated packages to
         // the staged compiled runtime, not the checkout's docs/tests/mutable dist.
         runtimePackageRoot = path.join(os.tmpdir(), "node_modules/@fromstan/pokie");
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     afterAll(() => {
         restoreTemporaryDirectory();
     });
@@ -128,9 +118,14 @@ describe("PC-18 fresh public CLI role missions", () => {
     });
 
     afterEach(() => {
-        fs.rmSync(workDir, {recursive: true, force: true});
-        (console.log as jest.Mock).mockRestore();
-        (console.error as jest.Mock).mockRestore();
+        try {
+            // Observe release before deleting fixture storage can hide a leaked lease.
+            expect(fs.readdirSync(os.tmpdir()).filter(entry => entry.startsWith("pokie-runtime-"))).toEqual([]);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+            (console.log as jest.Mock).mockRestore();
+            (console.error as jest.Mock).mockRestore();
+        }
     });
 
     it("lets a math designer retain PAR conversion provenance and a game/frontend developer run the resulting package", async () => {
@@ -160,28 +155,56 @@ describe("PC-18 fresh public CLI role missions", () => {
     });
 
     it("lets QA produce seeded simulation, report and replay artifacts while invalid input remains actionable", async () => {
-        const blueprint = path.join(workDir, "qa.blueprint.json");
-        const packageRoot = path.join(workDir, "qa-package");
-        const simulation = path.join(workDir, "qa-simulation.json");
-        const report = path.join(workDir, "qa-report.md");
-        const replay = path.join(workDir, "qa-replay.json");
-        fs.writeFileSync(blueprint, JSON.stringify({
-            manifest: {id: "pc18-qa", name: "PC-18 QA", version: "1.0.0"}, reels: 2, rows: 1,
-            symbols: ["A", "B"], paytable: {A: {2: 2}}, reelStrips: [["A", "B"], ["A", "B"]], availableBets: [1],
-        }));
-        expect(await new BuildCommand(POKIE_VERSION, undefined, undefined, undefined, undefined, undefined, runtimePackageRoot).run([
-            blueprint, "--target", "tsPackage", "--out", packageRoot,
-        ])).toBe(0);
-        expect(fs.realpathSync(path.join(packageRoot, "node_modules/@fromstan/pokie"))).toBe(fs.realpathSync(runtimePackageRoot));
+        const started = performance.now();
+        const phases: Array<{phase: string; elapsedMs: number}> = [];
+        const record = (phase: string): void => {
+            phases.push({phase, elapsedMs: Math.round(performance.now() - started)});
+        };
+        let loads = 0;
+        const loadGame = async (root: string) => {
+            const load = ++loads;
+            record(`load-${load}-start`);
+            const game = await loadPokieGame(root);
+            record(`load-${load}-end`);
+            return game;
+        };
+        try {
+            const blueprint = path.join(workDir, "qa.blueprint.json");
+            const packageRoot = path.join(workDir, "qa-package");
+            const simulation = path.join(workDir, "qa-simulation.json");
+            const report = path.join(workDir, "qa-report.md");
+            const replay = path.join(workDir, "qa-replay.json");
+            fs.writeFileSync(blueprint, JSON.stringify({
+                manifest: {id: "pc18-qa", name: "PC-18 QA", version: "1.0.0"}, reels: 2, rows: 1,
+                symbols: ["A", "B"], paytable: {A: {2: 2}}, reelStrips: [["A", "B"], ["A", "B"]], availableBets: [1],
+            }));
+            record("build-start");
+            expect(await new BuildCommand(POKIE_VERSION, undefined, undefined, undefined, undefined, undefined, runtimePackageRoot).run([
+                blueprint, "--target", "tsPackage", "--out", packageRoot,
+            ])).toBe(0);
+            record("build-end");
+            expect(fs.realpathSync(path.join(packageRoot, "node_modules/@fromstan/pokie"))).toBe(fs.realpathSync(runtimePackageRoot));
 
-        await new SimCommand().run([packageRoot, "--rounds", "12", "--seed", "pc18", "--out", simulation]);
-        expect(JSON.parse(fs.readFileSync(simulation, "utf8")) as SimulationReport).toMatchObject({rounds: 12});
-        await new ReportCommand().run([simulation, "--format", "markdown", "--out", report]);
-        expect(fs.readFileSync(report, "utf8")).toContain("# Simulation Report:");
-        await new ReplayCommand().run([packageRoot, "--seed", "pc18", "--round", "2", "--out", replay]);
-        expect(JSON.parse(fs.readFileSync(replay, "utf8")) as ReplayDescriptor).toMatchObject({round: 2});
-        await expect(new SimCommand().run([packageRoot, "--rounds", "0"])).rejects.toThrow("--rounds must be a positive integer");
-    });
+            await new SimCommand(loadGame, undefined, undefined, undefined, (root, rounds, options) => new ParallelSimulationRunner(root, rounds, {
+                ...options, onPhase: record,
+            })).run([packageRoot, "--rounds", "12", "--seed", "pc18", "--out", simulation]);
+            record("simulation-end");
+            expect(JSON.parse(fs.readFileSync(simulation, "utf8")) as SimulationReport).toMatchObject({rounds: 12, seed: "pc18"});
+            expect(loads).toBe(2); // Metadata and execution retain the real loader boundary.
+            expect(fs.readdirSync(os.tmpdir()).filter(entry => entry.startsWith("pokie-runtime-"))).toEqual([]);
+            await new ReportCommand().run([simulation, "--format", "markdown", "--out", report]);
+            record("report-end");
+            expect(fs.readFileSync(report, "utf8")).toContain("# Simulation Report:");
+            await new ReplayCommand(loadGame).run([packageRoot, "--seed", "pc18", "--round", "2", "--out", replay]);
+            record("replay-end");
+            expect(JSON.parse(fs.readFileSync(replay, "utf8")) as ReplayDescriptor).toMatchObject({round: 2, seed: "pc18"});
+            await expect(new SimCommand(loadGame).run([packageRoot, "--rounds", "0"])).rejects.toThrow("--rounds must be a positive integer");
+            expect(loads).toBe(3); // Invalid input must not acquire a fourth lease.
+            record("invalid-input-rejected");
+        } finally {
+            console.info(`PC-18 QA phases: ${JSON.stringify(phases)}`);
+        }
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("lets an integration developer cross Outcome Library and Stake boundaries, and a new-project developer retry owned preparation", async () => {
         const blueprint = path.join(workDir, "integration.blueprint.json");
@@ -198,6 +221,18 @@ describe("PC-18 fresh public CLI role missions", () => {
         expect(await new StakeEngineCommand(POKIE_VERSION).run(["import", stake, "--out", imported])).toBe(0);
         await expectInconclusiveArtifactValidation([imported, "--deep"]);
 
+        // Only the code-first Init mission compiles against the checkout's full
+        // installation. Keep that preparation out of the JS-only missions.
+        ensureCompiledTestOutput({
+            repositoryRoot: REPO_ROOT,
+            outputPaths: [
+                path.join(REPO_ROOT, "dist", "cjs", "index.js"),
+                path.join(REPO_ROOT, "dist", "cjs", "package.json"),
+                path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js"),
+            ],
+            lockName: "compiled-runtime",
+            command: ["npm", "run", "build-test-runtime"],
+        });
         const projectRoot = path.join(workDir, "new-project");
         const runner = localPokieDependencyRunner();
         let failBuild = true;
