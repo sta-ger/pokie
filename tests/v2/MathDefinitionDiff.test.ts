@@ -15,7 +15,10 @@ import {
 } from "./fixtures/PackageExtractionFixture.js";
 let restoreRuntimeEnvironment: () => void;
 beforeAll(() => {
-    restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+    // Descriptor reads execute JavaScript; no consumer in this suite compiles
+    // against declarations or uses source maps. Keep the real dependency graph
+    // without copying those unused compiler outputs into every owned lease.
+    restoreRuntimeEnvironment = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
 });
 afterAll(() => restoreRuntimeEnvironment());
 
@@ -409,12 +412,17 @@ describe("canonical math definition diff", () => {
                     finished = true;
                     return result;
                 });
-            await paused.waitForRead(running);
-            controller.abort();
-            expect(finished).toBe(false);
-            paused.settle();
-            expect((await running).status).toBe("cancelled");
-            paused.restore();
+            try {
+                await paused.waitForRead(running);
+                controller.abort();
+                expect(finished).toBe(false);
+                paused.settle();
+                expect((await running).status).toBe("cancelled");
+                expect(runtimeSnapshotNames(paused.source)).toEqual([]);
+            } finally {
+                paused.restore();
+                await running;
+            }
         } finally {
             fs.rmSync(root, {recursive: true, force: true});
         }
@@ -428,7 +436,12 @@ describe("definition acquisition and cleanup boundaries", () => {
     });
     afterEach(() => {
         jest.restoreAllMocks();
-        fs.rmSync(root, {recursive: true, force: true});
+        try {
+            // Assert cleanup before fixture deletion can conceal a leaked lease.
+            expect(fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-"))).toEqual([]);
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+        }
     });
     it("compares known partial fields while withholding a complete equality claim and caller releases", async () => {
         const model = base();
@@ -472,20 +485,27 @@ describe("definition acquisition and cleanup boundaries", () => {
     it.each([false, true])(
         "drains the other owned read when %s side fails and retains unrelated runtime leases",
         async (reverse) => {
+            const started = performance.now();
+            const phases: Array<{phase: string; elapsedMs: number}> = [];
+            const record = (phase: string): void => {
+                phases.push({phase, elapsedMs: Math.round(performance.now() - started)});
+            };
             const broken = writeDescriptorPackage(root, {
                 name: "broken",
                 descriptorBody: 'return Promise.reject(new Error("descriptor rejected"));',
             });
             const paused = writePausedDescriptorPackage(root, undefined, {pauseAtRead: 1});
+            let settled = false;
+            const running = api
+                .compareMathDefinitions(reverse ? broken : paused.source, reverse ? paused.source : broken)
+                .then((diff) => {
+                    settled = true;
+                    record("peer-failure-comparison-drained");
+                    return diff;
+                });
             try {
-                let settled = false;
-                const running = api
-                    .compareMathDefinitions(reverse ? broken : paused.source, reverse ? paused.source : broken)
-                    .then((diff) => {
-                        settled = true;
-                        return diff;
-                    });
                 await paused.waitForRead(running);
+                record("descriptor-paused");
                 expect(settled).toBe(false);
                 paused.settle();
                 const result = await running;
@@ -497,16 +517,25 @@ describe("definition acquisition and cleanup boundaries", () => {
                 ).toBe(true);
             } finally {
                 paused.restore();
+                await running;
             }
+            expect(runtimeSnapshotNames(paused.source)).toEqual([]);
+            expect(runtimeSnapshotNames(broken)).toEqual([]);
             const own = await api.loadPokieGameRuntime(paused.source);
+            record("caller-lease-acquired");
             try {
                 const snapshots = runtimeSnapshotNames(paused.source);
-                await api.compareMathDefinitions(paused.source, own.game);
+                expect(snapshots).toHaveLength(1);
+                expect((await api.compareMathDefinitions(paused.source, own.game)).status).toBe("partial");
+                record("owned-read-drained-caller-lease-retained");
                 expect(runtimeSnapshotNames(paused.source)).toEqual(snapshots);
                 expect(own.game.getManifest().id).toBeTruthy();
             } finally {
                 await own.release();
+                record("caller-lease-released");
+                console.info(`Definition diff ${reverse} acquisition phases: ${JSON.stringify(phases)}`);
             }
+            expect(runtimeSnapshotNames(paused.source)).toEqual([]);
         },
     );
     it("keeps cleanup failure authoritative over equality and cancellation", async () => {
