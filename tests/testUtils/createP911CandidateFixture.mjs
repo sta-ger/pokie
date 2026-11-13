@@ -74,6 +74,12 @@ export const V2C37_SAVED_GATE_CORRECTION_PATHS = [
     "tests/server/PokieDevServer.test.ts",
     "tests/testUtils/createP911CandidateFixture.mjs",
     "tests/v2/MathDefinitionDiff.test.ts",
+    // Remaining test-only descendants of the retained V2C-37 candidate.
+    "tests/cli/materialize/BlueprintProjectMaterializer.offline.integration.test.ts",
+    "tests/cli/studio/AdvancedModelValidationRoutes.test.ts",
+    "tests/cli/studio/StudioArtifactBuildService.test.ts",
+    "tests/cli/studio/StudioJobRoutes.integration.test.ts",
+    "tests/v2/fixtures/PackageExtractionFixture.ts",
 ];
 // Independent of the reader's allowlist: include the entire reviewed gate
 // delta, the prior driver repair, the reviewed interoperability correction and
