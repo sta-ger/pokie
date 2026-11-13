@@ -895,7 +895,7 @@ describe("ReportCommand (integration, real pokie sim output)", () => {
         expect(markdown).toContain("**Actual rounds**: 100");
         expect(html).toContain("<h1>Simulation Report: Playable Game</h1>");
         expect(html).toContain("<td>100</td>");
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 });
 
 describe("ReportCommand (integration, base vs. freeGames breakdown from a real free-games game)", () => {
@@ -920,7 +920,9 @@ describe("ReportCommand (integration, base vs. freeGames breakdown from a real f
 
         const simReport = JSON.parse(fs.readFileSync(simReportFile, "utf-8")) as SimulationReport;
         expect(simReport.requestedRounds).toBe(100);
-        expect(simReport.rounds).toBe(100);
+        // --rounds budgets subrounds; the fixture completes 25 logical rounds.
+        expect(simReport.rounds).toBe(25);
+        expect(simReport.sampling?.acceptedSubrounds).toBe(100);
         expect(simReport.breakdown).toBeDefined();
         const {base, freeGames} = simReport.breakdown!.components;
         expect(base.rounds).toBeGreaterThan(0);
@@ -936,7 +938,7 @@ describe("ReportCommand (integration, base vs. freeGames breakdown from a real f
         expect(markdown).toContain("## Breakdown");
         expect(markdown).toContain("| base |");
         expect(markdown).toContain("| freeGames |");
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 });
 
 it("exposes rare Stake metrics in canonical JSON and truthful Markdown/HTML stdout and files", async () => {
