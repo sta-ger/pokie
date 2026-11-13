@@ -168,6 +168,7 @@ const tooling = new Set([
     "tests/cli/StudioFullWorkflow.integration.test.ts",
     "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
     "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
+    "tests/cli/studio/StudioServerTrust.integration.test.ts",
     "tests/cli/studio/StudioServerParWorkbook.integration.test.ts",
     // V2C-34 saved two-file gate correction; no product/build or sibling-test exemption.
     "tests/cli/commands/BuildCommand.test.ts",

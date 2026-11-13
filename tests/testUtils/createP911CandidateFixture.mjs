@@ -81,6 +81,7 @@ export const V2C37_SAVED_GATE_CORRECTION_PATHS = [
     "tests/cli/studio/StudioJobRoutes.integration.test.ts",
     "tests/v2/fixtures/PackageExtractionFixture.ts",
     "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
+    "tests/cli/studio/StudioServerTrust.integration.test.ts",
 ];
 // Independent of the reader's allowlist: include the entire reviewed gate
 // delta, the prior driver repair, the reviewed interoperability correction and
@@ -204,6 +205,7 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "tests/testUtils/p805PackedEvidence.ts",
     "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
     "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
+    "tests/cli/studio/StudioServerTrust.integration.test.ts",
     "tests/cli/studio-client/src/StudioReadinessConvergence.test.tsx",
     // P10-03 retained-candidate delta: installed receipt plus bounded gate regression.
     "docs/math-contract-corrections/README.md",
