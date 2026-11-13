@@ -63,6 +63,7 @@ export const V2C37_SAVED_GATE_CORRECTION_PATHS = [
     "tests/cli/BuildWorkflow.integration.test.ts",
     "tests/cli/P907ValeraMathematician.integration.test.ts",
     "tests/cli/commands/SimCommand.test.ts",
+    "tests/cli/commands/DiffCommand.test.ts",
     "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",
     "tests/cli/studio-client/src/P805ValeraHarness.test.tsx",
     "tests/testUtils/p805PackedEvidence.ts",

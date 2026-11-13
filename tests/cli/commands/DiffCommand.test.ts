@@ -1,6 +1,6 @@
 import {dispatch} from "../../../cli/dispatch.js";
 import {fractionalBetBlueprint} from "../../fixtures/math/FractionalBetFixture.js";
-import {writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import {featureAnalyticsReport} from "../../v2/fixtures/FeatureAnalyticsFixture.js";
 import {
     OutcomeLibraryBundleWriter,
@@ -21,6 +21,25 @@ import {DiffCommand} from "../../../cli/commands/DiffCommand.js";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
 import {buildStakeEngineTestLibrary} from "../../stakeengine/StakeEngineTestFixtures.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+
+function useSimulationFixture(name: string): () => string {
+    let root: string;
+    let restoreRuntimeEnvironment: (() => void) | undefined;
+    beforeAll(() => {
+        restoreRuntimeEnvironment = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+        // Match the real SimCommand fixtures: an explicit dependency resolves the private
+        // compiled installation instead of snapshotting the host checkout and its evidence.
+        root = path.join(os.tmpdir(), name);
+        fs.cpSync(path.join(__dirname, "..", "fixtures", name), root, {recursive: true});
+        const manifest = path.join(root, "package.json");
+        fs.writeFileSync(manifest, JSON.stringify({...JSON.parse(fs.readFileSync(manifest, "utf8")), dependencies: {"@fromstan/pokie": "*"}}));
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    afterEach(() => {
+        expect(fs.readdirSync(os.tmpdir()).filter(entry => entry.startsWith("pokie-runtime-"))).toEqual([]);
+    });
+    afterAll(() => restoreRuntimeEnvironment?.());
+    return () => root;
+}
 
 const left: SimulationReport = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
@@ -596,7 +615,7 @@ describe("DiffCommand (SimulationReportSet -- diffing two `pokie sim --mode all`
 });
 
 describe("DiffCommand (integration, real pokie sim output)", () => {
-    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
+    const fixtureRoot = useSimulationFixture("playable-game");
     // Each case loads two isolated native dependency graphs before diffing.
     jest.setTimeout(120_000);
     let outDir: string;
@@ -614,8 +633,8 @@ describe("DiffCommand (integration, real pokie sim output)", () => {
     it("diffs two reports produced by pokie sim --out", async () => {
         const leftFile = path.join(outDir, "left.json");
         const rightFile = path.join(outDir, "right.json");
-        await new SimCommand().run([fixtureRoot, "--rounds", "100", "--seed", "demo", "--out", leftFile]);
-        await new SimCommand().run([fixtureRoot, "--rounds", "200", "--seed", "demo", "--out", rightFile]);
+        await new SimCommand().run([fixtureRoot(), "--rounds", "100", "--seed", "demo", "--out", leftFile]);
+        await new SimCommand().run([fixtureRoot(), "--rounds", "200", "--seed", "demo", "--out", rightFile]);
 
         const diffOut = path.join(outDir, "diff.json");
         await new DiffCommand().run([leftFile, rightFile, "--out", diffOut]);
@@ -630,8 +649,8 @@ describe("DiffCommand (integration, real pokie sim output)", () => {
         const leftFile = path.join(outDir, "left.json");
         const rightFile = path.join(outDir, "right.json");
         const existingOutput = path.join(outDir, "existing-diff.json");
-        await new SimCommand().run([fixtureRoot, "--rounds", "100", "--seed", "demo", "--out", leftFile]);
-        await new SimCommand().run([fixtureRoot, "--rounds", "200", "--seed", "demo", "--out", rightFile]);
+        await new SimCommand().run([fixtureRoot(), "--rounds", "100", "--seed", "demo", "--out", leftFile]);
+        await new SimCommand().run([fixtureRoot(), "--rounds", "200", "--seed", "demo", "--out", rightFile]);
         fs.writeFileSync(existingOutput, "existing diff artifact", "utf-8");
         const leftBefore = fs.readFileSync(leftFile, "utf-8");
         const rightBefore = fs.readFileSync(rightFile, "utf-8");
@@ -651,7 +670,7 @@ describe("DiffCommand (integration, real pokie sim output)", () => {
 });
 
 describe("DiffCommand (integration, real reports with an arbitrary custom category)", () => {
-    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game-with-bonus-round");
+    const fixtureRoot = useSimulationFixture("playable-game-with-bonus-round");
     let outDir: string;
 
     beforeEach(() => {
@@ -667,16 +686,18 @@ describe("DiffCommand (integration, real reports with an arbitrary custom catego
     it("diffs the non-base/freeGames 'bonus' category between two real reports", async () => {
         const leftFile = path.join(outDir, "left.json");
         const rightFile = path.join(outDir, "right.json");
-        await new SimCommand().run([fixtureRoot, "--rounds", "500", "--out", leftFile]);
-        await new SimCommand().run([fixtureRoot, "--rounds", "1000", "--out", rightFile]);
+        await new SimCommand().run([fixtureRoot(), "--rounds", "500", "--out", leftFile]);
+        await new SimCommand().run([fixtureRoot(), "--rounds", "1000", "--out", rightFile]);
 
         const diffOut = path.join(outDir, "diff.json");
         await new DiffCommand().run([leftFile, rightFile, "--out", diffOut]);
 
         const diff = JSON.parse(fs.readFileSync(diffOut, "utf-8"));
+        expect(diff.rounds).toMatchObject({left: 500, right: 1000});
         expect(diff.breakdown.components.bonus).toBeDefined();
         expect(diff.breakdown.components.bonus.rounds.left).toBeGreaterThan(0);
         expect(diff.breakdown.components.bonus.rounds.right).toBeGreaterThan(diff.breakdown.components.bonus.rounds.left);
+        expect(diff.breakdown.components.bonus.rounds).toMatchObject({left: 71, right: 142});
     });
 });
 
