@@ -1,9 +1,9 @@
 import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
 import {PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
-import {loadPokieGame, loadPokieGameRuntime, readPokiePackageConfig, releasePokieGame} from "@fromstan/pokie";
+import {loadPokieGame, loadPokieGameRuntime, readPokiePackageConfig, releasePokieGame, resolvePokieGameDependencyRoots} from "@fromstan/pokie";
 import fs from "fs";
 import {createRequire} from "module";
-import {execFileSync} from "child_process";
+import {execFileSync, type ExecFileSyncOptionsWithStringEncoding} from "child_process";
 import {pathToFileURL} from "url";
 import os from "os";
 import path from "path";
@@ -11,7 +11,40 @@ import ts from "typescript";
 
 const fixturesRoot = path.join(__dirname, "fixtures");
 
-it("preserves the installed host closure across its nested CommonJS scope for unchanged external games", () => {
+function runNativeProbe(args: string[], options: Omit<ExecFileSyncOptionsWithStringEncoding, "encoding"> = {}): string {
+    const started = Date.now();
+    try {
+        return execFileSync(process.execPath, args, {
+            timeout: 30000, ...options, encoding: "utf8", killSignal: "SIGKILL", stdio: "pipe",
+        });
+    } catch (error) {
+        // Node's synchronous spawn error can point to itself through .error. Jest workers
+        // serialize enumerable error properties, hiding the real failure behind a JSON crash.
+        const failure = error as Error & {code?: string; status?: number; signal?: string; stdout?: string; stderr?: string};
+        throw new Error(`Native probe ${args[0]} failed after ${Date.now() - started} ms ` +
+            `(code=${failure.code}, status=${failure.status}, signal=${failure.signal}): ${failure.message}\n` +
+            `stdout:\n${failure.stdout ?? ""}\nstderr:\n${failure.stderr ?? ""}`);
+    }
+}
+
+it("reports native probe rejection and timeout without circular worker errors", () => {
+    for (const [script, timeout, expected] of [
+        ["process.stderr.write('probe rejected'); process.exitCode = 7;", 30000, /status=7.*probe rejected/s],
+        ["setInterval(() => {}, 1000);", 50, /code=ETIMEDOUT.*signal=SIGKILL/s],
+    ] as const) {
+        let failure: unknown;
+        try {
+            runNativeProbe(["-e", script], {timeout});
+        } catch (error) {
+            failure = error;
+        }
+        expect(failure).toBeInstanceOf(Error);
+        expect((failure as Error).message).toMatch(expected);
+        expect(() => JSON.stringify(failure)).not.toThrow();
+    }
+});
+
+it("preserves the installed host closure across its nested CommonJS scope for unchanged external games", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cjs-host-"));
     const host = path.join(root, "host");
     const installation = path.join(host, "node_modules", "@fromstan", "pokie");
@@ -45,11 +78,32 @@ it("preserves the installed host closure across its nested CommonJS scope for un
             dependencies: {...manifest.dependencies, "host-behavior": "1"},
             optionalDependencies: {"missing-host-optional": "1"},
         }));
-        execFileSync(process.execPath, [path.resolve("write-cjs-package-json.js")], {cwd: installation});
+        runNativeProbe([path.resolve("write-cjs-package-json.js")], {cwd: installation});
         expect(JSON.parse(fs.readFileSync(path.join(cjs, "package.json"), "utf8")).dependencies).toBeUndefined();
         fs.mkdirSync(path.join(installation, "node_modules"));
+        // Keep the real executable dependency graph, including package scopes, assets,
+        // cycles and peers. Maps/declarations are irrelevant to these native JS consumers;
+        // repeatedly copying and hashing them dominated this bounded closure probe under load.
+        const staged = new Map<string, string>();
+        const stageDependency = async (source: string): Promise<string> => {
+            const existing = staged.get(source);
+            if (existing) return existing;
+            const destination = path.join(root, "dependencies", String(staged.size));
+            staged.set(source, destination);
+            fs.cpSync(source, destination, {recursive: true, filter: file =>
+                !["node_modules", ".git"].includes(path.basename(file)) && !file.endsWith(".map") && !file.endsWith(".d.ts")});
+            for (const [name, dependency] of Object.entries(await resolvePokieGameDependencyRoots(source, false))) {
+                if (dependency === null) continue;
+                const target = await stageDependency(dependency);
+                const link = path.join(destination, "node_modules", name);
+                fs.mkdirSync(path.dirname(link), {recursive: true});
+                fs.symlinkSync(target, link, "dir");
+            }
+            return destination;
+        };
         for (const name of Object.keys(manifest.dependencies)) {
-            fs.symlinkSync(fs.realpathSync(path.resolve("node_modules", name)), path.join(installation, "node_modules", name), "dir");
+            const dependency = await stageDependency(fs.realpathSync(path.resolve("node_modules", name)));
+            fs.symlinkSync(dependency, path.join(installation, "node_modules", name), "dir");
         }
         const behavior = path.join(installation, "node_modules", "host-behavior");
         const leaf = path.join(behavior, "node_modules", "host-leaf");
@@ -73,12 +127,15 @@ module.exports = {getManifest: () => ({id: 'unchanged-game', name: runtime.hostP
         fs.writeFileSync(script, `const assert = require('node:assert/strict'), fs = require('fs'), path = require('path');
 const runtime = require('@fromstan/pokie');
 const game = process.argv[2], installation = process.argv[3], leaf = process.argv[4], temporaryRoot = process.argv[5];
+const started = performance.now(), timings = {};
+const phase = name => { timings[name] = Math.round(performance.now() - started); console.error(name + ': ' + timings[name] + ' ms'); };
 (async () => {
  assert.equal(require('os').tmpdir(), temporaryRoot);
  assert.deepEqual(fs.readdirSync(temporaryRoot), []);
  assert.throws(() => require('module').createRequire(path.join(game, 'game.cjs')).resolve('@fromstan/pokie'), /Cannot find module/);
  const outside = require.cache[require.resolve('@fromstan/pokie')];
  const first = await runtime.loadPokieGameRuntime(game);
+ phase('first acquisition');
  const firstSession = first.game.createSession();
  assert.equal(first.game.getManifest().name, 'function:function:before');
  const roots = await runtime.resolvePokieGameDependencyRoots(game);
@@ -94,7 +151,9 @@ const game = process.argv[2], installation = process.argv[3], leaf = process.arg
  const after = await runtime.packageExecutableRevision(game);
  assert.notEqual(after, before);
  assert.equal(await runtime.packageExecutableRevision(detached), after);
+ phase('original and detached revisions');
  const second = await runtime.loadPokieGameRuntime(detached);
+ phase('edited acquisition');
  const secondSession = second.game.createSession();
  assert.equal(second.game.getManifest().name, 'function:function:after');
  assert.deepEqual(firstSession.lazy(), ['function', 'function', 'before']);
@@ -107,6 +166,7 @@ const game = process.argv[2], installation = process.argv[3], leaf = process.arg
  const temporaryRoots = fs.readdirSync(temporaryRoot).sort();
  assert.deepEqual(temporaryRoots, [path.basename(firstSession.root), path.basename(secondSession.root)].sort());
  await assert.rejects(runtime.loadPokieGameRuntime(game), /host leaf rejected/);
+ phase('rejected acquisition');
  assert.deepEqual(fs.readdirSync(temporaryRoot).sort(), temporaryRoots);
  fs.writeFileSync(leaf, "module.exports = 'before';");
  assert.equal(await runtime.packageExecutableRevision(game), before);
@@ -115,6 +175,7 @@ const game = process.argv[2], installation = process.argv[3], leaf = process.arg
    assert.equal(restored.getManifest().name, 'function:function:before');
    await runtime.releasePokieGame(restored);
  }
+ phase('repeated recovery');
  await first.release(); await first.release(); await second.release();
  for (const session of [firstSession, secondSession]) {
    assert.equal(fs.existsSync(session.root), false);
@@ -125,15 +186,18 @@ const game = process.argv[2], installation = process.argv[3], leaf = process.arg
  assert.deepEqual(runtime.hostProbe(), ['function', 'function', 'before']);
  assert.equal(fs.existsSync(path.join(game, 'node_modules')), false);
  assert.equal(JSON.parse(fs.readFileSync(path.join(game, 'package.json'))).dependencies, undefined);
- console.log(JSON.stringify({closure: true, privatePaths: true, revision: true, overlay: true, recovered: true, cleanup: true}));
+ phase('cleanup');
+ console.log(JSON.stringify({closure: true, privatePaths: true, revision: true, overlay: true, recovered: true, cleanup: true, timings}));
 })().catch(error => { console.error(error); process.exitCode = 1; });`);
         // Direct Jest and npm launches must exercise the same child. Own its temporary namespace
         // so concurrent suites cannot add/remove entries observed by the rejection cleanup check.
         const childEnvironment = Object.fromEntries(Object.entries(process.env).filter(([name]) => !(/^npm_/i).test(name) && name !== "INIT_CWD"));
-        expect(JSON.parse(execFileSync(process.execPath, [script, game, installation, path.join(leaf, "index.js"), runtimeTemporaryRoot], {
-            cwd: host, encoding: "utf8", timeout: 60000,
+        const {timings, ...result} = JSON.parse(runNativeProbe([script, game, installation, path.join(leaf, "index.js"), runtimeTemporaryRoot], {
+            cwd: host, timeout: 60000,
             env: {...childEnvironment, TMPDIR: runtimeTemporaryRoot, TMP: runtimeTemporaryRoot, TEMP: runtimeTemporaryRoot},
-        }))).toEqual({closure: true, privatePaths: true, revision: true, overlay: true, recovered: true, cleanup: true});
+        }));
+        expect(result).toEqual({closure: true, privatePaths: true, revision: true, overlay: true, recovered: true, cleanup: true});
+        console.log("Native host closure cumulative timings (ms):", timings);
     } finally {
         fs.rmSync(root, {recursive: true, force: true});
     }
@@ -310,7 +374,7 @@ it.each(["cjs", "esm"])("isolates direct/transitive %s code, lazy imports and li
     fs.mkdirSync(nested, {recursive: true});
     // Bind the current native runtime explicitly. The host-fallback contract is
     // covered separately above; these repeated acquisitions own dependency edits.
-    stageCompiledTestRuntime(root);
+    stageCompiledTestRuntime(root, ["cjs"], {runtimeFilesOnly: true});
     fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({pokie: {entry: `index.${suffix}`}, dependencies: {"@fromstan/pokie": "*", direct: "1"}}));
     for (const [name, location, dependencies] of [["direct", direct, {nested: "1"}], ["nested", nested, {}]] as const) {
         fs.writeFileSync(path.join(location, "package.json"), JSON.stringify({name, main: `index.${suffix}`, dependencies, peerDependencies: name === "nested" ? {direct: "1"} : {}}));
@@ -327,7 +391,7 @@ it.each(["cjs", "esm"])("isolates direct/transitive %s code, lazy imports and li
         write("current");
         const current = await load();
         try {
-            const fresh = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `console.log(JSON.stringify((await import(${JSON.stringify(pathToFileURL(entry).href)})).default.getManifest()))`], {encoding: "utf8"}));
+            const fresh = JSON.parse(runNativeProbe(["--input-type=module", "-e", `console.log(JSON.stringify((await import(${JSON.stringify(pathToFileURL(entry).href)})).default.getManifest()))`]));
             expect(current.game.getManifest()).toEqual(fresh);
             expect(fresh).toEqual(manifest("current"));
             expect(await (first.game as unknown as {lazy(): Promise<string>}).lazy()).toBe("old");
@@ -365,7 +429,7 @@ Module._extensions['.ts'] = (module, file) => module._compile(ts.transpileModule
  assert.equal(require(${JSON.stringify(dependencyFile)}), outside); assert.equal(require.cache[${JSON.stringify(dependencyFile)}], cached);
  console.log(JSON.stringify({removed: true, preserved: true}));
 })().catch(error => { console.error(error); process.exitCode = 1; });`);
-        expect(JSON.parse(execFileSync(process.execPath, [probe], {encoding: "utf8", timeout: 30000}))).toEqual({removed: true, preserved: true});
+        expect(JSON.parse(runNativeProbe([probe]))).toEqual({removed: true, preserved: true});
     } finally {
         await first.release();
         expect(snapshots.every(snapshot => !fs.existsSync(snapshot))).toBe(true);
