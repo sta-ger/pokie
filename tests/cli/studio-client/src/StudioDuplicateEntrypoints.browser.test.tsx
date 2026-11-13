@@ -186,7 +186,9 @@ it("retains both authenticated candidate selectors across the complete listener-
             const reviewedId = await commitP911ToolingDescendant(fixture);
             const selected = await readP911CandidateFromEnvironment(environment, options);
             assert.deepEqual(selected.equivalence.changedEvidenceAndTooling, [...P911_TOOLING_DESCENDANT_PATHS].sort());
-            assert.deepEqual(authenticateP805ProductTree(fixture.handoff.candidateId, reviewedId, fixture.repository).changedToolingAndEvidencePaths, [...P911_TOOLING_DESCENDANT_PATHS].sort());
+            // The complete P9 fixture also changes its separately pinned rendered driver.
+            // Only the six-path correction above is shared with P8; its driver stays protected.
+            assert.throws(() => authenticateP805ProductTree(fixture.handoff.candidateId, reviewedId, fixture.repository), /product or build inputs/);
             assert.deepEqual({...selected, equivalence: original.equivalence}, original);
             for (const reference of [fixture.handoff.browserDriver, fixture.handoff.buildReceipt, fixture.handoff.installReceipt,
                 {path: fixture.handoff.archivePath}, {path: path.join(selected.packageRoot, "dist/cli/pokie.js")}]) {
