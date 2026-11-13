@@ -82,6 +82,16 @@ async function expectUnsupportedFreeGamesNotice(): Promise<HTMLElement> {
     return notice;
 }
 
+async function expectCompletedPlayRound(unsupportedNotice: HTMLElement): Promise<void> {
+    const play = within(screen.getByRole("group", {name: "Play", exact: true}));
+    await play.findByText(/^Round completed: 1 subrounds, 1 deliveries, stake 1, payout (0|3)$/, {}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
+    // RoundSummary presents a win as an alert and a loss as plain text.
+    // Both must show completion; neither may retain the scenario error.
+    expect(play.getByText(/^Round complete(?:$| —)/)).toBeVisible();
+    expect(unsupportedNotice).not.toBeInTheDocument();
+    expect(play.getByRole("button", {name: "Spin"})).toBeEnabled();
+}
+
 describe("PC-14 Studio UI real-artifact interoperability", () => {
     let restoreTemporaryDirectory: () => void;
     let originalAsyncTimeout: number;
@@ -211,13 +221,11 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         expect(screen.getAllByRole("alert").length).toBeGreaterThanOrEqual(2);
         expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
         await user.click(screen.getByRole("button", {name: "Spin"}));
-        await screen.findByText(/^Round completed: 1 subrounds, 1 deliveries, stake 1, payout (0|3)$/, {}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
+        await expectCompletedPlayRound(unsupportedNotice);
         expect(mutations.get(`/api/project/play/sessions/${sessionId}/spin`)).toMatchObject({
             status: 200,
             body: {status: "ok", session: {sessionId, studioRound: 1, logicalRound: {status: "completed"}, debug: {artifact: expect.any(Object)}}},
         });
-        expect(unsupportedNotice).not.toBeInTheDocument();
-        expect(within(screen.getByRole("group", {name: "Play", exact: true})).getByRole("alert", {name: /^Round complete(?:$| —)/})).toBeVisible();
         expect(failedJob).toBeVisible();
     }, PLAY_SESSION_TIMEOUT + PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
@@ -273,14 +281,13 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // retain that product diagnostic while keeping the real session
         // usable for the next action.
         await user.click(screen.getByRole("button", {name: "Find free games"}));
-        await expectUnsupportedFreeGamesNotice();
+        const unsupportedNotice = await expectUnsupportedFreeGamesNotice();
 
         // An ordinary Spin is a full user-visible product operation, not a
         // route-table assertion: it uses the package's real runtime and emits
         // the durable round artifact consumed by the Replay surface.
         await user.click(screen.getByRole("button", {name: "Spin"}));
-        await screen.findByText(/^Round completed: 1 subrounds, 1 deliveries, stake 1, payout (0|3)$/, {}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
-        expect(screen.getByText(/^Round complete(?:$| —)/)).toBeVisible();
+        await expectCompletedPlayRound(unsupportedNotice);
 
         await user.click(screen.getByRole("button", {name: "Simulation"}));
         const rounds = await screen.findByRole("textbox", {name: "Rounds"});
