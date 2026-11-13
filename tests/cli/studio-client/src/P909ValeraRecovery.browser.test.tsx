@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {constants, runInThisContext} from "node:vm";
-import {createProductionStudioTestStorage, productionStudioCandidate} from "./productionStudioCandidate";
+import {createProductionStudioTestStorage, productionStudioCandidate, stageProductionStudioTestHost} from "./productionStudioCandidate";
 
 type Devtools = {
     events: Array<{method: string; params: {requestId?: string; response?: {url: string; status: number}}}>;
@@ -167,6 +167,7 @@ renderedTestFor(process.env)("retains bounded real work through keyboard reload,
     let startupError: Error | undefined;
     let origin = "";
     try {
+        const host = await stageProductionStudioTestHost(production, cache);
         const documents = path.join(root, "documents");
         const workspace = path.join(root, "workspace");
         for (const directory of [documents, workspace, profile]) await fs.mkdir(directory);
@@ -177,7 +178,7 @@ renderedTestFor(process.env)("retains bounded real work through keyboard reload,
                 Reflect.deleteProperty(studioEnvironment, key);
             }
         }
-        studio = spawn(process.execPath, [production.bin, "--no-open", "--port", "0"], {
+        studio = spawn(process.execPath, [host.bin, "--no-open", "--port", "0"], {
             cwd: workspace,
             env: {...studioEnvironment, XDG_DOCUMENTS_DIR: documents, XDG_DATA_HOME: path.join(cache, "data"), XDG_CONFIG_HOME: path.join(cache, "config"), TMPDIR: cache, NPM_CONFIG_CACHE: path.join(cache, "npm-cache")},
             stdio: ["ignore", "pipe", "pipe"],

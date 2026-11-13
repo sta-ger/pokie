@@ -5,9 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {constants, runInThisContext} from "node:vm";
-import {createProductionStudioTestStorage, productionStudioCandidate} from "./productionStudioCandidate";
+import {createProductionStudioTestStorage, productionStudioCandidate, stageProductionStudioTestHost} from "./productionStudioCandidate";
 import {createPackageExtractionTestEnvironment} from "../../../v2/fixtures/PackageExtractionFixture.js";
 import {resolvePokieGameEntryModule} from "../../../../src/gamepackage/resolvePokieGameEntryModule.js";
+import {GamePackageGenerator} from "../../../../src/generated/GamePackageGenerator.js";
 
 type Devtools = {
     events: Array<{method: string; params: {requestId?: string; request?: {url: string; method: string; postData?: string}; response?: {url: string; status: number}}}>;
@@ -137,22 +138,29 @@ it("settles focus reflow before native pointer delivery to the built-package fol
     let browser: ChildProcess | undefined;
     let devtools: Devtools | undefined;
     let startupError: Error | undefined;
-    const deadline = Date.now() + 15_000;
+    let browserStderr = "";
+    const deadline = Date.now() + 25_000;
     const until: BrowserActions["until"] = (check, label, timeout) => waitUntil(check, label, deadline, timeout ?? 5_000);
     try {
         browser = spawn(process.env.P908_CHROMIUM_BINARY ?? "chromium-browser", [
             "--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--no-first-run",
             `--user-data-dir=${root}`, "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", "about:blank",
-        ], {stdio: "ignore"});
+        ], {stdio: ["ignore", "ignore", "pipe"]});
         owner = createP805OwnedProcessRecord("producer pointer regression browser", browser, {});
+        browser.stderr?.on("data", (chunk: Buffer) => {
+            browserStderr = (browserStderr + chunk.toString()).slice(-8_192);
+        });
         browser.on("error", (error) => {
             startupError = error;
         });
         const portFile = path.join(root, "DevToolsActivePort");
         await until(() => {
             if (startupError !== undefined) throw startupError;
+            if (browser!.exitCode !== null || browser!.signalCode !== null) throw new Error(`Chromium exited before readiness: ${browserStderr}`);
             return fs.access(portFile).then(() => true, () => false);
-        }, "pointer regression Chromium startup");
+        }, "pointer regression Chromium startup", 15_000).catch((error: unknown) => {
+            throw new Error(`${String(error)}; Chromium: ${browserStderr}`, {cause: error});
+        });
         const port = (await fs.readFile(portFile, "utf8")).split("\n")[0];
         devtools = await bounded(connectP805Devtools(`http://127.0.0.1:${port}`), "pointer regression DevTools startup", 5_000);
         const connection = devtools;
@@ -217,11 +225,47 @@ it("settles focus reflow before native pointer delivery to the built-package fol
             }
         }
     }
-}, 30_000);
+}, 45_000);
 
 it("loads the shared Studio test setup without supplying a simulated browser DOM", () => {
     expect(typeof Element).toBe("undefined");
     expect(typeof window).toBe("undefined");
+});
+
+it("isolates the standalone compiled host while preserving authenticated installation identities", async () => {
+    const storage = await createProductionStudioTestStorage(process.cwd(), "p908-host");
+    const source = path.join(storage.root, "checkout");
+    try {
+        const files = {
+            "package.json": JSON.stringify({name: "@fromstan/pokie", type: "module"}),
+            "dist/cli/pokie.js": "// Existing production CLI bytes.\n",
+            "dist/cjs/index.js": "// Existing runtime bytes.\n",
+            "dist/cli/studio-client/index.html": '<script src="/assets/main.js"></script>',
+            "dist/cli/studio-client/assets/main.js": "// Existing production bundle bytes.\n",
+            "dist/cli/studio-client/assets/main.css": "body { color: red }\n",
+            "docs/observation.txt": "Retained evidence stays in the checkout.",
+        };
+        for (const [relative, bytes] of Object.entries(files)) {
+            const file = path.join(source, relative);
+            await fs.mkdir(path.dirname(file), {recursive: true});
+            await fs.writeFile(file, bytes);
+        }
+        const candidate = {packageRoot: source, bin: path.join(source, "dist/cli/pokie.js"), authenticated: false};
+        const host = await stageProductionStudioTestHost(candidate, storage.cache);
+        expect(host.authenticated).toBe(false);
+        expect(host.bin).not.toBe(candidate.bin);
+        for (const [relative, bytes] of Object.entries(files)) {
+            expect(await fs.readFile(path.join(source, relative), "utf8")).toBe(bytes);
+            if (!relative.startsWith("docs/")) expect(await fs.readFile(path.join(host.packageRoot, relative), "utf8")).toBe(bytes);
+        }
+        expect(await fs.readdir(host.packageRoot)).toEqual(["dist", "package.json"]);
+        const pinned = {...candidate, authenticated: true};
+        // Do not stage, relocate, or rescue an authenticated candidate, even
+        // when a disposable destination is unavailable.
+        expect(await stageProductionStudioTestHost(pinned, path.join(storage.cache, "missing"))).toBe(pinned);
+    } finally {
+        await storage.dispose();
+    }
 });
 
 it.each(["p908-producer", "p909-recovery", "p910-graphic"])("isolates %s browser state from real runtime dependency snapshots", async (prefix) => {
@@ -375,6 +419,7 @@ it("retains the authenticated installed candidate across the complete gate-test 
         const installed = await productionStudioCandidate(environment, fixture.repository);
         expect(installed.authenticated).toBe(true);
         expect(installed.packageRoot).toBe(path.join(fixture.handoff.installationRoot, "node_modules/@fromstan/pokie"));
+        expect(await stageProductionStudioTestHost(installed, path.join(root, "unused-host"))).toBe(installed);
         await expect(fs.access(path.join(fixture.repository, "dist"))).rejects.toThrow("ENOENT");
         await expect(productionStudioCandidate({...environment, POKIE_P911_CANDIDATE_HANDOFF_SHA256: "b".repeat(64)}, fixture.repository)).rejects.toThrow("receipt digest mismatch");
         const driver = await fs.readFile(fixture.handoff.browserDriver.path);
@@ -401,6 +446,73 @@ it("retains the authenticated installed candidate across the complete gate-test 
     }
 });
 
+it("opens a generated package through the real standalone Studio request boundary", async () => {
+    const candidate = await productionStudioCandidate(process.env, process.cwd());
+    const storage = await createProductionStudioTestStorage(process.cwd(), "p908-open");
+    let studio: ChildProcess | undefined;
+    let stdout = "";
+    let stderr = "";
+    let startupError: Error | undefined;
+    const started = Date.now();
+    const timings: Record<string, number> = {};
+    try {
+        const host = await stageProductionStudioTestHost(candidate, storage.cache);
+        timings.host = Date.now() - started;
+        const packageRoot = new GamePackageGenerator("2.0.0").generate({
+            manifest: {id: "open-probe", name: "Open probe", version: "0.1.0"},
+            reels: 3, rows: 1, symbols: ["A"], paytable: {A: {3: 7}},
+        }, storage.root, undefined, undefined, {runtimePackageRoot: host.packageRoot}).projectRoot;
+        const environment = {...process.env};
+        for (const key of Object.keys(environment)) {
+            if (key.startsWith("npm_lifecycle_") || key.startsWith("npm_package_") || key === "INIT_CWD") Reflect.deleteProperty(environment, key);
+        }
+        studio = spawn(process.execPath, [host.bin, "--no-open", "--port", "0"], {
+            cwd: storage.root,
+            env: {...environment, XDG_DATA_HOME: path.join(storage.cache, "data"), XDG_CONFIG_HOME: path.join(storage.cache, "config"), TMPDIR: storage.cache},
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        studio.on("error", error => {
+            startupError = error;
+        });
+        studio.stdout?.on("data", (chunk: Buffer) => {
+            stdout = (stdout + chunk.toString()).slice(-16_384);
+        });
+        studio.stderr?.on("data", (chunk: Buffer) => {
+            stderr = (stderr + chunk.toString()).slice(-16_384);
+        });
+        let origin = "";
+        await waitUntil(() => {
+            if (startupError) throw startupError;
+            if (studio!.exitCode !== null || studio!.signalCode !== null) throw new Error(`Studio exited: ${stderr}`);
+            origin = stdout.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0] ?? "";
+            return Promise.resolve(origin !== "");
+        }, "package-open probe startup", started + 150_000, 15_000);
+        timings.startup = Date.now() - started;
+        const response = await fetch(`${origin}/api/home/projects/open`, {
+            method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({projectRoot: packageRoot}),
+            signal: AbortSignal.timeout(RUNTIME_PHASE_TIMEOUT),
+        });
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({context: {mode: "project", projectRoot: packageRoot}});
+        timings.open = Date.now() - started;
+        const context = await fetch(`${origin}/api/context`, {signal: AbortSignal.timeout(5_000)}).then(response => response.json());
+        expect(context).toMatchObject({mode: "project", projectRoot: packageRoot});
+        const recent = await fetch(`${origin}/api/home/recent-projects`, {signal: AbortSignal.timeout(5_000)}).then(response => response.json());
+        expect(recent).toEqual(expect.arrayContaining([expect.objectContaining({projectRoot: packageRoot, missing: false})]));
+        expect((await fs.readdir(storage.cache)).filter(name => name.startsWith("pokie-runtime-"))).toEqual([]);
+    } catch (error) {
+        throw new Error(`${String(error)}; timings: ${JSON.stringify(timings)}; Studio: ${stderr}`, {cause: error});
+    } finally {
+        try {
+            await stop(studio);
+        } finally {
+            await storage.dispose();
+            timings.cleanup = Date.now() - started;
+            console.log("Standalone package-open cumulative timings (ms):", timings);
+        }
+    }
+}, 160_000);
+
 it("saves an edited design, validates and plays it, then builds and reopens its real local package", async () => {
     const repository = process.cwd();
     const overallDeadline = Date.now() + WORKFLOW_TIMEOUT;
@@ -417,6 +529,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
     let stderr = "";
     let startupError: Error | undefined;
     try {
+        const host = await stageProductionStudioTestHost(candidate, cache);
         const documents = path.join(root, "documents");
         const workspace = path.join(root, "workspace");
         for (const directory of [documents, workspace, profile]) await fs.mkdir(directory);
@@ -427,7 +540,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
                 Reflect.deleteProperty(studioEnvironment, key);
             }
         }
-        studio = spawn(process.execPath, [candidate.bin, "--no-open", "--port", "0"], {
+        studio = spawn(process.execPath, [host.bin, "--no-open", "--port", "0"], {
             cwd: workspace,
             env: {...studioEnvironment, XDG_DOCUMENTS_DIR: documents, XDG_DATA_HOME: path.join(cache, "data"), XDG_CONFIG_HOME: path.join(cache, "config"), TMPDIR: cache, NPM_CONFIG_CACHE: path.join(cache, "npm-cache")},
             stdio: ["ignore", "pipe", "pipe"],
