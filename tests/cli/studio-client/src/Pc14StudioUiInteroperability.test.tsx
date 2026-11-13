@@ -72,13 +72,14 @@ function createServerFetch(baseUrl: string, observe?: (url: string, status: numb
     });
 }
 
-async function expectUnsupportedFreeGamesNotice(): Promise<void> {
+async function expectUnsupportedFreeGamesNotice(): Promise<HTMLElement> {
     // The durable scenario job also renders a failed alert. Assert the inline
     // Play diagnostic, rather than assuming this is the dashboard's only alert.
     const play = screen.getByRole("group", {name: "Play", exact: true});
     const notice = await within(play).findByRole("alert", {}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
     expect(notice).toHaveTextContent("Find free games isn't available for this game. Configure the required game feature, then start a new session.");
     expect(notice).toBeVisible();
+    return notice;
 }
 
 describe("PC-14 Studio UI real-artifact interoperability", () => {
@@ -168,6 +169,20 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         restoreRunnerClock();
     }, PLAY_SESSION_TIMEOUT);
 
+    async function expectPackageContextReady(): Promise<void> {
+        const startedAt = performance.now();
+        // start() binds HTTP before its initial runtime snapshot finishes.
+        // Both package journeys need that real terminal context before mounting:
+        // useProjectContext's 20s polling budget can expire during preparation,
+        // and a longer button wait cannot restart that finished subscription.
+        await waitFor(async () => {
+            const context = await fetchImpl("/api/project/context");
+            expect(context.status).toBe(200);
+            expect(await context.json()).toMatchObject({status: "loaded", projectRoot: packagePath, game: {name: "UI Route Slot"}});
+        }, {interval: 500, timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000});
+        console.info(`PC-14 package context ready: elapsedMs=${Math.round(performance.now() - startedAt)}`);
+    }
+
     it("scopes the unsupported scenario notice alongside its durable job and recovers the same Play session", async () => {
         const user = userEvent.setup();
         const mutations = new Map<string, {status: number; body: unknown}>();
@@ -176,6 +191,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             if (init?.method === "POST") mutations.set(url, {status: response.status, body: await response.json()});
             return response;
         };
+        await expectPackageContextReady();
         renderRoutedApp({fetchImpl: observedFetch, initialEntries: [`/project/${encodeURIComponent(packagePath)}/play`]});
         await user.click(await screen.findByRole("button", {name: "New Play session"}));
         await screen.findByRole("button", {name: "Spin"}, {timeout: PLAY_SESSION_TIMEOUT});
@@ -183,7 +199,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         const {sessionId} = (playSessionResponse!.body as {session: {sessionId: string}}).session;
 
         await user.click(screen.getByRole("button", {name: "Find free games"}));
-        await expectUnsupportedFreeGamesNotice();
+        const unsupportedNotice = await expectUnsupportedFreeGamesNotice();
         const failedJob = await screen.findByRole("alert", {name: "play-find-free-games · Failed"});
         expect(failedJob).toHaveTextContent("Play scenario search error.");
         expect(mutations.get(`/api/project/play/sessions/${sessionId}/find-free-games`)).toMatchObject({
@@ -200,7 +216,8 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             status: 200,
             body: {status: "ok", session: {sessionId, studioRound: 1, logicalRound: {status: "completed"}, debug: {artifact: expect.any(Object)}}},
         });
-        expect(within(screen.getByRole("group", {name: "Play", exact: true})).queryByRole("alert")).toBeNull();
+        expect(unsupportedNotice).not.toBeInTheDocument();
+        expect(within(screen.getByRole("group", {name: "Play", exact: true})).getByRole("alert", {name: /^Round complete(?:$| —)/})).toBeVisible();
         expect(failedJob).toBeVisible();
     }, PLAY_SESSION_TIMEOUT + PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
@@ -211,13 +228,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
     it("drives real rendered output workflows over a produced package", async () => {
         const user = userEvent.setup();
         const evidence = new ArtifactInteroperabilityRun(workDir);
-        // Runtime preparation is a separate asynchronous HTTP boundary from rendering.
-        // Keep its real response in any failure instead of only a truncated DOM dump.
-        await waitFor(async () => {
-            const context = await fetchImpl("/api/project/context");
-            expect(context.status).toBe(200);
-            expect(await context.json()).toMatchObject({status: "loaded", projectRoot: packagePath, game: {name: "UI Route Slot"}});
-        }, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT - 10_000});
+        await expectPackageContextReady();
         const packageApp = renderRoutedApp({fetchImpl, initialEntries: [`/project/${encodeURIComponent(packagePath)}/overview`]});
 
         await screen.findByRole("heading", {name: "UI Route Slot"}, {timeout: 30000});
