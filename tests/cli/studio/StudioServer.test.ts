@@ -86,6 +86,7 @@ import {buildStakeEngineTestLibrary} from "../../stakeengine/StakeEngineTestFixt
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
 import {REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
+import {resolvePokieGameDependencyRoots} from "../../../src/gamepackage/resolvePokieGameEntryModule.js";
 
 const fixtureCommandAuthority: Pick<PokieGame, "getSessionCommandCapabilities"> = {
     getSessionCommandCapabilities: () => ({bets: [0.05, 7.5, 1e-7, 1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], modes: ["base", "ante", "buyFeature"]}),
@@ -7013,19 +7014,42 @@ describe("StudioServer", () => {
     describe("Project Dashboard: Replay with the real fixture game package", () => {
         let replayStudioRoot: string;
         let replayServer: StudioServer | undefined;
+        let fixtureRoot: string;
+        let snapshots: string[];
 
         beforeEach(() => {
             replayStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-replay-fixture-test-"));
             writeStudioAssets(replayStudioRoot);
+            replayServer = undefined;
+            fixtureRoot = path.join(replayStudioRoot, "playable-game");
+            fs.cpSync(path.join(__dirname, "..", "fixtures", "playable-game"), fixtureRoot, {
+                recursive: true,
+                filter: source => !["node_modules", ".pokie-runtime-cache"].includes(path.basename(source)),
+            });
+            // The legacy fixture omits its runtime dependency. The host fallback
+            // snapshots the whole checkout, including evidence, on every load.
+            // Bind both dashboard and replay to the suite's real compiled install.
+            const manifest = path.join(fixtureRoot, "package.json");
+            fs.writeFileSync(manifest, JSON.stringify({...JSON.parse(fs.readFileSync(manifest, "utf8")), dependencies: {"@fromstan/pokie": "*"}}));
+            snapshots = runtimeSnapshotNames(fixtureRoot);
         });
 
         afterEach(async () => {
-            await replayServer?.stop();
-            fs.rmSync(replayStudioRoot, {recursive: true, force: true});
+            const started = performance.now();
+            try {
+                await replayServer?.stop();
+                expect(runtimeSnapshotNames(fixtureRoot)).toEqual(snapshots);
+                console.info(`Real fixture replay drain: ${JSON.stringify({elapsedMs: Math.round(performance.now() - started), remainingSnapshots: runtimeSnapshotNames(fixtureRoot)})}`);
+            } finally {
+                fs.rmSync(replayStudioRoot, {recursive: true, force: true});
+            }
         });
 
         it("runs a replay against a real fixture game and produces a reproducible descriptor", async () => {
-            const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
+            const originalFixture = path.join(__dirname, "..", "fixtures", "playable-game");
+            expect(await resolvePokieGameDependencyRoots(originalFixture)).toEqual({"@fromstan/pokie": REPO_ROOT});
+            expect(await resolvePokieGameDependencyRoots(fixtureRoot)).toEqual({"@fromstan/pokie": path.join(os.tmpdir(), "node_modules/@fromstan/pokie")});
+            expect(fs.readFileSync(path.join(fixtureRoot, "index.js"))).toEqual(fs.readFileSync(path.join(originalFixture, "index.js")));
             replayServer = new StudioServer({
                 pokieVersion: "1.0.0",
                 host: "127.0.0.1",
@@ -7040,12 +7064,22 @@ describe("StudioServer", () => {
             const address = await replayServer.start();
             const replayBaseUrl = `http://${address.host}:${address.port}`;
 
+            let started = performance.now();
             const firstCreated = await post(`${replayBaseUrl}/api/project/replays`, {round: 20, seed: "demo"});
+            expect(firstCreated).toMatchObject({status: 202, body: {status: "queued", round: 20, seed: "demo"}});
             const first = await pollUntilTerminal(`${replayBaseUrl}/api/project/replays/${(firstCreated.body as {id: string}).id}`);
+            console.info(`Real fixture replay phase: ${JSON.stringify({phase: "first replay", elapsedMs: Math.round(performance.now() - started), status: first.body.status})}`);
+            expect((await pollUntilProjectContextSettled(`${replayBaseUrl}/api/project/context`)).body).toMatchObject({status: "loaded", game: {id: "playable-game"}});
+            expect(runtimeSnapshotNames(fixtureRoot)).toEqual(snapshots);
+            started = performance.now();
             const secondCreated = await post(`${replayBaseUrl}/api/project/replays`, {round: 20, seed: "demo"});
+            expect(secondCreated.status).toBe(202);
             const second = await pollUntilTerminal(`${replayBaseUrl}/api/project/replays/${(secondCreated.body as {id: string}).id}`);
+            console.info(`Real fixture replay phase: ${JSON.stringify({phase: "second replay", elapsedMs: Math.round(performance.now() - started), status: second.body.status})}`);
 
-            expect(first.body.status).toBe("completed");
+            for (const result of [first, second]) {
+                expect(result).toMatchObject({status: 200, body: {status: "completed", completedRounds: 20, descriptor: {round: 20, seed: "demo"}}});
+            }
             expect((first.body.descriptor as {game: unknown}).game).toEqual({
                 id: "playable-game",
                 name: "Playable Game",
@@ -7056,6 +7090,10 @@ describe("StudioServer", () => {
             expect(secondDescriptor.totalBet).toBe(firstDescriptor.totalBet);
             expect(secondDescriptor.totalWin).toBe(firstDescriptor.totalWin);
             expect(secondDescriptor.screen).toEqual(firstDescriptor.screen);
+            const download = await fetch(`${replayBaseUrl}/api/project/replays/${(secondCreated.body as {id: string}).id}/download`);
+            expect(download.status).toBe(200);
+            expect(await download.json()).toEqual(secondDescriptor);
+            expect(runtimeSnapshotNames(fixtureRoot)).toEqual(snapshots);
         }, REAL_RUNTIME_TEST_TIMEOUT_MS);
     });
 
