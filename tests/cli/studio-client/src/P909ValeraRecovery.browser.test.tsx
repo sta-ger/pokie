@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {constants, runInThisContext} from "node:vm";
-import {productionStudioCandidate} from "./productionStudioCandidate";
+import {createProductionStudioTestStorage, productionStudioCandidate} from "./productionStudioCandidate";
 
 type Devtools = {
     events: Array<{method: string; params: {requestId?: string; response?: {url: string; status: number}}}>;
@@ -157,9 +157,8 @@ renderedTestFor(process.env)("retains bounded real work through keyboard reload,
     const assets = path.join(production.packageRoot, "dist/cli/studio-client/assets");
     const bundle = (await Promise.all((await fs.readdir(assets)).filter((name) => name.endsWith(".js")).map((name) => fs.readFile(path.join(assets, name), "utf8")))).join("\n");
     expect(bundle).toContain("Reattach to retained work");
-    // Managed projects reject destinations beneath node_modules. Keep all owned fixture state
-    // in this worktree, outside the npm wrapper's TMPDIR, and remove it in finally.
-    const root = await fs.mkdtemp(path.join(candidate, ".p909-recovery-"));
+    const storage = await createProductionStudioTestStorage(candidate, "p909-recovery");
+    const {root, cache, profile} = storage;
     let studio: ChildProcess | undefined;
     let browser: ChildProcess | undefined;
     let devtools: Devtools | undefined;
@@ -170,9 +169,7 @@ renderedTestFor(process.env)("retains bounded real work through keyboard reload,
     try {
         const documents = path.join(root, "documents");
         const workspace = path.join(root, "workspace");
-        const profile = path.join(root, "browser-profile");
-        const cache = path.join(root, "runtime-cache");
-        for (const directory of [documents, workspace, profile, cache]) await fs.mkdir(directory);
+        for (const directory of [documents, workspace, profile]) await fs.mkdir(directory);
         // The production child gets the same caller context under npm and direct Jest launches.
         const studioEnvironment = {...process.env};
         for (const key of Object.keys(studioEnvironment)) {
@@ -182,7 +179,7 @@ renderedTestFor(process.env)("retains bounded real work through keyboard reload,
         }
         studio = spawn(process.execPath, [production.bin, "--no-open", "--port", "0"], {
             cwd: workspace,
-            env: {...studioEnvironment, XDG_DOCUMENTS_DIR: documents, XDG_DATA_HOME: path.join(root, "data"), XDG_CONFIG_HOME: path.join(root, "config"), TMPDIR: cache, NPM_CONFIG_CACHE: path.join(root, "npm-cache")},
+            env: {...studioEnvironment, XDG_DOCUMENTS_DIR: documents, XDG_DATA_HOME: path.join(cache, "data"), XDG_CONFIG_HOME: path.join(cache, "config"), TMPDIR: cache, NPM_CONFIG_CACHE: path.join(cache, "npm-cache")},
             stdio: ["ignore", "pipe", "pipe"],
         });
         studio.on("error", (error) => {
@@ -463,7 +460,7 @@ renderedTestFor(process.env)("retains bounded real work through keyboard reload,
                         // previous project's cancellation cleanup after a confirmed transition.
                         await stop(studio);
                     } finally {
-                        await fs.rm(root, {recursive: true, force: true});
+                        await storage.dispose();
                     }
                 }
             }

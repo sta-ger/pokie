@@ -36,6 +36,10 @@ export const V2C37_SAVED_GATE_CORRECTION_PATHS = [
     "tests/cli/ArtifactInteroperabilityTorture.integration.test.ts",
     "tests/cli/PC17CliStudioParity.integration.test.ts",
     "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+    // V2C-37 shared browser storage repair; product/build and driver pins stay protected.
+    "tests/cli/studio-client/src/productionStudioCandidate.ts",
+    "tests/cli/studio-client/src/P909ValeraRecovery.browser.test.tsx",
+    "tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx",
     "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
     "tests/cli/studio/StudioServer.test.ts",
     "tests/project/ArtifactBuilderRegistry.test.ts",
@@ -181,6 +185,10 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "scripts/p8-04-studio-polish-browser-audit.mjs",
     "tests/cli/studio-client/src/P804StudioPolish.browser.test.tsx",
     "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+    // V2C-37 shared browser storage repair; product/build and driver pins stay protected.
+    "tests/cli/studio-client/src/productionStudioCandidate.ts",
+    "tests/cli/studio-client/src/P909ValeraRecovery.browser.test.tsx",
+    "tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx",
     "tests/cli/studio-client/src/components/common/StudioPresentation.test.tsx",
     "tests/cli/studio-client/src/hooks/useHomeSourceJobs.test.tsx",
     "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",

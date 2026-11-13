@@ -126,6 +126,10 @@ const tooling = new Set([
     "scripts/p8-04-studio-polish-browser-audit.mjs",
     "tests/cli/studio-client/src/P804StudioPolish.browser.test.tsx",
     "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+    // V2C-37 shared browser storage repair; product/build and driver pins stay protected.
+    "tests/cli/studio-client/src/productionStudioCandidate.ts",
+    "tests/cli/studio-client/src/P909ValeraRecovery.browser.test.tsx",
+    "tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx",
     "tests/cli/studio-client/src/components/common/StudioPresentation.test.tsx",
     "tests/cli/studio-client/src/hooks/useHomeSourceJobs.test.tsx",
     "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",

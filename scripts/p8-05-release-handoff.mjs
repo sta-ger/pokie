@@ -159,6 +159,10 @@ const tooling = new Set([
     "tests/v2/AdvancedModelValidation.test.ts",
     "tests/cli/studio/simulation/StudioSimulationService.test.ts",
     "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+    // V2C-37 shared browser storage repair; product/build and driver pins stay protected.
+    "tests/cli/studio-client/src/productionStudioCandidate.ts",
+    "tests/cli/studio-client/src/P909ValeraRecovery.browser.test.tsx",
+    "tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx",
     // V2C-34 exact saved five-file gate repair; no production/build exemptions.
     "tests/cli/PC17CliStudioParity.integration.test.ts",
     "tests/cli/StudioFullWorkflow.integration.test.ts",

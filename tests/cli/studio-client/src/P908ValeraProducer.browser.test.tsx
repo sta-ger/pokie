@@ -5,8 +5,9 @@ import os from "node:os";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {constants, runInThisContext} from "node:vm";
-import {productionStudioCandidate} from "./productionStudioCandidate";
+import {createProductionStudioTestStorage, productionStudioCandidate} from "./productionStudioCandidate";
 import {createPackageExtractionTestEnvironment} from "../../../v2/fixtures/PackageExtractionFixture.js";
+import {resolvePokieGameEntryModule} from "../../../../src/gamepackage/resolvePokieGameEntryModule.js";
 
 type Devtools = {
     events: Array<{method: string; params: {requestId?: string; request?: {url: string; method: string; postData?: string}; response?: {url: string; status: number}}}>;
@@ -223,6 +224,74 @@ it("loads the shared Studio test setup without supplying a simulated browser DOM
     expect(typeof window).toBe("undefined");
 });
 
+it.each(["p908-producer", "p909-recovery", "p910-graphic"])("isolates %s browser state from real runtime dependency snapshots", async (prefix) => {
+    const repository = process.cwd();
+    const storage = await createProductionStudioTestStorage(repository, prefix);
+    const restoreTemporaryDirectory = createPackageExtractionTestEnvironment({stageRuntime: false});
+    const snapshots = os.tmpdir();
+    let loaded: Awaited<ReturnType<typeof resolvePokieGameEntryModule>> | undefined;
+    try {
+        const {root, cache, profile} = storage;
+        expect(path.relative(repository, root).split(path.sep)).toHaveLength(1);
+        expect(path.relative(repository, cache).split(path.sep)[0]).toBe("node_modules");
+        expect(path.dirname(profile)).toBe(cache);
+        const game = path.join(root, "workspace", "game");
+        await fs.mkdir(path.join(game, "node_modules", "@fromstan"), {recursive: true});
+        await fs.mkdir(path.join(root, "documents"));
+        await fs.mkdir(profile);
+        // Chromium owns transient links and sockets; copying the checkout must
+        // never enumerate them, even while the managed game remains readable.
+        const cookie = path.join(profile, "SingletonCookie");
+        await fs.symlink("chromium-cookie-token", cookie);
+        await fs.writeFile(path.join(profile, "DevToolsActivePort"), "9222\n");
+        await fs.writeFile(path.join(root, "documents", "saved.json"), '{"payout":7}');
+        await fs.writeFile(path.join(root, "package.json"), JSON.stringify({name: "@fromstan/pokie", main: "index.cjs"}));
+        await fs.writeFile(path.join(root, "index.cjs"), `const fs = require('node:fs'), path = require('node:path');
+            module.exports = {root: __dirname,
+                saved: JSON.parse(fs.readFileSync(path.join(__dirname, 'documents/saved.json'), 'utf8')),
+                profileCopied: fs.existsSync(path.join(__dirname, 'browser-profile')),
+                cacheCopied: fs.existsSync(path.join(__dirname, 'runtime-cache'))};`);
+        await fs.writeFile(path.join(game, "package.json"), JSON.stringify({pokie: {entry: "index.cjs"}, dependencies: {"@fromstan/pokie": "*"}}));
+        await fs.writeFile(path.join(game, "index.cjs"), "module.exports = require('@fromstan/pokie');");
+        await fs.symlink(root, path.join(game, "node_modules", "@fromstan", "pokie"), "dir");
+        // Jest's createRequire maps @fromstan/pokie back to source. Use Node's
+        // native loader so the dependency really executes from the copied graph.
+        const nativeImport = (entry: string): Promise<Record<string, unknown>> => runInThisContext(`import(${JSON.stringify(pathToFileURL(entry).href)})`, {
+            importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+        }) as Promise<Record<string, unknown>>;
+        loaded = await resolvePokieGameEntryModule(game, nativeImport);
+        const copied = loaded.candidate as {root: string; saved: unknown; profileCopied: boolean; cacheCopied: boolean};
+        expect(copied.saved).toEqual({payout: 7});
+        expect(copied.profileCopied).toBe(false);
+        expect(copied.cacheCopied).toBe(false);
+        expect(copied.root).not.toBe(root);
+        expect(path.relative(snapshots, copied.root).startsWith(`..${path.sep}`)).toBe(false);
+        await fs.access(path.join(copied.root, "documents", "saved.json"));
+        expect((await fs.lstat(cookie)).isSymbolicLink()).toBe(true);
+        await loaded.release();
+        await expect(fs.access(copied.root)).rejects.toThrow("ENOENT");
+        expect(await fs.readdir(snapshots)).toEqual([]);
+        // A genuine import failure still releases the copied dependency graph;
+        // moving volatile storage must not turn failed loading into success.
+        await fs.writeFile(path.join(game, "index.cjs"), "throw new Error('fixture import rejected');");
+        await expect(resolvePokieGameEntryModule(game, nativeImport)).rejects.toThrow("fixture import rejected");
+        expect(await fs.readdir(snapshots)).toEqual([]);
+        await fs.access(path.join(profile, "DevToolsActivePort"));
+    } finally {
+        try {
+            await loaded?.release();
+        } finally {
+            try {
+                restoreTemporaryDirectory();
+            } finally {
+                await storage.dispose();
+            }
+        }
+    }
+    await expect(fs.access(storage.root)).rejects.toThrow("ENOENT");
+    await expect(fs.access(storage.cache)).rejects.toThrow("ENOENT");
+});
+
 it("retains the authenticated installed candidate across the complete gate-test correction", async () => {
     const root = await fs.mkdtemp(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/p908-candidate-"));
     try {
@@ -251,6 +320,9 @@ it("retains the authenticated installed candidate across the complete gate-test 
         const fixture = await candidateFixture(root);
         expect(P911_TOOLING_DESCENDANT_PATHS).toEqual(expect.arrayContaining([
             "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+            "tests/cli/studio-client/src/productionStudioCandidate.ts",
+            "tests/cli/studio-client/src/P909ValeraRecovery.browser.test.tsx",
+            "tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx",
             "tests/cli/studio-client/src/components/common/StudioPresentation.test.tsx",
             "scripts/p9-11-candidate.mjs",
             "tests/testUtils/createP911CandidateFixture.mjs",
@@ -271,6 +343,9 @@ it("retains the authenticated installed candidate across the complete gate-test 
             "tests/v2/OptimizationContractsAdapters.test.ts",
             "scripts/p8-05-valera-browser-audit.mjs",
             "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+            "tests/cli/studio-client/src/productionStudioCandidate.ts",
+            "tests/cli/studio-client/src/P909ValeraRecovery.browser.test.tsx",
+            "tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx",
             "tests/cli/commands/BuildCommand.test.ts",
             "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
             "tests/cli/studio/StudioJobRoutes.integration.test.ts",
@@ -307,7 +382,11 @@ it("retains the authenticated installed candidate across the complete gate-test 
         await expect(productionStudioCandidate(environment, fixture.repository)).rejects.toThrow("authenticated controller browser driver required");
         await fs.writeFile(fixture.handoff.browserDriver.path, driver);
         const protectedBase = execFileSync("git", ["rev-parse", "HEAD"], {cwd: fixture.repository, encoding: "utf8"}).trim();
-        for (const file of ["cli/studio-client/src/changed.ts", "tsconfig.prod.json", "tests/cli/studio-client/src/unnamed.test.tsx"]) {
+        for (const file of [
+            "cli/studio-client/src/changed.ts", "src/gamepackage/resolvePokieGameEntryModule.ts",
+            "cli/studio/StudioProjectRegistrationService.ts", "tsconfig.prod.json",
+            "tests/cli/studio-client/src/unnamed.test.tsx",
+        ]) {
             await fs.mkdir(path.dirname(path.join(fixture.repository, file)), {recursive: true});
             await fs.writeFile(path.join(fixture.repository, file), "// Product, build and unnamed paths remain protected.\n");
             const changedId = commitFixture();
@@ -329,13 +408,8 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
     const remaining = () => Math.max(1, Math.min(30_000, overallDeadline - Date.now()));
     // These exact assets are served by the production CLI. No fallback to mocked or source UI.
     const candidate = await productionStudioCandidate(process.env, repository);
-    // Managed projects reject destinations beneath node_modules. Keep their fixture
-    // in this worktree, outside the npm wrapper's TMPDIR, and remove it in finally.
-    const root = await fs.mkdtemp(path.join(repository, ".p908-producer-"));
-    // The standalone CLI snapshots its checkout as the host runtime. Keep its
-    // temporary snapshots under the existing excluded node_modules boundary,
-    // outside the managed-project fixture it would otherwise copy into itself.
-    const cache = await fs.mkdtemp(path.join(repository, "node_modules/.cache/pokie-tmp/p908-runtime-"));
+    const storage = await createProductionStudioTestStorage(repository, "p908-producer");
+    const {root, cache, profile} = storage;
     let studio: ChildProcess | undefined;
     let browser: ChildProcess | undefined;
     let devtools: Devtools | undefined;
@@ -345,7 +419,6 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
     try {
         const documents = path.join(root, "documents");
         const workspace = path.join(root, "workspace");
-        const profile = path.join(root, "browser-profile");
         for (const directory of [documents, workspace, profile]) await fs.mkdir(directory);
         // The production child gets the same caller context under npm and direct Jest launches.
         const studioEnvironment = {...process.env};
@@ -356,7 +429,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
         }
         studio = spawn(process.execPath, [candidate.bin, "--no-open", "--port", "0"], {
             cwd: workspace,
-            env: {...studioEnvironment, XDG_DOCUMENTS_DIR: documents, XDG_DATA_HOME: path.join(root, "data"), XDG_CONFIG_HOME: path.join(root, "config"), TMPDIR: cache, NPM_CONFIG_CACHE: path.join(root, "npm-cache")},
+            env: {...studioEnvironment, XDG_DOCUMENTS_DIR: documents, XDG_DATA_HOME: path.join(cache, "data"), XDG_CONFIG_HOME: path.join(cache, "config"), TMPDIR: cache, NPM_CONFIG_CACHE: path.join(cache, "npm-cache")},
             stdio: ["ignore", "pipe", "pipe"],
         });
         studio.on("error", (error) => {
@@ -522,11 +595,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
                 try {
                     await stop(studio);
                 } finally {
-                    try {
-                        await fs.rm(root, {recursive: true, force: true});
-                    } finally {
-                        await fs.rm(cache, {recursive: true, force: true});
-                    }
+                    await storage.dispose();
                 }
             }
         }
