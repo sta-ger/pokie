@@ -29,8 +29,8 @@ function runNativeProbe(args: string[], options: Omit<ExecFileSyncOptionsWithStr
 
 it("reports native probe rejection and timeout without circular worker errors", () => {
     for (const [script, timeout, expected] of [
-        ["process.stderr.write('probe rejected'); process.exitCode = 7;", 30000, /status=7.*probe rejected/s],
-        ["setInterval(() => {}, 1000);", 50, /code=ETIMEDOUT.*signal=SIGKILL/s],
+        ["process.stderr.write('probe rejected'); process.exitCode = 7;", 30000, /status=7[\s\S]*probe rejected/],
+        ["setInterval(() => {}, 1000);", 50, /code=ETIMEDOUT[\s\S]*signal=SIGKILL/],
     ] as const) {
         let failure: unknown;
         try {
