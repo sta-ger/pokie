@@ -223,8 +223,28 @@ describe("readPokiePackageConfig", () => {
 });
 
 describe("loadPokieGame", () => {
+    let root: string;
+    let isolatedFixturesRoot: string;
+    beforeAll(() => {
+        root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-loader-fixtures-"));
+        // These cases exercise entry validation, not host-runtime discovery (covered above).
+        // Bind every sibling to stable executable output instead of copying the entire
+        // checkout, docs and build products on every successful/invalid acquisition.
+        stageCompiledTestRuntime(root, ["cjs"], {runtimeFilesOnly: true});
+        isolatedFixturesRoot = path.join(root, "fixtures");
+        fs.cpSync(fixturesRoot, isolatedFixturesRoot, {recursive: true});
+        for (const name of fs.readdirSync(isolatedFixturesRoot)) {
+            const file = path.join(isolatedFixturesRoot, name, "package.json");
+            const manifest = JSON.parse(fs.readFileSync(file, "utf8"));
+            fs.writeFileSync(file, JSON.stringify({...manifest, dependencies: {"@fromstan/pokie": "*"}}));
+        }
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
+    afterAll(() => {
+        if (root) fs.rmSync(root, {recursive: true, force: true});
+    });
+
     it("loads a valid game package and returns its PokieGame export", async () => {
-        const game = await loadPokieGame(path.join(fixturesRoot, "valid-game"));
+        const game = await loadPokieGame(path.join(isolatedFixturesRoot, "valid-game"));
         try {
             expect(game.getManifest()).toEqual({id: "valid-game", name: "Valid Game", version: "1.0.0"});
             expect(typeof game.createSession).toBe("function");
@@ -234,13 +254,13 @@ describe("loadPokieGame", () => {
     });
 
     it("throws when the entry module does not export a valid PokieGame", async () => {
-        await expect(loadPokieGame(path.join(fixturesRoot, "invalid-export-game"))).rejects.toThrow(/does not export a valid/);
+        await expect(loadPokieGame(path.join(isolatedFixturesRoot, "invalid-export-game"))).rejects.toThrow(/does not export a valid/);
     });
 
     it("throws a descriptive error listing every failing check when the entry module's manifest is invalid", async () => {
         let caughtError: unknown;
         try {
-            await loadPokieGame(path.join(fixturesRoot, "invalid-manifest-game"));
+            await loadPokieGame(path.join(isolatedFixturesRoot, "invalid-manifest-game"));
         } catch (error) {
             caughtError = error;
         }
@@ -254,11 +274,11 @@ describe("loadPokieGame", () => {
     });
 
     it("throws when package.json has no pokie.entry field", async () => {
-        await expect(loadPokieGame(path.join(fixturesRoot, "missing-entry-game"))).rejects.toThrow(/pokie\.entry/);
+        await expect(loadPokieGame(path.join(isolatedFixturesRoot, "missing-entry-game"))).rejects.toThrow(/pokie\.entry/);
     });
 
     it("unwraps a double-nested default (as produced by Node's native ESM loader for a tsc esModuleInterop-compiled entry)", async () => {
-        const game = await loadPokieGame(path.join(fixturesRoot, "nested-default-game"));
+        const game = await loadPokieGame(path.join(isolatedFixturesRoot, "nested-default-game"));
         try {
             expect(game.getManifest()).toEqual({id: "nested-default-game", name: "Nested Default Game", version: "1.0.0"});
         } finally {
@@ -269,7 +289,7 @@ describe("loadPokieGame", () => {
     it("gives an actionable recovery step (never a raw \"Cannot find module\") when the entry module's dist output is missing", async () => {
         let caughtError: unknown;
         try {
-            await loadPokieGame(path.join(fixturesRoot, "missing-dist-game"));
+            await loadPokieGame(path.join(isolatedFixturesRoot, "missing-dist-game"));
         } catch (error) {
             caughtError = error;
         }
@@ -279,13 +299,13 @@ describe("loadPokieGame", () => {
         expect(message).not.toMatch(/^Cannot find module/);
         expect(message).toContain("hasn't been built yet");
         expect(message).toContain("npm install && npm run build");
-        expect(message).toContain(path.join(fixturesRoot, "missing-dist-game"));
+        expect(message).toContain(path.join(isolatedFixturesRoot, "missing-dist-game"));
     });
 
     it("gives an actionable recovery step when the entry module's dist output is stale (requires a module that no longer exists)", async () => {
         let caughtError: unknown;
         try {
-            await loadPokieGame(path.join(fixturesRoot, "stale-dist-game"));
+            await loadPokieGame(path.join(isolatedFixturesRoot, "stale-dist-game"));
         } catch (error) {
             caughtError = error;
         }
@@ -298,11 +318,13 @@ describe("loadPokieGame", () => {
     });
 
     it("rejects a canonical package's dist entry when its source was edited after the last build, instead of loading the stale output", async () => {
-        const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stale-source-game-"));
+        const packageRoot = fs.mkdtempSync(path.join(root, "pokie-stale-source-game-"));
+        const started = Date.now();
+        const timings: Record<string, number> = {};
         try {
             fs.writeFileSync(
                 path.join(packageRoot, "package.json"),
-                JSON.stringify({name: "stale-source-game", version: "1.0.0", pokie: {entry: "./dist/index.js"}}),
+                JSON.stringify({name: "stale-source-game", version: "1.0.0", pokie: {entry: "./dist/index.js"}, dependencies: {"@fromstan/pokie": "*"}}),
             );
 
             fs.mkdirSync(path.join(packageRoot, "src"));
@@ -313,19 +335,28 @@ describe("loadPokieGame", () => {
             const distEntryPath = path.join(packageRoot, "dist", "index.js");
             fs.writeFileSync(
                 distEntryPath,
-                'module.exports = {getManifest() { return {id: "stale-source-game", name: "Stale Source Game", version: "1.0.0"}; }, createSession() { return {}; }};\n',
+                'module.exports = {getManifest() { return {id: "stale-source-game", name: "Stale Source Game", version: "1.0.0"}; }, createSession() { return {root: __dirname}; }};\n',
             );
 
             const buildTime = new Date(Date.now() - 60_000);
             fs.utimesSync(sourcePath, buildTime, buildTime);
             fs.utimesSync(distEntryPath, buildTime, buildTime);
 
+            expect((await resolvePokieGameDependencyRoots(packageRoot))["@fromstan/pokie"])
+                .toBe(path.join(root, "node_modules/@fromstan/pokie"));
             const game = await loadPokieGame(packageRoot);
+            timings.acquisition = Date.now() - started;
+            let snapshotDirectory: string;
             try {
                 expect(game.getManifest()).toEqual({id: "stale-source-game", name: "Stale Source Game", version: "1.0.0"});
+                snapshotDirectory = (game.createSession() as unknown as {root: string}).root;
+                expect(snapshotDirectory).not.toBe(path.dirname(distEntryPath));
+                expect(fs.existsSync(snapshotDirectory)).toBe(true);
             } finally {
                 await releasePokieGame(game);
             }
+            expect(fs.existsSync(snapshotDirectory)).toBe(false);
+            timings.release = Date.now() - started;
 
             // Simulate editing the source after that build completed, without rebuilding.
             const editTime = new Date();
@@ -345,8 +376,11 @@ describe("loadPokieGame", () => {
             expect(message).toContain("stale");
             expect(message).toContain("npm run build");
             expect(message).toContain(packageRoot);
+            timings.staleRejection = Date.now() - started;
         } finally {
             fs.rmSync(packageRoot, {recursive: true, force: true});
+            timings.cleanup = Date.now() - started;
+            console.log("Stale source loader cumulative timings (ms):", timings);
         }
     });
 
