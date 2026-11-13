@@ -72,6 +72,15 @@ function createServerFetch(baseUrl: string, observe?: (url: string, status: numb
     });
 }
 
+async function expectUnsupportedFreeGamesNotice(): Promise<void> {
+    // The durable scenario job also renders a failed alert. Assert the inline
+    // Play diagnostic, rather than assuming this is the dashboard's only alert.
+    const play = screen.getByRole("group", {name: "Play", exact: true});
+    const notice = await within(play).findByRole("alert", {}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
+    expect(notice).toHaveTextContent("Find free games isn't available for this game. Configure the required game feature, then start a new session.");
+    expect(notice).toBeVisible();
+}
+
 describe("PC-14 Studio UI real-artifact interoperability", () => {
     let restoreTemporaryDirectory: () => void;
     let originalAsyncTimeout: number;
@@ -159,6 +168,42 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         restoreRunnerClock();
     }, PLAY_SESSION_TIMEOUT);
 
+    it("scopes the unsupported scenario notice alongside its durable job and recovers the same Play session", async () => {
+        const user = userEvent.setup();
+        const mutations = new Map<string, {status: number; body: unknown}>();
+        const observedFetch: FetchLike = async (url, init) => {
+            const response = await fetchImpl(url, init);
+            if (init?.method === "POST") mutations.set(url, {status: response.status, body: await response.json()});
+            return response;
+        };
+        renderRoutedApp({fetchImpl: observedFetch, initialEntries: [`/project/${encodeURIComponent(packagePath)}/play`]});
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
+        await screen.findByRole("button", {name: "Spin"}, {timeout: PLAY_SESSION_TIMEOUT});
+        expect(playSessionResponse).toMatchObject({status: 201, body: {status: "ok", session: {sessionId: expect.any(String)}}});
+        const {sessionId} = (playSessionResponse!.body as {session: {sessionId: string}}).session;
+
+        await user.click(screen.getByRole("button", {name: "Find free games"}));
+        await expectUnsupportedFreeGamesNotice();
+        const failedJob = await screen.findByRole("alert", {name: "play-find-free-games · Failed"});
+        expect(failedJob).toHaveTextContent("Play scenario search error.");
+        expect(mutations.get(`/api/project/play/sessions/${sessionId}/find-free-games`)).toMatchObject({
+            status: 200,
+            body: {status: "error", error: "This game doesn't support free games, so Find free games isn't available for it."},
+        });
+        // Both genuine alerts coexist. The selector used by the full journey
+        // must still assert the specific diagnostic and its recovery semantics.
+        expect(screen.getAllByRole("alert").length).toBeGreaterThanOrEqual(2);
+        expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
+        await user.click(screen.getByRole("button", {name: "Spin"}));
+        await screen.findByText(/^Round completed: 1 subrounds, 1 deliveries, stake 1, payout (0|3)$/, {}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
+        expect(mutations.get(`/api/project/play/sessions/${sessionId}/spin`)).toMatchObject({
+            status: 200,
+            body: {status: "ok", session: {sessionId, studioRound: 1, logicalRound: {status: "completed"}, debug: {artifact: expect.any(Object)}}},
+        });
+        expect(within(screen.getByRole("group", {name: "Play", exact: true})).queryByRole("alert")).toBeNull();
+        expect(failedJob).toBeVisible();
+    }, PLAY_SESSION_TIMEOUT + PACKAGE_EXTRACTION_TEST_TIMEOUT);
+
     // This is intentionally one end-to-end product journey over real generated artifacts (including
     // build, publication, simulation, replay, proof, certification, and PAR I/O). Its budget must cover
     // that real work across three project contexts on a loaded CI worker. Each
@@ -217,8 +262,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // retain that product diagnostic while keeping the real session
         // usable for the next action.
         await user.click(screen.getByRole("button", {name: "Find free games"}));
-        const unsupportedScenario = await screen.findByRole("alert", {}, {timeout: PACKAGE_EXTRACTION_TEST_TIMEOUT});
-        expect(unsupportedScenario).not.toBeEmptyDOMElement();
+        await expectUnsupportedFreeGamesNotice();
 
         // An ordinary Spin is a full user-visible product operation, not a
         // route-table assertion: it uses the package's real runtime and emits
