@@ -139,6 +139,9 @@ const tooling = new Set([
     "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
     "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
     "tests/cli/studio/StudioServerTrust.integration.test.ts",
+    "tests/cli/studio-client/src/PC16StudioContextLifecycle.browser.test.tsx",
+    "tests/cli/studio-client/src/StudioDuplicateEntrypoints.browser.test.tsx",
+    "tests/cli/studio-client/src/testUtils/createStudioHttpTestClient.ts",
     "tests/cli/studio-client/src/StudioReadinessConvergence.test.tsx",
     // P10-03 retained-candidate delta: installed receipt plus bounded gate regression.
     "docs/math-contract-corrections/README.md",
