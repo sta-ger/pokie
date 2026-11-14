@@ -47,7 +47,7 @@ it("starts a fresh completed purchase bank through direct, generated TypeScript 
 });
 
 describe("V2C-12 catalogue-driven public authored workflows", () => {
-    let restoreTemporaryDirectory = () => {};
+    let restoreTemporaryDirectory: () => void = () => undefined;
     beforeAll(() => {
         const cache = path.resolve(__dirname, "../../node_modules/.cache/pokie-tmp");
         fs.mkdirSync(cache, {recursive: true});
