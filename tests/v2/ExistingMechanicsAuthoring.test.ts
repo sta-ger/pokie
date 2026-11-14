@@ -15,6 +15,7 @@ import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
 import {StudioPlayService} from "../../cli/studio/runtime/StudioPlayService.js";
 import fs from "node:fs";
+import os from "node:os";
 import {execFileSync} from "node:child_process";
 import {pathToFileURL} from "node:url";
 import path from "node:path";
@@ -59,7 +60,8 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         workflow = undefined;
         jest.spyOn(console, "log").mockImplementation(() => undefined);
         jest.spyOn(console, "error").mockImplementation(() => undefined);
-        directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/v2c12-"));
+        // Keep generated packages inside the prepared SDK's resolution ancestry.
+        directory = fs.mkdtempSync(path.join(os.tmpdir(), "v2c12-"));
     });
     afterEach(async () => {
         // A Jest timeout does not cancel its async callback. Drain the owned operation
@@ -296,6 +298,8 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         const blueprint = existingMechanicsBlueprint(row);
         expect(errors(blueprint)).toEqual([]);
         const built = new api.GamePackageGenerator("1.3.0").generate(blueprint, directory);
+        expect((await api.resolvePokieGameDependencyRoots(built.projectRoot))["@fromstan/pokie"])
+            .toBe(fs.realpathSync(path.join(os.tmpdir(), "node_modules/@fromstan/pokie")));
         expect(fs.readFileSync(path.join(built.projectRoot, "dist/index.js"), "utf8")).toBe(api.renderBuiltGameModule(blueprint, "1.3.0"));
         const game = generatedMechanicsGame(blueprint);
         const source = path.join(directory, "source.blueprint.json");
