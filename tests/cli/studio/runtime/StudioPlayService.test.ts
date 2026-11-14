@@ -391,6 +391,39 @@ describe("StudioPlayService", () => {
             await service.reset();
         }
     });
+    it("loads one owned runtime per session and recognizes source edits before reopening", async () => {
+        const built = new GamePackageGenerator("1.3.0").generate(
+            replayModesBlueprint(false), path.join(publicRuntime.directory, "single-play-lease"), undefined, undefined,
+            {runtimePackageRoot: path.join(publicRuntime.directory, "node_modules/@fromstan/pokie")},
+        );
+        const service = new StudioPlayService();
+        const snapshots = jest.spyOn(fs.promises, "mkdtemp");
+        const runtimeCopies = () => snapshots.mock.calls.filter(([prefix]) => path.basename(String(prefix)) === "pokie-runtime-");
+        try {
+            const created = await service.newSession(built.projectRoot, "single-play-lease");
+            if (created.status !== "ok") throw new Error(JSON.stringify(created));
+            expect(runtimeCopies()).toHaveLength(1);
+            for (let index = 0; index < 3; index++) {
+                expect(await service.spin(created.session.sessionId)).toMatchObject({status: "ok"});
+            }
+            expect(runtimeCopies()).toHaveLength(1);
+            const leaseRoot = await (snapshots.mock.results[0].value as Promise<string>);
+            expect(fs.existsSync(leaseRoot)).toBe(true);
+            // A live native session owns its original snapshot. The next opening
+            // must recognize the edited source and release the earlier lease.
+            fs.writeFileSync(path.join(built.projectRoot, "package.json"), "{malformed");
+            expect(await service.spin(created.session.sessionId)).toMatchObject({status: "ok"});
+            expect(await service.newSession(built.projectRoot)).toMatchObject({
+                status: "failed", error: expect.stringMatching(/Could not parse.*package\.json/),
+            });
+            expect(runtimeCopies()).toHaveLength(1);
+            expect(fs.existsSync(leaseRoot)).toBe(false);
+        } finally {
+            await service.reset();
+            snapshots.mockRestore();
+        }
+    });
+
     it("rejects a CJS selected mode excluded by retained capabilities in Play and scenario callers", async () => {
         const game = publicRuntime.legacyGame("bet-free", true);
         const service = new StudioPlayService(() => Promise.resolve(game));

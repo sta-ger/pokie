@@ -13,6 +13,7 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     computeGameBlueprintHash,
     loadPokieGameRuntime,
+    resolvePokieGameDependencyRoots,
     type GameBlueprint,
     type PackageModelDescriptor,
     type PokieGame,
@@ -47,15 +48,17 @@ function packageProject(rootPath: string): PokieProject {
     };
 }
 
-describe("PackageBlueprintExtraction", () => {
-    let restoreTemporaryDirectory: () => void;
-    beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
-    });
-    afterAll(() => {
-        restoreTemporaryDirectory();
-    });
+// Every loader case, including the literal-extension cases below the main describe,
+// owns the same executable installation. Never fall back to the mutable checkout.
+let restoreTemporaryDirectory: () => void;
+beforeAll(() => {
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+});
+afterAll(() => {
+    restoreTemporaryDirectory();
+});
 
+describe("PackageBlueprintExtraction", () => {
     let directory: string;
     const extractor = new PackageBlueprintExtraction();
     beforeEach(() => {
@@ -189,6 +192,8 @@ describe("PackageBlueprintExtraction", () => {
 
     async function roundTrip(blueprint: GameBlueprint, seed: string | number): Promise<void> {
         const first = new GamePackageGenerator("1.3.0").generate(blueprint, directory, path.join(directory, "first"));
+        expect((await resolvePokieGameDependencyRoots(first.projectRoot))["@fromstan/pokie"])
+            .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
         const originalBytes = fs.readFileSync(path.join(first.projectRoot, "dist/index.js"));
         const extraction = await extractor.extract(first.projectRoot);
         expect({status: extraction.status, diagnostics: extraction.diagnostics}).toMatchObject({status: "complete"});
@@ -264,7 +269,7 @@ describe("PackageBlueprintExtraction", () => {
         "preserves fractional stakes, sparse/zero awards, seeded initialization and continuation for seed %p",
         async (seed) => {
             await roundTrip(base(), seed);
-        },
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT,
     );
     it("preserves weighted variants including zero weights, stable IDs/order and exact mixtures", async () => {
         const blueprint = {
@@ -286,16 +291,16 @@ describe("PackageBlueprintExtraction", () => {
             ],
         };
         await roundTrip(blueprint, "weighted");
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     it.each(["missing-symbol", "missing-count", "zero", "positive"] as const)(
         "preserves authored paytable %s",
         async (kind) => {
             await roundTrip(authoritativePaytableBlueprint(kind, 0.05), "awards");
-        },
+        }, PACKAGE_EXTRACTION_TEST_TIMEOUT,
     );
     it.each(["ways", "clusters"] as const)("preserves %s runtime model", async (type) => {
         await roundTrip({...base(), rows: 2, winModel: {type}}, 17);
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     it("preserves free-game missing versus zero grants and base/ante/buy-feature modes", async () => {
         await roundTrip(
             {
@@ -316,17 +321,17 @@ describe("PackageBlueprintExtraction", () => {
             },
             "features",
         );
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     it("preserves an explicitly empty paytable without inventing runtime defaults", async () => {
         await roundTrip({...base(), paytable: {}}, "empty-table");
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("preserves generated/visible/evaluated geometry and evaluation-local paylines", async () => {
         await roundTrip({...base(), rows: 4, screenGeometry: {
             generated: {reels: 3, rows: 5}, visible: {rowOffset: 0.5, rows: 3},
             evaluated: {rowOffset: 1, rows: 3}, paylineSpace: "evaluated",
         }}, "geometry");
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it.each(["default", "weights"])("regenerates the effective %s reels and labelled default bets without new authoring instructions", async source => {
         const blueprint = {...base()};
@@ -334,7 +339,7 @@ describe("PackageBlueprintExtraction", () => {
         Reflect.deleteProperty(blueprint, "availableBets");
         if (source === "weights") blueprint.symbolWeights = {A: 3, B: 2};
         await roundTrip(blueprint, "materialized");
-    });
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("extracts materialized default/weight reels without rerunning authoring instructions", async () => {
         const blueprint = {...base(), reelStrips: undefined, symbolWeights: {A: 3, B: 2}};
@@ -924,6 +929,8 @@ it("retains unsupported literal custom feature extensions through object and loa
     const extractor = new PackageBlueprintExtraction();
     try {
         const loaded = writeDescriptorPackage(directory, {model: model as GameBlueprint});
+        expect((await resolvePokieGameDependencyRoots(loaded))["@fromstan/pokie"])
+            .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
         for (const input of [custom(model), loaded]) {
             const result = await extractor.extract(input);
             expect(result.status).toBe("unsupported");
