@@ -4,6 +4,7 @@ import fs from "fs";
 import http from "http";
 import os from "os";
 import path from "path";
+import {resolvePokieGameDependencyRoots} from "@fromstan/pokie";
 import {passthroughRuntimePackageResolver} from "../../../../cli/materialize/materializeRuntimePackage.js";
 import {StudioBlueprintService} from "../../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {BuildCommand} from "../../../../cli/commands/BuildCommand.js";
@@ -105,7 +106,9 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
     }
 
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        // These real HTTP/Studio consumers execute generated JavaScript;
+        // no workflow compiles against declarations or reads source maps.
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
     });
 
     afterAll(() => {
@@ -215,6 +218,8 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
     }, 300000);
 
     it("turns a retired deep link into one visible recovery path without mounting a duplicate workflow", async () => {
+        expect((await resolvePokieGameDependencyRoots(projectRoot))["@fromstan/pokie"])
+            .toBe(fs.realpathSync(path.join(os.tmpdir(), "node_modules/@fromstan/pokie")));
         const user = userEvent.setup();
         const route = `/project/${encodeURIComponent(projectRoot)}/deployment`;
         // Startup snapshots the installed runtime/dependency graph. Observe its actual
