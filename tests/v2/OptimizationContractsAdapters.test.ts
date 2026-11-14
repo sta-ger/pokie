@@ -5,6 +5,7 @@ import {StakeAdapterArtifactBuilder} from "../../src/project/StakeAdapterArtifac
 import {loadPokieGameRuntime} from "../../src/gamepackage/loadPokieGame.js";
 import {resolvePokieGameDependencyRoots} from "../../src/gamepackage/resolvePokieGameEntryModule.js";
 import fs from "fs";
+import os from "os";
 import {execFile} from "child_process";
 import {promisify} from "util";
 import path from "path";
@@ -31,17 +32,35 @@ import {optimizationBlueprint as model, optimizationRequest, stochasticOptimizat
 let directory: string;
 let source: string;
 let service: ProjectOptimizationService;
+let previousTemporaryDirectory: string | undefined;
 const execFileAsync = promisify(execFile);
 const resolve = async (file: string) => (await new ProjectTargetResolver().resolve(file, {readConfigurationProvenance: false}))!;
 beforeEach(() => {
-    fs.mkdirSync(path.resolve("node_modules/.cache"), {recursive: true});
-    directory = fs.mkdtempSync(path.resolve("node_modules/.cache/optimization-test-"));
+    const cache = path.resolve("node_modules/.cache");
+    fs.mkdirSync(cache, {recursive: true});
+    let parent = cache;
+    // Real isolated dependency snapshots are short-lived fixtures. Keep their
+    // repeated copies off slow storage only when both memory limits and the
+    // private filesystem have ample space; other hosts use the normal cache.
+    try {
+        const available = (process as typeof process & {availableMemory?: () => number}).availableMemory?.() ?? 0;
+        const shared = fs.statfsSync("/dev/shm");
+        if (available >= 4 * 1024 ** 3 && shared.bavail * shared.bsize >= 2 * 1024 ** 3) parent = "/dev/shm";
+    } catch {
+        // Memory-backed fixtures are optional, never a platform requirement.
+    }
+    directory = fs.mkdtempSync(path.join(parent, "optimization-test-"));
+    previousTemporaryDirectory = process.env.TMPDIR;
+    process.env.TMPDIR = directory;
+    jest.spyOn(os, "tmpdir").mockReturnValue(directory);
     source = path.join(directory, "source.blueprint.json");
     fs.writeFileSync(source, JSON.stringify(model()));
     service = new ProjectOptimizationService(path.join(directory, "scratch"));
 });
 afterEach(() => {
     jest.restoreAllMocks();
+    if (previousTemporaryDirectory === undefined) Reflect.deleteProperty(process.env, "TMPDIR");
+    else process.env.TMPDIR = previousTemporaryDirectory;
     fs.rmSync(directory, {recursive: true, force: true});
 });
 
