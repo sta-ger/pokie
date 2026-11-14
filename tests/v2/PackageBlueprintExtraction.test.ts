@@ -2,6 +2,7 @@ import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT,
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {createServer} from "net";
 import {
     ArtifactBuildCancelledError,
     ArtifactBuilderRegistry,
@@ -63,6 +64,86 @@ describe("PackageBlueprintExtraction", () => {
     afterEach(() => {
         fs.rmSync(directory, {recursive: true, force: true});
     });
+
+    it("drains asset copies on rejection and preserves private live assets through repaired extraction reuse", async () => {
+        const source = writeDescriptorPackage(directory, {descriptorBody: `
+            const fs = require('fs'), path = require('path');
+            const assets = path.join(__dirname, 'assets');
+            if (fs.readdirSync(assets).length !== 96) throw Error('incomplete assets');
+            for (let index = 0; index < 96; index++) {
+                if (fs.readFileSync(path.join(assets, index + '.bin'), 'utf8') !== 'original:' + index) throw Error('changed asset');
+            }
+            return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: 'custom', model};
+        `});
+        const assets = path.join(source, "assets");
+        fs.mkdirSync(assets);
+        const modified = new Date("2020-01-02T03:04:05Z");
+        for (let index = 0; index < 96; index++) {
+            const file = path.join(assets, `${index}.bin`);
+            fs.writeFileSync(file, `original:${index}`, {mode: 0o400});
+            fs.utimesSync(file, modified, modified);
+        }
+        fs.chmodSync(assets, 0o500);
+        let live: Awaited<ReturnType<typeof loadPokieGameRuntime>> | undefined;
+        const socket = createServer();
+        try {
+            let snapshot = "";
+            live = await loadPokieGameRuntime(source, entry => {
+                snapshot = path.dirname(entry);
+                return import(entry) as Promise<Record<string, unknown>>;
+            });
+            expect(await live.game.getModelDescriptor!()).toMatchObject({sourceKind: "custom"});
+            const copied = path.join(snapshot, "assets", "0.bin");
+            expect(fs.statSync(copied).mtimeMs).toBe(modified.getTime());
+            if (process.platform !== "win32") {
+                expect(fs.statSync(copied).mode & 0o777).toBe(0o400);
+                expect(fs.statSync(assets).mode & 0o777).toBe(0o500);
+                expect(fs.statSync(path.dirname(copied)).mode & 0o700).toBe(0o700);
+                if (process.platform === "linux") {
+                    const snapshots = runtimeSnapshotNames(source);
+                    // Unix socket names have a short byte limit; address the same owned
+                    // directory through its descriptor even in deeply nested task clones.
+                    const descriptor = fs.openSync(source, "r");
+                    try {
+                        await new Promise<void>((resolve, reject) => {
+                            socket.once("error", reject);
+                            socket.listen(`/proc/self/fd/${descriptor}/copy-rejection.sock`, resolve);
+                        });
+                        const rejected = await extractor.extract(source);
+                        expect(rejected.status).toBe("malformed");
+                        expect(rejected.diagnostics).toEqual([expect.objectContaining({path: "$", code: "package-model-read-failed", message: expect.stringContaining("socket")})]);
+                        expect(runtimeSnapshotNames(source)).toEqual(snapshots);
+                        await new Promise<void>((resolve, reject) => {
+                            socket.close(error => error ? reject(error) : resolve());
+                        });
+                    } finally {
+                        if (socket.listening) await new Promise<void>(resolve => {
+                            socket.close(() => resolve());
+                        });
+                        fs.closeSync(descriptor);
+                    }
+                }
+            }
+            for (let attempt = 0; attempt < 2; attempt++) {
+                expect(await extractor.extract(source)).toMatchObject({status: "complete", source: {kind: "custom"}});
+            }
+            fs.chmodSync(assets, 0o700);
+            fs.chmodSync(path.join(assets, "0.bin"), 0o600);
+            fs.writeFileSync(path.join(assets, "0.bin"), "edited after acquisition");
+            expect(await live.game.getModelDescriptor!()).toMatchObject({sourceKind: "custom"});
+            const rejected = await extractor.extract(source);
+            expect(JSON.stringify(rejected.diagnostics)).toContain("changed asset");
+            await Promise.all([live.release(), live.release()]);
+            expect(fs.existsSync(snapshot)).toBe(false);
+            expect(runtimeSnapshotNames(source)).toEqual([]);
+        } finally {
+            if (socket.listening) await new Promise<void>(resolve => {
+                socket.close(() => resolve());
+            });
+            await live?.release();
+            fs.chmodSync(assets, 0o700);
+        }
+    }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
 
     it("extracts an independently assembled runnable code-first source without embedded Blueprint artifacts", async () => {
         const source = writeRunnableCodeFirstPackage(directory);
