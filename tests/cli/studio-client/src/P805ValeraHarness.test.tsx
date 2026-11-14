@@ -679,11 +679,25 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 constructor(code,options){
                     super(String.raw` + "`" + String.raw`
                         (()=>{
-                            const fs=require('node:fs'),port=require('node:worker_threads').parentPort,counts={};
-                            for(const name of ['cpSync','copyFileSync','readdirSync','statSync','chmodSync']){
+                            const fs=require('node:fs'),port=require('node:worker_threads').parentPort;
+                            let source,counts={};
+                            port.on('message',request=>{source=request.source;counts={active:0,peak:0};});
+                            for(const name of ['cpSync','copyFileSync','readdirSync','statSync','chmodSync','realpathSync']){
                                 const original=fs[name];fs[name]=(...args)=>{counts[name]=(counts[name]||0)+1;return original(...args);};
                             }
-                            const post=port.postMessage.bind(port);port.postMessage=value=>post({...value,copyMetrics:{...counts}});
+                            for(const name of ['copyFile','utimes','cp']){
+                                const original=fs.promises[name];
+                                fs.promises[name]=async (...args)=>{
+                                    counts[name]=(counts[name]||0)+1;
+                                    counts.active++;counts.peak=Math.max(counts.peak,counts.active);
+                                    try{
+                                        const value=await original(...args);
+                                        counts[name+'Completed']=(counts[name+'Completed']||0)+1;
+                                        return value;
+                                    }finally{counts.active--;}
+                                };
+                            }
+                            const post=port.postMessage.bind(port);port.postMessage=value=>post({...value,copyMetrics:{source,...counts}});
                         })();
                     ` + "`" + String.raw`+code,options);
                     const record={exited:false};workers.push(record);
@@ -740,10 +754,23 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 assert.equal(fs.readlinkSync(path.join(snapshotHost,'asset-link')),asset);
                 for(const name of ['.git','.pokie-runtime-cache'])assert.equal(fs.existsSync(path.join(snapshotHost,name)),false);
                 assert.ok(workers.every(worker=>worker.exited),'copiers drain before a game is returned');
-                const copied=metrics.at(-1);
-                assert.ok(copied.copyFileSync>=10759,'the complete dependency package was actually copied');
-                assert.equal(copied.cpSync,1,'only symlinks need general-purpose copy ancestry/overwrite checks');
-                assert.ok(copied.readdirSync<50,'one traversal, no chmod traversal over the copied graph');
+                const assertCompleteCopy=copied=>{
+                    // These are native promise completions, not merely scheduled calls.
+                    // Each host acquisition includes all assets plus its manifest and entry.
+                    assert.equal(copied.copyFile,10759+2);
+                    assert.equal(copied.copyFileCompleted,copied.copyFile,'the complete dependency package was actually copied');
+                    assert.equal(copied.utimesCompleted,copied.copyFileCompleted,'all copied timestamps settle before the response');
+                    assert.equal(copied.cp,1,'only symlinks need general-purpose copy ancestry/overwrite checks');
+                    assert.equal(copied.cpCompleted,1);
+                    assert.equal(copied.copyFileSync||0,0,'regular files must use the asynchronous copier');
+                    assert.equal(copied.cpSync||0,0,'no synchronous per-file general-purpose copying');
+                    assert.equal(copied.realpathSync,2,'ancestry is resolved once for source and destination');
+                    assert.ok(copied.statSync<copied.copyFile+50,'one metadata read per file without repeated ancestry checks');
+                    assert.ok(copied.readdirSync<50,'one traversal, no chmod traversal over the copied graph');
+                    assert.ok(copied.peak>1 && copied.peak<=32,'actual file I/O is concurrent and bounded');
+                    assert.equal(copied.active,0,'all native file operations settle before the response');
+                };
+                assertCompleteCopy(metrics.find(copied=>copied.source===host));
                 // Package validation is the sibling preparation consumer behind
                 // Blueprint materialization and Outcome Library preflight.
                 write(leafEntry,"module.exports = 'after';");
@@ -770,6 +797,11 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 process.env.TMPDIR=aliasedTemporary;
                 await assert.rejects(runtime.loadPokieGameRuntime(game),/Cannot copy.*into.*source/);
                 assert.deepEqual(fs.readdirSync(nestedTemporary),[]);
+                const hostCopies=metrics.filter(copied=>copied.source===host);
+                assert.equal(hostCopies.length,4,'session, validation, rejected import and retry each copy the full graph');
+                hostCopies.forEach(assertCompleteCopy);
+                assert.ok(metrics.every(copied=>copied.active===0),'successful and rejected copy responses drain all started I/O');
+                assert.equal(workers.length,6);
                 assert.ok(workers.every(worker=>worker.exited));
                 console.log(JSON.stringify({completeFiles:10759,privateGraph:true,timestamps:true,readOnlySource:true,siblingValidation:true,rejectionAndRetry:true,drained:true}));
             })().finally(()=>{
