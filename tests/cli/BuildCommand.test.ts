@@ -12,6 +12,7 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     ProjectResolving,
     ValidationIssue,
+    resolvePokieGameDependencyRoots,
 } from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
@@ -88,7 +89,7 @@ describe("BuildCommand", () => {
 
     let restoreTemporaryDirectory: () => void;
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
     });
     afterAll(() => {
         restoreTemporaryDirectory();
@@ -225,6 +226,8 @@ describe("BuildCommand", () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cli-extraction-"));
         try {
             const source = writeDescriptorPackage(root);
+            expect((await resolvePokieGameDependencyRoots(source))["@fromstan/pokie"])
+                .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
             const destination = path.join(root, "model.json");
             const command = new BuildCommand("1.3.0");
             await expect(command.run([source, "--target", "blueprint", "--out", destination, "--dry-run"])).resolves.toBe(0);
