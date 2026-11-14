@@ -1,12 +1,56 @@
 import {EventEmitter} from "events";
-import {GameBlueprint, WeightedOutcomeLibrary, WeightedOutcomeLibraryAnalyzer, WeightedOutcomeLibraryValidator} from "@fromstan/pokie";
+import {GameBlueprint, loadPokieGame, WeightedOutcomeLibrary, WeightedOutcomeLibraryAnalyzer, WeightedOutcomeLibraryValidator} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {OutcomeLibraryCommand} from "../../cli/commands/OutcomeLibraryCommand.js";
 import {OutcomeSourceCommand} from "../../cli/commands/OutcomeSourceCommand.js";
+import {resolvePokieGameDependencyRoots} from "../../src/gamepackage/resolvePokieGameEntryModule.js";
 import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
+
+// The public loader copies the entire declared graph for each lease. Stage that
+// real graph once without compiler-only files, just as the preflight fixture does;
+// linking the whole checkout node_modules here makes every retry copy them again.
+async function stageGenerationDependencies(): Promise<void> {
+    const runtime = path.join(os.tmpdir(), "node_modules/@fromstan/pokie");
+    const dependencies = await resolvePokieGameDependencyRoots(runtime, false);
+    fs.unlinkSync(path.join(runtime, "node_modules"));
+    const staged = new Map<string, string>([[runtime, runtime]]);
+    let omittedFiles = 0;
+    let retainedFiles = 0;
+    const stage = async (source: string): Promise<string> => {
+        const existing = staged.get(source);
+        if (existing !== undefined) return existing;
+        const destination = path.join(os.tmpdir(), "generation-dependencies", String(staged.size));
+        staged.set(source, destination);
+        fs.cpSync(source, destination, {recursive: true, filter: file => {
+            if (["node_modules", ".git"].includes(path.basename(file))) return false;
+            if (file.endsWith(".map") || file.endsWith(".d.ts")) {
+                omittedFiles++;
+                return false;
+            }
+            if (fs.statSync(file).isFile()) retainedFiles++;
+            return true;
+        }});
+        expect(fs.readFileSync(path.join(destination, "package.json"))).toEqual(fs.readFileSync(path.join(source, "package.json")));
+        await linkDependencies(destination, await resolvePokieGameDependencyRoots(source, false));
+        return destination;
+    };
+    const linkDependencies = async (owner: string, roots: Record<string, string | null>): Promise<void> => {
+        for (const [name, source] of Object.entries(roots)) {
+            if (source === null) continue;
+            const target = await stage(source);
+            const link = path.join(owner, "node_modules", name);
+            fs.mkdirSync(path.dirname(link), {recursive: true});
+            fs.symlinkSync(target, link, "junction");
+        }
+        const resolved = await resolvePokieGameDependencyRoots(owner, false);
+        expect(resolved).toEqual(Object.fromEntries(Object.entries(roots).map(([name, source]) => [name, source === null ? null : staged.get(source)])));
+    };
+    await linkDependencies(runtime, dependencies);
+    console.info(`Generation dependency fixture: ${JSON.stringify({packages: staged.size - 1, retainedFiles, omittedFiles})}`);
+}
 
 // End-to-end happy path for "pokie outcomelibrary generate": package (a real "pokie build" output) ->
 // generate (drives the built package's own runtime) -> validate (WeightedOutcomeLibraryValidator, the
@@ -21,8 +65,11 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
     let workDir: string;
     let restoreRuntimeEnvironment: () => void;
 
-    beforeAll(() => {
-        restoreRuntimeEnvironment = createPackageExtractionTestEnvironment();
+    beforeAll(async () => {
+        // Every generate/rebind/retry snapshots this installation. These CLI
+        // journeys execute JS; none compiles a TypeScript consumer or uses maps.
+        restoreRuntimeEnvironment = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+        await stageGenerationDependencies();
     }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     afterAll(() => restoreRuntimeEnvironment());
 
@@ -247,11 +294,23 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
     });
 
     it("cancels raw publication without retaining an unreachable staging directory or partial destination", async () => {
+        let started = performance.now();
         const packageRoot = await buildPackage(finiteBlueprint("raw-publication-cancel-slot"), "raw-publication-package");
+        console.info(`Raw publication phase: ${JSON.stringify({phase: "build", elapsedMs: Math.round(performance.now() - started)})}`);
         const rawLibrary = path.join(workDir, "cancelled-raw.json");
         const fakeProcess = new EventEmitter() as unknown as NodeJS.Process;
+        const snapshotNames = () => fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-")).sort();
+        const snapshots = snapshotNames();
+        let phase = "cancel";
+        const loads: Array<{phase: string; elapsedMs: number}> = [];
+        const loadGame: typeof loadPokieGame = async source => {
+            const loadStarted = performance.now();
+            const game = await loadPokieGame(source);
+            loads.push({phase, elapsedMs: Math.round(performance.now() - loadStarted)});
+            return game;
+        };
         const command = new OutcomeLibraryCommand(
-            "1.3.0", undefined, undefined, undefined, undefined, undefined,
+            "1.3.0", undefined, undefined, undefined, undefined, loadGame,
             undefined, undefined, undefined, undefined, undefined, fakeProcess,
         );
         const originalOpen = fs.openSync;
@@ -265,9 +324,12 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
             return descriptor;
         }) as typeof fs.openSync);
         try {
+            started = performance.now();
             expect(await command.run(["generate", packageRoot, "--exact", "--out", rawLibrary])).toBe(130);
+            console.info(`Raw publication phase: ${JSON.stringify({phase: "cancel", elapsedMs: Math.round(performance.now() - started), openCalls: openSync.mock.calls.length})}`);
             expect(cancelled).toBe(true);
             expect(fakeProcess.listenerCount("SIGINT")).toBe(0);
+            expect(snapshotNames()).toEqual(snapshots);
             expect(fs.existsSync(rawLibrary)).toBe(false);
             expect(fs.readdirSync(workDir).some((entry) => entry.includes(".cancelled-raw.json.pokie-"))).toBe(false);
         } finally {
@@ -277,16 +339,21 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         // Retry through the same public command after removing the cancellation
         // probe; it must not keep intercepting the retry's runtime snapshot and
         // source-binding reads. No checkpoint or hidden staging authorizes reuse.
+        started = performance.now();
+        phase = "retry";
         expect(await command.run(["generate", packageRoot, "--exact", "--out", rawLibrary])).toBe(0);
+        console.info(`Raw publication phase: ${JSON.stringify({phase: "retry", elapsedMs: Math.round(performance.now() - started)})}`);
+        console.info(`Raw publication loads: ${JSON.stringify(loads)}`);
+        expect(loads.map(load => load.phase)).toEqual(["cancel", "cancel", "retry", "retry"]);
         expect(fakeProcess.listenerCount("SIGINT")).toBe(0);
+        expect(snapshotNames()).toEqual(snapshots);
         const library = readLibrary(rawLibrary);
         expect(library.outcomes).toHaveLength(4);
         expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(6);
         expect(new WeightedOutcomeLibraryValidator().validate(library).filter((issue) => issue.severity === "error")).toEqual([]);
         expect(fs.readdirSync(workDir).some((entry) => entry.includes(".cancelled-raw.json.pokie-"))).toBe(false);
-        // Both invocations acquire and drain real isolated runtime snapshots.
-        // Budget the cancellation plus complete retry together, including when
-        // direct Jest follows the 614,656-outcome workload with bounded memory.
+        // Both invocations still acquire, rebind and drain real isolated runtime
+        // snapshots. Keep the original bounded deadline for cancellation + retry.
     }, 120_000);
 
     it("package -> generate -> validate -> analyze -> bundle: exact weights match the hand-computable fixture", async () => {
