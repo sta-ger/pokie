@@ -1,11 +1,18 @@
 import {weightedBlueprint} from "../../v2/fixtures/WeightedWholeSequenceGame.js";
-import {OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleWriter, PokieGamePackageValidating, PokieGamePackageValidationReport, PokieGamePackageValidator} from "@fromstan/pokie";
+import {OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleWriter, PokieGamePackageValidating, PokieGamePackageValidationReport, PokieGamePackageValidator, resolvePokieGameDependencyRoots} from "@fromstan/pokie";
+import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {ValidateCommand} from "../../../cli/commands/ValidateCommand.js";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+
+let restoreTemporaryDirectory: () => void;
+beforeAll(() => {
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+});
+afterAll(() => restoreTemporaryDirectory());
 
 function createStubValidator(report: PokieGamePackageValidationReport): PokieGamePackageValidating & {calledWith?: string} {
     return {
@@ -611,8 +618,25 @@ describe("ValidateCommand runtime package materialization boundary", () => {
 });
 
 describe("ValidateCommand (integration, real PokieGamePackageValidator + fixture packages)", () => {
-    const gamepackageFixturesRoot = path.join(__dirname, "..", "..", "gamepackage", "fixtures");
+    let gamepackageFixturesRoot: string;
     let outDir: string;
+
+    beforeAll(async () => {
+        gamepackageFixturesRoot = path.join(os.tmpdir(), "validation-packages");
+        for (const name of ["valid-game", "missing-entry-game", "invalid-export-game"]) {
+            const fixtureRoot = path.join(gamepackageFixturesRoot, name);
+            fs.cpSync(path.join(__dirname, "..", "..", "gamepackage", "fixtures", name), fixtureRoot, {
+                recursive: true,
+                filter: source => !["node_modules", ".pokie-runtime-cache"].includes(path.basename(source)),
+            });
+            const manifestPath = path.join(fixtureRoot, "package.json");
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+            manifest.dependencies = {...manifest.dependencies, "@fromstan/pokie": "*"};
+            fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+            expect((await resolvePokieGameDependencyRoots(fixtureRoot))["@fromstan/pokie"])
+                .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
+        }
+    });
 
     beforeEach(() => {
         outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-validate-test-"));

@@ -154,7 +154,9 @@ describe("canonical evidence dossier", () => {
         // Compilation and each real child have separate bounded phases. Their combined
         // wall time must not share one test deadline when the controller uses busy workers.
         beforeAll(() => {
-            runtime = emitPublicRuntime();
+            // These consumers execute native JS in both module formats;
+            // declarations and source maps are not inputs to their dossier.
+            runtime = emitPublicRuntime({runtimeFilesOnly: true});
             script = path.join(runtime.directory, "dossier-process.mjs");
             fs.writeFileSync(script, `
 import fs from "node:fs";
