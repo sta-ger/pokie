@@ -283,6 +283,21 @@ function waitForListeningPort(child: ChildProcessWithoutNullStreams, timeoutMs =
     });
 }
 
+async function waitForSmokeProjectDashboard(url: string, deadline: number): Promise<{status: string; type?: string}> {
+    let dashboard: {status: string; type?: string} = {status: "loading"};
+    while (dashboard.status === "loading") {
+        const remaining = Math.ceil(deadline - performance.now());
+        if (remaining <= 0) throw new Error("Studio dashboard remained loading at the CLI command deadline");
+        const response = await fetch(url, {headers: {Connection: "close"}, signal: AbortSignal.timeout(remaining)});
+        if (!response.ok) throw new Error(`Studio dashboard request failed: HTTP ${response.status}`);
+        dashboard = await response.json() as typeof dashboard;
+        if (dashboard.status === "loading") await new Promise(resolve => {
+            setTimeout(resolve, Math.min(50, Math.max(0, deadline - performance.now())));
+        });
+    }
+    return dashboard;
+}
+
 async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
     const {stopP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {stopP911Child: (owned: ChildProcessWithoutNullStreams) => Promise<void>};
     await stopP911Child(child);
@@ -768,6 +783,33 @@ it.each(["early-exit", "timeout"])("rejects %s before readiness and removes obse
         await stopChild(child);
     }
     expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
+});
+
+it.each(["loaded", "error", "loading", "http-error"] as const)("observes Studio dashboard %s within the remaining command deadline", async outcome => {
+    let requests = 0;
+    const server = createServer((_request, response) => {
+        requests++;
+        response.writeHead(outcome === "http-error" ? 503 : 200, {"Content-Type": "application/json"});
+        response.end(JSON.stringify({status: requests < 3 || outcome === "loading" ? "loading" : outcome, type: "tsPackage"}));
+    });
+    await new Promise<void>(resolve => {
+        server.listen(0, "127.0.0.1", resolve);
+    });
+    try {
+        const url = `http://127.0.0.1:${(server.address() as {port: number}).port}/api/project/context`;
+        const deadline = performance.now() + (outcome === "loading" ? 250 : 3000);
+        const readiness = waitForSmokeProjectDashboard(url, deadline);
+        if (outcome === "loading") await expect(readiness).rejects.toThrow(/deadline|timeout|timed out/i);
+        else if (outcome === "http-error") await expect(readiness).rejects.toThrow("HTTP 503");
+        else {
+            await expect(readiness).resolves.toEqual({status: outcome, type: "tsPackage"});
+            expect(requests).toBe(3);
+        }
+    } finally {
+        await new Promise<void>((resolve, reject) => {
+            server.close(error => error ? reject(error) : resolve());
+        });
+    }
 });
 
 describe("npm pack smoke test (real tarball, real npm install, real spawned pokie binary)", () => {
@@ -1803,22 +1845,19 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             // Keep argv literal: adding --no-open here would exercise option-only
             // project discovery, not the no-argument global Home contract. The
             // browser launch is best-effort; suppress Linux's desktop opener only.
+            const deadline = performance.now() + SMOKE_COMMAND_TIMEOUT_MS;
             const child = await spawnSmokeChild(args, cwd, {...process.env, BROWSER: "true"});
             try {
-                const port = await waitForListeningPort(child);
+                const port = await waitForListeningPort(child, Math.max(1, Math.ceil(deadline - performance.now())));
                 const base = `http://127.0.0.1:${port}`;
                 const options = {headers: {Connection: "close"}};
                 const context = await (await fetch(`${base}/api/context`, options)).json() as {mode: string};
                 if (context.mode === "project") {
                     // Listening/context precedes asynchronous package preparation.
-                    // Observe the actual dashboard before ending this startup workflow.
-                    let dashboard: {status: string} = {status: "loading"};
-                    for (let attempt = 0; attempt < 1200 && dashboard.status === "loading"; attempt++) {
-                        dashboard = await (await fetch(`${base}/api/project/context`, options)).json() as typeof dashboard;
-                        if (dashboard.status === "loading") await new Promise(resolve => {
-                            setTimeout(resolve, 50);
-                        });
-                    }
+                    // Observe the actual terminal dashboard within the CLI's existing
+                    // launch deadline, including port startup and native snapshots.
+                    // A separate 60s poll cutoff ended a still-owned preparation early.
+                    const dashboard = await waitForSmokeProjectDashboard(`${base}/api/project/context`, deadline);
                     expect(dashboard.status).toBe("loaded");
                 }
                 return context;
