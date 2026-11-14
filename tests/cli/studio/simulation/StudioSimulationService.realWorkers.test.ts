@@ -1,4 +1,4 @@
-import {isSimulationReportSet, loadPokieGame, SimulationAccumulator} from "@fromstan/pokie";
+import {isSimulationReportSet, loadPokieGame, resolvePokieGameDependencyRoots, SimulationAccumulator} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
 import {pathToFileURL} from "url";
@@ -24,12 +24,21 @@ describe("StudioSimulationService (integration, real worker threads via --worker
     let workerEntryUrl: URL;
     const services: StudioSimulationService[] = [];
 
-    beforeAll(() => {
+    beforeAll(async () => {
         // Both the worker entry and the fixture's bare package require must use
         // the current emitted runtime, regardless of a pre-existing root dist.
-        runtime = emitPublicRuntime();
+        runtime = emitPublicRuntime({runtimeFilesOnly: true});
         fixtureRoot = path.join(runtime.directory, "playable-game");
-        fs.cpSync(path.join(__dirname, "..", "..", "fixtures", "playable-game"), fixtureRoot, {recursive: true});
+        fs.cpSync(path.join(__dirname, "..", "..", "fixtures", "playable-game"), fixtureRoot, {
+            recursive: true,
+            filter: source => !["node_modules", ".pokie-runtime-cache"].includes(path.basename(source)),
+        });
+        const manifestPath = path.join(fixtureRoot, "package.json");
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        manifest.dependencies = {...manifest.dependencies, "@fromstan/pokie": "*"};
+        fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+        expect((await resolvePokieGameDependencyRoots(fixtureRoot))["@fromstan/pokie"])
+            .toBe(path.join(runtime.directory, "node_modules/@fromstan/pokie"));
         workerEntryUrl = pathToFileURL(path.join(runtime.directory, "node_modules/@fromstan/pokie/dist/esm/simulation/parallel/internal/simulationWorkerEntry.js"));
     }, 120000);
 
