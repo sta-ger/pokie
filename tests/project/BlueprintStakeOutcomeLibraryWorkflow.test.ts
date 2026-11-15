@@ -5,6 +5,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {compiledTestRuntime, stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
 import {
     ArtifactBuildCancelledError,
     ArtifactBuilderRegistry,
@@ -100,11 +101,14 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
     });
 
     describe("real package snapshot leases", () => {
+        let disposeRuntimeStorage: () => void;
         // Cold compilation has its own bounded setup lifetime. The test deadline
         // measures the three real snapshot acquisitions and their releases.
         beforeAll(() => {
+            disposeRuntimeStorage = createPackageExtractionTestEnvironment({stageRuntime: false, memoryBacked: true});
             compiledTestRuntime("cjs");
         }, 300000);
+        afterAll(() => disposeRuntimeStorage());
 
         it("releases real package snapshots after repeated preflight and compatible-reuse operations", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-workflow-runtime-lease-"));
