@@ -15,6 +15,10 @@ const runtimeTestFiles = [
     "tests/project/TsPackageArtifactBuilder.test.ts",
     "tests/simulation/parallel/ParallelSimulationRunner.test.ts",
     "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts",
+    "tests/server/session/FileSessionRepository.test.ts",
+    "tests/v2/StableConsumerContracts.test.ts",
+    "tests/cli/CertificationFairnessLifecycle.integration.test.ts",
+    "tests/cli/studio/simulation/StudioSimulationService.realWorkers.test.ts",
 ];
 let directory, repository, options, dependencies, runtimeCandidate, buildCandidate, closeout, receiptBytes, closeoutBytes;
 const git = (...args) => execFileSync("git", args, {cwd:repository, encoding:"utf8", stdio:["ignore", "pipe", "pipe"]}).trim();
@@ -71,7 +75,7 @@ beforeAll(async () => {
 });
 afterAll(async () => { await rm(directory, {recursive:true, force:true}); });
 
-test("retains the original delivery across all four reviewed runtime-test repairs", async () => {
+test("retains the original delivery across the individually reviewed runtime-test repairs", async () => {
     const previous = git("rev-parse", "HEAD");
     const archive = await readFile(options.archivePath);
     git("checkout", "--detach", options.candidateId);
@@ -102,7 +106,7 @@ test.each(runtimeTestFiles)("rejects a nonregular reviewed runtime-test path: %s
     } finally { git("checkout", "--detach", previous); }
 });
 
-test("keeps unnamed tests protected beside the four reviewed paths", async () => {
+test("keeps unnamed tests protected beside the reviewed paths", async () => {
     const previous = git("rev-parse", "HEAD");
     git("checkout", "--detach", options.candidateId);
     try {

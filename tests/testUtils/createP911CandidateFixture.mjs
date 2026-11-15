@@ -274,6 +274,10 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "tests/project/TsPackageArtifactBuilder.test.ts",
     "tests/simulation/parallel/ParallelSimulationRunner.test.ts",
     "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts",
+    // Saved V2C-37 full-gate repair, independent of both admission readers.
+    "tests/server/session/FileSessionRepository.test.ts",
+    "tests/cli/CertificationFairnessLifecycle.integration.test.ts",
+    "tests/cli/studio/simulation/StudioSimulationService.realWorkers.test.ts",
     "tests/scripts/p8-05-release-handoff.test.mjs",
 ];
 const commit = (repository, message) => {

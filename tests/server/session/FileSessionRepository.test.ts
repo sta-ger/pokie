@@ -1,9 +1,16 @@
 import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../../fixtures/math/AuthoritativePaytableFixture.js";
 import {FRACTIONAL_BET_STAKES, fractionalBetSession} from "../../fixtures/math/FractionalBetFixture.js";
-import {GamePackageGenerator, loadPokieGameRuntime, SymbolsCombination, VideoSlotSessionHandling, captureInitialPokieSessionState, captureRoundPokieSessionState, VideoSlotSessionSerializer, FileSessionRepository, PokieSessionState, SessionStateCorruptError, SessionVersionConflictError} from "@fromstan/pokie";
+import {GamePackageGenerator, loadPokieGameRuntime, resolvePokieGameDependencyRoots, SymbolsCombination, VideoSlotSessionHandling, captureInitialPokieSessionState, captureRoundPokieSessionState, VideoSlotSessionSerializer, FileSessionRepository, PokieSessionState, SessionStateCorruptError, SessionVersionConflictError} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
+
+let restoreTemporaryDirectory: () => void = () => undefined;
+beforeAll(() => {
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+});
+afterAll(() => restoreTemporaryDirectory());
 
 describe("FileSessionRepository", () => {
     let directory: string;
@@ -19,6 +26,8 @@ describe("FileSessionRepository", () => {
     it.each(["missing-symbol", "missing-count", "zero", "positive"] as AuthoredAwardCase[])("persists generated %s paytables and round records without implicit awards", async kind => {
         const model = authoritativePaytableBlueprint(kind, 0.01);
         const built = new GamePackageGenerator("1.3.0").generate(model, directory);
+        expect((await resolvePokieGameDependencyRoots(built.projectRoot))["@fromstan/pokie"])
+            .toBe(path.join(os.tmpdir(), "node_modules/@fromstan/pokie"));
         const loaded = await loadPokieGameRuntime(built.projectRoot, entry => require(entry));
         try {
             const session = loaded.game.createExactEnumerationSession!({generateSymbolsCombination: () => new SymbolsCombination<string>().fromMatrix(model.reelStrips!.map(strip => [strip[0]]))}) as VideoSlotSessionHandling;

@@ -1,4 +1,4 @@
-import {isSimulationReportSet, loadPokieGame, resolvePokieGameDependencyRoots, SimulationAccumulator} from "@fromstan/pokie";
+import {isSimulationReportSet, loadPokieGame, ParallelSimulationRunner, resolvePokieGameDependencyRoots, SimulationAccumulator} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
 import {pathToFileURL} from "url";
@@ -67,26 +67,6 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             });
         }
         throw new Error("Timed out waiting for the simulation to reach a terminal state.");
-    }
-
-    // Same real-delay polling as waitForTerminalRealTime, but stops at the first sign of progress
-    // instead of a terminal status — the production onProgress callback (StudioSimulationService's own
-    // job.roundsCompleted bookkeeping) already proves the workers are live and computing, with no
-    // test-only lifecycle hook needed.
-    async function waitForProgressRealTime(service: StudioSimulationService, id: string): Promise<StudioSimulationJobView> {
-        for (let i = 0; i < 3000; i++) {
-            const job = service.getStatus(id);
-            if (job && job.roundsCompleted > 0) {
-                return job;
-            }
-            if (job && job.status !== "queued" && job.status !== "running" && job.status !== "cancelling") {
-                throw new Error(job.error ?? `Simulation became ${job.status} before reporting progress.`);
-            }
-            await new Promise((resolve) => {
-                setTimeout(resolve, 20);
-            });
-        }
-        throw new Error("Timed out waiting for the simulation to report progress.");
     }
 
     it("runs real workers when the VM's native import callback belongs to a torn-down environment", async () => {
@@ -206,6 +186,10 @@ describe("StudioSimulationService (integration, real worker threads via --worker
     });
 
     it("cancelling a workers>1 job stops it (and its worker threads) without returning a partial report as successful", async () => {
+        let firstProgress!: () => void;
+        const progress = new Promise<void>(resolve => {
+            firstProgress = resolve;
+        });
         // A small chunkSize so the first progress tick (proof the job has actually started on the
         // workers) arrives quickly, letting cancellation be triggered off a real signal instead of an
         // arbitrary blind delay. That in turn lets the round count come down from the 5,000,000 this
@@ -222,6 +206,16 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             undefined,
             undefined,
             workerEntryUrl,
+            (packageRoot, rounds, options) => new ParallelSimulationRunner(packageRoot, rounds, {
+                ...options,
+                onProgress: completed => {
+                    // Observe real worker progress after the service has updated its public job.
+                    // One existing 120s test deadline owns preparation, progress and drainage;
+                    // a second 60s polling cutoff wrongly rejected live loaded-gate preparation.
+                    options.onProgress?.(completed);
+                    if (completed > 0) firstProgress();
+                },
+            }),
         );
         services.push(service);
 
@@ -235,7 +229,8 @@ describe("StudioSimulationService (integration, real worker threads via --worker
         // timing guess. Cancel only once it's non-zero, so this exercises real worker-thread
         // cancellation rather than a job that raced to completion — or was cancelled before either
         // worker even started — first.
-        await waitForProgressRealTime(service, result.job.id);
+        await progress;
+        expect(service.getStatus(result.job.id)?.roundsCompleted).toBeGreaterThan(0);
         const cancelling = service.cancel(result.job.id);
         expect(cancelling?.status).toBe("cancelling");
         expect(cancelling?.report).toBeUndefined();

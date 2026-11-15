@@ -288,6 +288,10 @@ test("producer requires exact clean HEAD and external fresh output", async () =>
             "tests/project/TsPackageArtifactBuilder.test.ts",
             "tests/simulation/parallel/ParallelSimulationRunner.test.ts",
             "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts",
+            "tests/server/session/FileSessionRepository.test.ts",
+            "tests/v2/StableConsumerContracts.test.ts",
+            "tests/cli/CertificationFairnessLifecycle.integration.test.ts",
+            "tests/cli/studio/simulation/StudioSimulationService.realWorkers.test.ts",
         ]) assert.ok(retained.equivalence.changedEvidenceAndTooling.includes(file));
         assert.equal(retained.candidateId, f.config.candidateId);
         assert.deepEqual(retained.browserDriver, f.config.browserDriver);
