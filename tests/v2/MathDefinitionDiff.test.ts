@@ -18,7 +18,7 @@ beforeAll(() => {
     // Descriptor reads execute JavaScript; no consumer in this suite compiles
     // against declarations or uses source maps. Keep the real dependency graph
     // without copying those unused compiler outputs into every owned lease.
-    restoreRuntimeEnvironment = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+    restoreRuntimeEnvironment = createPackageExtractionTestEnvironment({runtimeFilesOnly: true, memoryBacked: true});
 });
 afterAll(() => restoreRuntimeEnvironment());
 
