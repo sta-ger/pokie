@@ -100,7 +100,7 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
 
     let restoreTemporaryDirectory: () => void;
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({memoryBacked: true});
     });
     afterAll(() => {
         restoreTemporaryDirectory();
