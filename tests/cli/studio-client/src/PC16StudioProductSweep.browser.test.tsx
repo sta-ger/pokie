@@ -108,7 +108,7 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
     beforeAll(() => {
         // These real HTTP/Studio consumers execute generated JavaScript;
         // no workflow compiles against declarations or reads source maps.
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true, memoryBacked: true});
     });
 
     afterAll(() => {
