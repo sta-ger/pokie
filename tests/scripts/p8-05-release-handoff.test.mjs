@@ -19,6 +19,11 @@ const runtimeTestFiles = [
     "tests/v2/StableConsumerContracts.test.ts",
     "tests/cli/CertificationFairnessLifecycle.integration.test.ts",
     "tests/cli/studio/simulation/StudioSimulationService.realWorkers.test.ts",
+    "tests/cli/BuildCommand.test.ts",
+    "tests/v2/EvidenceDossier.test.ts",
+    "tests/v2/FeatureAnalyticsAggregates.test.ts",
+    "tests/v2/PackageBlueprintExtraction.test.ts",
+    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx",
 ];
 let directory, repository, options, dependencies, runtimeCandidate, buildCandidate, closeout, receiptBytes, closeoutBytes;
 const git = (...args) => execFileSync("git", args, {cwd:repository, encoding:"utf8", stdio:["ignore", "pipe", "pipe"]}).trim();

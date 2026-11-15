@@ -278,6 +278,9 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "tests/server/session/FileSessionRepository.test.ts",
     "tests/cli/CertificationFairnessLifecycle.integration.test.ts",
     "tests/cli/studio/simulation/StudioSimulationService.realWorkers.test.ts",
+    "tests/cli/BuildCommand.test.ts",
+    "tests/v2/EvidenceDossier.test.ts",
+    "tests/v2/FeatureAnalyticsAggregates.test.ts",
     "tests/scripts/p8-05-release-handoff.test.mjs",
 ];
 const commit = (repository, message) => {

@@ -7,12 +7,19 @@ import type {legacyRoundGame} from "../fixtures/RuntimeExtension.js";
 import type {legacyComposedGame} from "../fixtures/LegacyComposedGame.js";
 
 /** Fresh compiler outputs with the real package export conditions, independent of Jest aliases. */
-export function emitPublicRuntime(options: {runtimeFilesOnly?: boolean} = {}): {directory: string; legacyGame: typeof legacyComposedGame; roundGame: typeof legacyRoundGame; dispose: () => void} {
+export function emitPublicRuntime(options: {runtimeFilesOnly?: boolean; temporaryRoot?: string} = {}): {directory: string; legacyGame: typeof legacyComposedGame; roundGame: typeof legacyRoundGame; dispose: () => void} {
     const root = process.cwd();
-    const temporaryRoot = path.join(root, "node_modules/.cache/pokie-tmp");
+    const temporaryRoot = options.temporaryRoot ?? path.join(root, "node_modules/.cache/pokie-tmp");
     fs.mkdirSync(temporaryRoot, {recursive: true});
     const directory = fs.mkdtempSync(path.join(temporaryRoot, "v2c02-public-"));
-    stageCompiledTestRuntime(directory, ["esm", "cjs"], options);
+    try {
+        stageCompiledTestRuntime(directory, ["esm", "cjs"], options);
+    } catch (error) {
+        fs.rmSync(directory, {recursive: true, force: true});
+        // Node spawn errors can self-reference through .error; retain the real
+        // failure message without crashing Jest's worker-report serialization.
+        throw new Error(`Public runtime fixture preparation failed: ${(error as Error).message}`);
+    }
     fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({name: "public-runtime-consumer", private: true, type: "module"}));
     for (const format of ["esm", "cjs"] as const) {
         for (const [fixtureName, outputName] of [["LegacyComposedGame", "game"], ["RuntimeExtension", "extension"]]) {

@@ -9,10 +9,20 @@ import {fractionalBetBlueprint} from "../../fixtures/math/FractionalBetFixture.j
 export const PACKAGE_EXTRACTION_TEST_TIMEOUT = 120_000;
 
 /** Give direct Jest and npm launches the same clone-local snapshot storage. */
-export function createPackageExtractionTestEnvironment(options: {stageRuntime?: boolean; runtimeFilesOnly?: boolean} = {}): () => void {
+export function createPackageExtractionTestEnvironment(options: {stageRuntime?: boolean; runtimeFilesOnly?: boolean; memoryBacked?: boolean} = {}): () => void {
     const cache = path.resolve(__dirname, "../../../node_modules/.cache/pokie-tmp");
     fs.mkdirSync(cache, {recursive: true});
-    const directory = fs.mkdtempSync(path.join(cache, "pokie-package-extraction-"));
+    let parent = cache;
+    if (options.memoryBacked) {
+        try {
+            const available = (process as NodeJS.Process & {availableMemory?: () => number}).availableMemory?.() ?? 0;
+            const shared = fs.statfsSync("/dev/shm");
+            if (available >= 4 * 1024 ** 3 && shared.bavail * shared.bsize >= 2 * 1024 ** 3) parent = "/dev/shm";
+        } catch {
+            // Keep private on-disk fixtures on hosts without safe memory-backed storage.
+        }
+    }
+    const directory = fs.mkdtempSync(path.join(parent, "pokie-package-extraction-"));
     // Bind declared fixture dependencies to stable compiled bytes, outside mutable checkout dist.
     try {
         if (options.stageRuntime !== false) stageCompiledTestRuntime(directory, ["cjs"], {runtimeFilesOnly: options.runtimeFilesOnly});

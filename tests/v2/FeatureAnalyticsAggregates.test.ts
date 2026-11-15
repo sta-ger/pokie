@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import {Worker} from "node:worker_threads";
 import {pathToFileURL} from "node:url";
 import * as api from "../../src/index.js";
@@ -9,6 +10,13 @@ import {boundedBlueprint} from "./fixtures/BoundedMechanicsGame.js";
 import {weightedBonusBlueprint} from "./fixtures/WeightedBonusGame.js";
 import {generatedMechanicsGame, mechanicsSession, existingMechanicsBlueprint} from "./fixtures/ExistingMechanicsGame.js";
 import {emitPublicRuntime} from "./helpers/publicRuntime.js";
+import {createPackageExtractionTestEnvironment} from "./fixtures/PackageExtractionFixture.js";
+
+let restoreTemporaryDirectory: () => void = () => undefined;
+beforeAll(() => {
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({stageRuntime: false, memoryBacked: true});
+});
+afterAll(() => restoreTemporaryDirectory());
 
 describe("V2C-16 feature analytics", () => {
     it("known answers retain every numerator, denominator, distribution and conserved attribution", () => {
@@ -324,7 +332,7 @@ describe("V2C-16 feature analytics", () => {
         expect(a.getStatistics().analytics!.features.cascade).toMatchObject({entries: 2000, completions: 0});
     });
     it("emitted real workers match exact-request oracle and carry analytics through package exports", async () => {
-        const runtime = emitPublicRuntime();
+        const runtime = emitPublicRuntime({runtimeFilesOnly: true, temporaryRoot: os.tmpdir()});
         try {
             const blueprint = weightedBonusBlueprint();
             blueprint.availableBets = [1];
@@ -344,7 +352,14 @@ describe("V2C-16 feature analytics", () => {
                 seed: api.WorkerSeedStrategy.deriveSeed("oracle", workerIndex, 2),
                 progressChunkSize: 2,
             }));
-            const results = await new api.SimulationWorkerCoordinator(workerEntryUrl).run(requests);
+            const workers: Worker[] = [];
+            const createCoordinator = (entry: URL) =>
+                new api.SimulationWorkerCoordinator(entry, (request) => {
+                    const worker = new Worker(entry, {workerData: request, env: {...process.env, TMPDIR: runtime.directory}});
+                    workers.push(worker);
+                    return worker;
+                });
+            const results = await createCoordinator(workerEntryUrl).run(requests);
             const oracles = requests.map((request) => {
                 const session = game.createSession({seed: request.seed});
                 session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
@@ -365,13 +380,6 @@ describe("V2C-16 feature analytics", () => {
                 loadGame: () => Promise.resolve(game),
             }).run();
             expect(singleWorker.statistics.analytics).toEqual(sequential.analytics);
-            const workers: Worker[] = [];
-            const createCoordinator = (entry: URL) =>
-                new api.SimulationWorkerCoordinator(entry, (request) => {
-                    const worker = new Worker(entry, {workerData: request});
-                    workers.push(worker);
-                    return worker;
-                });
             const different = JSON.parse(JSON.stringify(blueprint)) as api.GameBlueprint;
             different.paytable.C[3] = 3;
             const otherRoot = path.join(runtime.directory, "other-model");

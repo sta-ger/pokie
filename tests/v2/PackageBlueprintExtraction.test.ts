@@ -52,7 +52,7 @@ function packageProject(rootPath: string): PokieProject {
 // owns the same executable installation. Never fall back to the mutable checkout.
 let restoreTemporaryDirectory: () => void;
 beforeAll(() => {
-    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true, memoryBacked: true});
 });
 afterAll(() => {
     restoreTemporaryDirectory();

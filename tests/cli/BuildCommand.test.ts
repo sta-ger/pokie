@@ -89,7 +89,7 @@ describe("BuildCommand", () => {
 
     let restoreTemporaryDirectory: () => void;
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true, memoryBacked: true});
     });
     afterAll(() => {
         restoreTemporaryDirectory();
