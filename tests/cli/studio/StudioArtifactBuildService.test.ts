@@ -29,7 +29,9 @@ describe("StudioArtifactBuildService", () => {
         // These consumers execute JS, including generated games, but never compile against
         // declarations/maps. Do not copy those files into every invocation-owned snapshot.
         // Keep the real runtime JS, module scopes and complete declared dependency graph.
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+        // Keep complete native acquisitions and durable job writes private, without
+        // letting repeated fixture copies saturate the disk before progress tests.
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true, memoryBacked: true});
     });
     afterAll(() => {
         restoreTemporaryDirectory();
