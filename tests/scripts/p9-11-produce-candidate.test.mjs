@@ -283,6 +283,12 @@ test("producer requires exact clean HEAD and external fresh output", async () =>
         const retained = nativeRead(f.candidate.reference, {repository:f.candidate.repository});
         assert.equal(retained.equivalence.reviewedId, reviewedId);
         assert.deepEqual(retained.equivalence.changedEvidenceAndTooling, [...P911_TOOLING_DESCENDANT_PATHS].sort());
+        for (const file of [
+            "tests/cli/commands/InspectCommand.test.ts",
+            "tests/project/TsPackageArtifactBuilder.test.ts",
+            "tests/simulation/parallel/ParallelSimulationRunner.test.ts",
+            "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts",
+        ]) assert.ok(retained.equivalence.changedEvidenceAndTooling.includes(file));
         assert.equal(retained.candidateId, f.config.candidateId);
         assert.deepEqual(retained.browserDriver, f.config.browserDriver);
         await assert.rejects(produceP911Candidate(f.config, {run:f.run}), /exact committed candidate HEAD/);

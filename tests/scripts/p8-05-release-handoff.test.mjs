@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {execFileSync} from "node:child_process";
 import {createHash} from "node:crypto";
-import {mkdir, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
+import {mkdir, mkdtemp, readFile, rm, symlink, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {afterAll, beforeAll, test} from "@jest/globals";
@@ -9,6 +9,13 @@ import {archiveExecutableManifest} from "../../scripts/p8-05-candidate-package-v
 import {authenticateP805ProductTree, readP805ReleaseArchive, validateP805ReleaseHandoff} from "../../scripts/p8-05-release-handoff.mjs";
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
+// Independent fixture scope; do not derive it from either reader's allowlist.
+const runtimeTestFiles = [
+    "tests/cli/commands/InspectCommand.test.ts",
+    "tests/project/TsPackageArtifactBuilder.test.ts",
+    "tests/simulation/parallel/ParallelSimulationRunner.test.ts",
+    "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts",
+];
 let directory, repository, options, dependencies, runtimeCandidate, buildCandidate, closeout, receiptBytes, closeoutBytes;
 const git = (...args) => execFileSync("git", args, {cwd:repository, encoding:"utf8", stdio:["ignore", "pipe", "pipe"]}).trim();
 async function commitFile(file, contents) {
@@ -23,6 +30,11 @@ beforeAll(async () => {
     repository = path.join(directory, "repository");
     await mkdir(repository);
     git("init");
+    for (const file of runtimeTestFiles) {
+        await mkdir(path.dirname(path.join(repository, file)), {recursive:true});
+        await writeFile(path.join(repository, file), "// Original fixture test; never executed.\n");
+        git("add", file);
+    }
     const declaration = {name:"pokie", version:"1.0.0", scripts:{build:"test-only-declaration"}};
     const auditedCandidateId = await commitFile("package.json", JSON.stringify(declaration));
     const candidateId = await commitFile("docs/evidence/p8-05-product-readiness/index.md", "appended evidence\n");
@@ -58,6 +70,46 @@ beforeAll(async () => {
     }};
 });
 afterAll(async () => { await rm(directory, {recursive:true, force:true}); });
+
+test("retains the original delivery across all four reviewed runtime-test repairs", async () => {
+    const previous = git("rev-parse", "HEAD");
+    const archive = await readFile(options.archivePath);
+    git("checkout", "--detach", options.candidateId);
+    try {
+        for (const file of runtimeTestFiles) await commitFile(file, "// Repaired fixture test; never executed.\n");
+        const candidateId = git("rev-parse", "HEAD"), handoff = {...options, candidateId};
+        const verified = await validateP805ReleaseHandoff(handoff, dependencies);
+        const consumed = await readP805ReleaseArchive({candidateId, candidatePackageSha256:options.candidatePackageSha256,
+            p805ReleaseHandoff:handoff, p805ReleaseHandoffSha256:verified.sha256}, dependencies);
+        assert.equal(verified.closeout.candidateId, options.auditedCandidateId);
+        assert.equal(verified.binding.candidateExecutableReceiptSha256, hash(receiptBytes));
+        assert.deepEqual(consumed.archive, archive);
+        assert.equal(await readFile(path.join(options.campaignDirectory, "closeout.json"), "utf8"), closeoutBytes);
+        const changed = authenticateP805ProductTree(options.candidateId, candidateId, repository).changedToolingAndEvidencePaths;
+        assert.deepEqual(changed, [...runtimeTestFiles].sort());
+    } finally { git("checkout", "--detach", previous); }
+});
+
+test.each(runtimeTestFiles)("rejects a nonregular reviewed runtime-test path: %s", async file => {
+    const previous = git("rev-parse", "HEAD");
+    git("checkout", "--detach", options.candidateId);
+    try {
+        await rm(path.join(repository, file));
+        await symlink(options.archivePath, path.join(repository, file));
+        git("add", file);
+        const candidateId = await commitFile("docs/evidence/p8-05-product-readiness/nonregular.md", "fixture\n");
+        assert.throws(() => authenticateP805ProductTree(options.candidateId, candidateId, repository), /nonregular Git entries/);
+    } finally { git("checkout", "--detach", previous); }
+});
+
+test("keeps unnamed tests protected beside the four reviewed paths", async () => {
+    const previous = git("rev-parse", "HEAD");
+    git("checkout", "--detach", options.candidateId);
+    try {
+        const candidateId = await commitFile("tests/cli/commands/InspectCommand.unreviewed.test.ts", "// Unreviewed fixture.\n");
+        assert.throws(() => authenticateP805ProductTree(options.candidateId, candidateId, repository), /new blind retests/);
+    } finally { git("checkout", "--detach", previous); }
+});
 
 test("authenticates both Git identities and retains the canonical archive byte for byte", async () => {
     const before = await readFile(path.join(options.campaignDirectory, "closeout.json"));

@@ -269,6 +269,11 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     // V2C-34 retained interoperability and Replay route gate correction only.
     "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
     "tests/cli/studio/StudioJobRoutes.integration.test.ts",
+    // V2C-37 isolated-runtime gate repair, independently enumerated.
+    "tests/cli/commands/InspectCommand.test.ts",
+    "tests/project/TsPackageArtifactBuilder.test.ts",
+    "tests/simulation/parallel/ParallelSimulationRunner.test.ts",
+    "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts",
 ];
 const commit = (repository, message) => {
     execFileSync("git", ["add", "."], {cwd:repository});

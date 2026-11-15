@@ -198,6 +198,11 @@ const tooling = new Set([
     // V2C-34 retained interoperability and Replay route gate correction only.
     "tests/cli/studio/StudioArtifactInteroperabilityTorture.integration.test.ts",
     "tests/cli/studio/StudioJobRoutes.integration.test.ts",
+    // V2C-37 reviewed isolated-runtime fixtures; other inputs remain protected.
+    "tests/cli/commands/InspectCommand.test.ts",
+    "tests/project/TsPackageArtifactBuilder.test.ts",
+    "tests/simulation/parallel/ParallelSimulationRunner.test.ts",
+    "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts",
 ]);
 const git = (repository, args) => execFileSync("git", args, {cwd:repository, encoding:"utf8", timeout:10_000, maxBuffer:16 * 1024 * 1024}).trimEnd();
 

@@ -148,6 +148,10 @@ test("shared selector retains the authenticated archive/install through committe
         // Keep the retained-candidate delta and this repair explicit rather
         // than allowing an omitted fixture path to silently shrink coverage.
         for (const file of [
+            "tests/cli/commands/InspectCommand.test.ts",
+            "tests/project/TsPackageArtifactBuilder.test.ts",
+            "tests/simulation/parallel/ParallelSimulationRunner.test.ts",
+            "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts",
             "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
             "docs/audit-corrections/README.md",
             "docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification.md",
@@ -277,6 +281,10 @@ descendantCases("tooling descendant does not exempt product/build or unnamed inp
     "src/gamepackage/resolvePokieGameEntryModule.ts", "cli/studio/StudioProjectRegistrationService.ts",
     "tests/cli/studio/OptimizationRoutes.extra.test.ts", "tests/cli/studio/blueprint/StudioBlueprintService.extra.test.ts",
     "tests/v2/TransactionalRoundStore.extra.test.ts", "tests/v2/Valera34Regression.extra.test.ts",
+    "tests/cli/commands/InspectCommand.extra.test.ts",
+    "tests/project/TsPackageArtifactBuilder.extra.test.ts",
+    "tests/simulation/parallel/ParallelSimulationRunner.extra.test.ts",
+    "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.extra.test.ts",
 ], async (fixture, file) => {
     const target = path.join(fixture.repository, file);
     await mkdir(path.dirname(target), {recursive:true});
