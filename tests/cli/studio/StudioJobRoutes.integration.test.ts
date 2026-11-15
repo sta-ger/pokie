@@ -33,7 +33,8 @@ describe("Studio common job routes", () => {
     let restoreTemporaryDirectory: () => void;
 
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        // Keep reload/reattachment repository evidence on the original disk-backed fixture boundary.
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({memoryBacked: false});
     });
     afterAll(() => {
         restoreTemporaryDirectory();

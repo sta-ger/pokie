@@ -8,12 +8,14 @@ import {fractionalBetBlueprint} from "../../fixtures/math/FractionalBetFixture.j
 // These tests copy the real host runtime and dependency graph several times per conversion.
 export const PACKAGE_EXTRACTION_TEST_TIMEOUT = 120_000;
 
-/** Give direct Jest and npm launches the same clone-local snapshot storage. */
+/** Private runtime fixtures prefer capacity-checked fast scratch, with clone-local disk fallback. */
 export function createPackageExtractionTestEnvironment(options: {stageRuntime?: boolean; runtimeFilesOnly?: boolean; memoryBacked?: boolean} = {}): () => void {
     const cache = path.resolve(__dirname, "../../../node_modules/.cache/pokie-tmp");
     fs.mkdirSync(cache, {recursive: true});
     let parent = cache;
-    if (options.memoryBacked) {
+    // Repeated SDK acquisitions are I/O fixtures, not disk-throughput benchmarks.
+    // Real install/durable-storage suites opt out explicitly; no host-global TMPDIR changes.
+    if (options.memoryBacked !== false) {
         try {
             const available = (process as NodeJS.Process & {availableMemory?: () => number}).availableMemory?.() ?? 0;
             const shared = fs.statfsSync("/dev/shm");

@@ -510,7 +510,8 @@ async function pollUntilProjectContextSettled(url: string, timeoutMs = RUNTIME_P
 describe("StudioServer", () => {
     let restoreTemporaryDirectory: () => void;
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        // Keep real npm installs and million-stop job outputs on durable executable storage.
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({memoryBacked: false});
     });
     afterAll(() => {
         restoreTemporaryDirectory();

@@ -151,7 +151,8 @@ describe("StudioArtifactBuildService (integration)", () => {
 
     let restoreTemporaryDirectory: () => void;
     beforeAll(async () => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({stageRuntime: false});
+        // This suite owns native install/build executables, not only JS runtime snapshots.
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({stageRuntime: false, memoryBacked: false});
         preflightRuntime = await stagePreflightRuntime(os.tmpdir());
     }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     afterAll(() => {

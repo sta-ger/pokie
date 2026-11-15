@@ -29,7 +29,8 @@ describe("SpinCommandHandler persistence (package-loaded games + file repository
         const started = performance.now();
         // Source-bound compiled bytes live outside mutable checkout dist. The fixtures
         // explicitly resolve this private installation instead of the host fallback.
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        // Persistence scenarios retain real disk-backed repository files across process lifetimes.
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({memoryBacked: false});
         [fixtureRoot, freeGamesFixtureRoot] = ["playable-game", "playable-game-with-free-games"].map(name => {
             const target = path.join(os.tmpdir(), name);
             fs.cpSync(path.join(__dirname, "../../cli/fixtures", name), target, {recursive: true, filter: file => path.basename(file) !== "node_modules"});

@@ -8,7 +8,7 @@ import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageE
 
 let restoreTemporaryDirectory: () => void = () => undefined;
 beforeAll(() => {
-    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true});
+    restoreTemporaryDirectory = createPackageExtractionTestEnvironment({runtimeFilesOnly: true, memoryBacked: false});
 });
 afterAll(() => restoreTemporaryDirectory());
 
