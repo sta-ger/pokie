@@ -173,7 +173,7 @@ describe("PC-17 public CLI and Studio HTTP parity", () => {
     }
 
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({memoryBacked: true});
         // Match StudioCommand's production wiring: prepare against this running
         // installation, including its real runtime, rather than registry 1.3.0.
         resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", STUDIO_OPERATION, process.cwd());
