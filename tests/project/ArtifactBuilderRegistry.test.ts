@@ -30,7 +30,9 @@ import type {PokieProject} from "../../src/project/PokieProject.js";
 describe("ArtifactBuilderRegistry", () => {
     let restoreTemporaryDirectory: () => void;
     beforeAll(() => {
-        restoreTemporaryDirectory = createPackageExtractionTestEnvironment();
+        // Keep the complete real runtime graph and private loader leases. On hosts
+        // with spare shared memory, avoid saturating the disk with repeated copies.
+        restoreTemporaryDirectory = createPackageExtractionTestEnvironment({memoryBacked: true});
     }, PACKAGE_EXTRACTION_TEST_TIMEOUT);
     afterAll(() => {
         restoreTemporaryDirectory();
@@ -232,7 +234,9 @@ describe("ArtifactBuilderRegistry", () => {
         const controller = new AbortController();
         try {
             for (const [key] of callerEnvironment) Reflect.deleteProperty(process.env, key);
-            expect(path.dirname(os.tmpdir())).toBe(path.resolve(__dirname, "../../node_modules/.cache/pokie-tmp"));
+            expect([path.resolve(__dirname, "../../node_modules/.cache/pokie-tmp"), "/dev/shm"])
+                .toContain(path.dirname(os.tmpdir()));
+            expect(path.basename(os.tmpdir())).toMatch(/^pokie-package-extraction-/);
             const checked = expect(registry.validate("blueprint", project, undefined, {signal: controller.signal}))
                 .rejects.toBeInstanceOf(ArtifactBuildCancelledError);
             await fixture.waitForRead(checked);
