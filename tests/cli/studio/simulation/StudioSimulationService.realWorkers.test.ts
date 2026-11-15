@@ -1,6 +1,7 @@
 import {isSimulationReportSet, loadPokieGame, ParallelSimulationRunner, resolvePokieGameDependencyRoots, SimulationAccumulator} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
+import {createRequire} from "node:module";
 import {pathToFileURL} from "url";
 import {InMemoryStudioSimulationRepository} from "../../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {StudioSimulationJobView} from "../../../../cli/studio/simulation/StudioSimulationJobView.js";
@@ -22,9 +23,29 @@ describe("StudioSimulationService (integration, real worker threads via --worker
     let runtime: ReturnType<typeof emitPublicRuntime>;
     let fixtureRoot: string;
     let workerEntryUrl: URL;
+    let snapshotDirectory: string | undefined;
+    let previousNativeTmpdir: string | undefined;
+    let previousVmTmpdir: string | undefined;
+    // Jest's process.env is a VM copy. Actual worker_threads inherit Node's native environment.
+    const nativeProcess = createRequire(__filename)("node:process") as NodeJS.Process;
     const services: StudioSimulationService[] = [];
 
     beforeAll(async () => {
+        const cache = path.resolve("node_modules/.cache/pokie-tmp");
+        fs.mkdirSync(cache, {recursive: true});
+        let parent = cache;
+        try {
+            const available = (nativeProcess as NodeJS.Process & {availableMemory?: () => number}).availableMemory?.() ?? 0;
+            const shared = fs.statfsSync("/dev/shm");
+            if (available >= 4 * 1024 ** 3 && shared.bavail * shared.bsize >= 2 * 1024 ** 3) parent = "/dev/shm";
+        } catch {
+            // Other hosts retain ordinary private on-disk snapshots.
+        }
+        snapshotDirectory = fs.mkdtempSync(path.join(parent, "pokie-real-worker-snapshots-"));
+        previousNativeTmpdir = nativeProcess.env.TMPDIR;
+        previousVmTmpdir = process.env.TMPDIR;
+        nativeProcess.env.TMPDIR = snapshotDirectory;
+        process.env.TMPDIR = snapshotDirectory;
         // Both the worker entry and the fixture's bare package require must use
         // the current emitted runtime, regardless of a pre-existing root dist.
         runtime = emitPublicRuntime({runtimeFilesOnly: true});
@@ -37,12 +58,28 @@ describe("StudioSimulationService (integration, real worker threads via --worker
         const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
         manifest.dependencies = {...manifest.dependencies, "@fromstan/pokie": "*"};
         fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+        // This runs inside every actual worker before its playable game, proving that
+        // its real runtime acquisitions use the owned fixture storage, not a VM-only override.
+        const entry = path.resolve(fixtureRoot, manifest.pokie.entry);
+        fs.writeFileSync(entry, `if (require("node:os").tmpdir() !== ${JSON.stringify(snapshotDirectory)}) throw new Error("Worker snapshot storage was not inherited");\n${fs.readFileSync(entry, "utf8")}`);
         expect((await resolvePokieGameDependencyRoots(fixtureRoot))["@fromstan/pokie"])
             .toBe(path.join(runtime.directory, "node_modules/@fromstan/pokie"));
         workerEntryUrl = pathToFileURL(path.join(runtime.directory, "node_modules/@fromstan/pokie/dist/esm/simulation/parallel/internal/simulationWorkerEntry.js"));
     }, 120000);
 
-    afterAll(() => runtime?.dispose());
+    afterAll(() => {
+        try {
+            runtime?.dispose();
+        } finally {
+            if (snapshotDirectory) {
+                if (previousNativeTmpdir === undefined) Reflect.deleteProperty(nativeProcess.env, "TMPDIR");
+                else nativeProcess.env.TMPDIR = previousNativeTmpdir;
+                if (previousVmTmpdir === undefined) Reflect.deleteProperty(process.env, "TMPDIR");
+                else process.env.TMPDIR = previousVmTmpdir;
+                fs.rmSync(snapshotDirectory, {recursive: true, force: true});
+            }
+        }
+    });
 
     afterEach(async () => {
         // Also drain after a failed assertion or polling timeout: no executor
