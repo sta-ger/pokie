@@ -18,6 +18,14 @@ import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {ServeCommand} from "../../cli/commands/ServeCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
+
+let disposeRuntimeStorage: () => void;
+beforeAll(() => {
+    // These real command chains acquire the private compiled SDK repeatedly.
+    disposeRuntimeStorage = createPackageExtractionTestEnvironment({stageRuntime: false, memoryBacked: true});
+});
+afterAll(() => disposeRuntimeStorage());
 
 // End-to-end happy path for the v1.3 tool foundation: validate -> sim -> report -> diff -> replay -> serve,
 // run as real commands against the same built game package (the "create"/"init" fixtures elsewhere already
