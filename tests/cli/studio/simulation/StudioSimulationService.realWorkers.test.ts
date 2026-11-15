@@ -1,7 +1,6 @@
 import {isSimulationReportSet, loadPokieGame, ParallelSimulationRunner, resolvePokieGameDependencyRoots, SimulationAccumulator} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
-import {createRequire} from "node:module";
 import {pathToFileURL} from "url";
 import {InMemoryStudioSimulationRepository} from "../../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {StudioSimulationJobView} from "../../../../cli/studio/simulation/StudioSimulationJobView.js";
@@ -15,7 +14,7 @@ import {emitPublicRuntime} from "../../../v2/helpers/publicRuntime.js";
 describe("StudioSimulationService (integration, real worker threads via --workers)", () => {
     // Real worker threads share the machine with every other integration suite running under the same
     // --maxWorkers Jest invocation, so first-chunk spin-up/compute can take far longer under a loaded
-    // full gate than it does when this file runs on its own. Both the polling helpers below return the
+    // full gate than it does when this file runs on its own. Lifecycle observation returns the
     // moment the awaited state appears, so this ceiling is pure contention headroom (see jest.config.mjs
     // for the same reasoning applied to other lanes) -- it only ever bites a job that genuinely never
     // makes progress, which still fails well inside it.
@@ -24,10 +23,6 @@ describe("StudioSimulationService (integration, real worker threads via --worker
     let fixtureRoot: string;
     let workerEntryUrl: URL;
     let snapshotDirectory: string | undefined;
-    let previousNativeTmpdir: string | undefined;
-    let previousVmTmpdir: string | undefined;
-    // Jest's process.env is a VM copy. Actual worker_threads inherit Node's native environment.
-    const nativeProcess = createRequire(__filename)("node:process") as NodeJS.Process;
     const services: StudioSimulationService[] = [];
 
     beforeAll(async () => {
@@ -35,17 +30,13 @@ describe("StudioSimulationService (integration, real worker threads via --worker
         fs.mkdirSync(cache, {recursive: true});
         let parent = cache;
         try {
-            const available = (nativeProcess as NodeJS.Process & {availableMemory?: () => number}).availableMemory?.() ?? 0;
+            const available = (process as NodeJS.Process & {availableMemory?: () => number}).availableMemory?.() ?? 0;
             const shared = fs.statfsSync("/dev/shm");
             if (available >= 4 * 1024 ** 3 && shared.bavail * shared.bsize >= 2 * 1024 ** 3) parent = "/dev/shm";
         } catch {
             // Other hosts retain ordinary private on-disk snapshots.
         }
         snapshotDirectory = fs.mkdtempSync(path.join(parent, "pokie-real-worker-snapshots-"));
-        previousNativeTmpdir = nativeProcess.env.TMPDIR;
-        previousVmTmpdir = process.env.TMPDIR;
-        nativeProcess.env.TMPDIR = snapshotDirectory;
-        process.env.TMPDIR = snapshotDirectory;
         // Both the worker entry and the fixture's bare package require must use
         // the current emitted runtime, regardless of a pre-existing root dist.
         runtime = emitPublicRuntime({runtimeFilesOnly: true});
@@ -64,7 +55,12 @@ describe("StudioSimulationService (integration, real worker threads via --worker
         fs.writeFileSync(entry, `if (require("node:os").tmpdir() !== ${JSON.stringify(snapshotDirectory)}) throw new Error("Worker snapshot storage was not inherited");\n${fs.readFileSync(entry, "utf8")}`);
         expect((await resolvePokieGameDependencyRoots(fixtureRoot))["@fromstan/pokie"])
             .toBe(path.join(runtime.directory, "node_modules/@fromstan/pokie"));
-        workerEntryUrl = pathToFileURL(path.join(runtime.directory, "node_modules/@fromstan/pokie/dist/esm/simulation/parallel/internal/simulationWorkerEntry.js"));
+        const compiledEntry = pathToFileURL(path.join(runtime.directory, "node_modules/@fromstan/pokie/dist/esm/simulation/parallel/internal/simulationWorkerEntry.js"));
+        // Set the real worker's environment before importing the unchanged compiled engine.
+        // Jest's VM process.env cannot configure a native worker's temporary storage.
+        const entryWrapper = path.join(runtime.directory, "fixture-worker.mjs");
+        fs.writeFileSync(entryWrapper, `process.env.TMPDIR = ${JSON.stringify(snapshotDirectory)};\nawait import(${JSON.stringify(compiledEntry.href)});\n`);
+        workerEntryUrl = pathToFileURL(entryWrapper);
     }, 120000);
 
     afterAll(() => {
@@ -72,10 +68,6 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             runtime?.dispose();
         } finally {
             if (snapshotDirectory) {
-                if (previousNativeTmpdir === undefined) Reflect.deleteProperty(nativeProcess.env, "TMPDIR");
-                else nativeProcess.env.TMPDIR = previousNativeTmpdir;
-                if (previousVmTmpdir === undefined) Reflect.deleteProperty(process.env, "TMPDIR");
-                else process.env.TMPDIR = previousVmTmpdir;
                 fs.rmSync(snapshotDirectory, {recursive: true, force: true});
             }
         }
@@ -247,8 +239,8 @@ describe("StudioSimulationService (integration, real worker threads via --worker
                 ...options,
                 onProgress: completed => {
                     // Observe real worker progress after the service has updated its public job.
-                    // One existing 120s test deadline owns preparation, progress and drainage;
-                    // a second 60s polling cutoff wrongly rejected live loaded-gate preparation.
+                    // Existing test/terminal deadlines bound the lifecycle; a separate
+                    // 60s progress-only cutoff wrongly rejected live loaded-gate preparation.
                     options.onProgress?.(completed);
                     if (completed > 0) firstProgress();
                 },
@@ -266,24 +258,34 @@ describe("StudioSimulationService (integration, real worker threads via --worker
         // timing guess. Cancel only once it's non-zero, so this exercises real worker-thread
         // cancellation rather than a job that raced to completion — or was cancelled before either
         // worker even started — first.
-        await progress;
-        expect(service.getStatus(result.job.id)?.roundsCompleted).toBeGreaterThan(0);
-        const cancelling = service.cancel(result.job.id);
-        expect(cancelling?.status).toBe("cancelling");
-        expect(cancelling?.report).toBeUndefined();
-        expect(service.listReports(fixtureRoot)).toEqual([]);
-        expect(service.getReport(fixtureRoot, result.job.id).status).not.toBe("ok");
+        // Join this same terminal observation after cancellation, so a real worker failure
+        // rejects immediately and no polling task can survive the fixture's cleanup.
+        const terminal = waitForTerminalRealTime(service, result.job.id);
+        try {
+            await Promise.race([progress, terminal.then(job => {
+                throw new Error(job.error ?? `Simulation became ${job.status} before cancellation.`);
+            })]);
+            expect(service.getStatus(result.job.id)?.roundsCompleted).toBeGreaterThan(0);
+            const cancelling = service.cancel(result.job.id);
+            expect(cancelling?.status).toBe("cancelling");
+            expect(cancelling?.report).toBeUndefined();
+            expect(service.listReports(fixtureRoot)).toEqual([]);
+            expect(service.getReport(fixtureRoot, result.job.id).status).not.toBe("ok");
 
-        const job = await waitForTerminalRealTime(service, result.job.id);
-        expect(job.status).toBe("cancelled");
-        // Terminal cancellation is published only after the owned executor and workers drain.
-        await service.cancelAll();
-        expect(service.getStatus(result.job.id)?.status).toBe("cancelled");
-        expect(service.listReports(fixtureRoot)).toEqual([]);
-        expect(service.getReport(fixtureRoot, result.job.id).status).not.toBe("ok");
-        expect(job.observedPrefix?.analytics?.subrounds).toBeGreaterThan(0);
-        expect(job.observedPrefix?.analytics?.envelope.schemaVersion).toBe(1);
-        expect(job.report).toBeUndefined();
+            const job = await terminal;
+            expect(job.status).toBe("cancelled");
+            // Terminal cancellation is published only after the owned executor and workers drain.
+            await service.cancelAll();
+            expect(service.getStatus(result.job.id)?.status).toBe("cancelled");
+            expect(service.listReports(fixtureRoot)).toEqual([]);
+            expect(service.getReport(fixtureRoot, result.job.id).status).not.toBe("ok");
+            expect(job.observedPrefix?.analytics?.subrounds).toBeGreaterThan(0);
+            expect(job.observedPrefix?.analytics?.envelope.schemaVersion).toBe(1);
+            expect(job.report).toBeUndefined();
+        } finally {
+            await service.cancelAll();
+            await terminal.catch(() => undefined);
+        }
     });
 
     it("fails the job with a safe error message when the packageRoot is invalid, across real worker threads", async () => {
