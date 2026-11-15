@@ -4,6 +4,13 @@ import os from "os";
 import path from "path";
 import * as ts from "typescript";
 import {GamePackageCreator} from "../../../cli/scaffold/GamePackageCreator.js";
+import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
+
+let disposeRuntimeStorage: () => void;
+beforeAll(() => {
+    disposeRuntimeStorage = createPackageExtractionTestEnvironment({stageRuntime: false, memoryBacked: true});
+});
+afterAll(() => disposeRuntimeStorage());
 
 describe("a pokie create-scaffolded entry module", () => {
     let parentDir: string;

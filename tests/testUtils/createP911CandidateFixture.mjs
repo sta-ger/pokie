@@ -246,6 +246,12 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "tests/v2/StableConsumerContracts.test.ts",
     "tests/v2/PackageBlueprintExtraction.test.ts",
     "tests/v2/WasmSharedMath.test.ts",
+    // Bounded V2C-37 snapshot-storage correction; no production/build changes.
+    "tests/replay/ReplayRecorder.test.ts",
+    "tests/gamepackage/PokieGamePackageValidator.test.ts",
+    "tests/cli/scaffold/createdEntrypoint.test.ts",
+    "tests/cli/commands/OptimizeCommand.test.ts",
+    "tests/v2/WasmProjectWorkflow.test.ts",
     "tests/fixtures/wasm/verifyDeliveredSharedMath.cjs",
     "tests/v2/fixtures/normal-pack.stdout.txt",
     "scripts/p8-05-release-handoff.mjs",

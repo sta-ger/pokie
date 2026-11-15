@@ -4,23 +4,40 @@ import os from "node:os";
 import {pathToFileURL} from "node:url";
 import {execFileSync, spawnSync} from "node:child_process";
 import {emitPublicRuntime} from "./helpers/publicRuntime.js";
+import {createPackageExtractionTestEnvironment} from "./fixtures/PackageExtractionFixture.js";
+
+let disposeRuntimeStorage: () => void;
+beforeAll(() => {
+    // Native child processes inherit the same private storage for every real SDK snapshot.
+    disposeRuntimeStorage = createPackageExtractionTestEnvironment({stageRuntime: false, memoryBacked: true});
+});
+afterAll(() => disposeRuntimeStorage());
 
 const gateCorrectionPaths = [
     "scripts/p8-05-release-handoff.mjs", "scripts/p9-11-candidate.mjs", "tests/testUtils/createP911CandidateFixture.mjs",
     "tests/cli/studio/StudioArtifactBuildService.test.ts", "tests/v2/PackageBlueprintExtraction.test.ts",
     "tests/v2/WasmSharedMath.test.ts", "tests/fixtures/wasm/verifyDeliveredSharedMath.cjs",
+    "tests/replay/ReplayRecorder.test.ts", "tests/gamepackage/PokieGamePackageValidator.test.ts",
+    "tests/cli/scaffold/createdEntrypoint.test.ts", "tests/cli/commands/OptimizeCommand.test.ts",
+    "tests/v2/WasmProjectWorkflow.test.ts",
 ];
 
 it("compares delivered generated Node entries and independently instantiated modules outside Jest source resolution", () => {
-    const candidate = emitPublicRuntime();
+    const candidate = emitPublicRuntime({temporaryRoot: os.tmpdir()});
     try {
+        // The native proof also recompiles generated TS. Its compiler used to resolve
+        // accidentally from the checkout ancestor; declare that test-only tool explicitly.
+        fs.symlinkSync(path.resolve("node_modules/typescript"), path.join(candidate.directory, "node_modules/typescript"), "junction");
         const names = new Set<string>();
         // Snapshot dependencies may install process-lifetime exit handlers. Give each
         // bounded group a fresh native process; keep warnings fatal in every group.
         for (let first = 0; first < 34; first += 5) {
             const directory = path.join(candidate.directory, `group-${first}`);
             fs.mkdirSync(directory);
-            const result = spawnSync(process.execPath, [path.resolve("tests/fixtures/wasm/verifyDeliveredSharedMath.cjs"), directory, String(first), String(Math.min(first + 5, 34))], {encoding: "utf8", timeout: 120000, maxBuffer: 4 * 1024 * 1024});
+            const result = spawnSync(process.execPath, [path.resolve("tests/fixtures/wasm/verifyDeliveredSharedMath.cjs"), directory, String(first), String(Math.min(first + 5, 34))], {
+                // child_process defaults read Node's real environment, not Jest's process.env copy.
+                env: {...process.env, TMPDIR: os.tmpdir()}, encoding: "utf8", timeout: 120000, maxBuffer: 4 * 1024 * 1024,
+            });
             if (result.stdout) console.log(result.stdout.trim());
             expect({status: result.status, error: result.error?.message, stderr: result.stderr}).toEqual({status: 0, error: undefined, stderr: ""});
             const report = JSON.parse(result.stdout.trim());
@@ -81,7 +98,7 @@ it("preserves authenticated candidate selectors through the complete V2C-31 gate
                     /authenticated controller browser driver required|receipt digest mismatch|archive digest mismatch|stale installed asset/);
                 await writeFile(reference.path, bytes);
             }
-            for (const file of ["tests/v2/WasmSharedMath.extra.test.ts", "src/index.ts", "cli/pokie.ts", "package.json", "tsconfig.prod.json"]) {
+            for (const file of ["tests/v2/WasmSharedMath.extra.test.ts", "tests/replay/ReplayRecorder.extra.test.ts", "src/index.ts", "cli/pokie.ts", "package.json", "tsconfig.prod.json"]) {
                 const target = path.join(fixture.repository, file);
                 await mkdir(path.dirname(target), {recursive: true});
                 await writeFile(target, "changed protected input");
@@ -119,7 +136,7 @@ it("keeps legacy release authentication scoped to the complete gate correction",
             const reviewedId = commit();
             const authenticate = id => authenticateP805ProductTree(fixture.handoff.candidateId, id, fixture.repository);
             assert.deepEqual(authenticate(reviewedId).changedToolingAndEvidencePaths, [...paths].sort());
-            for (const file of ["tests/v2/WasmSharedMath.extra.test.ts", "src/index.ts", "cli/pokie.ts", "package.json", "tsconfig.prod.json"]) {
+            for (const file of ["tests/v2/WasmSharedMath.extra.test.ts", "tests/replay/ReplayRecorder.extra.test.ts", "src/index.ts", "cli/pokie.ts", "package.json", "tsconfig.prod.json"]) {
                 const target = path.join(fixture.repository, file);
                 await mkdir(path.dirname(target), {recursive: true});
                 await writeFile(target, "changed protected input");

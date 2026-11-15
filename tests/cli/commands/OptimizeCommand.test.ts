@@ -8,6 +8,13 @@ import {ProjectOptimizationService} from "../../../src/optimization/ProjectOptim
 import type {OptimizationEvidence} from "../../../src/optimization/OptimizationPolicy.js";
 import {OptimizeCommand} from "../../../cli/commands/OptimizeCommand.js";
 import {optimizationBlueprint, optimizationRequest, stochasticOptimizationRequest, declaredOptimizationGameCode} from "../../v2/fixtures/OptimizationFixture.js";
+import {createPackageExtractionTestEnvironment} from "../../v2/fixtures/PackageExtractionFixture.js";
+
+let disposeRuntimeStorage: () => void;
+beforeAll(() => {
+    disposeRuntimeStorage = createPackageExtractionTestEnvironment({stageRuntime: false, memoryBacked: true});
+});
+afterAll(() => disposeRuntimeStorage());
 let directory: string;
 let source: string;
 let policy: string;

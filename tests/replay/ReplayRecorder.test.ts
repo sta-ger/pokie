@@ -3,6 +3,14 @@ import {transactionalRoundGame} from "../v2/fixtures/TransactionalRoundGame.js";
 import {createOverscanGame} from "../v2/fixtures/OverscanGame.js";
 import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameContext, PokieGameManifest, ReplayRecorder, ReplayDescriptor, SessionRuntime, AuditRoundReplay, AuditReplayError, ConvertableToSessionState, captureAuditBoundary, SessionCommand, validateAuditReplayDescriptor} from "@fromstan/pokie";
 import path from "path";
+import {createPackageExtractionTestEnvironment} from "../v2/fixtures/PackageExtractionFixture.js";
+
+let disposeRuntimeStorage: () => void;
+beforeAll(() => {
+    // Preserve the real omitted-dependency host fallback; move only owned snapshots.
+    disposeRuntimeStorage = createPackageExtractionTestEnvironment({stageRuntime: false, memoryBacked: true});
+});
+afterAll(() => disposeRuntimeStorage());
 
 function createFakeSession(): GameSessionHandling & {getSymbolsCombination(): {toMatrix(): string[][]}} {
     let credits = 1000;
