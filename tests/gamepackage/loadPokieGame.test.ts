@@ -1,5 +1,5 @@
 import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
-import {PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
+import {createPackageExtractionTestEnvironment, PACKAGE_EXTRACTION_TEST_TIMEOUT} from "../v2/fixtures/PackageExtractionFixture.js";
 import {loadPokieGame, loadPokieGameRuntime, readPokiePackageConfig, releasePokieGame, resolvePokieGameDependencyRoots} from "@fromstan/pokie";
 import fs from "fs";
 import {createRequire} from "module";
@@ -8,6 +8,13 @@ import {pathToFileURL} from "url";
 import os from "os";
 import path from "path";
 import ts from "typescript";
+
+let disposeRuntimeStorage: () => void;
+beforeAll(() => {
+    // Keep the real dependency/fallback fixtures; only their owned snapshot scratch changes.
+    disposeRuntimeStorage = createPackageExtractionTestEnvironment({stageRuntime: false});
+});
+afterAll(() => disposeRuntimeStorage());
 
 const fixturesRoot = path.join(__dirname, "fixtures");
 

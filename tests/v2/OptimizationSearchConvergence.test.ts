@@ -1,4 +1,5 @@
 import {stageCompiledTestRuntime} from "../testUtils/stageCompiledTestRuntime.js";
+import {createPackageExtractionTestEnvironment} from "./fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import path from "path";
 import {pathToFileURL} from "url";
@@ -19,6 +20,12 @@ import {OutcomeLibraryBundleReader} from "../../src/weightedoutcome/bundle/Outco
 import {generateExactWeightedOutcomeLibrary} from "../../src/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
 import {createTunableBlueprintGame} from "../../src/optimization/createTunableBlueprintGame.js";
 import {optimizationBlueprint, optimizationRequest, stochasticOptimizationRequest} from "./fixtures/OptimizationFixture.js";
+
+let disposeRuntimeStorage: () => void;
+beforeAll(() => {
+    disposeRuntimeStorage = createPackageExtractionTestEnvironment({stageRuntime: false});
+});
+afterAll(() => disposeRuntimeStorage());
 
 let directory: string;
 let source: string;
