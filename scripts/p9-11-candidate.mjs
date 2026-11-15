@@ -203,6 +203,7 @@ const tooling = new Set([
     "tests/project/TsPackageArtifactBuilder.test.ts",
     "tests/simulation/parallel/ParallelSimulationRunner.test.ts",
     "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts",
+    "tests/scripts/p8-05-release-handoff.test.mjs",
 ]);
 const git = (repository, args) => execFileSync("git", args, {cwd:repository, encoding:"utf8", timeout:10_000, maxBuffer:16 * 1024 * 1024}).trimEnd();
 

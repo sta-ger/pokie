@@ -274,6 +274,7 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "tests/project/TsPackageArtifactBuilder.test.ts",
     "tests/simulation/parallel/ParallelSimulationRunner.test.ts",
     "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts",
+    "tests/scripts/p8-05-release-handoff.test.mjs",
 ];
 const commit = (repository, message) => {
     execFileSync("git", ["add", "."], {cwd:repository});

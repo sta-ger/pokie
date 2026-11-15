@@ -152,6 +152,7 @@ test("shared selector retains the authenticated archive/install through committe
             "tests/project/TsPackageArtifactBuilder.test.ts",
             "tests/simulation/parallel/ParallelSimulationRunner.test.ts",
             "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts",
+            "tests/scripts/p8-05-release-handoff.test.mjs",
             "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
             "docs/audit-corrections/README.md",
             "docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification.md",
@@ -285,6 +286,7 @@ descendantCases("tooling descendant does not exempt product/build or unnamed inp
     "tests/project/TsPackageArtifactBuilder.extra.test.ts",
     "tests/simulation/parallel/ParallelSimulationRunner.extra.test.ts",
     "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.extra.test.ts",
+    "tests/scripts/p8-05-release-handoff.extra.test.mjs",
 ], async (fixture, file) => {
     const target = path.join(fixture.repository, file);
     await mkdir(path.dirname(target), {recursive:true});
