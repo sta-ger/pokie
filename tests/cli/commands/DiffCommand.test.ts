@@ -1054,40 +1054,49 @@ describe("DiffCommand canonical definitions through dispatch", () => {
     });
 });
 
-it("reserves definition JSON stdout while executable descriptors log diagnostics", async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "definition-stdout-"));
-    const source = writeDescriptorPackage(root, {
-        descriptorBody:
-            'process.stdout.write("descriptor diagnostic\\n"); return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model};',
+describe("executable definition protocols", () => {
+    let restoreRuntimeEnvironment: (() => void) | undefined;
+    beforeAll(() => {
+        restoreRuntimeEnvironment = createPackageExtractionTestEnvironment({stageRuntime: false});
     });
-    const stdoutWrite = process.stdout.write;
-    const stderr = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
-    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
-    try {
-        await new DiffCommand().run([source, source, "--comparison", "definition", "--format", "json"]);
-        expect(log).toHaveBeenCalledTimes(1);
-        expect(JSON.parse(log.mock.calls[0][0]).comparisonKind).toBe("math-definition");
-        expect(stderr).toHaveBeenCalledWith("descriptor diagnostic\n");
-        expect(process.stdout.write).toBe(stdoutWrite);
-    } finally {
-        stderr.mockRestore();
-        log.mockRestore();
-        fs.rmSync(root, {recursive: true, force: true});
-    }
-});
+    afterAll(() => restoreRuntimeEnvironment?.());
 
-it("keeps unknown advanced validation incomplete under CI even with identical definitions", async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "diff-advanced-unknown-"));
-    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
-    try {
-        const source = writeDescriptorPackage(root);
-        expect(await new DiffCommand().run([source, source, "--comparison", "definition", "--format", "json", "--ci"])).toBe(2);
-        const report = JSON.parse(log.mock.calls[0][0]);
-        expect(report).toMatchObject({status: "partial", left: {advanced: {verdict: "inconclusive", executableFidelity: "unverified"}}, right: {advanced: {verdict: "inconclusive"}}});
-    } finally {
-        log.mockRestore();
-        fs.rmSync(root, {recursive: true, force: true});
-    }
+    it("reserves definition JSON stdout while executable descriptors log diagnostics", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "definition-stdout-"));
+        const source = writeDescriptorPackage(root, {
+            descriptorBody:
+                'process.stdout.write("descriptor diagnostic\\n"); return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model};',
+        });
+        const stdoutWrite = process.stdout.write;
+        const stderr = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            await new DiffCommand().run([source, source, "--comparison", "definition", "--format", "json"]);
+            expect(log).toHaveBeenCalledTimes(1);
+            expect(JSON.parse(log.mock.calls[0][0]).comparisonKind).toBe("math-definition");
+            expect(stderr).toHaveBeenCalledWith("descriptor diagnostic\n");
+            expect(process.stdout.write).toBe(stdoutWrite);
+        } finally {
+            stderr.mockRestore();
+            log.mockRestore();
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
+    it("keeps unknown advanced validation incomplete under CI even with identical definitions", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "diff-advanced-unknown-"));
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            const source = writeDescriptorPackage(root);
+            expect(await new DiffCommand().run([source, source, "--comparison", "definition", "--format", "json", "--ci"])).toBe(2);
+            const report = JSON.parse(log.mock.calls[0][0]);
+            expect(report).toMatchObject({status: "partial", left: {advanced: {verdict: "inconclusive", executableFidelity: "unverified"}}, right: {advanced: {verdict: "inconclusive"}}});
+        } finally {
+            log.mockRestore();
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
 });
 
 it("rejects oversized shared weights through real CLI validation and definition comparison", async () => {
